@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import ru.adsrv.frpjump.settings.BackgroundPoll
+import ru.adsrv.frpjump.ui.SecretField
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -31,7 +32,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -318,13 +318,7 @@ private fun PassphraseDialog(onImport: (String) -> Unit, onDismiss: () -> Unit) 
         onDismissRequest = onDismiss,
         title = { Text("Key passphrase") },
         text = {
-            OutlinedTextField(
-                value = passphrase,
-                onValueChange = { passphrase = it },
-                label = { Text("Passphrase (empty if none)") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-            )
+            SecretField(passphrase, { passphrase = it }, "Passphrase (empty if none)")
         },
         confirmButton = { TextButton(onClick = { onImport(passphrase) }) { Text("Import") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

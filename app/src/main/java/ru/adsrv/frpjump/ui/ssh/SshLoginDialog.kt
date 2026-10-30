@@ -19,10 +19,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
+import ru.adsrv.frpjump.ui.SecretField
 
 /**
  * User name (remembered per device and port), then this phone's key or a
@@ -69,14 +69,7 @@ fun SshLoginDialog(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 } else {
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text(if (remembered) "Password (remembered)" else "Password") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-                    )
+                    SecretField(password, { password = it }, if (remembered) "Password (remembered)" else "Password")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = remember, onCheckedChange = { remember = it })
                         Text("Remember on this phone")
