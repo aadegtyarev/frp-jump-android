@@ -26,8 +26,9 @@ import java.security.PublicKey
 sealed interface SshAuth {
     data object Key : SshAuth
 
-    class Password(val password: String, val remember: Boolean) : SshAuth {
-        override fun toString() = "Password(remember=$remember)"
+    /** [typed] null means the remembered one, unsealed when the session logs in (off the main thread). */
+    class Password(val typed: String?, val remember: Boolean) : SshAuth {
+        override fun toString() = "Password(typed=${typed != null}, remember=$remember)"
     }
 }
 
@@ -95,15 +96,21 @@ class SshSession(
     /** "Trust": pin the key shown at first use and connect again. */
     fun trustHostKey() {
         val unknown = _state.value as? SshState.HostKeyUnknown ?: return
-        env.hostKeys.pin(device, port, unknown.presented)
-        connect()
+        _state.value = SshState.Connecting
+        scope.launch(Dispatchers.IO) {
+            env.hostKeys.pin(device, port, unknown.presented)
+            connect()
+        }
     }
 
     /** "Forget the old key": drop the pin and connect again, which asks about the new key. */
     fun forgetOldHostKey() {
         if (_state.value !is SshState.HostKeyChanged) return
-        env.hostKeys.forget(device, port)
-        connect()
+        _state.value = SshState.Connecting
+        scope.launch(Dispatchers.IO) {
+            env.hostKeys.forget(device, port)
+            connect()
+        }
     }
 
     /** Tells the remote side the terminal's size (SSH `window-change`). */
@@ -197,11 +204,13 @@ class SshSession(
                 ssh.authPublickey(user, providers)
             }
             is SshAuth.Password -> {
-                ssh.authPassword(user, auth.password)
-                if (auth.remember) {
-                    env.passwords.remember(device, port, user, auth.password)
-                } else {
+                val password = auth.typed ?: env.passwords.get(device, port, user)
+                    ?: throw UserAuthException("No remembered password for $user")
+                ssh.authPassword(user, password)
+                if (!auth.remember) {
                     env.passwords.forget(device, port, user)
+                } else if (auth.typed != null) {
+                    env.passwords.remember(device, port, user, password)
                 }
             }
         }

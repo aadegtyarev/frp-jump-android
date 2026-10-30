@@ -101,6 +101,10 @@ class SshPasswords(private val storage: TextStorage, private val box: KeystoreSe
         }
     }
 
+    /** Whether a password is kept for this login; cheap, nothing is unsealed. */
+    @Synchronized
+    fun has(device: String, port: Int, user: String): Boolean = key(device, port, user) in sealed
+
     @Synchronized
     fun remember(device: String, port: Int, user: String, password: String) =
         save(sealed + (key(device, port, user) to box.seal(password)))

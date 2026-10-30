@@ -2,10 +2,12 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.PRESET_PORTS
@@ -72,7 +74,8 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
 
     fun sshLogin(port: Int): SshLogin = app.sshLogins.get(device, port)
 
-    fun hasRememberedPassword(port: Int, user: String): Boolean = app.sshPasswords.get(device, port, user.trim()) != null
+    /** Only whether one is kept: the password itself is unsealed by the session, off the main thread. */
+    fun hasRememberedPassword(port: Int, user: String): Boolean = app.sshPasswords.has(device, port, user.trim())
 
     /**
      * Remembers the user name and method for this port and opens a session;
@@ -80,13 +83,10 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
      */
     fun openSsh(port: Int, localPort: Int, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int {
         val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
-        app.sshLogins.remember(device, port, login)
+        viewModelScope.launch(Dispatchers.IO) { app.sshLogins.remember(device, port, login) }
         val auth = when (method) {
             SshAuthMethod.KEY -> SshAuth.Key
-            SshAuthMethod.PASSWORD -> SshAuth.Password(
-                password.ifEmpty { app.sshPasswords.get(device, port, login.user).orEmpty() },
-                remember,
-            )
+            SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
         }
         return app.ssh.open(device, port, localPort, login.user, auth).id
     }
