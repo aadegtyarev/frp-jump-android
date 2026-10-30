@@ -16,6 +16,13 @@ val WireJson = Json {
     explicitNulls = false
 }
 
+/** `GET /api/agent/version`, unauthenticated: answered before anything is sent. */
+@Serializable
+data class VersionResponse(
+    @SerialName("protocol_version") val protocolVersion: Int,
+    @SerialName("package_version") val packageVersion: String,
+)
+
 @Serializable
 data class EnrollRequest(
     val token: String,

@@ -29,6 +29,12 @@ class WireModelsTest {
     }
 
     @Test
+    fun versionResponse() {
+        val r = WireJson.decodeFromString<VersionResponse>("""{"protocol_version":1,"package_version":"0.9.0"}""")
+        assertEquals(VersionResponse(PROTOCOL_VERSION, "0.9.0"), r)
+    }
+
+    @Test
     fun deviceList() {
         val body = """
             [{"name":"laptop","enrolled_at":"2026-10-01T08:00:00.000001","last_seen_at":"2026-10-30T11:59:58.123456","enabled":true},
