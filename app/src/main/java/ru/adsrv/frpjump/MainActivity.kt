@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.Text
+import ru.adsrv.frpjump.ui.AppNav
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FrpJumpTheme {
-                Text("frp-jump")
+                AppNav()
             }
         }
     }
