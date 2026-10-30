@@ -24,7 +24,8 @@ enrollment, admin commands, Google Play, x86/armv7 builds.
 2. In the app: paste the line the server or client printed as is,
    `frp-jump-client enroll https://tunnel.example.com <token> [--name phone]`.
    The app takes the URL (`https://` only), the token and the optional name
-   from it; a bare `<url> <token>` works too. Later: scan a QR code of the
+   from it; a bare `<url> <token>` works too. Line breaks and extra spaces
+   are ignored (the CLI wraps the line in a narrow terminal). Later: scan a QR code of the
    same line.
 3. App calls `POST /api/agent/enroll`, stores the device token, certificate, key
    and CA in app-private storage encrypted with an Android Keystore key.
@@ -124,8 +125,10 @@ Nothing leaves the phone except calls to the frp-jump server and the tunnels.
 
 ## Open risks
 
-- frpc on Android: Go's resolver without `/etc/resolv.conf`; build with the NDK
-  (cgo) or use an IP for the relay. To be proven first.
+- frpc on Android: proven on 2026-10-30. `scripts/build-frpc.sh` builds upstream
+  0.70.0 with the NDK (cgo resolver); on an Android 14 emulator it resolved the
+  relay by name, logged in with mTLS + device metadata, punched P2P to a WB
+  controller and served its homeui on 127.0.0.1.
 - Android may still kill the foreground service on aggressive vendor firmware;
   the owner may need to exempt the app from battery optimisation.
 - Mobile carriers' NAT usually blocks P2P, so most traffic will go via the relay.
