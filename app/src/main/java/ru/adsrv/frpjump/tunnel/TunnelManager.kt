@@ -16,7 +16,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.first
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.AgentApi
@@ -27,7 +26,6 @@ import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.wireProtocolFor
 import ru.adsrv.frpjump.session.AppSession
-import ru.adsrv.frpjump.session.PollBackoff
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
@@ -73,8 +71,7 @@ private data class Core(
  *
  * A protocol mismatch stops applying anything but leaves a running frpc
  * alone (`ProtocolMismatchError` in the agent). Polling is driven from
- * outside ([pollEvery]) so the UI and, later, a background setting choose
- * the interval; frpc keeps running between polls either way.
+ * outside ([poll], by the app's poller); frpc keeps running between polls.
  */
 class TunnelManager(
     /** The stored enrollment, read on every cycle ([ru.adsrv.frpjump.store.CredentialStore.state]). */
@@ -129,18 +126,8 @@ class TunnelManager(
     /** frpc's recent output, for diagnostics. */
     fun frpcLog(): List<String> = runner.recentLog()
 
-    /**
-     * Syncs now, then every [intervalMs] until cancelled; after failures it
-     * waits 10 s, then 30 s ([PollBackoff]). Paused while the server has
-     * removed this phone ([AppSession.removed]).
-     */
-    suspend fun pollEvery(intervalMs: Long) {
-        val backoff = PollBackoff()
-        while (true) {
-            session.removed.first { !it }
-            delay(backoff.next(syncOnce().ok, intervalMs))
-        }
-    }
+    /** One poll cycle (the app's [ru.adsrv.frpjump.session.Poller]); false when it failed. */
+    suspend fun poll(): Boolean = syncOnce().ok
 
     /** One cycle; returns the desired state it applied, or null when it could not. */
     suspend fun sync(): DesiredStateResponse? = syncOnce().desired

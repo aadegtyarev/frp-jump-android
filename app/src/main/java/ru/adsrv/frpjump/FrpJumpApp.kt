@@ -4,7 +4,11 @@ import android.app.Application
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.devices.DeviceDirectory
+import ru.adsrv.frpjump.session.Poller
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.ports.DevicePortsStore
 import ru.adsrv.frpjump.ports.LocalPortStore
@@ -46,6 +50,10 @@ class FrpJumpApp : Application() {
         private set
     lateinit var webSites: WebSiteMemory
         private set
+    lateinit var devices: DeviceDirectory
+        private set
+    lateinit var poller: Poller
+        private set
 
     val session = AppSession()
 
@@ -65,6 +73,17 @@ class FrpJumpApp : Application() {
             runner = FrpcRunner(File(applicationInfo.nativeLibraryDir, "libfrpc.so"), File(noBackupFilesDir, "frpc")),
             startService = { TunnelService.start(this) },
         )
+        devices = DeviceDirectory(store, api, session)
+        poller = Poller(
+            scope = appScope,
+            tunnelsUp = tunnels.state.map { it.tunnels.isNotEmpty() },
+            backgroundMs = MutableStateFlow(null),
+            removed = session.removed,
+        ) { visible ->
+            val synced = tunnels.poll()
+            val listed = if (visible && devices.wanted) devices.refresh() else true
+            synced && listed
+        }
         installFullBouncyCastle()
         // Its own Keystore key: re-enrolling the phone must not lose the SSH key.
         val sshBox = KeystoreSecretBox("frpjump-ssh")

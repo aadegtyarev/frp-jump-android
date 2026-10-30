@@ -34,8 +34,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-
-private const val POLL_MS = 2_000L
+import kotlinx.coroutines.awaitCancellation
+import ru.adsrv.frpjump.devices.DeviceRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,9 +48,16 @@ fun DevicesScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.sshSessions.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Poll only while this screen is visible; stops when backgrounded or covered.
+    // The app's poller fetches the list only while this screen is visible.
     LaunchedEffect(lifecycleOwner) {
-        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.pollEvery(POLL_MS) }
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            vm.shown(true)
+            try {
+                awaitCancellation()
+            } finally {
+                vm.shown(false)
+            }
+        }
     }
     Scaffold(
         topBar = {
