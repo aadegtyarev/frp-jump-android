@@ -102,23 +102,25 @@ class FrpJumpApp : Application() {
      * with its custom ports, logins, host keys and passwords (enrolling it
      * again after its server removed it). Otherwise the web views' data goes
      * too when it is this profile's, and with the last profile also the
-     * shared SSH key and passwords, as v1's "Forget this phone" did: wiped
-     * before the index drops the profile, so an interruption leaves it
-     * listed rather than the key behind.
+     * shared SSH key and passwords, as v1's "Forget this phone" did. The
+     * passwords and the key go before the index drops the profile, so an
+     * interruption leaves it listed rather than them behind.
      */
     suspend fun forgetProfile(id: String, keepData: Boolean) {
         ssh.closeProfile(id)
-        profiles.forget(id, keepData) {
-            sshKeys.wipe()
-            sshPasswords.wipe()
-            KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
+        profiles.forget(id, keepData) { last ->
+            sshPasswords.forgetProfile(id)
+            if (last) {
+                sshKeys.wipe()
+                sshPasswords.wipe()
+                KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
+            }
         }
         if (keepData) return
         val noneLeft = profiles.state.value.index.profiles.isEmpty()
         // Interrupted before or after the memory is forgotten, it no longer matches any
         // site, so the next page opened clears the web data anyway.
         val clearWeb = withContext(Dispatchers.IO) {
-            sshPasswords.forgetProfile(id)
             (noneLeft || webSites.belongsTo(id)).also { if (it) webSites.forget() }
         }
         // Logins to the devices' web UIs go with the rest. The web view's classes: main thread.

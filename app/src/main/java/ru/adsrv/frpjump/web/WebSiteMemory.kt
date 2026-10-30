@@ -9,7 +9,9 @@ import ru.adsrv.frpjump.store.TextStorage
  * tunnel is `127.0.0.1`, so one device's login cookie would be sent to the
  * next device's web UI: the web view clears cookies and web storage
  * whenever it opens another (profile, device, local port) than last time.
- * One for the whole app, as the web view's cookie jar is.
+ * One for the whole app, as the web view's cookie jar is. Read on first
+ * use, not when the app starts: the v1 upgrade rewrites the file off the
+ * main thread meanwhile ([migrateLegacy]).
  */
 class WebSiteMemory(private val storage: TextStorage) {
     private var last: String? = null

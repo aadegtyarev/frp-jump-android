@@ -7,6 +7,8 @@ import ru.adsrv.frpjump.store.TextStorage
 /**
  * The (profile, device, port) -> local port map ([profilePortKey]), one for
  * all profiles: one range, no port handed out twice. See [LocalPortAllocator].
+ * Nothing is cached: every call reads the file, so the v1 upgrade's
+ * rewrite of it ([migrateLegacy]) can never be overwritten by a stale copy.
  */
 class LocalPortStore(private val storage: TextStorage) {
     @Synchronized

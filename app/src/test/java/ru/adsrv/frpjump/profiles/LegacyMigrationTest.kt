@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.ssh.SshPasswords
 import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
@@ -201,6 +202,43 @@ class LegacyMigrationTest {
         assertEquals("half written", File(store.dir("id1"), "ssh_logins.json.new").readText())
         assertFalse(file("device_ports.json.bak").exists())
         assertFalse(file("ssh_logins.json.new").exists())
+    }
+
+    // The app makes the shared stores in onCreate, before the upgrade runs off the main thread:
+    // each must see the upgraded file and must not write a stale copy back over it.
+
+    @Test
+    fun `remembered passwords made before the upgrade keep the upgraded ones`() {
+        v1Layout()
+        val passwords = SshPasswords(files.storage(file("ssh_passwords.json")), keystore.box("frpjump-ssh"))
+        store().load()
+        assertTrue(passwords.has("id1", "wb", 22, "root"))
+        passwords.remember("id1", "wb", 2222, "admin", "pw")
+        val restarted = SshPasswords(files.storage(file("ssh_passwords.json")), keystore.box("frpjump-ssh"))
+        assertTrue(restarted.has("id1", "wb", 22, "root"))
+        assertTrue(restarted.has("id1", "wb", 2222, "admin"))
+    }
+
+    @Test
+    fun `the local port map made before the upgrade keeps the upgraded ports`() {
+        v1Layout()
+        val ports = LocalPortStore(files.storage(file("local_ports.json")))
+        store().load()
+        ports.update { it["id1/wb:8080"] = 40003 }
+        assertEquals(
+            mapOf("id1/wb:80" to 40002, "id1/wb:22" to 40001, "id1/wb:8080" to 40003),
+            LocalPortStore(files.storage(file("local_ports.json"))).load(),
+        )
+    }
+
+    @Test
+    fun `the web site memory made before the upgrade sees the upgraded site`() {
+        v1Layout()
+        val sites = WebSiteMemory(files.storage(file("web_site.json")))
+        store().load()
+        assertFalse(sites.isOther("id1", "wb", 40002))
+        sites.remember("id1", "wb", 40003)
+        assertFalse(WebSiteMemory(files.storage(file("web_site.json"))).isOther("id1", "wb", 40003))
     }
 
     @Test

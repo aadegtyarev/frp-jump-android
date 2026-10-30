@@ -43,15 +43,17 @@ class ProfileStore(
      * their Keystore keys: an add that crashed before listing the profile, a
      * remove that crashed before deleting the directory, or a late write
      * (an SSH login, a pinned host key) that recreated a forgotten
-     * profile's directory. Never while a v1 upgrade is unfinished: its
-     * directory is not listed yet.
+     * profile's directory. Never while a v1 upgrade is unfinished (its
+     * directory is not listed yet), nor without an index file: then nothing
+     * is known about what the directories are.
      */
     private fun sweepOrphans(index: ProfileIndex) {
-        if (File(filesDir, ProfileFiles.MIGRATION).exists()) return
+        if (File(filesDir, ProfileFiles.MIGRATION).exists() || indexFile.read() == null) return
         val orphans = File(filesDir, ProfileFiles.DIR).listFiles()?.filter { index.find(it.name) == null }.orEmpty()
         for (dir in orphans) {
-            boxFor(profileKeyAlias(dir.name)).destroy()
-            dir.deleteRecursively()
+            // A Keystore hiccup must not stop the app from starting: the directory
+            // stays, so the key is tried again on the next start.
+            if (runCatching { boxFor(profileKeyAlias(dir.name)).destroy() }.isSuccess) dir.deleteRecursively()
         }
     }
 
@@ -110,17 +112,18 @@ class ProfileStore(
     /**
      * Forgets [id] for good: its credentials and Keystore key first (nothing
      * secret is left if the rest is interrupted), then the index entry, then
-     * the directory. The next profile becomes the current one. When it is
-     * the last profile, [beforeLastGoes] runs before the index drops it: an
+     * the directory. The next profile becomes the current one.
+     * [beforeUnlisting] (told whether it is the last profile) runs before the
+     * index drops it, for the profile's entries in shared files: an
      * interruption leaves the profile listed, to be forgotten again.
      */
     @Synchronized
-    fun remove(id: String, beforeLastGoes: () -> Unit = {}): ProfileIndex {
+    fun remove(id: String, beforeUnlisting: (last: Boolean) -> Unit = {}): ProfileIndex {
         val profile = index().find(id) ?: return index()
         credentials(profile).wipe()
         stores.remove(id)
         val after = index().minus(id)
-        if (after.profiles.isEmpty()) beforeLastGoes()
+        beforeUnlisting(after.profiles.isEmpty())
         save(after)
         dir(id).deleteRecursively()
         return after

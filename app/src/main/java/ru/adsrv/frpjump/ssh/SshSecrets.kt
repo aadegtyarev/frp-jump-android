@@ -92,7 +92,15 @@ class SshKeyStore(private val storage: TextStorage, private val box: SecretBox) 
  * device called "wb", and they need not share its password.
  */
 class SshPasswords(private val storage: TextStorage, private val box: SecretBox) {
-    private var sealed: Map<String, String> = read()
+    /**
+     * Read on first use, not when the app starts: the v1 upgrade rewrites
+     * the file's keys off the main thread meanwhile ([migrateLegacy]), and a
+     * copy read before it would save the old keys back.
+     */
+    private var loaded: Map<String, String>? = null
+
+    private val sealed: Map<String, String>
+        get() = loaded ?: read().also { loaded = it }
 
     @Synchronized
     fun get(profile: String, device: String, port: Int, user: String): String? {
@@ -129,7 +137,7 @@ class SshPasswords(private val storage: TextStorage, private val box: SecretBox)
     @Synchronized
     fun wipe() {
         storage.delete()
-        sealed = emptyMap()
+        loaded = emptyMap()
     }
 
     private fun read(): Map<String, String> =
@@ -137,7 +145,7 @@ class SshPasswords(private val storage: TextStorage, private val box: SecretBox)
 
     private fun save(value: Map<String, String>) {
         storage.write(WireJson.encodeToString(value))
-        sealed = value
+        loaded = value
     }
 
     companion object {

@@ -83,13 +83,13 @@ class ProfileStoreTest {
         val only = store.add(credentials("work.example"))
         files.crashOn = ProfileFiles.INDEX
         var wiped = false
-        runCatching { store.remove(only.id) { wiped = true } }
+        runCatching { store.remove(only.id) { last -> wiped = last } }
         // Interrupted after the shared wipe: still listed, so it can be forgotten again.
         assertTrue(wiped)
         assertEquals(listOf(only), store().load().profiles)
 
         var again = false
-        store.remove(only.id) { again = true }
+        store.remove(only.id) { last -> again = last }
         assertTrue(again)
         assertTrue(store().load().profiles.isEmpty())
     }
@@ -99,9 +99,15 @@ class ProfileStoreTest {
         val store = store()
         val work = store.add(credentials("work.example"))
         store.add(credentials("home.example", "phone-home"))
-        var wiped = false
-        store.remove(work.id) { wiped = true }
-        assertFalse(wiped)
+        var ran = false
+        var last = true
+        store.remove(work.id) {
+            ran = true
+            last = it
+        }
+        // Its own entries in shared files still go before it is unlisted.
+        assertTrue(ran)
+        assertFalse(last)
     }
 
     @Test
@@ -118,6 +124,26 @@ class ProfileStoreTest {
         assertFalse(File(filesDir, "profiles/gone").exists())
         assertEquals(setOf(kept.keyAlias), keystore.keys.keys)
         assertTrue(store.dir(kept.id).exists())
+    }
+
+    @Test
+    fun `without an index file nothing is swept`() {
+        File(filesDir, "profiles/unknown").mkdirs()
+        store().load()
+        assertTrue(File(filesDir, "profiles/unknown").exists())
+    }
+
+    @Test
+    fun `a directory whose key cannot be destroyed now is kept for the next start`() {
+        store().add(credentials("work.example"))
+        File(filesDir, "profiles/gone").mkdirs()
+        val failing = ProfileStore(filesDir, { alias ->
+            if (alias == profileKeyAlias("gone")) throw IllegalStateException("Keystore busy") else keystore.box(alias)
+        }, files::storage)
+        failing.load()
+        assertTrue(File(filesDir, "profiles/gone").exists())
+        store().load()
+        assertFalse(File(filesDir, "profiles/gone").exists())
     }
 
     @Test
