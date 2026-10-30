@@ -1,12 +1,34 @@
 package ru.adsrv.frpjump.store
 
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.AtomicFile
 import android.util.Log
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
 import java.io.File
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
+
+/** What [CredentialStore.state] finds on disk. */
+sealed interface StoredEnrollment {
+    data class Enrolled(val credentials: Credentials) : StoredEnrollment
+    data object NotEnrolled : StoredEnrollment
+
+    /** Could not be read just now (Keystore busy, I/O): retry, do not re-enroll. */
+    data class Unavailable(val reason: String) : StoredEnrollment
+}
+
+/**
+ * True for failures that will not go away by retrying: the key is gone or
+ * invalidated, the ciphertext does not match it, or the file is malformed.
+ */
+internal fun isPermanentLoss(e: Throwable): Boolean = generateSequence(e) { it.cause }.any {
+    it is KeyMissingException || it is KeyPermanentlyInvalidatedException || it is UnrecoverableKeyException ||
+        it is AEADBadTagException || it is SerializationException || it is IllegalArgumentException
+}
 
 /** What enrollment gave this phone. */
 data class Credentials(
@@ -44,13 +66,21 @@ class CredentialStore(filesDir: File, private val box: KeystoreSecretBox = Keyst
     @Volatile
     private var cached: Credentials? = null
 
+    /** The credentials, or null when not enrolled or unreadable right now; see [state]. */
+    fun load(): Credentials? = (state() as? StoredEnrollment.Enrolled)?.credentials
+
+    /**
+     * A permanent loss (see [isPermanentLoss]) wipes the file and the key: the
+     * phone has to enroll again. Anything else is reported as [StoredEnrollment.Unavailable]
+     * and tried again on the next call.
+     */
     @Synchronized
-    fun load(): Credentials? {
-        cached?.let { return it }
-        if (!file.baseFile.exists()) return null
+    fun state(): StoredEnrollment {
+        cached?.let { return StoredEnrollment.Enrolled(it) }
+        if (!file.baseFile.exists()) return StoredEnrollment.NotEnrolled
         return try {
             val s = WireJson.decodeFromString<StoredCredentials>(String(file.readFully(), Charsets.UTF_8))
-            Credentials(
+            val c = Credentials(
                 controlUrl = s.controlUrl,
                 deviceId = s.deviceId,
                 deviceName = s.deviceName,
@@ -60,11 +90,18 @@ class CredentialStore(filesDir: File, private val box: KeystoreSecretBox = Keyst
                 caCertPem = s.caCertPem,
                 serverAddr = s.serverAddr,
                 serverPort = s.serverPort,
-            ).also { cached = it }
+            )
+            cached = c
+            StoredEnrollment.Enrolled(c)
         } catch (e: Exception) {
-            // Unreadable (key lost, file damaged): the phone has to enroll again.
-            Log.w(TAG, "stored enrollment unreadable: ${e.javaClass.simpleName}")
-            null
+            if (isPermanentLoss(e)) {
+                Log.w(TAG, "stored enrollment lost for good: ${e.javaClass.simpleName}")
+                wipe()
+                StoredEnrollment.NotEnrolled
+            } else {
+                Log.w(TAG, "stored enrollment unreadable for now: ${e.javaClass.simpleName}")
+                StoredEnrollment.Unavailable(e.javaClass.simpleName)
+            }
         }
     }
 

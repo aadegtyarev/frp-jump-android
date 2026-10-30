@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.devices.DeviceCardScreen
 import ru.adsrv.frpjump.ui.devices.DeviceCardViewModel
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
@@ -24,6 +25,7 @@ private object Routes {
     const val DEVICES = "devices"
     const val DEVICE = "device/{name}"
     const val SETTINGS = "settings"
+    const val STORAGE = "storage"
     fun device(name: String) = "device/${Uri.encode(name)}"
 }
 
@@ -31,8 +33,17 @@ private object Routes {
 fun AppNav() {
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val nav = rememberNavController()
-    val start = remember { if (app.store.load() != null) Routes.DEVICES else Routes.ENROLL }
+    val start = remember { routeFor(app.store.state()) }
     NavHost(navController = nav, startDestination = start) {
+        composable(Routes.STORAGE) {
+            MessageScreen(
+                title = "frp-jump",
+                text = "This phone's stored credentials cannot be read right now. " +
+                    "Nothing was deleted; try again in a moment.",
+                action = "Retry",
+                onAction = { routeFor(app.store.state()).takeIf { it != Routes.STORAGE }?.let(nav::replaceAll) },
+            )
+        }
         composable(Routes.ENROLL) {
             EnrollScreen(vm = viewModel { EnrollViewModel(app) }, onEnrolled = { nav.replaceAll(Routes.DEVICES) })
         }
@@ -55,6 +66,12 @@ fun AppNav() {
             )
         }
     }
+}
+
+private fun routeFor(stored: StoredEnrollment) = when (stored) {
+    is StoredEnrollment.Enrolled -> Routes.DEVICES
+    StoredEnrollment.NotEnrolled -> Routes.ENROLL
+    is StoredEnrollment.Unavailable -> Routes.STORAGE
 }
 
 /** Go to [route] with nothing to go back to. */
