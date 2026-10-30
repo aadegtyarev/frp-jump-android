@@ -11,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.ui.devices.DeviceCardScreen
+import ru.adsrv.frpjump.ui.devices.DeviceCardViewModel
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
 import ru.adsrv.frpjump.ui.devices.DevicesViewModel
 import ru.adsrv.frpjump.ui.enroll.EnrollScreen
@@ -43,7 +44,8 @@ fun AppNav() {
             )
         }
         composable(Routes.DEVICE) { entry ->
-            DeviceCardScreen(name = entry.arguments?.getString("name").orEmpty(), onBack = { nav.popBackStack() })
+            val name = entry.arguments?.getString("name").orEmpty()
+            DeviceCardScreen(vm = viewModel { DeviceCardViewModel(app, name) }, onBack = { nav.popBackStack() })
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
