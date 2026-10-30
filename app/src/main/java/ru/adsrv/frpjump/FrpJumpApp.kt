@@ -4,6 +4,7 @@ import android.app.Application
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.ports.DevicePortsStore
 import ru.adsrv.frpjump.ports.LocalPortStore
@@ -87,16 +88,20 @@ class FrpJumpApp : Application() {
      */
     suspend fun forgetLocally(keepPorts: Boolean) {
         ssh.closeAll()
-        tunnels.shutdown()
-        if (!keepPorts) {
-            devicePorts.wipe()
-            sshKeys.wipe()
-            sshPasswords.wipe()
-            sshLogins.wipe()
-            hostKeys.wipe()
-            KeystoreSecretBox("frpjump-ssh").destroy()
+        // Under the tunnel lock: no poll can restart frpc between the stop and the wipe.
+        tunnels.shutdown {
+            withContext(Dispatchers.IO) {
+                if (!keepPorts) {
+                    devicePorts.wipe()
+                    sshKeys.wipe()
+                    sshPasswords.wipe()
+                    sshLogins.wipe()
+                    hostKeys.wipe()
+                    KeystoreSecretBox("frpjump-ssh").destroy()
+                }
+                store.wipe()
+            }
         }
-        store.wipe()
         session.clearRemoved()
     }
 }

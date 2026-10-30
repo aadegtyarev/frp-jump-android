@@ -50,7 +50,8 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
             return true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            if (e is ApiException && e.status == 401) app.session.markRemoved()
+            // Only for the token still stored: not a late answer to a call made before "Forget".
+            if (e is ApiException && e.status == 401 && app.store.load()?.apiToken == credentials.apiToken) app.session.markRemoved()
             _state.update { it.copy(error = e.userMessage()) }
             return false
         } finally {

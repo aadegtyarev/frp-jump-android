@@ -116,6 +116,14 @@ class TunnelManager(
         )
     }.stateIn(scope, SharingStarted.Eagerly, TunnelsState())
 
+    init {
+        // The server removed this phone (seen by any call, the device list too):
+        // the REMOVED screen says tunnels are stopped, so stop them.
+        scope.launch {
+            session.removed.collect { removed -> if (removed) syncing.withLock { stopAllLocked() } }
+        }
+    }
+
     /** frpc's recent output, for diagnostics. */
     fun frpcLog(): List<String> = runner.recentLog()
 
@@ -137,9 +145,27 @@ class TunnelManager(
 
     private class SyncResult(val desired: DesiredStateResponse?, val ok: Boolean)
 
+    /**
+     * Everything that starts frpc runs under [syncing] and checks there that
+     * it still may: credentials present, not removed by the server. Forget
+     * wipes the credentials under the same lock ([shutdown]), so no cycle can
+     * start frpc (and write its key) after it.
+     */
     private suspend fun syncOnce(): SyncResult = syncing.withLock {
-        val credentials = credentials() ?: return SyncResult(null, ok = true)
-        if (session.removed.value) return SyncResult(null, ok = true)
+        val credentials = when (val stored = enrollment()) {
+            is StoredEnrollment.Enrolled -> stored.credentials
+            // Forgotten (or never enrolled): nothing of the old enrollment may keep running.
+            StoredEnrollment.NotEnrolled -> {
+                stopAllLocked()
+                return SyncResult(null, ok = true)
+            }
+            // Unreadable just now (Keystore busy): leave what runs alone, try again later.
+            is StoredEnrollment.Unavailable -> return SyncResult(null, ok = false)
+        }
+        if (session.removed.value) {
+            stopAllLocked()
+            return SyncResult(null, ok = true)
+        }
         try {
             api.heartbeat(credentials)
             val desired = api.desiredState(credentials)
@@ -152,15 +178,28 @@ class TunnelManager(
             core.update { it.copy(mismatch = e.message) }
             SyncResult(null, ok = false)
         } catch (e: Exception) {
-            noteRemoval(e)
+            if (noteRemoval(e, credentials)) stopAllLocked()
             core.update { it.copy(syncError = e.userMessage()) }
             SyncResult(null, ok = false)
         }
     }
 
-    /** A 401 means the server no longer knows this token: the phone was deleted. */
-    private fun noteRemoval(e: Exception) {
-        if (e is ApiException && e.status == 401) session.markRemoved()
+    /**
+     * A 401 means the server no longer knows this token: the phone was
+     * deleted. Only for the token still stored: a late answer to a call made
+     * before "Forget" (or a re-enrollment) says nothing about the new one.
+     */
+    private fun noteRemoval(e: Exception, used: Credentials): Boolean {
+        if (e !is ApiException || e.status != 401 || credentials()?.apiToken != used.apiToken) return false
+        session.markRemoved()
+        return true
+    }
+
+    /** Stops frpc and the service; the caller holds [syncing]. */
+    private suspend fun stopAllLocked() {
+        withContext(Dispatchers.IO) { runner.stop() }
+        core.update { it.copy(planned = emptyList()) }
+        stopService()
     }
 
     fun connectAsync(device: String, port: DevicePort) = scope.launch { connect(device, port) }
@@ -191,7 +230,7 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            noteRemoval(e)
+            noteRemoval(e, credentials)
             fail(key, e.userMessage())
         } finally {
             end(key)
@@ -208,7 +247,7 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            noteRemoval(e)
+            noteRemoval(e, credentials)
             fail(key, e.userMessage())
         } finally {
             end(key)
@@ -234,22 +273,23 @@ class TunnelManager(
                 }
             }
         }
-        syncing.withLock {
-            withContext(Dispatchers.IO) { runner.stop() }
-            core.update { it.copy(planned = emptyList()) }
-            stopService()
-        }
+        syncing.withLock { stopAllLocked() }
         sync()
     }
 
-    /** "Forget this phone": stop everything and drop the port map. */
-    suspend fun shutdown() = syncing.withLock {
+    /**
+     * "Forget this phone": stop everything, drop frpc's files and the port
+     * map, then [wipeCredentials], all in one locked section: a poll that
+     * waits for the lock finds no credentials and starts nothing.
+     */
+    suspend fun shutdown(wipeCredentials: suspend () -> Unit) = syncing.withLock {
         withContext(Dispatchers.IO) {
-            runner.stop()
+            runner.wipe()
             localPorts.wipe()
         }
         core.value = Core()
         stopService()
+        wipeCredentials()
     }
 
     private suspend fun apply(credentials: Credentials, desired: DesiredStateResponse) {
