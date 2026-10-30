@@ -6,9 +6,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
+import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
@@ -35,12 +37,15 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun disconnectAll() = app.profiles.disconnectAllAsync()
 
     /**
-     * Saves [connection] in [profile] (new, or changed in place) and then,
-     * with [connectNow], connects it. [onDone] gets null, or what went wrong.
+     * Saves [connection] in [profile] (new, or [previous] changed in place)
+     * and then, with [connectNow], connects it. A change that moves the last
+     * connection off a port disconnects that port's tunnel. [onDone] gets
+     * null, or what went wrong.
      */
-    fun save(profile: String, connection: Connection, connectNow: Boolean, onDone: (String?) -> Unit) {
-        val runtime = runtime(profile) ?: return onDone(null)
+    fun save(profile: String, connection: Connection, previous: Connection?, connectNow: Boolean, onDone: (String?) -> Unit) {
+        val runtime = runtime(profile) ?: return onDone(app.getString(R.string.profile_gone))
         scope.launch {
+            val before = runtime.connections.connections.value
             val failure = try {
                 withContext(Dispatchers.IO) { runtime.connections.save(connection) }
                 null
@@ -50,6 +55,11 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
                 e.userMessage()
             }
             if (failure == null && connectNow) runtime.tunnels.connectAsync(connection.device, connection.port, connection.kind)
+            val moved = previous != null && (previous.device != connection.device || previous.port != connection.port)
+            if (failure == null && moved && previous != null && lastOnItsTunnel(previous, before)) {
+                val key = localPortKey(previous.device, previous.port)
+                if (runtime.tunnels.state.value.tunnels.any { it.key == key }) runtime.tunnels.disconnectAsync(previous.device, previous.port)
+            }
             onDone(failure)
         }
     }

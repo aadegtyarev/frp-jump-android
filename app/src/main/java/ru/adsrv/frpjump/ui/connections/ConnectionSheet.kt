@@ -139,7 +139,7 @@ fun ConnectionSheet(
                 )
                 Text(stringResource(R.string.connection_to, device), fontSize = 13.sp, color = colors.muted)
             }
-            KindSwitch(kind) { picked ->
+            KindSwitch(kind, enabled = !portLocked) { picked ->
                 if (picked != kind) {
                     // A preset of the old kind (or nothing) gives way to the new kind's first preset.
                     val wasPreset = portText.isBlank() || PORT_PRESETS[kind].orEmpty().any { it.port.toString() == portText }
@@ -149,6 +149,13 @@ fun ConnectionSheet(
                     }
                     kind = picked
                 }
+            }
+            problems.protocolClash?.let {
+                Text(
+                    stringResource(if (it == "ssh") R.string.protocol_clash_ssh else R.string.protocol_clash_other),
+                    color = colors.error,
+                    fontSize = 13.sp,
+                )
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val portProblem = problems.port?.takeIf { tried || it == PortProblem.OUT_OF_RANGE }
@@ -164,7 +171,7 @@ fun ConnectionSheet(
                         PortProblem.OUT_OF_RANGE -> stringResource(R.string.port_out_of_range)
                         null -> null
                     },
-                    note = stringResource(R.string.port_locked).takeIf { portLocked },
+                    note = stringResource(R.string.kind_locked).takeIf { portLocked },
                 )
                 if (!portLocked) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -250,7 +257,7 @@ fun ConnectionSheet(
 
 /** Web / SSH / TCP as the mockup's segmented control. */
 @Composable
-private fun KindSwitch(kind: PortKind, onPick: (PortKind) -> Unit) {
+private fun KindSwitch(kind: PortKind, enabled: Boolean, onPick: (PortKind) -> Unit) {
     val colors = AppTheme.colors
     Row(
         Modifier
@@ -268,10 +275,15 @@ private fun KindSwitch(kind: PortKind, onPick: (PortKind) -> Unit) {
                     .height(40.dp)
                     .then(if (on) Modifier.shadow(1.dp, RoundedCornerShape(10.dp)) else Modifier)
                     .background(if (on) colors.card else colors.tile, RoundedCornerShape(10.dp))
-                    .selectable(selected = on, role = Role.RadioButton, onClick = { onPick(k) }),
+                    .selectable(selected = on, enabled = enabled, role = Role.RadioButton, onClick = { onPick(k) }),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(kindLabel(k), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (on) colors.accent else colors.muted)
+                Text(
+                    kindLabel(k),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = (if (on) colors.accent else colors.muted).let { if (enabled || on) it else it.copy(alpha = 0.5f) },
+                )
             }
         }
     }

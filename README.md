@@ -63,11 +63,13 @@ port, which stay keyed by (profile, device, port).
   Change and Delete. "Connection" opens a sheet: kind, port (presets per
   kind, any 1-65535), name (blank takes the preset's name, the SSH user or
   "Web 8080"), HTTPS or user, "Connect now". Names must differ per device
-  and port. The port of a connected connection cannot be changed; deleting
-  the last connection of a port disconnects its tunnel.
+  and port, and SSH cannot share a port with web or TCP (the server knows a
+  port under one protocol). The kind and port of a connected connection
+  cannot be changed; moving or deleting the last connection of a port
+  disconnects its tunnel.
 - The Connections tab lists every profile's connections, marked with the
   profile's colour: active ones first with state, local address and main
-  action, the rest with a connect button; "Disconnect all" stops every
+  action, the rest with a connect button, "⋮" on each; "Disconnect all" stops every
   tunnel. Tunnels up without a saved connection are listed too, as
   "Port N", so they can be disconnected.
 - The bottom navigation: Devices, Connections, Terminals (the open SSH
@@ -75,13 +77,16 @@ port, which stay keyed by (profile, device, port).
 
 Upgrading from 0.2.0-beta1 (or 0.1.x) turns each profile's ports into
 connections on its first start: every port the owner added keeps its
-label, kind and number; the old presets Web 80 and SSH 22 become
+label, kind and number (on 80 and 22 too); the old presets Web 80 and SSH 22 become
 connections only on devices where they were used (the local port map has
 an entry for them), with the SSH user last logged in as. Local ports,
 logins, passwords, host keys and the web view's site memory are untouched,
 since tunnels keep their keys. `connections.json` is written in one atomic
 write before `device_ports.json` is deleted, so a crash at any point is
-finished, or redone, on the next start.
+finished, or redone, on the next start. A `device_ports.json` that does
+not parse is left in place and nothing is migrated from it; a
+`connections.json` that does not parse is copied to
+`connections.corrupt.json` before anything is saved over it.
 
 ## How tunnels work
 
@@ -146,7 +151,9 @@ sideloaded app).
 (self-signed or not, it never matches 127.0.0.1) is shown with its SHA-256
 fingerprint and accepted only once the owner trusts it; it is then pinned
 per (profile, device, target port) in `web_certs.json`. A different
-certificate later asks again, showing both fingerprints. The web view: JavaScript and DOM storage on, cookies kept, Back walks the
+certificate later asks again, showing both fingerprints. Files of an HTTPS
+connection are not handed to the system downloader, which would not trust
+the pinned certificate; the app says so. The web view: JavaScript and DOM storage on, cookies kept, Back walks the
 page history, the top bar has the title, the URL, Reload and "Open in
 browser". Only loopback pages stay in the app; links to other hosts (and
 `mailto:`, `tel:`, …) go to other apps. Downloads go to the system

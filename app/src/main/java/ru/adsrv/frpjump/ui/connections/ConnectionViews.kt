@@ -307,6 +307,8 @@ fun ConnectionDialogs(
     ui: ConnectionUi,
     actions: ConnectionActions,
     existing: (profile: String) -> List<Connection>,
+    /** The screen's rows as they are now, for the sheet's lock. */
+    rows: List<ConnectionRow>,
     onOpenTerminal: (sessionId: Int) -> Unit,
 ) {
     val context = LocalContext.current
@@ -350,12 +352,14 @@ fun ConnectionDialogs(
         )
     }
     ui.editing?.let { row ->
+        // Live, not as the row was when "Change" was tapped: a tunnel may come up meanwhile.
+        val now = rows.firstOrNull { it.key == row.key } ?: row
         ConnectionSheet(
             device = row.connection.device,
             editing = row.connection,
-            portLocked = row.active || row.pending != null,
+            portLocked = now.active || now.pending != null,
             existing = existing(row.profile),
-            onSave = { connection, _, done -> actions.save(row.profile, connection, connectNow = false, onDone = done) },
+            onSave = { connection, _, done -> actions.save(row.profile, connection, previous = row.connection, connectNow = false, onDone = done) },
             onDismiss = { ui.editing = null },
         )
     }

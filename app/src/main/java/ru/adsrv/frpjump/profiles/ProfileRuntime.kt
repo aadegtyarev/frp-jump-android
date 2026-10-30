@@ -79,7 +79,7 @@ class ProfileRuntime(
             sshUser = { device, port -> sshLogins.get(device, port).user },
             newId = { UUID.randomUUID().toString() },
         )
-        ConnectionStore(file)
+        ConnectionStore(file, corruptCopy = shared.storageFor(File(dir, ProfileFiles.CONNECTIONS_CORRUPT)))
     }
     val devices = DeviceDirectory(store, shared.api, session, DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))))
     val tunnels = TunnelManager(

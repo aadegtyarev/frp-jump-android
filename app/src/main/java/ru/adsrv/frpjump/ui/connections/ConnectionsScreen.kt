@@ -24,7 +24,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
@@ -109,7 +112,6 @@ fun ConnectionsScreen(
                         }
                     }
                 }
-                Text(stringResource(R.string.connections_hint), fontSize = 14.sp, color = colors.muted)
             }
         }
         if (state.loaded && state.active.isEmpty() && state.saved.isEmpty()) {
@@ -124,7 +126,7 @@ fun ConnectionsScreen(
             items(state.saved, key = { it.key }) { row -> Line(row, state.colors[row.profile], ui, actions) }
         }
     }
-    ConnectionDialogs(ui, vm.actions, existing = vm::connections, onOpenTerminal = onOpenTerminal)
+    ConnectionDialogs(ui, vm.actions, existing = vm::connections, rows = state.active + state.saved, onOpenTerminal = onOpenTerminal)
 }
 
 @Composable
@@ -156,14 +158,14 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                 .clip(RoundedCornerShape(16.dp))
                 .combinedClickable(onClick = {}, onLongClick = { ui.menu = row.key }),
         ) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 44.dp)
                         .height(IntrinsicSize.Min),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Box(
                         Modifier
@@ -200,11 +202,16 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                     } else {
                         ConnectIcon(row) { actions.connect(row) }
                     }
+                    Box {
+                        IconButton(onClick = { ui.menu = row.key }, modifier = Modifier.size(width = 28.dp, height = 44.dp)) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions, rowName(row)), tint = colors.muted)
+                        }
+                        ConnectionMenu(ui.menu == row.key, row, actions, onDismiss = { ui.menu = null })
+                    }
                 }
                 problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
             }
         }
-        ConnectionMenu(ui.menu == row.key, row, actions, onDismiss = { ui.menu = null })
     }
 }
 

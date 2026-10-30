@@ -83,7 +83,7 @@ class ConnectionMigrationTest {
     fun `own ports and the presets that were used become named connections`() {
         legacy.write(v1Ports)
         assertTrue(migrate())
-        assertEquals(expected(), ConnectionStore(connections).connections.value)
+        assertEquals(expected(), ConnectionStore(connections, MemoryStorage()).connections.value)
         assertNull(legacy.read())
     }
 
@@ -102,7 +102,7 @@ class ConnectionMigrationTest {
         assertTrue(migrate())
         assertEquals(
             listOf("ikar:80:Web", "wb:80:Web", "wb:22:SSH"),
-            ConnectionStore(connections).connections.value.map { "${it.device}:${it.port}:${it.name}" },
+            ConnectionStore(connections, MemoryStorage()).connections.value.map { "${it.device}:${it.port}:${it.name}" },
         )
     }
 
@@ -115,7 +115,7 @@ class ConnectionMigrationTest {
         assertEquals(v1Ports, legacy.read())
         ids = 0
         assertTrue(migrate())
-        assertEquals(expected(), ConnectionStore(connections).connections.value)
+        assertEquals(expected(), ConnectionStore(connections, MemoryStorage()).connections.value)
     }
 
     @Test
@@ -123,18 +123,33 @@ class ConnectionMigrationTest {
         legacy.write(v1Ports)
         files.crashOnDelete = "device_ports.json"
         crashOnce { migrate() }
-        assertEquals(expected(), ConnectionStore(connections).connections.value)
+        assertEquals(expected(), ConnectionStore(connections, MemoryStorage()).connections.value)
         assertFalse(migrate())
         assertNull(legacy.read())
-        assertEquals(expected(), ConnectionStore(connections).connections.value)
+        assertEquals(expected(), ConnectionStore(connections, MemoryStorage()).connections.value)
     }
 
     @Test
-    fun `an unreadable ports file leaves just the used presets`() {
+    fun `an unreadable ports file stays in place and nothing is written`() {
         legacy.write("{broken")
+        assertFalse(migrate())
+        assertNull(connections.read())
+        assertEquals("{broken", legacy.read())
+        // Even once a list exists (the owner saved a connection), it is never deleted.
+        connections.write("[]")
+        assertFalse(migrate())
+        assertEquals("{broken", legacy.read())
+    }
+
+    @Test
+    fun `the owner's own ports on 80 and 22 keep their label and kind, used or not`() {
+        legacy.write("""{"wb":[{"port":22,"label":"Console","kind":"ssh"}],"pc":[{"port":80,"label":"Router","kind":"tcp"}]}""")
         migrate()
-        assertEquals(3, ConnectionStore(connections).connections.value.size)
-        assertNull(legacy.read())
+        assertEquals(
+            listOf("ikar:80:Web", "pc:80:Router", "wb:80:Web", "wb:22:Console"),
+            ConnectionStore(connections, MemoryStorage()).connections.value.map { "${it.device}:${it.port}:${it.name}" },
+        )
+        assertEquals(PortKind.TCP, ConnectionStore(connections, MemoryStorage()).connections.value[1].kind)
     }
 
     @Test
@@ -163,7 +178,7 @@ class ConnectionMigrationTest {
                 Connection("c2", "wb", 22, PortKind.SSH, "SSH", user = "admin"),
                 Connection("c3", "wb", 8080, PortKind.WEB, "Node-RED"),
             ),
-            ConnectionStore(files.storage(File(profileDir, "connections.json"))).connections.value,
+            ConnectionStore(files.storage(File(profileDir, "connections.json")), MemoryStorage()).connections.value,
         )
         assertFalse(File(profileDir, "device_ports.json").exists())
         // Tunnels stay keyed by (profile, device, port): the same local ports.
@@ -175,6 +190,6 @@ class ConnectionMigrationTest {
     fun `migrated SSH users come from the login memory`() {
         val memory = SshLoginMemory(MemoryStorage("""{"wb":{"22":{"user":"pi","method":"password"}}}"""))
         migrateDevicePorts("p1", connections, legacy, mapOf("p1/wb:22" to 40001), { d, p -> memory.get(d, p).user }, { "c" })
-        assertEquals("pi", ConnectionStore(connections).connections.value.single().user)
+        assertEquals("pi", ConnectionStore(connections, MemoryStorage()).connections.value.single().user)
     }
 }

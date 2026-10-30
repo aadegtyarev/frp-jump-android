@@ -19,7 +19,7 @@ private val LEGACY_PRESETS = mapOf(80 to ("Web" to PortKind.WEB), 22 to ("SSH" t
  * connections, once, the first time the profile opens with this version:
  *
  * - every port the owner added (`device_ports.json`) becomes a connection
- *   with its label, kind and port;
+ *   with its label, kind and port, also on 80 or 22;
  * - the two presets every card showed (Web 80, SSH 22) become connections
  *   only for devices where they were used: a local port was ever handed out
  *   for them ([localPorts], which keeps a port for good once a tunnel was
@@ -30,6 +30,9 @@ private val LEGACY_PRESETS = mapOf(80 to ("Web" to PortKind.WEB), 22 to ("SSH" t
  * Tunnels stay keyed by (profile, device, port), so local ports, remembered
  * SSH logins, passwords, host keys and the web view's site memory keep
  * working as they are.
+ *
+ * A `device_ports.json` that does not parse is left in place and nothing
+ * is written: the next start tries again, and the file is never deleted.
  *
  * Crash-safe: [connections] is written in one atomic write before
  * [legacy] is deleted. Its presence means "done": a run after a crash
@@ -46,13 +49,17 @@ fun migrateDevicePorts(
     sshUser: (device: String, port: Int) -> String,
     newId: () -> String,
 ): Boolean {
-    if (connections.read() != null) {
-        if (legacy.read() != null) legacy.delete()
+    val legacyText = legacy.read()
+    val custom = legacyText?.let { runCatching { WireJson.decodeFromString<Map<String, List<LegacyPort>>>(it) }.getOrNull() }
+    if (legacyText != null && custom == null) {
+        // Never lose what cannot be read: it stays where it is, and nothing is migrated from half of it.
+        Log.w(TAG, "device_ports.json of profile $profile does not parse; left in place")
         return false
     }
-    val custom = legacy.read()?.let {
-        runCatching { WireJson.decodeFromString<Map<String, List<LegacyPort>>>(it) }.getOrNull()
-    }.orEmpty()
+    if (connections.read() != null) {
+        if (legacyText != null) legacy.delete()
+        return false
+    }
     val usedPresets = localPorts.keys
         .filter { it.startsWith(profilePortPrefix(profile)) }
         .mapNotNull { key ->
@@ -60,12 +67,12 @@ fun migrateDevicePorts(
             val port = devicePort.substringAfterLast(':').toIntOrNull() ?: return@mapNotNull null
             if (port in LEGACY_PRESETS) devicePort.substringBeforeLast(':') to port else null
         }
-    val devices = (custom.keys + usedPresets.map { it.first }).toSortedSet()
+    val devices = (custom.orEmpty().keys + usedPresets.map { it.first }).toSortedSet()
     val migrated = devices.flatMap { device ->
-        val presets = LEGACY_PRESETS.filterKeys { device to it in usedPresets }
+        val own = custom.orEmpty()[device].orEmpty().distinctBy { it.port }.sortedBy { it.port }
+        // A port the owner added on 80 or 22 keeps the owner's label and kind instead of the preset's.
+        val presets = LEGACY_PRESETS.filterKeys { port -> device to port in usedPresets && own.none { it.port == port } }
             .map { (port, preset) -> LegacyPort(port, preset.first, preset.second) }
-        // As the old card did: presets first, then the owner's own ports by number, one per port.
-        val own = custom[device].orEmpty().filter { it.port !in LEGACY_PRESETS }.distinctBy { it.port }.sortedBy { it.port }
         (presets + own).map { p ->
             Connection(
                 id = newId(),

@@ -146,8 +146,14 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                         if (forTunnel) certRefused = true
                     }
                     else -> {
-                        val asked = question?.takeIf { it.fingerprint == fingerprint }
-                            ?: CertQuestion(checkNotNull(fingerprint), cert?.issuedTo?.cName?.takeIf { it.isNotBlank() }, check)
+                        val open = question
+                        val asked = if (open != null && open.fingerprint == fingerprint) {
+                            open
+                        } else {
+                            // Another certificate replaces the question: what waited on the old one is refused, not left hanging.
+                            open?.handlers?.forEach { it.cancel() }
+                            CertQuestion(checkNotNull(fingerprint), cert?.issuedTo?.cName?.takeIf { it.isNotBlank() }, check)
+                        }
                         asked.handlers += handler
                         question = asked
                     }
@@ -419,6 +425,11 @@ private fun download(
             isLoopbackHttpUrl(url) -> Toast.makeText(context, "Blocked: $url is not this tunnel.", Toast.LENGTH_SHORT).show()
             else -> openExternally(context, url)
         }
+        return
+    }
+    if (url.trim().startsWith("https:", ignoreCase = true)) {
+        // DownloadManager checks certificates itself and knows nothing of the one pinned here.
+        Toast.makeText(context, context.getString(R.string.download_https), Toast.LENGTH_LONG).show()
         return
     }
     val name = URLUtil.guessFileName(url, contentDisposition, mimeType)

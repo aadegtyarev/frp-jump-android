@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.connections
 
 import kotlinx.serialization.Serializable
 import ru.adsrv.frpjump.ports.PortKind
+import ru.adsrv.frpjump.ports.wireProtocolFor
 import ru.adsrv.frpjump.ssh.SshLogin
 
 /**
@@ -81,8 +82,15 @@ data class DraftProblems(
     val nameTaken: Boolean = false,
     /** SSH without a user. */
     val userMissing: Boolean = false,
+    /**
+     * Another connection to the same device and port goes to the server
+     * under another protocol ([wireProtocolFor]: `ssh` or `tcp`): they would
+     * share one tunnel, which the server knows under one protocol only.
+     * Holds the other connection's protocol.
+     */
+    val protocolClash: String? = null,
 ) {
-    val ok: Boolean get() = port == null && !nameTaken && !userMissing
+    val ok: Boolean get() = port == null && !nameTaken && !userMissing && protocolClash == null
 }
 
 /**
@@ -100,7 +108,7 @@ fun resolvedName(draft: ConnectionDraft, fallback: (PortKind, Int) -> String): S
 /**
  * What stops [draft] from being saved to [device]: a bad port, a name
  * already used on that device and port (by any connection but [editingId]),
- * or SSH without a user. [name] is the name it would be saved under.
+ * SSH without a user, or a kind the port's other connections cannot share. [name] is the name it would be saved under.
  */
 fun draftProblems(
     draft: ConnectionDraft,
@@ -116,6 +124,11 @@ fun draftProblems(
             it.id != editingId && it.device == device && it.port == port && it.name.trim().equals(name.trim(), ignoreCase = true)
         },
         userMissing = draft.kind == PortKind.SSH && draft.user.isBlank(),
+        protocolClash = port?.let { p ->
+            val mine = wireProtocolFor(draft.kind, p)
+            existing.firstOrNull { it.id != editingId && it.device == device && it.port == p && wireProtocolFor(it.kind, p) != mine }
+                ?.let { wireProtocolFor(it.kind, p) }
+        },
     )
 }
 

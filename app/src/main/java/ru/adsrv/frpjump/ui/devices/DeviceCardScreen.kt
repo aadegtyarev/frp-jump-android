@@ -122,7 +122,8 @@ fun DeviceCardScreen(
             Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding()),
-            contentPadding = PaddingValues(bottom = 112.dp),
+            // The last card scrolls clear of the floating button (and the navigation bar under it).
+            contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 96.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item(key = "header") { Header(vm.device, state.device, state.profileName) }
@@ -173,7 +174,7 @@ fun DeviceCardScreen(
             }
         }
     }
-    ConnectionDialogs(ui, vm.actions, existing = { vm.connections() }, onOpenTerminal = onOpenTerminal)
+    ConnectionDialogs(ui, vm.actions, existing = { vm.connections() }, rows = state.rows, onOpenTerminal = onOpenTerminal)
     if (adding) {
         ConnectionSheet(
             device = vm.device,
@@ -181,7 +182,7 @@ fun DeviceCardScreen(
             portLocked = false,
             existing = vm.connections(),
             onSave = { connection, connectNow, done ->
-                val save = { vm.actions.save(vm.profile, connection, connectNow, done) }
+                val save = { vm.actions.save(vm.profile, connection, previous = null, connectNow = connectNow, onDone = done) }
                 if (connectNow) notificationsFirst(save) else save()
             },
             onDismiss = { adding = false },

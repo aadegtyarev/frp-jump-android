@@ -169,7 +169,6 @@
     <string name="port_on_device">Port on the device</string>
     <string name="port_missing">Enter a port.</string>
     <string name="port_out_of_range">A port is a number from 1 to 65535.</string>
-    <string name="port_locked">Disconnect to change the port.</string>
     <string name="preset_named">%1$s · %2$d</string>
     <string name="connection_name">Name</string>
     <string name="connection_name_hint">For example: %s</string>
@@ -182,7 +181,6 @@
     <string name="save_failed">Could not save (%s). Try again.</string>
 
     <!-- Connections tab -->
-    <string name="connections_hint">Saved connections of all profiles. Active ones on top.</string>
     <string name="connections_active">Active · %d</string>
     <string name="connections_saved">Saved</string>
     <string name="connections_empty">No saved connections yet. Open a device and add one with “Connection”.</string>
@@ -207,4 +205,8 @@
     <string name="cert_trust_new">Trust the new one</string>
     <string name="cert_refused">Not opened: the certificate was not trusted.</string>
     <string name="cert_try_again">Try again</string>
+    <string name="download_https">Files of an HTTPS connection cannot be downloaded here: the system downloader does not trust the certificate you confirmed in the app.</string>
+    <string name="protocol_clash_ssh">Another connection uses this port for SSH; SSH and other kinds cannot share a port.</string>
+    <string name="protocol_clash_other">Another connection uses this port as Web or TCP; SSH cannot share it.</string>
+    <string name="kind_locked">Disconnect to change the kind or the port.</string>
 </resources>

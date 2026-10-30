@@ -85,4 +85,21 @@ class ConnectionTest {
         assertEquals("root", Connection("1", "wb", 22, PortKind.SSH, "x", user = " ").sshUser)
         assertEquals("pi", Connection("1", "wb", 22, PortKind.SSH, "x", user = "pi").sshUser)
     }
+
+    @Test
+    fun `SSH and other kinds cannot share a port, web and TCP can`() {
+        val ssh = conn("a", "wb", 8022, "console", PortKind.SSH)
+        val tcp = ConnectionDraft(PortKind.TCP, "8022", "raw")
+        assertEquals("ssh", draftProblems(tcp, "raw", "wb", listOf(ssh), null).protocolClash)
+        assertFalse(draftProblems(tcp, "raw", "wb", listOf(ssh), null).ok)
+        // The connection being changed does not clash with itself, nor ports elsewhere.
+        assertNull(draftProblems(tcp, "raw", "wb", listOf(ssh), editingId = "a").protocolClash)
+        assertNull(draftProblems(tcp, "raw", "pc", listOf(ssh), null).protocolClash)
+        val web = conn("b", "wb", 80, "homeui")
+        assertNull(draftProblems(ConnectionDraft(PortKind.TCP, "80", "raw"), "raw", "wb", listOf(web), null).protocolClash)
+        assertEquals("tcp", draftProblems(ConnectionDraft(PortKind.SSH, "80", "x", user = "root"), "x", "wb", listOf(web), null).protocolClash)
+        // 22 and 2222 are SSH to the server whatever the kind: no clash there.
+        val root = conn("c", "wb", 22, "root", PortKind.SSH)
+        assertNull(draftProblems(ConnectionDraft(PortKind.TCP, "22", "raw"), "raw", "wb", listOf(root), null).protocolClash)
+    }
 }

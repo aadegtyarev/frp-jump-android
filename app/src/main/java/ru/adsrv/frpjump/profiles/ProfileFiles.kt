@@ -20,6 +20,9 @@ internal object ProfileFiles {
     /** Named connections; replaced [DEVICE_PORTS] (see [ru.adsrv.frpjump.connections.migrateDevicePorts]). */
     const val CONNECTIONS = "connections.json"
 
+    /** A [CONNECTIONS] that did not parse, kept before anything is saved over it. */
+    const val CONNECTIONS_CORRUPT = "connections.corrupt.json"
+
     /** Confirmed certificates of HTTPS web connections. */
     const val WEB_CERTS = "web_certs.json"
 

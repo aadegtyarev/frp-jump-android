@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.connections
 
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.encodeToString
@@ -11,8 +12,12 @@ import ru.adsrv.frpjump.store.TextStorage
  * ([ru.adsrv.frpjump.profiles.ProfileFiles.CONNECTIONS]). Reads at
  * construction and writes on every change: call off the main thread.
  */
-class ConnectionStore(private val file: TextStorage) {
-    private val _connections = MutableStateFlow(read(file))
+class ConnectionStore(
+    private val file: TextStorage,
+    /** Where a file that does not parse is copied before anything is saved over it. */
+    private val corruptCopy: TextStorage,
+) {
+    private val _connections = MutableStateFlow(load())
     val connections: StateFlow<List<Connection>> = _connections
 
     /** Adds [connection], or replaces the one with its id in place. */
@@ -33,10 +38,18 @@ class ConnectionStore(private val file: TextStorage) {
         _connections.value = value
     }
 
+    /** The stored list; a file that does not parse is kept as [corruptCopy] (the first one) and reads as empty. */
+    private fun load(): List<Connection> {
+        val text = file.read() ?: return emptyList()
+        return runCatching { WireJson.decodeFromString<List<Connection>>(text) }.getOrElse {
+            Log.w(TAG, "connections.json does not parse; kept as a copy")
+            if (corruptCopy.read() == null) corruptCopy.write(text)
+            emptyList()
+        }
+    }
+
     companion object {
-        /** The stored list; nothing when there is no file or it does not parse. */
-        fun read(file: TextStorage): List<Connection> =
-            file.read()?.let { runCatching { WireJson.decodeFromString<List<Connection>>(it) }.getOrNull() }.orEmpty()
+        private const val TAG = "ConnectionStore"
 
         fun encodeConnections(value: List<Connection>): String = WireJson.encodeToString(value)
     }
