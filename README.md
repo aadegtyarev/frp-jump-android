@@ -122,6 +122,7 @@ and phone-only changes (a moved local port) keep their connections.
 
 | Library | Version | License |
 | --- | --- | --- |
+| [frp](https://github.com/fatedier/frp) `frpc`, built into the APK | 0.70.0 | Apache-2.0 |
 | [sshj](https://github.com/hierynomus/sshj) | 0.41.2 | Apache-2.0 |
 | [BouncyCastle](https://www.bouncycastle.org/) bcprov / bcpkix (via sshj) | 1.84 | MIT (Bouncy Castle licence) |
 | [Termux](https://github.com/termux/termux-app) terminal-emulator / terminal-view (JitPack) | v0.118.3 | Apache-2.0 |
@@ -169,3 +170,9 @@ frp-jump-client devices add-token --name phone
 Paste the printed `frp-jump-client enroll https://… <token> --name phone` line
 into the app as is; line breaks from a narrow terminal are fine. A bare
 `<url> <token>` works too. The token is single-use.
+
+## License
+
+[MIT](LICENSE), as [frp-jump](https://github.com/aadegtyarev/frp-jump).
+The bundled components keep their own licenses, see
+[Third-party libraries](#third-party-libraries).

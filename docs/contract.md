@@ -5,8 +5,7 @@ devices and opens their web UI, an SSH console or any TCP port through frp-jump
 tunnels. It only consumes ports; it never exposes anything of the phone.
 
 Status: v2 draft for the owner's review. v1 (0.1.x) is built and in use; this
-version describes 0.2. UX mockups:
-<https://claude.ai/artifact/VpVcDh67SR2EXqDkvBo5uo>.
+version describes 0.2. UX mockups are shared with the owner separately.
 
 ## Scope
 
