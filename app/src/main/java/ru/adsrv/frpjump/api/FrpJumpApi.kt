@@ -43,7 +43,7 @@ class FrpJumpApi(
         .followRedirects(false)
         .followSslRedirects(false)
         .build(),
-) {
+) : AgentApi {
     /** Unauthenticated `GET /api/agent/version`. */
     suspend fun version(controlUrl: String): VersionResponse {
         val request = Request.Builder().url(endpoint(controlUrl, "version")).get().build()
@@ -80,13 +80,13 @@ class FrpJumpApi(
     }
 
     /** 204 on success; marks the phone online for the owner's other devices. */
-    suspend fun heartbeat(c: Credentials) {
+    override suspend fun heartbeat(c: Credentials) {
         val body = WireJson.encodeToString(HeartbeatRequest(AGENT_VERSION))
         call(authorized(c, endpoint(c.controlUrl, "heartbeat")).post(body.toRequestBody(JSON)).build())
     }
 
     /** Throws [ProtocolMismatchException] when the server names a different wire version. */
-    suspend fun desiredState(c: Credentials): DesiredStateResponse {
+    override suspend fun desiredState(c: Credentials): DesiredStateResponse {
         val request = authorized(c, endpoint(c.controlUrl, "desired-state")).get().build()
         val response = WireJson.decodeFromString<DesiredStateResponse>(call(request))
         val version = response.protocolVersion
@@ -95,14 +95,14 @@ class FrpJumpApi(
     }
 
     /** Idempotent on the server: connecting again returns the existing grant. */
-    suspend fun connect(c: Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse {
+    override suspend fun connect(c: Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse {
         val body = WireJson.encodeToString(ConnectRequest(deviceName, targetPort, protocol))
         val request = authorized(c, endpoint(c.controlUrl, "connect")).post(body.toRequestBody(JSON)).build()
         return WireJson.decodeFromString(call(request))
     }
 
     /** False when the server had no such connection (404): already disconnected. */
-    suspend fun disconnect(c: Credentials, deviceName: String, targetPort: Int): Boolean {
+    override suspend fun disconnect(c: Credentials, deviceName: String, targetPort: Int): Boolean {
         val body = WireJson.encodeToString(DisconnectRequest(deviceName, targetPort))
         val request = authorized(c, endpoint(c.controlUrl, "disconnect")).post(body.toRequestBody(JSON)).build()
         return try {

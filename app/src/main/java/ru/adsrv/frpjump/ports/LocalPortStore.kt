@@ -1,25 +1,19 @@
 package ru.adsrv.frpjump.ports
 
-import android.util.AtomicFile
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
-import java.io.File
+import ru.adsrv.frpjump.store.TextStorage
 
 /** The (device, port) -> local port map, see [LocalPortAllocator]. */
-class LocalPortStore(filesDir: File) {
-    private val file = AtomicFile(File(filesDir, "local_ports.json"))
+class LocalPortStore(private val storage: TextStorage) {
+    @Synchronized
+    fun load(): MutableMap<String, Int> = runCatching {
+        storage.read()?.let { WireJson.decodeFromString<Map<String, Int>>(it).toMutableMap() }
+    }.getOrNull() ?: mutableMapOf()
 
     @Synchronized
-    fun load(): MutableMap<String, Int> =
-        if (!file.baseFile.exists()) mutableMapOf() else runCatching {
-            WireJson.decodeFromString<Map<String, Int>>(String(file.readFully(), Charsets.UTF_8)).toMutableMap()
-        }.getOrDefault(mutableMapOf())
+    fun save(ports: Map<String, Int>) = storage.write(WireJson.encodeToString(ports))
 
     @Synchronized
-    fun save(ports: Map<String, Int>) = writeAtomically(file, WireJson.encodeToString(ports))
-
-    @Synchronized
-    fun wipe() {
-        file.delete()
-    }
+    fun wipe() = storage.delete()
 }

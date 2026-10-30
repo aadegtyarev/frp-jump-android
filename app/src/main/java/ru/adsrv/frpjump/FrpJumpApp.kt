@@ -18,7 +18,9 @@ import ru.adsrv.frpjump.ssh.installFullBouncyCastle
 import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.store.KeystoreSecretBox
+import ru.adsrv.frpjump.tunnel.FrpcRunner
 import ru.adsrv.frpjump.tunnel.TunnelManager
+import ru.adsrv.frpjump.tunnel.TunnelService
 import java.io.File
 
 class FrpJumpApp : Application() {
@@ -50,14 +52,14 @@ class FrpJumpApp : Application() {
         store = CredentialStore(filesDir)
         devicePorts = DevicePortsStore(filesDir)
         tunnels = TunnelManager(
-            context = this,
-            store = store,
+            enrollment = store::state,
             api = api,
             session = session,
-            localPorts = LocalPortStore(filesDir),
+            localPorts = LocalPortStore(AtomicTextFile(File(filesDir, "local_ports.json"))),
             // Shipped as a "native library": Android only allows exec from nativeLibraryDir.
-            frpcBinary = File(applicationInfo.nativeLibraryDir, "libfrpc.so"),
-            workDir = File(noBackupFilesDir, "frpc"),
+            runner = FrpcRunner(File(applicationInfo.nativeLibraryDir, "libfrpc.so"), File(noBackupFilesDir, "frpc")),
+            startService = { TunnelService.start(this) },
+            stopServiceNow = { TunnelService.stop(this) },
         )
         installFullBouncyCastle()
         // Its own Keystore key: re-enrolling the phone must not lose the SSH key.

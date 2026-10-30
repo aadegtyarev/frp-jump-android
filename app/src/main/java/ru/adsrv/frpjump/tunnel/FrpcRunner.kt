@@ -30,7 +30,7 @@ class FrpcLaunch(
  * secrets) exist on disk only while frpc runs: [stop] deletes them.
  * The cert and CA are public and stay.
  */
-class FrpcRunner(private val binary: File, private val workDir: File) {
+class FrpcRunner(private val binary: File, private val workDir: File) : FrpcControl {
     private val configFile = File(workDir, "frpc.toml")
     private val tls = TlsFiles(
         certFile = File(workDir, "tls.crt").path,
@@ -43,7 +43,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) {
     private val _states = MutableStateFlow<Map<String, VisitorState>>(emptyMap())
 
     /** Per grant id, from [FrpcLogParser]; empty while frpc is not running. */
-    val states: StateFlow<Map<String, VisitorState>> = _states
+    override val states: StateFlow<Map<String, VisitorState>> = _states
 
     private var process: Process? = null
     private var appliedConfig: String? = null
@@ -53,7 +53,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) {
 
     /** Local ports the running frpc listens on (or is about to). */
     @Volatile
-    var heldPorts: Set<Int> = emptySet()
+    override var heldPorts: Set<Int> = emptySet()
         private set
 
     val isRunning: Boolean
@@ -61,7 +61,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) {
 
     /** Starts or restarts frpc unless it already runs this exact config. */
     @Synchronized
-    fun apply(launch: FrpcLaunch, ports: Set<Int>) {
+    override fun apply(launch: FrpcLaunch, ports: Set<Int>) {
         val config = launch.configFor(tls)
         if (config == appliedConfig && process?.isAlive == true) return
         stopProcess()
@@ -84,12 +84,20 @@ class FrpcRunner(private val binary: File, private val workDir: File) {
 
     /** Stops frpc and removes the key and config from disk. */
     @Synchronized
-    fun stop() {
+    override fun stop() {
         stopProcess()
         File(tls.keyFile).delete()
         configFile.delete()
         _states.value = emptyMap()
     }
+
+    @Synchronized
+    override fun wipe() {
+        stop()
+        workDir.deleteRecursively()
+    }
+
+    override fun recentLog(): List<String> = log.snapshot()
 
     private fun stopProcess() {
         generation++

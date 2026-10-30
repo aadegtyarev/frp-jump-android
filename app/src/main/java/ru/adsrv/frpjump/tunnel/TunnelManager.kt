@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump.tunnel
 
-import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.DesiredStateResponse
-import ru.adsrv.frpjump.api.FrpJumpApi
+import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
 import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.LocalPortAllocator
@@ -29,10 +28,9 @@ import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.wireProtocolFor
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.session.PollBackoff
-import ru.adsrv.frpjump.store.CredentialStore
+import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
-import java.io.File
 
 /** One consumed grant as the card shows it. */
 data class Tunnel(
@@ -79,16 +77,17 @@ private data class Core(
  * the interval; frpc keeps running between polls either way.
  */
 class TunnelManager(
-    private val context: Context,
-    private val store: CredentialStore,
-    private val api: FrpJumpApi,
+    /** The stored enrollment, read on every cycle ([ru.adsrv.frpjump.store.CredentialStore.state]). */
+    private val enrollment: () -> StoredEnrollment,
+    private val api: AgentApi,
     private val session: AppSession,
     private val localPorts: LocalPortStore,
-    frpcBinary: File,
-    workDir: File,
+    private val runner: FrpcControl,
+    /** Starts the foreground service; false when Android refuses. */
+    private val startService: () -> Boolean,
+    private val stopServiceNow: () -> Unit,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val runner = FrpcRunner(frpcBinary, workDir)
     private val syncing = Mutex()
     private val core = MutableStateFlow(Core())
 
@@ -118,7 +117,7 @@ class TunnelManager(
     }.stateIn(scope, SharingStarted.Eagerly, TunnelsState())
 
     /** frpc's recent output, for diagnostics. */
-    fun frpcLog(): List<String> = runner.log.snapshot()
+    fun frpcLog(): List<String> = runner.recentLog()
 
     /**
      * Syncs now, then every [intervalMs] until cancelled; after failures it
@@ -139,7 +138,7 @@ class TunnelManager(
     private class SyncResult(val desired: DesiredStateResponse?, val ok: Boolean)
 
     private suspend fun syncOnce(): SyncResult = syncing.withLock {
-        val credentials = store.load() ?: return SyncResult(null, ok = true)
+        val credentials = credentials() ?: return SyncResult(null, ok = true)
         if (session.removed.value) return SyncResult(null, ok = true)
         try {
             api.heartbeat(credentials)
@@ -179,7 +178,7 @@ class TunnelManager(
      */
     suspend fun connect(device: String, port: DevicePort) {
         val key = localPortKey(device, port.port)
-        val credentials = store.load() ?: return
+        val credentials = credentials() ?: return
         if (!begin(key, PendingOp.CONNECTING)) return
         try {
             val grant = api.connect(credentials, device, port.port, wireProtocolFor(port))
@@ -201,7 +200,7 @@ class TunnelManager(
 
     suspend fun disconnect(device: String, port: Int) {
         val key = localPortKey(device, port)
-        val credentials = store.load() ?: return
+        val credentials = credentials() ?: return
         if (!begin(key, PendingOp.DISCONNECTING)) return
         try {
             api.disconnect(credentials, device, port)
@@ -222,7 +221,7 @@ class TunnelManager(
      * anything the server still lists.
      */
     suspend fun disconnectAll() {
-        val credentials = store.load()
+        val credentials = credentials()
         val tunnels = core.value.planned
         if (credentials != null) {
             for (t in tunnels) {
@@ -267,11 +266,11 @@ class TunnelManager(
             plan
         }
         core.update { it.copy(planned = planned) }
-        if (planned.isEmpty()) stopService() else if (!serviceUp) serviceUp = TunnelService.start(context)
+        if (planned.isEmpty()) stopService() else if (!serviceUp) serviceUp = startService()
     }
 
     private fun stopService() {
-        if (serviceUp) TunnelService.stop(context)
+        if (serviceUp) stopServiceNow()
         serviceUp = false
     }
 
@@ -300,6 +299,8 @@ class TunnelManager(
             relayOnly = relayOnly,
         )
     }
+
+    private fun credentials(): Credentials? = (enrollment() as? StoredEnrollment.Enrolled)?.credentials
 
     private fun begin(key: String, op: PendingOp): Boolean {
         var started = false
