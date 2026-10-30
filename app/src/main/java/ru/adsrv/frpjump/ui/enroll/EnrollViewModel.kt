@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui.enroll
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -40,8 +41,19 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
         val name = if (current.needsName) current.name.trim() else line.requestedName
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
+            val r = try {
+                app.api.enroll(line.controlUrl, line.token, name)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A token without a fixed name: the server wants one, so ask for it.
+                val wantsName = e is ApiException && e.status == 400 && "pass requested_name" in e.detail
+                _state.update {
+                    it.copy(busy = false, error = e.userMessage(), needsName = it.needsName || wantsName)
+                }
+                return@launch
+            }
             try {
-                val r = app.api.enroll(line.controlUrl, line.token, name)
                 app.store.save(
                     Credentials(
                         controlUrl = line.controlUrl,
@@ -55,15 +67,21 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
                         serverPort = r.serverPort,
                     ),
                 )
-                _state.update { it.copy(busy = false) }
-                onEnrolled()
             } catch (e: Exception) {
-                // A token without a fixed name: the server wants one, so ask for it.
-                val wantsName = e is ApiException && e.status == 400 && "pass requested_name" in e.detail
+                // The token is spent and the server has the device: say how to clean up.
+                val enrolled = r.deviceName
                 _state.update {
-                    it.copy(busy = false, error = e.userMessage(), needsName = it.needsName || wantsName)
+                    it.copy(
+                        busy = false,
+                        error = "Enrolled as $enrolled on the server, but could not store the credentials " +
+                            "(${e.javaClass.simpleName}). Delete it from a laptop: " +
+                            "frp-jump-client devices delete $enrolled",
+                    )
                 }
+                return@launch
             }
+            _state.update { it.copy(busy = false) }
+            onEnrolled()
         }
     }
 }
