@@ -27,6 +27,8 @@ import ru.adsrv.frpjump.ui.enroll.EnrollScreen
 import ru.adsrv.frpjump.ui.enroll.EnrollViewModel
 import ru.adsrv.frpjump.ui.settings.SettingsScreen
 import ru.adsrv.frpjump.ui.settings.SettingsViewModel
+import ru.adsrv.frpjump.ui.ssh.TerminalScreen
+import ru.adsrv.frpjump.ui.web.WebScreen
 
 private object Routes {
     const val ENROLL = "enroll"
@@ -35,7 +37,11 @@ private object Routes {
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
     const val REMOVED = "removed"
+    const val WEB = "web/{name}/{port}"
+    const val TERMINAL = "terminal/{id}"
+    fun terminal(id: Int) = "terminal/$id"
     fun device(name: String) = "device/${Uri.encode(name)}"
+    fun web(name: String, localPort: Int) = "web/${Uri.encode(name)}/$localPort"
 }
 
 @Composable
@@ -85,11 +91,31 @@ fun AppNav() {
                 vm = viewModel { DevicesViewModel(app) },
                 onOpen = { nav.navigate(Routes.device(it)) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
+                onTerminals = { nav.navigate(Routes.terminal(it)) },
             )
         }
         composable(Routes.DEVICE) { entry ->
             val name = entry.arguments?.getString("name").orEmpty()
-            DeviceCardScreen(vm = viewModel { DeviceCardViewModel(app, name) }, onBack = { nav.popBackStack() })
+            DeviceCardScreen(
+                vm = viewModel { DeviceCardViewModel(app, name) },
+                onBack = { nav.popBackStack() },
+                onOpenWeb = { nav.navigate(Routes.web(name, it)) },
+                onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
+            )
+        }
+        composable(Routes.TERMINAL) { entry ->
+            TerminalScreen(
+                sessions = app.ssh,
+                initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.WEB) { entry ->
+            WebScreen(
+                device = entry.arguments?.getString("name").orEmpty(),
+                localPort = entry.arguments?.getString("port")?.toIntOrNull() ?: 0,
+                onBack = { nav.popBackStack() },
+            )
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(

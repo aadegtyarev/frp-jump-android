@@ -11,6 +11,9 @@ import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.PRESET_PORTS
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.portsForCard
+import ru.adsrv.frpjump.ssh.SshAuth
+import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.Tunnel
 
@@ -21,6 +24,8 @@ data class PortRow(
     val tunnel: Tunnel?,
     val pending: PendingOp?,
     val error: String?,
+    /** Open SSH sessions to this port, oldest first. */
+    val sshSessions: List<Int> = emptyList(),
 )
 
 data class DeviceCardUiState(
@@ -33,7 +38,7 @@ data class DeviceCardUiState(
 
 class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : ViewModel() {
     val state: StateFlow<DeviceCardUiState> =
-        combine(app.devicePorts.ports, app.tunnels.state) { custom, tunnels ->
+        combine(app.devicePorts.ports, app.tunnels.state, app.ssh.sessions) { custom, tunnels, sessions ->
             val byKey = tunnels.tunnels.associateBy { it.key }
             DeviceCardUiState(
                 rows = portsForCard(custom[device].orEmpty()).map { port ->
@@ -44,6 +49,7 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
                         tunnel = byKey[key],
                         pending = tunnels.pending[key],
                         error = tunnels.errors[key],
+                        sshSessions = sessions.filter { it.device == device && it.port == port.port }.map { it.id },
                     )
                 },
                 tunnelCount = tunnels.tunnels.size,
@@ -62,6 +68,27 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
 
     fun disconnectAll() {
         app.tunnels.disconnectAllAsync()
+    }
+
+    fun sshLogin(port: Int): SshLogin = app.sshLogins.get(device, port)
+
+    fun hasRememberedPassword(port: Int, user: String): Boolean = app.sshPasswords.get(device, port, user.trim()) != null
+
+    /**
+     * Remembers the user name and method for this port and opens a session;
+     * returns its id. An empty password means "the remembered one".
+     */
+    fun openSsh(port: Int, localPort: Int, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int {
+        val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
+        app.sshLogins.remember(device, port, login)
+        val auth = when (method) {
+            SshAuthMethod.KEY -> SshAuth.Key
+            SshAuthMethod.PASSWORD -> SshAuth.Password(
+                password.ifEmpty { app.sshPasswords.get(device, port, login.user).orEmpty() },
+                remember,
+            )
+        }
+        return app.ssh.open(device, port, localPort, login.user, auth).id
     }
 
     fun addPort(port: DevicePort) = app.devicePorts.add(device, port)

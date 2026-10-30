@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -38,8 +39,14 @@ private const val POLL_MS = 2_000L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DevicesScreen(vm: DevicesViewModel, onOpen: (String) -> Unit, onSettings: () -> Unit) {
+fun DevicesScreen(
+    vm: DevicesViewModel,
+    onOpen: (String) -> Unit,
+    onSettings: () -> Unit,
+    onTerminals: (firstSessionId: Int) -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val sessions by vm.sshSessions.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     // Poll only while this screen is visible; stops when backgrounded or covered.
     LaunchedEffect(lifecycleOwner) {
@@ -50,6 +57,11 @@ fun DevicesScreen(vm: DevicesViewModel, onOpen: (String) -> Unit, onSettings: ()
             TopAppBar(
                 title = { Text("Devices") },
                 actions = {
+                    sessions.firstOrNull()?.let { first ->
+                        TextButton(onClick = { onTerminals(first.id) }) {
+                            Text(if (sessions.size == 1) "1 terminal" else "${sessions.size} terminals")
+                        }
+                    }
                     IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
                 },
             )

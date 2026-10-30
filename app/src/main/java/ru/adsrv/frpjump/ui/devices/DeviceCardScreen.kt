@@ -6,10 +6,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,15 +57,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.tunnel.PendingOp
+import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.tunnel.VisitorState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceCardScreen(vm: DeviceCardViewModel, onBack: () -> Unit) {
+fun DeviceCardScreen(
+    vm: DeviceCardViewModel,
+    onBack: () -> Unit,
+    onOpenWeb: (localPort: Int) -> Unit,
+    onOpenTerminal: (sessionId: Int) -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var adding by rememberSaveable { mutableStateOf(false) }
+    var sshLogin by remember { mutableStateOf<Pair<DevicePort, Int>?>(null) }
     // Asked at the first Connect, before connecting: a notification enqueued
     // while the permission is still undecided is dropped, and the service's
     // notification is what "Disconnect all" lives on. Connects either way.
@@ -111,10 +121,26 @@ fun DeviceCardScreen(vm: DeviceCardViewModel, onBack: () -> Unit) {
                     onConnect = { connect(row.port) },
                     onDisconnect = { vm.disconnect(row.port) },
                     onRemove = { vm.removePort(row.port) },
+                    onOpenWeb = onOpenWeb,
                     onOpenBrowser = { port -> openInBrowser(context, port) },
+                    onTerminal = { localPort -> sshLogin = row.port to localPort },
+                    onSession = onOpenTerminal,
+                    onExternalSsh = { localPort -> openSshExternally(context, vm.sshLogin(row.port.port).user, localPort) },
                 )
             }
         }
+    }
+    sshLogin?.let { (port, localPort) ->
+        SshLoginDialog(
+            target = "${vm.device}:${port.port}",
+            initial = vm.sshLogin(port.port),
+            hasRememberedPassword = { vm.hasRememberedPassword(port.port, it) },
+            onConnect = { user, method, password, remember ->
+                sshLogin = null
+                onOpenTerminal(vm.openSsh(port.port, localPort, user, method, password, remember))
+            },
+            onDismiss = { sshLogin = null },
+        )
     }
     if (adding) {
         AddPortDialog(
@@ -137,13 +163,18 @@ private fun Banner(text: String) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PortCard(
     row: PortRow,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onRemove: () -> Unit,
+    onOpenWeb: (Int) -> Unit,
     onOpenBrowser: (Int) -> Unit,
+    onTerminal: (Int) -> Unit,
+    onSession: (Int) -> Unit,
+    onExternalSsh: (Int) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val tunnel = row.tunnel
@@ -168,13 +199,23 @@ private fun PortCard(
                     TextButton(onClick = { clipboard.setText(AnnotatedString(address)) }) { Text("Copy") }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (tunnel == null) {
                     Button(onClick = onConnect, enabled = row.pending == null) { Text("Connect") }
                 } else {
                     OutlinedButton(onClick = onDisconnect, enabled = row.pending == null) { Text("Disconnect") }
                     if (row.port.kind == PortKind.WEB) {
-                        Button(onClick = { onOpenBrowser(tunnel.localPort) }) { Text("Open in browser") }
+                        Button(onClick = { onOpenWeb(tunnel.localPort) }) { Text("Open") }
+                        TextButton(onClick = { onOpenBrowser(tunnel.localPort) }) { Text("Open in browser") }
+                    }
+                    if (row.port.kind == PortKind.SSH) {
+                        Button(onClick = { onTerminal(tunnel.localPort) }) { Text("Terminal") }
+                        TextButton(onClick = { onExternalSsh(tunnel.localPort) }) { Text("Open in external app") }
+                    }
+                }
+                if (row.sshSessions.isNotEmpty()) {
+                    TextButton(onClick = { onSession(row.sshSessions.last()) }) {
+                        Text(if (row.sshSessions.size == 1) "1 session" else "${row.sshSessions.size} sessions")
                     }
                 }
             }
@@ -205,6 +246,15 @@ private fun openInBrowser(context: android.content.Context, localPort: Int) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:$localPort/")))
     } catch (_: ActivityNotFoundException) {
         // No browser installed: the address can still be copied.
+    }
+}
+
+/** Hands the tunnel to an SSH app (Termius, JuiceSSH, …); a toast if none is installed. */
+private fun openSshExternally(context: android.content.Context, user: String, localPort: Int) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "No installed app opens ssh:// links.", Toast.LENGTH_SHORT).show()
     }
 }
 

@@ -33,6 +33,9 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     val state: StateFlow<DevicesUiState> = _state
     private val fetching = Mutex()
 
+    /** Open SSH sessions, so the list can lead back to them. */
+    val sshSessions = app.ssh.sessions
+
     /**
      * One fetch; skipped when another is still in flight. False when it
      * failed. A 401 means the server deleted this phone: polling stops.
