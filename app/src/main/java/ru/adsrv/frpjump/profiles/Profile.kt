@@ -46,8 +46,23 @@ data class ProfileIndex(
     fun withCurrent(id: String): ProfileIndex = if (find(id) == null) this else copy(current = id)
 }
 
-/** Profile colours, handed out in this order. */
-val PROFILE_COLORS = listOf("blue", "green", "orange", "purple", "teal", "red")
+/** Profile colours, handed out in this order (the mockups' palette). */
+val PROFILE_COLORS = listOf("green", "orange", "purple", "blue", "crimson", "grey")
+
+/**
+ * [color] as one of [PROFILE_COLORS]: names stored by the first profiles
+ * build that are no longer offered map to the nearest one, anything else
+ * to grey.
+ */
+fun profileColor(color: String): String = when (color) {
+    in PROFILE_COLORS -> color
+    "teal" -> "green"
+    "red" -> "crimson"
+    else -> "grey"
+}
+
+/** A profile name as stored: trimmed; null when nothing is left. */
+fun profileName(text: String): String? = text.trim().takeIf { it.isNotEmpty() }
 
 /** The first colour no profile uses yet; past the palette, round again. */
 fun nextProfileColor(existing: List<Profile>): String =

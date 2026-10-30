@@ -23,6 +23,7 @@ import ru.adsrv.frpjump.ssh.HostKeyStore
 import ru.adsrv.frpjump.ssh.SshLoginMemory
 import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.CredentialStore
+import ru.adsrv.frpjump.store.TextStorage
 import ru.adsrv.frpjump.tunnel.FrpcRunner
 import ru.adsrv.frpjump.tunnel.TunnelManager
 import java.io.File
@@ -42,6 +43,8 @@ class ProfileShared(
     /** Starts the foreground service, see [TunnelManager]. */
     val startService: () -> Boolean,
     val scope: CoroutineScope,
+    /** A profile file as a [TextStorage]: [AtomicTextFile] in the app. */
+    val storageFor: (File) -> TextStorage = ::AtomicTextFile,
 )
 
 /**
@@ -59,10 +62,10 @@ class ProfileRuntime(
     private val scope = CoroutineScope(shared.scope.coroutineContext + SupervisorJob(shared.scope.coroutineContext[Job]))
 
     val session = ProfileSession()
-    val devicePorts = DevicePortsStore(dir)
-    val hostKeys = HostKeyStore(AtomicTextFile(File(dir, ProfileFiles.HOST_KEYS)))
-    val sshLogins = SshLoginMemory(AtomicTextFile(File(dir, ProfileFiles.SSH_LOGINS)))
-    val devices = DeviceDirectory(store, shared.api, session, DeviceListCache(AtomicTextFile(File(dir, ProfileFiles.DEVICE_LIST))))
+    val devicePorts = DevicePortsStore(shared.storageFor(File(dir, ProfileFiles.DEVICE_PORTS)))
+    val hostKeys = HostKeyStore(shared.storageFor(File(dir, ProfileFiles.HOST_KEYS)))
+    val sshLogins = SshLoginMemory(shared.storageFor(File(dir, ProfileFiles.SSH_LOGINS)))
+    val devices = DeviceDirectory(store, shared.api, session, DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))))
     val tunnels = TunnelManager(
         profile = id,
         enrollment = store::state,

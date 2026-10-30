@@ -1,7 +1,6 @@
 package ru.adsrv.frpjump.store
 
 import android.util.AtomicFile
-import ru.adsrv.frpjump.ports.writeAtomically
 import java.io.File
 
 /** One small text document; lets stores be tested without Android's file classes. */
@@ -21,4 +20,15 @@ class AtomicTextFile(file: File) : TextStorage {
     override fun write(text: String) = writeAtomically(file, text)
 
     override fun delete() = file.delete()
+}
+
+private fun writeAtomically(file: AtomicFile, text: String) {
+    val out = file.startWrite()
+    try {
+        out.write(text.toByteArray(Charsets.UTF_8))
+        file.finishWrite(out)
+    } catch (e: Exception) {
+        file.failWrite(out)
+        throw e
+    }
 }

@@ -42,7 +42,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,11 +53,41 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.profiles.ForgetProfileDialog
+import ru.adsrv.frpjump.ui.profiles.ForgetState
+import ru.adsrv.frpjump.ui.profiles.ProfileItem
+import ru.adsrv.frpjump.ui.profiles.ProfileTile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () -> Unit) {
+fun SettingsScreen(
+    vm: SettingsViewModel,
+    /** The current profile, for the profile group. */
+    profile: ProfileItem?,
+    forget: ForgetState?,
+    onEditProfile: (id: String) -> Unit,
+    onForget: (id: String) -> Unit,
+    onBack: () -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     var confirm by rememberSaveable { mutableStateOf(false) }
@@ -88,8 +117,14 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            ListItem(headlineContent = { Text("Server") }, supportingContent = { Text(state.serverUrl) })
-            ListItem(headlineContent = { Text("This phone") }, supportingContent = { Text(state.deviceName) })
+            profile?.let {
+                ProfileGroup(
+                    profile = it,
+                    forget = forget?.takeIf { f -> f.id == it.id },
+                    onEdit = { onEditProfile(it.id) },
+                    onForget = { confirm = true },
+                )
+            }
             SectionTitle("Tunnels")
             ListItem(
                 headlineContent = { Text("Relay only") },
@@ -155,21 +190,6 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
                 }) { Text(if (state.importedKey == null) "Import private key" else "Replace") }
                 if (state.importedKey != null) TextButton(onClick = vm::removeImportedKey) { Text("Remove") }
             }
-            OutlinedButton(
-                onClick = { confirm = true },
-                enabled = !state.busy,
-                modifier = Modifier.padding(16.dp),
-            ) {
-                Text("Forget this phone", color = MaterialTheme.colorScheme.error)
-            }
-            state.forgetError?.let {
-                Text(
-                    it,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                )
-            }
         }
     }
     pickedKey?.let { key ->
@@ -181,30 +201,106 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
             onDismiss = { pickedKey = null },
         )
     }
-    if (confirm) {
-        AlertDialog(
-            onDismissRequest = { confirm = false },
-            title = { Text("Forget this phone?") },
-            text = { Text("\"${state.deviceName}\" is deleted on the server and its credentials are wiped here.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirm = false
-                    vm.forget(onForgotten)
-                }) { Text("Forget") }
+    if (confirm && profile != null) {
+        ForgetProfileDialog(
+            item = profile,
+            busyElsewhere = forget?.busy == true,
+            onConfirm = {
+                confirm = false
+                onForget(profile.id)
             },
-            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+            onDismiss = { confirm = false },
         )
     }
 }
 
+/** A group's title, as the mockup sets it: small capitals, muted. */
 @Composable
 private fun SectionTitle(text: String) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
+        text.uppercase(),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.72.sp,
+        color = AppTheme.colors.muted,
+        modifier = Modifier.padding(start = 22.dp, top = 20.dp, end = 22.dp, bottom = 6.dp),
     )
+}
+
+/** The current profile: its name and colour, and "Forget profile" with its progress or failure. */
+@Composable
+private fun ProfileGroup(profile: ProfileItem, forget: ForgetState?, onEdit: () -> Unit, onForget: () -> Unit) {
+    val colors = AppTheme.colors
+    SectionTitle(stringResource(R.string.settings_profile_group, profile.name))
+    Surface(
+        color = colors.card,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+    ) {
+        Column {
+            GroupRow(
+                tile = { ProfileTile(profile.letter, profile.color, size = 34.dp) },
+                label = stringResource(R.string.name_and_color),
+                hint = profile.server?.let { stringResource(R.string.profile_server, it.host, it.deviceName) },
+                onClick = onEdit,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.faint)
+            }
+            HorizontalDivider(color = colors.divider)
+            GroupRow(
+                tile = {
+                    Box(
+                        Modifier
+                            .size(34.dp)
+                            .background(colors.errorContainer, RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Close, contentDescription = null, tint = colors.onErrorContainer, modifier = Modifier.size(18.dp))
+                    }
+                },
+                label = stringResource(R.string.forget_profile),
+                labelColor = colors.error,
+                hint = forget?.error ?: stringResource(R.string.forget_profile_hint),
+                hintColor = if (forget?.error != null) colors.error else colors.muted,
+                // Only once it is known what it would remove.
+                enabled = forget?.busy != true && profile.serverLoaded,
+                onClick = onForget,
+            ) {
+                if (forget?.busy == true) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupRow(
+    tile: @Composable () -> Unit,
+    label: String,
+    hint: String?,
+    onClick: () -> Unit,
+    labelColor: Color = AppTheme.colors.ink,
+    hintColor: Color = AppTheme.colors.muted,
+    enabled: Boolean = true,
+    trailing: @Composable () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        tile()
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = labelColor)
+            hint?.let { Text(it, fontSize = 13.sp, color = hintColor) }
+        }
+        trailing()
+    }
 }
 
 @Composable

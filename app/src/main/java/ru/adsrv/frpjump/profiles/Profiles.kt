@@ -27,6 +27,12 @@ data class ProfilesState(
     val failure: String? = null,
     val index: ProfileIndex = ProfileIndex(),
     val runtimes: Map<String, ProfileRuntime> = emptyMap(),
+    /**
+     * How many times each profile's enrollment was replaced in place (filled
+     * after its server removed it, or wiped for "Enroll again"): what was read
+     * from its credentials before is stale once this changes. Missing: 0.
+     */
+    val enrollments: Map<String, Int> = emptyMap(),
 ) {
     /** The profile the app shows; null with no profiles. */
     val current: ProfileRuntime? get() = index.current?.let(runtimes::get)
@@ -55,7 +61,14 @@ class Profiles(
     /** Tunnels up in all profiles together. */
     val tunnelCount: Flow<Int> = allTunnels { states -> states.values.sumOf { it.tunnels.size } }
 
-    fun tunnelCountNow(): Int = _state.value.runtimes.values.sumOf { it.tunnels.state.value.tunnels.size }
+    /** Tunnels up, by profile id; a profile without any is left out. */
+    val tunnelsByProfile: Flow<Map<String, Int>> = allTunnels { states ->
+        states.mapValues { it.value.tunnels.size }.filterValues { it > 0 }
+    }
+
+    /** [tunnelsByProfile] as it is now. */
+    fun tunnelsByProfileNow(): Map<String, Int> =
+        _state.value.runtimes.mapValues { it.value.tunnels.state.value.tunnels.size }.filterValues { it > 0 }
 
     /** Every tunnel up, as [profilePortKey]s. */
     val upTunnels: Flow<Set<String>> = allTunnels { states ->
@@ -104,7 +117,7 @@ class Profiles(
             val profile = now.index.currentProfile
             if (current != null && profile != null && current.store.state() is StoredEnrollment.NotEnrolled) {
                 store.fill(profile, credentials)
-                publish(store.index(), now.runtimes)
+                publish(store.index(), now.runtimes, changedEnrollment = profile.id)
                 current
             } else {
                 val added = store.add(credentials)
@@ -132,18 +145,39 @@ class Profiles(
         runtime.devices.forget()
         if (keepData) {
             runtime.session.clearRemoved()
+            publish(store.index(), _state.value.runtimes, changedEnrollment = id)
         } else {
             runtime.close()
             publish(store.index(), _state.value.runtimes - id)
         }
     }
 
+    /** Shows [id] from now on; its cached list at once, then its polls every 2 s. Storage: on the IO dispatcher. */
+    suspend fun setCurrent(id: String) = changing.withLock {
+        if (_state.value.index.current == id || _state.value.index.find(id) == null) return@withLock
+        val index = withContext(Dispatchers.IO) {
+            store.setCurrent(id)
+            store.index()
+        }
+        publish(index, _state.value.runtimes)
+    }
+
+    /** Renames and recolours [id]; false when it is no longer listed (forgotten meanwhile). Storage: on the IO dispatcher. */
+    suspend fun update(id: String, name: String, color: String): Boolean = changing.withLock {
+        val index = withContext(Dispatchers.IO) { store.update(id, name, color)?.let { store.index() } } ?: return@withLock false
+        publish(index, _state.value.runtimes)
+        true
+    }
+
     /** "Disconnect all": every profile's tunnels. */
     fun disconnectAllAsync() = _state.value.runtimes.values.forEach { it.tunnels.disconnectAllAsync() }
 
-    private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>) {
+    /** [changedEnrollment]: a profile whose credentials were just filled in or wiped in place. */
+    private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>, changedEnrollment: String? = null) {
         currentId.value = index.current
-        _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes)
+        val enrollments = _state.value.enrollments.filterKeys { it in runtimes }.toMutableMap()
+        changedEnrollment?.let { enrollments[it] = (enrollments[it] ?: 0) + 1 }
+        _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes, enrollments = enrollments)
     }
 
     private companion object {

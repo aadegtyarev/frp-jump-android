@@ -17,7 +17,7 @@
         android:label="@string/app_name"
         android:icon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/Theme.FrpJump">
         <!-- Compose redraws for rotation, resizing and keyboards itself: not recreating the
              activity keeps the web view's page (and its live connections) across them. -->
         <activity

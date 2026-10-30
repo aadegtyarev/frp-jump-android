@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window behind Compose, until the first frame: the palette's ground (ui/Palette.kt). -->
+    <style name="Theme.FrpJump" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ground</item>
+    </style>
+    <color name="ground">#F5F7F6</color>
+</resources>
