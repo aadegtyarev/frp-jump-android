@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui.ssh
 
 import android.content.Context
+import android.content.res.Configuration
 import android.util.Log
 import android.util.TypedValue
 import android.view.KeyEvent
@@ -10,6 +11,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -46,7 +50,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,7 +81,7 @@ private class Modifiers {
 }
 
 /** The SSH sessions as tabs, the selected one in a Termux terminal view. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
@@ -113,9 +119,12 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
         view.requestFocus()
     }
 
+    // Landscape with the keyboard up leaves a sliver: give it all to the terminal.
+    val compact = WindowInsets.isImeVisible &&
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!compact) TopAppBar(
                 title = {
                     Column {
                         Text(selected.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -151,20 +160,24 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
         ) {
             if (list.size > 1) {
                 ScrollableTabRow(selectedTabIndex = list.indexOf(selected).coerceAtLeast(0), edgePadding = 8.dp) {
-                    list.forEach { s ->
+                    list.forEachIndexed { index, s ->
                         Tab(
                             selected = s.id == selected.id,
                             onClick = { selectedId = s.id },
-                            text = { Text("${s.title}:${s.port}", maxLines = 1) },
+                            // Numbered: two shells to the same device look alike otherwise.
+                            text = { Text("${index + 1}. ${s.device}:${s.port}", maxLines = 1) },
                         )
                     }
                 }
             }
             AndroidView(
                 factory = { view },
+                // The Termux view draws its whole grid; without the clip it paints over the
+                // extra keys when the keyboard leaves it only a few rows.
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .clipToBounds()
                     .background(Color.Black),
             )
             (state as? SshState.Ended)?.let { ended ->
