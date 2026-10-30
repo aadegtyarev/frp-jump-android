@@ -51,3 +51,55 @@ fun errorDetail(body: String): String {
     val detail = (element as? JsonObject)?.get("detail")
     return (detail as? JsonPrimitive)?.takeIf { it.isString }?.content ?: body
 }
+
+@Serializable
+data class HeartbeatRequest(@SerialName("agent_version") val agentVersion: String?)
+
+/** `protocol` is the server's `ServiceProtocol`: only `"ssh"` and `"tcp"` exist. */
+@Serializable
+data class ConnectRequest(
+    @SerialName("device_name") val deviceName: String,
+    @SerialName("target_port") val targetPort: Int,
+    val protocol: String,
+)
+
+@Serializable
+data class ConnectResponse(
+    @SerialName("grant_id") val grantId: String,
+    @SerialName("exposer_device_name") val exposerDeviceName: String,
+    @SerialName("target_port") val targetPort: Int,
+    val protocol: String,
+)
+
+@Serializable
+data class DisconnectRequest(
+    @SerialName("device_name") val deviceName: String,
+    @SerialName("target_port") val targetPort: Int,
+)
+
+/** A grant this phone consumes: the exposing side runs the matching proxies. */
+@Serializable
+data class ConsumedGrant(
+    @SerialName("grant_id") val grantId: String,
+    val secret: String,
+    @SerialName("service_name") val serviceName: String,
+    val protocol: String,
+    @SerialName("exposer_device_name") val exposerDeviceName: String,
+    @SerialName("target_port") val targetPort: Int,
+) {
+    override fun toString() = "ConsumedGrant($grantId, $exposerDeviceName:$targetPort)"
+}
+
+/**
+ * `GET /api/agent/desired-state`. `exposed` is ignored: the phone exposes nothing.
+ * A missing `protocol_version` means a server older than the check, accepted
+ * as the Linux agent does; only an explicit different number is a mismatch.
+ */
+@Serializable
+data class DesiredStateResponse(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("server_addr") val serverAddr: String,
+    @SerialName("server_port") val serverPort: Int,
+    val consumed: List<ConsumedGrant>,
+    @SerialName("protocol_version") val protocolVersion: Int? = null,
+)
