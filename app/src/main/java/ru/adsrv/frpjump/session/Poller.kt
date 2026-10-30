@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.session
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -9,6 +10,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import ru.adsrv.frpjump.BuildConfig
+
+private const val TAG = "Poller"
 
 /** While the app is visible: heartbeat + desired state (and the device list when shown) this often. */
 const val FOREGROUND_POLL_MS = 2_000L
@@ -52,6 +56,10 @@ class Poller(
 
     private suspend fun loop(intervalMs: Long) {
         val backoff = PollBackoff()
-        while (true) delay(backoff.next(cycle(visible.value), intervalMs))
+        while (true) {
+            val ok = cycle(visible.value)
+            if (BuildConfig.DEBUG) Log.d(TAG, "poll every ${intervalMs / 1000} s, visible=${visible.value}, ok=$ok")
+            delay(backoff.next(ok, intervalMs))
+        }
     }
 }
