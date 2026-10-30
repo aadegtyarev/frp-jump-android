@@ -9,6 +9,9 @@ class FrpJumpApp : Application() {
         private set
     val api: FrpJumpApi by lazy { FrpJumpApi() }
 
+    /** A one-time message for the enrollment screen, e.g. after "Forget this phone". */
+    var notice: String? = null
+
     override fun onCreate() {
         super.onCreate()
         store = CredentialStore(filesDir)
