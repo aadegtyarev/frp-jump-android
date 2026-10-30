@@ -28,7 +28,9 @@ class FrpcLaunch(
  * Files live in [workDir] (noBackupFilesDir), each created 0600. The
  * private key (and the config, which holds the API token and grant
  * secrets) exist on disk only while frpc runs: [stop] deletes them.
- * The cert and CA are public and stay.
+ * The cert and CA are public and stay. Both are also removed when frpc
+ * exits by itself and when the runner is created: a process that was
+ * killed (with frpc as its child) never got to [stop].
  */
 class FrpcRunner(private val binary: File, private val workDir: File) : FrpcControl {
     private val configFile = File(workDir, "frpc.toml")
@@ -55,6 +57,10 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     @Volatile
     override var heldPorts: Set<Int> = emptySet()
         private set
+
+    init {
+        deleteSecrets()
+    }
 
     val isRunning: Boolean
         @Synchronized get() = process?.isAlive == true
@@ -86,9 +92,13 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     @Synchronized
     override fun stop() {
         stopProcess()
+        deleteSecrets()
+        _states.value = emptyMap()
+    }
+
+    private fun deleteSecrets() {
         File(tls.keyFile).delete()
         configFile.delete()
-        _states.value = emptyMap()
     }
 
     @Synchronized
@@ -125,6 +135,16 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
         val code = runCatching { p.waitFor() }.getOrDefault(-1)
         log.add("frpc exited with code $code")
         publish(parser, myGeneration) { parser.exited(code); true }
+        synchronized(this) {
+            // Exited by itself (not via stopProcess, which bumps the generation first):
+            // nothing reads the key and the config any more. The next apply starts it again.
+            if (myGeneration == generation) {
+                process = null
+                appliedConfig = null
+                heldPorts = emptySet()
+                deleteSecrets()
+            }
+        }
     }
 
     /**

@@ -39,6 +39,11 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        // android.util.Log and friends return defaults in JVM tests instead of throwing.
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
         // Extract libfrpc.so to nativeLibraryDir: Android only allows exec from there.
         jniLibs {
