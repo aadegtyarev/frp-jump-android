@@ -25,7 +25,9 @@ key, "Forget this phone").
   `127.0.0.1:<port>` bookmarks keep working.
 - frpc runs from `nativeLibraryDir` as a child process; its config, cert, key
   and CA are written 0600 into `no_backup/frpc/`. The key and the config are
-  deleted whenever frpc stops.
+  deleted whenever frpc stops or exits by itself, and on every app start (a
+  killed process never got to delete them); "Forget this phone" deletes the
+  whole directory.
 - While the app is visible it sends a heartbeat and fetches desired state
   every 2 s. While at least one tunnel is up a foreground service (type
   `specialUse`) keeps the process alive and shows "N tunnels" with
@@ -70,8 +72,13 @@ and port, `root` by default) and Key or Password, then opens a session to
 - "Open in external app" sends `ssh://<user>@127.0.0.1:<port>` to an SSH app
   (Termius, JuiceSSH, …).
 
-Connecting or disconnecting another port restarts frpc (stage 3 behaviour),
-which drops open SSH sessions and web sockets; they can be reconnected.
+Connecting or disconnecting another port does not restart frpc: the app
+rewrites `frpc.toml` and calls frpc's admin API (`GET /api/reload`, on
+127.0.0.1 with a random port, user and password made for each frpc run),
+and frpc swaps only the visitors that changed. Open SSH sessions and web
+sockets of the other tunnels stay up. frpc is restarted (dropping them)
+only when the reload fails or something frpc reads only at start changes:
+the server, the device's TLS material or token, or "Relay only".
 
 ## Third-party libraries
 

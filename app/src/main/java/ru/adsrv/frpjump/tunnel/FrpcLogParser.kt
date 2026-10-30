@@ -7,9 +7,9 @@ data class VisitorState(val status: TunnelStatus, val detail: String? = null)
 
 /**
  * Best-effort tunnel state from frpc 0.70's own log lines (`info` level).
- * frpc has no status channel we may use (its admin API is off on purpose,
- * as on the Linux agent), so this reads what frpc says, matched against the
- * upstream sources (`client/service.go`, the visitors under `client/visitor/`):
+ * frpc's admin API (used here only to reload) reports proxies, not
+ * visitors, so this reads what frpc says, matched against the upstream
+ * sources (`client/service.go`, the visitors under `client/visitor/`):
  *
  * - `login to server success`: logged in; frpc (re)starts every visitor in
  *   config order, each followed by `start visitor success` or
@@ -27,19 +27,43 @@ data class VisitorState(val status: TunnelStatus, val detail: String? = null)
  *   carry a connection (e.g. the device is offline): failed until the next
  *   success line.
  *
+ * - After a reload (`GET /api/reload`) frpc starts only the visitors that
+ *   are new or changed, in config order, each again followed by `start
+ *   visitor success` or `start error: ...`: [reconfigure] lines them up.
+ *
  * Hole punching only starts with the first connection, so a started tunnel
  * stays READY ("route picked on first use") until something connects. With
  * [relayOnly] there is nothing to pick: a started tunnel is RELAYED.
  */
-class FrpcLogParser(private val grantIds: List<String>, private val relayOnly: Boolean) {
+class FrpcLogParser(grantIds: List<String>, private val relayOnly: Boolean) {
+    private var grantIds: List<String> = grantIds
     private val states = grantIds.associateWith { VisitorState(TunnelStatus.CONNECTING) }.toMutableMap()
     private val startOrder = ArrayDeque<String>()
-    private val visitorNames: List<String> =
-        grantIds.flatMap { if (relayOnly) listOf(stcpVisitorName(it)) else listOf(stcpVisitorName(it), xtcpVisitorName(it)) }
+    private var visitorNames: List<String> = visitorNamesOf(grantIds)
 
+    @Synchronized
     fun snapshot(): Map<String, VisitorState> = states.toMap()
 
+    /**
+     * frpc is about to reload with [grantIds]; it will start the visitors of
+     * [restarted] (new or changed grants, in config order) and leave the
+     * others running as they are.
+     */
+    @Synchronized
+    fun reconfigure(grantIds: List<String>, restarted: List<String>) {
+        this.grantIds = grantIds
+        visitorNames = visitorNamesOf(grantIds)
+        states.keys.retainAll(grantIds.toSet())
+        for (grant in grantIds) if (grant in restarted || grant !in states) states[grant] = VisitorState(TunnelStatus.CONNECTING)
+        startOrder.clear()
+        startOrder.addAll(visitorNamesOf(grantIds.filter { it in restarted }))
+    }
+
+    private fun visitorNamesOf(grants: List<String>): List<String> =
+        grants.flatMap { if (relayOnly) listOf(stcpVisitorName(it)) else listOf(stcpVisitorName(it), xtcpVisitorName(it)) }
+
     /** Feeds one log line; returns true when a state changed. */
+    @Synchronized
     fun feed(rawLine: String): Boolean {
         val line = ANSI.replace(rawLine, "")
         val before = states.toMap()
@@ -66,6 +90,7 @@ class FrpcLogParser(private val grantIds: List<String>, private val relayOnly: B
     }
 
     /** frpc exited: nothing listens any more. */
+    @Synchronized
     fun exited(code: Int) {
         grantIds.forEach { states[it] = VisitorState(TunnelStatus.FAILED, "frpc stopped (exit code $code)") }
     }

@@ -151,4 +151,20 @@ class FrpcConfigTest {
             useEncryption = true
         """.trimIndent() + "\n"
     }
+
+    @Test
+    fun `the admin API listens on loopback with its own credentials`() {
+        val text = Toml.write(
+            buildFrpcConfig(
+                deviceId = "dev-1",
+                apiToken = "tok",
+                serverAddr = "relay.example.com",
+                serverPort = 7000,
+                tls = tls,
+                visitors = visitors,
+                admin = FrpcAdmin(41234, "u", "p"),
+            ),
+        )
+        assertTrue(text, text.contains("[webServer]\naddr = \"127.0.0.1\"\nport = 41234\nuser = \"u\"\npassword = \"p\"\n"))
+    }
 }

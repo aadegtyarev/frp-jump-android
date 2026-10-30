@@ -10,20 +10,40 @@ import kotlin.concurrent.thread
 
 /** Everything frpc needs for one run; [toString] leaves the secrets out. */
 class FrpcLaunch(
-    val configFor: (TlsFiles) -> String,
+    val configFor: (TlsFiles, FrpcAdmin) -> String,
     val certPem: String,
     val keyPem: String,
     val caPem: String,
-    val grantIds: List<String>,
+    val visitors: List<VisitorSpec>,
     val relayOnly: Boolean,
+    /** Server, device and token: frpc applies them only at start. */
+    val connection: String,
 ) {
+    val grantIds: List<String> get() = visitors.map { it.grantId }
+
+    /** Whether going from [old] to this needs a new frpc rather than a reload of its visitors. */
+    fun needsRestartFrom(old: FrpcLaunch): Boolean =
+        connection != old.connection || certPem != old.certPem || keyPem != old.keyPem || caPem != old.caPem ||
+            relayOnly != old.relayOnly
+
+    /** Grants whose visitors a reload from [old] starts (new or changed), in config order. */
+    fun restartedSince(old: FrpcLaunch): List<String> {
+        val before = old.visitors.associateBy { it.grantId }
+        return visitors.filter { before[it.grantId] != it }.map { it.grantId }
+    }
+
     override fun toString() = "FrpcLaunch(grants=$grantIds, relayOnly=$relayOnly)"
 }
 
 /**
  * Runs one frpc child process, as the Linux agent's `FrpDriver` +
- * `SubprocessSupervisor` do: write frpc.toml, (re)start frpc only when the
- * config text changed or the process is gone, SIGTERM then kill after 5 s.
+ * `SubprocessSupervisor` do: write frpc.toml, start frpc when it is not
+ * running, SIGTERM then kill after 5 s. Unlike the agent, a change of
+ * tunnels does not restart frpc: the new config is written and frpc is
+ * told to reload it through its admin API ([FrpcAdmin]), so tunnels that
+ * stay keep their open connections (SSH sessions, web sockets). frpc is
+ * restarted only when the reload fails or something it reads only at
+ * start changed ([FrpcLaunch.needsRestartFrom]).
  *
  * Files live in [workDir] (noBackupFilesDir), each created 0600. The
  * private key (and the config, which holds the API token and grant
@@ -47,8 +67,17 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     /** Per grant id, from [FrpcLogParser]; empty while frpc is not running. */
     override val states: StateFlow<Map<String, VisitorState>> = _states
 
-    private var process: Process? = null
-    private var appliedConfig: String? = null
+    /** The running frpc and what it was last given. */
+    private class Run(
+        val process: Process,
+        val admin: FrpcAdmin,
+        val parser: FrpcLogParser,
+        var launch: FrpcLaunch,
+        var config: String,
+    )
+
+    private var run: Run? = null
+
     /** Bumped on every start and stop; a log pump only publishes for its own run. */
     @Volatile
     private var generation = 0
@@ -58,19 +87,59 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     override var heldPorts: Set<Int> = emptySet()
         private set
 
+    /** How the last [apply] got there, for tests and diagnostics. */
+    @Volatile
+    var lastChange: Change = Change.NONE
+        private set
+
+    enum class Change { NONE, STARTED, RELOADED }
+
     init {
         deleteSecrets()
     }
 
     val isRunning: Boolean
-        @Synchronized get() = process?.isAlive == true
+        @Synchronized get() = run?.process?.isAlive == true
 
-    /** Starts or restarts frpc unless it already runs this exact config. */
+    /** Starts frpc, or has the running one reload [launch]; nothing when it already runs it. */
     @Synchronized
     override fun apply(launch: FrpcLaunch, ports: Set<Int>) {
-        val config = launch.configFor(tls)
-        if (config == appliedConfig && process?.isAlive == true) return
+        val current = run
+        if (current != null && current.process.isAlive) {
+            val config = launch.configFor(tls, current.admin)
+            if (config == current.config) {
+                lastChange = Change.NONE
+                return
+            }
+            if (!launch.needsRestartFrom(current.launch) && reload(current, launch, config)) {
+                heldPorts = ports
+                lastChange = Change.RELOADED
+                return
+            }
+        }
+        start(launch, ports)
+        lastChange = Change.STARTED
+    }
+
+    private fun reload(current: Run, launch: FrpcLaunch, config: String): Boolean {
+        current.parser.reconfigure(launch.grantIds, launch.restartedSince(current.launch))
+        _states.value = current.parser.snapshot()
+        writePrivateFile(configFile, config)
+        current.launch = launch
+        current.config = config
+        if (current.admin.reload()) {
+            log.add("frpc reloaded ${launch.visitors.size} tunnel(s)")
+            return true
+        }
+        log.add("frpc reload failed; restarting it")
+        return false
+    }
+
+    private fun start(launch: FrpcLaunch, ports: Set<Int>) {
         stopProcess()
+        // New credentials for every run: the old ones die with the old process.
+        val admin = FrpcAdmin.random()
+        val config = launch.configFor(tls, admin)
         writePrivateFile(File(tls.certFile), launch.certPem)
         writePrivateFile(File(tls.caFile), launch.caPem)
         writePrivateFile(File(tls.keyFile), launch.keyPem)
@@ -81,8 +150,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
             .directory(workDir)
             .redirectErrorStream(true)
             .start()
-        process = started
-        appliedConfig = config
+        run = Run(started, admin, parser, launch, config)
         heldPorts = ports
         val myGeneration = ++generation
         thread(name = "frpc-log", isDaemon = true) { pump(started, parser, myGeneration) }
@@ -111,9 +179,8 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
 
     private fun stopProcess() {
         generation++
-        val p = process ?: return
-        process = null
-        appliedConfig = null
+        val p = run?.process ?: return
+        run = null
         heldPorts = emptySet()
         p.destroy()
         if (!p.waitFor(TERM_GRACE_SECONDS, TimeUnit.SECONDS)) {
@@ -139,8 +206,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
             // Exited by itself (not via stopProcess, which bumps the generation first):
             // nothing reads the key and the config any more. The next apply starts it again.
             if (myGeneration == generation) {
-                process = null
-                appliedConfig = null
+                run = null
                 heldPorts = emptySet()
                 deleteSecrets()
             }

@@ -307,7 +307,7 @@ class TunnelManager(
         val relayOnly = relayOnly
         val visitors = plan.map { it.visitor() }
         return FrpcLaunch(
-            configFor = { tls ->
+            configFor = { tls, admin ->
                 Toml.write(
                     buildFrpcConfig(
                         // From enrollment, as the agent's state.json relay_addr/relay_port.
@@ -318,14 +318,16 @@ class TunnelManager(
                         tls = tls,
                         visitors = visitors,
                         relayOnly = relayOnly,
+                        admin = admin,
                     ),
                 )
             },
             certPem = c.certPem,
             keyPem = c.keyPem,
             caPem = c.caCertPem,
-            grantIds = plan.map { it.grant.grantId },
+            visitors = visitors,
             relayOnly = relayOnly,
+            connection = listOf(c.deviceId, c.apiToken, c.serverAddr, c.serverPort.toString()).joinToString("\n"),
         )
     }
 

@@ -28,6 +28,10 @@ private fun xtcpProxyName(grantId: String) = "$grantId-xtcp"
  * directly. Every visitor sets `useEncryption`: a punched p2p leg bypasses
  * the relay's TLS.
  *
+ * [admin] adds frpc's admin API on 127.0.0.1 (the agent runs without it):
+ * the phone reloads visitors through it instead of restarting frpc, which
+ * would drop every open connection.
+ *
  * One deliberate difference: the agent logs at `warn`; the phone needs
  * frpc's `info` lines (login, visitor start, hole punch success) to show a
  * tunnel's state, so [logLevel] defaults to `info`, without ANSI colours.
@@ -44,6 +48,7 @@ fun buildFrpcConfig(
     fallbackTimeoutMs: Int = DEFAULT_FALLBACK_TIMEOUT_MS,
     logLevel: String = "info",
     plainLog: Boolean = true,
+    admin: FrpcAdmin? = null,
 ): Map<String, Any> {
     val log = linkedMapOf<String, Any>("level" to logLevel)
     if (plainLog) log["disablePrintColor"] = true
@@ -66,6 +71,14 @@ fun buildFrpcConfig(
             "frp_jump_token" to apiToken,
         ),
     )
+    if (admin != null) {
+        config["webServer"] = linkedMapOf<String, Any>(
+            "addr" to "127.0.0.1",
+            "port" to admin.port,
+            "user" to admin.user,
+            "password" to admin.password,
+        )
+    }
     val entries = visitors.flatMap { v ->
         if (relayOnly) {
             listOf(

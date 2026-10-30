@@ -63,4 +63,25 @@ class FrpcLogParserTest {
         parser.exited(1)
         assertEquals(VisitorState(TunnelStatus.FAILED, "frpc stopped (exit code 1)"), parser.snapshot()["g1"])
     }
+
+    @Test
+    fun `a reload keeps the state of a kept tunnel and lines up the added one`() {
+        val parser = started()
+        parser.feed(line("[g1-xtcp-visitor] establishing nat hole connection successful, sid [1], remoteAddr [1.2.3.4:5]"))
+        parser.reconfigure(listOf("g1", "g2"), restarted = listOf("g2"))
+        assertEquals(TunnelStatus.DIRECT, parser.status())
+        assertEquals(TunnelStatus.CONNECTING, parser.snapshot().getValue("g2").status)
+        // frpc starts only g2's visitors: stcp, then xtcp.
+        parser.feed(line("start visitor success"))
+        parser.feed(line("start visitor success"))
+        assertEquals(TunnelStatus.READY, parser.snapshot().getValue("g2").status)
+        assertEquals(TunnelStatus.DIRECT, parser.status())
+    }
+
+    @Test
+    fun `a reload drops a removed tunnel`() {
+        val parser = FrpcLogParser(listOf("g1", "g2"), relayOnly = false)
+        parser.reconfigure(listOf("g2"), restarted = emptyList())
+        assertEquals(setOf("g2"), parser.snapshot().keys)
+    }
 }

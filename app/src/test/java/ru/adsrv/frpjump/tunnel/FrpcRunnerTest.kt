@@ -21,12 +21,13 @@ class FrpcRunnerTest {
     }
 
     private fun launch() = FrpcLaunch(
-        configFor = { "config" },
+        configFor = { _, _ -> "config" },
         certPem = "cert",
         keyPem = "key",
         caPem = "ca",
-        grantIds = listOf("g1"),
+        visitors = listOf(VisitorSpec("g1", "s1", 47200)),
         relayOnly = false,
+        connection = "server",
     )
 
     @After
