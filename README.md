@@ -8,8 +8,8 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 Behaviour is defined in [docs/contract.md](docs/contract.md).
 
 Current stage: profiles (switcher, list, add, name and colour, forget), the
-device list, tunnels from the device card, the in-app web view, the SSH
-terminal and settings (relay only, local ports, background checks, battery
+device list, named connections on the device card and in the Connections
+tab, the in-app web view (HTTP and HTTPS), the SSH terminal and settings (relay only, local ports, background checks, battery
 optimisation, SSH keys). The app has its own light and dark colour scheme
 (`ui/Palette.kt`), following the system.
 
@@ -20,7 +20,8 @@ certificate and key. Each profile has a random id; `profiles.json` in
 filesDir lists them in order with the current one (the one the app shows),
 and each profile's own files live in `profiles/<id>/`: the enrollment
 (sealed with a Keystore key of its own, `frpjump-profile-<id>`), the cached
-device list, custom ports, SSH logins and pinned host keys. Remembered SSH
+device list, connections, SSH logins, pinned host keys and confirmed HTTPS
+certificates. Remembered SSH
 passwords are kept per profile too, in the shared, sealed `ssh_passwords.json`. Every profile
 runs its own poller and, while it has tunnels, its own frpc
 (`no_backup/frpc/<id>/`), so tunnels of several profiles are up at once.
@@ -47,10 +48,44 @@ profile is listed. A marker (`profiles_migration.json`) holding the id is
 written first and removed last, so an upgrade interrupted at any point is
 finished on the next start.
 
+## Connections
+
+A connection is a device, a port on it, a kind (web, SSH or TCP) and a
+name; web adds an HTTPS flag, SSH the user the login dialog starts with.
+They are kept per profile in `profiles/<id>/connections.json`, in the order
+they were added. Several connections may name the same device and port
+(SSH as root and as another user): they share one tunnel and one local
+port, which stay keyed by (profile, device, port).
+
+- The device card lists the device's connections with their tunnel's state,
+  local address and main action (Open, Terminal, Copy address); "⋮" or a
+  long press has Disconnect, Copy address, Open in browser / external app,
+  Change and Delete. "Connection" opens a sheet: kind, port (presets per
+  kind, any 1-65535), name (blank takes the preset's name, the SSH user or
+  "Web 8080"), HTTPS or user, "Connect now". Names must differ per device
+  and port. The port of a connected connection cannot be changed; deleting
+  the last connection of a port disconnects its tunnel.
+- The Connections tab lists every profile's connections, marked with the
+  profile's colour: active ones first with state, local address and main
+  action, the rest with a connect button; "Disconnect all" stops every
+  tunnel. Tunnels up without a saved connection are listed too, as
+  "Port N", so they can be disconnected.
+- The bottom navigation: Devices, Connections, Terminals (the open SSH
+  sessions), Settings.
+
+Upgrading from 0.2.0-beta1 (or 0.1.x) turns each profile's ports into
+connections on its first start: every port the owner added keeps its
+label, kind and number; the old presets Web 80 and SSH 22 become
+connections only on devices where they were used (the local port map has
+an entry for them), with the SSH user last logged in as. Local ports,
+logins, passwords, host keys and the web view's site memory are untouched,
+since tunnels keep their keys. `connections.json` is written in one atomic
+write before `device_ports.json` is deleted, so a crash at any point is
+finished, or redone, on the next start.
+
 ## How tunnels work
 
-- The card lists Web (80), SSH (22) and ports the owner adds (port, name, kind).
-  Connect calls `POST /api/agent/connect` (`ssh` for kind ssh or ports 22/2222,
+- Connect calls `POST /api/agent/connect` (`ssh` for kind ssh or ports 22/2222,
   `tcp` otherwise, as the Linux client classifies them), then polls
   desired state every second for up to 15 s until the grant shows up.
 - Desired state is the only source of truth: frpc runs one stcp + xtcp
@@ -106,8 +141,12 @@ sideloaded app).
 
 ## Web ports
 
-"Open" on a connected web port shows `http://127.0.0.1:<local port>/` in an
-in-app WebView: JavaScript and DOM storage on, cookies kept, Back walks the
+"Open" on a connected web connection shows `http://127.0.0.1:<local port>/`
+(`https://` with the HTTPS flag) in an in-app WebView. An HTTPS certificate
+(self-signed or not, it never matches 127.0.0.1) is shown with its SHA-256
+fingerprint and accepted only once the owner trusts it; it is then pinned
+per (profile, device, target port) in `web_certs.json`. A different
+certificate later asks again, showing both fingerprints. The web view: JavaScript and DOM storage on, cookies kept, Back walks the
 page history, the top bar has the title, the URL, Reload and "Open in
 browser". Only loopback pages stay in the app; links to other hosts (and
 `mailto:`, `tel:`, …) go to other apps. Downloads go to the system
@@ -117,8 +156,9 @@ same origin work, so homeui's MQTT over WS shows live values.
 
 ## SSH console
 
-"Terminal" on a connected SSH port asks for the user (remembered per device
-and port, `root` by default) and Key or Password, then opens a session to
+"Terminal" on a connected SSH connection asks for the user (the
+connection's, `root` by default; the method is remembered per device and
+port) and Key or Password, then opens a session to
 `127.0.0.1:<local port>`.
 
 - Key: the app makes one ed25519 key on first use; Settings shows its
@@ -137,7 +177,7 @@ and port, `root` by default) and Key or Password, then opens a session to
   arrows, `| - / ~`. Long-press selects text (Copy / Paste), pinch or A− / A+
   changes the font size.
 - Sessions live in the app, not in the screen: several at once, as tabs;
-  "N terminals" on the device list leads back. A session ends when its
+  the Terminals tab leads back. A session ends when its
   tunnel goes (Disconnect, Disconnect all, Forget); "Reconnect" starts a new
   one with the same login.
 - "Open in external app" sends `ssh://<user>@127.0.0.1:<port>` to an SSH app

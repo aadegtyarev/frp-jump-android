@@ -86,7 +86,8 @@ fun SettingsScreen(
     forget: ForgetState?,
     onEditProfile: (id: String) -> Unit,
     onForget: (id: String) -> Unit,
-    onBack: () -> Unit,
+    /** Null when Settings is a tab: no back arrow. */
+    onBack: (() -> Unit)?,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -104,8 +105,10 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    onBack?.let {
+                        IconButton(onClick = it) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
             )

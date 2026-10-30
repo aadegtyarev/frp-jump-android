@@ -59,9 +59,6 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
 
-    /** Open SSH sessions, so the list can lead back to them. */
-    val sshSessions = app.ssh.sessions
-
     /** A message left by the screen before (e.g. after "Forget profile"); shown once. */
     val notice: StateFlow<Notice?> = app.session.notice
 

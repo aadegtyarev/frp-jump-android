@@ -18,18 +18,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,10 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +48,7 @@ import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.DeviceGlyph
 import ru.adsrv.frpjump.ui.profiles.Chip
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
 import ru.adsrv.frpjump.ui.profiles.ProfileSwitcher
@@ -77,11 +70,8 @@ fun DevicesScreen(
     profiles: List<ProfileItem>,
     onProfiles: () -> Unit,
     onOpen: (String) -> Unit,
-    onSettings: () -> Unit,
-    onTerminals: (firstSessionId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val sessions by vm.sshSessions.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -103,7 +93,7 @@ fun DevicesScreen(
     }
     Scaffold(
         topBar = {
-            Header(current, sessions.size, onProfiles, onSettings, onTerminals = { sessions.firstOrNull()?.let { onTerminals(it.id) } })
+            Header(current, onProfiles)
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -125,32 +115,20 @@ fun DevicesScreen(
     }
 }
 
-/** The switcher, this profile's tunnel count, open terminals and settings. */
+/** The switcher and this profile's tunnel count; terminals and settings are tabs of their own. */
 @Composable
-private fun Header(
-    current: ProfileItem?,
-    terminals: Int,
-    onProfiles: () -> Unit,
-    onSettings: () -> Unit,
-    onTerminals: () -> Unit,
-) {
+private fun Header(current: ProfileItem?, onProfiles: () -> Unit) {
     val colors = AppTheme.colors
     Row(
         Modifier
             .statusBarsPadding()
-            .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 8.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.weight(1f)) { ProfileSwitcher(current, onProfiles) }
         current?.tunnels?.takeIf { it > 0 }?.let {
             Chip(pluralStringResource(R.plurals.tunnels, it, it), colors.accentContainer, colors.onAccentContainer)
-        }
-        if (terminals > 0) {
-            TextButton(onClick = onTerminals) { Text(pluralStringResource(R.plurals.terminals, terminals, terminals)) }
-        }
-        IconButton(onClick = onSettings) {
-            Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings), tint = colors.muted)
         }
     }
 }
@@ -263,28 +241,6 @@ private fun DeviceTile(dot: Color) {
         )
     }
 }
-
-/** A screen on a stand, as the mockups draw a device. */
-private val DeviceGlyph: ImageVector = ImageVector.Builder("Device", 24.dp, 24.dp, 24f, 24f).path(
-    stroke = SolidColor(Color.Black),
-    strokeLineWidth = 1.8f,
-    strokeLineCap = StrokeCap.Round,
-) {
-    moveTo(6f, 5f)
-    horizontalLineTo(18f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20f, y1 = 7f)
-    verticalLineTo(14f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 18f, y1 = 16f)
-    horizontalLineTo(6f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 14f)
-    verticalLineTo(7f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 6f, y1 = 5f)
-    close()
-    moveTo(8f, 20f)
-    horizontalLineTo(16f)
-    moveTo(12f, 16f)
-    verticalLineTo(20f)
-}.build()
 
 /** The list is an old one: says since when, and why if known. Tap to try again. */
 @Composable

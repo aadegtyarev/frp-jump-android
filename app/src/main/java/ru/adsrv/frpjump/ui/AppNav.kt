@@ -2,6 +2,10 @@ package ru.adsrv.frpjump.ui
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -33,7 +37,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.store.StoredEnrollment
+import ru.adsrv.frpjump.ui.connections.ConnectionsScreen
+import ru.adsrv.frpjump.ui.connections.ConnectionsViewModel
+import ru.adsrv.frpjump.ui.connections.TerminalsScreen
 import ru.adsrv.frpjump.ui.devices.DeviceCardScreen
 import ru.adsrv.frpjump.ui.devices.DeviceCardViewModel
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
@@ -55,16 +63,26 @@ private object Routes {
     const val ADD_PROFILE = "profiles/add"
     const val PROFILE = "profile/{id}"
     const val DEVICES = "devices"
+    const val CONNECTIONS = "connections"
+    const val TERMINALS = "terminals"
     const val DEVICE = "device/{name}"
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
     const val REMOVED = "removed"
-    const val WEB = "web/{profile}/{name}/{port}"
+    const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
     const val TERMINAL = "terminal/{id}"
     fun terminal(id: Int) = "terminal/$id"
     fun profile(id: String) = "profile/$id"
     fun device(name: String) = "device/${Uri.encode(name)}"
-    fun web(profile: String, name: String, localPort: Int) = "web/$profile/${Uri.encode(name)}/$localPort"
+    fun web(profile: String, name: String, localPort: Int, target: Int, https: Boolean) =
+        "web/$profile/${Uri.encode(name)}/$localPort/$target/$https"
+
+    fun of(tab: Tab) = when (tab) {
+        Tab.DEVICES -> DEVICES
+        Tab.CONNECTIONS -> CONNECTIONS
+        Tab.TERMINALS -> TERMINALS
+        Tab.SETTINGS -> SETTINGS
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -165,15 +183,29 @@ fun AppNav() {
             val profilesVm = viewModel { ProfilesViewModel(app) }
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
             var sheet by rememberSaveable { mutableStateOf(false) }
-            DevicesScreen(
-                vm = viewModel { DevicesViewModel(app) },
-                profiles = profiles,
-                onProfiles = { sheet = true },
-                onOpen = { nav.navigate(Routes.device(it)) },
-                onSettings = { nav.navigate(Routes.SETTINGS) },
-                onTerminals = { nav.navigate(Routes.terminal(it)) },
-            )
+            TabFrame(Tab.DEVICES, nav) {
+                DevicesScreen(
+                    vm = viewModel { DevicesViewModel(app) },
+                    profiles = profiles,
+                    onProfiles = { sheet = true },
+                    onOpen = { nav.navigate(Routes.device(it)) },
+                )
+            }
             if (sheet) ProfileListSheet(profilesVm, nav, app, onDismiss = { sheet = false })
+        }
+        composable(Routes.CONNECTIONS) {
+            TabFrame(Tab.CONNECTIONS, nav) {
+                ConnectionsScreen(
+                    vm = viewModel { ConnectionsViewModel(app) },
+                    onOpenWeb = { nav.navigate(webRoute(it)) },
+                    onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
+                )
+            }
+        }
+        composable(Routes.TERMINALS) {
+            TabFrame(Tab.TERMINALS, nav) {
+                TerminalsScreen(app.ssh, onOpen = { nav.navigate(Routes.terminal(it)) })
+            }
         }
         composable(Routes.DEVICE) { entry ->
             val name = entry.arguments?.getString("name").orEmpty()
@@ -181,7 +213,7 @@ fun AppNav() {
             DeviceCardScreen(
                 vm = vm,
                 onBack = { nav.popBackStack() },
-                onOpenWeb = { nav.navigate(Routes.web(vm.profile, name, it)) },
+                onOpenWeb = { nav.navigate(webRoute(it)) },
                 onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
             )
         }
@@ -197,6 +229,8 @@ fun AppNav() {
                 profile = entry.arguments?.getString("profile").orEmpty(),
                 device = entry.arguments?.getString("name").orEmpty(),
                 localPort = entry.arguments?.getString("port")?.toIntOrNull() ?: 0,
+                targetPort = entry.arguments?.getString("target")?.toIntOrNull() ?: 0,
+                https = entry.arguments?.getString("https") == "true",
                 onBack = { nav.popBackStack() },
             )
         }
@@ -205,17 +239,49 @@ fun AppNav() {
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
             val forget by profilesVm.forget.collectAsStateWithLifecycle()
             val scope = rememberCoroutineScope()
-            SettingsScreen(
-                vm = viewModel { SettingsViewModel(app) },
-                profile = profiles.firstOrNull { it.current },
-                forget = forget,
-                onEditProfile = { nav.navigate(Routes.profile(it)) },
-                // The next profile, if any; else enroll.
-                onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
-                onBack = { nav.popBackStack() },
-            )
+            TabFrame(Tab.SETTINGS, nav) {
+                SettingsScreen(
+                    vm = viewModel { SettingsViewModel(app) },
+                    profile = profiles.firstOrNull { it.current },
+                    forget = forget,
+                    onEditProfile = { nav.navigate(Routes.profile(it)) },
+                    // The next profile, if any; else enroll.
+                    onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
+                    onBack = null,
+                )
+            }
         }
     }
+}
+
+/** A tab's screen above the bottom navigation; the screen keeps its own status bar padding. */
+@Composable
+private fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
+    Scaffold(
+        bottomBar = { BottomNav(selected) { if (it != selected) nav.goToTab(it) } },
+        containerColor = AppTheme.colors.ground,
+        contentWindowInsets = WindowInsets(0),
+    ) { padding ->
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding),
+        ) { content() }
+    }
+}
+
+/** Switches tabs: one entry per tab on top of Devices, each keeping its state; Back leads to Devices. */
+private fun NavHostController.goToTab(tab: Tab) = navigate(Routes.of(tab)) {
+    popUpTo(Routes.DEVICES) { saveState = true }
+    launchSingleTop = true
+    restoreState = true
+}
+
+/** The web view of [row]'s tunnel. */
+private fun webRoute(row: ConnectionRow): String {
+    val c = row.connection
+    return Routes.web(row.profile, c.device, row.tunnel?.localPort ?: 0, c.port, c.https)
 }
 
 /**

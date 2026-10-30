@@ -102,4 +102,109 @@
         <item quantity="other">%2$s in %1$d profiles</item>
     </plurals>
     <string name="disconnect_all">Disconnect all</string>
+    <!-- Bottom navigation -->
+    <string name="tab_devices">Devices</string>
+    <string name="tab_connections">Connections</string>
+    <string name="tab_terminals">Terminals</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Connection kinds and states (the same words on every screen) -->
+    <string name="kind_web">Web</string>
+    <string name="kind_ssh">SSH</string>
+    <string name="kind_tcp">TCP</string>
+    <string name="kind_web_tile">WEB</string>
+    <string name="kind_ssh_tile">SSH</string>
+    <string name="kind_tcp_tile">TCP</string>
+    <string name="state_not_connected">Not connected</string>
+    <string name="state_connecting">Connecting…</string>
+    <string name="state_disconnecting">Disconnecting…</string>
+    <string name="state_connected">Connected</string>
+    <string name="state_direct">Direct</string>
+    <string name="state_through_server">Through the server</string>
+    <string name="state_failed">Failed</string>
+
+    <!-- Connection rows and their actions -->
+    <string name="connection_sub">%1$s · port %2$d</string>
+    <string name="connection_sub_short">%1$s · %2$d</string>
+    <string name="connection_sub_https">%1$s · port %2$d · HTTPS</string>
+    <string name="connection_sub_ssh_key">%1$s · port %2$d · %3$s · phone key</string>
+    <string name="connection_sub_ssh_password">%1$s · port %2$d · %3$s · password</string>
+    <string name="connection_unsaved">Port %d</string>
+    <string name="connection_default_name">%1$s %2$d</string>
+    <string name="connection_actions">Actions with “%s”</string>
+    <string name="connect">Connect</string>
+    <string name="connect_named">Connect “%s”</string>
+    <string name="retry">Retry</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="open">Open</string>
+    <string name="terminal">Terminal</string>
+    <string name="copy_address">Copy address</string>
+    <string name="address_copied">Copied %s</string>
+    <string name="open_in_browser">Open in browser</string>
+    <string name="open_in_ssh_app">Open in external app</string>
+    <string name="no_ssh_app">No installed app opens ssh:// links.</string>
+    <string name="no_browser">No browser installed; copy the address instead.</string>
+    <string name="change">Change</string>
+    <string name="delete">Delete</string>
+    <string name="delete_title">Delete “%s”?</string>
+    <string name="delete_text">The connection is removed from this phone.</string>
+    <string name="delete_text_tunnel">The connection is removed from this phone and its tunnel disconnects.</string>
+    <string name="delete_failed">Could not delete (%s). Try again.</string>
+    <string name="tunnel_not_listed">The server has not listed the connection yet; it will appear on a later poll.</string>
+
+    <!-- Device card -->
+    <string name="device_profile_chip">Profile “%s”</string>
+    <string name="device_offline">Offline</string>
+    <string name="connections_header">Connections</string>
+    <string name="connections_active_of">%1$d of %2$d active</string>
+    <string name="device_no_connections">No connections yet. Add a web page, SSH or any TCP port of this device.</string>
+    <string name="new_connection_button">Connection</string>
+    <string name="mismatch_banner">%s Running tunnels are left as they are.</string>
+
+    <!-- New / change connection sheet -->
+    <string name="new_connection">New connection</string>
+    <string name="change_connection">Change connection</string>
+    <string name="connection_to">to %s</string>
+    <string name="connection_kind">Kind</string>
+    <string name="port_on_device">Port on the device</string>
+    <string name="port_missing">Enter a port.</string>
+    <string name="port_out_of_range">A port is a number from 1 to 65535.</string>
+    <string name="port_locked">Disconnect to change the port.</string>
+    <string name="preset_named">%1$s · %2$d</string>
+    <string name="connection_name">Name</string>
+    <string name="connection_name_hint">For example: %s</string>
+    <string name="connection_name_taken">Another connection to this port already has this name.</string>
+    <string name="https">HTTPS</string>
+    <string name="https_hint">A self-signed certificate is remembered after you confirm it on the first visit</string>
+    <string name="ssh_user">User</string>
+    <string name="ssh_user_missing">Enter a user.</string>
+    <string name="connect_now">Connect now</string>
+    <string name="save_failed">Could not save (%s). Try again.</string>
+
+    <!-- Connections tab -->
+    <string name="connections_hint">Saved connections of all profiles. Active ones on top.</string>
+    <string name="connections_active">Active · %d</string>
+    <string name="connections_saved">Saved</string>
+    <string name="connections_empty">No saved connections yet. Open a device and add one with “Connection”.</string>
+    <string name="connection_on_device">· %s</string>
+
+    <!-- Terminals tab -->
+    <string name="terminals_empty">No open terminals. Connect an SSH connection and tap “Terminal”.</string>
+    <string name="terminal_state_connecting">Connecting…</string>
+    <string name="terminal_state_open">Open</string>
+    <string name="terminal_state_asks">Waiting for you</string>
+    <string name="terminal_state_ended">Ended</string>
+
+    <!-- HTTPS certificates -->
+    <string name="cert_unknown_title">Trust this certificate?</string>
+    <string name="cert_unknown_text">%1$s:%2$d presents a certificate this phone does not know yet. Compare its SHA-256 fingerprint with the one on the device before you trust it.</string>
+    <string name="cert_changed_title">The certificate has changed</string>
+    <string name="cert_changed_text">%1$s:%2$d presents a different certificate than the one you trusted before. If the device did not get a new certificate, someone may be intercepting the connection.</string>
+    <string name="cert_issued_to">Issued to: %s</string>
+    <string name="cert_fingerprint_now">SHA-256 now</string>
+    <string name="cert_fingerprint_before">SHA-256 trusted before</string>
+    <string name="cert_trust">Trust</string>
+    <string name="cert_trust_new">Trust the new one</string>
+    <string name="cert_refused">Not opened: the certificate was not trusted.</string>
+    <string name="cert_try_again">Try again</string>
 </resources>
