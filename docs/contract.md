@@ -48,6 +48,10 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
   clear icon replaces a caption where the meaning is obvious. Rare actions
   (rename, delete, copy address, open in another app, forget profile) live in
   a "⋮" menu or a long press, not as extra buttons.
+- Light and dark themes, each designed on its own rather than inverted: dark
+  is a warm graphite, not black, with a toned-down accent and its own status
+  and profile colours; text contrast at least WCAG AA in both. Follows the
+  system, or set by hand in settings.
 - No technical details on the main screens: ports, addresses and frpc states
   are on the card or in details, not in the lists.
 
@@ -153,14 +157,15 @@ commands, owner-defined) above the extra keys.
 
 Grouped as in the mockup: profile (name and colour, forget profile); tunnels
 (direct connection, local port range); background (poll interval, battery);
-security (phone SSH key, unlock with fingerprint); app (language, version and
-update).
+security (phone SSH key, unlock with fingerprint); app (language, theme,
+version and update).
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that
   server (offline: local wipe only), wipes its credentials and cached lists.
 - Fingerprint unlock: off by default; when on, opening the app asks for the
   device's biometrics or screen lock. Running tunnels are not affected.
 - Language: system (default), Russian, English.
+- Theme: system (default), light, dark.
 
 ### 10. Updates
 
@@ -205,7 +210,7 @@ build for the owner's phone.
 4. Restore after kill and reboot.
 5. QR enroll.
 6. Russian and English.
-7. Redesign of the remaining screens per the mockups; fingerprint unlock; snippets.
+7. Redesign of the remaining screens per the mockups, dark theme; fingerprint unlock; snippets.
 8. Release signing and in-app updates.
 
 Screens touched by stages 1–5 get the new look in the same stage.
