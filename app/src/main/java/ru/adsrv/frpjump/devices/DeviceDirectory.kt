@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.devices
 
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,12 +11,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.FrpJumpApi
+import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.OwnedDevice
 import ru.adsrv.frpjump.api.presenceOf
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.ui.userMessage
 import java.time.Instant
+
+private const val TAG = "DeviceDirectory"
 
 data class DeviceRow(
     val name: String,
@@ -34,6 +38,8 @@ data class DeviceList(
     /** The server has not answered since [updatedAt]. */
     val stale: Boolean = false,
     val error: String? = null,
+    /** [error] is a network failure, not an answer from the server. */
+    val unreachable: Boolean = false,
 )
 
 /**
@@ -72,19 +78,18 @@ class DeviceDirectory(
     var wanted = false
 
     /** Shows the cached list, unless the server has answered already. Reads storage: call off the main thread. */
-    fun restore() {
-        val credentials = store.load() ?: return
-        val cached = cache.load(credentials.controlUrl, credentials.deviceName) ?: return
-        _state.update { current ->
-            if (current.devices != null) return@update current
-            last = cached
-            val fetchedAt = Instant.ofEpochMilli(cached.fetchedAtMs)
-            current.copy(
-                devices = deviceRows(cached.devices, credentials.deviceName, fetchedAt, Instant.now(), stale = true),
-                updatedAt = fetchedAt,
-                stale = true,
-            )
-        }
+    suspend fun restore() = fetching.withLock {
+        if (_state.value.devices != null) return@withLock
+        val credentials = store.load() ?: return@withLock
+        val cached = cache.load(credentials.controlUrl, credentials.deviceName) ?: return@withLock
+        last = cached
+        val fetchedAt = Instant.ofEpochMilli(cached.fetchedAtMs)
+        // Keeps the error of a fetch that already failed: the banner shows at once.
+        _state.value = _state.value.copy(
+            devices = deviceRows(cached.devices, credentials.deviceName, fetchedAt, Instant.now(), stale = true),
+            updatedAt = fetchedAt,
+            stale = true,
+        )
     }
 
     /**
@@ -98,6 +103,8 @@ class DeviceDirectory(
         if (!fetching.tryLock()) return true
         try {
             val devices = api.devices(credentials)
+            // "Forget" or a new enrollment while the call was out: the answer is not this phone's any more.
+            if (store.load()?.apiToken != credentials.apiToken) return true
             val now = Instant.now()
             val fresh = CachedDeviceList(credentials.controlUrl, credentials.deviceName, now.toEpochMilli(), devices)
             last = fresh
@@ -105,7 +112,7 @@ class DeviceDirectory(
                 devices = deviceRows(devices, credentials.deviceName, now, now, stale = false),
                 updatedAt = now,
             )
-            withContext(Dispatchers.IO) { cache.save(fresh) }
+            saveQuietly(fresh)
             return true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -114,13 +121,14 @@ class DeviceDirectory(
             val known = last?.takeIf { it.controlUrl == credentials.controlUrl && it.deviceName == credentials.deviceName }
             _state.update {
                 if (known == null) {
-                    it.copy(error = e.userMessage())
+                    it.copy(error = e.userMessage(), unreachable = e is NetworkException)
                 } else {
                     val fetchedAt = Instant.ofEpochMilli(known.fetchedAtMs)
                     it.copy(
                         devices = deviceRows(known.devices, credentials.deviceName, fetchedAt, Instant.now(), stale = true),
                         stale = true,
                         error = e.userMessage(),
+                        unreachable = e is NetworkException,
                     )
                 }
             }
@@ -130,7 +138,21 @@ class DeviceDirectory(
         }
     }
 
-    /** Drops the list and its cache; for "Forget this phone". Waits for a fetch in flight so it cannot save the list back. */
+    /** The server answered; a full disk must not turn that into a failed poll. */
+    private suspend fun saveQuietly(list: CachedDeviceList) {
+        try {
+            withContext(Dispatchers.IO) { cache.save(list) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w(TAG, "device list not cached: ${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Drops the list and its cache; for "Forget this phone", after the
+     * credentials are gone so no later fetch can bring the list back. Waits
+     * for a fetch in flight.
+     */
     suspend fun forget() = fetching.withLock {
         last = null
         _state.value = DeviceList()

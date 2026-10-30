@@ -17,8 +17,10 @@ data class DevicesUiState(
     val devices: List<DeviceRow>? = null,
     val refreshing: Boolean = false,
     val error: String? = null,
-    /** Set while the list shown is an old one: when the server last answered. */
+    /** Set once a refresh of an old list failed: when the server last answered. */
     val staleSince: Instant? = null,
+    /** The failure is the network, not the server. */
+    val unreachable: Boolean = false,
 )
 
 /** The list itself is polled by the app ([ru.adsrv.frpjump.session.Poller]) while it is shown. */
@@ -30,7 +32,9 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
             devices = list.devices,
             refreshing = busy,
             error = list.error,
-            staleSince = list.updatedAt.takeIf { list.stale },
+            // A list restored at start is not a failure yet: no banner until a fetch fails.
+            staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
+            unreachable = list.unreachable,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
 

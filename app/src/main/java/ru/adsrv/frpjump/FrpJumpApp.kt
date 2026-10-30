@@ -132,7 +132,6 @@ class FrpJumpApp : Application() {
      */
     suspend fun forgetLocally(keepPorts: Boolean) {
         ssh.closeAll()
-        devices.forget()
         // Under the tunnel lock: no poll can restart frpc between the stop and the wipe.
         tunnels.shutdown {
             withContext(Dispatchers.IO) {
@@ -150,6 +149,8 @@ class FrpJumpApp : Application() {
         }
         // Logins to the devices' web UIs go with the rest.
         if (!keepPorts) clearWebData(null)
+        // After the wipe: a poll can no longer fetch and cache the list again.
+        devices.forget()
         session.clearRemoved()
     }
 }

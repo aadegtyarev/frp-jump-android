@@ -79,34 +79,43 @@ fun DevicesScreen(
             )
         },
     ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = state.refreshing,
-            onRefresh = vm::pull,
-            modifier = Modifier
+        Column(
+            Modifier
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                val staleSince = state.staleSince
-                if (staleSince != null) {
-                    item { OfflineBanner(staleSince, state.error, onRetry = vm::pull) }
-                } else state.error?.let { error ->
-                    item {
-                        Text(
-                            error,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                }
-                val devices = state.devices
-                if (devices != null && devices.isEmpty()) {
-                    item { Text("No other devices yet.", modifier = Modifier.padding(16.dp)) }
-                }
-                items(devices.orEmpty(), key = { it.name }) { device ->
-                    DeviceItem(device, onClick = { onOpen(device.name) })
-                    HorizontalDivider()
-                }
+            // Above the list, not in it: an item inserted before the first row would be scrolled out of sight.
+            val staleSince = state.staleSince
+            if (staleSince != null) {
+                OfflineBanner(staleSince, state.unreachable, state.error, onRetry = vm::pull)
+            } else state.error?.let { error ->
+                Text(
+                    error,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+            DeviceRows(state, vm::pull, onOpen)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeviceRows(state: DevicesUiState, onPull: () -> Unit, onOpen: (String) -> Unit) {
+    PullToRefreshBox(
+        isRefreshing = state.refreshing,
+        onRefresh = onPull,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            val devices = state.devices
+            if (devices != null && devices.isEmpty()) {
+                item { Text("No other devices yet.", modifier = Modifier.padding(16.dp)) }
+            }
+            items(devices.orEmpty(), key = { it.name }) { device ->
+                DeviceItem(device, onClick = { onOpen(device.name) })
+                HorizontalDivider()
             }
         }
     }
@@ -160,7 +169,7 @@ private fun DeviceItem(device: DeviceRow, onClick: () -> Unit) {
 
 /** The list is an old one: says since when, and why if known. Tap to try again. */
 @Composable
-private fun OfflineBanner(since: Instant, error: String?, onRetry: () -> Unit) {
+private fun OfflineBanner(since: Instant, unreachable: Boolean, error: String?, onRetry: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         shape = MaterialTheme.shapes.medium,
@@ -171,7 +180,8 @@ private fun OfflineBanner(since: Instant, error: String?, onRetry: () -> Unit) {
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(
-                "No connection to the server · updated ${shortTime(since)}",
+                (if (unreachable) "No connection to the server" else "The server returned an error") +
+                    " · updated ${shortTime(since)}",
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                 style = MaterialTheme.typography.titleSmall,
             )
