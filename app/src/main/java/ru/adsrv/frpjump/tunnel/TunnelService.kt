@@ -20,16 +20,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.MainActivity
 
 /**
- * Keeps the app process (and so frpc, its child) alive while at least one
- * tunnel is up, with a "N tunnels" notification and "Disconnect all".
- * It does not poll itself: the app's poller ([ru.adsrv.frpjump.session.Poller])
- * runs at the background interval while this keeps the process alive.
+ * Keeps the app process (and so every profile's frpc, its children) alive
+ * while at least one tunnel of any profile is up, with a "N tunnels"
+ * notification (all profiles together) and "Disconnect all" (all of them).
+ * It does not poll itself: the profiles' pollers ([ru.adsrv.frpjump.session.Poller])
+ * run at the background interval while this keeps the process alive.
  * Type `specialUse`: `dataSync` is capped at 6 h a day for apps
  * targeting Android 15, and none of the other types fit a user-started
  * tunnel.
@@ -42,16 +42,16 @@ class TunnelService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val tunnels = (application as FrpJumpApp).tunnels
+        val profiles = (application as FrpJumpApp).profiles
         // Always first, even when the tunnels are already gone: a service started with
         // startForegroundService() that stops before this crashes the app.
-        startInForeground(tunnels.state.value.tunnels.size)
+        startInForeground(profiles.tunnelCountNow())
         lastStartId = startId
-        if (intent?.action == ACTION_DISCONNECT_ALL) tunnels.disconnectAllAsync()
+        if (intent?.action == ACTION_DISCONNECT_ALL) profiles.disconnectAllAsync()
         if (watcher == null) {
             // The service stops itself when the last tunnel goes; nobody calls stopService().
             watcher = scope.launch {
-                tunnels.state.map { it.tunnels.size }.distinctUntilChanged().collect { count ->
+                profiles.tunnelCount.distinctUntilChanged().collect { count ->
                     if (count == 0) {
                         ServiceCompat.stopForeground(this@TunnelService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                         // Not if a newer start is on its way: that one is for new tunnels.

@@ -23,11 +23,15 @@ data class DevicesUiState(
     val unreachable: Boolean = false,
 )
 
-/** The list itself is polled by the app ([ru.adsrv.frpjump.session.Poller]) while it is shown. */
-class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
+/**
+ * The current profile's devices. The list itself is polled by the profile
+ * ([ru.adsrv.frpjump.session.Poller]) while it is shown.
+ */
+class DevicesViewModel(app: FrpJumpApp) : ViewModel() {
+    private val devices = checkNotNull(app.profiles.current) { "no current profile" }.devices
     private val refreshing = MutableStateFlow(false)
 
-    val state: StateFlow<DevicesUiState> = combine(app.devices.state, refreshing) { list, busy ->
+    val state: StateFlow<DevicesUiState> = combine(devices.state, refreshing) { list, busy ->
         DevicesUiState(
             devices = list.devices,
             refreshing = busy,
@@ -43,15 +47,15 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     /** The list is on screen (or not): the poller fetches it only then. */
     fun shown(visible: Boolean) {
-        app.devices.wanted = visible
-        if (visible) viewModelScope.launch { app.devices.refresh() }
+        devices.wanted = visible
+        if (visible) viewModelScope.launch { devices.refresh() }
     }
 
     /** Pull to refresh: waits for a fetch already in flight rather than skipping. */
     fun pull() {
         refreshing.value = true
         viewModelScope.launch {
-            app.devices.refresh(wait = true)
+            devices.refresh(wait = true)
             refreshing.value = false
         }
     }

@@ -1,7 +1,9 @@
 package ru.adsrv.frpjump.ui.settings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
@@ -27,12 +29,14 @@ data class SettingsUiState(
     /** The imported private key's public line, when there is one. */
     val importedKey: String? = null,
     val importError: String? = null,
+    /** Why the last "Forget" did not finish; shown next to it. */
+    val forgetError: String? = null,
 )
 
+/** Settings of the app and of the current profile. */
 class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
-    private val _state = MutableStateFlow(
-        app.store.load().let { SettingsUiState(serverUrl = it?.controlUrl.orEmpty(), deviceName = it?.deviceName.orEmpty()) },
-    )
+    private val profile = app.profiles.current
+    private val _state = MutableStateFlow(SettingsUiState())
     val state: StateFlow<SettingsUiState> = _state
 
     /** Background poll, relay only, local ports. */
@@ -54,6 +58,11 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     init {
+        viewModelScope.launch {
+            // The Keystore: off the main thread.
+            val credentials = withContext(Dispatchers.IO) { profile?.store?.load() }
+            _state.update { it.copy(serverUrl = credentials?.controlUrl.orEmpty(), deviceName = credentials?.deviceName.orEmpty()) }
+        }
         viewModelScope.launch {
             try {
                 val (line, imported) = withContext(Dispatchers.IO) {
@@ -95,33 +104,51 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     fun clearImportError() = _state.update { it.copy(importError = null) }
 
     /**
-     * Tell the server to delete this phone, then wipe it locally whatever the
-     * server said: offline the owner deletes the device from a laptop instead.
-     * 401/404 mean the server already has no such phone: nothing to tell.
-     * Runs in the app scope, so leaving the screen cannot stop it halfway.
+     * Forget the current profile: tell its server to delete this phone, then
+     * wipe the profile locally whatever the server said: offline the owner
+     * deletes the device from a laptop instead. 401/404 mean the server
+     * already has no such phone: nothing to tell. Runs in the app scope, so
+     * leaving the screen cannot stop it halfway. If the local wipe fails
+     * (Keystore, storage), the screen says so next to the button and
+     * "Forget" can be tried again.
      */
     fun forget(onForgotten: () -> Unit) {
+        val profile = profile ?: return
         if (_state.value.busy) return
-        _state.update { it.copy(busy = true) }
+        _state.update { it.copy(busy = true, forgetError = null) }
         val work = app.appScope.async {
-            val credentials = app.store.load()
-            if (credentials != null) {
-                try {
-                    app.api.deleteDevice(credentials, credentials.deviceName)
-                } catch (e: ApiException) {
-                    if (e.status != 401 && e.status != 404) app.session.postNotice(laptopNotice(credentials.deviceName, e))
-                } catch (e: Exception) {
-                    app.session.postNotice(laptopNotice(credentials.deviceName, e))
+            try {
+                val credentials = withContext(Dispatchers.IO) { profile.store.load() }
+                if (credentials != null) {
+                    try {
+                        app.api.deleteDevice(credentials, credentials.deviceName)
+                    } catch (e: ApiException) {
+                        if (e.status != 401 && e.status != 404) app.session.postNotice(laptopNotice(credentials.deviceName, e))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        app.session.postNotice(laptopNotice(credentials.deviceName, e))
+                    }
                 }
+                app.forgetProfile(profile.id, keepData = false)
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "forget failed: ${e.javaClass.simpleName}")
+                "Could not wipe this phone's data (${e.userMessage()}). Try again."
             }
-            app.forgetLocally(keepPorts = false)
         }
         viewModelScope.launch {
-            work.await()
-            onForgotten()
+            val failure = work.await()
+            if (failure == null) onForgotten() else _state.update { it.copy(busy = false, forgetError = failure) }
         }
     }
 
     private fun laptopNotice(name: String, e: Exception) =
         "The server was not told (${e.userMessage()}). Remove \"$name\" from a laptop: frp-jump-client devices delete $name"
+
+    private companion object {
+        const val TAG = "SettingsViewModel"
+    }
 }

@@ -9,7 +9,38 @@ Behaviour is defined in [docs/contract.md](docs/contract.md).
 
 Current stage: enrollment, the device list, tunnels from the device card, the
 in-app web view, the SSH terminal and settings (relay only, local ports,
-background checks, battery optimisation, SSH keys, "Forget this phone").
+background checks, battery optimisation, SSH keys, "Forget this phone"),
+with the data and runtime for several profiles (the switcher comes next).
+
+## Profiles
+
+A profile is one enrollment: a server, a device name, its token,
+certificate and key. Each profile has a random id; `profiles.json` in
+filesDir lists them in order with the current one (the one the app shows),
+and each profile's own files live in `profiles/<id>/`: the enrollment
+(sealed with a Keystore key of its own, `frpjump-profile-<id>`), the cached
+device list, custom ports, SSH logins and pinned host keys. Remembered SSH
+passwords are kept per profile too, in the shared, sealed `ssh_passwords.json`. Every profile
+runs its own poller and, while it has tunnels, its own frpc
+(`no_backup/frpc/<id>/`), so tunnels of several profiles are up at once.
+Shared by all profiles: settings, the local port map (one range, keyed by
+profile, device and port), the web view's last site and the SSH key.
+
+Enrolling adds a profile and shows it. "Forget this phone" in Settings
+forgets the current profile: its tunnels go, the server is told to delete
+it (offline: on the phone only), its directory and Keystore key are wiped,
+and the next profile is shown, or enrollment with none left. Forgetting the
+last profile also wipes the SSH key and passwords, as before, before the
+index drops it. Profile directories the index does not list (an add or a
+forget cut short) are deleted with their keys on the next start.
+
+Upgrading from 0.1.x makes the single enrollment the first profile on the
+first start, without re-enrolling: v1's files move into the profile's
+directory (each by an atomic rename, the enrollment keeps v1's Keystore key
+`frpjump-credentials`), the shared maps' keys get the profile's id, and the
+profile is listed. A marker (`profiles_migration.json`) holding the id is
+written first and removed last, so an upgrade interrupted at any point is
+finished on the next start.
 
 ## How tunnels work
 
@@ -21,26 +52,30 @@ background checks, battery optimisation, SSH keys, "Forget this phone").
   visitor pair per consumed grant, laid out as the Linux agent's
   `driver/frp/config.py` does, except frpc logs at `info` so the app can tell
   connecting / ready / direct / relayed / failed from its output.
-- Local ports come from 40000-40999 and stay with (device, port), so
-  `127.0.0.1:<port>` bookmarks keep working.
-- frpc runs from `nativeLibraryDir` as a child process; its config, cert, key
-  and CA are written 0600 into `no_backup/frpc/`. The key and the config are
+- Local ports come from 40000-40999 and stay with (profile, device, port),
+  so `127.0.0.1:<port>` bookmarks keep working and two profiles never share
+  a port.
+- frpc runs from `nativeLibraryDir` as a child process, one per profile with
+  tunnels; its config, cert, key and CA are written 0600 into
+  `no_backup/frpc/<profile id>/`. The key and the config are
   deleted whenever frpc stops or exits by itself, and on every app start (a
   killed process never got to delete them); "Forget this phone" deletes the
-  whole directory.
-- While at least one tunnel is up a foreground service (type `specialUse`)
-  keeps the process alive and shows "N tunnels" with "Disconnect all".
+  profile's directory.
+- While at least one tunnel of any profile is up a foreground service (type
+  `specialUse`) keeps the process alive and shows "N tunnels" (all profiles)
+  with "Disconnect all" (all profiles).
 
 ## Polling and background
 
-One loop in the app polls: heartbeat + desired state, plus the device list
-while it is on screen.
+Each profile has one poll loop: heartbeat + desired state, plus the device
+list while it is on screen.
 
-| App | Tunnels | Polls |
-| --- | --- | --- |
-| visible | any | every 2 s |
-| closed | up | at Settings > "Check the server in the background": Off (default), 30 s, 1 min, 5 min, 15 min |
-| closed | none | never |
+| Profile | App | Tunnels | Polls |
+| --- | --- | --- | --- |
+| current | visible | any | every 2 s |
+| current | closed | up | at Settings > "Check the server in the background": Off (default), 30 s, 1 min, 5 min, 15 min |
+| other | any | up | at the same background setting |
+| any | closed (or other) | none | never |
 
 The phone exposes nothing, so a background check only keeps it shown
 online (`last_seen`) and tears down tunnels disconnected elsewhere or of a
@@ -86,10 +121,10 @@ and port, `root` by default) and Key or Password, then opens a session to
   OpenSSH (or PEM) private key file and its passphrase; it is tried before
   the app's key. Private keys, passphrases and remembered passwords are
   sealed with a Keystore AES-GCM key of their own (`frpjump-ssh`), so
-  re-enrolling the phone keeps them; "Forget this phone" wipes them.
+  re-enrolling the phone keeps them; forgetting the last profile wipes them.
 - Password: kept only when "Remember on this phone" is ticked; a remembered
   password that is refused is dropped.
-- Host keys are pinned per (device name, target port) on first use, shown as
+- Host keys are pinned per (profile, device name, target port) on first use, shown as
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.
 - The terminal requests `xterm-256color` and sends `window-change` when the

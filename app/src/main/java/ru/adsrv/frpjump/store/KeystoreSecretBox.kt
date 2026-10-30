@@ -14,11 +14,22 @@ import javax.crypto.spec.GCMParameterSpec
 /** The Keystore no longer has the key: whatever was sealed with it is lost for good. */
 class KeyMissingException : Exception("the Keystore key is gone")
 
+/** Seals small secrets with one key; [destroy] makes everything sealed with it unreadable. */
+interface SecretBox {
+    fun seal(plain: String): String
+
+    fun open(sealed: String): String
+
+    /** Forget the key: anything sealed with it can no longer be opened. */
+    fun destroy()
+}
+
 /**
  * Seals small secrets with an AES-256-GCM key that lives in the Android
- * Keystore and never leaves it. Sealed form: `v1:<iv b64>:<ciphertext+tag b64>`.
+ * Keystore under [alias] and never leaves it. Sealed form:
+ * `v1:<iv b64>:<ciphertext+tag b64>`.
  */
-class KeystoreSecretBox(private val alias: String = "frpjump-credentials") {
+class KeystoreSecretBox(private val alias: String) : SecretBox {
     private val keyStore: KeyStore by lazy { KeyStore.getInstance(KEYSTORE).apply { load(null) } }
 
     /**
@@ -26,7 +37,7 @@ class KeystoreSecretBox(private val alias: String = "frpjump-credentials") {
      * replaced: sealing starts over, and anything sealed with the old key was
      * unreadable anyway.
      */
-    fun seal(plain: String): String {
+    override fun seal(plain: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         try {
             cipher.init(Cipher.ENCRYPT_MODE, key())
@@ -38,7 +49,7 @@ class KeystoreSecretBox(private val alias: String = "frpjump-credentials") {
         return "v1:${b64(cipher.iv)}:${b64(sealed)}"
     }
 
-    fun open(sealed: String): String {
+    override fun open(sealed: String): String {
         val parts = sealed.split(':')
         require(parts.size == 3 && parts[0] == "v1") { "unknown sealed format" }
         val key = keyStore.getKey(alias, null) as? SecretKey ?: throw KeyMissingException()
@@ -47,8 +58,7 @@ class KeystoreSecretBox(private val alias: String = "frpjump-credentials") {
         return String(cipher.doFinal(unb64(parts[2])), Charsets.UTF_8)
     }
 
-    /** Forget the key: anything sealed with it can no longer be opened. */
-    fun destroy() {
+    override fun destroy() {
         if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
     }
 

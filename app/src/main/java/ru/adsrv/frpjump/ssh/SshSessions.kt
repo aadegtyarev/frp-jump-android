@@ -8,14 +8,13 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import ru.adsrv.frpjump.ports.localPortKey
-import ru.adsrv.frpjump.tunnel.TunnelsState
+import ru.adsrv.frpjump.ports.profilePortKey
 
 /** What the terminal screen hears about the sessions it shows. */
 interface TerminalScreenListener {
@@ -32,7 +31,8 @@ interface TerminalScreenListener {
 class SshSessions(
     private val context: Context,
     private val env: SshEnvironment,
-    tunnels: StateFlow<TunnelsState>,
+    /** Every tunnel up, in all profiles, as [profilePortKey]s. */
+    tunnelsUp: Flow<Set<String>>,
     private val scope: CoroutineScope,
 ) {
     private val _sessions = MutableStateFlow<List<SshSession>>(emptyList())
@@ -47,15 +47,16 @@ class SshSessions(
 
     init {
         scope.launch(Dispatchers.Main) {
-            tunnels.map { state -> state.tunnels.map { it.key }.toSet() }.distinctUntilChanged().collect { up ->
-                _sessions.value.filter { localPortKey(it.device, it.port) !in up }.forEach { close(it.id, "The tunnel was closed.") }
+            tunnelsUp.distinctUntilChanged().collect { up ->
+                _sessions.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }
+                    .forEach { close(it.id, "The tunnel was closed.") }
             }
         }
     }
 
-    /** Opens a new session and starts connecting. Main thread. */
-    fun open(device: String, port: Int, localPort: Int, user: String, auth: SshAuth): SshSession {
-        val session = SshSession(nextId++, device, port, localPort, user, auth, env, scope, ClientForScreen())
+    /** Opens a new session to [device]:[port] of [profile] and starts connecting. Main thread. */
+    fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth): SshSession {
+        val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen())
         _sessions.update { it + session }
         session.connect()
         return session
@@ -65,7 +66,7 @@ class SshSessions(
     fun reconnect(id: Int): SshSession? {
         val old = _sessions.value.firstOrNull { it.id == id } ?: return null
         old.close()
-        val fresh = SshSession(nextId++, old.device, old.port, old.localPort, old.user, old.auth, env, scope, ClientForScreen())
+        val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, old.user, old.auth, env, scope, ClientForScreen())
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         fresh.connect()
         return fresh
@@ -78,6 +79,9 @@ class SshSessions(
     }
 
     fun closeAll() = _sessions.value.forEach { close(it.id) }
+
+    /** Closes the sessions of [profile] ("Forget profile"). */
+    fun closeProfile(profile: String) = _sessions.value.filter { it.profile == profile }.forEach { close(it.id) }
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
 

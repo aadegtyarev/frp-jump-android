@@ -75,7 +75,7 @@ import ru.adsrv.frpjump.web.webNavigationFor
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
+fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Unit) {
     val context = LocalContext.current
     val start = remember(localPort) { "http://127.0.0.1:$localPort/" }
     var title by remember { mutableStateOf(device) }
@@ -123,10 +123,10 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
         val first = if (generation == 0) start else url
         val sites = (context.applicationContext as FrpJumpApp).webSites
         var alive = true
-        if (sites.isOther(device, localPort)) {
+        if (sites.isOther(profile, device, localPort)) {
             // Another device (or port) than last time: its cookies must not reach this one.
             clearWebData(webView) {
-                sites.remember(device, localPort)
+                sites.remember(profile, device, localPort)
                 if (alive) webView.loadUrl(first)
             }
         } else {

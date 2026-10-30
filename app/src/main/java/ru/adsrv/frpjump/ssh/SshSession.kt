@@ -47,9 +47,8 @@ sealed interface SshState {
     data class Ended(val message: String) : SshState
 }
 
-/** What a session needs from the app. */
+/** What a session needs from the app, the same for every profile. */
 class SshEnvironment(
-    val hostKeys: HostKeyStore,
     val keys: SshKeyStore,
     val passwords: SshPasswords,
     /** The comment of the app's own key, e.g. `frp-jump@<phone>`. */
@@ -57,12 +56,15 @@ class SshEnvironment(
 )
 
 /**
- * One SSH shell to `127.0.0.1:<localPort>`, the tunnel to [device]:[port].
+ * One SSH shell to `127.0.0.1:<localPort>`, the tunnel to [device]:[port]
+ * of [profile], whose pinned keys are [hostKeys].
  * Lives in [SshSessions], not in a screen: leaving the terminal keeps it.
  * Construct on the main thread (the terminal binds to the main looper).
  */
 class SshSession(
     val id: Int,
+    val profile: String,
+    val hostKeys: HostKeyStore,
     val device: String,
     val port: Int,
     val localPort: Int,
@@ -98,7 +100,7 @@ class SshSession(
         val unknown = _state.value as? SshState.HostKeyUnknown ?: return
         _state.value = SshState.Connecting
         scope.launch(Dispatchers.IO) {
-            env.hostKeys.pin(device, port, unknown.presented)
+            hostKeys.pin(device, port, unknown.presented)
             connect()
         }
     }
@@ -108,7 +110,7 @@ class SshSession(
         if (_state.value !is SshState.HostKeyChanged) return
         _state.value = SshState.Connecting
         scope.launch(Dispatchers.IO) {
-            env.hostKeys.forget(device, port)
+            hostKeys.forget(device, port)
             connect()
         }
     }
@@ -133,7 +135,7 @@ class SshSession(
     }
 
     private suspend fun run() {
-        val verifier = PinningVerifier(env.hostKeys, device, port)
+        val verifier = PinningVerifier(hostKeys, device, port)
         val ssh = SSHClient(DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE })
         ssh.connectTimeout = CONNECT_TIMEOUT_MS
         ssh.addHostKeyVerifier(verifier)
@@ -204,13 +206,13 @@ class SshSession(
                 ssh.authPublickey(user, providers)
             }
             is SshAuth.Password -> {
-                val password = auth.typed ?: env.passwords.get(device, port, user)
+                val password = auth.typed ?: env.passwords.get(profile, device, port, user)
                     ?: throw UserAuthException("No remembered password for $user")
                 ssh.authPassword(user, password)
                 if (!auth.remember) {
-                    env.passwords.forget(device, port, user)
+                    env.passwords.forget(profile, device, port, user)
                 } else if (auth.typed != null) {
-                    env.passwords.remember(device, port, user, password)
+                    env.passwords.remember(profile, device, port, user, password)
                 }
             }
         }
@@ -221,7 +223,7 @@ class SshSession(
             "Add the public key from Settings to ~/.ssh/authorized_keys there, or log in with a password."
         is SshAuth.Password -> {
             // A remembered password that no longer works is not offered again.
-            env.passwords.forget(device, port, user)
+            env.passwords.forget(profile, device, port, user)
             "Wrong user name or password for \"$user\"."
         }
     }
