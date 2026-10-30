@@ -1,14 +1,12 @@
 package ru.adsrv.frpjump.store
 
 import android.security.keystore.KeyPermanentlyInvalidatedException
-import android.util.AtomicFile
 import android.util.Log
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
-import java.io.File
 import java.security.UnrecoverableKeyException
 import javax.crypto.AEADBadTagException
 
@@ -59,9 +57,11 @@ private data class StoredCredentials(
     @SerialName("server_port") val serverPort: Int,
 )
 
-/** One JSON file in the app's private filesDir. */
-class CredentialStore(filesDir: File, private val box: KeystoreSecretBox = KeystoreSecretBox()) {
-    private val file = AtomicFile(File(filesDir, "enrollment.json"))
+/**
+ * One profile's enrollment: one JSON file ([storage], `enrollment.json` in the
+ * profile's directory), the secrets in it sealed with the profile's own [box].
+ */
+class CredentialStore(private val storage: TextStorage, private val box: SecretBox) {
 
     @Volatile
     private var cached: Credentials? = null
@@ -77,9 +77,9 @@ class CredentialStore(filesDir: File, private val box: KeystoreSecretBox = Keyst
     @Synchronized
     fun state(): StoredEnrollment {
         cached?.let { return StoredEnrollment.Enrolled(it) }
-        if (!file.baseFile.exists()) return StoredEnrollment.NotEnrolled
         return try {
-            val s = WireJson.decodeFromString<StoredCredentials>(String(file.readFully(), Charsets.UTF_8))
+            val text = storage.read() ?: return StoredEnrollment.NotEnrolled
+            val s = WireJson.decodeFromString<StoredCredentials>(text)
             val c = Credentials(
                 controlUrl = s.controlUrl,
                 deviceId = s.deviceId,
@@ -118,21 +118,14 @@ class CredentialStore(filesDir: File, private val box: KeystoreSecretBox = Keyst
             serverAddr = c.serverAddr,
             serverPort = c.serverPort,
         )
-        val out = file.startWrite()
-        try {
-            out.write(WireJson.encodeToString(stored).toByteArray(Charsets.UTF_8))
-            file.finishWrite(out)
-        } catch (e: Exception) {
-            file.failWrite(out)
-            throw e
-        }
+        storage.write(WireJson.encodeToString(stored))
         cached = c
     }
 
     @Synchronized
     fun wipe() {
         cached = null
-        file.delete()
+        storage.delete()
         box.destroy()
     }
 

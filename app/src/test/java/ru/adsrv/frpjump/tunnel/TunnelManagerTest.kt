@@ -18,7 +18,7 @@ import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.ports.PortKind
-import ru.adsrv.frpjump.session.AppSession
+import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.ssh.MemoryStorage
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.store.StoredEnrollment
@@ -78,12 +78,13 @@ class TunnelManagerTest {
     private fun credentials(token: String) = Credentials("https://s", "id", "phone", token, "cert", "key", "ca", "relay", 7000)
 
     @Volatile private var stored: StoredEnrollment = StoredEnrollment.Enrolled(credentials("t1"))
-    private val session = AppSession()
+    private val session = ProfileSession()
     private val frpc = FakeFrpc()
     private val api = FakeApi()
     private val ports = MemoryStorage()
     private var serviceStarts = 0
     private val manager = TunnelManager(
+        profile = "p1",
         enrollment = { stored },
         api = api,
         session = session,
@@ -158,7 +159,7 @@ class TunnelManagerTest {
         assertFalse(frpc.running)
         assertTrue(frpc.wiped)
         assertEquals(StoredEnrollment.NotEnrolled, stored)
-        assertEquals(null, ports.text)
+        assertEquals(emptyMap<String, Int>(), LocalPortStore(ports).load())
         // Later polls find no credentials and start nothing.
         val applies = frpc.applies
         api.gate = null

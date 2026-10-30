@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,7 +26,7 @@ import ru.adsrv.frpjump.ports.LocalPortAllocator
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.wireProtocolFor
-import ru.adsrv.frpjump.session.AppSession
+import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
@@ -64,25 +65,29 @@ private data class Core(
 )
 
 /**
- * The phone's agent loop, after the Linux agent's `poller.sync_once`:
+ * One profile's agent loop, after the Linux agent's `poller.sync_once`:
  * heartbeat, fetch desired state, run frpc with one tunnel per consumed
  * grant. Desired state is the only source of truth for what runs; connect
  * and disconnect only ask the server and then sync.
  *
  * A protocol mismatch stops applying anything but leaves a running frpc
  * alone (`ProtocolMismatchError` in the agent). Polling is driven from
- * outside ([poll], by the app's poller); frpc keeps running between polls.
+ * outside ([poll], by the profile's poller); frpc keeps running between polls.
+ * Each profile has its own manager and its own frpc ([runner]).
  */
 class TunnelManager(
+    /** The profile's id: its local ports are kept under it. */
+    private val profile: String,
     /** The stored enrollment, read on every cycle ([ru.adsrv.frpjump.store.CredentialStore.state]). */
     private val enrollment: () -> StoredEnrollment,
     private val api: AgentApi,
-    private val session: AppSession,
+    private val session: ProfileSession,
+    /** Shared by all profiles' managers. */
     private val localPorts: LocalPortStore,
     private val runner: FrpcControl,
     /**
      * Starts the foreground service; false when Android refuses. It stops
-     * itself once no tunnel is listed ([TunnelService]).
+     * itself once no profile lists a tunnel ([TunnelService]).
      */
     private val startService: () -> Boolean,
 ) {
@@ -130,7 +135,7 @@ class TunnelManager(
     /** frpc's recent output, for diagnostics. */
     fun frpcLog(): List<String> = runner.recentLog()
 
-    /** One poll cycle (the app's [ru.adsrv.frpjump.session.Poller]); false when it failed. */
+    /** One poll cycle (the profile's [ru.adsrv.frpjump.session.Poller]); false when it failed. */
     suspend fun poll(): Boolean = syncOnce().ok
 
     /** One cycle; returns the desired state it applied, or null when it could not. */
@@ -178,8 +183,8 @@ class TunnelManager(
     }
 
     /**
-     * A 401 means the server no longer knows this token: the phone was
-     * deleted. Only for the token still stored: a late answer to a call made
+     * A 401 means the server no longer knows this token: the profile was
+     * deleted there. Only for the token still stored: a late answer to a call made
      * before "Forget" (or a re-enrollment) says nothing about the new one.
      */
     private fun noteRemoval(e: Exception, used: Credentials): Boolean {
@@ -271,14 +276,14 @@ class TunnelManager(
     }
 
     /**
-     * "Forget this phone": stop everything, drop frpc's files and the port
-     * map, then [wipeCredentials], all in one locked section: a poll that
-     * waits for the lock finds no credentials and starts nothing.
+     * "Forget profile": stop everything, drop frpc's files and the profile's
+     * local ports, then [wipeCredentials], all in one locked section: a poll
+     * that waits for the lock finds no credentials and starts nothing.
      */
     suspend fun shutdown(wipeCredentials: suspend () -> Unit) = syncing.withLock {
         withContext(Dispatchers.IO) {
             runner.wipe()
-            localPorts.wipe()
+            localPorts.removeProfile(profile)
         }
         core.value = Core()
         stopService()
@@ -287,10 +292,10 @@ class TunnelManager(
 
     private suspend fun apply(credentials: Credentials, desired: DesiredStateResponse) {
         val planned = withContext(Dispatchers.IO) {
-            val ports = localPorts.load()
-            val before = ports.toMap()
-            val plan = planTunnels(desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts)
-            if (ports != before) localPorts.save(ports)
+            // Under the shared map's lock: two profiles planning at once never pick the same port.
+            val plan = localPorts.update { ports ->
+                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts)
+            }
             if (plan.isEmpty()) {
                 runner.stop()
             } else {
@@ -301,6 +306,9 @@ class TunnelManager(
         core.update { it.copy(planned = planned) }
         if (planned.isEmpty()) stopService() else if (!serviceUp) serviceUp = startService()
     }
+
+    /** Stops this manager's background work for good (the profile was forgotten); call after [shutdown]. */
+    fun close() = scope.cancel()
 
     /** The service sees the tunnel count drop to zero and stops itself; start it again for the next one. */
     private fun stopService() {

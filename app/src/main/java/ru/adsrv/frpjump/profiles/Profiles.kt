@@ -1,0 +1,151 @@
+package ru.adsrv.frpjump.profiles
+
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.store.Credentials
+import ru.adsrv.frpjump.store.StoredEnrollment
+import ru.adsrv.frpjump.tunnel.TunnelsState
+
+data class ProfilesState(
+    /** False until [Profiles.load] has read (and, from v1, upgraded) the profiles. */
+    val loaded: Boolean = false,
+    /** Why loading failed; [Profiles.load] may be called again. */
+    val failure: String? = null,
+    val index: ProfileIndex = ProfileIndex(),
+    val runtimes: Map<String, ProfileRuntime> = emptyMap(),
+) {
+    /** The profile the app shows; null with no profiles. */
+    val current: ProfileRuntime? get() = index.current?.let(runtimes::get)
+}
+
+/**
+ * The app's profiles and one [ProfileRuntime] for each: every profile polls
+ * and runs its own tunnels, whichever one the app shows ([ProfilesState.current]).
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class Profiles(
+    private val store: ProfileStore,
+    private val open: (profile: Profile, store: ProfileStore, currentId: StateFlow<String?>) -> ProfileRuntime,
+) {
+    private val _state = MutableStateFlow(ProfilesState())
+    val state: StateFlow<ProfilesState> = _state
+    private val currentId = MutableStateFlow<String?>(null)
+
+    /** Serialises adding and forgetting profiles. */
+    private val changing = Mutex()
+
+    val current: ProfileRuntime? get() = _state.value.current
+
+    fun runtime(id: String): ProfileRuntime? = _state.value.runtimes[id]
+
+    /** Tunnels up in all profiles together. */
+    val tunnelCount: Flow<Int> = allTunnels { states -> states.values.sumOf { it.tunnels.size } }
+
+    fun tunnelCountNow(): Int = _state.value.runtimes.values.sumOf { it.tunnels.state.value.tunnels.size }
+
+    /** Every tunnel up, as [profilePortKey]s. */
+    val upTunnels: Flow<Set<String>> = allTunnels { states ->
+        states.flatMap { (id, s) -> s.tunnels.map { profilePortKey(id, it.device, it.port) } }.toSet()
+    }
+
+    private fun <T> allTunnels(summary: (Map<String, TunnelsState>) -> T): Flow<T> =
+        _state.map { it.runtimes }.distinctUntilChanged().flatMapLatest { runtimes ->
+            if (runtimes.isEmpty()) {
+                flowOf(summary(emptyMap()))
+            } else {
+                val ids = runtimes.keys.toList()
+                combine(ids.map { runtimes.getValue(it).tunnels.state }) { states -> summary(ids.zip(states).toMap()) }
+            }
+        }.distinctUntilChanged()
+
+    /**
+     * Reads the profiles (upgrading v1 data first) and starts a runtime for
+     * each. Storage: runs on the IO dispatcher. False when it failed.
+     */
+    suspend fun load(): Boolean = changing.withLock {
+        if (_state.value.loaded) return@withLock true
+        withContext(Dispatchers.IO) {
+            try {
+                val index = store.load()
+                publish(index, index.profiles.associate { it.id to open(it, store, currentId) })
+                true
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w(TAG, "profiles not loaded: ${e.javaClass.simpleName}")
+                _state.value = _state.value.copy(failure = e.javaClass.simpleName)
+                false
+            }
+        }
+    }
+
+    /**
+     * Stores a fresh enrollment: into the current profile when that one has
+     * no credentials (its server removed it, or v1 data without an
+     * enrollment), else as a new profile, which becomes the current one.
+     */
+    suspend fun enroll(credentials: Credentials): ProfileRuntime = changing.withLock {
+        withContext(Dispatchers.IO) {
+            val now = _state.value
+            val current = now.current
+            val profile = now.index.currentProfile
+            if (current != null && profile != null && current.store.state() is StoredEnrollment.NotEnrolled) {
+                store.fill(profile, credentials)
+                publish(store.index(), now.runtimes)
+                current
+            } else {
+                val added = store.add(credentials)
+                val runtime = open(added, store, currentId)
+                publish(store.index(), now.runtimes + (added.id to runtime))
+                runtime
+            }
+        }
+    }
+
+    /**
+     * "Forget profile" on this phone: stops its tunnels and, under the same
+     * lock as its polls, wipes its credentials and key. With [keepData] the
+     * profile stays, empty, for enrolling again (ports, logins, host keys
+     * kept); otherwise its directory goes and it leaves the list, the next
+     * profile becoming the current one.
+     */
+    suspend fun forget(id: String, keepData: Boolean) = changing.withLock {
+        val runtime = _state.value.runtimes[id] ?: return@withLock
+        runtime.tunnels.shutdown {
+            withContext(Dispatchers.IO) { if (keepData) runtime.store.wipe() else store.remove(id) }
+        }
+        // After the wipe: a poll can no longer fetch and cache the list again.
+        runtime.devices.forget()
+        if (keepData) {
+            runtime.session.clearRemoved()
+        } else {
+            runtime.close()
+            publish(store.index(), _state.value.runtimes - id)
+        }
+    }
+
+    /** "Disconnect all": every profile's tunnels. */
+    fun disconnectAllAsync() = _state.value.runtimes.values.forEach { it.tunnels.disconnectAllAsync() }
+
+    private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>) {
+        currentId.value = index.current
+        _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes)
+    }
+
+    private companion object {
+        const val TAG = "Profiles"
+    }
+}

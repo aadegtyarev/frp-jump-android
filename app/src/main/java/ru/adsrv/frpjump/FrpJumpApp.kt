@@ -4,153 +4,120 @@ import android.app.Application
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import ru.adsrv.frpjump.devices.DeviceDirectory
-import ru.adsrv.frpjump.devices.DeviceListCache
-import ru.adsrv.frpjump.session.Poller
-import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.api.FrpJumpApi
-import ru.adsrv.frpjump.ports.DevicePortsStore
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.profiles.ProfileRuntime
+import ru.adsrv.frpjump.profiles.ProfileShared
+import ru.adsrv.frpjump.profiles.ProfileStore
+import ru.adsrv.frpjump.profiles.Profiles
 import ru.adsrv.frpjump.session.AppSession
-import ru.adsrv.frpjump.ssh.HostKeyStore
+import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
-import ru.adsrv.frpjump.ssh.SshLoginMemory
 import ru.adsrv.frpjump.ssh.SshPasswords
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.installFullBouncyCastle
 import ru.adsrv.frpjump.store.AtomicTextFile
-import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.store.KeystoreSecretBox
-import ru.adsrv.frpjump.tunnel.FrpcRunner
-import ru.adsrv.frpjump.tunnel.TunnelManager
 import ru.adsrv.frpjump.tunnel.TunnelService
 import ru.adsrv.frpjump.ui.web.clearWebData
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
 class FrpJumpApp : Application() {
-    lateinit var store: CredentialStore
-        private set
     val api: FrpJumpApi by lazy { FrpJumpApi() }
-    lateinit var devicePorts: DevicePortsStore
-        private set
-    lateinit var tunnels: TunnelManager
-        private set
-    lateinit var sshLogins: SshLoginMemory
+    lateinit var profiles: Profiles
         private set
     lateinit var sshKeys: SshKeyStore
         private set
     lateinit var sshPasswords: SshPasswords
         private set
-    lateinit var hostKeys: HostKeyStore
-        private set
     lateinit var ssh: SshSessions
         private set
     lateinit var webSites: WebSiteMemory
-        private set
-    lateinit var devices: DeviceDirectory
-        private set
-    lateinit var poller: Poller
         private set
     lateinit var settings: SettingsStore
         private set
 
     val session = AppSession()
 
+    /** Set by the activity while it is started: the current profile then polls every 2 s. */
+    val visible = MutableStateFlow(false)
+
     /** Work that must finish even when the screen that started it goes away. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
-        store = CredentialStore(filesDir)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
-        devicePorts = DevicePortsStore(filesDir)
-        tunnels = TunnelManager(
-            enrollment = store::state,
+        val frpcRoot = File(noBackupFilesDir, "frpc")
+        val shared = ProfileShared(
             api = api,
-            session = session,
             localPorts = LocalPortStore(AtomicTextFile(File(filesDir, "local_ports.json"))),
-            // Shipped as a "native library": Android only allows exec from nativeLibraryDir.
-            runner = FrpcRunner(File(applicationInfo.nativeLibraryDir, "libfrpc.so"), File(noBackupFilesDir, "frpc")),
+            settings = settings.settings,
+            visible = visible,
+            frpcBinary = File(applicationInfo.nativeLibraryDir, "libfrpc.so"),
+            frpcRoot = frpcRoot,
             startService = { TunnelService.start(this) },
-        )
-        settings.settings.value.let {
-            tunnels.portRange = it.localPorts
-            tunnels.relayOnly = it.relayOnly
-        }
-        appScope.launch {
-            settings.settings.drop(1).collect {
-                tunnels.portRange = it.localPorts
-                tunnels.relayOnly = it.relayOnly
-                // Running tunnels pick the change up now; otherwise the next poll does.
-                if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.syncAsync()
-            }
-        }
-        devices = DeviceDirectory(store, api, session, DeviceListCache(AtomicTextFile(File(filesDir, "device_list.json"))))
-        // Keystore and disk: off the main thread. The list shows before the server answers.
-        appScope.launch(Dispatchers.IO) { devices.restore() }
-        poller = Poller(
             scope = appScope,
-            tunnelsUp = tunnels.state.map { it.tunnels.isNotEmpty() },
-            backgroundMs = settings.settings.map { it.backgroundPoll.ms },
-            removed = session.removed,
-        ) { visible ->
-            val synced = tunnels.poll()
-            val listed = if (visible && devices.wanted) devices.refresh() else true
-            synced && listed
+        )
+        val store = ProfileStore(filesDir, boxFor = ::KeystoreSecretBox, storageFor = ::AtomicTextFile)
+        profiles = Profiles(store) { profile, profileStore, currentId ->
+            ProfileRuntime(profile.id, profileStore.credentials(profile), profileStore.dir(profile.id), currentId, shared)
+        }
+        // Keystore and disk (and the v1 upgrade): off the main thread. The UI waits for it.
+        appScope.launch(Dispatchers.IO) {
+            // v1 kept one frpc's files right in here; each profile now has a directory of its own.
+            frpcRoot.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
+            profiles.load()
         }
         installFullBouncyCastle()
-        // Its own Keystore key: re-enrolling the phone must not lose the SSH key.
-        val sshBox = KeystoreSecretBox("frpjump-ssh")
-        sshLogins = SshLoginMemory(AtomicTextFile(File(filesDir, "ssh_logins.json")))
+        // Its own Keystore key, shared by all profiles: re-enrolling must not lose the SSH key.
+        val sshBox = KeystoreSecretBox(SSH_KEY_ALIAS)
         sshKeys = SshKeyStore(AtomicTextFile(File(filesDir, "ssh_keys.json")), sshBox)
         sshPasswords = SshPasswords(AtomicTextFile(File(filesDir, "ssh_passwords.json")), sshBox)
-        hostKeys = HostKeyStore(AtomicTextFile(File(filesDir, "ssh_host_keys.json")))
         webSites = WebSiteMemory(AtomicTextFile(File(filesDir, "web_site.json")))
         ssh = SshSessions(
             context = this,
-            env = SshEnvironment(hostKeys, sshKeys, sshPasswords, keyComment = ::sshKeyComment),
-            tunnels = tunnels.state,
+            env = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment),
+            tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
     }
 
-    /** The comment on the app's SSH public key: names the phone in `authorized_keys`. */
-    fun sshKeyComment(): String = "frp-jump@" + (store.load()?.deviceName ?: "android")
+    /** The comment on the app's SSH public key: names the phone in `authorized_keys`. Keystore: off the main thread. */
+    fun sshKeyComment(): String = "frp-jump@" + (profiles.current?.store?.load()?.deviceName ?: "android")
 
     /**
-     * Drop this phone's enrollment locally: stop frpc and the service, forget
-     * the device list, the local port map and the credentials. [keepPorts] keeps the owner's
-     * custom ports per device, the SSH key, logins, passwords and host
-     * keys, and the web views' cookies (re-enrolling the same owner after a
-     * removal).
+     * Forget profile [id] on this phone: close its SSH sessions, stop its
+     * frpc, wipe its credentials, key, lists and ports ([Profiles.forget]).
+     * [keepData] keeps the profile, empty, with its custom ports, logins and
+     * host keys (enrolling it again after its server removed it). Otherwise
+     * the web views' data goes too when it is this profile's, and with the
+     * last profile gone also the shared SSH key and passwords, as v1's
+     * "Forget this phone" did.
      */
-    suspend fun forgetLocally(keepPorts: Boolean) {
-        ssh.closeAll()
-        // Under the tunnel lock: no poll can restart frpc between the stop and the wipe.
-        tunnels.shutdown {
-            withContext(Dispatchers.IO) {
-                if (!keepPorts) {
-                    devicePorts.wipe()
-                    sshKeys.wipe()
-                    sshPasswords.wipe()
-                    sshLogins.wipe()
-                    hostKeys.wipe()
-                    KeystoreSecretBox("frpjump-ssh").destroy()
-                    webSites.forget()
-                }
-                store.wipe()
+    suspend fun forgetProfile(id: String, keepData: Boolean) {
+        ssh.closeProfile(id)
+        profiles.forget(id, keepData)
+        if (keepData) return
+        val noneLeft = profiles.state.value.index.profiles.isEmpty()
+        val clearWeb = withContext(Dispatchers.IO) {
+            if (noneLeft) {
+                sshKeys.wipe()
+                sshPasswords.wipe()
+                KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
             }
+            (noneLeft || webSites.belongsTo(id)).also { if (it) webSites.forget() }
         }
-        // Logins to the devices' web UIs go with the rest.
-        if (!keepPorts) clearWebData(null)
-        // After the wipe: a poll can no longer fetch and cache the list again.
-        devices.forget()
-        session.clearRemoved()
+        // Logins to the devices' web UIs go with the rest. The web view's classes: main thread.
+        if (clearWeb) clearWebData(null)
+    }
+
+    private companion object {
+        const val SSH_KEY_ALIAS = "frpjump-ssh"
     }
 }

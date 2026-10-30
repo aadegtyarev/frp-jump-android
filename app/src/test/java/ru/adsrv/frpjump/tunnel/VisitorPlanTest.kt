@@ -27,36 +27,36 @@ class VisitorPlanTest {
              ]}
         """
         val desired = WireJson.decodeFromString<DesiredStateResponse>(body)
-        val ports = mutableMapOf("wb:22" to 40500)
-        val plan = planTunnels(desired.consumed, ports, allocator, heldByFrpc = emptySet())
+        val ports = mutableMapOf("p1/wb:22" to 40500)
+        val plan = planTunnels("p1", desired.consumed, ports, allocator, heldByFrpc = emptySet())
         assertEquals(
             listOf(VisitorSpec("g1", "s1", 40000), VisitorSpec("g2", "s2", 40500)),
             plan.map { it.visitor() },
         )
-        assertEquals(mapOf("wb:22" to 40500, "wb:80" to 40000), ports)
+        assertEquals(mapOf("p1/wb:22" to 40500, "p1/wb:80" to 40000), ports)
     }
 
     @Test
     fun `a new grant for the same device and port reuses the local port`() {
         val ports = mutableMapOf<String, Int>()
-        val first = planTunnels(listOf(grant("g1", "wb", 80)), ports, allocator, emptySet())
+        val first = planTunnels("p1", listOf(grant("g1", "wb", 80)), ports, allocator, emptySet())
         // Disconnected, then connected again: the server issues a new grant id.
-        val again = planTunnels(listOf(grant("g9", "wb", 80)), ports, allocator, emptySet())
+        val again = planTunnels("p1", listOf(grant("g9", "wb", 80)), ports, allocator, emptySet())
         assertEquals(first.single().localPort, again.single().localPort)
     }
 
     @Test
     fun `ports the running frpc holds are not probed`() {
-        val ports = mutableMapOf("wb:80" to 40000)
+        val ports = mutableMapOf("p1/wb:80" to 40000)
         busy += 40000
-        val plan = planTunnels(listOf(grant("g1", "wb", 80)), ports, allocator, heldByFrpc = setOf(40000))
+        val plan = planTunnels("p1", listOf(grant("g1", "wb", 80)), ports, allocator, heldByFrpc = setOf(40000))
         assertEquals(40000, plan.single().localPort)
     }
 
     @Test
     fun `no consumed grants, no tunnels, ports kept`() {
-        val ports = mutableMapOf("wb:80" to 40000)
-        assertEquals(emptyList<PlannedTunnel>(), planTunnels(emptyList(), ports, allocator, emptySet()))
-        assertEquals(mapOf("wb:80" to 40000), ports)
+        val ports = mutableMapOf("p1/wb:80" to 40000)
+        assertEquals(emptyList<PlannedTunnel>(), planTunnels("p1", emptyList(), ports, allocator, emptySet()))
+        assertEquals(mapOf("p1/wb:80" to 40000), ports)
     }
 }

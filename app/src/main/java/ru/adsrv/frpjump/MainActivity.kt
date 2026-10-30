@@ -16,15 +16,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // The app's poller runs every 2 s while this is visible (see Poller).
-        val poller = (application as FrpJumpApp).poller
+        // The current profile polls every 2 s while this is visible (see Poller).
+        val visible = (application as FrpJumpApp).visible
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                poller.visible.value = true
+                visible.value = true
                 try {
                     awaitCancellation()
                 } finally {
-                    poller.visible.value = false
+                    visible.value = false
                 }
             }
         }

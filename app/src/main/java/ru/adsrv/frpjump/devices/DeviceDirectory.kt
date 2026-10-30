@@ -14,7 +14,7 @@ import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.OwnedDevice
 import ru.adsrv.frpjump.api.presenceOf
-import ru.adsrv.frpjump.session.AppSession
+import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.ui.userMessage
 import java.time.Instant
@@ -55,14 +55,14 @@ fun deviceRows(devices: List<OwnedDevice>, ownName: String, fetchedAt: Instant, 
     }
 
 /**
- * The owner's other devices, fetched by the app's poller while the list is
- * on screen ([wanted]) and on pull to refresh. The last answer is kept in
+ * One profile's devices, fetched by its poller while the list is on screen
+ * ([wanted]) and on pull to refresh. The last answer is kept in
  * [cache] and shown, marked stale, until the server answers again.
  */
 class DeviceDirectory(
     private val store: CredentialStore,
     private val api: FrpJumpApi,
-    private val session: AppSession,
+    private val session: ProfileSession,
     private val cache: DeviceListCache,
 ) {
     private val _state = MutableStateFlow(DeviceList())
@@ -94,7 +94,7 @@ class DeviceDirectory(
 
     /**
      * One fetch; skipped when another is still in flight unless [wait].
-     * False when it failed. A 401 means the server deleted this phone.
+     * False when it failed. A 401 means the server deleted this profile's device.
      */
     suspend fun refresh(wait: Boolean = false): Boolean {
         if (wait) fetching.withLock { }
@@ -149,7 +149,7 @@ class DeviceDirectory(
     }
 
     /**
-     * Drops the list and its cache; for "Forget this phone", after the
+     * Drops the list and its cache; for "Forget profile", after the
      * credentials are gone so no later fetch can bring the list back. Waits
      * for a fetch in flight.
      */

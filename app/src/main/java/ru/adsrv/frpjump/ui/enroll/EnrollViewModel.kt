@@ -54,7 +54,7 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
                 return@launch
             }
             try {
-                app.store.save(
+                app.profiles.enroll(
                     Credentials(
                         controlUrl = line.controlUrl,
                         deviceId = r.deviceId,

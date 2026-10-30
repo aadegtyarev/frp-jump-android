@@ -8,12 +8,23 @@ import java.net.ServerSocket
 class NoFreePortException(range: IntRange) :
     Exception("No free local port in ${range.first}-${range.last}.")
 
-/** Key of the persisted local port map: one entry per remote (device, port). */
+/** A remote (device, port) within one profile: what a tunnel is listed and looked up by. */
 fun localPortKey(device: String, port: Int) = "$device:$port"
 
 /**
+ * Key of the persisted local port map, shared by all profiles: one entry per
+ * profile and remote (device, port), so two profiles never get the same
+ * local port even for devices of the same name. Profile ids are UUIDs, so
+ * the prefix up to the first `/` is always the profile.
+ */
+fun profilePortKey(profile: String, device: String, port: Int) = "$profile/${localPortKey(device, port)}"
+
+/** The prefix every key of [profile] starts with. */
+fun profilePortPrefix(profile: String) = "$profile/"
+
+/**
  * Picks local ports for consumed grants and keeps them stable per
- * (device, port), as the Linux agent's `_allocate_local_port` does per grant:
+ * (profile, device, port), as the Linux agent's `_allocate_local_port` does per grant:
  * a dedicated range, ports already promised to another key skipped, the rest
  * probed by binding. Binding first is still a race with whatever grabs the
  * port before frpc does, but a range away from the ephemeral ports makes
