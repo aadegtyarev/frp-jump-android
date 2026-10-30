@@ -2,7 +2,15 @@ package ru.adsrv.frpjump.ui
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -26,6 +34,7 @@ private object Routes {
     const val DEVICE = "device/{name}"
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
+    const val REMOVED = "removed"
     fun device(name: String) = "device/${Uri.encode(name)}"
 }
 
@@ -34,7 +43,31 @@ fun AppNav() {
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val nav = rememberNavController()
     val start = remember { routeFor(app.store.state()) }
+    val removed by app.session.removed.collectAsStateWithLifecycle()
+    // The server rejected this phone's token: polling has stopped; say so wherever we are.
+    LaunchedEffect(removed) {
+        if (removed && nav.currentDestination?.route != Routes.REMOVED) nav.replaceAll(Routes.REMOVED)
+    }
     NavHost(navController = nav, startDestination = start) {
+        composable(Routes.REMOVED) {
+            var busy by remember { mutableStateOf(false) }
+            val scope = rememberCoroutineScope()
+            MessageScreen(
+                title = "frp-jump",
+                text = "This phone was removed from the server. Its tunnels are stopped.",
+                action = "Enroll again",
+                busy = busy,
+                onAction = {
+                    busy = true
+                    // The wipe runs in the app scope: it finishes even if this screen goes away.
+                    val wipe = app.appScope.async { app.forgetLocally(keepPorts = true) }
+                    scope.launch {
+                        wipe.await()
+                        nav.replaceAll(Routes.ENROLL)
+                    }
+                },
+            )
+        }
         composable(Routes.STORAGE) {
             MessageScreen(
                 title = "frp-jump",

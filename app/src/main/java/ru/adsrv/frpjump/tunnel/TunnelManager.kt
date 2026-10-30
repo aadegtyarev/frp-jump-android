@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
@@ -25,6 +27,8 @@ import ru.adsrv.frpjump.ports.LocalPortAllocator
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.wireProtocolFor
+import ru.adsrv.frpjump.session.AppSession
+import ru.adsrv.frpjump.session.PollBackoff
 import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
@@ -78,6 +82,7 @@ class TunnelManager(
     private val context: Context,
     private val store: CredentialStore,
     private val api: FrpJumpApi,
+    private val session: AppSession,
     private val localPorts: LocalPortStore,
     frpcBinary: File,
     workDir: File,
@@ -115,32 +120,48 @@ class TunnelManager(
     /** frpc's recent output, for diagnostics. */
     fun frpcLog(): List<String> = runner.log.snapshot()
 
-    /** Syncs now, then every [intervalMs] until cancelled. */
+    /**
+     * Syncs now, then every [intervalMs] until cancelled; after failures it
+     * waits 10 s, then 30 s ([PollBackoff]). Paused while the server has
+     * removed this phone ([AppSession.removed]).
+     */
     suspend fun pollEvery(intervalMs: Long) {
+        val backoff = PollBackoff()
         while (true) {
-            sync()
-            delay(intervalMs)
+            session.removed.first { !it }
+            delay(backoff.next(syncOnce().ok, intervalMs))
         }
     }
 
     /** One cycle; returns the desired state it applied, or null when it could not. */
-    suspend fun sync(): DesiredStateResponse? = syncing.withLock {
-        val credentials = store.load() ?: return null
+    suspend fun sync(): DesiredStateResponse? = syncOnce().desired
+
+    private class SyncResult(val desired: DesiredStateResponse?, val ok: Boolean)
+
+    private suspend fun syncOnce(): SyncResult = syncing.withLock {
+        val credentials = store.load() ?: return SyncResult(null, ok = true)
+        if (session.removed.value) return SyncResult(null, ok = true)
         try {
             api.heartbeat(credentials)
             val desired = api.desiredState(credentials)
             apply(credentials, desired)
             core.update { it.copy(syncError = null, mismatch = null) }
-            desired
+            SyncResult(desired, ok = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ProtocolMismatchException) {
             core.update { it.copy(mismatch = e.message) }
-            null
+            SyncResult(null, ok = false)
         } catch (e: Exception) {
+            noteRemoval(e)
             core.update { it.copy(syncError = e.userMessage()) }
-            null
+            SyncResult(null, ok = false)
         }
+    }
+
+    /** A 401 means the server no longer knows this token: the phone was deleted. */
+    private fun noteRemoval(e: Exception) {
+        if (e is ApiException && e.status == 401) session.markRemoved()
     }
 
     fun connectAsync(device: String, port: DevicePort) = scope.launch { connect(device, port) }
@@ -171,6 +192,7 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            noteRemoval(e)
             fail(key, e.userMessage())
         } finally {
             end(key)
@@ -187,6 +209,7 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            noteRemoval(e)
             fail(key, e.userMessage())
         } finally {
             end(key)

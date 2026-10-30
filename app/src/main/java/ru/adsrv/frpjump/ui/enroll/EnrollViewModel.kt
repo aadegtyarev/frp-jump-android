@@ -24,7 +24,7 @@ data class EnrollUiState(
 )
 
 class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
-    private val _state = MutableStateFlow(EnrollUiState(notice = app.notice.also { app.notice = null }))
+    private val _state = MutableStateFlow(EnrollUiState(notice = app.session.takeNotice()))
     val state: StateFlow<EnrollUiState> = _state
 
     fun onText(text: String) = _state.update { it.copy(text = text, error = null) }

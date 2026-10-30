@@ -3,6 +3,8 @@ package ru.adsrv.frpjump.ui.devices
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -10,7 +12,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.OwnedDevice
+import ru.adsrv.frpjump.session.PollBackoff
 import ru.adsrv.frpjump.api.presenceOf
 import ru.adsrv.frpjump.ui.userMessage
 import java.time.Instant
@@ -29,18 +33,34 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     val state: StateFlow<DevicesUiState> = _state
     private val fetching = Mutex()
 
-    /** One fetch; skipped when another is still in flight. */
-    suspend fun refresh() {
-        val credentials = app.store.load() ?: return
-        if (!fetching.tryLock()) return
+    /**
+     * One fetch; skipped when another is still in flight. False when it
+     * failed. A 401 means the server deleted this phone: polling stops.
+     */
+    suspend fun refresh(): Boolean {
+        val credentials = app.store.load() ?: return true
+        if (app.session.removed.value) return true
+        if (!fetching.tryLock()) return true
         try {
             val devices = app.api.devices(credentials)
             _state.update { it.copy(devices = rows(devices, credentials.deviceName), error = null) }
+            return true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            if (e is ApiException && e.status == 401) app.session.markRemoved()
             _state.update { it.copy(error = e.userMessage()) }
+            return false
         } finally {
             fetching.unlock()
+        }
+    }
+
+    /** Polls while called from a visible screen, backing off after failures. */
+    suspend fun pollEvery(intervalMs: Long) {
+        val backoff = PollBackoff()
+        while (true) {
+            app.session.removed.first { !it }
+            delay(backoff.next(refresh(), intervalMs))
         }
     }
 

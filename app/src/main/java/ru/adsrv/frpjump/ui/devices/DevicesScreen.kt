@@ -33,7 +33,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.delay
 
 private const val POLL_MS = 2_000L
 
@@ -44,12 +43,7 @@ fun DevicesScreen(vm: DevicesViewModel, onOpen: (String) -> Unit, onSettings: ()
     val lifecycleOwner = LocalLifecycleOwner.current
     // Poll only while this screen is visible; stops when backgrounded or covered.
     LaunchedEffect(lifecycleOwner) {
-        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                vm.refresh()
-                delay(POLL_MS)
-            }
-        }
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.pollEvery(POLL_MS) }
     }
     Scaffold(
         topBar = {
