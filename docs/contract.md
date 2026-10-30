@@ -1,10 +1,12 @@
 # frp-jump for Android — contract
 
 An Android app that is a frp-jump device of its own: it lists the owner's other
-devices and opens their web UI or an SSH console through frp-jump tunnels. It
-only consumes ports; it never exposes anything of the phone.
+devices and opens their web UI, an SSH console or any TCP port through frp-jump
+tunnels. It only consumes ports; it never exposes anything of the phone.
 
-Status: draft for the owner's review. Nothing is built yet.
+Status: v2 draft for the owner's review. v1 (0.1.x) is built and in use; this
+version describes 0.2. UX mockups:
+<https://claude.ai/artifact/VpVcDh67SR2EXqDkvBo5uo>.
 
 ## Scope
 
@@ -12,126 +14,212 @@ Status: draft for the owner's review. Nothing is built yet.
 - Works against the existing frp-jump server, wire protocol version 1, frp 0.70.0.
   No server changes.
 - All devices reached are the owner's own (the server only allows that).
+- UI in Russian and English.
 
-Out of scope for v1: exposing phone ports, other people's devices, key-based
-enrollment, admin commands, Google Play, x86/armv7 builds.
+Out of scope for v2: exposing phone ports, other people's devices, key-based
+enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
+
+## What changes from v1
+
+| Area | v1 | v2 |
+| --- | --- | --- |
+| Accounts | one enrollment | profiles: several enrollments, tunnels from all at once |
+| Ports | presets Web/SSH + added ports | named connections to any port, a tab listing all of them |
+| Without network | empty screen | last known lists, marked "no connection" |
+| P2P | silent fallback to relay | try direct, then work through the server and offer a retry |
+| Direct tunnel | drops when idle | kept open while the connection is up |
+| Process killed / phone rebooted | tunnels gone until the app is opened | tunnels come back by themselves |
+| Enroll | paste the line | paste the line or scan a QR code of it |
+| Language | English | Russian and English, follows the system |
+| Builds | debug APK | signed release APK, update check in the app |
+| Look | default Material | redesign per the mockups |
 
 ## Scenarios
 
-### 1. First run: enroll the phone
+### 1. Enroll a profile
+
+A profile is one enrollment: one server, one device name, its own token,
+certificate and key. The owner may have several, for example "Work" and
+"Home", which are different users on the same or different servers.
 
 1. On a laptop: `frp-jump-client devices add-token --name phone`.
-2. In the app: paste the line the server or client printed as is,
-   `frp-jump-client enroll https://tunnel.example.com <token> [--name phone]`.
-   The app takes the URL (`https://` only), the token and the optional name
-   from it; a bare `<url> <token>` works too. Line breaks and extra spaces
-   are ignored (the CLI wraps the line in a narrow terminal). Later: scan a QR code of the
-   same line.
-3. App calls `POST /api/agent/enroll`, stores the device token, certificate, key
-   and CA in app-private storage encrypted with an Android Keystore key.
-4. App opens the device list.
+2. In the app, "Add profile": scan a QR code of the enroll line, or paste the
+   line as is (`frp-jump-client enroll https://… <token> [--name phone]`;
+   a bare `<url> <token>` works too; line breaks and extra spaces are ignored).
+3. The owner gives the profile a name and a colour (prefilled from the server
+   host). The app calls `POST /api/agent/enroll` and stores the credentials
+   encrypted with a Keystore key.
+4. The profile opens with its device list.
 
 Errors shown as they are: bad or used token, unreachable server, protocol
-version mismatch ("update the app" or "update the server").
+version mismatch.
 
-### 2. Device list
+The single v1 enrollment becomes the first profile on upgrade, nothing to
+re-enroll.
+
+### 2. Switching profiles
+
+- The device list shows one profile at a time; a switcher at the top changes it.
+- The visible profile polls every 2 s while the app is open. Other profiles
+  poll only while they have tunnels up, at the background interval.
+- "Connections" and the notification show tunnels of all profiles, each
+  marked with its profile colour.
+
+### 3. Device list and offline
 
 - `GET /api/agent/devices`: name, online (last seen < 30 s), last seen time,
   disabled flag. The phone itself is not listed.
-- Pull to refresh; refreshed every poll while the app is open.
-- Tapping a device opens its card.
+- The last answer is kept on the phone per profile. On start the app shows it
+  at once, then refreshes.
+- No answer from the server: the list stays, a banner says "No connection to
+  the server · last update <time>", devices show their last known state
+  marked as possibly stale. Saved connections are still listed and can be
+  opened when the network returns.
+- Pull to refresh; the banner goes away on the first good answer.
 
-### 3. Device card
+### 4. Device card and named connections
 
-- Ports remembered for this device: presets "Web" (80) and "SSH" (22), plus
-  ports the owner adds (port, name, kind: web / ssh / tcp).
-- Each port: Connect / Disconnect, state (connecting, direct, relayed, failed),
-  the local address `127.0.0.1:<port>`.
-- Web → in-app WebView on `http://127.0.0.1:<port>`; button "open in browser".
-- SSH → built-in terminal (scenario 4); fallback button "open in external app"
-  (`ssh://user@127.0.0.1:<port>` intent for Termius / JuiceSSH).
-- TCP → shows and copies the local address.
+- A connection is: device, port on the device, kind (web / SSH / TCP), name,
+  plus for web the HTTPS flag and for SSH the user.
+- "New connection": pick kind, type a port or tap a preset (web: 80, 443,
+  8080, 1880, 3000; SSH: 22, 2222; TCP: 1883, 502, 5432), give a name, and
+  optionally "connect now".
+- Several connections to the same device and port are allowed under different
+  names (for example SSH as root and as another user).
+- Rename, change and delete a connection from the card or the Connections tab.
+- Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
+  first visit. SSH → built-in terminal. TCP → shows and copies the local address.
 
-### 4. SSH console
+### 5. Connections tab
 
-- Built-in terminal: login by user + key or password.
-- The app generates one ed25519 key; its public half can be copied or shared.
-  Optionally import a private key from a file.
-- Host keys pinned per device+port on first use; a changed key blocks the
-  connection with a warning.
-- Passwords are not stored unless the owner ticks "remember" (Keystore-encrypted).
-- Several sessions at once, switchable.
+- All saved connections of all profiles; active ones on top with their state
+  and local address, the rest below with a connect button.
+- "Disconnect all".
 
-### 5. Connect / disconnect
+### 6. Direct or through the server
 
-- Connect: `POST /api/agent/connect {device_name, target_port, protocol}`,
-  then poll `desired-state` until the grant appears, write frpc config, start or
-  reload frpc. The local port is picked by the app from its range and kept per
-  device+port, so bookmarks stay valid.
-- Disconnect: `POST /api/agent/disconnect`; the exposing side tears its end down
-  on its next poll.
-- "Disconnect all" in the app and in the notification.
+- Setting "Direct connection (P2P)", on by default.
+- On: connecting shows "Trying direct…" for up to 10 s. Success shows
+  "Direct".
+- Direct failed: the connection works through the server right away, the
+  card says "Through the server", and a notification "Direct didn't work:
+  <name>" offers "Retry direct" and "Keep through the server". The second
+  one stops offering for this device on the current network (Wi-Fi name or
+  mobile) until the owner retries from the card.
+- A direct tunnel that drops mid-session falls back to the server the same
+  way, with the same notification.
+- Tapping the state on the card offers the same two actions.
+- Off: always through the server, no attempts, no notifications.
+- While a connection is up, its direct tunnel is kept open so it does not
+  drop after idle.
 
-### 6. Background
+### 7. SSH console
 
-- While the app is in the foreground: poll every 2 s (heartbeat + desired-state).
+As in v1: user + key or password, one generated ed25519 key per phone (shared
+by all profiles), host keys pinned per profile+device+port, passwords stored
+only on "remember", several sessions at once. New: a row of snippets (saved
+commands, owner-defined) above the extra keys.
+
+### 8. Background, kill and reboot
+
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
-  notification ("N tunnels", "Disconnect all"). This does not depend on the
-  background-poll setting.
-- Background poll setting: off (default) / 30 s / 1 min / 5 min / 15 min,
-  used while tunnels are up (the foreground service keeps the process).
-  Off: no polling with the app closed; tunnels already up keep running, but
-  changes made elsewhere are picked up only when the app is opened.
-- No tunnels: nothing runs when the app is closed, whatever the setting. A
-  background poll only keeps `last_seen` fresh and tears down tunnels
-  removed elsewhere; with no tunnels there is nothing to tear down.
+  notification ("N tunnels in M profiles", "Open", "Disconnect all").
+- Background poll interval: off / 30 s / 1 min / 5 min / 15 min, as in v1.
+- If Android kills the process, or the phone reboots, while tunnels were up:
+  the service starts again by itself and brings back the same connections on
+  the same local ports. "Disconnect all" or disconnecting the last tunnel
+  clears this.
+- The app points to the battery-optimisation exemption when the system may
+  stop the service.
 
-### 7. Settings
+### 9. Settings
 
-- Server URL, device name (read-only), background poll interval, local port range.
-- "Forget this phone": disconnects everything, calls
-  `POST /api/agent/devices/<own name>/delete`, then wipes local credentials.
-  Works offline too: then only the local wipe, and the owner deletes the device
-  from a laptop.
+Grouped as in the mockup: profile (name and colour, forget profile); tunnels
+(direct connection, local port range); background (poll interval, battery);
+security (phone SSH key, unlock with fingerprint); app (language, version and
+update).
+
+- "Forget profile": disconnects its tunnels, deletes the phone from that
+  server (offline: local wipe only), wipes its credentials and cached lists.
+- Fingerprint unlock: off by default; when on, opening the app asks for the
+  device's biometrics or screen lock. Running tunnels are not affected.
+- Language: system (default), Russian, English.
+
+### 10. Updates
+
+- Release APKs are signed with one release key kept outside the repository.
+- The app checks for a newer release on start and at most once a day, shows
+  "Update to x.y.z", downloads the APK and hands it to the system installer.
+  Nothing is installed without the owner's tap.
+- Where releases are published: see open decisions.
 
 ## Wire behaviour the app must match
 
-- Bearer token on every `/api/agent/*` call; `protocol_version` checked on every
-  response, a mismatch stops applying changes but leaves running tunnels alone.
-- frpc config as the Linux agent builds it (`driver/frp/config.py`): TLS block
-  with the device cert/key/CA, `metadatas.frp_jump_device` / `frp_jump_token`,
-  heartbeat 5 s / timeout 30 s; per consumed grant an `stcp` visitor plus an
-  `xtcp` visitor with `fallbackTo` the stcp one, both `useEncryption`, bound on
-  127.0.0.1 only. A "relay only" switch in settings (like `set-p2p`) keeps just
-  the stcp visitor.
+- Bearer token on every `/api/agent/*` call; `protocol_version` checked on
+  every response, a mismatch stops applying changes but leaves running tunnels
+  alone.
+- One frpc process per profile with tunnels up (each has its own certificate).
+- frpc config as the Linux agent builds it (`driver/frp/config.py`): TLS block,
+  `metadatas.frp_jump_device` / `frp_jump_token`, heartbeat 5 s / timeout
+  30 s; per grant an `stcp` visitor plus, when direct is on, an `xtcp`
+  visitor with `fallbackTo` the stcp one; both `useEncryption`, bound on
+  127.0.0.1 only. Config changes are applied by hot reload.
 - frpc is the upstream 0.70.0 built for android/arm64 and shipped inside the APK.
 
 ## Stored on the phone
 
 | What | Where |
 | --- | --- |
-| Device token, cert, key, CA | app-private files, encrypted with a Keystore key |
+| Per profile: device token, cert, key, CA | app-private files, encrypted with a Keystore key |
 | SSH private key, remembered passwords | same |
-| Server URL, device list cache, ports per device, local port map, host keys, settings | app-private database |
+| Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, settings | app-private storage |
 
-Nothing leaves the phone except calls to the frp-jump server and the tunnels.
+Nothing leaves the phone except calls to the frp-jump servers, the tunnels and
+the update check.
+
+## Delivery
+
+Each stage is a separate PR, reviewed and checked on the emulator, then a
+build for the owner's phone.
+
+1. Profiles and the offline cache, with the v1 upgrade path.
+2. Named connections and the Connections tab.
+3. Direct/through-the-server behaviour, keepalive and its notifications.
+4. Restore after kill and reboot.
+5. QR enroll.
+6. Russian and English.
+7. Redesign of the remaining screens per the mockups; fingerprint unlock; snippets.
+8. Release signing and in-app updates.
+
+Screens touched by stages 1–5 get the new look in the same stage.
 
 ## Acceptance
 
-- Enroll on ikar with a fresh token; the phone appears in `devices list`.
-- From mobile data: open homeui of a WB controller (port 80) and an SSH shell
-  (port 22) on two different devices at the same time.
-- Relay fallback works when P2P fails (mobile NAT); the card says which one is used.
-- Close the app with tunnels up: they keep working, the notification is there;
-  "Disconnect all" removes them server-side.
-- Background off, no tunnels: no network activity from the app when closed.
+- Upgrade from 0.1.1 keeps the enrollment, ports and SSH key.
+- Two profiles on ikar (two device names); tunnels from both up at once.
+- Airplane mode, open the app: both lists shown with the offline banner.
+- From mobile data: direct fails, the connection works through the server,
+  the notification appears; "Retry direct" retries.
+- An SSH session left idle for 10 minutes on a direct tunnel is still alive.
+- `adb shell am kill` and a reboot with tunnels up: they come back on the
+  same local ports.
+- Scan a QR code from the laptop screen and enroll.
+- System language English → English UI; Russian → Russian.
+- Install 0.2.0, publish 0.2.1: the app offers and installs the update.
+
+## Open decisions
+
+- Where release APKs live. The repository is private, so its GitHub Releases
+  are not downloadable without a token. Options: a small public repository
+  with release APKs only (recommended), or an APK served from the frp-jump
+  server (needs a server change).
+- frp-jump release tag: the hot-reload change for exposing devices is in
+  master but not released; until devices update, their tunnels still restart
+  when a grant changes.
 
 ## Open risks
 
-- frpc on Android: proven on 2026-10-30. `scripts/build-frpc.sh` builds upstream
-  0.70.0 with the NDK (cgo resolver); on an Android 14 emulator it resolved the
-  relay by name, logged in with mTLS + device metadata, punched P2P to a WB
-  controller and served its homeui on 127.0.0.1.
-- Android may still kill the foreground service on aggressive vendor firmware;
-  the owner may need to exempt the app from battery optimisation.
-- Mobile carriers' NAT usually blocks P2P, so most traffic will go via the relay.
+- Aggressive vendor firmware may still kill the foreground service; the restart
+  covers it but adds a gap of seconds.
+- Mobile carriers' NAT usually blocks P2P, so on mobile data most connections
+  will go through the server.
