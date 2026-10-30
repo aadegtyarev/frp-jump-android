@@ -38,6 +38,10 @@ class FrpJumpApi(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        // A redirect would resend the bearer token or the enroll token to
+        // wherever it points: never follow one, report it instead.
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build(),
 ) {
     suspend fun enroll(controlUrl: String, token: String, requestedName: String?): EnrollResponse {
@@ -115,6 +119,7 @@ class FrpJumpApi(
             throw NetworkException("Cannot reach ${request.url.host}: ${e.message ?: e.javaClass.simpleName}", e)
         }
         response.use {
+            if (it.isRedirect) throw NetworkException(redirectMessage(request, it.header("Location")))
             val text = try {
                 it.body?.string().orEmpty()
             } catch (e: IOException) {
@@ -128,6 +133,12 @@ class FrpJumpApi(
     private companion object {
         val JSON = "application/json".toMediaType()
     }
+}
+
+/** Names where the server tried to send us, never the full URL (it may carry a token). */
+internal fun redirectMessage(request: Request, location: String?): String {
+    val target = location?.let { request.url.resolve(it)?.host } ?: "an unknown address"
+    return "${request.url.host} redirects to $target; not following it. Check the server URL."
 }
 
 private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
