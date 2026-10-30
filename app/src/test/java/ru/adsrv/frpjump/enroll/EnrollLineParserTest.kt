@@ -6,7 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EnrollLineParserTest {
-    private val token = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd"
+    /** `secrets.token_urlsafe(32)` is 43 characters; this one even starts with `--`. */
+    private val token = "--CdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde"
 
     private fun ok(text: String): EnrollLine {
         val result = EnrollLineParser.parse(text)
@@ -63,8 +64,44 @@ class EnrollLineParserTest {
     }
 
     @Test
-    fun nameBeforeUrl() {
-        assertEquals("phone", ok("frp-jump-client enroll --name phone https://way.example.com $token").requestedName)
+    fun wrappedAfterTheLastDotOfTheHost() {
+        assertEquals(EnrollLine("https://way.example.com", token, "phone"), ok("frp-jump-client enroll https://way.example.\ncom $token --name phone"))
+    }
+
+    @Test
+    fun wrappedInsideAHostLabel() {
+        assertEquals("https://way.example.com", ok("frp-jump-client enroll https://wa\ny.example.com $token").controlUrl)
+    }
+
+    @Test
+    fun wrappedInsideTheTokenRightAfterTheUrl() {
+        // rich glues the URL and the token's first piece when the space falls at the wrap.
+        val line = ok("frp-jump-client enroll https://way.example.com ${token.take(5)}\n${token.drop(5)}")
+        assertEquals(EnrollLine("https://way.example.com", token, null), line)
+    }
+
+    @Test
+    fun wrappedInsideTheName() {
+        assertEquals("kitchen-phone", ok("frp-jump-client enroll https://way.example.com $token --name kitchen-\nphone").requestedName)
+        assertEquals("kitchen-phone", ok("frp-jump-client enroll https://way.example.com $token --name=kitch\nen-phone").requestedName)
+    }
+
+    @Test
+    fun wrappedInsideTheCommand() {
+        val line = ok("sudo frp-jump-cli\nent enr\noll https://way.example.com $token")
+        assertEquals(EnrollLine("https://way.example.com", token, null), line)
+    }
+
+    @Test
+    fun tokenStartingWithDashesIsNotAnOption() {
+        assertEquals(token, ok("https://way.example.com $token").token)
+    }
+
+    @Test
+    fun errorsNeverQuoteTheToken() {
+        val bad = token.dropLast(1) + "!"
+        assertTrue(!error("https://way.example.com $bad").contains(bad.take(10)))
+        assertTrue(!error("http://way.example.com $token").contains(token.take(10)))
     }
 
     @Test
@@ -90,7 +127,7 @@ class EnrollLineParserTest {
         error("frp-jump-client enroll")
         error("frp-jump-client enroll https://way.example.com")
         error("https://way.example.com $token --name")
-        error("https://way.example.com $token --verbose")
+        error("https://way.example.com ${token.drop(1)}")
         error("https://way.example.com tok\$en!")
         error("ftp://way.example.com $token")
     }
