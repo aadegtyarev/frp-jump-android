@@ -35,6 +35,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
                         "Remove \"$name\" from a laptop: frp-jump-client devices delete $name"
                 }
             }
+            app.tunnels.shutdown()
+            app.devicePorts.wipe()
             app.store.wipe()
             onForgotten()
         }
