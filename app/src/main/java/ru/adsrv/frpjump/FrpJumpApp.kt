@@ -22,6 +22,8 @@ import ru.adsrv.frpjump.store.KeystoreSecretBox
 import ru.adsrv.frpjump.tunnel.FrpcRunner
 import ru.adsrv.frpjump.tunnel.TunnelManager
 import ru.adsrv.frpjump.tunnel.TunnelService
+import ru.adsrv.frpjump.ui.web.clearWebData
+import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
 class FrpJumpApp : Application() {
@@ -41,6 +43,8 @@ class FrpJumpApp : Application() {
     lateinit var hostKeys: HostKeyStore
         private set
     lateinit var ssh: SshSessions
+        private set
+    lateinit var webSites: WebSiteMemory
         private set
 
     val session = AppSession()
@@ -69,6 +73,7 @@ class FrpJumpApp : Application() {
         sshKeys = SshKeyStore(AtomicTextFile(File(filesDir, "ssh_keys.json")), sshBox)
         sshPasswords = SshPasswords(AtomicTextFile(File(filesDir, "ssh_passwords.json")), sshBox)
         hostKeys = HostKeyStore(AtomicTextFile(File(filesDir, "ssh_host_keys.json")))
+        webSites = WebSiteMemory(AtomicTextFile(File(filesDir, "web_site.json")))
         ssh = SshSessions(
             context = this,
             env = SshEnvironment(hostKeys, sshKeys, sshPasswords, keyComment = ::sshKeyComment),
@@ -83,8 +88,9 @@ class FrpJumpApp : Application() {
     /**
      * Drop this phone's enrollment locally: stop frpc and the service, forget
      * the local port map and the credentials. [keepPorts] keeps the owner's
-     * custom ports per device and the SSH key, logins, passwords and host
-     * keys (re-enrolling the same owner after a removal).
+     * custom ports per device, the SSH key, logins, passwords and host
+     * keys, and the web views' cookies (re-enrolling the same owner after a
+     * removal).
      */
     suspend fun forgetLocally(keepPorts: Boolean) {
         ssh.closeAll()
@@ -98,10 +104,13 @@ class FrpJumpApp : Application() {
                     sshLogins.wipe()
                     hostKeys.wipe()
                     KeystoreSecretBox("frpjump-ssh").destroy()
+                    webSites.forget()
                 }
                 store.wipe()
             }
         }
+        // Logins to the devices' web UIs go with the rest.
+        if (!keepPorts) clearWebData(null)
         session.clearRemoved()
     }
 }

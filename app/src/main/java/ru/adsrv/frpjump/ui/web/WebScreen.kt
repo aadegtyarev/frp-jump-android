@@ -16,6 +16,7 @@ import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -50,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import ru.adsrv.frpjump.BuildConfig
+import ru.adsrv.frpjump.FrpJumpApp
 import java.io.ByteArrayInputStream
 import ru.adsrv.frpjump.web.WebNavigation
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
@@ -89,7 +91,16 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
             onTitle = { title = it.ifBlank { device } },
             onProgress = { progress = it },
         )
-        webView.loadUrl(start)
+        val sites = (context.applicationContext as FrpJumpApp).webSites
+        if (sites.isOther(device, localPort)) {
+            // Another device (or port) than last time: its cookies must not reach this one.
+            clearWebData(webView) {
+                sites.remember(device, localPort)
+                webView.loadUrl(start)
+            }
+        } else {
+            webView.loadUrl(start)
+        }
         onDispose {
             webView.stopLoading()
             webView.destroy()
@@ -192,6 +203,19 @@ private fun configure(
     }
     webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
         download(context, tunnelPort, url, userAgent, contentDisposition, mimeType)
+    }
+}
+
+/**
+ * Drops cookies, web storage and the HTTP cache of every tunnel. Cookies
+ * ignore ports, so they cannot be scoped to one tunnel. Main thread.
+ */
+fun clearWebData(webView: WebView?, onDone: () -> Unit = {}) {
+    webView?.clearCache(true)
+    WebStorage.getInstance().deleteAllData()
+    CookieManager.getInstance().removeAllCookies {
+        CookieManager.getInstance().flush()
+        onDone()
     }
 }
 
