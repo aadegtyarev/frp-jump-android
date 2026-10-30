@@ -93,8 +93,12 @@ class TunnelManager(
     /** Whether this manager has the foreground service running; only touched under [syncing]. */
     private var serviceUp = false
 
-    /** Settings to come (stage 5+); kept as parameters here. */
+    /** From the settings; read when the next sync plans the tunnels. */
+    @Volatile
     var portRange: IntRange = 40000..40999
+
+    /** From the settings; a change restarts frpc on the next sync. */
+    @Volatile
     var relayOnly: Boolean = false
 
     val state: StateFlow<TunnelsState> = combine(core, runner.states) { c, states ->

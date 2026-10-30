@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.api.ApiException
+import ru.adsrv.frpjump.settings.AppSettings
+import ru.adsrv.frpjump.settings.BackgroundPoll
+import ru.adsrv.frpjump.settings.portRangeProblem
 import ru.adsrv.frpjump.ssh.publicLineOfPrivateKey
 import ru.adsrv.frpjump.ui.userMessage
 
@@ -31,6 +34,24 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         app.store.load().let { SettingsUiState(serverUrl = it?.controlUrl.orEmpty(), deviceName = it?.deviceName.orEmpty()) },
     )
     val state: StateFlow<SettingsUiState> = _state
+
+    /** Background poll, relay only, local ports. */
+    val settings: StateFlow<AppSettings> = app.settings.settings
+
+    fun setBackgroundPoll(poll: BackgroundPoll) = save { it.copy(backgroundPoll = poll) }
+
+    fun setRelayOnly(relayOnly: Boolean) = save { it.copy(relayOnly = relayOnly) }
+
+    /** Returns why the range was refused, or null once it is saved. */
+    fun setLocalPorts(first: Int?, last: Int?): String? {
+        portRangeProblem(first, last)?.let { return it }
+        save { it.copy(localPortFirst = first!!, localPortLast = last!!) }
+        return null
+    }
+
+    private fun save(change: (AppSettings) -> AppSettings) {
+        viewModelScope.launch(Dispatchers.IO) { app.settings.update(change) }
+    }
 
     init {
         viewModelScope.launch {

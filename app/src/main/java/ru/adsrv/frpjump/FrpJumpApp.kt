@@ -4,11 +4,13 @@ import android.app.Application
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.session.Poller
+import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.ports.DevicePortsStore
 import ru.adsrv.frpjump.ports.LocalPortStore
@@ -54,6 +56,8 @@ class FrpJumpApp : Application() {
         private set
     lateinit var poller: Poller
         private set
+    lateinit var settings: SettingsStore
+        private set
 
     val session = AppSession()
 
@@ -63,6 +67,7 @@ class FrpJumpApp : Application() {
     override fun onCreate() {
         super.onCreate()
         store = CredentialStore(filesDir)
+        settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         devicePorts = DevicePortsStore(filesDir)
         tunnels = TunnelManager(
             enrollment = store::state,
@@ -73,11 +78,23 @@ class FrpJumpApp : Application() {
             runner = FrpcRunner(File(applicationInfo.nativeLibraryDir, "libfrpc.so"), File(noBackupFilesDir, "frpc")),
             startService = { TunnelService.start(this) },
         )
+        settings.settings.value.let {
+            tunnels.portRange = it.localPorts
+            tunnels.relayOnly = it.relayOnly
+        }
+        appScope.launch {
+            settings.settings.drop(1).collect {
+                tunnels.portRange = it.localPorts
+                tunnels.relayOnly = it.relayOnly
+                // Running tunnels pick the change up now; otherwise the next poll does.
+                if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.syncAsync()
+            }
+        }
         devices = DeviceDirectory(store, api, session)
         poller = Poller(
             scope = appScope,
             tunnelsUp = tunnels.state.map { it.tunnels.isNotEmpty() },
-            backgroundMs = MutableStateFlow(null),
+            backgroundMs = settings.settings.map { it.backgroundPoll.ms },
             removed = session.removed,
         ) { visible ->
             val synced = tunnels.poll()

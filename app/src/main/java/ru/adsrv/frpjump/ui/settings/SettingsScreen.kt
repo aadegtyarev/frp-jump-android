@@ -1,6 +1,15 @@
 package ru.adsrv.frpjump.ui.settings
 
 import android.content.Context
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Switch
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.KeyboardType
+import ru.adsrv.frpjump.settings.BackgroundPoll
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -46,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
     var confirm by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -75,6 +85,22 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
         ) {
             ListItem(headlineContent = { Text("Server") }, supportingContent = { Text(state.serverUrl) })
             ListItem(headlineContent = { Text("This phone") }, supportingContent = { Text(state.deviceName) })
+            SectionTitle("Tunnels")
+            ListItem(
+                headlineContent = { Text("Relay only") },
+                supportingContent = {
+                    Text(
+                        "Always through the frp-jump relay, no peer-to-peer attempt (like frp-jump-client set-p2p off). " +
+                            "Changing it restarts open tunnels, which drops their connections.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+                trailingContent = { Switch(checked = settings.relayOnly, onCheckedChange = vm::setRelayOnly) },
+            )
+            LocalPortsItem(settings.localPortFirst, settings.localPortLast, vm::setLocalPorts)
+            SectionTitle("Background")
+            BackgroundPollItem(settings.backgroundPoll, vm::setBackgroundPoll)
+            SectionTitle("SSH")
             ListItem(
                 headlineContent = { Text("SSH public key") },
                 supportingContent = {
@@ -155,6 +181,84 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
+    )
+}
+
+@Composable
+private fun LocalPortsItem(first: Int, last: Int, onSave: (Int?, Int?) -> String?) {
+    var firstText by rememberSaveable(first) { mutableStateOf(first.toString()) }
+    var lastText by rememberSaveable(last) { mutableStateOf(last.toString()) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    ListItem(
+        headlineContent = { Text("Local ports") },
+        supportingContent = {
+            Column {
+                Text(
+                    "Tunnels listen on 127.0.0.1 on a port from this range and keep it per device and port, " +
+                        "so bookmarks stay valid. Ports already given out stay unless they fall outside a new range.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PortField("From", firstText, Modifier.weight(1f)) { firstText = it; problem = null }
+                    PortField("To", lastText, Modifier.weight(1f)) { lastText = it; problem = null }
+                    TextButton(
+                        enabled = firstText != first.toString() || lastText != last.toString(),
+                        onClick = { problem = onSave(firstText.toIntOrNull(), lastText.toIntOrNull()) },
+                    ) { Text("Save") }
+                }
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun PortField(label: String, value: String, modifier: Modifier, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { text -> onChange(text.filter { it.isDigit() }.take(5)) },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = modifier,
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BackgroundPollItem(selected: BackgroundPoll, onSelect: (BackgroundPoll) -> Unit) {
+    ListItem(
+        headlineContent = { Text("Check the server in the background") },
+        supportingContent = {
+            Column {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BackgroundPoll.entries.forEach { poll ->
+                        FilterChip(selected = poll == selected, onClick = { onSelect(poll) }, label = { Text(poll.label) })
+                    }
+                }
+                Text(
+                    if (selected == BackgroundPoll.OFF) {
+                        "Off: with the app closed, open tunnels keep running but nothing is checked; " +
+                            "tunnels closed or devices disabled elsewhere are noticed when you open the app."
+                    } else {
+                        "With the app closed, every ${selected.label} while tunnels are up (the \"tunnels\" notification is shown): " +
+                            "keeps this phone online for the server and closes tunnels that were disconnected or " +
+                            "disabled elsewhere."
+                    } + " While the app is open it checks every 2 s. Without tunnels nothing runs in the background.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+    )
 }
 
 @Composable
