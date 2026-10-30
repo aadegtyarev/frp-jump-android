@@ -49,17 +49,20 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
     val forget: StateFlow<ForgetState?> = _forget
 
     init {
-        // Each profile's server and phone name: the Keystore, off the main thread. Again on
-        // every change: an enrollment may have filled a profile in.
+        // Each profile's server and phone name: the Keystore, off the main thread. Read once
+        // per profile; again only for one without an enrollment (it may have been filled in).
         viewModelScope.launch {
             app.profiles.state.collectLatest { state ->
-                servers.value = withContext(Dispatchers.IO) {
-                    state.runtimes.mapValues { (_, runtime) ->
-                        runCatching { runtime.store.load() }.getOrNull()?.let {
+                val known = servers.value.filterKeys { it in state.runtimes }
+                val load = serversToLoad(state.runtimes.keys, known)
+                val read = withContext(Dispatchers.IO) {
+                    load.associateWith { id ->
+                        runCatching { state.runtimes.getValue(id).store.load() }.getOrNull()?.let {
                             ProfileServer(defaultProfileName(it.controlUrl), it.deviceName)
                         }
                     }
                 }
+                servers.value = known + read
             }
         }
     }
@@ -72,19 +75,26 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
         }
     }
 
-    /** See [forgetProfile]; [onForgotten] after it is done. */
-    fun forget(id: String, onForgotten: () -> Unit) {
-        if (_forget.value?.busy == true) return
+    /**
+     * See [forgetProfile]; [onForgotten] after it is done. One at a time:
+     * false (nothing started) while another one runs. A failure is kept for
+     * the row it was started from, or with [failureAsNotice] posted for the
+     * device list, which outlives the sheet it was started from.
+     */
+    fun forget(id: String, failureAsNotice: Boolean = false, onForgotten: () -> Unit): Boolean {
+        if (_forget.value?.busy == true) return false
         _forget.value = ForgetState(id)
         val work = app.appScope.async { forgetProfile(app, id) }
         viewModelScope.launch {
             val failure = work.await()
-            _forget.value = failure?.let { ForgetState(id, it) }
+            if (failure != null && failureAsNotice) {
+                app.session.postNotice(failure, forProfile = app.profiles.state.value.index.current)
+                _forget.value = null
+            } else {
+                _forget.value = failure?.let { ForgetState(id, it) }
+            }
             if (failure == null) onForgotten()
         }
-    }
-
-    fun clearForgetError() {
-        if (_forget.value?.busy == false) _forget.value = null
+        return true
     }
 }

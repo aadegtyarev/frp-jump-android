@@ -43,7 +43,8 @@ suspend fun forgetProfile(app: FrpJumpApp, id: String): String? {
             }
         }
         app.forgetProfile(id, keepData = false)
-        app.session.postNotice(notice)
+        // For the screen the app moves to: the next profile's devices, or enrollment.
+        app.session.postNotice(notice, forProfile = app.profiles.state.value.index.current)
         null
     } catch (e: CancellationException) {
         throw e

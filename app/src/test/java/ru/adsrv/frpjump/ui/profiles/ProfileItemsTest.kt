@@ -50,4 +50,18 @@ class ProfileItemsTest {
         assertEquals(listOf("W", "H", "C"), items.map { it.letter })
         assertEquals("?", items[0].copy(name = " ").letter)
     }
+
+    @Test
+    fun `a server not read yet is loading, not missing`() {
+        val items = profileItems(index, emptyMap(), emptySet(), mapOf("w" to null))
+        assertTrue(items[0].serverLoaded)
+        assertFalse(items[1].serverLoaded)
+    }
+
+    @Test
+    fun `servers are read once per profile, again only without an enrollment`() {
+        val known = mapOf("w" to ProfileServer("way.example", "phone"), "h" to null)
+        assertEquals(setOf("h", "c"), serversToLoad(setOf("w", "h", "c"), known))
+        assertTrue(serversToLoad(setOf("w"), known).isEmpty())
+    }
 }

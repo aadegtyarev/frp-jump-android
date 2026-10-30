@@ -1,8 +1,10 @@
 package ru.adsrv.frpjump.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.profiles.PROFILE_COLORS
+import java.io.File
 import kotlin.math.pow
 
 /** WCAG 2.1 contrast of every text/background pair the screens use, in both themes. */
@@ -76,5 +78,18 @@ class PaletteContrastTest {
         // Warm: red above blue in the ground.
         assertTrue((DarkPalette.ground shr 16 and 0xFF) > (DarkPalette.ground and 0xFF))
         assertTrue(contrast(DarkPalette.accent, DarkPalette.card) < contrast(DarkPalette.ink, DarkPalette.card))
+    }
+
+    /** The window shows `@color/ground` until Compose draws: it must be the palette's ground. */
+    private fun windowGround(dir: String): Long {
+        val xml = File("src/main/res/$dir/themes.xml").readText()
+        val hex = Regex("""<color name="ground">#([0-9A-Fa-f]{6})</color>""").find(xml)!!.groupValues[1]
+        return 0xFF000000 or hex.toLong(16)
+    }
+
+    @Test
+    fun `the window background matches the palette's ground in both themes`() {
+        assertEquals(LightPalette.ground, windowGround("values"))
+        assertEquals(DarkPalette.ground, windowGround("values-night"))
     }
 }

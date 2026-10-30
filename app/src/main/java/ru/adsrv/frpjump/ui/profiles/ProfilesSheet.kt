@@ -80,16 +80,17 @@ fun ProfilesSheet(
                 .navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
-                Text(stringResource(R.string.profiles), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Column(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.profiles), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(stringResource(R.string.profiles_hint), fontSize = 13.sp, color = colors.muted)
             }
             items.forEach { item ->
                 ProfileRow(
                     item = item,
-                    forget = forget?.takeIf { it.id == item.id },
+                    forgetting = forget?.busy == true && forget?.id == item.id,
+                    // One forget at a time, and only once it is known what it would remove.
+                    canForget = forget?.busy != true && item.serverLoaded,
                     onClick = {
-                        vm.clearForgetError()
                         onDismiss()
                         if (!item.current) vm.switchTo(item.id, onSwitched)
                     },
@@ -97,10 +98,7 @@ fun ProfilesSheet(
                         onDismiss()
                         onEdit(item.id)
                     },
-                    onForget = {
-                        vm.clearForgetError()
-                        confirm = item.id
-                    },
+                    onForget = { confirm = item.id },
                 )
             }
             AddProfileRow(onClick = {
@@ -113,12 +111,14 @@ fun ProfilesSheet(
         items.firstOrNull { it.id == id }?.let { item ->
             ForgetProfileDialog(
                 item = item,
+                busyElsewhere = forget?.busy == true,
                 onConfirm = {
-                    confirm = null
-                    vm.forget(id) {
+                    // A failure goes to the device list: the sheet may be gone by then.
+                    val started = vm.forget(id, failureAsNotice = true) {
                         onDismiss()
                         onForgotten()
                     }
+                    if (started) confirm = null
                 },
                 onDismiss = { confirm = null },
             )
@@ -127,12 +127,19 @@ fun ProfilesSheet(
 }
 
 @Composable
-private fun ProfileRow(item: ProfileItem, forget: ForgetState?, onClick: () -> Unit, onEdit: () -> Unit, onForget: () -> Unit) {
+private fun ProfileRow(
+    item: ProfileItem,
+    forgetting: Boolean,
+    canForget: Boolean,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onForget: () -> Unit,
+) {
     val colors = AppTheme.colors
     Column {
         Surface(
             onClick = onClick,
-            enabled = forget?.busy != true,
+            enabled = !forgetting,
             shape = RoundedCornerShape(16.dp),
             color = if (item.current) colors.accentContainer.copy(alpha = 0.45f).compositeOver(colors.card) else colors.card,
             border = if (item.current) BorderStroke(1.5.dp, colors.accent) else BorderStroke(1.dp, colors.divider),
@@ -148,17 +155,22 @@ private fun ProfileRow(item: ProfileItem, forget: ForgetState?, onClick: () -> U
                 ProfileTile(item.letter, item.color)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(item.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        when {
-                            item.removed -> stringResource(R.string.profile_removed_sub)
-                            item.server != null -> stringResource(R.string.profile_server, item.server.host, item.server.deviceName)
-                            else -> stringResource(R.string.profile_not_enrolled)
-                        },
-                        fontSize = 13.sp,
-                        color = if (item.removed) colors.error else colors.muted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    // Nothing until the server is read: no "not connected" flash.
+                    val sub = when {
+                        item.removed -> stringResource(R.string.profile_removed_sub)
+                        item.server != null -> stringResource(R.string.profile_server, item.server.host, item.server.deviceName)
+                        item.serverLoaded -> stringResource(R.string.profile_not_enrolled)
+                        else -> null
+                    }
+                    sub?.let {
+                        Text(
+                            it,
+                            fontSize = 13.sp,
+                            color = if (item.removed) colors.error else colors.muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 when {
                     item.removed -> Chip(stringResource(R.string.profile_removed_badge), colors.errorContainer, colors.onErrorContainer)
@@ -171,24 +183,21 @@ private fun ProfileRow(item: ProfileItem, forget: ForgetState?, onClick: () -> U
                 if (item.current) {
                     Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.profile_current), tint = colors.accent)
                 }
-                if (forget?.busy == true) {
+                if (forgetting) {
                     Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     }
                 } else {
-                    ProfileMenu(onEdit, onForget)
+                    ProfileMenu(canForget, onEdit, onForget)
                 }
             }
-        }
-        forget?.error?.let {
-            Text(it, color = colors.error, fontSize = 13.sp, modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 4.dp))
         }
     }
 }
 
 /** "⋮": name and colour, forget. */
 @Composable
-private fun ProfileMenu(onEdit: () -> Unit, onForget: () -> Unit) {
+private fun ProfileMenu(canForget: Boolean, onEdit: () -> Unit, onForget: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) {
@@ -199,10 +208,14 @@ private fun ProfileMenu(onEdit: () -> Unit, onForget: () -> Unit) {
                 open = false
                 onEdit()
             })
-            DropdownMenuItem(text = { Text(stringResource(R.string.forget_profile), color = AppTheme.colors.error) }, onClick = {
-                open = false
-                onForget()
-            })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.forget_profile), color = if (canForget) AppTheme.colors.error else AppTheme.colors.muted) },
+                enabled = canForget,
+                onClick = {
+                    open = false
+                    onForget()
+                },
+            )
         }
     }
 }
@@ -216,7 +229,8 @@ private fun AddProfileRow(onClick: () -> Unit) {
         color = colors.card,
         modifier = Modifier
             .fillMaxWidth()
-            .dashedBorder(colors.accent.copy(alpha = 0.5f), 16.dp),
+            // Full accent: at least 3:1 against the sheet in both themes (see the palette test).
+            .dashedBorder(colors.accent, 16.dp),
     ) {
         Row(
             Modifier.padding(14.dp),
@@ -236,24 +250,32 @@ private fun AddProfileRow(onClick: () -> Unit) {
     }
 }
 
-/** Says what forgetting [item] does before it is done. */
+/**
+ * Says what forgetting [item] does before it is done. While another
+ * forget runs ([busyElsewhere]) it says so and "Forget" waits.
+ */
 @Composable
-fun ForgetProfileDialog(item: ProfileItem, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+fun ForgetProfileDialog(item: ProfileItem, busyElsewhere: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val server = item.server
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.forget_title, item.name)) },
         text = {
-            Text(
-                when {
-                    server == null -> stringResource(R.string.forget_text_local)
-                    item.removed -> stringResource(R.string.forget_text_removed, server.host)
-                    else -> stringResource(R.string.forget_text, server.deviceName, server.host)
-                },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    when {
+                        server == null -> stringResource(R.string.forget_text_local)
+                        item.removed -> stringResource(R.string.forget_text_removed, server.host)
+                        else -> stringResource(R.string.forget_text, server.deviceName, server.host)
+                    },
+                )
+                if (busyElsewhere) Text(stringResource(R.string.forget_busy), color = AppTheme.colors.warning)
+            }
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(stringResource(R.string.forget), color = AppTheme.colors.error) }
+            TextButton(onClick = onConfirm, enabled = !busyElsewhere) {
+                Text(stringResource(R.string.forget), color = if (busyElsewhere) AppTheme.colors.muted else AppTheme.colors.error)
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

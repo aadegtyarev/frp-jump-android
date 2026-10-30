@@ -28,7 +28,7 @@
     <!-- Profile switcher and list -->
     <string name="switch_profile">Switch profile</string>
     <string name="profiles">Profiles</string>
-    <string name="profiles_hint">tunnels run in all at once</string>
+    <string name="profiles_hint">Tunnels of all profiles run at the same time</string>
     <string name="profile_server">%1$s · phone “%2$s”</string>
     <string name="profile_not_enrolled">Not connected</string>
     <string name="profile_removed_badge">Removed</string>
@@ -52,6 +52,8 @@
     <string name="forget">Forget</string>
     <string name="profile_forgotten">Profile “%s” forgotten.</string>
     <string name="forget_server_not_told">The server was not told (%1$s). Remove “%2$s” from a laptop: frp-jump-client devices delete %3$s</string>
+    <string name="forget_busy">Another profile is being forgotten; wait until it is done.</string>
+    <string name="profile_gone">This profile was forgotten meanwhile.</string>
     <string name="forget_failed">Could not wipe this profile’s data (%s). Try again.</string>
 
     <!-- Profile name and colour -->
@@ -67,7 +69,7 @@
     <string name="enroll_step_paste">2. Paste the line</string>
     <string name="enroll_line_label">The whole line, as printed</string>
     <string name="enroll_line_placeholder">frp-jump-client enroll https://… &lt;token&gt;</string>
-    <string name="enroll_line_ok">Server %s</string>
+    <string name="enroll_line_ok">Server: %s</string>
     <string name="enroll_phone_name">Name for this phone</string>
     <string name="enroll_step_name">3. Name the profile</string>
     <string name="enroll_submit">Connect phone</string>

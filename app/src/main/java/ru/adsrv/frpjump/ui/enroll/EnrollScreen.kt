@@ -1,22 +1,15 @@
 package ru.adsrv.frpjump.ui.enroll
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -97,13 +90,9 @@ private fun LineCard(state: EnrollUiState, vm: EnrollViewModel) {
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
+        // Only what was read from the line: the server itself answers on "Connect phone".
         if (state.error == null) {
-            state.host?.let { host ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.Check, contentDescription = null, tint = colors.accent, modifier = Modifier.size(16.dp))
-                    Text(stringResource(R.string.enroll_line_ok, host), fontSize = 13.sp, color = colors.accent)
-                }
-            }
+            state.host?.let { Text(stringResource(R.string.enroll_line_ok, it), fontSize = 13.sp, color = colors.muted) }
         }
         if (state.needsName) {
             OutlinedTextField(

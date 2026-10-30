@@ -37,13 +37,14 @@ class ProfileEditViewModel(private val app: FrpJumpApp, private val id: String) 
 
     fun onColor(color: String) = _state.update { it.copy(color = color, error = null) }
 
+    /** [onSaved] also when the profile is gone: then a notice says so instead. */
     fun save(onSaved: () -> Unit) {
         val now = _state.value
         if (now.saving) return
         val name = profileName(now.name) ?: return _state.update { it.copy(nameError = app.getString(R.string.profile_name_missing)) }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            try {
+            val listed = try {
                 app.profiles.update(id, name, now.color)
             } catch (e: CancellationException) {
                 throw e
@@ -53,6 +54,8 @@ class ProfileEditViewModel(private val app: FrpJumpApp, private val id: String) 
                 return@launch
             }
             _state.update { it.copy(saving = false) }
+            // Forgotten while this screen was open: nothing to save; say so where the owner goes back to.
+            if (!listed) app.session.postNotice(app.getString(R.string.profile_gone), forProfile = app.profiles.state.value.index.current)
             onSaved()
         }
     }

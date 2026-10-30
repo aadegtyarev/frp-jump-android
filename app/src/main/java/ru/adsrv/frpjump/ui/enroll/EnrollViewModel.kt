@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -51,7 +52,7 @@ data class EnrollUiState(
 class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
     private val _state = MutableStateFlow(
         EnrollUiState(
-            notice = app.session.takeNotice(),
+            notice = app.session.takeAnyNotice(),
             color = nextProfileColor(app.profiles.state.value.index.profiles),
         ),
     )
@@ -100,55 +101,85 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
             ?: return _state.update { it.copy(profileNameError = app.getString(R.string.profile_name_missing)) }
         val name = if (current.needsName) current.name.trim() else line.requestedName
         _state.update { it.copy(busy = true, error = null, profileNameError = null) }
+        // The server spends the token as it answers: the call and the storing run in the app
+        // scope, so leaving the screen cannot drop the credentials halfway.
+        val work = app.appScope.async { enroll(line.controlUrl, line.token, name, profile, current.color) }
         viewModelScope.launch {
-            val r = try {
-                app.api.enroll(line.controlUrl, line.token, name)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // A token without a fixed name: the server wants one, so ask for it.
-                val wantsName = e is ApiException && e.status == 400 && "pass requested_name" in e.detail
-                _state.update {
-                    it.copy(busy = false, error = e.userMessage(), needsName = it.needsName || wantsName)
+            when (val outcome = work.await()) {
+                EnrollOutcome.Stored -> {
+                    _state.update { it.copy(busy = false) }
+                    onEnrolled()
                 }
-                return@launch
-            }
-            val runtime = try {
-                app.profiles.enroll(
-                    Credentials(
-                        controlUrl = line.controlUrl,
-                        deviceId = r.deviceId,
-                        deviceName = r.deviceName,
-                        apiToken = r.apiToken,
-                        certPem = r.certPem,
-                        keyPem = r.keyPem,
-                        caCertPem = r.caCertPem,
-                        serverAddr = r.serverAddr,
-                        serverPort = r.serverPort,
-                    ),
-                )
-            } catch (e: Exception) {
-                // The token is spent and the server has the device: say how to clean up.
-                val enrolled = r.deviceName
-                _state.update {
+                is EnrollOutcome.Refused -> _state.update {
+                    it.copy(busy = false, error = outcome.message, needsName = it.needsName || outcome.wantsName)
+                }
+                // The server has the device: say how to clean up.
+                is EnrollOutcome.NotStored -> _state.update {
                     it.copy(
                         busy = false,
-                        error = app.getString(R.string.enroll_store_failed, enrolled, e.javaClass.simpleName, enrolled),
+                        error = app.getString(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device),
                     )
                 }
-                return@launch
             }
-            // The enrollment is stored; a name not saved only leaves the host as the name.
-            try {
-                app.profiles.update(runtime.id, profile, current.color)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "profile name not saved: ${e.javaClass.simpleName}")
-            }
-            _state.update { it.copy(busy = false) }
-            onEnrolled()
         }
+    }
+
+    private sealed interface EnrollOutcome {
+        data object Stored : EnrollOutcome
+
+        /** The server said no (or could not be reached): nothing was spent. */
+        data class Refused(val message: String, val wantsName: Boolean) : EnrollOutcome
+
+        /** Enrolled on the server as [device], but the phone could not keep the credentials. */
+        data class NotStored(val device: String, val failure: String) : EnrollOutcome
+    }
+
+    private suspend fun enroll(url: String, token: String, requestedName: String?, profile: String, color: String): EnrollOutcome {
+        val r = try {
+            app.api.enroll(url, token, requestedName)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A token without a fixed name: the server wants one, so ask for it.
+            val wantsName = e is ApiException && e.status == 400 && "pass requested_name" in e.detail
+            return EnrollOutcome.Refused(e.userMessage(), wantsName)
+        }
+        val credentials = Credentials(
+            controlUrl = url,
+            deviceId = r.deviceId,
+            deviceName = r.deviceName,
+            apiToken = r.apiToken,
+            certPem = r.certPem,
+            keyPem = r.keyPem,
+            caCertPem = r.caCertPem,
+            serverAddr = r.serverAddr,
+            serverPort = r.serverPort,
+        )
+        return store(credentials, profile, color)?.let { EnrollOutcome.NotStored(r.deviceName, it) } ?: EnrollOutcome.Stored
+    }
+
+    /**
+     * Stores a fresh enrollment as a profile named [name] in [color]. A name
+     * not saved only leaves the host as the name. Returns null when stored,
+     * else the failure's class name.
+     */
+    private suspend fun store(credentials: Credentials, name: String, color: String): String? {
+        val runtime = try {
+            app.profiles.enroll(credentials)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "credentials not stored: ${e.javaClass.simpleName}")
+            return e.javaClass.simpleName
+        }
+        try {
+            app.profiles.update(runtime.id, name, color)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "profile name not saved: ${e.javaClass.simpleName}")
+        }
+        return null
     }
 
     private companion object {

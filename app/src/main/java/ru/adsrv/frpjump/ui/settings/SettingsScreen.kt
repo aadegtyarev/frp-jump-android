@@ -204,6 +204,7 @@ fun SettingsScreen(
     if (confirm && profile != null) {
         ForgetProfileDialog(
             item = profile,
+            busyElsewhere = forget?.busy == true,
             onConfirm = {
                 confirm = false
                 onForget(profile.id)
@@ -263,7 +264,8 @@ private fun ProfileGroup(profile: ProfileItem, forget: ForgetState?, onEdit: () 
                 labelColor = colors.error,
                 hint = forget?.error ?: stringResource(R.string.forget_profile_hint),
                 hintColor = if (forget?.error != null) colors.error else colors.muted,
-                enabled = forget?.busy != true,
+                // Only once it is known what it would remove.
+                enabled = forget?.busy != true && profile.serverLoaded,
                 onClick = onForget,
             ) {
                 if (forget?.busy == true) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)

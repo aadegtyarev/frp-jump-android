@@ -11,8 +11,10 @@ data class ProfileItem(
     val name: String,
     /** A [ru.adsrv.frpjump.profiles.PROFILE_COLORS] name. */
     val color: String,
-    /** Null while unknown or without an enrollment. */
+    /** Null while loading ([serverLoaded] false) or without an enrollment. */
     val server: ProfileServer?,
+    /** [server] has been read: until then the row shows no line about it and cannot be forgotten. */
+    val serverLoaded: Boolean,
     val tunnels: Int,
     val current: Boolean,
     /** Its server rejected its token (401): the phone was deleted there. */
@@ -22,7 +24,7 @@ data class ProfileItem(
     val letter: String get() = name.trim().take(1).uppercase().ifEmpty { "?" }
 }
 
-/** The profiles in the owner's order, with what each one has going on. */
+/** The profiles in the owner's order, with what each one has going on. [servers] lists those read so far. */
 fun profileItems(
     index: ProfileIndex,
     tunnels: Map<String, Int>,
@@ -34,6 +36,7 @@ fun profileItems(
         name = it.name,
         color = it.color,
         server = servers[it.id],
+        serverLoaded = it.id in servers,
         tunnels = tunnels[it.id] ?: 0,
         current = it.id == index.current,
         removed = it.id in removed,
@@ -46,3 +49,11 @@ fun profileItems(
  * current one gets a screen of its own.)
  */
 fun removedElsewhere(items: List<ProfileItem>): List<ProfileItem> = items.filter { it.removed && !it.current }
+
+/**
+ * The profiles whose server to read (the Keystore) of [ids]: new ones, and
+ * those read without an enrollment, which an enrollment may have filled in
+ * since. The others keep what was read.
+ */
+fun serversToLoad(ids: Set<String>, known: Map<String, ProfileServer?>): Set<String> =
+    ids.filterTo(mutableSetOf()) { known[it] == null }

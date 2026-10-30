@@ -17,6 +17,7 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.session.Notice
 import java.time.Instant
 
 data class DevicesUiState(
@@ -62,15 +63,18 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     val sshSessions = app.ssh.sessions
 
     /** A message left by the screen before (e.g. after "Forget profile"); shown once. */
-    val notice: StateFlow<String?> = app.session.notice
+    val notice: StateFlow<Notice?> = app.session.notice
 
-    fun takeNotice(): String? = app.session.takeNotice()
+    /** The pending notice if it is meant for this list, the current profile's; once. */
+    fun takeNotice(): String? = app.profiles.state.value.index.current?.let(app.session::takeNotice)
 
     init {
         // A switch hands "wanted" over to the profile now shown.
         viewModelScope.launch {
             var previous: DeviceDirectory? = null
             directory.collect { now ->
+                // A pull of the profile left behind no longer spins on this one's list.
+                if (previous != null && previous != now) refreshing.value = false
                 previous?.wanted = false
                 previous = now
                 if (shown && now != null) want(now)

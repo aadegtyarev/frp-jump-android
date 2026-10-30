@@ -155,10 +155,11 @@ class Profiles(
         publish(index, _state.value.runtimes)
     }
 
-    /** Renames and recolours [id]. Storage: on the IO dispatcher. */
-    suspend fun update(id: String, name: String, color: String) = changing.withLock {
-        val index = withContext(Dispatchers.IO) { store.update(id, name, color)?.let { store.index() } } ?: return@withLock
+    /** Renames and recolours [id]; false when it is no longer listed (forgotten meanwhile). Storage: on the IO dispatcher. */
+    suspend fun update(id: String, name: String, color: String): Boolean = changing.withLock {
+        val index = withContext(Dispatchers.IO) { store.update(id, name, color)?.let { store.index() } } ?: return@withLock false
         publish(index, _state.value.runtimes)
+        true
     }
 
     /** "Disconnect all": every profile's tunnels. */

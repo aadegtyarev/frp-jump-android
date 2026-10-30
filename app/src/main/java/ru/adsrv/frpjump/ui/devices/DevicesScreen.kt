@@ -97,10 +97,10 @@ fun DevicesScreen(
         }
     }
     // E.g. "Forget profile" done, or the server not told: say it on the screen the owner lands on.
-    LaunchedEffect(notice) {
+    val current = profiles.firstOrNull { it.current }
+    LaunchedEffect(notice, current?.id) {
         if (notice != null) vm.takeNotice()?.let { snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
     }
-    val current = profiles.firstOrNull { it.current }
     Scaffold(
         topBar = {
             Header(current, sessions.size, onProfiles, onSettings, onTerminals = { sessions.firstOrNull()?.let { onTerminals(it.id) } })
