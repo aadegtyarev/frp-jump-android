@@ -3,7 +3,9 @@ package com.termux.terminal
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -20,7 +22,14 @@ import kotlin.concurrent.thread
  */
 class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int = 24) {
     val session = TerminalSession("/system/bin/false", "/", arrayOf(), arrayOf(), TRANSCRIPT_ROWS, client)
-    private val localWriter = Executors.newSingleThreadExecutor { Thread(it, "terminal-local") }
+    /**
+     * Writes local notes in order. Its one thread is a daemon and ends after
+     * a second idle, so an ended (or replaced, on Reconnect) session leaves
+     * no thread behind, and a note after [finish] still shows.
+     */
+    private val localWriter = ThreadPoolExecutor(0, 1, 1, TimeUnit.SECONDS, LinkedBlockingQueue()) {
+        Thread(it, "terminal-local").apply { isDaemon = true }
+    }
 
     init {
         session.mEmulator = TerminalEmulator(session, columns, rows, CELL_WIDTH, CELL_HEIGHT, TRANSCRIPT_ROWS, client)
