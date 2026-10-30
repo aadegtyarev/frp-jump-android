@@ -7,8 +7,9 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 
 Behaviour is defined in [docs/contract.md](docs/contract.md).
 
-Current stage: enrollment, the device list, tunnels from the device card and a
-minimal settings screen ("Forget this phone").
+Current stage: enrollment, the device list, tunnels from the device card, the
+in-app web view, the SSH terminal and a minimal settings screen (SSH public
+key, "Forget this phone").
 
 ## How tunnels work
 
@@ -29,6 +30,68 @@ minimal settings screen ("Forget this phone").
   every 2 s. While at least one tunnel is up a foreground service (type
   `specialUse`) keeps the process alive and shows "N tunnels" with
   "Disconnect all". Closed, the app does not poll yet.
+
+## Web ports
+
+"Open" on a connected web port shows `http://127.0.0.1:<local port>/` in an
+in-app WebView: JavaScript and DOM storage on, cookies kept, Back walks the
+page history, the top bar has the title, the URL, Reload and "Open in
+browser". Only loopback pages stay in the app; links to other hosts (and
+`mailto:`, `tel:`, …) go to other apps. Downloads go to the system
+DownloadManager with the page's cookies; files a page makes itself (`blob:`)
+cannot be handed over, use "Open in browser" for those. WebSockets to the
+same origin work, so homeui's MQTT over WS shows live values.
+
+## SSH console
+
+"Terminal" on a connected SSH port asks for the user (remembered per device
+and port, `root` by default) and Key or Password, then opens a session to
+`127.0.0.1:<local port>`.
+
+- Key: the app makes one ed25519 key on first use; Settings shows its
+  `authorized_keys` line with Copy / Share. "Import private key" takes an
+  OpenSSH (or PEM) private key file and its passphrase; it is tried before
+  the app's key. Private keys, passphrases and remembered passwords are
+  sealed with a Keystore AES-GCM key of their own (`frpjump-ssh`), so
+  re-enrolling the phone keeps them; "Forget this phone" wipes them.
+- Password: kept only when "Remember on this phone" is ticked; a remembered
+  password that is refused is dropped.
+- Host keys are pinned per (device name, target port) on first use, shown as
+  OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
+  shows both fingerprints; "Forget the old key" drops the pin and asks again.
+- The terminal requests `xterm-256color` and sends `window-change` when the
+  view or the font size changes. Below it: Esc, Tab, sticky Ctrl / Alt,
+  arrows, `| - / ~`. Long-press selects text (Copy / Paste), pinch or A− / A+
+  changes the font size.
+- Sessions live in the app, not in the screen: several at once, as tabs;
+  "N terminals" on the device list leads back. A session ends when its
+  tunnel goes (Disconnect, Disconnect all, Forget); "Reconnect" starts a new
+  one with the same login.
+- "Open in external app" sends `ssh://<user>@127.0.0.1:<port>` to an SSH app
+  (Termius, JuiceSSH, …).
+
+Connecting or disconnecting another port restarts frpc (stage 3 behaviour),
+which drops open SSH sessions and web sockets; they can be reconnected.
+
+## Third-party libraries
+
+| Library | Version | License |
+| --- | --- | --- |
+| [sshj](https://github.com/hierynomus/sshj) | 0.41.2 | Apache-2.0 |
+| [BouncyCastle](https://www.bouncycastle.org/) bcprov / bcpkix (via sshj) | 1.84 | MIT (Bouncy Castle licence) |
+| [Termux](https://github.com/termux/termux-app) terminal-emulator / terminal-view (JitPack) | v0.118.3 | Apache-2.0 |
+| slf4j-api, asn-one (via sshj) | 2.0.17, 0.6.0 | MIT, Apache-2.0 |
+
+termux-app as a whole is GPLv3, but its LICENSE.md lists terminal-emulator
+and terminal-view as Apache-2.0 (derived from Jack Palevich's Terminal
+Emulator for Android); only those two modules are used. The app drives
+Termux's `TerminalSession` from the SSH stream instead of a local pty
+through package-private members (`com.termux.terminal.RemoteTerminal`);
+re-check that class when bumping the Termux version.
+
+Android's built-in "BC" provider lacks ed25519 and curve25519, so the app
+replaces it with the full BouncyCastle provider at startup (appended, so TLS
+and the Keystore keep their providers).
 
 ## Build
 
