@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.devices.DeviceDirectory
+import ru.adsrv.frpjump.devices.DeviceListCache
 import ru.adsrv.frpjump.session.Poller
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.api.FrpJumpApi
@@ -90,7 +91,9 @@ class FrpJumpApp : Application() {
                 if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.syncAsync()
             }
         }
-        devices = DeviceDirectory(store, api, session)
+        devices = DeviceDirectory(store, api, session, DeviceListCache(AtomicTextFile(File(filesDir, "device_list.json"))))
+        // Keystore and disk: off the main thread. The list shows before the server answers.
+        appScope.launch(Dispatchers.IO) { devices.restore() }
         poller = Poller(
             scope = appScope,
             tunnelsUp = tunnels.state.map { it.tunnels.isNotEmpty() },
@@ -122,13 +125,14 @@ class FrpJumpApp : Application() {
 
     /**
      * Drop this phone's enrollment locally: stop frpc and the service, forget
-     * the local port map and the credentials. [keepPorts] keeps the owner's
+     * the device list, the local port map and the credentials. [keepPorts] keeps the owner's
      * custom ports per device, the SSH key, logins, passwords and host
      * keys, and the web views' cookies (re-enrolling the same owner after a
      * removal).
      */
     suspend fun forgetLocally(keepPorts: Boolean) {
         ssh.closeAll()
+        devices.forget()
         // Under the tunnel lock: no poll can restart frpc between the stop and the wipe.
         tunnels.shutdown {
             withContext(Dispatchers.IO) {
