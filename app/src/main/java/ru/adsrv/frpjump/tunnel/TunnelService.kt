@@ -28,8 +28,9 @@ import ru.adsrv.frpjump.MainActivity
 /**
  * Keeps the app process (and so frpc, its child) alive while at least one
  * tunnel is up, with a "N tunnels" notification and "Disconnect all".
- * It does not poll: polling belongs to the UI (and later the background
- * setting). Type `specialUse`: `dataSync` is capped at 6 h a day for apps
+ * It does not poll itself: the app's poller ([ru.adsrv.frpjump.session.Poller])
+ * runs at the background interval while this keeps the process alive.
+ * Type `specialUse`: `dataSync` is capped at 6 h a day for apps
  * targeting Android 15, and none of the other types fit a user-started
  * tunnel.
  */

@@ -8,8 +8,8 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 Behaviour is defined in [docs/contract.md](docs/contract.md).
 
 Current stage: enrollment, the device list, tunnels from the device card, the
-in-app web view, the SSH terminal and a minimal settings screen (SSH public
-key, "Forget this phone").
+in-app web view, the SSH terminal and settings (relay only, local ports,
+background checks, battery optimisation, SSH keys, "Forget this phone").
 
 ## How tunnels work
 
@@ -28,10 +28,41 @@ key, "Forget this phone").
   deleted whenever frpc stops or exits by itself, and on every app start (a
   killed process never got to delete them); "Forget this phone" deletes the
   whole directory.
-- While the app is visible it sends a heartbeat and fetches desired state
-  every 2 s. While at least one tunnel is up a foreground service (type
-  `specialUse`) keeps the process alive and shows "N tunnels" with
-  "Disconnect all". Closed, the app does not poll yet.
+- While at least one tunnel is up a foreground service (type `specialUse`)
+  keeps the process alive and shows "N tunnels" with "Disconnect all".
+
+## Polling and background
+
+One loop in the app polls: heartbeat + desired state, plus the device list
+while it is on screen.
+
+| App | Tunnels | Polls |
+| --- | --- | --- |
+| visible | any | every 2 s |
+| closed | up | at Settings > "Check the server in the background": Off (default), 30 s, 1 min, 5 min, 15 min |
+| closed | none | never |
+
+The phone exposes nothing, so a background check only keeps it shown
+online (`last_seen`) and tears down tunnels disconnected elsewhere or of a
+device disabled meanwhile. With no tunnel up there is nothing to tear down,
+so the app does not run in the background at all, whatever the setting;
+that is also why there is no WorkManager job for the 15 min option. Off
+keeps tunnels up without checking; changes made elsewhere apply when the
+app is opened.
+
+Android may still stop a background app (Doze, vendor firmware). Settings
+shows whether the app is exempt from battery optimisation, with a button
+to the system dialog (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, fine for a
+sideloaded app).
+
+## Settings
+
+- Relay only: one `stcp` visitor per tunnel bound directly, as
+  `frp-jump-client set-p2p off`; tunnels show "Relayed". Changing it
+  restarts frpc.
+- Local ports: a range within 1024-65535 of at least 10 ports, 40000-40999
+  by default. Existing mappings stay unless they fall outside a new range.
+- Settings are kept in `settings.json`; "Forget this phone" keeps them.
 
 ## Web ports
 

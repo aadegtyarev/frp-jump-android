@@ -78,10 +78,13 @@ version mismatch ("update the app" or "update the server").
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
   notification ("N tunnels", "Disconnect all"). This does not depend on the
   background-poll setting.
-- Background poll setting: off (default) / 30 s / 1 min / 5 min / 15 min.
+- Background poll setting: off (default) / 30 s / 1 min / 5 min / 15 min,
+  used while tunnels are up (the foreground service keeps the process).
   Off: no polling with the app closed; tunnels already up keep running, but
   changes made elsewhere are picked up only when the app is opened.
-- No tunnels and background poll off: nothing runs when the app is closed.
+- No tunnels: nothing runs when the app is closed, whatever the setting. A
+  background poll only keeps `last_seen` fresh and tears down tunnels
+  removed elsewhere; with no tunnels there is nothing to tear down.
 
 ### 7. Settings
 
