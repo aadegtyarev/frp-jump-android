@@ -21,9 +21,9 @@ import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
-import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.LocalPortAllocator
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.wireProtocolFor
 import ru.adsrv.frpjump.session.ProfileSession
@@ -200,7 +200,7 @@ class TunnelManager(
         stopService()
     }
 
-    fun connectAsync(device: String, port: DevicePort) = scope.launch { connect(device, port) }
+    fun connectAsync(device: String, port: Int, kind: PortKind) = scope.launch { connect(device, port, kind) }
 
     fun disconnectAsync(device: String, port: Int) = scope.launch { disconnect(device, port) }
 
@@ -213,12 +213,12 @@ class TunnelManager(
      * [CONNECT_WAIT_SECONDS] until it lists the grant (the server answers
      * connect before the grant is necessarily visible to every poll).
      */
-    suspend fun connect(device: String, port: DevicePort) {
-        val key = localPortKey(device, port.port)
+    suspend fun connect(device: String, port: Int, kind: PortKind) {
+        val key = localPortKey(device, port)
         val credentials = credentials() ?: return
         if (!begin(key, PendingOp.CONNECTING)) return
         try {
-            val grant = api.connect(credentials, device, port.port, wireProtocolFor(port))
+            val grant = api.connect(credentials, device, port, wireProtocolFor(kind, port))
             repeat(CONNECT_WAIT_SECONDS) { attempt ->
                 if (attempt > 0) delay(1_000)
                 val desired = sync()

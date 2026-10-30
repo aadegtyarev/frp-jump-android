@@ -2,7 +2,9 @@ package ru.adsrv.frpjump.ui.web
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.net.http.SslError
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,13 +62,34 @@ import androidx.compose.ui.viewinterop.AndroidView
 import ru.adsrv.frpjump.BuildConfig
 import ru.adsrv.frpjump.FrpJumpApp
 import java.io.ByteArrayInputStream
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.WebNavigation
+import ru.adsrv.frpjump.web.certFingerprint
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
 import ru.adsrv.frpjump.web.isTunnelUrl
 import ru.adsrv.frpjump.web.webNavigationFor
 
+/** A certificate waiting for the owner's word, with every request that waits on it. */
+private class CertQuestion(val fingerprint: String, val issuedTo: String?, val check: CertCheck) {
+    val handlers = mutableListOf<SslErrorHandler>()
+}
+
 /**
- * A device's web UI through its tunnel on `http://127.0.0.1:<localPort>/`.
+ * A device's web UI through its tunnel on `http://127.0.0.1:<localPort>/`
+ * (`https://` when [https]). A certificate is accepted only once the owner
+ * confirmed its fingerprint for this profile, device and [targetPort]
+ * ([ru.adsrv.frpjump.web.WebCertStore]); a different one asks again.
  * Only this tunnel's pages open here (see [webNavigationFor]): other
  * loopback ports are refused, links off the phone go to other apps.
  * WebSockets to the same origin (homeui's MQTT over WS) work as in any
@@ -75,9 +98,13 @@ import ru.adsrv.frpjump.web.webNavigationFor
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Unit) {
+fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, https: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
-    val start = remember(localPort) { "http://127.0.0.1:$localPort/" }
+    val start = remember(localPort, https) { (if (https) "https" else "http") + "://127.0.0.1:$localPort/" }
+    val certs = remember(profile) { (context.applicationContext as FrpJumpApp).profiles.runtime(profile)?.webCerts }
+    var question by remember { mutableStateOf<CertQuestion?>(null) }
+    var certRefused by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf(device) }
     var url by remember { mutableStateOf(start) }
     var progress by remember { mutableIntStateOf(0) }
@@ -108,6 +135,30 @@ fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Uni
             onTitle = { title = it.ifBlank { device } },
             onProgress = { progress = it },
             onRendererGone = { rendererGone = true },
+            onSslError = { handler, error ->
+                val cert = error.certificate
+                val fingerprint = runCatching { cert?.x509Certificate?.encoded?.let(::certFingerprint) }.getOrNull()
+                val forTunnel = isTunnelUrl(error.url, localPort)
+                when (val check = certs?.check(device, targetPort, fingerprint, forTunnel) ?: CertCheck.Refused) {
+                    CertCheck.Trusted -> handler.proceed()
+                    CertCheck.Refused -> {
+                        handler.cancel()
+                        if (forTunnel) certRefused = true
+                    }
+                    else -> {
+                        val open = question
+                        val asked = if (open != null && open.fingerprint == fingerprint) {
+                            open
+                        } else {
+                            // Another certificate replaces the question: what waited on the old one is refused, not left hanging.
+                            open?.handlers?.forEach { it.cancel() }
+                            CertQuestion(checkNotNull(fingerprint), cert?.issuedTo?.cName?.takeIf { it.isNotBlank() }, check)
+                        }
+                        asked.handlers += handler
+                        question = asked
+                    }
+                }
+            },
             onChooseFiles = { callback, params ->
                 files.start(callback, params)?.let { intent ->
                     try {
@@ -121,6 +172,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Uni
         )
         // After a renderer crash, carry on where the page was.
         val first = if (generation == 0) start else url
+        // Every screen asks anew: WebView would otherwise remember a "proceed" for the process.
+        webView.clearSslPreferences()
         val sites = (context.applicationContext as FrpJumpApp).webSites
         var alive = true
         if (sites.isOther(profile, device, localPort)) {
@@ -143,7 +196,11 @@ fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Uni
         }
     }
     val reload: () -> Unit = {
-        if (rendererGone) {
+        if (certRefused) {
+            certRefused = false
+            webView.clearSslPreferences()
+            webView.loadUrl(url)
+        } else if (rendererGone) {
             rendererGone = false
             generation++
         } else {
@@ -188,6 +245,11 @@ fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Uni
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (certRefused) {
+                // Above the page, which stays in place for "Try again".
+                Text(stringResource(R.string.cert_refused), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.cert_try_again)) }
+            }
             if (rendererGone) {
                 Text(
                     "The page stopped: its renderer crashed or Android closed it to free memory.",
@@ -199,6 +261,26 @@ fun WebScreen(profile: String, device: String, localPort: Int, onBack: () -> Uni
                 AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
             }
         }
+    }
+    question?.let { q ->
+        CertDialog(
+            device = device,
+            port = targetPort,
+            question = q,
+            onTrust = {
+                question = null
+                scope.launch {
+                    val pinned = runCatching { withContext(Dispatchers.IO) { certs?.pin(device, targetPort, q.fingerprint) } }.isSuccess
+                    q.handlers.forEach { if (pinned) it.proceed() else it.cancel() }
+                    if (!pinned) certRefused = true
+                }
+            },
+            onRefuse = {
+                question = null
+                q.handlers.forEach { it.cancel() }
+                certRefused = true
+            },
+        )
     }
 }
 
@@ -237,6 +319,7 @@ private fun configure(
     onTitle: (String) -> Unit,
     onProgress: (Int) -> Unit,
     onRendererGone: () -> Unit,
+    onSslError: (SslErrorHandler, SslError) -> Unit,
     onChooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Unit,
 ) {
     if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
@@ -273,6 +356,9 @@ private fun configure(
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPage(url)
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) = onPage(url)
+
+        /** A self-signed (or any) certificate: only one the owner confirmed for this connection is accepted. */
+        override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) = onSslError(handler, error)
 
         /** Handled: without this the whole app is killed with the renderer. */
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -341,6 +427,11 @@ private fun download(
         }
         return
     }
+    if (url.trim().startsWith("https:", ignoreCase = true)) {
+        // DownloadManager checks certificates itself and knows nothing of the one pinned here.
+        Toast.makeText(context, context.getString(R.string.download_https), Toast.LENGTH_LONG).show()
+        return
+    }
     val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
     try {
         val request = DownloadManager.Request(Uri.parse(url))
@@ -362,5 +453,39 @@ private fun openExternally(context: Context, url: String) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, "No app can open $url", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Shows the certificate's fingerprint and asks whether to trust it: first visit, or a changed certificate. */
+@Composable
+private fun CertDialog(device: String, port: Int, question: CertQuestion, onTrust: () -> Unit, onRefuse: () -> Unit) {
+    val changed = question.check as? CertCheck.Changed
+    AlertDialog(
+        onDismissRequest = onRefuse,
+        title = { Text(stringResource(if (changed != null) R.string.cert_changed_title else R.string.cert_unknown_title)) },
+        text = {
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(if (changed != null) R.string.cert_changed_text else R.string.cert_unknown_text, device, port))
+                    question.issuedTo?.let { Text(stringResource(R.string.cert_issued_to, it), style = MaterialTheme.typography.bodySmall) }
+                    if (changed != null) Fingerprint(stringResource(R.string.cert_fingerprint_before), changed.pinned)
+                    Fingerprint(stringResource(R.string.cert_fingerprint_now), question.fingerprint)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onTrust) {
+                Text(stringResource(if (changed != null) R.string.cert_trust_new else R.string.cert_trust))
+            }
+        },
+        dismissButton = { TextButton(onClick = onRefuse) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun Fingerprint(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(value, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
     }
 }

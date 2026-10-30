@@ -17,7 +17,16 @@ internal object ProfileFiles {
     const val HOST_KEYS = "ssh_host_keys.json"
     const val SSH_LOGINS = "ssh_logins.json"
 
-    /** Moved into the profile's directory on upgrade. */
+    /** Named connections; replaced [DEVICE_PORTS] (see [ru.adsrv.frpjump.connections.migrateDevicePorts]). */
+    const val CONNECTIONS = "connections.json"
+
+    /** A [CONNECTIONS] that did not parse, kept before anything is saved over it. */
+    const val CONNECTIONS_CORRUPT = "connections.corrupt.json"
+
+    /** Confirmed certificates of HTTPS web connections. */
+    const val WEB_CERTS = "web_certs.json"
+
+    /** v1's files, moved into the profile's directory on upgrade. */
     val PER_PROFILE = listOf(ENROLLMENT, DEVICE_LIST, DEVICE_PORTS, HOST_KEYS, SSH_LOGINS)
 
     /** Shared by all profiles; their keys name the profile and are rewritten on upgrade. */

@@ -1,43 +1,38 @@
 package ru.adsrv.frpjump.ui.devices
 
-import android.Manifest
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,263 +41,291 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ru.adsrv.frpjump.ports.DevicePort
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ports.PortKind
-import ru.adsrv.frpjump.tunnel.PendingOp
-import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
-import ru.adsrv.frpjump.tunnel.TunnelStatus
-import ru.adsrv.frpjump.tunnel.VisitorState
+import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.connections.ConnectButton
+import ru.adsrv.frpjump.ui.connections.ConnectionDialogs
+import ru.adsrv.frpjump.ui.connections.ConnectionMenu
+import ru.adsrv.frpjump.ui.connections.ConnectionSheet
+import ru.adsrv.frpjump.ui.connections.ConnectionUi
+import ru.adsrv.frpjump.ui.connections.LocalAddress
+import ru.adsrv.frpjump.ui.connections.MainButton
+import ru.adsrv.frpjump.ui.connections.RowActions
+import ru.adsrv.frpjump.ui.connections.StatePill
+import ru.adsrv.frpjump.ui.connections.kindLabel
+import ru.adsrv.frpjump.ui.connections.mainActionLabel
+import ru.adsrv.frpjump.ui.connections.problemOf
+import ru.adsrv.frpjump.ui.connections.rememberNotificationsFirst
+import ru.adsrv.frpjump.ui.connections.rememberRowActions
+import ru.adsrv.frpjump.ui.connections.rowName
+import ru.adsrv.frpjump.ui.connections.stateOf
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * A device of the current profile: its state, its connections with their
+ * tunnels' state and main action, rare actions under "⋮", and "New
+ * connection" as a sheet.
+ */
 @Composable
 fun DeviceCardScreen(
     vm: DeviceCardViewModel,
     onBack: () -> Unit,
-    onOpenWeb: (localPort: Int) -> Unit,
+    onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val ui = remember { ConnectionUi() }
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb)
+    val notificationsFirst = rememberNotificationsFirst()
     var adding by rememberSaveable { mutableStateOf(false) }
-    var sshLogin by remember { mutableStateOf<Pair<DevicePort, Int>?>(null) }
-    // Asked at the first Connect, before connecting: a notification enqueued
-    // while the permission is still undecided is dropped, and the service's
-    // notification is what "Disconnect all" lives on. Connects either way.
-    var waitingPort by remember { mutableStateOf<DevicePort?>(null) }
-    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        waitingPort?.let(vm::connect)
-        waitingPort = null
-    }
-    val connect = { port: DevicePort ->
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            waitingPort = port
-            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            vm.connect(port)
-        }
-    }
+    val colors = AppTheme.colors
     Scaffold(
+        containerColor = colors.ground,
+        // Back stays in reach while the list scrolls.
         topBar = {
-            TopAppBar(
-                title = { Text(vm.device, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (state.tunnelCount > 0) TextButton(onClick = vm::disconnectAll) { Text("Disconnect all") }
-                    IconButton(onClick = { adding = true }) { Icon(Icons.Filled.Add, contentDescription = "Add port") }
-                },
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.ground)
+                    .statusBarsPadding()
+                    .padding(start = 4.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = colors.ink)
+                }
+            }
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { adding = true },
+                containerColor = colors.strong,
+                contentColor = colors.onStrong,
+                shape = RoundedCornerShape(18.dp),
+                icon = { Icon(PlusGlyph, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                text = { Text(stringResource(R.string.new_connection_button), fontSize = 15.sp, fontWeight = FontWeight.SemiBold) },
             )
         },
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
-                .padding(padding),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(top = padding.calculateTopPadding()),
+            // The last card scrolls clear of the floating button (and the navigation bar under it).
+            contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 96.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            state.mismatch?.let { item { Banner("$it Running tunnels are left as they are.") } }
-            state.syncError?.let { item { Banner(it) } }
-            items(state.rows, key = { it.port.port }) { row ->
-                PortCard(
+            item(key = "header") { Header(vm.device, state.device, state.profileName) }
+            state.mismatch?.let { item(key = "mismatch") { Problem(stringResource(R.string.mismatch_banner, it)) } }
+            state.syncError?.let { item(key = "sync") { Problem(it) } }
+            item(key = "section") {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.connections_header).uppercase(),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.8.sp,
+                        color = colors.muted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (state.rows.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.connections_active_of, state.rows.count { it.active }, state.rows.size),
+                            fontSize = 13.sp,
+                            color = colors.muted,
+                        )
+                    }
+                }
+            }
+            if (state.rows.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        stringResource(R.string.device_no_connections),
+                        color = colors.muted,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            items(state.rows, key = { it.key }) { row ->
+                ConnectionCard(
                     row = row,
-                    onConnect = { connect(row.port) },
-                    onDisconnect = { vm.disconnect(row.port) },
-                    onRemove = { vm.removePort(row.port) },
-                    onOpenWeb = onOpenWeb,
-                    onOpenBrowser = { port -> openInBrowser(context, port) },
-                    onTerminal = { localPort -> sshLogin = row.port to localPort },
-                    onSession = onOpenTerminal,
-                    onExternalSsh = { localPort -> openSshExternally(context, vm.sshLogin(row.port.port).user, localPort) },
+                    sshMethod = if (row.connection.kind == PortKind.SSH) vm.actions.sshLogin(row).method else null,
+                    menuOpen = ui.menu == row.key,
+                    onMenu = { ui.menu = if (it) row.key else null },
+                    actions = actions,
                 )
             }
         }
     }
-    sshLogin?.let { (port, localPort) ->
-        SshLoginDialog(
-            target = "${vm.device}:${port.port}",
-            initial = vm.sshLogin(port.port),
-            hasRememberedPassword = { vm.hasRememberedPassword(port.port, it) },
-            onConnect = { user, method, password, remember ->
-                sshLogin = null
-                onOpenTerminal(vm.openSsh(port.port, localPort, user, method, password, remember))
-            },
-            onDismiss = { sshLogin = null },
-        )
-    }
+    ConnectionDialogs(ui, vm.actions, existing = { vm.connections() }, rows = state.rows, onOpenTerminal = onOpenTerminal)
     if (adding) {
-        AddPortDialog(
-            taken = state.rows.map { it.port.port }.toSet(),
-            onAdd = {
-                vm.addPort(it)
-                adding = false
+        ConnectionSheet(
+            device = vm.device,
+            editing = null,
+            portLocked = false,
+            existing = vm.connections(),
+            onSave = { connection, connectNow, done ->
+                val save = { vm.actions.save(vm.profile, connection, previous = null, connectNow = connectNow, onDone = done) }
+                if (connectNow) notificationsFirst(save) else save()
             },
             onDismiss = { adding = false },
         )
     }
 }
 
-@Composable
-private fun Banner(text: String) {
-    Text(
-        text,
-        color = MaterialTheme.colorScheme.error,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
-}
-
+/** The device's name, its state and its profile, as the mockup. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PortCard(
-    row: PortRow,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onRemove: () -> Unit,
-    onOpenWeb: (Int) -> Unit,
-    onOpenBrowser: (Int) -> Unit,
-    onTerminal: (Int) -> Unit,
-    onSession: (Int) -> Unit,
-    onExternalSsh: (Int) -> Unit,
-) {
-    val clipboard = LocalClipboardManager.current
-    val tunnel = row.tunnel
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "${row.port.label} · ${row.port.port}",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                if (!row.preset && tunnel == null && row.pending == null) {
-                    IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = "Remove port") }
-                }
-            }
-            Text(statusText(row), style = MaterialTheme.typography.bodyMedium)
-            row.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            if (tunnel != null) {
-                val address = "127.0.0.1:${tunnel.localPort}"
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(address, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(address)) }) { Text("Copy") }
-                }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (tunnel == null) {
-                    Button(onClick = onConnect, enabled = row.pending == null) { Text("Connect") }
-                } else {
-                    OutlinedButton(onClick = onDisconnect, enabled = row.pending == null) { Text("Disconnect") }
-                    if (row.port.kind == PortKind.WEB) {
-                        Button(onClick = { onOpenWeb(tunnel.localPort) }) { Text("Open") }
-                        TextButton(onClick = { onOpenBrowser(tunnel.localPort) }) { Text("Open in browser") }
+private fun Header(name: String, device: DeviceRow?, profileName: String) {
+    val colors = AppTheme.colors
+    Column {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (device != null) {
+                    val (dot, text) = when {
+                        device.online && device.stale -> colors.online.copy(alpha = 0.4f) to stringResource(R.string.device_was_online)
+                        device.online -> colors.online to stringResource(R.string.device_online)
+                        else -> colors.offline to stringResource(R.string.device_offline)
                     }
-                    if (row.port.kind == PortKind.SSH) {
-                        Button(onClick = { onTerminal(tunnel.localPort) }) { Text("Terminal") }
-                        TextButton(onClick = { onExternalSsh(tunnel.localPort) }) { Text("Open in external app") }
+                    HeaderChip {
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .background(dot, CircleShape),
+                        )
+                        Text(text, fontSize = 13.sp)
                     }
                 }
-                if (row.sshSessions.isNotEmpty()) {
-                    TextButton(onClick = { onSession(row.sshSessions.last()) }) {
-                        Text(if (row.sshSessions.size == 1) "1 session" else "${row.sshSessions.size} sessions")
-                    }
-                }
+                if (profileName.isNotBlank()) HeaderChip { Text(stringResource(R.string.device_profile_chip, profileName), fontSize = 13.sp) }
             }
         }
     }
 }
 
-private fun statusText(row: PortRow): String = when {
-    row.pending == PendingOp.CONNECTING && row.tunnel == null -> "Connecting…"
-    row.pending == PendingOp.DISCONNECTING -> "Disconnecting…"
-    row.tunnel == null -> "Not connected"
-    else -> label(row.tunnel.state)
-}
-
-private fun label(state: VisitorState): String {
-    val text = when (state.status) {
-        TunnelStatus.CONNECTING -> "Connecting…"
-        TunnelStatus.READY -> "Ready: direct or relayed is decided on first use"
-        TunnelStatus.DIRECT -> "Direct (peer-to-peer)"
-        TunnelStatus.RELAYED -> "Relayed"
-        TunnelStatus.FAILED -> "Failed"
-    }
-    return if (state.detail != null && state.status == TunnelStatus.FAILED) "$text: ${state.detail}" else text
-}
-
-private fun openInBrowser(context: android.content.Context, localPort: Int) {
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://127.0.0.1:$localPort/")))
-    } catch (_: ActivityNotFoundException) {
-        // No browser installed: the address can still be copied.
-    }
-}
-
-/** Hands the tunnel to an SSH app (Termius, JuiceSSH, …); a toast if none is installed. */
-private fun openSshExternally(context: android.content.Context, user: String, localPort: Int) {
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
-    } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No installed app opens ssh:// links.", Toast.LENGTH_SHORT).show()
-    }
+@Composable
+private fun HeaderChip(content: @Composable () -> Unit) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier
+            .background(colors.card, CircleShape)
+            .border(1.dp, colors.outline, CircleShape)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) { content() }
 }
 
 @Composable
-private fun AddPortDialog(taken: Set<Int>, onAdd: (DevicePort) -> Unit, onDismiss: () -> Unit) {
-    var portText by rememberSaveable { mutableStateOf("") }
-    var label by rememberSaveable { mutableStateOf("") }
-    var kind by rememberSaveable { mutableStateOf(PortKind.WEB) }
-    val port = portText.trim().toIntOrNull()
-    val problem = when {
-        portText.isBlank() -> null
-        port == null || port !in 1..65535 -> "A port is 1–65535."
-        port in taken -> "This port is already on the card."
-        else -> null
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add port") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = portText,
-                    onValueChange = { portText = it.filter(Char::isDigit).take(5) },
-                    label = { Text("Port") },
-                    singleLine = true,
-                    isError = problem != null,
-                    supportingText = problem?.let { { Text(it) } },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-                OutlinedTextField(
-                    value = label,
-                    onValueChange = { label = it.take(40) },
-                    label = { Text("Name") },
-                    singleLine = true,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PortKind.entries.forEach { k ->
-                        FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(k.name.lowercase()) })
+private fun Problem(text: String) {
+    Text(text, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
+}
+
+/**
+ * One connection as the mockup's card: kind tile, name and what it is, "⋮";
+ * below, the state, local address and main action when up, or "Not
+ * connected" and Connect. Long press opens the same menu as "⋮".
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ConnectionCard(
+    row: ConnectionRow,
+    sshMethod: SshAuthMethod?,
+    menuOpen: Boolean,
+    onMenu: (Boolean) -> Unit,
+    actions: RowActions,
+) {
+    val colors = AppTheme.colors
+    val c = row.connection
+    val up = row.tunnel != null
+    Surface(
+        color = colors.card,
+        shape = RoundedCornerShape(18.dp),
+        border = if (up) BorderStroke(1.5.dp, colors.accent.copy(alpha = 0.45f)) else BorderStroke(1.dp, colors.divider),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .combinedClickable(onClick = {}, onLongClick = { onMenu(true) }),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                KindTile(c.kind, up, row.saved)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(rowName(row), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(subtitle(row, sshMethod), fontSize = 13.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Box {
+                    IconButton(onClick = { onMenu(true) }, modifier = Modifier.width(36.dp)) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions, rowName(row)), tint = colors.muted)
                     }
+                    ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = port != null && problem == null,
-                onClick = { port?.let { onAdd(DevicePort(it, label.trim().ifEmpty { "Port $it" }, kind)) } },
-            ) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val state = stateOf(row)
+                if (state != null) StatePill(state.first, state.second) else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
+                // The address gives way (ellipsis) before the main action does.
+                row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f)) } ?: Spacer(Modifier.weight(1f))
+                if (up) MainButton(mainActionLabel(row)) { actions.main(row) } else ConnectButton(row) { actions.connect(row) }
+            }
+            problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
+        }
+    }
+}
+
+/** "Web · port 80", "SSH · port 22 · root · phone key", …; an unsaved tunnel shows its device and port only. */
+@Composable
+private fun subtitle(row: ConnectionRow, sshMethod: SshAuthMethod?): String {
+    val c = row.connection
+    if (!row.saved) return "${c.device}:${c.port}"
+    val kind = kindLabel(c.kind)
+    return when {
+        c.kind == PortKind.WEB && c.https -> stringResource(R.string.connection_sub_https, kind, c.port)
+        c.kind == PortKind.SSH && sshMethod == SshAuthMethod.PASSWORD -> stringResource(R.string.connection_sub_ssh_password, kind, c.port, c.sshUser)
+        c.kind == PortKind.SSH -> stringResource(R.string.connection_sub_ssh_key, kind, c.port, c.sshUser)
+        else -> stringResource(R.string.connection_sub, kind, c.port)
+    }
+}
+
+/** WEB / SSH / TCP on a tile, in the accent while connected. */
+@Composable
+private fun KindTile(kind: PortKind, up: Boolean, saved: Boolean) {
+    val colors = AppTheme.colors
+    Box(
+        Modifier
+            .size(40.dp)
+            .background(if (up) colors.accentContainer else colors.tile, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            stringResource(
+                when {
+                    !saved || kind == PortKind.TCP -> R.string.kind_tcp_tile
+                    kind == PortKind.WEB -> R.string.kind_web_tile
+                    else -> R.string.kind_ssh_tile
+                },
+            ),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (up) colors.onAccentContainer else colors.muted,
+        )
+    }
 }
