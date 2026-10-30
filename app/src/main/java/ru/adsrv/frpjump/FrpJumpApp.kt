@@ -72,7 +72,11 @@ class FrpJumpApp : Application() {
         appScope.launch(Dispatchers.IO) {
             // v1 kept one frpc's files right in here; each profile now has a directory of its own.
             frpcRoot.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
-            profiles.load()
+            if (profiles.load()) {
+                // frpc directories of profiles no longer listed (forget interrupted).
+                val ids = profiles.state.value.runtimes.keys
+                frpcRoot.listFiles()?.filter { it.isDirectory && it.name !in ids }?.forEach { it.deleteRecursively() }
+            }
         }
         installFullBouncyCastle()
         // Its own Keystore key, shared by all profiles: re-enrolling must not lose the SSH key.
@@ -93,24 +97,28 @@ class FrpJumpApp : Application() {
 
     /**
      * Forget profile [id] on this phone: close its SSH sessions, stop its
-     * frpc, wipe its credentials, key, lists and ports ([Profiles.forget]).
-     * [keepData] keeps the profile, empty, with its custom ports, logins and
-     * host keys (enrolling it again after its server removed it). Otherwise
-     * the web views' data goes too when it is this profile's, and with the
-     * last profile gone also the shared SSH key and passwords, as v1's
-     * "Forget this phone" did.
+     * frpc, wipe its credentials, key, lists, ports and remembered SSH
+     * passwords ([Profiles.forget]). [keepData] keeps the profile, empty,
+     * with its custom ports, logins, host keys and passwords (enrolling it
+     * again after its server removed it). Otherwise the web views' data goes
+     * too when it is this profile's, and with the last profile also the
+     * shared SSH key and passwords, as v1's "Forget this phone" did: wiped
+     * before the index drops the profile, so an interruption leaves it
+     * listed rather than the key behind.
      */
     suspend fun forgetProfile(id: String, keepData: Boolean) {
         ssh.closeProfile(id)
-        profiles.forget(id, keepData)
+        profiles.forget(id, keepData) {
+            sshKeys.wipe()
+            sshPasswords.wipe()
+            KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
+        }
         if (keepData) return
         val noneLeft = profiles.state.value.index.profiles.isEmpty()
+        // Interrupted before or after the memory is forgotten, it no longer matches any
+        // site, so the next page opened clears the web data anyway.
         val clearWeb = withContext(Dispatchers.IO) {
-            if (noneLeft) {
-                sshKeys.wipe()
-                sshPasswords.wipe()
-                KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
-            }
+            sshPasswords.forgetProfile(id)
             (noneLeft || webSites.belongsTo(id)).also { if (it) webSites.forget() }
         }
         // Logins to the devices' web UIs go with the rest. The web view's classes: main thread.

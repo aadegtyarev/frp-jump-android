@@ -19,18 +19,20 @@ certificate and key. Each profile has a random id; `profiles.json` in
 filesDir lists them in order with the current one (the one the app shows),
 and each profile's own files live in `profiles/<id>/`: the enrollment
 (sealed with a Keystore key of its own, `frpjump-profile-<id>`), the cached
-device list, custom ports, SSH logins and pinned host keys. Every profile
+device list, custom ports, SSH logins and pinned host keys. Remembered SSH
+passwords are kept per profile too, in the shared, sealed `ssh_passwords.json`. Every profile
 runs its own poller and, while it has tunnels, its own frpc
 (`no_backup/frpc/<id>/`), so tunnels of several profiles are up at once.
 Shared by all profiles: settings, the local port map (one range, keyed by
-profile, device and port), the web view's last site, the SSH key and
-remembered passwords.
+profile, device and port), the web view's last site and the SSH key.
 
 Enrolling adds a profile and shows it. "Forget this phone" in Settings
 forgets the current profile: its tunnels go, the server is told to delete
 it (offline: on the phone only), its directory and Keystore key are wiped,
 and the next profile is shown, or enrollment with none left. Forgetting the
-last profile also wipes the SSH key, as before.
+last profile also wipes the SSH key and passwords, as before, before the
+index drops it. Profile directories the index does not list (an add or a
+forget cut short) are deleted with their keys on the next start.
 
 Upgrading from 0.1.x makes the single enrollment the first profile on the
 first start, without re-enrolling: v1's files move into the profile's

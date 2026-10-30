@@ -23,6 +23,7 @@ internal object ProfileFiles {
     /** Shared by all profiles; their keys name the profile and are rewritten on upgrade. */
     const val LOCAL_PORTS = "local_ports.json"
     const val WEB_SITE = "web_site.json"
+    const val SSH_PASSWORDS = "ssh_passwords.json"
 
     /** What android.util.AtomicFile may leave next to a file: the old copy, a write in progress. */
     val ATOMIC_SUFFIXES = listOf("", ".bak", ".new")

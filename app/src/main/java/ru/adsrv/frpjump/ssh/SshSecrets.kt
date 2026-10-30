@@ -5,7 +5,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
-import ru.adsrv.frpjump.store.KeystoreSecretBox
+import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
 
 /** A key the app can log in with: OpenSSH private key text, its passphrase if any. */
@@ -28,7 +28,7 @@ private data class StoredKeys(val generated: StoredKey? = null, val imported: St
  * one. Private halves and passphrases are sealed with [box]; public lines
  * are stored as they are.
  */
-class SshKeyStore(private val storage: TextStorage, private val box: KeystoreSecretBox) {
+class SshKeyStore(private val storage: TextStorage, private val box: SecretBox) {
     private var keys: StoredKeys = read()
 
     /** The app's key's `authorized_keys` line; generates the key on first use. */
@@ -86,13 +86,17 @@ class SshKeyStore(private val storage: TextStorage, private val box: KeystoreSec
     }
 }
 
-/** Passwords the owner ticked "remember" for, sealed, per (device, port, user). */
-class SshPasswords(private val storage: TextStorage, private val box: KeystoreSecretBox) {
+/**
+ * Passwords the owner ticked "remember" for, sealed with the shared SSH key
+ * [box], per (profile, device, port, user): two profiles may both have a
+ * device called "wb", and they need not share its password.
+ */
+class SshPasswords(private val storage: TextStorage, private val box: SecretBox) {
     private var sealed: Map<String, String> = read()
 
     @Synchronized
-    fun get(device: String, port: Int, user: String): String? {
-        val value = sealed[key(device, port, user)] ?: return null
+    fun get(profile: String, device: String, port: Int, user: String): String? {
+        val value = sealed[key(profile, device, port, user)] ?: return null
         return try {
             box.open(value)
         } catch (e: Exception) {
@@ -103,16 +107,23 @@ class SshPasswords(private val storage: TextStorage, private val box: KeystoreSe
 
     /** Whether a password is kept for this login; cheap, nothing is unsealed. */
     @Synchronized
-    fun has(device: String, port: Int, user: String): Boolean = key(device, port, user) in sealed
+    fun has(profile: String, device: String, port: Int, user: String): Boolean = key(profile, device, port, user) in sealed
 
     @Synchronized
-    fun remember(device: String, port: Int, user: String, password: String) =
-        save(sealed + (key(device, port, user) to box.seal(password)))
+    fun remember(profile: String, device: String, port: Int, user: String, password: String) =
+        save(sealed + (key(profile, device, port, user) to box.seal(password)))
 
     @Synchronized
-    fun forget(device: String, port: Int, user: String) {
-        val k = key(device, port, user)
+    fun forget(profile: String, device: String, port: Int, user: String) {
+        val k = key(profile, device, port, user)
         if (k in sealed) save(sealed - k)
+    }
+
+    /** Drops every password of [profile] ("Forget profile"). */
+    @Synchronized
+    fun forgetProfile(profile: String) {
+        val kept = sealed.filterKeys { profileOf(it) != profile }
+        if (kept != sealed) save(kept)
     }
 
     @Synchronized
@@ -120,8 +131,6 @@ class SshPasswords(private val storage: TextStorage, private val box: KeystoreSe
         storage.delete()
         sealed = emptyMap()
     }
-
-    private fun key(device: String, port: Int, user: String) = WireJson.encodeToString(listOf(device, port.toString(), user))
 
     private fun read(): Map<String, String> =
         runCatching { storage.read()?.let { WireJson.decodeFromString<Map<String, String>>(it) } }.getOrNull().orEmpty()
@@ -131,7 +140,27 @@ class SshPasswords(private val storage: TextStorage, private val box: KeystoreSe
         sealed = value
     }
 
-    private companion object {
-        const val TAG = "SshPasswords"
+    companion object {
+        private const val TAG = "SshPasswords"
+
+        private fun key(profile: String, device: String, port: Int, user: String) =
+            WireJson.encodeToString(listOf(profile, device, port.toString(), user))
+
+        private fun profileOf(key: String): String? =
+            runCatching { WireJson.decodeFromString<List<String>>(key) }.getOrNull()?.takeIf { it.size == 4 }?.first()
+
+        /**
+         * v1 keyed passwords by `[device, port, user]`; on upgrade they become
+         * [profile]'s. The sealed values stay as they are (same key). Null
+         * when [text] needs no change, so running it again changes nothing.
+         */
+        fun migrateLegacy(text: String, profile: String): String? {
+            val stored = runCatching { WireJson.decodeFromString<Map<String, String>>(text) }.getOrNull() ?: return null
+            val migrated = stored.mapKeys { (key, _) ->
+                val parts = runCatching { WireJson.decodeFromString<List<String>>(key) }.getOrNull()
+                if (parts?.size == 3) WireJson.encodeToString(listOf(profile) + parts) else key
+            }
+            return if (migrated == stored) null else WireJson.encodeToString(migrated)
+        }
     }
 }

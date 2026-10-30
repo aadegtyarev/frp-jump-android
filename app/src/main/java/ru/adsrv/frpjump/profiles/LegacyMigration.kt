@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import ru.adsrv.frpjump.api.WireJson
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.ssh.SshPasswords
 import ru.adsrv.frpjump.store.TextStorage
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
@@ -26,8 +27,9 @@ private data class MigrationPlan(@SerialName("profile_id") val profileId: String
  * 2. Move the per-profile files ([ProfileFiles.PER_PROFILE]) into
  *    `profiles/<id>/`, each by an atomic rename; nothing is copied or
  *    re-sealed: the profile keeps v1's Keystore key ([LEGACY_KEY_ALIAS]).
- * 3. Rewrite the keys of the shared local port map and web site memory to
- *    name the profile.
+ * 3. Rewrite the keys of the shared local port map, web site memory and
+ *    remembered SSH passwords to name the profile (the passwords stay
+ *    sealed with the shared SSH key).
  * 4. Add the profile to the index, as the current one.
  * 5. Delete the marker.
  *
@@ -61,6 +63,7 @@ internal class LegacyMigration(
             if (migrated == ports) null else WireJson.encodeToString(migrated)
         }
         rewrite(ProfileFiles.WEB_SITE) { WebSiteMemory.migrateLegacy(it, plan.profileId) }
+        rewrite(ProfileFiles.SSH_PASSWORDS) { SshPasswords.migrateLegacy(it, plan.profileId) }
         val current = index.read()?.let { WireJson.decodeFromString<ProfileIndex>(it) } ?: ProfileIndex()
         if (current.find(plan.profileId) == null) {
             val profile = Profile(plan.profileId, plan.name, nextProfileColor(current.profiles), LEGACY_KEY_ALIAS)

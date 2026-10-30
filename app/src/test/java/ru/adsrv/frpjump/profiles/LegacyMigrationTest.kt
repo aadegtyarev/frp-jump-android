@@ -34,8 +34,31 @@ class LegacyMigrationTest {
         file("ssh_logins.json").writeText("""{"wb":{"22":{}}}""")
         file("local_ports.json").writeText("""{"wb:80":40002,"wb:22":40001}""")
         file("web_site.json").writeText("""["wb","40002"]""")
+        file("ssh_passwords.json").writeText("""{"[\"wb\",\"22\",\"root\"]":"sealed-pw"}""")
         file("settings.json").writeText("{}")
         file("ssh_keys.json").writeText("{}")
+    }
+
+    private fun crashOnce(block: () -> Unit) {
+        try {
+            block()
+            fail("the crash was not simulated")
+        } catch (_: IOException) {
+        }
+    }
+
+    /** Everything a finished upgrade must show, whatever happened on the way. */
+    private fun assertUpgraded(store: ProfileStore) {
+        val profile = store.load().profiles.single()
+        assertEquals("id1", profile.id)
+        assertEquals(LEGACY_KEY_ALIAS, profile.keyAlias)
+        assertEquals(credentials("ikar.example"), store.credentials(profile).load())
+        for (name in ProfileFiles.PER_PROFILE) assertTrue("$name moved", File(store.dir("id1"), name).exists())
+        assertEquals(mapOf("id1/wb:80" to 40002, "id1/wb:22" to 40001), LocalPortStore(files.storage(file("local_ports.json"))).load())
+        assertFalse(WebSiteMemory(files.storage(file("web_site.json"))).isOther("id1", "wb", 40002))
+        assertEquals("""{"[\"id1\",\"wb\",\"22\",\"root\"]":"sealed-pw"}""", file("ssh_passwords.json").readText())
+        assertFalse(file(ProfileFiles.MIGRATION).exists())
+        assertEquals(1, ids)
     }
 
     @After
@@ -70,6 +93,8 @@ class LegacyMigrationTest {
         assertTrue(File(dir, "device_ports.json").readText().contains("Node-RED"))
         assertEquals(mapOf("id1/wb:80" to 40002, "id1/wb:22" to 40001), LocalPortStore(files.storage(file("local_ports.json"))).load())
         assertFalse(WebSiteMemory(files.storage(file("web_site.json"))).isOther("id1", "wb", 40002))
+        // The sealed value stays as it is: the shared SSH key opens it.
+        assertEquals("""{"[\"id1\",\"wb\",\"22\",\"root\"]":"sealed-pw"}""", file("ssh_passwords.json").readText())
         // Shared by all profiles: left where they are.
         assertTrue(file("settings.json").exists())
         assertTrue(file("ssh_keys.json").exists())
@@ -135,6 +160,47 @@ class LegacyMigrationTest {
         val store = store()
         val profile = store.load().profiles.single()
         assertEquals(credentials("ikar.example"), store.credentials(profile).load())
+    }
+
+    @Test
+    fun `a crash while rewriting the web site memory is finished on the next start`() {
+        v1Layout()
+        files.crashOn = "web_site.json"
+        crashOnce { store().load() }
+        assertUpgraded(store())
+    }
+
+    @Test
+    fun `a crash after listing the profile, before the marker goes, is finished without a second profile`() {
+        v1Layout()
+        files.crashOnDelete = ProfileFiles.MIGRATION
+        crashOnce { store().load() }
+        assertTrue(file(ProfileFiles.MIGRATION).exists())
+        assertUpgraded(store())
+    }
+
+    @Test
+    fun `a crash between the moves of the per-profile files is finished on the next start`() {
+        v1Layout()
+        // As the first run left it: the plan written, the enrollment and the device list moved, the rest not yet.
+        file(ProfileFiles.MIGRATION).writeText("""{"profile_id":"id1","name":"ikar.example"}""")
+        ids = 1
+        val dir = File(filesDir, "profiles/id1").apply { mkdirs() }
+        for (name in listOf("enrollment.json", "device_list.json")) file(name).renameTo(File(dir, name))
+        assertUpgraded(store())
+    }
+
+    @Test
+    fun `what AtomicFile left next to a v1 file moves with it`() {
+        v1Layout()
+        file("device_ports.json.bak").writeText("old")
+        file("ssh_logins.json.new").writeText("half written")
+        val store = store()
+        store.load()
+        assertEquals("old", File(store.dir("id1"), "device_ports.json.bak").readText())
+        assertEquals("half written", File(store.dir("id1"), "ssh_logins.json.new").readText())
+        assertFalse(file("device_ports.json.bak").exists())
+        assertFalse(file("ssh_logins.json.new").exists())
     }
 
     @Test

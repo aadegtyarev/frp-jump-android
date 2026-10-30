@@ -78,21 +78,28 @@ fun AppNav() {
         }
         composable(Routes.REMOVED) {
             var busy by remember { mutableStateOf(false) }
+            var error by remember { mutableStateOf<String?>(null) }
             val scope = rememberCoroutineScope()
             MessageScreen(
                 title = "frp-jump",
                 text = "This phone was removed from the server. Its tunnels are stopped.",
                 action = "Enroll again",
                 busy = busy,
+                error = error,
                 onAction = {
                     busy = true
+                    error = null
                     // The wipe runs in the app scope: it finishes even if this screen goes away.
                     val wipe = app.appScope.async {
-                        app.profiles.current?.let { app.forgetProfile(it.id, keepData = true) }
+                        runCatching { app.profiles.current?.let { app.forgetProfile(it.id, keepData = true) } }
                     }
                     scope.launch {
                         wipe.await()
-                        nav.replaceAll(Routes.ENROLL)
+                            .onSuccess { nav.replaceAll(Routes.ENROLL) }
+                            .onFailure {
+                                busy = false
+                                error = "Could not wipe the old credentials (${it.userMessage()}). Try again."
+                            }
                     }
                 },
             )

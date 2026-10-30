@@ -9,9 +9,13 @@ import java.io.IOException
 import java.util.UUID
 import javax.crypto.AEADBadTagException
 
-/** A [TextStorage] in a plain file; [crashOn] makes the next write to a file of that name fail, once. */
+/**
+ * [TextStorage]s in plain files. [crashOn] makes the next write to a file of
+ * that name fail, once; [crashOnDelete] the same for a delete.
+ */
 class FileStorages {
     var crashOn: String? = null
+    var crashOnDelete: String? = null
 
     fun storage(file: File): TextStorage = object : TextStorage {
         override fun read(): String? = if (file.exists()) file.readText() else null
@@ -26,6 +30,10 @@ class FileStorages {
         }
 
         override fun delete() {
+            if (file.name == crashOnDelete) {
+                crashOnDelete = null
+                throw IOException("crash while deleting ${file.name}")
+            }
             file.delete()
         }
     }

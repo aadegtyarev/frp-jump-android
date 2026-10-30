@@ -206,13 +206,13 @@ class SshSession(
                 ssh.authPublickey(user, providers)
             }
             is SshAuth.Password -> {
-                val password = auth.typed ?: env.passwords.get(device, port, user)
+                val password = auth.typed ?: env.passwords.get(profile, device, port, user)
                     ?: throw UserAuthException("No remembered password for $user")
                 ssh.authPassword(user, password)
                 if (!auth.remember) {
-                    env.passwords.forget(device, port, user)
+                    env.passwords.forget(profile, device, port, user)
                 } else if (auth.typed != null) {
-                    env.passwords.remember(device, port, user, password)
+                    env.passwords.remember(profile, device, port, user, password)
                 }
             }
         }
@@ -223,7 +223,7 @@ class SshSession(
             "Add the public key from Settings to ~/.ssh/authorized_keys there, or log in with a password."
         is SshAuth.Password -> {
             // A remembered password that no longer works is not offered again.
-            env.passwords.forget(device, port, user)
+            env.passwords.forget(profile, device, port, user)
             "Wrong user name or password for \"$user\"."
         }
     }

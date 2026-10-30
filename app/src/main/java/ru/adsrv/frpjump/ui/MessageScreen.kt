@@ -17,7 +17,15 @@ import androidx.compose.ui.unit.dp
 /** A full-screen explanation with one way forward. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MessageScreen(title: String, text: String, action: String, busy: Boolean = false, onAction: () -> Unit) {
+fun MessageScreen(
+    title: String,
+    text: String,
+    action: String,
+    busy: Boolean = false,
+    /** Why the last [action] failed, shown below it. */
+    error: String? = null,
+    onAction: () -> Unit,
+) {
     Scaffold(topBar = { TopAppBar(title = { Text(title) }) }) { padding ->
         Column(
             modifier = Modifier
@@ -28,6 +36,7 @@ fun MessageScreen(title: String, text: String, action: String, busy: Boolean = f
         ) {
             Text(text, style = MaterialTheme.typography.bodyLarge)
             Button(onClick = onAction, enabled = !busy) { Text(action) }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }

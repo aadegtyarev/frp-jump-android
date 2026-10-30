@@ -87,7 +87,7 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
     fun sshLogin(port: Int): SshLogin = runtime.sshLogins.get(device, port)
 
     /** Only whether one is kept: the password itself is unsealed by the session, off the main thread. */
-    fun hasRememberedPassword(port: Int, user: String): Boolean = app.sshPasswords.has(device, port, user.trim())
+    fun hasRememberedPassword(port: Int, user: String): Boolean = app.sshPasswords.has(profile, device, port, user.trim())
 
     /**
      * Remembers the user name and method for this port and opens a session;

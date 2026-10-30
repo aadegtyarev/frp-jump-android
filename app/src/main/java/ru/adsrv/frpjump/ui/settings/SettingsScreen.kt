@@ -162,6 +162,14 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
             ) {
                 Text("Forget this phone", color = MaterialTheme.colorScheme.error)
             }
+            state.forgetError?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                )
+            }
         }
     }
     pickedKey?.let { key ->

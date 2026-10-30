@@ -120,12 +120,14 @@ class Profiles(
      * lock as its polls, wipes its credentials and key. With [keepData] the
      * profile stays, empty, for enrolling again (ports, logins, host keys
      * kept); otherwise its directory goes and it leaves the list, the next
-     * profile becoming the current one.
+     * profile becoming the current one. [beforeLastGoes] runs, on the IO
+     * dispatcher, before the last profile leaves the list
+     * ([ProfileStore.remove]).
      */
-    suspend fun forget(id: String, keepData: Boolean) = changing.withLock {
+    suspend fun forget(id: String, keepData: Boolean, beforeLastGoes: () -> Unit = {}) = changing.withLock {
         val runtime = _state.value.runtimes[id] ?: return@withLock
         runtime.tunnels.shutdown {
-            withContext(Dispatchers.IO) { if (keepData) runtime.store.wipe() else store.remove(id) }
+            withContext(Dispatchers.IO) { if (keepData) runtime.store.wipe() else store.remove(id, beforeLastGoes) }
         }
         // After the wipe: a poll can no longer fetch and cache the list again.
         runtime.devices.forget()

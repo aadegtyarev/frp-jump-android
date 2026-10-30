@@ -78,6 +78,49 @@ class ProfileStoreTest {
     }
 
     @Test
+    fun `the last profile's shared data goes before the index drops it`() {
+        val store = store()
+        val only = store.add(credentials("work.example"))
+        files.crashOn = ProfileFiles.INDEX
+        var wiped = false
+        runCatching { store.remove(only.id) { wiped = true } }
+        // Interrupted after the shared wipe: still listed, so it can be forgotten again.
+        assertTrue(wiped)
+        assertEquals(listOf(only), store().load().profiles)
+
+        var again = false
+        store.remove(only.id) { again = true }
+        assertTrue(again)
+        assertTrue(store().load().profiles.isEmpty())
+    }
+
+    @Test
+    fun `forgetting one of several profiles leaves the shared data`() {
+        val store = store()
+        val work = store.add(credentials("work.example"))
+        store.add(credentials("home.example", "phone-home"))
+        var wiped = false
+        store.remove(work.id) { wiped = true }
+        assertFalse(wiped)
+    }
+
+    @Test
+    fun `directories and keys of unlisted profiles are swept on load`() {
+        val store = store()
+        val kept = store.add(credentials("work.example"))
+        // A remove interrupted before its directory went, or a late write recreating it.
+        File(filesDir, "profiles/gone").mkdirs()
+        File(filesDir, "profiles/gone/ssh_logins.json").writeText("{}")
+        keystore.box(profileKeyAlias("gone")).seal("x")
+
+        store().load()
+
+        assertFalse(File(filesDir, "profiles/gone").exists())
+        assertEquals(setOf(kept.keyAlias), keystore.keys.keys)
+        assertTrue(store.dir(kept.id).exists())
+    }
+
+    @Test
     fun `a profile that cannot be listed leaves no credentials behind`() {
         val store = store()
         files.crashOn = ProfileFiles.INDEX
