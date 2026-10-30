@@ -1,6 +1,13 @@
 package ru.adsrv.frpjump.ui.web
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.ValueCallback
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.unit.dp
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -60,9 +67,11 @@ import ru.adsrv.frpjump.web.webNavigationFor
 
 /**
  * A device's web UI through its tunnel on `http://127.0.0.1:<localPort>/`.
- * Only this tunnel's pages open here (see [webNavigationFor]): other loopback
- * ports are refused, links off the phone go to other apps. WebSockets to the same origin (homeui's MQTT over WS) work
- * as in any browser.
+ * Only this tunnel's pages open here (see [webNavigationFor]): other
+ * loopback ports are refused, links off the phone go to other apps.
+ * WebSockets to the same origin (homeui's MQTT over WS) work as in any
+ * browser. If the page's renderer dies, the screen says so and "Reload"
+ * starts a fresh web view instead of the app crashing.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +83,14 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
     var progress by remember { mutableIntStateOf(0) }
     var canGoBack by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
-    val webView = remember {
+    /** Bumped to replace a web view whose renderer is gone. */
+    var generation by remember { mutableIntStateOf(0) }
+    var rendererGone by remember { mutableStateOf(false) }
+    val files = remember { FileChooser() }
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        files.deliver(it.resultCode, it.data)
+    }
+    val webView = remember(generation) {
         WebView(context).apply {
             // AndroidView's default WRAP_CONTENT puts WebView into its "size to content"
             // mode, where 100dvh is 0: homeui (body/#root at 100dvh) then renders nothing.
@@ -83,30 +99,58 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
     }
 
     DisposableEffect(webView) {
-        configure(webView, context, localPort,
+        configure(
+            webView, context, localPort,
             onPage = { pageUrl ->
                 url = pageUrl
                 canGoBack = webView.canGoBack()
             },
             onTitle = { title = it.ifBlank { device } },
             onProgress = { progress = it },
+            onRendererGone = { rendererGone = true },
+            onChooseFiles = { callback, params ->
+                files.start(callback, params)?.let { intent ->
+                    try {
+                        pickFiles.launch(intent)
+                    } catch (_: ActivityNotFoundException) {
+                        files.deliver(Activity.RESULT_CANCELED, null)
+                        Toast.makeText(context, "No app to pick files with.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
         )
+        // After a renderer crash, carry on where the page was.
+        val first = if (generation == 0) start else url
         val sites = (context.applicationContext as FrpJumpApp).webSites
+        var alive = true
         if (sites.isOther(device, localPort)) {
             // Another device (or port) than last time: its cookies must not reach this one.
             clearWebData(webView) {
                 sites.remember(device, localPort)
-                webView.loadUrl(start)
+                if (alive) webView.loadUrl(first)
             }
         } else {
-            webView.loadUrl(start)
+            webView.loadUrl(first)
         }
         onDispose {
-            webView.stopLoading()
+            alive = false
+            files.deliver(Activity.RESULT_CANCELED, null)
+            // A web view must leave its parent before destroy(); one whose renderer is gone
+            // may only be destroyed.
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            if (!rendererGone) webView.stopLoading()
             webView.destroy()
         }
     }
-    BackHandler(enabled = canGoBack) { webView.goBack() }
+    val reload: () -> Unit = {
+        if (rendererGone) {
+            rendererGone = false
+            generation++
+        } else {
+            webView.reload()
+        }
+    }
+    BackHandler(enabled = canGoBack && !rendererGone) { webView.goBack() }
 
     Scaffold(
         topBar = {
@@ -128,14 +172,14 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { webView.reload() }) { Icon(Icons.Filled.Refresh, contentDescription = "Reload") }
+                    IconButton(onClick = reload) { Icon(Icons.Filled.Refresh, contentDescription = "Reload") }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
                             text = { Text("Open in browser") },
                             onClick = {
                                 menu = false
-                                openExternally(context, webView.url ?: start)
+                                openExternally(context, url)
                             },
                         )
                     }
@@ -144,9 +188,43 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
-            AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
+            if (rendererGone) {
+                Text(
+                    "The page stopped: its renderer crashed or Android closed it to free memory.",
+                    modifier = Modifier.padding(16.dp),
+                )
+                TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Reload") }
+            } else {
+                if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+                AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
+            }
         }
+    }
+}
+
+/** The page's pending `<input type=file>`: at most one, answered exactly once. */
+private class FileChooser {
+    private var pending: ValueCallback<Array<Uri>>? = null
+
+    /** Takes over [callback] (cancelling an older one) and returns the picker intent. */
+    fun start(callback: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Intent? {
+        deliver(Activity.RESULT_CANCELED, null)
+        pending = callback
+        return params.createIntent().apply {
+            if (params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+    }
+
+    fun deliver(resultCode: Int, data: Intent?) {
+        val callback = pending ?: return
+        pending = null
+        val clip = data?.clipData
+        val picked = if (resultCode == Activity.RESULT_OK && clip != null && clip.itemCount > 0) {
+            Array(clip.itemCount) { clip.getItemAt(it).uri }
+        } else {
+            WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+        }
+        callback.onReceiveValue(picked)
     }
 }
 
@@ -158,6 +236,8 @@ private fun configure(
     onPage: (String) -> Unit,
     onTitle: (String) -> Unit,
     onProgress: (Int) -> Unit,
+    onRendererGone: () -> Unit,
+    onChooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Unit,
 ) {
     if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
     with(webView.settings) {
@@ -167,6 +247,9 @@ private fun configure(
         displayZoomControls = false
         useWideViewPort = true
         loadWithOverviewMode = true
+        // Pages of a device have no business with the phone's files or content providers.
+        allowFileAccess = false
+        allowContentAccess = false
     }
     CookieManager.getInstance().setAcceptCookie(true)
     webView.webViewClient = object : WebViewClient() {
@@ -190,11 +273,27 @@ private fun configure(
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPage(url)
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) = onPage(url)
+
+        /** Handled: without this the whole app is killed with the renderer. */
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            Log.w("WebScreen", "renderer gone (crashed: ${detail.didCrash()})")
+            onRendererGone()
+            return true
+        }
     }
     webView.webChromeClient = object : WebChromeClient() {
         override fun onReceivedTitle(view: WebView, title: String?) = onTitle(title.orEmpty())
 
         override fun onProgressChanged(view: WebView, newProgress: Int) = onProgress(newProgress)
+
+        override fun onShowFileChooser(
+            webView: WebView,
+            filePathCallback: ValueCallback<Array<Uri>>,
+            fileChooserParams: FileChooserParams,
+        ): Boolean {
+            onChooseFiles(filePathCallback, fileChooserParams)
+            return true
+        }
 
         override fun onConsoleMessage(message: ConsoleMessage): Boolean {
             if (BuildConfig.DEBUG) Log.d("WebConsole", "${message.messageLevel()} ${message.message()} (${message.sourceId()}:${message.lineNumber()})")
