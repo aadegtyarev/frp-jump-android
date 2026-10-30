@@ -169,3 +169,10 @@ frp-jump-client devices add-token --name phone
 Paste the printed `frp-jump-client enroll https://… <token> --name phone` line
 into the app as is; line breaks from a narrow terminal are fine. A bare
 `<url> <token>` works too. The token is single-use.
+
+## License
+
+[MIT](LICENSE), as [frp-jump](https://github.com/aadegtyarev/frp-jump).
+The APK also bundles [frp](https://github.com/fatedier/frp) (Apache-2.0),
+the Termux terminal emulator and view (Apache-2.0), sshj (Apache-2.0) and
+Bouncy Castle (MIT), each under its own license.
