@@ -44,6 +44,12 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
 - Failures are shown next to what failed, in plain words, with the action
   that may fix it (retry, open settings).
 - The same thing is called the same way on every screen and in notifications.
+- Keep screens light. Each screen shows the main action and the state; a
+  clear icon replaces a caption where the meaning is obvious. Rare actions
+  (rename, delete, copy address, open in another app, forget profile) live in
+  a "⋮" menu or a long press, not as extra buttons.
+- No technical details on the main screens: ports, addresses and frpc states
+  are on the card or in details, not in the lists.
 
 ## Scenarios
 
