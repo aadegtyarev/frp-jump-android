@@ -5,6 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -24,6 +27,9 @@ fun MessageScreen(
     busy: Boolean = false,
     /** Why the last [action] failed, shown below it. */
     error: String? = null,
+    /** A second way, e.g. to another profile; none when null. */
+    secondary: String? = null,
+    onSecondary: () -> Unit = {},
     onAction: () -> Unit,
 ) {
     Scaffold(topBar = { TopAppBar(title = { Text(title) }) }) { padding ->
@@ -35,7 +41,10 @@ fun MessageScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(text, style = MaterialTheme.typography.bodyLarge)
-            Button(onClick = onAction, enabled = !busy) { Text(action) }
+            Button(onClick = onAction, enabled = !busy) {
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(action)
+            }
+            secondary?.let { TextButton(onClick = onSecondary, enabled = !busy) { Text(it) } }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
     }

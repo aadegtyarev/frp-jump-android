@@ -7,10 +7,11 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 
 Behaviour is defined in [docs/contract.md](docs/contract.md).
 
-Current stage: enrollment, the device list, tunnels from the device card, the
-in-app web view, the SSH terminal and settings (relay only, local ports,
-background checks, battery optimisation, SSH keys, "Forget this phone"),
-with the data and runtime for several profiles (the switcher comes next).
+Current stage: profiles (switcher, list, add, name and colour, forget), the
+device list, tunnels from the device card, the in-app web view, the SSH
+terminal and settings (relay only, local ports, background checks, battery
+optimisation, SSH keys). The app has its own light and dark colour scheme
+(`ui/Palette.kt`), following the system.
 
 ## Profiles
 
@@ -26,10 +27,14 @@ runs its own poller and, while it has tunnels, its own frpc
 Shared by all profiles: settings, the local port map (one range, keyed by
 profile, device and port), the web view's last site and the SSH key.
 
-Enrolling adds a profile and shows it. "Forget this phone" in Settings
-forgets the current profile: its tunnels go, the server is told to delete
-it (offline: on the phone only), its directory and Keystore key are wiped,
-and the next profile is shown, or enrollment with none left. Forgetting the
+The switcher at the top of the device list opens the profile list; tapping a
+profile shows it (its cached list at once). "Add profile" enrolls a new one
+and shows it. "Forget profile" (Settings, or "⋮" in the profile list)
+forgets a profile: its tunnels go, the server is told to delete it (offline:
+on the phone only, and a notice says what to run on a laptop), its directory
+and Keystore key are wiped, and the next profile is shown, or enrollment with
+none left. A profile its server deleted (401) while another one is shown is
+marked in the list and named in a line above the devices. Forgetting the
 last profile also wipes the SSH key and passwords, as before, before the
 index drops it. Profile directories the index does not list (an add or a
 forget cut short) are deleted with their keys on the next start.

@@ -55,7 +55,14 @@ class Profiles(
     /** Tunnels up in all profiles together. */
     val tunnelCount: Flow<Int> = allTunnels { states -> states.values.sumOf { it.tunnels.size } }
 
-    fun tunnelCountNow(): Int = _state.value.runtimes.values.sumOf { it.tunnels.state.value.tunnels.size }
+    /** Tunnels up, by profile id; a profile without any is left out. */
+    val tunnelsByProfile: Flow<Map<String, Int>> = allTunnels { states ->
+        states.mapValues { it.value.tunnels.size }.filterValues { it > 0 }
+    }
+
+    /** [tunnelsByProfile] as it is now. */
+    fun tunnelsByProfileNow(): Map<String, Int> =
+        _state.value.runtimes.mapValues { it.value.tunnels.state.value.tunnels.size }.filterValues { it > 0 }
 
     /** Every tunnel up, as [profilePortKey]s. */
     val upTunnels: Flow<Set<String>> = allTunnels { states ->
@@ -136,6 +143,22 @@ class Profiles(
             runtime.close()
             publish(store.index(), _state.value.runtimes - id)
         }
+    }
+
+    /** Shows [id] from now on; its cached list at once, then its polls every 2 s. Storage: on the IO dispatcher. */
+    suspend fun setCurrent(id: String) = changing.withLock {
+        if (_state.value.index.current == id || _state.value.index.find(id) == null) return@withLock
+        val index = withContext(Dispatchers.IO) {
+            store.setCurrent(id)
+            store.index()
+        }
+        publish(index, _state.value.runtimes)
+    }
+
+    /** Renames and recolours [id]. Storage: on the IO dispatcher. */
+    suspend fun update(id: String, name: String, color: String) = changing.withLock {
+        val index = withContext(Dispatchers.IO) { store.update(id, name, color)?.let { store.index() } } ?: return@withLock
+        publish(index, _state.value.runtimes)
     }
 
     /** "Disconnect all": every profile's tunnels. */

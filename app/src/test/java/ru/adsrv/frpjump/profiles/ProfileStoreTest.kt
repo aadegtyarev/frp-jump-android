@@ -68,6 +68,21 @@ class ProfileStoreTest {
     }
 
     @Test
+    fun `a renamed and recoloured profile keeps its place, key and shown state`() {
+        val store = store()
+        val work = store.add(credentials("work.example"))
+        val home = store.add(credentials("home.example", "phone-home"))
+
+        val renamed = store.update(work.id, "Work", "crimson")
+
+        assertEquals(work.copy(name = "Work", color = "crimson"), renamed)
+        val index = store().load()
+        assertEquals(listOf(renamed, home), index.profiles)
+        assertEquals(home.id, index.current)
+        assertNull(store.update("unknown", "x", "green"))
+    }
+
+    @Test
     fun `forgetting the last profile leaves none`() {
         val store = store()
         val only = store.add(credentials("work.example"))

@@ -1,4 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">frp-jump</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="more">More</string>
+    <string name="settings">Settings</string>
+    <plurals name="tunnels">
+        <item quantity="one">%d tunnel</item>
+        <item quantity="other">%d tunnels</item>
+    </plurals>
+    <plurals name="terminals">
+        <item quantity="one">%d terminal</item>
+        <item quantity="other">%d terminals</item>
+    </plurals>
+
+    <!-- Profile colours, as the colour picker names them for accessibility -->
+    <string name="color_green">Green</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_purple">Purple</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_crimson">Crimson</string>
+    <string name="color_grey">Grey</string>
+
+    <!-- Profile switcher and list -->
+    <string name="switch_profile">Switch profile</string>
+    <string name="profiles">Profiles</string>
+    <string name="profiles_hint">tunnels run in all at once</string>
+    <string name="profile_server">%1$s · phone “%2$s”</string>
+    <string name="profile_not_enrolled">Not connected</string>
+    <string name="profile_removed_badge">Removed</string>
+    <string name="profile_removed_sub">Removed from its server</string>
+    <string name="profile_current">Shown now</string>
+    <string name="add_profile">Add profile</string>
+    <string name="other_profiles">Other profiles</string>
+    <string name="name_and_color">Name and colour</string>
+    <string name="forget_profile">Forget profile</string>
+    <string name="removed_elsewhere_one">“%s” was removed from its server</string>
+    <plurals name="removed_elsewhere_many">
+        <item quantity="one">%d profile was removed from its server</item>
+        <item quantity="other">%d profiles were removed from their servers</item>
+    </plurals>
+
+    <!-- Forget profile -->
+    <string name="forget_title">Forget “%s”?</string>
+    <string name="forget_text">Its tunnels disconnect and this phone (“%1$s”) is removed from %2$s. Its credentials and saved lists are wiped from this phone.</string>
+    <string name="forget_text_removed">This phone was already removed from %s. Its credentials and saved lists are wiped from this phone.</string>
+    <string name="forget_text_local">Its tunnels disconnect and its data on this phone is wiped.</string>
+    <string name="forget">Forget</string>
+    <string name="profile_forgotten">Profile “%s” forgotten.</string>
+    <string name="forget_server_not_told">The server was not told (%1$s). Remove “%2$s” from a laptop: frp-jump-client devices delete %3$s</string>
+    <string name="forget_failed">Could not wipe this profile’s data (%s). Try again.</string>
+
+    <!-- Profile name and colour -->
+    <string name="profile_name">Name</string>
+    <string name="profile_name_missing">Give the profile a name.</string>
+    <string name="profile_color">Profile colour</string>
+
+    <!-- Add profile -->
+    <string name="new_profile">New profile</string>
+    <string name="enroll_step_invite">1. Get an invitation</string>
+    <string name="enroll_step_invite_text">On a computer with frp-jump, run this command. It prints the line to paste below.</string>
+    <string name="enroll_command">frp-jump-client devices add-token --name phone</string>
+    <string name="enroll_step_paste">2. Paste the line</string>
+    <string name="enroll_line_label">The whole line, as printed</string>
+    <string name="enroll_line_placeholder">frp-jump-client enroll https://… &lt;token&gt;</string>
+    <string name="enroll_line_ok">Server %s</string>
+    <string name="enroll_phone_name">Name for this phone</string>
+    <string name="enroll_step_name">3. Name the profile</string>
+    <string name="enroll_submit">Connect phone</string>
+    <string name="enroll_store_failed">Enrolled as %1$s on the server, but could not store the credentials (%2$s). Delete it from a laptop: frp-jump-client devices delete %3$s</string>
+
+    <!-- Device list -->
+    <string name="device_online">Online</string>
+    <string name="device_was_online">Was online</string>
+    <string name="device_last_seen">Last seen %s</string>
+    <string name="device_disabled">Disabled</string>
+    <string name="devices_empty">No other devices yet.</string>
+    <string name="offline_unreachable">No connection to the server · updated %s</string>
+    <string name="offline_server_error">The server returned an error · updated %s</string>
+    <string name="tap_to_retry">Tap to retry</string>
+
+    <!-- Removed (current profile) -->
+    <string name="removed_text">This phone was removed from the server of “%s”. Its tunnels are stopped.</string>
+    <string name="enroll_again">Enroll again</string>
+    <string name="enroll_again_failed">Could not wipe the old credentials (%s). Try again.</string>
+
+    <!-- Settings: profile group -->
+    <string name="settings_profile_group">Profile “%s”</string>
+    <string name="forget_profile_hint">Disconnects its tunnels and removes the phone from the server</string>
+
+    <!-- Tunnels notification -->
+    <string name="notification_channel">Tunnels</string>
+    <plurals name="tunnels_in_profiles">
+        <item quantity="one">%2$s in %1$d profile</item>
+        <item quantity="other">%2$s in %1$d profiles</item>
+    </plurals>
+    <string name="disconnect_all">Disconnect all</string>
 </resources>

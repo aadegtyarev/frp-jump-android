@@ -109,6 +109,15 @@ class ProfileStore(
     @Synchronized
     fun setCurrent(id: String) = save(index().withCurrent(id))
 
+    /** [id] renamed and recoloured, in place; null when it is not listed. */
+    @Synchronized
+    fun update(id: String, name: String, color: String): Profile? {
+        val profile = index().find(id) ?: return null
+        val changed = profile.copy(name = name, color = color)
+        if (changed != profile) save(index().plus(changed, makeCurrent = false))
+        return changed
+    }
+
     /**
      * Forgets [id] for good: its credentials and Keystore key first (nothing
      * secret is left if the rest is interrupted), then the index entry, then

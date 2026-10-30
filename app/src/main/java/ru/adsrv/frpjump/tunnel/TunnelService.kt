@@ -20,14 +20,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.MainActivity
+import ru.adsrv.frpjump.R
 
 /**
  * Keeps the app process (and so every profile's frpc, its children) alive
- * while at least one tunnel of any profile is up, with a "N tunnels"
- * notification (all profiles together) and "Disconnect all" (all of them).
+ * while at least one tunnel of any profile is up, with a "N tunnels
+ * (in M profiles)" notification and "Disconnect all" (all of them).
  * It does not poll itself: the profiles' pollers ([ru.adsrv.frpjump.session.Poller])
  * run at the background interval while this keeps the process alive.
  * Type `specialUse`: `dataSync` is capped at 6 h a day for apps
@@ -45,19 +47,19 @@ class TunnelService : Service() {
         val profiles = (application as FrpJumpApp).profiles
         // Always first, even when the tunnels are already gone: a service started with
         // startForegroundService() that stops before this crashes the app.
-        startInForeground(profiles.tunnelCountNow())
+        startInForeground(tunnelSummary(profiles.tunnelsByProfileNow()))
         lastStartId = startId
         if (intent?.action == ACTION_DISCONNECT_ALL) profiles.disconnectAllAsync()
         if (watcher == null) {
             // The service stops itself when the last tunnel goes; nobody calls stopService().
             watcher = scope.launch {
-                profiles.tunnelCount.distinctUntilChanged().collect { count ->
-                    if (count == 0) {
+                profiles.tunnelsByProfile.map(::tunnelSummary).distinctUntilChanged().collect { summary ->
+                    if (summary.tunnels == 0) {
                         ServiceCompat.stopForeground(this@TunnelService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                         // Not if a newer start is on its way: that one is for new tunnels.
                         stopSelfResult(lastStartId)
                     } else {
-                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(count))
+                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(summary))
                     }
                 }
             }
@@ -72,19 +74,31 @@ class TunnelService : Service() {
         super.onDestroy()
     }
 
-    private fun startInForeground(count: Int) {
+    private fun startInForeground(summary: TunnelSummary) {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         } else {
             0
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(count), type)
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(summary), type)
     }
 
-    private fun notification(count: Int): Notification {
+    /** "N tunnels", or "N tunnels in M profiles" when more than one profile has tunnels. */
+    private fun title(summary: TunnelSummary): String {
+        val tunnels = resources.getQuantityString(R.plurals.tunnels, summary.tunnels, summary.tunnels)
+        return if (summary.namesProfiles) {
+            resources.getQuantityString(R.plurals.tunnels_in_profiles, summary.profiles, summary.profiles, tunnels)
+        } else {
+            tunnels
+        }
+    }
+
+    private fun notification(summary: TunnelSummary): Notification {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) == null) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL, "Tunnels", NotificationManager.IMPORTANCE_LOW))
+            manager.createNotificationChannel(
+                NotificationChannel(CHANNEL, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW),
+            )
         }
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -94,11 +108,11 @@ class TunnelService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle(if (count == 1) "1 tunnel" else "$count tunnels")
+            .setContentTitle(title(summary))
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(0, "Disconnect all", disconnectAll)
+            .addAction(0, getString(R.string.disconnect_all), disconnectAll)
             .build()
     }
 

@@ -2,13 +2,20 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.devices.DeviceDirectory
+import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
 import java.time.Instant
 
@@ -24,35 +31,68 @@ data class DevicesUiState(
 )
 
 /**
- * The current profile's devices. The list itself is polled by the profile
- * ([ru.adsrv.frpjump.session.Poller]) while it is shown.
+ * The current profile's devices; switching profiles shows the other
+ * profile's list at once (its cached one until its server answers). The
+ * list itself is polled by the profile ([ru.adsrv.frpjump.session.Poller])
+ * while it is shown.
  */
-class DevicesViewModel(app: FrpJumpApp) : ViewModel() {
-    private val devices = checkNotNull(app.profiles.current) { "no current profile" }.devices
+@OptIn(ExperimentalCoroutinesApi::class)
+class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
+    private val directory: StateFlow<DeviceDirectory?> = app.profiles.state.map { it.current?.devices }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, app.profiles.current?.devices)
     private val refreshing = MutableStateFlow(false)
 
-    val state: StateFlow<DevicesUiState> = combine(devices.state, refreshing) { list, busy ->
-        DevicesUiState(
-            devices = list.devices,
-            refreshing = busy,
-            error = list.error,
-            // A list restored at start is not a failure yet: no banner until a fetch fails.
-            staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
-            unreachable = list.unreachable,
-        )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
+    /** The list is on screen. */
+    private var shown = false
+
+    val state: StateFlow<DevicesUiState> =
+        combine(directory.flatMapLatest { it?.state ?: flowOf(DeviceList()) }, refreshing) { list, busy ->
+            DevicesUiState(
+                devices = list.devices,
+                refreshing = busy,
+                error = list.error,
+                // A list restored at start is not a failure yet: no banner until a fetch fails.
+                staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
+                unreachable = list.unreachable,
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
 
     /** Open SSH sessions, so the list can lead back to them. */
     val sshSessions = app.ssh.sessions
 
+    /** A message left by the screen before (e.g. after "Forget profile"); shown once. */
+    val notice: StateFlow<String?> = app.session.notice
+
+    fun takeNotice(): String? = app.session.takeNotice()
+
+    init {
+        // A switch hands "wanted" over to the profile now shown.
+        viewModelScope.launch {
+            var previous: DeviceDirectory? = null
+            directory.collect { now ->
+                previous?.wanted = false
+                previous = now
+                if (shown && now != null) want(now)
+            }
+        }
+    }
+
     /** The list is on screen (or not): the poller fetches it only then. */
     fun shown(visible: Boolean) {
-        devices.wanted = visible
-        if (visible) viewModelScope.launch { devices.refresh() }
+        shown = visible
+        val now = directory.value ?: return
+        if (visible) want(now) else now.wanted = false
+    }
+
+    private fun want(devices: DeviceDirectory) {
+        devices.wanted = true
+        viewModelScope.launch { devices.refresh() }
     }
 
     /** Pull to refresh: waits for a fetch already in flight rather than skipping. */
     fun pull() {
+        val devices = directory.value ?: return
         refreshing.value = true
         viewModelScope.launch {
             devices.refresh(wait = true)

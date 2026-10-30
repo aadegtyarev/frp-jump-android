@@ -5,11 +5,11 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ProfileIndexTest {
-    private fun profile(id: String, color: String = "blue") = Profile(id, id, color, profileKeyAlias(id))
+    private fun profile(id: String, color: String = "green") = Profile(id, id, color, profileKeyAlias(id))
 
     private val a = profile("a")
-    private val b = profile("b", "green")
-    private val c = profile("c", "orange")
+    private val b = profile("b", "orange")
+    private val c = profile("c", "purple")
 
     @Test
     fun `an added profile is appended and shown`() {
@@ -39,9 +39,9 @@ class ProfileIndexTest {
 
     @Test
     fun `colours are handed out in order, a freed one first`() {
-        assertEquals("blue", nextProfileColor(emptyList()))
-        assertEquals("orange", nextProfileColor(listOf(a, b)))
-        assertEquals("green", nextProfileColor(listOf(a, c)))
+        assertEquals("green", nextProfileColor(emptyList()))
+        assertEquals("purple", nextProfileColor(listOf(a, b)))
+        assertEquals("orange", nextProfileColor(listOf(a, c)))
         val all = PROFILE_COLORS.mapIndexed { i, color -> profile("p$i", color) }
         assertEquals(PROFILE_COLORS[0], nextProfileColor(all))
     }
@@ -50,5 +50,19 @@ class ProfileIndexTest {
     fun `a new profile is named after its server's host`() {
         assertEquals("ikar.example", defaultProfileName("https://ikar.example:8443/"))
         assertEquals("not a url", defaultProfileName("not a url"))
+    }
+
+    @Test
+    fun `colours the first profiles build stored map onto the palette`() {
+        PROFILE_COLORS.forEach { assertEquals(it, profileColor(it)) }
+        assertEquals("green", profileColor("teal"))
+        assertEquals("crimson", profileColor("red"))
+        assertEquals("grey", profileColor("magenta"))
+    }
+
+    @Test
+    fun `a profile name is trimmed and cannot be blank`() {
+        assertEquals("Work", profileName("  Work "))
+        assertNull(profileName("   "))
     }
 }

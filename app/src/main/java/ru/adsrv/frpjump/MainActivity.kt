@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,5 +34,11 @@ class MainActivity : ComponentActivity() {
                 AppNav()
             }
         }
+    }
+
+    /** Dark mode switched while open (uiMode is handled here, not by recreating): status bar icons follow it. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        enableEdgeToEdge()
     }
 }
