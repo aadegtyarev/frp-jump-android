@@ -1,6 +1,10 @@
 package ru.adsrv.frpjump.ui.settings
 
 import android.content.Context
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -9,6 +13,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Switch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import ru.adsrv.frpjump.settings.BackgroundPoll
 import android.content.Intent
 import android.net.Uri
@@ -100,6 +105,7 @@ fun SettingsScreen(vm: SettingsViewModel, onBack: () -> Unit, onForgotten: () ->
             LocalPortsItem(settings.localPortFirst, settings.localPortLast, vm::setLocalPorts)
             SectionTitle("Background")
             BackgroundPollItem(settings.backgroundPoll, vm::setBackgroundPoll)
+            BatteryItem()
             SectionTitle("SSH")
             ListItem(
                 headlineContent = { Text("SSH public key") },
@@ -259,6 +265,50 @@ private fun BackgroundPollItem(selected: BackgroundPoll, onSelect: (BackgroundPo
             }
         },
     )
+}
+
+/** Whether Android may stop the app in the background, and a way to the system setting. */
+@Composable
+private fun BatteryItem() {
+    val context = LocalContext.current
+    val power = remember { context.getSystemService(PowerManager::class.java) }
+    var exempt by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
+    // Back from the system screen: read it again.
+    LifecycleResumeEffect(Unit) {
+        exempt = power.isIgnoringBatteryOptimizations(context.packageName)
+        onPauseOrDispose { }
+    }
+    ListItem(
+        headlineContent = { Text("Battery optimisation") },
+        supportingContent = {
+            Text(
+                if (exempt) {
+                    "Not optimised: Android lets tunnels and background checks run with the app closed."
+                } else {
+                    "Optimised: Android (and some vendors' firmware more so) may stop tunnels and background checks " +
+                        "with the app closed."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        },
+        trailingContent = { TextButton(onClick = { openBatterySettings(context, exempt) }) { Text("Change") } },
+    )
+}
+
+/** Asks to exempt the app (a sideloaded app may); the list of all apps when it already is, or as a fallback. */
+@SuppressLint("BatteryLife")
+private fun openBatterySettings(context: Context, exempt: Boolean) {
+    val ask = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+    val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+    for (intent in if (exempt) listOf(list) else listOf(ask, list)) {
+        try {
+            context.startActivity(intent)
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Try the next one.
+        }
+    }
+    Toast.makeText(context, "This phone has no battery optimisation settings screen.", Toast.LENGTH_SHORT).show()
 }
 
 @Composable
