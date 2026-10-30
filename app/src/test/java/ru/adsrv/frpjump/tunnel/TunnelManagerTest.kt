@@ -90,7 +90,6 @@ class TunnelManagerTest {
         localPorts = LocalPortStore(ports),
         runner = frpc,
         startService = { serviceStarts++; true },
-        stopServiceNow = {},
     ).apply { portRange = 47100..47199 }
 
     private suspend fun eventually(what: String, check: () -> Boolean) = withTimeout(2_000) {

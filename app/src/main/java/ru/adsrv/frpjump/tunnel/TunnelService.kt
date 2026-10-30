@@ -36,19 +36,25 @@ import ru.adsrv.frpjump.MainActivity
 class TunnelService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var watcher: Job? = null
+    private var lastStartId = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val tunnels = (application as FrpJumpApp).tunnels
+        // Always first, even when the tunnels are already gone: a service started with
+        // startForegroundService() that stops before this crashes the app.
         startInForeground(tunnels.state.value.tunnels.size)
+        lastStartId = startId
         if (intent?.action == ACTION_DISCONNECT_ALL) tunnels.disconnectAllAsync()
         if (watcher == null) {
+            // The service stops itself when the last tunnel goes; nobody calls stopService().
             watcher = scope.launch {
                 tunnels.state.map { it.tunnels.size }.distinctUntilChanged().collect { count ->
                     if (count == 0) {
                         ServiceCompat.stopForeground(this@TunnelService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                        stopSelf()
+                        // Not if a newer start is on its way: that one is for new tunnels.
+                        stopSelfResult(lastStartId)
                     } else {
                         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(count))
                     }
@@ -107,10 +113,6 @@ class TunnelService : Service() {
         } catch (e: IllegalStateException) {
             Log.w("TunnelService", "cannot start the foreground service now: ${e.message}")
             false
-        }
-
-        fun stop(context: Context) {
-            context.stopService(Intent(context, TunnelService::class.java))
         }
     }
 }

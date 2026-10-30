@@ -83,9 +83,11 @@ class TunnelManager(
     private val session: AppSession,
     private val localPorts: LocalPortStore,
     private val runner: FrpcControl,
-    /** Starts the foreground service; false when Android refuses. */
+    /**
+     * Starts the foreground service; false when Android refuses. It stops
+     * itself once no tunnel is listed ([TunnelService]).
+     */
     private val startService: () -> Boolean,
-    private val stopServiceNow: () -> Unit,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
@@ -309,8 +311,8 @@ class TunnelManager(
         if (planned.isEmpty()) stopService() else if (!serviceUp) serviceUp = startService()
     }
 
+    /** The service sees the tunnel count drop to zero and stops itself; start it again for the next one. */
     private fun stopService() {
-        if (serviceUp) stopServiceNow()
         serviceUp = false
     }
 

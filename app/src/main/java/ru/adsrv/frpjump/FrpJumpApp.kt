@@ -64,7 +64,6 @@ class FrpJumpApp : Application() {
             // Shipped as a "native library": Android only allows exec from nativeLibraryDir.
             runner = FrpcRunner(File(applicationInfo.nativeLibraryDir, "libfrpc.so"), File(noBackupFilesDir, "frpc")),
             startService = { TunnelService.start(this) },
-            stopServiceNow = { TunnelService.stop(this) },
         )
         installFullBouncyCastle()
         // Its own Keystore key: re-enrolling the phone must not lose the SSH key.
