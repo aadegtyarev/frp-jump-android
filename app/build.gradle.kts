@@ -44,6 +44,10 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        // BouncyCastle jars each carry their own OSGi manifests; none is needed on Android.
+        resources {
+            excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+        }
     }
 }
 
@@ -59,6 +63,12 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.sshj)
+    // The full BouncyCastle provider replaces Android's stripped "BC" (ed25519, curve25519).
+    implementation(libs.bcprov)
+    implementation(libs.bcpkix)
+    implementation(libs.termux.terminal.emulator)
+    implementation(libs.termux.terminal.view)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
