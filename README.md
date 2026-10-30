@@ -111,6 +111,13 @@ sockets of the other tunnels stay up. frpc is restarted (dropping them)
 only when the reload fails or something frpc reads only at start changes:
 the server, the device's TLS material or token, or "Relay only".
 
+The other end still restarts: a connect or disconnect changes what the
+target device exposes, and its Linux agent restarts its own frpc on any
+config change. So a port connected or disconnected on the same device
+drops that device's other open sessions (seen on a WB controller: its frpc
+restarted 2 s after the phone connected port 80). Tunnels to other devices
+and phone-only changes (a moved local port) keep their connections.
+
 ## Third-party libraries
 
 | Library | Version | License |
