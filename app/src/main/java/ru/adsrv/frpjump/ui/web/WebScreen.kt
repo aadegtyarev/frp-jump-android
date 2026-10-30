@@ -15,6 +15,7 @@ import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -49,14 +50,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import ru.adsrv.frpjump.BuildConfig
+import java.io.ByteArrayInputStream
 import ru.adsrv.frpjump.web.WebNavigation
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
+import ru.adsrv.frpjump.web.isTunnelUrl
 import ru.adsrv.frpjump.web.webNavigationFor
 
 /**
  * A device's web UI through its tunnel on `http://127.0.0.1:<localPort>/`.
- * Only loopback pages open here (see [webNavigationFor]); links elsewhere go
- * to other apps. WebSockets to the same origin (homeui's MQTT over WS) work
+ * Only this tunnel's pages open here (see [webNavigationFor]): other loopback
+ * ports are refused, links off the phone go to other apps. WebSockets to the same origin (homeui's MQTT over WS) work
  * as in any browser.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,7 +81,7 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
     }
 
     DisposableEffect(webView) {
-        configure(webView, context,
+        configure(webView, context, localPort,
             onPage = { pageUrl ->
                 url = pageUrl
                 canGoBack = webView.canGoBack()
@@ -140,6 +143,7 @@ fun WebScreen(device: String, localPort: Int, onBack: () -> Unit) {
 private fun configure(
     webView: WebView,
     context: Context,
+    tunnelPort: Int,
     onPage: (String) -> Unit,
     onTitle: (String) -> Unit,
     onProgress: (Int) -> Unit,
@@ -157,9 +161,19 @@ private fun configure(
     webView.webViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val target = request.url.toString()
-            if (webNavigationFor(target) == WebNavigation.IN_APP) return false
-            openExternally(context, target)
+            when (webNavigationFor(target, tunnelPort)) {
+                WebNavigation.IN_APP -> return false
+                WebNavigation.EXTERNAL -> openExternally(context, target)
+                WebNavigation.BLOCKED -> Toast.makeText(context, "Blocked: $target is not this tunnel.", Toast.LENGTH_SHORT).show()
+            }
             return true
+        }
+
+        /** Scripts, images and frames from other loopback ports (other tunnels, other apps) get a 403. */
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+            val target = request.url.toString()
+            if (!isLoopbackHttpUrl(target) || isTunnelUrl(target, tunnelPort)) return null
+            return WebResourceResponse("text/plain", "utf-8", 403, "Forbidden", emptyMap(), ByteArrayInputStream(ByteArray(0)))
         }
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPage(url)
@@ -177,7 +191,7 @@ private fun configure(
         }
     }
     webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-        download(context, url, userAgent, contentDisposition, mimeType)
+        download(context, tunnelPort, url, userAgent, contentDisposition, mimeType)
     }
 }
 
@@ -187,12 +201,20 @@ private fun configure(
  * exist only inside the WebView and cannot be handed over; other hosts go
  * to other apps.
  */
-private fun download(context: Context, url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
-    if (!isLoopbackHttpUrl(url)) {
-        if (url.startsWith("blob:") || url.startsWith("data:")) {
-            Toast.makeText(context, "The page made this file itself; use \"Open in browser\" to save it.", Toast.LENGTH_LONG).show()
-        } else {
-            openExternally(context, url)
+private fun download(
+    context: Context,
+    tunnelPort: Int,
+    url: String,
+    userAgent: String?,
+    contentDisposition: String?,
+    mimeType: String?,
+) {
+    if (!isTunnelUrl(url, tunnelPort)) {
+        when {
+            url.startsWith("blob:") || url.startsWith("data:") ->
+                Toast.makeText(context, "The page made this file itself; use \"Open in browser\" to save it.", Toast.LENGTH_LONG).show()
+            isLoopbackHttpUrl(url) -> Toast.makeText(context, "Blocked: $url is not this tunnel.", Toast.LENGTH_SHORT).show()
+            else -> openExternally(context, url)
         }
         return
     }
