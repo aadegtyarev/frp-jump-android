@@ -24,6 +24,8 @@ fun MessageScreen(
     title: String,
     text: String,
     action: String,
+    /** A one-time message from the screen before, above the explanation. */
+    notice: String? = null,
     busy: Boolean = false,
     /** Why the last [action] failed, shown below it. */
     error: String? = null,
@@ -40,6 +42,7 @@ fun MessageScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            notice?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             Text(text, style = MaterialTheme.typography.bodyLarge)
             Button(onClick = onAction, enabled = !busy) {
                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(action)

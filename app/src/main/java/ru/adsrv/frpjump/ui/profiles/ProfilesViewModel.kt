@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.profiles.ProfilesState
 import ru.adsrv.frpjump.profiles.defaultProfileName
 
 /** A "Forget profile" in progress or failed, for the row it was started from. */
@@ -28,7 +29,7 @@ data class ForgetState(val id: String, val error: String? = null) {
 /** The profiles for the switcher, the profile list and the profile group of Settings. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
-    private val servers = MutableStateFlow<Map<String, ProfileServer?>>(emptyMap())
+    private val servers = MutableStateFlow<Map<String, KnownServer>>(emptyMap())
 
     private val removed = app.profiles.state.map { it.runtimes }.distinctUntilChanged().flatMapLatest { runtimes ->
         if (runtimes.isEmpty()) {
@@ -42,7 +43,7 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     val items: StateFlow<List<ProfileItem>> =
         combine(app.profiles.state, app.profiles.tunnelsByProfile, removed, servers) { state, tunnels, gone, known ->
-            profileItems(state.index, tunnels, gone, known)
+            profileItems(state.index, tunnels, gone, currentServers(enrollmentsOf(state), known))
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _forget = MutableStateFlow<ForgetState?>(null)
@@ -50,22 +51,27 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     init {
         // Each profile's server and phone name: the Keystore, off the main thread. Read once
-        // per profile; again only for one without an enrollment (it may have been filled in).
+        // per enrollment of a profile, again only when it was read without one.
         viewModelScope.launch {
             app.profiles.state.collectLatest { state ->
-                val known = servers.value.filterKeys { it in state.runtimes }
-                val load = serversToLoad(state.runtimes.keys, known)
+                val enrollments = enrollmentsOf(state)
+                val known = servers.value.filterKeys { it in enrollments }
+                val load = serversToLoad(enrollments, known)
                 val read = withContext(Dispatchers.IO) {
                     load.associateWith { id ->
-                        runCatching { state.runtimes.getValue(id).store.load() }.getOrNull()?.let {
+                        val server = runCatching { state.runtimes.getValue(id).store.load() }.getOrNull()?.let {
                             ProfileServer(defaultProfileName(it.controlUrl), it.deviceName)
                         }
+                        KnownServer(enrollments.getValue(id), server)
                     }
                 }
                 servers.value = known + read
             }
         }
     }
+
+    private fun enrollmentsOf(state: ProfilesState): Map<String, Int> =
+        state.runtimes.keys.associateWith { state.enrollments[it] ?: 0 }
 
     /** Shows [id]; [then] once it is the current profile. */
     fun switchTo(id: String, then: () -> Unit) {

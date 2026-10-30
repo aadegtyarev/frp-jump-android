@@ -27,6 +27,12 @@ data class ProfilesState(
     val failure: String? = null,
     val index: ProfileIndex = ProfileIndex(),
     val runtimes: Map<String, ProfileRuntime> = emptyMap(),
+    /**
+     * How many times each profile's enrollment was replaced in place (filled
+     * after its server removed it, or wiped for "Enroll again"): what was read
+     * from its credentials before is stale once this changes. Missing: 0.
+     */
+    val enrollments: Map<String, Int> = emptyMap(),
 ) {
     /** The profile the app shows; null with no profiles. */
     val current: ProfileRuntime? get() = index.current?.let(runtimes::get)
@@ -111,7 +117,7 @@ class Profiles(
             val profile = now.index.currentProfile
             if (current != null && profile != null && current.store.state() is StoredEnrollment.NotEnrolled) {
                 store.fill(profile, credentials)
-                publish(store.index(), now.runtimes)
+                publish(store.index(), now.runtimes, changedEnrollment = profile.id)
                 current
             } else {
                 val added = store.add(credentials)
@@ -139,6 +145,7 @@ class Profiles(
         runtime.devices.forget()
         if (keepData) {
             runtime.session.clearRemoved()
+            publish(store.index(), _state.value.runtimes, changedEnrollment = id)
         } else {
             runtime.close()
             publish(store.index(), _state.value.runtimes - id)
@@ -165,9 +172,12 @@ class Profiles(
     /** "Disconnect all": every profile's tunnels. */
     fun disconnectAllAsync() = _state.value.runtimes.values.forEach { it.tunnels.disconnectAllAsync() }
 
-    private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>) {
+    /** [changedEnrollment]: a profile whose credentials were just filled in or wiped in place. */
+    private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>, changedEnrollment: String? = null) {
         currentId.value = index.current
-        _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes)
+        val enrollments = _state.value.enrollments.filterKeys { it in runtimes }.toMutableMap()
+        changedEnrollment?.let { enrollments[it] = (enrollments[it] ?: 0) + 1 }
+        _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes, enrollments = enrollments)
     }
 
     private companion object {

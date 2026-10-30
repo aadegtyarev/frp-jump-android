@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +25,7 @@ import ru.adsrv.frpjump.profiles.profileName
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.userMessage
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class EnrollUiState(
     val text: String = "",
@@ -49,16 +52,26 @@ data class EnrollUiState(
  * "Enroll again"), enrolling fills that one in and its name and colour
  * are offered.
  */
-class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
+class EnrollViewModel(
+    private val app: FrpJumpApp,
+    /** The app's first screen (no profile to go back to): it shows notices posted for whoever lands next. */
+    takesNotices: Boolean,
+) : ViewModel() {
     private val _state = MutableStateFlow(
         EnrollUiState(
-            notice = app.session.takeAnyNotice(),
             color = nextProfileColor(app.profiles.state.value.index.profiles),
         ),
     )
     val state: StateFlow<EnrollUiState> = _state
 
     init {
+        // From the flow, not only at creation: a notice posted while this is shown (e.g. from the
+        // profile list over it) shows here rather than later somewhere else.
+        if (takesNotices) {
+            viewModelScope.launch {
+                app.session.notice.collect { if (it != null) app.session.takeAnyNotice()?.let { text -> _state.update { s -> s.copy(notice = text) } } }
+            }
+        }
         viewModelScope.launch {
             val profile = app.profiles.state.value.index.currentProfile ?: return@launch
             // Storage and the Keystore: off the main thread.
@@ -104,9 +117,15 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
         // The server spends the token as it answers: the call and the storing run in the app
         // scope, so leaving the screen cannot drop the credentials halfway.
         val work = app.appScope.async { enroll(line.controlUrl, line.token, name, profile, current.color) }
+        val taken = AtomicBoolean(false)
+        pending = Pending(work, taken)
         viewModelScope.launch {
-            when (val outcome = work.await()) {
-                EnrollOutcome.Stored -> {
+            val outcome = work.await()
+            // Shown here, or (the screen went away meanwhile) as a notice: never both, never neither.
+            if (!taken.compareAndSet(false, true)) return@launch
+            pending = null
+            when (outcome) {
+                is EnrollOutcome.Stored -> {
                     _state.update { it.copy(busy = false) }
                     onEnrolled()
                 }
@@ -124,8 +143,36 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
         }
     }
 
+    /** An enrollment under way and whether its outcome has been shown or posted. */
+    private class Pending(val work: Deferred<EnrollOutcome>, val taken: AtomicBoolean)
+
+    private var pending: Pending? = null
+
+    /**
+     * Left before the answer: the token may be spent by now, so the outcome
+     * goes to the screen the app shows next as a notice (the new profile, or
+     * how to clean up on the server). A refusal spent nothing and is dropped.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun onCleared() {
+        val left = pending ?: return
+        left.work.invokeOnCompletion { cause ->
+            if (cause == null && left.taken.compareAndSet(false, true)) postOutcome(left.work.getCompleted())
+        }
+    }
+
+    private fun postOutcome(outcome: EnrollOutcome) {
+        val text = when (outcome) {
+            is EnrollOutcome.Stored -> app.getString(R.string.profile_added, outcome.name)
+            is EnrollOutcome.NotStored -> app.getString(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device)
+            is EnrollOutcome.Refused -> return
+        }
+        app.session.postNotice(text, forProfile = app.profiles.state.value.index.current)
+    }
+
     private sealed interface EnrollOutcome {
-        data object Stored : EnrollOutcome
+        /** Stored as the profile [name], now the one shown. */
+        data class Stored(val name: String) : EnrollOutcome
 
         /** The server said no (or could not be reached): nothing was spent. */
         data class Refused(val message: String, val wantsName: Boolean) : EnrollOutcome
@@ -155,7 +202,7 @@ class EnrollViewModel(private val app: FrpJumpApp) : ViewModel() {
             serverAddr = r.serverAddr,
             serverPort = r.serverPort,
         )
-        return store(credentials, profile, color)?.let { EnrollOutcome.NotStored(r.deviceName, it) } ?: EnrollOutcome.Stored
+        return store(credentials, profile, color)?.let { EnrollOutcome.NotStored(r.deviceName, it) } ?: EnrollOutcome.Stored(profile)
     }
 
     /**

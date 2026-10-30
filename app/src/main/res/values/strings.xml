@@ -53,6 +53,7 @@
     <string name="profile_forgotten">Profile “%s” forgotten.</string>
     <string name="forget_server_not_told">The server was not told (%1$s). Remove “%2$s” from a laptop: frp-jump-client devices delete %3$s</string>
     <string name="forget_busy">Another profile is being forgotten; wait until it is done.</string>
+    <string name="profile_added">Profile “%s” added.</string>
     <string name="profile_gone">This profile was forgotten meanwhile.</string>
     <string name="forget_failed">Could not wipe this profile’s data (%s). Try again.</string>
 

@@ -59,9 +59,18 @@ class ProfileItemsTest {
     }
 
     @Test
-    fun `servers are read once per profile, again only without an enrollment`() {
-        val known = mapOf("w" to ProfileServer("way.example", "phone"), "h" to null)
-        assertEquals(setOf("h", "c"), serversToLoad(setOf("w", "h", "c"), known))
-        assertTrue(serversToLoad(setOf("w"), known).isEmpty())
+    fun `servers are read once per enrollment, again when it was replaced or read without one`() {
+        val way = ProfileServer("way.example", "phone")
+        val known = mapOf("w" to KnownServer(0, way), "h" to KnownServer(0, null), "x" to KnownServer(1, way))
+        assertEquals(setOf("h", "c", "x"), serversToLoad(mapOf("w" to 0, "h" to 0, "c" to 0, "x" to 2), known))
+        assertTrue(serversToLoad(mapOf("w" to 0), known).isEmpty())
+    }
+
+    @Test
+    fun `a server read from a replaced enrollment is not shown`() {
+        val way = ProfileServer("way.example", "phone")
+        val known = mapOf("w" to KnownServer(0, way), "h" to KnownServer(0, way), "gone" to KnownServer(0, way))
+        // "Enroll again" wiped h: until it is read again its row is loading, not the old server.
+        assertEquals(mapOf("w" to way), currentServers(mapOf("w" to 0, "h" to 1), known))
     }
 }

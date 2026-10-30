@@ -95,10 +95,13 @@ class ProfilesTest {
 
         val filled = profiles.enroll(credentials("new.example"))
         assertEquals(empty.id, filled.id)
+        // What was read from its old credentials is stale now.
+        assertEquals(1, profiles.state.value.enrollments[empty.id])
         assertEquals(1, profiles.state.value.index.profiles.size)
         assertTrue(filled.store.state() is StoredEnrollment.Enrolled)
 
         val added = profiles.enroll(credentials("other.example", "phone-2"))
+        assertNull(profiles.state.value.enrollments[added.id])
         assertEquals(listOf(empty.id, added.id), profiles.state.value.index.profiles.map { it.id })
         assertEquals(added.id, profiles.state.value.index.current)
     }
@@ -128,5 +131,9 @@ class ProfilesTest {
 
         assertEquals(listOf(work.id), profiles.state.value.index.profiles.map { it.id })
         assertTrue(work.store.state() is StoredEnrollment.NotEnrolled)
+        // Published as a new enrollment: the list no longer names the old server.
+        assertEquals(1, profiles.state.value.enrollments[work.id])
+        profiles.enroll(credentials("work.example", "phone-again"))
+        assertEquals(2, profiles.state.value.enrollments[work.id])
     }
 }

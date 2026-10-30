@@ -93,8 +93,15 @@ fun AppNav() {
             var busy by remember { mutableStateOf(false) }
             var error by remember { mutableStateOf<String?>(null) }
             val scope = rememberCoroutineScope()
+            // E.g. another profile forgotten from the list over this screen: said here, not later elsewhere.
+            val pendingNotice by app.session.notice.collectAsStateWithLifecycle()
+            var notice by rememberSaveable { mutableStateOf<String?>(null) }
+            LaunchedEffect(pendingNotice) {
+                if (pendingNotice != null) app.session.takeAnyNotice()?.let { notice = it }
+            }
             MessageScreen(
                 title = stringResource(R.string.app_name),
+                notice = notice,
                 text = stringResource(R.string.removed_text, profiles.firstOrNull { it.current }?.name.orEmpty()),
                 action = stringResource(R.string.enroll_again),
                 busy = busy,
@@ -135,7 +142,7 @@ fun AppNav() {
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
             var sheet by rememberSaveable { mutableStateOf(false) }
             EnrollScreen(
-                vm = viewModel { EnrollViewModel(app) },
+                vm = viewModel { EnrollViewModel(app, takesNotices = true) },
                 onEnrolled = { nav.replaceAll(Routes.DEVICES) },
                 onBack = null,
                 onOtherProfiles = { sheet = true }.takeIf { profiles.size > 1 },
@@ -144,7 +151,8 @@ fun AppNav() {
         }
         composable(Routes.ADD_PROFILE) {
             EnrollScreen(
-                vm = viewModel { EnrollViewModel(app) },
+                // Over the device list, which shows the notices.
+                vm = viewModel { EnrollViewModel(app, takesNotices = false) },
                 onEnrolled = { nav.replaceAll(Routes.DEVICES) },
                 onBack = { nav.popBackStack() },
             )

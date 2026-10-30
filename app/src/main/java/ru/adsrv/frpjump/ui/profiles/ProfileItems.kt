@@ -50,10 +50,25 @@ fun profileItems(
  */
 fun removedElsewhere(items: List<ProfileItem>): List<ProfileItem> = items.filter { it.removed && !it.current }
 
+/** A profile's server as read from its credentials, and from which of its enrollments ([ru.adsrv.frpjump.profiles.ProfilesState.enrollments]). */
+data class KnownServer(val enrollment: Int, val server: ProfileServer?)
+
 /**
- * The profiles whose server to read (the Keystore) of [ids]: new ones, and
- * those read without an enrollment, which an enrollment may have filled in
- * since. The others keep what was read.
+ * What [known] still says about the profiles' current enrollments
+ * ([enrollments], by id): a server read from an enrollment since replaced
+ * in place is dropped, so the row shows "loading" rather than the old server.
  */
-fun serversToLoad(ids: Set<String>, known: Map<String, ProfileServer?>): Set<String> =
-    ids.filterTo(mutableSetOf()) { known[it] == null }
+fun currentServers(enrollments: Map<String, Int>, known: Map<String, KnownServer>): Map<String, ProfileServer?> =
+    known.filter { (id, k) -> id in enrollments && k.enrollment == enrollments[id] }.mapValues { it.value.server }
+
+/**
+ * The profiles whose server to read (the Keystore), of [enrollments] (by
+ * id): new ones, those whose enrollment was filled in or wiped since, and
+ * those read without one (the Keystore may have been unavailable). The
+ * others keep what was read.
+ */
+fun serversToLoad(enrollments: Map<String, Int>, known: Map<String, KnownServer>): Set<String> =
+    enrollments.filterTo(mutableMapOf()) { (id, enrollment) ->
+        val k = known[id]
+        k == null || k.enrollment != enrollment || k.server == null
+    }.keys
