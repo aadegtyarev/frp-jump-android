@@ -34,6 +34,17 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
 | Builds | debug APK | signed release APK, update check in the app |
 | Look | default Material | redesign per the mockups |
 
+## UI rules
+
+- Every action answers at once: the pressed control shows it was pressed, and
+  then something visibly changes — a state, a progress indicator, a message.
+  No tap may look as if nothing happened.
+- Anything that takes longer than about half a second shows progress where
+  the owner tapped, not somewhere else on the screen.
+- Failures are shown next to what failed, in plain words, with the action
+  that may fix it (retry, open settings).
+- The same thing is called the same way on every screen and in notifications.
+
 ## Scenarios
 
 ### 1. Enroll a profile
