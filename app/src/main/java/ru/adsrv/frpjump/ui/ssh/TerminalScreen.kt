@@ -6,7 +6,6 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -94,13 +93,12 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
     val context = LocalContext.current
     val modifiers = remember { Modifiers() }
     val current = rememberUpdatedState(selected)
-    val view = remember {
-        TerminalView(context, null).apply {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            setTerminalViewClient(ViewClient(this, { current.value }, modifiers, sessions))
+    val input = remember {
+        TerminalInput(context, TerminalView(context, null).apply { isFocusable = true; isFocusableInTouchMode = true }).apply {
+            terminal.setTerminalViewClient(ViewClient(this, { current.value }, modifiers, sessions))
         }
     }
+    val view = input.terminal
     DisposableEffect(view) {
         sessions.listener = object : TerminalScreenListener {
             override fun onScreenChanged(session: TerminalSession) {
@@ -116,7 +114,7 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
     LaunchedEffect(selected.id) {
         view.attachSession(selected.terminal.session)
         view.onScreenUpdated()
-        view.requestFocus()
+        input.requestFocus()
     }
 
     // Landscape with the keyboard up leaves a sliver: give it all to the terminal.
@@ -171,7 +169,7 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
                 }
             }
             AndroidView(
-                factory = { view },
+                factory = { input },
                 // The Termux view draws its whole grid; without the clip it paints over the
                 // extra keys when the keyboard leaves it only a few rows.
                 modifier = Modifier
@@ -192,7 +190,7 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
             ExtraKeys(
                 modifiers = modifiers,
                 onKey = { key -> sendExtraKey(view, key, modifiers) },
-                onKeyboard = { showKeyboard(context, view) },
+                onKeyboard = input::showKeyboard,
             )
         }
     }
@@ -331,17 +329,12 @@ private fun sendExtraKey(view: TerminalView, key: ExtraKey, modifiers: Modifiers
     }
 }
 
-private fun showKeyboard(context: Context, view: TerminalView) {
-    view.requestFocus()
-    context.getSystemService(InputMethodManager::class.java).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
-}
-
 private fun spToPx(context: Context, sp: Int): Int =
     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp.toFloat(), context.resources.displayMetrics).toInt()
 
 /** Glue between the Termux view and the app: keyboard, sticky modifiers, pinch zoom, resize. */
 private class ViewClient(
-    private val view: TerminalView,
+    private val input: TerminalInput,
     private val session: () -> SshSession,
     private val modifiers: Modifiers,
     private val sessions: SshSessions,
@@ -356,7 +349,7 @@ private class ViewClient(
         return scale
     }
 
-    override fun onSingleTapUp(e: MotionEvent) = showKeyboard(view.context, view)
+    override fun onSingleTapUp(e: MotionEvent) = input.showKeyboard()
 
     override fun shouldBackButtonBeMappedToEscape() = false
 
@@ -387,7 +380,7 @@ private class ViewClient(
     /** The grid was (re)measured: tell the remote side. */
     override fun onEmulatorSet() {
         val s = session()
-        if (view.currentSession === s.terminal.session) s.resize(s.terminal.columns, s.terminal.rows)
+        if (input.terminal.currentSession === s.terminal.session) s.resize(s.terminal.columns, s.terminal.rows)
     }
 
     override fun logError(tag: String?, message: String?) {
