@@ -15,7 +15,6 @@ import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.ConnectResponse
 import ru.adsrv.frpjump.api.ConsumedGrant
 import ru.adsrv.frpjump.api.DesiredStateResponse
-import ru.adsrv.frpjump.ports.DevicePort
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.session.ProfileSession
@@ -135,7 +134,7 @@ class TunnelManagerTest {
         val gate = CompletableDeferred<Unit>()
         api.connectGate = gate
         api.failure = ApiException(401, "unknown token")
-        val connect = async { manager.connect("wb", DevicePort(80, "Web", PortKind.WEB)) }
+        val connect = async { manager.connect("wb", 80, PortKind.WEB) }
         delay(50)
         // Forgotten and enrolled again while the call was in flight.
         stored = StoredEnrollment.Enrolled(credentials("t2"))

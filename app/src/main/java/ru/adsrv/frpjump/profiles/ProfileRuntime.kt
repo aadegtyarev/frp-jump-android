@@ -12,9 +12,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.api.FrpJumpApi
+import ru.adsrv.frpjump.connections.ConnectionStore
+import ru.adsrv.frpjump.connections.migrateDevicePorts
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceListCache
-import ru.adsrv.frpjump.ports.DevicePortsStore
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.session.Poller
 import ru.adsrv.frpjump.session.ProfileSession
@@ -26,7 +27,9 @@ import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.store.TextStorage
 import ru.adsrv.frpjump.tunnel.FrpcRunner
 import ru.adsrv.frpjump.tunnel.TunnelManager
+import ru.adsrv.frpjump.web.WebCertStore
 import java.io.File
+import java.util.UUID
 
 /** What every profile's runtime shares with the others. */
 class ProfileShared(
@@ -62,9 +65,22 @@ class ProfileRuntime(
     private val scope = CoroutineScope(shared.scope.coroutineContext + SupervisorJob(shared.scope.coroutineContext[Job]))
 
     val session = ProfileSession()
-    val devicePorts = DevicePortsStore(shared.storageFor(File(dir, ProfileFiles.DEVICE_PORTS)))
     val hostKeys = HostKeyStore(shared.storageFor(File(dir, ProfileFiles.HOST_KEYS)))
     val sshLogins = SshLoginMemory(shared.storageFor(File(dir, ProfileFiles.SSH_LOGINS)))
+    val webCerts = WebCertStore(shared.storageFor(File(dir, ProfileFiles.WEB_CERTS)))
+
+    /** The profile's named connections; the old per-device ports become some on the first start. */
+    val connections: ConnectionStore = shared.storageFor(File(dir, ProfileFiles.CONNECTIONS)).let { file ->
+        migrateDevicePorts(
+            profile = id,
+            connections = file,
+            legacy = shared.storageFor(File(dir, ProfileFiles.DEVICE_PORTS)),
+            localPorts = shared.localPorts.load(),
+            sshUser = { device, port -> sshLogins.get(device, port).user },
+            newId = { UUID.randomUUID().toString() },
+        )
+        ConnectionStore(file)
+    }
     val devices = DeviceDirectory(store, shared.api, session, DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))))
     val tunnels = TunnelManager(
         profile = id,
