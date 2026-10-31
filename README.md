@@ -480,7 +480,14 @@ a login that works or a new password; a saved password shows there as
 open on its device and port: "1 session" by the address, or with a red dot
 when one of them has ended (TalkBack: "2 sessions, 1 ended"), and the main
 button reads "Terminal · 2" from two on (`sessionsThrough` in
-`tunnel/OpenThrough.kt`).
+`tunnel/OpenThrough.kt`). The login dialog works with password managers
+(Android autofill; Bitwarden and the like): the user field is marked as a
+user name and the password field as a password, in every use of it
+(Terminal, Files, Change login, the password of "Use key login"). Connect
+with a typed password lets the manager offer to save it (the dialog closes
+on Connect, so before the login is known to work); Cancel saves nothing. A
+field showing a saved password takes a fill only once it is tapped, so
+filling in the user name leaves the saved password alone.
 
 - Key: the app makes one ed25519 key on first use; Settings shows its
   `authorized_keys` line with Copy / Share. "Import private key" takes an

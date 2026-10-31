@@ -17,8 +17,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -29,19 +32,34 @@ import androidx.compose.ui.unit.dp
  * A password-style field, hidden until the eye is tapped. [saved]: a
  * value is kept already; while the field is empty it shows that (masked
  * dots and "saved") instead of looking empty, and typing replaces it.
+ * [contentType] lets a password manager fill it in; a field showing a
+ * saved password offers that only once it is tapped, so filling in the
+ * user name does not quietly replace the saved password.
  */
 @Composable
-fun SecretField(value: String, onValueChange: (String) -> Unit, label: String, saved: String? = null, savedSpoken: String? = null) {
+fun SecretField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    saved: String? = null,
+    savedSpoken: String? = null,
+    contentType: ContentType? = null,
+) {
     var shown by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
     // Material shows a placeholder under a resting label only without one: the saved hint takes the label's place until typing starts.
     val showSaved = saved != null && value.isEmpty()
+    val fillable = contentType?.takeIf { offersFill(saved != null, focused, value.isNotEmpty()) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = if (showSaved) null else ({ Text(label) }),
         // The dots are for the eye: TalkBack hears "Password, saved".
         placeholder = if (showSaved) ({ Text(saved.orEmpty(), modifier = Modifier.clearAndSetSemantics {}) }) else null,
-        modifier = if (showSaved) Modifier.semantics { contentDescription = savedSpoken ?: label } else Modifier,
+        modifier = Modifier
+            .onFocusChanged { focused = it.isFocused }
+            .then(if (showSaved) Modifier.semantics { contentDescription = savedSpoken ?: label } else Modifier)
+            .then(if (fillable != null) Modifier.semantics { this.contentType = fillable } else Modifier),
         singleLine = true,
         visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
@@ -52,6 +70,14 @@ fun SecretField(value: String, onValueChange: (String) -> Unit, label: String, s
         },
     )
 }
+
+/**
+ * Whether a password manager may fill a secret field in: always, unless it
+ * shows a [saved] password and the owner has neither tapped it ([focused])
+ * nor typed in it ([typed]); filling in the user name then leaves the saved
+ * password alone.
+ */
+fun offersFill(saved: Boolean, focused: Boolean, typed: Boolean): Boolean = !saved || focused || typed
 
 // Material "visibility" / "visibility_off" outlines, to avoid pulling in material-icons-extended.
 private val Eye = eyeIcon(

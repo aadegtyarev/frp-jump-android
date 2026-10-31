@@ -34,10 +34,13 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +67,8 @@ fun Field(
     trailingIcon: (@Composable () -> Unit)? = null,
     /** To focus the field when it shows. */
     focusRequester: FocusRequester? = null,
+    /** What a password manager may fill in here (a user name); null: nothing. */
+    contentType: ContentType? = null,
 ) {
     val colors = AppTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -90,7 +95,8 @@ fun Field(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .then(if (contentType != null) Modifier.semantics { this.contentType = contentType } else Modifier),
         )
     }
 }
