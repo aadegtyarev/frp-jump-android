@@ -362,3 +362,17 @@ val InfoGlyph: ImageVector = glyph("Info", 1.8f) {
     moveTo(12f, 8f)
     verticalLineTo(8.01f)
 }
+
+/** A push pin: a local port fixed to its connection. */
+val PinGlyph: ImageVector = glyph("Pin", 1.8f) {
+    moveTo(9f, 4f)
+    horizontalLineTo(15f)
+    moveTo(10f, 4f)
+    verticalLineTo(10f)
+    lineTo(7f, 14f)
+    horizontalLineTo(17f)
+    lineTo(14f, 10f)
+    verticalLineTo(4f)
+    moveTo(12f, 14f)
+    verticalLineTo(20f)
+}

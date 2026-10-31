@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -51,6 +52,8 @@ data class Tunnel(
     val localPort: Int,
     val state: VisitorState,
     val direct: DirectMode = DirectMode.ON,
+    /** Its local port is pinned by a connection: never moved, also when another app takes it. */
+    val pinned: Boolean = false,
 ) {
     val key get() = localPortKey(device, port)
 }
@@ -119,6 +122,10 @@ class TunnelManager(
      * ([ru.adsrv.frpjump.restore.RestoreRecord]).
      */
     private val recordTunnels: (count: Int) -> Unit = {},
+    /** The profile's pinned local ports by [localPortKey] ([ru.adsrv.frpjump.connections.tunnelPins]); read on every apply. */
+    private val pins: () -> Map<String, Int> = { emptyMap() },
+    /** How long a pinned tunnel whose port another app holds waits before it tries the port again. */
+    private val pinnedRetryMs: Long = PINNED_RETRY_MS,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
@@ -140,6 +147,16 @@ class TunnelManager(
     /** Moves to another local port per grant id since it last worked ([rebind]); cleared by the states' collector too. */
     private val rebinds = ConcurrentHashMap<String, Int>()
 
+    /** Pinned tunnels left out of the next [apply]'s visitors, so the one after starts them afresh ([retryPinned]). */
+    private var leftOut: Set<String> = emptySet()
+
+    /**
+     * What a pinned tunnel being tried again showed (its port taken), by
+     * grant id: while it is left out and starting again it keeps showing
+     * that, not "Connecting…"; dropped once it is up or gone.
+     */
+    private val retryShown = ConcurrentHashMap<String, VisitorState>()
+
     /** Ports the next [apply] probes although frpc was given them: it could not listen there. */
     private var reprobe: Set<Int> = emptySet()
 
@@ -151,8 +168,17 @@ class TunnelManager(
                     port = it.grant.targetPort,
                     grantId = it.grant.grantId,
                     localPort = it.localPort,
-                    state = states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING),
+                    state = (states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING)).let { state ->
+                        val shown = retryShown[it.grant.grantId]?.takeIf { _ -> it.pinned && state.status == TunnelStatus.CONNECTING } ?: state
+                        // A pinned port stays: say plainly who is in the way.
+                        if (it.pinned && portTaken(shown)) {
+                            shown.copy(detail = Texts.get(R.string.local_port_taken_pinned, it.localPort, PINNED_RETRY_MS / 1000))
+                        } else {
+                            shown
+                        }
+                    },
                     direct = c.modes[it.grant.grantId] ?: DirectMode.ON,
+                    pinned = it.pinned,
                 )
             },
             pending = c.pending,
@@ -173,9 +199,25 @@ class TunnelManager(
         scope.launch {
             runner.states.collect { states ->
                 // A tunnel that works again may move again the next time its port is taken.
-                rebinds.keys.removeAll(states.filterValues { it.status != TunnelStatus.FAILED && it.status != TunnelStatus.CONNECTING }.keys)
+                val working = states.filterValues { it.status != TunnelStatus.FAILED && it.status != TunnelStatus.CONNECTING }.keys
+                rebinds.keys.removeAll(working)
+                retryShown.keys.removeAll(working)
                 val taken = states.filterValues(::portTaken).keys
                 if (taken.isNotEmpty()) scope.launch { rebind(taken) }
+            }
+        }
+        // A pinned tunnel whose port another app holds stays on it and tries it again now and then,
+        // until it is up, disconnected, or no longer pinned there (the set changes, the wait starts over).
+        scope.launch {
+            combine(core, runner.states) { c, states ->
+                c.planned.filter { it.pinned && states[it.grant.grantId]?.let(::portTaken) == true }.map { it.grant.grantId }.toSet()
+            }.distinctUntilChanged().collectLatest { waiting ->
+                if (waiting.isEmpty()) return@collectLatest
+                while (true) {
+                    delay(pinnedRetryMs)
+                    // Not in this block: its own reloads change the set and would cut it off between them.
+                    scope.launch { retryPinned(waiting) }.join()
+                }
             }
         }
         // "Trying direct…" ends after TRY_DIRECT_MS, and a punch is confirmed, even when frpc says nothing more.
@@ -309,17 +351,51 @@ class TunnelManager(
     /**
      * Tunnels in [grants] whose local port is taken by someone else get a
      * free one, at most [MAX_REBINDS] times each until it works again, and
-     * frpc reloads.
+     * frpc reloads. A pinned one never moves: it stays failed, saying so,
+     * until the port is free or the connection's pin changes.
      */
     private suspend fun rebind(grants: Set<String>) = syncing.withLock {
         val credentials = credentials() ?: return@withLock
         val desired = lastDesired ?: return@withLock
         if (session.removed.value) return@withLock
-        val still = grants.filter { grant -> runner.states.value[grant]?.let(::portTaken) == true && (rebinds[grant] ?: 0) < MAX_REBINDS }
+        val pinned = core.value.planned.filter { it.pinned }.map { it.grant.grantId }.toSet()
+        val still = grants.filter { grant ->
+            grant !in pinned && runner.states.value[grant]?.let(::portTaken) == true && (rebinds[grant] ?: 0) < MAX_REBINDS
+        }
         if (still.isEmpty()) return@withLock
         still.forEach { rebinds[it] = (rebinds[it] ?: 0) + 1 }
         reprobe = core.value.planned.filter { it.grant.grantId in still }.map { it.localPort }.toSet()
         Log.i(TAG, "local port taken, moving ${still.size} tunnel(s)")
+        applyQuietly(credentials, desired)
+    }
+
+    /**
+     * Pinned tunnels in [grants] still kept off their port try it again: frpc
+     * drops their visitors and takes them back (two reloads; the other
+     * tunnels are untouched), so they listen anew. With nothing else
+     * running, frpc simply restarts.
+     */
+    private suspend fun retryPinned(grants: Set<String>) = syncing.withLock {
+        val credentials = credentials() ?: return@withLock
+        val desired = lastDesired ?: return@withLock
+        if (session.removed.value) return@withLock
+        val planned = core.value.planned
+        val still = planned.filter { it.pinned && it.grant.grantId in grants && runner.states.value[it.grant.grantId]?.let(::portTaken) == true }
+            .map { it.grant.grantId }.toSet()
+        if (still.isEmpty()) return@withLock
+        Log.i(TAG, "pinned local port taken, trying it again for ${still.size} tunnel(s)")
+        still.forEach { grant -> runner.states.value[grant]?.let { retryShown[grant] = it } }
+        try {
+            if (planned.all { it.grant.grantId in still }) {
+                withContext(Dispatchers.IO) { runner.stop() }
+            } else {
+                leftOut = still
+                applyQuietly(credentials, desired)
+            }
+        } finally {
+            // Never left out for longer than this one reload, whatever happened.
+            leftOut = emptySet()
+        }
         applyQuietly(credentials, desired)
     }
 
@@ -474,12 +550,13 @@ class TunnelManager(
         val live = desired.consumed.map { it.grantId }.toSet()
         attempts.keys.retainAll(live)
         rebinds.keys.retainAll(live)
+        retryShown.keys.retainAll(live)
         val probe = reprobe
         reprobe = emptySet()
         val (planned, modes) = withContext(Dispatchers.IO) {
             // Under the shared map's lock: two profiles planning at once never pick the same port.
             val plan = localPorts.update { ports ->
-                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe)
+                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe, pins())
             }
             val modes = plan.associate { it.grant.grantId to directMode(it.grant.exposerDeviceName) }
             // Direct again (kept or off until now): a new xtcp name, so lines its old
@@ -491,10 +568,13 @@ class TunnelManager(
             if (plan.isEmpty()) {
                 runner.stop()
             } else {
-                val visitors = plan.map {
+                val skip = leftOut
+                leftOut = emptySet()
+                val serving = plan.filter { it.grant.grantId !in skip }
+                val visitors = serving.map {
                     it.visitor(direct = modes[it.grant.grantId] == DirectMode.ON, attempt = attempts[it.grant.grantId] ?: 0)
                 }
-                runner.apply(launchFor(credentials, visitors), plan.map { it.localPort }.toSet())
+                runner.apply(launchFor(credentials, visitors), serving.map { it.localPort }.toSet())
             }
             recordTunnels(plan.size)
             plan to modes
@@ -549,14 +629,19 @@ class TunnelManager(
 
     private fun fail(key: String, message: String) = core.update { it.copy(errors = it.errors + (key to message)) }
 
-    private companion object {
-        const val TAG = "TunnelManager"
-        const val CONNECT_WAIT_SECONDS = 15
-        const val EXPIRY_TICK_MS = 1_000L
-        const val PEER_RETRY_MS = 2_000L
-        const val MAX_REBINDS = 3
+    companion object {
+        /** A pinned port another app holds is tried again this often. */
+        const val PINNED_RETRY_MS = 30_000L
+
+        private const val TAG = "TunnelManager"
+        private const val CONNECT_WAIT_SECONDS = 15
+        private const val EXPIRY_TICK_MS = 1_000L
+        private const val PEER_RETRY_MS = 2_000L
+        private const val MAX_REBINDS = 3
 
         /** In frpc's "start error" when a visitor cannot listen on its port. */
-        const val PORT_TAKEN = "address already in use"
+        private const val PORT_TAKEN = "address already in use"
+
+
     }
 }

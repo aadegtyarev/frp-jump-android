@@ -115,6 +115,17 @@ re-enroll.
   optionally "connect now".
 - Several connections to the same device and port are allowed under different
   names (for example SSH as root and as another user).
+- Local port: "Auto" by default (from the range in Settings), or a fixed
+  number 1024–65535 pinned to the connection, for programs that need a
+  constant `127.0.0.1:N` (an assistant reaching its backend over a TCP
+  tunnel). A pinned port is never given to another tunnel, even while the
+  connection is off, and never moved: when another app holds it, the card
+  says so and the tunnel stays on it, trying again every 30 s, until it is
+  free or the pin changes. Deleting the connection or setting it back to
+  Auto releases the port.
+  Two connections cannot pin the same port; connections to the same device
+  and port share their tunnel and its pin; a port another tunnel uses now
+  is refused. It cannot be changed while the tunnel is up.
 - Rename, change and delete a connection from the card or the Connections tab.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is

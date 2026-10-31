@@ -297,6 +297,17 @@
     <string name="protocol_clash_ssh">Another connection uses this port for SSH; SSH and other kinds cannot share a port.</string>
     <string name="protocol_clash_other">Another connection uses this port as Web or TCP; SSH cannot share it.</string>
     <string name="kind_locked">Disconnect to change the kind or the port.</string>
+    <string name="local_port">Local port</string>
+    <string name="local_port_auto">Auto</string>
+    <string name="local_port_note">Auto picks one from Settings › Local ports. A number (1024–65535) is kept for this connection only and never moves.</string>
+    <string name="local_port_locked">Disconnect to change the local port.</string>
+    <string name="local_port_out_of_range">A local port is a number from %d to 65535.</string>
+    <string name="local_port_pinned_elsewhere">Already pinned by the connection to %s.</string>
+    <string name="local_port_other_pin">Another connection to this port pins %s; they share one tunnel, so use the same one or Auto.</string>
+    <string name="local_port_in_use">The tunnel to %s uses it now. Disconnect it or choose another port.</string>
+    <string name="local_port_tunnel_up">This connection’s tunnel is up on port %s now; pinning another would move it. Disconnect first, or leave Auto.</string>
+    <string name="local_port_pinned_mark">Pinned local port</string>
+    <string name="local_port_taken_pinned">Port %1$d is taken by another app. The tunnel stays on it and tries again every %2$d s. To use another port, disconnect and change the connection’s local port.</string>
 
     <!-- Failures in plain words -->
     <string name="error_not_https">Not an https:// server URL: %s</string>

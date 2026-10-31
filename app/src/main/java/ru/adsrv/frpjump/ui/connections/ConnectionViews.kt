@@ -60,9 +60,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.connections.LocalPortContext
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
@@ -75,6 +77,7 @@ import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.tunnel.sessionsThrough
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PinGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.ssh.KeyLoginDialogs
@@ -172,11 +175,19 @@ fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: 
 
 /**
  * `127.0.0.1:<local port>` in the mockups' monospace; where that does not
- * fit, `:<local port>` (a cut address is no use).
+ * fit, `:<local port>` (a cut address is no use). A small pin before it
+ * when the port is [pinned] to the connection.
  */
 @Composable
-fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier) {
+fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier, pinned: Boolean = false) {
     var short by remember(port) { mutableStateOf(false) }
+    if (pinned) {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Icon(PinGlyph, contentDescription = stringResource(R.string.local_port_pinned_mark), tint = AppTheme.colors.muted, modifier = Modifier.size(size.dp + 1.dp))
+            LocalAddress(port, size, Modifier.weight(1f, fill = false))
+        }
+        return
+    }
     Text(
         if (short) ":$port" else localAddress(port),
         fontFamily = FontFamily.Monospace,
@@ -426,6 +437,13 @@ fun rememberRowActions(
     )
 }
 
+/** [ConnectionActions.localPortContext] kept up to date while the sheet is open. */
+@Composable
+fun rememberLocalPortContext(actions: ConnectionActions, profile: String): LocalPortContext {
+    val flow = remember(actions, profile) { actions.localPortContexts(profile) }
+    return flow.collectAsStateWithLifecycle(remember(actions, profile) { actions.localPortContext(profile) }).value
+}
+
 /** Whether [row] has a "⋮" menu: an unsaved tunnel has nothing in it but Disconnect, which is on the row. */
 fun hasMenu(row: ConnectionRow): Boolean = row.saved
 
@@ -594,6 +612,7 @@ fun ConnectionDialogs(
             editing = row.connection,
             portLocked = now.active || now.pending != null,
             existing = existing(row.profile),
+            ports = rememberLocalPortContext(actions, row.profile),
             onSave = { connection, _, done -> actions.save(row.profile, connection, previous = row.connection, connectNow = false, onDone = done) },
             onDismiss = { ui.editing = null },
         )

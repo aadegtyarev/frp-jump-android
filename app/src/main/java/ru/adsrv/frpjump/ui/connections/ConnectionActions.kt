@@ -3,8 +3,12 @@ package ru.adsrv.frpjump.ui.connections
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -14,11 +18,23 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.connections.HeldPort
+import ru.adsrv.frpjump.connections.LocalPortContext
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
+import ru.adsrv.frpjump.connections.PinRefused
+import ru.adsrv.frpjump.connections.localPortProblemWords
+import ru.adsrv.frpjump.connections.pinProblemOnSave
+import ru.adsrv.frpjump.connections.pinToRelease
+import ru.adsrv.frpjump.connections.portPins
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
+import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.ports.localPortKey
+import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.ports.profilePortPrefix
+import ru.adsrv.frpjump.ports.releasePin
+import ru.adsrv.frpjump.ports.reservePins
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
 import ru.adsrv.frpjump.ssh.LoginRefusal
@@ -131,10 +147,26 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         scope.launch {
             val before = runtime.connections.connections.value
             val failure = try {
-                withContext(Dispatchers.IO) { runtime.connections.save(connection) }
+                withContext(Dispatchers.IO) {
+                    // Under the shared map's lock, so two saves (two profiles) cannot both take one port:
+                    // the pin is checked again against everything as it is now, and only then saved.
+                    runtime.localPorts.update { ports ->
+                        val now = localPortContext(profile)
+                        pinProblemOnSave(profile, connection, now.pins, now.held)?.let { throw PinRefused(it) }
+                        runtime.connections.save(connection)
+                        // A pin given up (back to Auto, or another port) is free for others again...
+                        pinToRelease(previous, runtime.connections.connections.value)?.let { (key, pin) ->
+                            releasePin(ports, profilePortPrefix(profile) + key, pin)
+                        }
+                        // ...and a new one is reserved at once in the map all profiles share, so no other tunnel gets it, even while this one is off.
+                        connection.localPort?.let { pin -> reservePins(ports, mapOf(profilePortKey(profile, connection.device, connection.port) to pin)) }
+                    }
+                }
                 null
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: PinRefused) {
+                localPortProblemWords(e.problem).let { (res, args) -> Texts.get(res, *args.toTypedArray()) }
             } catch (e: Exception) {
                 e.userMessage()
             }
@@ -160,7 +192,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         scope.launch {
             val all = runtime.connections.connections.value
             val failure = try {
-                withContext(Dispatchers.IO) { runtime.connections.remove(row.connection.id) }
+                withContext(Dispatchers.IO) {
+                    runtime.connections.remove(row.connection.id)
+                    // Its pin, unless another connection to that device and port still has it, is free again.
+                    pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
+                        runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }
+                    }
+                }
                 null
             } catch (e: CancellationException) {
                 throw e
@@ -170,6 +208,32 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             if (failure == null && row.active && lastOnItsTunnel(row.connection, all)) disconnect(row)
             onDone(failure)
         }
+    }
+
+    /**
+     * What a pinned local port of [profile] is checked against: the pins of
+     * every profile's connections and the local ports of the tunnels up now.
+     * Main thread.
+     */
+    fun localPortContext(profile: String): LocalPortContext = localPortContext(profile, app.profiles.state.value.runtimes.values)
+
+    /** [localPortContext] as it changes: the sheet's check follows tunnels coming up and pins saved elsewhere. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun localPortContexts(profile: String): Flow<LocalPortContext> = app.profiles.state.flatMapLatest { state ->
+        val runtimes = state.runtimes.values
+        if (runtimes.isEmpty()) {
+            flowOf(LocalPortContext(profile))
+        } else {
+            combine(runtimes.flatMap { listOf(it.connections.connections, it.tunnels.state) }) { localPortContext(profile, runtimes) }
+        }
+    }
+
+    private fun localPortContext(profile: String, runtimes: Collection<ProfileRuntime>): LocalPortContext {
+        return LocalPortContext(
+            profile = profile,
+            pins = runtimes.flatMap { r -> portPins(r.id, r.connections.connections.value) },
+            held = runtimes.flatMap { r -> r.tunnels.state.value.tunnels.map { HeldPort(r.id, it.device, it.port, it.localPort) } },
+        )
     }
 
     /** Whether deleting [row] also disconnects its tunnel. */

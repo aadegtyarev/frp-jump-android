@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.connections.ConnectionStore
 import ru.adsrv.frpjump.connections.migrateDevicePorts
+import ru.adsrv.frpjump.connections.tunnelPins
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceListCache
 import ru.adsrv.frpjump.direct.DirectKeptStore
@@ -110,7 +111,11 @@ class ProfileRuntime(
             }
         },
         recordTunnels = { shared.restoreRecord.set(id, it) },
+        pins = { tunnelPins(connections.connections.value) },
     )
+
+    /** The local port map shared by all profiles: a pin is written there when it is saved. */
+    val localPorts: LocalPortStore = shared.localPorts
 
     /** Whether the app shows this profile. */
     val current: StateFlow<Boolean> =
