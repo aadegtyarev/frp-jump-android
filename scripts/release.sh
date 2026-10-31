@@ -111,7 +111,8 @@ fi
 # Set (as CI does) to refuse an APK signed with any other key than this certificate's.
 if [ -n "${FRPJUMP_RELEASE_CERT_SHA256:-}" ]; then
   [ -n "$APKSIGNER" ] || { echo "FRPJUMP_RELEASE_CERT_SHA256 needs apksigner" >&2; exit 1; }
-  SIGNERS=$(printf '%s\n' "$CERTS" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p')
+  # apksigner prints "Signer #1 certificate …" or, in other versions, "V2 Signer: certificate …"; one per scheme.
+  SIGNERS=$(printf '%s\n' "$CERTS" | sed -n 's/^.*[Ss]igner.* certificate SHA-256 digest: //p' | sort -u)
   [ "$SIGNERS" = "$FRPJUMP_RELEASE_CERT_SHA256" ] || { echo "signed by $SIGNERS, not the release key $FRPJUMP_RELEASE_CERT_SHA256" >&2; exit 1; }
 fi
 
