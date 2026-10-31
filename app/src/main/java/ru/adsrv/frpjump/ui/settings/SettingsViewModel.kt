@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui.settings
 
 import android.os.Build
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -88,8 +89,14 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         save { it.copy(appLock = false) }
     }
 
+    /** Writes off the main thread; a failed write leaves the setting as it was and says so. */
     private fun save(change: (AppSettings) -> AppSettings) {
-        viewModelScope.launch(Dispatchers.IO) { app.settings.update(change) }
+        viewModelScope.launch {
+            val failure = withContext(Dispatchers.IO) { runCatching { app.settings.update(change) }.exceptionOrNull() }
+            if (failure != null) {
+                Toast.makeText(app, Texts.get(R.string.settings_save_failed, failure.userMessage()), Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     init {

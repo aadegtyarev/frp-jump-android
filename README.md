@@ -326,7 +326,10 @@ check interval, the SSH key, language and theme open a sheet.
   cancelled prompt leaves the lock screen with "Unlock". Only the screen is
   locked: tunnels, the service and the notification's "Disconnect all" go
   on, and the screens stay underneath (an open web page or terminal is
-  where it was). Recents shows no picture of the app while the setting is
+  where it was) but take no input: the focused view lets go, the keyboard
+  is hidden and keys other than Back and volume are dropped. A prompt that
+  ends while the app is away (the owner left with it up) counts the
+  absence from then, so the 30 s rule still holds. Recents shows no picture of the app while the setting is
   on: `setRecentsScreenshotEnabled(false)` on Android 13+, `FLAG_SECURE`
   before that (which also blocks screenshots there). Not only while
   locked: the picture is taken when the app is left, unlocked. If the
@@ -383,7 +386,10 @@ port) and Key or Password, then opens a session to
   phone, for every profile and device, in `snippets.json`
   (`snippets/SnippetStore.kt`; a file that does not parse is kept as
   `snippets.corrupt.json`). Sent only into an open session; otherwise the
-  app says the session is not open.
+  app says the session is not open. Line breaks are sent as CR, as Enter
+  is. A held Ctrl / Alt does not apply to a snippet: it is typed as saved,
+  and sending it releases the hold. A write that fails keeps the list as it
+  was and says so (as a setting that cannot be saved does).
 - Sessions live in the app, not in the screen: several at once, as tabs
   with the profile's colour, user and device; the Terminals tab leads back. A session ends when its
   tunnel goes (Disconnect, Disconnect all, Forget); "Reconnect" starts a new

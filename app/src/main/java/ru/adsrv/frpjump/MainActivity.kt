@@ -5,7 +5,10 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Build
+import android.view.KeyEvent
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -86,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             app.lock.locked.collect { locked ->
+                if (locked) keepInputOut()
                 if (!locked) {
                     promptedForLock = false
                     lockMessage.value = null
@@ -124,6 +128,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Locked: nothing typed may reach a screen underneath (an open terminal
+     * keeps its focus and its keyboard otherwise). The focused view lets go,
+     * the keyboard goes, and [dispatchKeyEvent] drops keys meanwhile.
+     */
+    private fun keepInputOut() {
+        currentFocus?.clearFocus()
+        WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.ime())
+    }
+
+    /** While locked, hardware and injected keys stop here; Back (leave) and volume pass. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (app.lock.locked.value && event.keyCode !in KEYS_WHILE_LOCKED) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onStart() {
         super.onStart()
         app.lock.onStart(app.settings.settings.value.appLock)
@@ -149,7 +169,8 @@ class MainActivity : AppCompatActivity() {
     private fun promptUnlock() {
         if (!AppLock.hasScreenLock(this)) {
             app.lock.unlock()
-            app.appScope.launch(Dispatchers.IO) { app.settings.update { it.copy(appLock = false) } }
+            // Unlocked either way; a failed write only means the next start asks again.
+            app.appScope.launch(Dispatchers.IO) { runCatching { app.settings.update { it.copy(appLock = false) } } }
             Toast.makeText(this, getString(R.string.lock_no_screen_lock_off), Toast.LENGTH_LONG).show()
             return
         }
@@ -222,6 +243,13 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_OPEN_DEVICE = "ru.adsrv.frpjump.OPEN_DEVICE"
         private const val EXTRA_PROFILE = "profile"
         private const val EXTRA_DEVICE = "device"
+
+        private val KEYS_WHILE_LOCKED = setOf(
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_VOLUME_UP,
+            KeyEvent.KEYCODE_VOLUME_DOWN,
+            KeyEvent.KEYCODE_VOLUME_MUTE,
+        )
 
         /** androidx.activity's own scrims for the three-button navigation bar. */
         private val LIGHT_SCRIM = android.graphics.Color.argb(0xE6, 0xFF, 0xFF, 0xFF)

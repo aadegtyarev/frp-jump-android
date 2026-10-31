@@ -55,13 +55,13 @@ class AppLock(private val clock: () -> Long = SystemClock::elapsedRealtime) {
         policy.authStarted()
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                policy.authFinished(success = true)
+                policy.authFinished(success = true, now = clock())
                 _locked.value = false
                 onResult(AuthResult.Success)
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                policy.authFinished(success = false)
+                policy.authFinished(success = false, now = clock())
                 onResult(
                     when (errorCode) {
                         BiometricPrompt.ERROR_USER_CANCELED,
@@ -83,7 +83,7 @@ class AppLock(private val clock: () -> Long = SystemClock::elapsedRealtime) {
             BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), callback).authenticate(info)
         } catch (e: Exception) {
             // E.g. the activity is being saved: nothing was shown.
-            policy.authFinished(success = false)
+            policy.authFinished(success = false, now = clock())
             onResult(AuthResult.Failed(e.message ?: e.javaClass.simpleName))
         }
     }

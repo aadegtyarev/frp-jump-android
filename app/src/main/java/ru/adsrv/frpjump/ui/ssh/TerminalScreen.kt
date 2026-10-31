@@ -89,6 +89,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.ui.AppTheme
 
@@ -107,8 +109,15 @@ fun TerminalScreen(
     val snippets by snippetStore.snippets.collectAsStateWithLifecycle()
     var managing by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    /** Writes off the main thread; a failed write keeps the list as it was and says so. */
     fun write(change: SnippetStore.() -> Unit) {
-        scope.launch(Dispatchers.IO) { snippetStore.change() }
+        scope.launch {
+            val failure = withContext(Dispatchers.IO) { runCatching { snippetStore.change() }.exceptionOrNull() }
+            if (failure != null) {
+                Toast.makeText(context, context.getString(R.string.snippet_save_failed, failure.userMessage()), Toast.LENGTH_LONG).show()
+            }
+        }
     }
     val snippetActions = remember {
         SnippetActions(
@@ -124,7 +133,6 @@ fun TerminalScreen(
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
     if (selected == null) return
     val state by selected.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     val modifiers = remember { Modifiers() }
     val current = rememberUpdatedState(selected)
     val input = remember {
@@ -258,7 +266,12 @@ fun TerminalScreen(
                     if (state != SshState.Open) {
                         Toast.makeText(context, notOpen, Toast.LENGTH_SHORT).show()
                     } else {
-                        selected.terminal.session.write(if (run) text + "\r" else text)
+                        // The Enter key sends CR; so do line breaks inside a command.
+                        val line = text.replace("\r\n", "\r").replace('\n', '\r')
+                        selected.terminal.session.write(if (run) line + "\r" else line)
+                        // A snippet is typed as is, without a held Ctrl / Alt; it uses up the hold.
+                        modifiers.ctrl = false
+                        modifiers.alt = false
                     }
                 },
                 onManage = { managing = true },

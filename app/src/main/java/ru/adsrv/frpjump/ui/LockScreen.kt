@@ -22,7 +22,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import android.app.Activity
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -41,12 +50,27 @@ import ru.adsrv.frpjump.R
 fun LockScreen(busy: Boolean, message: String?, onUnlock: () -> Unit, onLeave: () -> Unit) {
     val colors = AppTheme.colors
     BackHandler(onBack = onLeave)
+    // The status bar's icons as this screen's theme wants them, not as a terminal underneath set them.
+    val root = LocalView.current
+    val lightGround = colors.ground.luminance() > 0.5f
+    DisposableEffect(root, lightGround) {
+        val window = (root.context as? Activity)?.window
+        val bars = window?.let { WindowCompat.getInsetsController(it, root) }
+        val before = bars?.isAppearanceLightStatusBars
+        bars?.isAppearanceLightStatusBars = lightGround
+        onDispose { if (bars != null && before != null) bars.isAppearanceLightStatusBars = before }
+    }
+    // Focus here, not on a terminal underneath.
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
     Box(
         Modifier
             .fillMaxSize()
             .background(colors.ground)
             // Nothing below may be tapped through.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            .focusRequester(focus)
+            .focusable()
             .systemBarsPadding()
             .padding(24.dp),
         contentAlignment = Alignment.Center,

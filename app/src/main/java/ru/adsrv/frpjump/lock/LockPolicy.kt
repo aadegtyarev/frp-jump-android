@@ -24,8 +24,12 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
     /** A prompt is up: stops and starts are its own. */
     private var authenticating = false
 
+    /** The screen is in sight (between [onStart] and [onStop]). */
+    private var started = false
+
     /** The screen comes into sight; returns [locked]. [enabled]: the setting. */
     fun onStart(now: Long, enabled: Boolean): Boolean {
+        started = true
         if (!enabled) {
             locked = false
             leftAt = null
@@ -40,6 +44,7 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
 
     /** The screen goes out of sight. */
     fun onStop(now: Long) {
+        started = false
         if (authenticating || locked) return
         leftAt = now
     }
@@ -48,10 +53,15 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
         authenticating = true
     }
 
-    /** The prompt is gone; [success] unlocks. */
-    fun authFinished(success: Boolean) {
+    /**
+     * The prompt is gone; [success] unlocks. Ended with the screen out of
+     * sight (the owner left while it was up), the absence counts from [now]:
+     * its stop was the prompt's and was not counted.
+     */
+    fun authFinished(success: Boolean, now: Long) {
         authenticating = false
         if (success) unlocked()
+        if (!started && !locked) leftAt = now
     }
 
     /** Authenticated, also to turn the setting on: no prompt again until the next cold start or a long absence. */

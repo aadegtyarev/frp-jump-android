@@ -472,4 +472,6 @@
     <string name="snippet_command">Команда</string>
     <string name="snippet_delete">Удалить</string>
     <string name="device_was_online_ago">Был в сети %s</string>
+    <string name="settings_save_failed">Не удалось сохранить настройку: %s</string>
+    <string name="snippet_save_failed">Не удалось сохранить команды: %s</string>
 </resources>

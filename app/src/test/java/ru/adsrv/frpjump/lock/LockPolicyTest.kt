@@ -12,7 +12,7 @@ class LockPolicyTest {
     private fun unlockedAt(at: Long) {
         assertTrue(policy.onStart(at, enabled = true))
         policy.authStarted()
-        policy.authFinished(success = true)
+        policy.authFinished(success = true, now = at)
         assertFalse(policy.locked)
     }
 
@@ -41,10 +41,10 @@ class LockPolicyTest {
     fun `cancelled stays locked, a retry that succeeds unlocks`() {
         policy.onStart(0, enabled = true)
         policy.authStarted()
-        policy.authFinished(success = false)
+        policy.authFinished(success = false, now = 100)
         assertTrue(policy.locked)
         policy.authStarted()
-        policy.authFinished(success = true)
+        policy.authFinished(success = true, now = 200)
         assertFalse(policy.locked)
     }
 
@@ -57,7 +57,7 @@ class LockPolicyTest {
         // The screen lock opens as an activity of its own and takes a while.
         policy.onStop(100_500)
         policy.onStart(200_000, enabled = true)
-        policy.authFinished(success = true)
+        policy.authFinished(success = true, now = 200_050)
         assertFalse(policy.locked)
         assertFalse(policy.onStart(200_100, enabled = true))
     }
@@ -68,7 +68,7 @@ class LockPolicyTest {
         policy.onStop(1_000)
         assertTrue(policy.onStart(500_000, enabled = true))
         policy.authStarted()
-        policy.authFinished(success = true)
+        policy.authFinished(success = true, now = 500_050)
         policy.onStop(500_100)
         assertFalse(policy.onStart(510_000, enabled = true))
     }
@@ -77,7 +77,7 @@ class LockPolicyTest {
     fun `turning it on after authenticating does not lock until the next absence`() {
         assertFalse(policy.onStart(0, enabled = false))
         policy.authStarted()
-        policy.authFinished(success = true)
+        policy.authFinished(success = true, now = 500)
         policy.onStop(1_000)
         assertFalse(policy.onStart(2_000, enabled = true))
         policy.onStop(3_000)
@@ -89,5 +89,35 @@ class LockPolicyTest {
         assertTrue(policy.onStart(0, enabled = true))
         assertFalse(policy.onStart(10, enabled = false))
         assertEquals(false, policy.locked)
+    }
+
+    @Test
+    fun `a prompt that ends while the app is away counts the absence from then`() {
+        // Turning it on: the owner leaves while the prompt is up and it succeeds out of sight.
+        assertFalse(policy.onStart(0, enabled = false))
+        policy.authStarted()
+        policy.onStop(1_000)
+        policy.authFinished(success = true, now = 2_000)
+        assertFalse(policy.onStart(20_000, enabled = true))
+        policy.authStarted()
+        policy.onStop(21_500)
+        policy.authFinished(success = true, now = 22_000)
+        assertTrue(policy.onStart(52_001, enabled = true))
+    }
+
+    @Test
+    fun `a prompt cancelled while the app is away still lets the 30 s rule apply`() {
+        unlockedAt(0)
+        policy.onStop(1_000)
+        assertFalse(policy.onStart(2_000, enabled = true))
+        // A prompt over an unlocked screen (turning the lock on again), cancelled after the owner left.
+        policy.authStarted()
+        policy.onStop(3_000)
+        policy.authFinished(success = false, now = 4_000)
+        assertFalse(policy.onStart(20_000, enabled = true))
+        policy.authStarted()
+        policy.onStop(21_000)
+        policy.authFinished(success = false, now = 21_000)
+        assertTrue(policy.onStart(51_001, enabled = true))
     }
 }
