@@ -89,11 +89,17 @@ class SshSessions(
         return session
     }
 
-    /** A fresh session with the same login in place of an ended one. Main thread. */
-    fun reconnect(id: Int): SshSession? {
+    /**
+     * A fresh session in place of an ended one, in its tab: the same login,
+     * or as [user] with [auth] ("Change login"). Main thread.
+     */
+    fun reconnect(id: Int, user: String? = null, auth: SshAuth? = null): SshSession? {
         val old = _sessions.value.firstOrNull { it.id == id } ?: return null
         old.close()
-        val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, old.user, old.auth, env, scope, ClientForScreen(), old.number)
+        val login = user ?: old.user
+        val others = _sessions.value.filter { it.id != id }.map { SshTarget(it.user, it.device, it.port) to it.number }
+        val number = replacementNumber(others, SshTarget(old.user, old.device, old.port), old.number, SshTarget(login, old.device, old.port))
+        val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number)
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         fresh.connect()
         return fresh
@@ -239,6 +245,14 @@ data class SshTarget(val user: String, val device: String, val port: Int)
  */
 fun nextSessionNumber(open: List<Pair<SshTarget, Int>>, target: SshTarget): Int =
     (open.filter { it.first == target }.maxOfOrNull { it.second } ?: 0) + 1
+
+/**
+ * The number of a session that replaces one numbered [oldNumber] to [old]
+ * in its tab, now to [now], among the [others] open: the same number for
+ * the same target, else the next free one for the new target.
+ */
+fun replacementNumber(others: List<Pair<SshTarget, Int>>, old: SshTarget, oldNumber: Int, now: SshTarget): Int =
+    if (now == old) oldNumber else nextSessionNumber(others, now)
 
 /**
  * What a toast shows of [text] put on the clipboard: its first non-blank

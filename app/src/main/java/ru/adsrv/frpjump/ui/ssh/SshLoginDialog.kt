@@ -51,7 +51,8 @@ fun SshLoginDialog(
     var method by rememberSaveable { mutableStateOf(if (passwordOnly) SshAuthMethod.PASSWORD else initial.method) }
     var password by remember { mutableStateOf("") }
     val remembered = method == SshAuthMethod.PASSWORD && hasRememberedPassword(user)
-    var remember by rememberSaveable(user) { mutableStateOf(hasRememberedPassword(user)) }
+    // Ticked unless the owner unticks it: the password is sealed on the phone, and typing it every time is what was asked not to be.
+    var remember by rememberSaveable { mutableStateOf(true) }
     val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
     AlertDialog(
         onDismissRequest = onDismiss,

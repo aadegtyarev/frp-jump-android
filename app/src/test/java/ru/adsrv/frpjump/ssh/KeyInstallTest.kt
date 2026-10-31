@@ -228,7 +228,7 @@ class KeyInstallTest {
         assertEquals(R.string.key_install_connection_failed, keyInstallText(KeyInstallResult.ConnectionFailed("x"), "root")?.res)
         assertEquals(KeyInstallText(R.string.key_install_done_password_kept, listOf("x"), ok = true), keyInstallText(KeyInstallResult.InstalledPasswordKept("x"), "root"))
         assertEquals(R.string.key_install_save_failed, keyInstallText(KeyInstallResult.SaveFailed("x"), "root")?.res)
-        assertNull(keyInstallText(KeyInstallResult.PasswordNeeded(refused = true), "root"))
+        assertNull(keyInstallText(KeyInstallResult.PasswordNeeded(LoginRefusal.PASSWORD_TYPED), "root"))
         assertNull(keyInstallText(KeyInstallResult.HostKey(HostKeyCheck.Unknown, PinnedHostKey("ssh-ed25519", "SHA256:x")), "root"))
     }
 }

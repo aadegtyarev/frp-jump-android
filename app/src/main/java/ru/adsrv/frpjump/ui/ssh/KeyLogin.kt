@@ -30,10 +30,12 @@ import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.KeyInstallResult
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.PinnedHostKey
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.keyInstallText
+import ru.adsrv.frpjump.ssh.loginRefusalText
 import ru.adsrv.frpjump.ui.AppTheme
 
 /** Where "Use key login" is: the dialog it shows, if any. */
@@ -42,7 +44,8 @@ sealed interface KeyLoginStep {
 
     class Working(override val target: KeyInstallTarget) : KeyLoginStep
 
-    class AskPassword(override val target: KeyInstallTarget, val refused: Boolean) : KeyLoginStep
+    /** [refusal]: why the password before did not do, if one was tried. */
+    class AskPassword(override val target: KeyInstallTarget, val refusal: LoginRefusal?) : KeyLoginStep
 
     class HostKey(override val target: KeyInstallTarget, val check: HostKeyCheck, val presented: PinnedHostKey) : KeyLoginStep
 
@@ -119,7 +122,7 @@ class KeyLoginFlow(private val installer: KeyInstaller, private val scope: Corou
             // Every change of the step on the main thread, and only by the run still wanted.
             if (!isActive) return@launch
             step = when (result) {
-                is KeyInstallResult.PasswordNeeded -> KeyLoginStep.AskPassword(target, result.refused)
+                is KeyInstallResult.PasswordNeeded -> KeyLoginStep.AskPassword(target, result.refusal)
                 is KeyInstallResult.HostKey -> KeyLoginStep.HostKey(target, result.check, result.presented)
                 else -> {
                     typed = null
@@ -161,7 +164,7 @@ fun KeyLoginDialogs(flow: KeyLoginFlow) {
             title = title,
             passwordOnly = true,
             note = stringResource(R.string.key_install_password_note),
-            problem = if (step.refused) stringResource(R.string.ssh_password_refused, t.user) else null,
+            problem = step.refusal?.let { stringResource(loginRefusalText(it), t.user) },
             confirmLabel = stringResource(R.string.key_install_confirm),
         )
         is KeyLoginStep.HostKey -> when (val check = step.check) {

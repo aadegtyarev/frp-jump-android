@@ -28,4 +28,15 @@ class SessionNumberTest {
     fun `with all of a login closed it starts at 1 again`() {
         assertEquals(1, nextSessionNumber(listOf(admin to 2), root))
     }
+
+    @Test
+    fun `Change login to the same user keeps the tab's number`() {
+        assertEquals(2, replacementNumber(listOf(root to 1), root, 2, root))
+    }
+
+    @Test
+    fun `Change login to another user counts among that user's sessions`() {
+        assertEquals(1, replacementNumber(listOf(root to 1), root, 2, admin))
+        assertEquals(3, replacementNumber(listOf(admin to 1, admin to 2), root, 1, admin))
+    }
 }

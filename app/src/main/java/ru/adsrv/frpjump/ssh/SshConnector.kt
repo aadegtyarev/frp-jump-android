@@ -77,7 +77,12 @@ class SshConnector(
             }
             is SshAuth.Password -> {
                 val password = auth.typed ?: env.passwords.get(profile, device, port, user)
-                    ?: throw UserAuthException("No remembered password for $user")
+                    ?: run {
+                        // Kept but not readable (the Keystore key went), or forgotten meanwhile: not "wrong password".
+                        unreadable = env.passwords.has(profile, device, port, user)
+                        missing = !unreadable
+                        throw UserAuthException("No readable remembered password for $user")
+                    }
                 ssh.authPassword(user, password)
                 if (!auth.remember) {
                     env.passwords.forget(profile, device, port, user)
@@ -88,14 +93,25 @@ class SshConnector(
         }
     }
 
-    /** What to tell the owner after [UserAuthException]; a refused remembered password is forgotten. */
-    fun authFailure(): String = when (auth) {
-        SshAuth.Key -> Texts.get(R.string.ssh_key_refused, user, Texts.get(R.string.ssh_public_key))
-        is SshAuth.Password -> {
-            // A remembered password that no longer works is not offered again.
-            env.passwords.forget(profile, device, port, user)
-            Texts.get(R.string.ssh_password_refused, user)
-        }
+    /** The remembered password was there but could not be unsealed, or was not there at all, at the last [authenticate]. */
+    @Volatile
+    private var unreadable = false
+
+    @Volatile
+    private var missing = false
+
+    /** Why the last [authenticate] was refused. A remembered password is kept: "Change login" replaces or forgets it. */
+    fun refusal(): LoginRefusal = loginRefusal(
+        key = auth == SshAuth.Key,
+        typed = (auth as? SshAuth.Password)?.typed != null,
+        remembered = !missing,
+        readable = !unreadable,
+    )
+
+    /** What to tell the owner after [UserAuthException]. */
+    fun authFailure(): String = when (val r = refusal()) {
+        LoginRefusal.KEY -> Texts.get(loginRefusalText(r), user, Texts.get(R.string.ssh_public_key))
+        else -> Texts.get(loginRefusalText(r), user)
     }
 
     private class PinningVerifier(

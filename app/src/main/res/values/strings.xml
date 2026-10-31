@@ -402,6 +402,10 @@
     <string name="ssh_failed">SSH failed: %s</string>
     <string name="ssh_key_refused">The device did not accept this phone’s key for “%1$s”. Add the key from Settings › %2$s to ~/.ssh/authorized_keys there, or log in with a password.</string>
     <string name="ssh_password_refused">Wrong user name or password for “%s”.</string>
+    <string name="ssh_saved_password_refused">The saved password didn’t work for “%s”; it is kept until you enter another.</string>
+    <string name="ssh_saved_password_unreadable">The saved password for “%s” can’t be read on this phone. Enter it again.</string>
+    <string name="ssh_saved_password_missing">No password is saved for “%s” now. Enter it.</string>
+    <string name="terminal_change_login">Change login</string>
     <string name="ssh_connection_lost">Connection lost: %s</string>
     <string name="ssh_logged_out">Logged out (exit %d).</string>
     <string name="ssh_connection_closed">Connection closed.</string>

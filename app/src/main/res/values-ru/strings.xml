@@ -425,6 +425,10 @@
     <string name="ssh_failed">Ошибка SSH: %s</string>
     <string name="ssh_key_refused">Устройство не приняло ключ телефона для «%1$s». Добавьте ключ из Настройки › %2$s в ~/.ssh/authorized_keys на устройстве или войдите по паролю.</string>
     <string name="ssh_password_refused">Неверный пользователь или пароль для «%s».</string>
+    <string name="ssh_saved_password_refused">Сохранённый пароль не подошёл для «%s»; он останется, пока вы не введёте другой.</string>
+    <string name="ssh_saved_password_unreadable">Сохранённый пароль для «%s» не читается на этом телефоне. Введите его заново.</string>
+    <string name="ssh_saved_password_missing">Для «%s» пароль больше не сохранён. Введите его.</string>
+    <string name="terminal_change_login">Изменить вход</string>
     <string name="ssh_connection_lost">Связь потеряна: %s</string>
     <string name="ssh_logged_out">Сеанс завершён (код %d).</string>
     <string name="ssh_connection_closed">Соединение закрыто.</string>

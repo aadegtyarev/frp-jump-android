@@ -140,6 +140,12 @@ fun TerminalScreen(
     var selectedId by rememberSaveable { mutableStateOf(initialId) }
     /** The session whose device and port the login dialog of a long press on "+" is for. */
     var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
+    /** The dialog is "Change login" of an ended session: the new one takes its tab. */
+    var loginReplaces by rememberSaveable { mutableStateOf(false) }
+    fun changeLogin(id: Int) {
+        loginReplaces = true
+        loginLikeId = id
+    }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
     // The session shown went because its tunnel was closed (Disconnect, the notification): say so, not vanish silently.
     var shownId by remember { mutableStateOf<Int?>(null) }
@@ -183,15 +189,20 @@ fun TerminalScreen(
             if (live) closing = id else closeTab(id)
         },
         reconnect = ::reconnectTab,
+        changeLogin = ::changeLogin,
         // The same login at once; a refused one, or a remembered password since forgotten, needs the dialog.
         add = {
             if (reusesLogin(selected.auth, selected.authRefused) { sessions.hasRememberedPassword(selected, selected.user) }) {
                 openedOrGone(sessions.openLike(selected.id))
             } else {
+                loginReplaces = false
                 loginLikeId = selected.id
             }
         },
-        addAs = { loginLikeId = selected.id },
+        addAs = {
+            loginReplaces = false
+            loginLikeId = selected.id
+        },
         keyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget)?.let(keyLogin::start) },
         offersKeyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget) != null },
     )
@@ -347,6 +358,11 @@ fun TerminalScreen(
                             onClick = { reconnectTab(selected.id) },
                             colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
                         ) { Text(stringResource(R.string.terminal_reconnect)) }
+                        // "Wrong user or password": Reconnect would only repeat it.
+                        TextButton(
+                            onClick = { changeLogin(selected.id) },
+                            colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                        ) { Text(stringResource(R.string.terminal_change_login)) }
                     }
                 }
                 HorizontalDivider(color = colors.termLine)
@@ -396,7 +412,11 @@ fun TerminalScreen(
                     SshAuthMethod.KEY -> SshAuth.Key
                     SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
                 }
-                openedOrGone(sessions.openLike(from.id, login.user, auth))
+                if (loginReplaces) {
+                    openedOrGone(sessions.reconnect(from.id, login.user, auth))
+                } else {
+                    openedOrGone(sessions.openLike(from.id, login.user, auth))
+                }
             },
             onDismiss = { loginLikeId = null },
         )

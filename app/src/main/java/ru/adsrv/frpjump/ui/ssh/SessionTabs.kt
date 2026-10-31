@@ -55,6 +55,8 @@ class SessionTabActions(
     val select: (Int) -> Unit,
     val close: (Int) -> Unit,
     val reconnect: (Int) -> Unit,
+    /** An ended session again, as another user or with another method, in its tab. */
+    val changeLogin: (Int) -> Unit,
     /** "+": another session like the selected one. */
     val add: () -> Unit,
     /** Long press on "+": the login dialog for the selected one's device and port. */
@@ -68,7 +70,7 @@ class SessionTabActions(
 /**
  * The open sessions as a thin row of tabs: the profile's colour, user and
  * device, the state when it is not plain open, and "+" at the end. Long
- * press on a tab: Close / Reconnect / Use key login.
+ * press on a tab: Close / Reconnect / Change login / Use key login.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -182,6 +184,10 @@ private fun SessionTab(s: SshSession, label: String, on: Boolean, dot: Color, ac
                 DropdownMenuItem(text = { Text(stringResource(R.string.terminal_reconnect)) }, onClick = {
                     menu = false
                     actions.reconnect(s.id)
+                })
+                DropdownMenuItem(text = { Text(stringResource(R.string.terminal_change_login)) }, onClick = {
+                    menu = false
+                    actions.changeLogin(s.id)
                 })
             }
             if (actions.offersKeyLogin(s.id)) {

@@ -72,8 +72,8 @@ sealed interface KeyInstallResult {
     /** As [Installed], but the remembered password could not be forgotten ([detail]). */
     data class InstalledPasswordKept(val detail: String) : KeyInstallResult
 
-    /** No open session and no remembered password ([refused] false), or the password was refused. */
-    data class PasswordNeeded(val refused: Boolean) : KeyInstallResult
+    /** No open session and no remembered password ([refusal] null), or why the password was not taken. */
+    data class PasswordNeeded(val refusal: LoginRefusal? = null) : KeyInstallResult
 
     /** The device's host key must be trusted (or the changed one dealt with) first. */
     data class HostKey(val check: HostKeyCheck, val presented: PinnedHostKey) : KeyInstallResult
@@ -195,7 +195,11 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
         val live = if (typed == null) sessions.liveClient(t.profile, t.device, t.port, t.user) else null
         val remembered = if (live == null && typed == null) env.passwords.get(t.profile, t.device, t.port, t.user) else null
         val password = typed ?: remembered
-        if (live == null && password == null) return KeyInstallResult.PasswordNeeded(refused = false)
+        if (live == null && password == null) {
+            // Kept but not readable on this phone: say so, rather than just ask.
+            val unreadable = typed == null && env.passwords.has(t.profile, t.device, t.port, t.user)
+            return KeyInstallResult.PasswordNeeded(LoginRefusal.PASSWORD_UNREADABLE.takeIf { unreadable })
+        }
         val localPort = t.localPort()
         val connector = SshConnector(t.profile, t.hostKeys, t.device, t.port, localPort, t.user, SshAuth.Key, env)
         if (live != null) {
@@ -208,9 +212,8 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
                     // Not through the connector: it would remember the password.
                     ssh.authPassword(t.user, password)
                 } catch (e: UserAuthException) {
-                    // As the terminal does: a remembered password that no longer works is not offered again.
-                    if (remembered != null) env.passwords.forget(t.profile, t.device, t.port, t.user)
-                    return KeyInstallResult.PasswordNeeded(refused = true)
+                    // A remembered one is kept, as the terminal keeps it: the dialog asks, and success forgets it anyway.
+                    return KeyInstallResult.PasswordNeeded(if (remembered != null) LoginRefusal.PASSWORD_SAVED else LoginRefusal.PASSWORD_TYPED)
                 }
                 runScript(ssh, input)?.let { return it }
             } finally {
