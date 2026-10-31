@@ -25,8 +25,8 @@ android {
         applicationId = "ru.adsrv.frpjump"
         minSdk = 29
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.2.6"
+        versionCode = 11
+        versionName = "0.2.7"
         // Shown in Settings › App; the binary is built by scripts/build-frpc.sh (FRP_VERSION).
         buildConfigField("String", "FRPC_VERSION", "\"0.70.0\"")
         // Settings › Version looks for newer releases here (public GitHub Releases, no token).
