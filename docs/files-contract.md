@@ -130,7 +130,9 @@ transfers that resume and run in the background.
   later do not preview it.
 - Colours, from the theme's colours in light and dark, picked by the
   file's name and, without a known one, its first line (`#!` of a shell or
-  `node`, a leading `{` / `[`, `---`, a log timestamp): Markdown (headings,
+  `node`, a leading `{` / `[`, `---`, a log timestamp); a `.conf` or
+  `.cfg` whose text is a JSON object or array (as `wb-mqtt-serial.conf`)
+  is JSON: Markdown (headings,
   emphasis, inline and fenced code, links, list marks, quotes); logs
   (time stamps; ERROR/FATAL/CRIT in red, WARN in amber, INFO/DEBUG muted);
   JSON (keys, strings, numbers, `true` / `false` / `null`); YAML (keys,
@@ -147,6 +149,7 @@ transfers that resume and run in the background.
   the file list; matches of the text, ignoring case, are marked, the
   current one stronger, with "3 of 17" and next / previous; ✕ or Back
   closes it. Nothing found: "No matches". It counts up to 10 000 matches.
+  The keyboard shrinks the text, so a match stepped to is never under it.
 - Editor (stage 4): the viewer plus editing, undo; "Save" uploads it back.
 - Saving through a symlink writes the file it points to, never replaces the
   link with a regular file: the app resolves the real path, writes a

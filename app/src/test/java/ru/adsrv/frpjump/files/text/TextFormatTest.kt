@@ -101,4 +101,24 @@ class TextFormatTest {
         for (name in listOf(".env", ".env.local", "prod.env", "server.KEY", "ca.pem", "home.nmconnection", "shadow")) assertTrue(name, looksSecret(name))
         for (name in listOf("env.txt", "app.log", "keys.md", "README")) assertFalse(name, looksSecret(name))
     }
+
+    @Test
+    fun `a conf or cfg holding JSON is JSON, else INI`() {
+        val serial = "{\n  \"debug\": false,\n  \"ports\": [\n  ]\n}\n"
+        assertEquals(TextFormat.JSON, detectFormat("wb-mqtt-serial.conf", serial))
+        assertEquals(TextFormat.JSON, detectFormat("x.cfg", "\uFEFF[ {\"a\": 1} ]"))
+        assertEquals(TextFormat.INI, detectFormat("mosquitto.conf", "listener 1883\n"))
+        // `[section]` of INI, even one closing the file, is not a JSON array.
+        assertEquals(TextFormat.INI, detectFormat("x.conf", "[main]\nkey=1\n[empty]"))
+        assertEquals(TextFormat.INI, detectFormat("x.conf", "[null-sink]"))
+        // A broken or cut JSON start alone is not enough.
+        assertEquals(TextFormat.INI, detectFormat("x.conf", "{\"a\": 1,"))
+        // Other names keep their format whatever the text.
+        assertEquals(TextFormat.INI, detectFormat("x.ini", "{}"))
+        assertEquals(TextFormat.JSON, detectFormat("noext", "{\"a\": 1}"))
+        assertTrue(looksLikeJson("[1, 2]"))
+        assertTrue(looksLikeJson("[true]"))
+        assertFalse(looksLikeJson("[x]"))
+        assertFalse(looksLikeJson(""))
+    }
 }

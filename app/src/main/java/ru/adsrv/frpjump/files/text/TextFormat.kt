@@ -84,5 +84,49 @@ private val SECTION = Regex("""\[[\w .:"-]+]""")
 
 private val SHELLS = setOf("sh", "bash", "ash", "dash", "zsh", "ksh", "busybox")
 
-/** [name]'s format, else what [head] (the text's start) looks like. */
-fun detectFormat(name: String, head: String): TextFormat = formatByName(name) ?: sniffFormat(head)
+/**
+ * [name]'s format, else what [text] looks like. A `.conf` or `.cfg` name
+ * says little (Wiren Board keeps JSON in `wb-mqtt-serial.conf`): one
+ * whose text [looksLikeJson] is JSON, else INI.
+ */
+fun detectFormat(name: String, text: String): TextFormat {
+    val byName = formatByName(name) ?: return sniffFormat(text.take(SNIFF_CHARS))
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return if (ext in LOOSE_EXTENSIONS && looksLikeJson(text)) TextFormat.JSON else byName
+}
+
+/** Extensions shared by INI-like and JSON files. */
+private val LOOSE_EXTENSIONS = setOf("conf", "cfg", "cnf")
+
+/** How much of a text's start [sniffFormat] gets. */
+private const val SNIFF_CHARS = 512
+
+/**
+ * Whether [text] looks like a JSON object or array, cheaply: it starts
+ * with `{` and ends with `}`, or starts with `[` followed by what an array
+ * holds (not `[section]` of INI) and ends with `]`.
+ */
+fun looksLikeJson(text: String): Boolean {
+    val first = text.indexOfFirst { !it.isWhitespace() && it != '\uFEFF' }
+    if (first < 0) return false
+    val last = text.indexOfLast { !it.isWhitespace() }
+    return when (text[first]) {
+        '{' -> text[last] == '}'
+        '[' -> {
+            var at = first + 1
+            while (at < text.length && text[at].isWhitespace()) at++
+            text[last] == ']' && at < text.length && (
+                text[at] in "{[\"]-" || text[at].isDigit() ||
+                    literalAt(text, at, "true") || literalAt(text, at, "false") || literalAt(text, at, "null")
+                )
+        }
+        else -> false
+    }
+}
+
+/** Whether [word] stands alone at [at] in [text]: `null,` yes, `[null-sink]` no. */
+private fun literalAt(text: String, at: Int, word: String): Boolean {
+    if (!text.startsWith(word, at)) return false
+    val after = text.getOrNull(at + word.length) ?: return true
+    return !isWordChar(after) && after != '-'
+}

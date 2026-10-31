@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -145,7 +146,7 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
         loaded = withContext(Dispatchers.IO) {
             try {
                 val doc = TextDocument.decode(file.readBytes())
-                val format = detectFormat(viewed.name, doc.text.take(512))
+                val format = detectFormat(viewed.name, doc.text)
                 Loaded.Ready(doc, format, highlighterFor(format)?.let { LineColours(doc, it) })
             } catch (e: IOException) {
                 Loaded.Failed(e.message ?: e.javaClass.simpleName)
@@ -302,7 +303,9 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(top = padding.calculateTopPadding()),
+                .padding(top = padding.calculateTopPadding())
+                // The search's keyboard shrinks the text: a match stepped to is never under it.
+                .imePadding(),
         ) {
             when (val l = loaded) {
                 Loaded.Reading -> CircularProgressIndicator(color = colors.accent, modifier = Modifier.align(Alignment.Center))
