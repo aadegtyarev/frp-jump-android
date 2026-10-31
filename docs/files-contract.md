@@ -1,6 +1,6 @@
 # frp-jump for Android — files (SFTP) contract
 
-Status: draft for the owner's review. Comes after 0.2.0; not part of the v2
+Status: approved by the owner 2026-10-31. Comes after 0.2.0; not part of the v2
 contract (`docs/contract.md`), whose UI rules apply here unchanged.
 
 Working with a device's files over the same SSH login the terminal uses:
@@ -20,16 +20,18 @@ transfers that resume and run in the background.
 
 ## Where it lives
 
-- "Files" on an SSH connection: a button on its row (device card and
-  Connections tab, next to Terminal) and in the terminal's top bar for the
-  open session. It opens a file screen for that connection; the tunnel is
-  brought up first if it is down, as Terminal does.
+- "Files" on an SSH connection: in its "⋮" menu (device card and
+  Connections tab; the row already has Disconnect and Terminal) and in the
+  terminal's top bar for the open session. It opens a file screen for that
+  connection; the tunnel is brought up first if it is down, as Terminal
+  does.
 - No new bottom tab: the bar stays four items. Transfers are visible in the
   notification and on a "Transfers" sheet reachable from any file screen and
   from the notification.
-- Login is the terminal's: the same user, key or password, the same pinned
-  host key. An open terminal session and the file screen share one SSH
-  connection when they are for the same connection.
+- Login is the terminal's: the same user, key or password (the login
+  dialog remembers them per device and port), the same pinned host key.
+  Files use an SSH connection of their own, so a long transfer or a drop
+  does not touch an open terminal, and the other way round.
 
 ## Scenarios
 
