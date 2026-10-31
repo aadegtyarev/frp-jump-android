@@ -206,6 +206,9 @@
     <string name="disconnect">Отключить</string>
     <string name="disconnect_confirm_title">Отключить «%s»?</string>
     <string name="disconnect_all_confirm_title">Отключить все туннели?</string>
+    <string name="disconnect_profile_text">Отключатся все туннели профиля «%s».</string>
+    <string name="disconnect_all_tunnels">Отключить все туннели</string>
+    <string name="tunnels_disconnected">Туннели отключены: %d</string>
     <plurals name="disconnect_closes_sessions">
         <item quantity="one">Закроется %d сессия терминала.</item>
         <item quantity="few">Закроются %d сессии терминала.</item>

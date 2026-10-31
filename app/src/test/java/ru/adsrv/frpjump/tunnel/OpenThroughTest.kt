@@ -45,6 +45,13 @@ class OpenThroughTest {
     }
 
     @Test
+    fun `disconnecting a profile counts its own tunnels only`() {
+        val sessions = listOf(SessionOn(ssh, true), SessionOn(otherDevice, true), SessionOn(otherPort, false), SessionOn(otherProfile, true))
+        assertEquals(OpenThrough(2, 1), openOnProfile(sessions, listOf(otherPort, otherProfile), "p1"))
+        assertEquals(OpenThrough(1, 1), openOnProfile(sessions, listOf(otherPort, otherProfile), "p2"))
+    }
+
+    @Test
     fun `a row counts the sessions through its own tunnel only, and the ended ones among them`() {
         val open = listOf(
             SessionOn(ssh, live = true),
