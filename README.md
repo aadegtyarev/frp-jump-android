@@ -329,10 +329,9 @@ check interval, the SSH key, language and theme open a sheet.
   where it was) but take no input: the focused view lets go, the keyboard
   is hidden and keys other than Back and volume are dropped. A prompt that
   ends while the app is away (the owner left with it up) counts the
-  absence from then, so the 30 s rule still holds. Recents shows no picture of the app while the setting is
-  on: `setRecentsScreenshotEnabled(false)` on Android 13+, `FLAG_SECURE`
-  before that (which also blocks screenshots there). Not only while
-  locked: the picture is taken when the app is left, unlocked. If the
+  absence from then, so the 30 s rule still holds. Screenshots are always
+  allowed and Recents keeps its picture of the app: hiding it blocks
+  screenshots before Android 13 and on some phones after it. If the
   screen lock is removed later, the next prompt turns the setting off
   rather than lock the owner out, and says so.
 - Version: the app's and frpc's, and updates (see [Updates](#updates)).
