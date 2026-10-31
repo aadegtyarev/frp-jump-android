@@ -337,7 +337,7 @@ private fun configure(
         }
 
         /**
-         * Scripts, images and frames from other loopback ports (other tunnels, other apps) get a 403.
+         * Requests (scripts, images, frames, fetch) to other loopback ports (other tunnels, other apps) get a 403.
          * WebSockets never come here, so they are not filtered (README › Web ports).
          */
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
