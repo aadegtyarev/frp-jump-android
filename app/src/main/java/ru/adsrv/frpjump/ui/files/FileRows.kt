@@ -24,6 +24,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -115,6 +116,9 @@ fun EntryRow(
     onMenu: (Boolean) -> Unit,
     onTap: () -> Unit,
     actions: EntryActions,
+    /** Retry and dismiss of a failed transfer of this row. */
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
@@ -149,14 +153,7 @@ fun EntryRow(
                         if (link.broken) Text(stringResource(R.string.files_broken), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.error, maxLines = 1)
                     }
                 }
-                transfer?.let { t ->
-                    val fraction = t.fraction
-                    if (fraction != null) {
-                        LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-                    } else {
-                        LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-                    }
-                }
+                transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss) }
             }
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenu(false) }, offset = DpOffset(72.dp, 0.dp)) {
@@ -169,18 +166,20 @@ fun EntryRow(
             if (entry.isDir) {
                 item(R.string.files_open, true, actions.open)
             } else {
-                item(R.string.files_download, online && transfer == null, actions.download)
-                item(R.string.files_share, online && transfer == null, actions.share)
+                val idle = transfer == null || transfer.failure != null
+                item(R.string.files_download, online && idle, actions.download)
+                item(R.string.files_share, online && idle, actions.share)
             }
             if (entry.link != null) item(R.string.files_go_to_target, true, actions.goToTarget)
         }
     }
 }
 
-/** A file being uploaded into the folder shown: name and its bar, above the list. */
+/** A file being uploaded into the folder shown: name and its bar, above the list; failed, the reason and Retry. */
 @Composable
-fun UploadRow(transfer: Transfer) {
+fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
     val colors = AppTheme.colors
+    val failed = transfer.failure != null
     Row(
         Modifier
             .fillMaxWidth()
@@ -188,18 +187,43 @@ fun UploadRow(transfer: Transfer) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(Modifier.size(40.dp).background(colors.accentContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-            Icon(FileGlyph, contentDescription = null, tint = colors.onAccentContainer, modifier = Modifier.size(22.dp))
+        Box(
+            Modifier.size(40.dp).background(if (failed) colors.errorContainer else colors.accentContainer, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(FileGlyph, contentDescription = null, tint = if (failed) colors.onErrorContainer else colors.onAccentContainer, modifier = Modifier.size(22.dp))
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.files_uploading, transfer.name), fontSize = 15.sp, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val fraction = transfer.fraction
-            if (fraction != null) {
-                LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth())
-            } else {
-                LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth())
-            }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                stringResource(if (failed) R.string.files_not_uploaded else R.string.files_uploading, transfer.name),
+                fontSize = 15.sp,
+                color = colors.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TransferLine(transfer, onRetry, onDismiss)
         }
+    }
+}
+
+/** A transfer's bar; failed, its reason in plain words with Retry and Dismiss, where it was started. */
+@Composable
+private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
+    val colors = AppTheme.colors
+    val failure = transfer.failure
+    if (failure != null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(failure, fontSize = 12.sp, color = colors.error, modifier = Modifier.weight(1f))
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.retry), color = colors.accent) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.files_dismiss), color = colors.muted) }
+        }
+        return
+    }
+    val fraction = transfer.fraction
+    if (fraction != null) {
+        LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+    } else {
+        LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
     }
 }
 

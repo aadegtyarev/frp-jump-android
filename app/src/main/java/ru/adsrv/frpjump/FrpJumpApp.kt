@@ -18,6 +18,7 @@ import ru.adsrv.frpjump.direct.NetworkWatcher
 import ru.adsrv.frpjump.files.FileTargets
 import ru.adsrv.frpjump.files.ListingCache
 import ru.adsrv.frpjump.files.PhoneFiles
+import ru.adsrv.frpjump.files.UploadNames
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.ui.applyTheme
@@ -70,6 +71,9 @@ class FrpJumpApp : Application() {
 
     /** File screens' logins, by the id in their route. */
     val fileTargets = FileTargets()
+
+    /** Names uploads are writing to on any device, so two screens never write one part file. */
+    val uploadNames = UploadNames()
 
     /** Last folder listings for the file screens' offline view, in the cache. */
     lateinit var listings: ListingCache
@@ -224,8 +228,9 @@ class FrpJumpApp : Application() {
                 KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
             }
         }
+        // Its files handed to other apps go in any case; the folders seen on its devices with its data.
+        withContext(Dispatchers.IO) { PhoneFiles.openCacheDir(this@FrpJumpApp, id).deleteRecursively() }
         if (keepData) return
-        // The folders seen on its devices go with it.
         withContext(Dispatchers.IO) { PhoneFiles.listingsDir(this@FrpJumpApp, id).deleteRecursively() }
         val noneLeft = profiles.state.value.index.profiles.isEmpty()
         // Interrupted before or after the memory is forgotten, it no longer matches any

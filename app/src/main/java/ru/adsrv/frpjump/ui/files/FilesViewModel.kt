@@ -22,17 +22,22 @@ import kotlinx.coroutines.withContext
 import net.schmizz.sshj.userauth.UserAuthException
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.files.EntryType
+import ru.adsrv.frpjump.files.DownloadSink
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.files.PhoneFiles
 import ru.adsrv.frpjump.files.PhoneSideException
 import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.files.SftpBrowser
+import ru.adsrv.frpjump.files.TransferJobs
+import ru.adsrv.frpjump.files.downloadInto
 import ru.adsrv.frpjump.files.fileProblem
 import ru.adsrv.frpjump.files.isDeviceRefusal
+import ru.adsrv.frpjump.files.isFolderAccess
 import ru.adsrv.frpjump.files.parentOf
+import ru.adsrv.frpjump.files.readFolder
 import ru.adsrv.frpjump.files.resolvePath
 import ru.adsrv.frpjump.files.targetFolder
+import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.ports.PortKind
@@ -40,11 +45,16 @@ import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
 import ru.adsrv.frpjump.ssh.PinnedHostKey
+import ru.adsrv.frpjump.ssh.SshAuth
+import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshConnector
+import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.tunnel.PendingOp
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicLong
 
 /** What the file screen can say about its connection. */
 sealed interface FilesStatus {
@@ -58,12 +68,13 @@ sealed interface FilesStatus {
 
     /**
      * No tunnel, or SSH could not connect ([reason]): the folder as last
-     * seen at [cachedAt] (null when it never was), nothing can be done to it.
+     * seen at [cachedAt] (null when it never was; [truncated] when only
+     * the first entries were kept); nothing can be done to it.
      */
-    data class Offline(val reason: String, val cachedAt: Long?) : FilesStatus
+    data class Offline(val reason: String, val cachedAt: Long?, val truncated: Boolean = false) : FilesStatus
 
-    /** Connected, but the folder could not be read, or the login was refused. */
-    data class Failed(val message: String) : FilesStatus
+    /** Connected, but the folder could not be read; or the login was refused ([loginRefused]: "Change login"). */
+    data class Failed(val message: String, val loginRefused: Boolean = false) : FilesStatus
 
     data class HostKeyUnknown(val presented: PinnedHostKey) : FilesStatus
 
@@ -73,28 +84,35 @@ sealed interface FilesStatus {
     data object Gone : FilesStatus
 }
 
-/** One file going to or from the phone; [total] 0 when the size is unknown. */
-data class Transfer(val name: String, val done: Long, val total: Long) {
+/** What a download is for: the download folder, or the cache for another app. */
+enum class TransferKind { DOWNLOAD, OPEN, SHARE }
+
+/** One file going to or from the phone; [total] 0 when the size is unknown. [failure] keeps a failed one on screen with Retry. */
+data class Transfer(val name: String, val done: Long, val total: Long, val kind: TransferKind = TransferKind.DOWNLOAD, val failure: String? = null) {
     val fraction: Float? get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
 }
 
+/** A file picked for upload, waiting, going, or failed ([transfer]'s failure) with Retry. */
+data class Upload(val id: Long, val uri: Uri, val dir: String, val transfer: Transfer)
+
 data class FilesUiState(
-    /** The folder shown; null until the home folder is known. */
+    /** The folder shown, a physical path; null until the home folder is known. */
     val path: String? = null,
     /** Its entries as the screen lists them (sorted, hidden ones filtered). */
     val entries: List<RemoteEntry> = emptyList(),
     /** Whether there are entries the hidden filter takes away. */
     val hasHidden: Boolean = false,
     val showHidden: Boolean = false,
+    val user: String = "",
     val status: FilesStatus = FilesStatus.Starting,
     /** A folder is being opened (a thin bar under the path). */
     val busy: Boolean = false,
     /** Pull to refresh in progress. */
     val refreshing: Boolean = false,
-    /** Downloads, Open with and Share in progress, by the device path. */
+    /** Downloads, Open with and Share in progress or failed, by the device path. */
     val downloads: Map<String, Transfer> = emptyMap(),
     /** Uploads into this screen's folders, in order. */
-    val uploads: List<Transfer> = emptyList(),
+    val uploads: List<Upload> = emptyList(),
     /** The chosen download folder's name, when one is chosen. */
     val downloadFolder: String? = null,
 ) {
@@ -109,7 +127,7 @@ sealed interface FilesEvent {
     data class Handover(val file: File, val mime: String, val name: String, val share: Boolean) : FilesEvent
 
     /** No usable download folder: ask for one, then download [entry]. */
-    data class PickFolder(val entry: RemoteEntry) : FilesEvent
+    data class PickFolder(val entry: RemoteEntry?) : FilesEvent
 }
 
 /**
@@ -118,10 +136,11 @@ sealed interface FilesEvent {
  * of each folder shows from [ru.adsrv.frpjump.files.ListingCache].
  */
 class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : ViewModel() {
-    val target: FilesTarget? = app.fileTargets.get(targetId)
+    var target: FilesTarget? = app.fileTargets.get(targetId)
+        private set
     private val runtime = target?.let { app.profiles.runtime(it.profile) }
 
-    private val _state = MutableStateFlow(FilesUiState(showHidden = app.settings.settings.value.filesShowHidden))
+    private val _state = MutableStateFlow(FilesUiState(showHidden = app.settings.settings.value.filesShowHidden, user = target?.user.orEmpty()))
     val state: StateFlow<FilesUiState> = _state
 
     private val _events = Channel<FilesEvent>(Channel.BUFFERED)
@@ -142,8 +161,19 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     private var connector: SshConnector? = null
     private var loadJob: Job? = null
 
+    /** Transfers in flight: the connection closes only after they have cleaned up. */
+    private val transfers = TransferJobs()
+
+    /** One upload at a time from this screen. */
+    private val uploadLock = Mutex()
+    private val uploadIds = AtomicLong(1)
+
+    /** Folders in the cache with files this screen handed to other apps, removed when it closes. */
+    private val handedOver = mutableListOf<File>()
+
     init {
-        if (target == null || runtime == null) {
+        val t = target
+        if (t == null || runtime == null) {
             _state.update { it.copy(status = FilesStatus.Gone) }
         } else {
             viewModelScope.launch {
@@ -153,7 +183,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                     show(_state.value.path, all)
                 }
             }
-            val key = localPortKey(target.device, target.port)
+            val key = localPortKey(t.device, t.port)
             viewModelScope.launch {
                 runtime.tunnels.state
                     .map { s -> TunnelView(s.tunnels.firstOrNull { it.key == key }?.localPort, s.pending[key] == PendingOp.CONNECTING, s.errors[key]) }
@@ -183,12 +213,16 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
 
     /** Opens folder [path] (null: the home folder). Offline, it shows the listing last seen there. */
     fun open(path: String?) {
-        if (_state.value.status is FilesStatus.Offline || _state.value.status == FilesStatus.TunnelConnecting) {
-            showCached(path, (_state.value.status as? FilesStatus.Offline)?.reason ?: tunnelDown())
+        val status = _state.value.status
+        if (status is FilesStatus.Offline || status == FilesStatus.TunnelConnecting) {
+            showCached(path, (status as? FilesStatus.Offline)?.reason ?: tunnelDown())
         } else {
             load(path, refresh = false)
         }
     }
+
+    /** A tap on a folder or a link to one: where it really is, so links inside resolve against it. */
+    fun openFolder(entry: RemoteEntry) = open(entry.folderPath)
 
     /** A path typed in the path bar: absolute, relative to the folder shown, `~` for home. */
     fun openTyped(text: String) = open(resolvePath(_state.value.path ?: home ?: "/", text, home))
@@ -212,7 +246,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         load(_state.value.path, refresh = true)
     }
 
-    /** "Go to the target" of a symlink. */
+    /** "Go to the target" of a symlink: the target folder, made physical when it is read. */
     fun goToTarget(entry: RemoteEntry) {
         targetFolder(entry)?.let(::open)
     }
@@ -241,6 +275,34 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         }
     }
 
+    /** The login dialog's start for "Change login": this screen's user, the method last used on the port. */
+    fun login(): SshLogin {
+        val t = target ?: return SshLogin()
+        return (runtime?.sshLogins?.get(t.device, t.port) ?: SshLogin()).copy(user = t.user)
+    }
+
+    fun hasRememberedPassword(user: String): Boolean {
+        val t = target ?: return false
+        return app.sshPasswords.has(t.profile, t.device, t.port, user.trim())
+    }
+
+    /** "Change login" after a refused one: log in again with what the dialog gave. */
+    fun changeLogin(user: String, method: SshAuthMethod, password: String, remember: Boolean) {
+        val t = target ?: return
+        val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
+        viewModelScope.launch(Dispatchers.IO) { runtime?.sshLogins?.remember(t.device, t.port, login) }
+        val auth = when (method) {
+            SshAuthMethod.KEY -> SshAuth.Key
+            SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
+        }
+        val next = t.copy(user = login.user, auth = auth)
+        target = next
+        app.fileTargets.replace(targetId, next)
+        dropBrowser()
+        _state.update { it.copy(user = next.user, status = FilesStatus.Starting) }
+        load(if (next.user == t.user) _state.value.path else null, refresh = false)
+    }
+
     /** The download folder if the app may still write there. */
     fun downloadFolder(): Uri? = app.settings.settings.value.filesDownloadFolder?.let(Uri::parse)?.takeIf { PhoneFiles.canWrite(app, it) }
 
@@ -261,106 +323,166 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             _events.trySend(FilesEvent.PickFolder(entry))
             return
         }
-        transfer(entry) { b, progress ->
-            val (doc, name) = withContext(Dispatchers.IO) { onPhone { PhoneFiles.createInTree(app, tree, entry.name) } }
-            try {
-                withContext(Dispatchers.IO) {
-                    val out = onPhone { app.contentResolver.openOutputStream(doc) ?: throw IOException("cannot write $name") }
-                    out.use { b.download(entry.path, it, progress) }
+        transfer(entry, TransferKind.DOWNLOAD) { b, progress ->
+            val name = withContext(Dispatchers.IO) {
+                val (doc, name) = try {
+                    PhoneFiles.createInTree(app, tree, entry.name)
+                } catch (e: IOException) {
+                    throw PhoneSideException(e)
                 }
-            } catch (e: Throwable) {
-                withContext(Dispatchers.IO) { PhoneFiles.delete(app, doc) }
-                throw e
+                val sink = object : DownloadSink {
+                    override fun open(): OutputStream = app.contentResolver.openOutputStream(doc) ?: throw IOException("cannot write $name")
+
+                    override fun discard() = PhoneFiles.delete(app, doc)
+                }
+                downloadInto(b.fs, entry.path, sink, progress)
+                name
             }
             toast(Texts.get(R.string.files_downloaded, name))
         }
     }
 
     /** Tap on a file: to the cache, then "Open with". */
-    fun openWith(entry: RemoteEntry) = handover(entry, share = false)
+    fun openWith(entry: RemoteEntry) = transfer(entry, TransferKind.OPEN) { b, progress -> handover(b, entry, progress, share = false) }
 
-    fun share(entry: RemoteEntry) = handover(entry, share = true)
+    fun share(entry: RemoteEntry) = transfer(entry, TransferKind.SHARE) { b, progress -> handover(b, entry, progress, share = true) }
 
-    private fun handover(entry: RemoteEntry, share: Boolean) {
-        transfer(entry) { b, progress ->
-            val file = withContext(Dispatchers.IO) {
-                val file = onPhone { PhoneFiles.openCacheFile(app, entry.name) }
-                try {
-                    onPhone { FileOutputStream(file) }.use { b.download(entry.path, it, progress) }
-                } catch (e: Throwable) {
-                    file.delete()
-                    throw e
-                }
-                file
-            }
-            _events.send(FilesEvent.Handover(file, PhoneFiles.mimeType(entry.name), entry.name, share))
+    /** Retry of a failed download, Open with or Share. */
+    fun retry(entry: RemoteEntry) {
+        val failed = _state.value.downloads[entry.path]?.takeIf { it.failure != null } ?: return
+        _state.update { it.copy(downloads = it.downloads - entry.path) }
+        when (failed.kind) {
+            TransferKind.DOWNLOAD -> download(entry)
+            TransferKind.OPEN -> openWith(entry)
+            TransferKind.SHARE -> share(entry)
         }
     }
 
-    /** One download of [entry] at a time, shown on its row; the result as a toast. */
-    private fun transfer(entry: RemoteEntry, block: suspend (SftpBrowser, (Long, Long) -> Unit) -> Unit) {
-        if (entry.path in _state.value.downloads) return toast(Texts.get(R.string.files_busy, entry.name))
+    fun dismissFailure(path: String) {
+        _state.update { s -> s.copy(downloads = s.downloads.filterNot { it.key == path && it.value.failure != null }) }
+    }
+
+    private suspend fun handover(b: SftpBrowser, entry: RemoteEntry, progress: (Long, Long) -> Unit, share: Boolean) {
+        val t = checkNotNull(target)
+        val file = withContext(Dispatchers.IO) {
+            val file = try {
+                PhoneFiles.openCacheFile(app, t.profile, entry.name)
+            } catch (e: IOException) {
+                throw PhoneSideException(e)
+            }
+            val sink = object : DownloadSink {
+                override fun open(): OutputStream = FileOutputStream(file)
+
+                override fun discard() {
+                    file.parentFile?.deleteRecursively()
+                }
+            }
+            downloadInto(b.fs, entry.path, sink, progress)
+            file
+        }
+        file.parentFile?.let { synchronized(handedOver) { handedOver += it } }
+        _events.send(FilesEvent.Handover(file, PhoneFiles.mimeType(entry.name), entry.name, share))
+    }
+
+    /** One transfer of [entry] at a time, shown on its row; a failure stays there with Retry. */
+    private fun transfer(entry: RemoteEntry, kind: TransferKind, block: suspend (SftpBrowser, (Long, Long) -> Unit) -> Unit) {
+        val now = _state.value.downloads[entry.path]
+        if (now != null && now.failure == null) return toast(Texts.get(R.string.files_busy, entry.name))
         val port = localPort
         if (!_state.value.online || port == null) return toast(Texts.get(R.string.files_needs_connection))
-        if (entry.type != EntryType.FILE) {
+        if (!entry.transferable) {
             return toast(Texts.get(if (entry.link?.broken == true) R.string.files_broken_toast else R.string.files_not_regular, entry.name))
         }
-        setDownload(entry.path, Transfer(entry.name, 0, entry.size))
-        viewModelScope.launch {
-            try {
-                val b = connected(port)
-                block(b, throttled { done, total -> setDownload(entry.path, Transfer(entry.name, done, total)) })
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                toast(Texts.get(R.string.files_download_failed, entry.name, fileProblem(e)))
-            } finally {
-                _state.update { it.copy(downloads = it.downloads - entry.path) }
-            }
-        }
+        setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind))
+        transfers.track(
+            viewModelScope.launch(start = TransferJobs.START) {
+                try {
+                    val b = connected(port)
+                    block(b, throttled { done, total -> setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
+                    _state.update { it.copy(downloads = it.downloads - entry.path) }
+                } catch (e: CancellationException) {
+                    _state.update { it.copy(downloads = it.downloads - entry.path) }
+                    throw e
+                } catch (e: Exception) {
+                    val message = connectionTrouble(e) ?: fileProblem(e)
+                    setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, failure = message))
+                    if (isFolderAccess(e)) _events.trySend(FilesEvent.PickFolder(entry))
+                }
+            },
+        )
     }
 
     /** Uploads [uris] one after another into the folder shown now, "Keep both" on a name clash. */
     fun upload(uris: List<Uri>) {
         if (uris.isEmpty()) return
         val dir = _state.value.path
-        val port = localPort
-        if (!_state.value.online || dir == null || port == null) return toast(Texts.get(R.string.files_needs_connection))
+        if (!_state.value.online || dir == null || localPort == null) return toast(Texts.get(R.string.files_needs_connection))
         viewModelScope.launch {
             val picked = withContext(Dispatchers.IO) { uris.map { PhoneFiles.picked(app, it) } }
-            val queued = picked.map { Transfer(it.name, 0, it.size) }
+            val queued = picked.map { Upload(uploadIds.getAndIncrement(), it.uri, dir, Transfer(it.name, 0, it.size)) }
             _state.update { it.copy(uploads = it.uploads + queued) }
-            val uploaded = mutableListOf<String>()
-            picked.forEachIndexed { i, file ->
-                var shown = queued[i]
-                val progress = throttled { done, total ->
-                    val next = Transfer(file.name, done, total)
-                    val was = shown
-                    shown = next
-                    _state.update { s -> s.copy(uploads = s.uploads.map { if (it === was) next else it }) }
-                }
-                try {
-                    val b = connected(port)
-                    val name = withContext(Dispatchers.IO) {
-                        val input = onPhone { app.contentResolver.openInputStream(file.uri) ?: throw IOException("cannot read ${file.name}") }
-                        input.use { b.upload(it, file.size, dir, file.name, progress) }
-                    }
+            runUploads(queued)
+        }
+    }
+
+    /** Retry of a failed upload, into the folder it was for. */
+    fun retryUpload(id: Long) {
+        val failed = _state.value.uploads.firstOrNull { it.id == id && it.transfer.failure != null } ?: return
+        if (!_state.value.online || localPort == null) return toast(Texts.get(R.string.files_needs_connection))
+        val again = failed.copy(transfer = failed.transfer.copy(done = 0, failure = null))
+        _state.update { s -> s.copy(uploads = s.uploads.map { if (it.id == id) again else it }) }
+        runUploads(listOf(again))
+    }
+
+    fun dismissUpload(id: Long) {
+        _state.update { s -> s.copy(uploads = s.uploads.filterNot { it.id == id && it.transfer.failure != null }) }
+    }
+
+    private fun runUploads(items: List<Upload>) {
+        val t = target ?: return
+        transfers.track(
+            viewModelScope.launch(start = TransferJobs.START) {
+                val uploaded = mutableListOf<String>()
+                for (item in items) {
+                    val name = uploadLock.withLock { uploadOne(t, item) } ?: continue
                     uploaded += name
-                    if (_state.value.path == dir) reloadQuietly()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    toast(Texts.get(R.string.files_upload_failed, file.name, fileProblem(e)))
-                } finally {
-                    val gone = shown
-                    _state.update { s -> s.copy(uploads = s.uploads.filterNot { it === gone }) }
+                }
+                when (uploaded.size) {
+                    0 -> Unit
+                    1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()))
+                    else -> toast(Texts.plural(R.plurals.files_uploaded_many, uploaded.size, uploaded.size))
+                }
+            },
+        )
+    }
+
+    /** One upload; its row goes when it is done, stays with the reason and Retry when it fails. Returns the name it got. */
+    private suspend fun uploadOne(t: FilesTarget, item: Upload): String? {
+        val setTransfer = { transfer: Transfer -> _state.update { s -> s.copy(uploads = s.uploads.map { if (it.id == item.id) it.copy(transfer = transfer) else it }) } }
+        val name = item.transfer.name
+        try {
+            val port = localPort ?: throw IOException("no tunnel")
+            val b = connected(port)
+            val got = withContext(Dispatchers.IO) {
+                val input = try {
+                    app.contentResolver.openInputStream(item.uri) ?: throw IOException("cannot read $name")
+                } catch (e: IOException) {
+                    throw PhoneSideException(e)
+                }
+                input.use {
+                    uploadInto(b.fs, it, item.transfer.total, item.dir, name, app.uploadNames, "${t.profile}/${t.device}:${t.port}", throttled { done, total ->
+                        setTransfer(Transfer(name, done, total))
+                    })
                 }
             }
-            when (uploaded.size) {
-                0 -> Unit
-                1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()))
-                else -> toast(Texts.plural(R.plurals.files_uploaded_many, uploaded.size, uploaded.size))
-            }
+            _state.update { s -> s.copy(uploads = s.uploads.filterNot { it.id == item.id }) }
+            if (_state.value.path == item.dir) reloadQuietly()
+            return got
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            setTransfer(Transfer(name, 0, item.transfer.total, failure = connectionTrouble(e) ?: fileProblem(e)))
+            return null
         }
     }
 
@@ -372,48 +494,66 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             _state.update { it.copy(busy = !refresh, refreshing = refresh) }
             try {
                 val b = connected(port)
-                val dir = path ?: withContext(Dispatchers.IO) { b.home() }.also { found ->
-                    home = found
-                    withContext(Dispatchers.IO) { runCatching { app.listings.saveHome(t.profile, t.device, t.port, t.user, found) } }
+                val folder = readFolder(b.fs, path ?: ".")
+                if (path == null) {
+                    home = folder.path
+                    withContext(Dispatchers.IO) { runCatching { app.listings.saveHome(t.profile, t.device, t.port, t.user, folder.path) } }
                 }
-                val entries = withContext(Dispatchers.IO) { b.list(dir) }
-                withContext(Dispatchers.IO) { runCatching { app.listings.save(t.profile, t.device, t.port, dir, entries) } }
+                withContext(Dispatchers.IO) { runCatching { app.listings.save(t.profile, t.device, t.port, folder.path, folder.entries) } }
                 _state.update { it.copy(status = FilesStatus.Ready) }
-                show(dir, entries)
+                show(folder.path, folder.entries)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: HostKeyRejected) {
-                dropBrowser()
-                _state.update {
-                    it.copy(
-                        status = when (val check = e.check) {
-                            is HostKeyCheck.Changed -> FilesStatus.HostKeyChanged(check.pinned, e.presented)
-                            else -> FilesStatus.HostKeyUnknown(e.presented)
-                        },
-                    )
-                }
-            } catch (e: UserAuthException) {
-                val message = withContext(Dispatchers.IO) { connector?.authFailure() } ?: fileProblem(e)
-                dropBrowser()
-                _state.update { it.copy(status = FilesStatus.Failed(message)) }
             } catch (e: Exception) {
-                val at = path ?: home ?: "~"
-                when {
-                    !isDeviceRefusal(e) -> {
-                        dropBrowser()
-                        showCached(path, Texts.get(R.string.ssh_cannot_connect, fileProblem(e)))
-                    }
-                    // A folder that cannot be opened from one that is shown: say so and stay.
-                    _state.value.status == FilesStatus.Ready && _state.value.path != null && path != _state.value.path ->
-                        toast(Texts.get(R.string.files_list_failed, at, fileProblem(e)))
-                    else -> {
-                        _state.update { it.copy(path = path ?: it.path, status = FilesStatus.Failed(Texts.get(R.string.files_list_failed, at, fileProblem(e)))) }
+                if (connectionTrouble(e, path) == null) {
+                    val at = path ?: home ?: "~"
+                    val problem = Texts.get(R.string.files_list_failed, at, fileProblem(e))
+                    if (_state.value.status == FilesStatus.Ready && _state.value.path != null && path != _state.value.path) {
+                        // A folder that cannot be opened from one that is shown: say so and stay.
+                        toast(problem)
+                    } else {
+                        _state.update { it.copy(path = path ?: it.path, status = FilesStatus.Failed(problem)) }
                         show(path ?: _state.value.path, emptyList())
                     }
                 }
             } finally {
                 _state.update { it.copy(busy = false, refreshing = false) }
             }
+        }
+    }
+
+    /**
+     * What a failure says about the connection, as loading and transfers
+     * both meet it: a host key to decide on, a refused login, the
+     * connection gone (offline, the folder as last seen). Sets the screen's
+     * status and returns the words for it; null when it is not about the
+     * connection (the device refused one operation, or the phone failed).
+     */
+    private suspend fun connectionTrouble(e: Throwable, path: String? = _state.value.path): String? = when {
+        e is HostKeyRejected -> {
+            dropBrowser()
+            _state.update {
+                it.copy(
+                    status = when (val check = e.check) {
+                        is HostKeyCheck.Changed -> FilesStatus.HostKeyChanged(check.pinned, e.presented)
+                        else -> FilesStatus.HostKeyUnknown(e.presented)
+                    },
+                )
+            }
+            Texts.get(if (e.check is HostKeyCheck.Changed) R.string.terminal_status_host_key_changed else R.string.terminal_status_host_key_unknown)
+        }
+        e is UserAuthException -> {
+            val message = withContext(Dispatchers.IO) { connector?.authFailure() } ?: fileProblem(e)
+            dropBrowser()
+            _state.update { it.copy(status = FilesStatus.Failed(message, loginRefused = true)) }
+            message
+        }
+        isDeviceRefusal(e) || e is PhoneSideException || isFolderAccess(e) || e !is IOException -> null
+        else -> {
+            dropBrowser()
+            val reason = Texts.get(R.string.ssh_cannot_connect, fileProblem(e))
+            showCached(path, reason)
+            fileProblem(e)
         }
     }
 
@@ -425,13 +565,13 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         val port = localPort ?: return
         loadJob = viewModelScope.launch {
             try {
-                val entries = withContext(Dispatchers.IO) { connected(port).list(dir) }
-                withContext(Dispatchers.IO) { runCatching { app.listings.save(t.profile, t.device, t.port, dir, entries) } }
-                if (_state.value.path == dir) show(dir, entries)
+                val folder = readFolder(connected(port).fs, dir)
+                withContext(Dispatchers.IO) { runCatching { app.listings.save(t.profile, t.device, t.port, folder.path, folder.entries) } }
+                if (_state.value.path == dir) show(folder.path, folder.entries)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // Pull to refresh says what is wrong; the upload's own result was told already.
+                // Pull to refresh says what is wrong; the upload's own result is on its row.
             }
         }
     }
@@ -441,13 +581,17 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         val t = target ?: return
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val listing = withContext(Dispatchers.IO) {
+            val (at, listing) = withContext(Dispatchers.IO) {
                 val at = path ?: home ?: app.listings.loadHome(t.profile, t.device, t.port, t.user)
                 at to at?.let { app.listings.load(t.profile, t.device, t.port, it) }
             }
-            val status = if (localPort == null && tunnelConnecting) FilesStatus.TunnelConnecting else FilesStatus.Offline(reason, listing.second?.savedAt)
+            val status = if (localPort == null && tunnelConnecting) {
+                FilesStatus.TunnelConnecting
+            } else {
+                FilesStatus.Offline(reason, listing?.savedAt, listing?.truncated == true)
+            }
             _state.update { it.copy(status = status, busy = false, refreshing = false) }
-            show(listing.first, listing.second?.entries.orEmpty())
+            show(at, listing?.entries.orEmpty())
         }
     }
 
@@ -495,8 +639,20 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         _events.trySend(FilesEvent.Toast(text))
     }
 
+    /**
+     * The screen is gone: its transfers are cancelled (viewModelScope),
+     * each removes its part file or half download, and only then the
+     * connection closes. The files it handed to other apps go too.
+     */
     override fun onCleared() {
-        dropBrowser()
+        val b = browser
+        browser = null
+        val opened = synchronized(handedOver) { handedOver.toList() }
+        app.appScope.launch(Dispatchers.IO) {
+            transfers.cancelAndJoin()
+            b?.close()
+            opened.forEach { it.deleteRecursively() }
+        }
         app.fileTargets.remove(targetId)
     }
 
@@ -511,13 +667,6 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                     report(done, total)
                 }
             }
-        }
-
-        /** Marks a failure as the phone's: its folder or cache, not the device. */
-        inline fun <T> onPhone(block: () -> T): T = try {
-            block()
-        } catch (e: IOException) {
-            throw if (e is PhoneSideException) e else PhoneSideException(e)
         }
     }
 }

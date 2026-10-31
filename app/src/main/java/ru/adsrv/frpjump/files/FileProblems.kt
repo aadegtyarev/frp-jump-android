@@ -1,7 +1,5 @@
 package ru.adsrv.frpjump.files
 
-import net.schmizz.sshj.sftp.Response
-import net.schmizz.sshj.sftp.SFTPException
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import java.io.IOException
@@ -9,28 +7,28 @@ import java.io.IOException
 /**
  * Whether [e] is the device refusing one operation (no such file, no
  * permission, no space), which leaves the connection usable; anything
- * else means the connection is gone.
+ * else from the device means the connection is gone.
  */
-fun isDeviceRefusal(e: Throwable): Boolean =
-    e is SFTPException && e.statusCode != Response.StatusCode.NO_CONNECTION && e.statusCode != Response.StatusCode.CONNECITON_LOST
+fun isDeviceRefusal(e: Throwable): Boolean = e is RemoteRefusal
 
-/** Why a file operation failed, in plain words; [phone] when it failed on the phone (its folder or cache). */
-fun fileProblem(e: Throwable, phone: Boolean = false): String {
-    if (e is SFTPException) {
-        return when (e.statusCode) {
-            Response.StatusCode.NO_SUCH_FILE, Response.StatusCode.NO_SUCH_PATH -> Texts.get(R.string.files_problem_no_such)
-            Response.StatusCode.PERMISSION_DENIED, Response.StatusCode.WRITE_PROTECT -> Texts.get(R.string.files_problem_permission)
-            Response.StatusCode.NO_SPACE_ON_FILESYSTEM, Response.StatusCode.QUOTA_EXCEEDED -> Texts.get(R.string.files_problem_space_device)
-            Response.StatusCode.NO_CONNECTION, Response.StatusCode.CONNECITON_LOST -> Texts.get(R.string.files_problem_connection)
-            else -> e.message?.takeIf { it.isNotBlank() } ?: e.statusCode.name.lowercase().replace('_', ' ')
+/** Whether [e] is no access to the chosen download folder: the owner should pick it again. */
+fun isFolderAccess(e: Throwable): Boolean = e is SecurityException || e.cause is SecurityException
+
+/** Why a file operation failed, in plain words. */
+fun fileProblem(e: Throwable): String {
+    if (e is RemoteRefusal) {
+        return when (e.reason) {
+            Refusal.NO_SUCH -> Texts.get(R.string.files_problem_no_such)
+            Refusal.PERMISSION -> Texts.get(R.string.files_problem_permission)
+            Refusal.NO_SPACE -> Texts.get(R.string.files_problem_space_device)
+            else -> e.message?.takeIf { it.isNotBlank() } ?: e.reason.name.lowercase()
         }
     }
     val text = e.message.orEmpty()
-    val onPhone = phone || e is PhoneSideException
     return when {
-        onPhone && (text.contains("ENOSPC") || text.contains("No space", ignoreCase = true)) -> Texts.get(R.string.files_problem_space_phone)
-        e is SecurityException -> Texts.get(R.string.files_problem_folder_access)
-        onPhone -> Texts.get(R.string.files_problem_phone, text.ifBlank { e.javaClass.simpleName })
+        isFolderAccess(e) -> Texts.get(R.string.files_problem_folder_access)
+        e is PhoneSideException && (text.contains("ENOSPC") || text.contains("No space", ignoreCase = true)) -> Texts.get(R.string.files_problem_space_phone)
+        e is PhoneSideException -> Texts.get(R.string.files_problem_phone, text.ifBlank { e.javaClass.simpleName })
         e is IOException -> Texts.get(R.string.files_problem_connection)
         else -> text.ifBlank { e.javaClass.simpleName }
     }

@@ -53,7 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.files.EntryType
+import ru.adsrv.frpjump.files.ListingCache
 import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.AppTopBar
@@ -62,6 +62,7 @@ import ru.adsrv.frpjump.ui.PlusGlyph
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.ssh.HostKeyChangedDialog
 import ru.adsrv.frpjump.ui.ssh.HostKeyTrustDialog
+import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 import java.time.Instant
 
 /**
@@ -78,6 +79,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     var rowMenu by remember { mutableStateOf<String?>(null) }
     var typing by rememberSaveable { mutableStateOf(false) }
+    var changingLogin by remember { mutableStateOf(false) }
     // The file to download once a folder is picked.
     var waiting by remember { mutableStateOf<RemoteEntry?>(null) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
@@ -120,7 +122,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
         topBar = {
             AppTopBar(
                 title = title,
-                subtitle = t?.let { it.user + " · " + statusWord(state.status) },
+                subtitle = t?.let { state.user + " · " + statusWord(state.status) },
                 onBack = onBack,
                 actions = {
                     Box {
@@ -173,7 +175,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
             Box(Modifier.fillMaxWidth().height(2.dp)) {
                 if (state.busy && state.entries.isNotEmpty()) LinearProgressIndicator(color = colors.accent, trackColor = colors.ground, modifier = Modifier.fillMaxWidth())
             }
-            StatusBanner(state.status, onRetry = vm::refresh)
+            StatusBanner(state.status, onRetry = vm::refresh, onChangeLogin = { changingLogin = true })
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = vm::refresh,
@@ -185,7 +187,9 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                     // The last row scrolls clear of the "+" button and the navigation bar.
                     contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 88.dp),
                 ) {
-                    items(state.uploads.size, key = { "upload-$it" }) { UploadRow(state.uploads[it]) }
+                    items(state.uploads, key = { "upload-${it.id}" }) { upload ->
+                        UploadRow(upload.transfer, onRetry = { vm.retryUpload(upload.id) }, onDismiss = { vm.dismissUpload(upload.id) })
+                    }
                     if (state.entries.isEmpty()) item(key = "empty") { EmptyFolder(state) }
                     items(state.entries, key = { it.name }) { entry ->
                         EntryRow(
@@ -196,18 +200,20 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                             onMenu = { rowMenu = if (it) entry.path else null },
                             onTap = {
                                 when {
-                                    entry.isDir -> vm.open(entry.path)
+                                    entry.isDir -> vm.openFolder(entry)
                                     entry.link?.broken == true -> Toast.makeText(context, context.getString(R.string.files_broken_toast), Toast.LENGTH_SHORT).show()
-                                    entry.type == EntryType.FILE -> vm.openWith(entry)
+                                    entry.transferable -> vm.openWith(entry)
                                     else -> Toast.makeText(context, context.getString(R.string.files_not_regular, entry.name), Toast.LENGTH_SHORT).show()
                                 }
                             },
                             actions = EntryActions(
-                                open = { vm.open(it.path) },
+                                open = vm::openFolder,
                                 download = vm::download,
                                 share = vm::share,
                                 goToTarget = vm::goToTarget,
                             ),
+                            onRetry = { vm.retry(entry) },
+                            onDismiss = { vm.dismissFailure(entry.path) },
                         )
                         HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 70.dp))
                     }
@@ -227,6 +233,18 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
         )
     }
     val target = t?.let { "${it.device}:${it.port}" }.orEmpty()
+    if (changingLogin) {
+        SshLoginDialog(
+            target = target,
+            initial = vm.login(),
+            hasRememberedPassword = vm::hasRememberedPassword,
+            onConnect = { user, method, password, remember ->
+                changingLogin = false
+                vm.changeLogin(user, method, password, remember)
+            },
+            onDismiss = { changingLogin = false },
+        )
+    }
     when (val s = state.status) {
         is FilesStatus.HostKeyUnknown -> HostKeyTrustDialog(target, s.presented, onTrust = vm::trustHostKey, onCancel = onBack)
         is FilesStatus.HostKeyChanged -> HostKeyChangedDialog(target, s.pinned, s.presented, onForget = vm::forgetOldHostKey, onCancel = onBack)
@@ -249,16 +267,20 @@ private fun statusWord(status: FilesStatus): String = stringResource(
 
 /** Why the folder is not live, next to it, with what may fix it. */
 @Composable
-private fun StatusBanner(status: FilesStatus, onRetry: () -> Unit) {
+private fun StatusBanner(status: FilesStatus, onRetry: () -> Unit, onChangeLogin: () -> Unit) {
     val colors = AppTheme.colors
     val (text, detail, retry) = when (status) {
         is FilesStatus.Offline -> Triple(
             status.cachedAt?.let { stringResource(R.string.files_offline_cached, shortTime(Instant.ofEpochMilli(it))) }
                 ?: stringResource(R.string.files_offline_none),
-            status.reason,
+            listOfNotNull(
+                status.reason,
+                stringResource(R.string.files_truncated, ListingCache.MAX_ENTRIES).takeIf { status.truncated },
+            ).joinToString("\n"),
             stringResource(R.string.retry),
         )
-        is FilesStatus.Failed -> Triple(status.message, null, stringResource(R.string.retry))
+        // A refused login does not get better by trying again: change it.
+        is FilesStatus.Failed -> Triple(status.message, null, stringResource(if (status.loginRefused) R.string.files_change_login else R.string.retry))
         FilesStatus.TunnelConnecting -> Triple(stringResource(R.string.files_tunnel_connecting), null, null)
         else -> return
     }
@@ -278,7 +300,9 @@ private fun StatusBanner(status: FilesStatus, onRetry: () -> Unit) {
             Text(text, fontSize = 14.sp, color = ink)
             detail?.let { Text(it, fontSize = 12.sp, color = ink) }
         }
-        retry?.let { TextButton(onClick = onRetry) { Text(it, color = ink) } }
+        retry?.let {
+            TextButton(onClick = if ((status as? FilesStatus.Failed)?.loginRefused == true) onChangeLogin else onRetry) { Text(it, color = ink) }
+        }
     }
 }
 

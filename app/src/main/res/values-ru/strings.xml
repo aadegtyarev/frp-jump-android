@@ -508,6 +508,10 @@
     <string name="update_apk_other_version">Версия скачанного APK не та, что указана в выпуске; он удалён.</string>
     <string name="update_apk_other_signer">Скачанный APK подписан не ключом этого приложения; он удалён.</string>
     <!-- Files (SFTP) -->
+    <string name="files_change_login">Сменить вход</string>
+    <string name="files_truncated">Сохранены только первые %d записей этой папки.</string>
+    <string name="files_dismiss">Скрыть</string>
+    <string name="files_not_uploaded">Не загружен: %s</string>
     <string name="files">Файлы</string>
     <string name="files_actions">Действия с файлами</string>
     <string name="files_show_hidden">Показывать скрытые файлы</string>
@@ -534,9 +538,7 @@
     <string name="files_broken_toast">Цели ссылки нет; долгое нажатие — «Перейти к цели».</string>
     <string name="files_not_regular">%s — не обычный файл.</string>
     <string name="files_downloaded">Скачано: %s</string>
-    <string name="files_download_failed">%1$s не скачан: %2$s</string>
     <string name="files_uploaded">Загружено: %s</string>
-    <string name="files_upload_failed">%1$s не загружен: %2$s</string>
     <string name="files_uploading">Загрузка %s</string>
     <string name="files_busy">%s уже передаётся.</string>
     <string name="files_open_with">Открыть с помощью</string>

@@ -25,6 +25,11 @@ class FileTargets {
 
     fun get(id: Int): FilesTarget? = targets[id]
 
+    /** Another login for the same screen ("Change login"). */
+    fun replace(id: Int, target: FilesTarget) {
+        targets[id] = target
+    }
+
     fun remove(id: Int) {
         targets.remove(id)
     }

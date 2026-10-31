@@ -33,21 +33,31 @@ class ListingTest {
 
     @Test
     fun `a link shows its target as an absolute path`() {
-        val relative = linkTarget("/etc/wb-rules/x.js", "../../mnt/data/etc/x.js", EntryType.FILE)
+        val relative = linkTarget("/etc/wb-rules/x.js", "../../mnt/data/etc/x.js", broken = false)
         assertEquals("/mnt/data/etc/x.js", relative.path)
         assertEquals("../../mnt/data/etc/x.js", relative.raw)
         assertFalse(relative.broken)
         assertEquals("→ /mnt/data/etc/x.js", linkLabel(relative))
-        assertEquals("/mnt/data/etc", linkTarget("/root/etc", "/mnt/data/etc/", EntryType.DIR).path)
-        assertEquals("/root/sibling", linkTarget("/root/link", "sibling", EntryType.FILE).path)
+        assertEquals("/mnt/data/etc", linkTarget("/root/etc", "/mnt/data/etc/", broken = false).path)
+        assertEquals("/root/sibling", linkTarget("/root/link", "sibling", broken = false).path)
     }
 
     @Test
-    fun `a link whose target is missing is broken, and not a folder or file`() {
-        val broken = linkTarget("/root/old", "/mnt/gone", targetType = null)
-        assertTrue(broken.broken)
-        assertEquals(EntryType.OTHER, linkRowType(null))
-        assertEquals(EntryType.DIR, linkRowType(EntryType.DIR))
+    fun `only a file, or a link whose target could not be looked at but is there, can be downloaded`() {
+        val unreadable = RemoteEntry("secret", "/root/secret", EntryType.OTHER, link = LinkTarget("/srv/secret", "/srv/secret"))
+        val broken = RemoteEntry("old", "/root/old", EntryType.OTHER, link = LinkTarget("/mnt/gone", "/mnt/gone", broken = true))
+        val socket = RemoteEntry("sock", "/run/sock", EntryType.OTHER)
+        assertTrue(unreadable.transferable)
+        assertFalse(broken.transferable)
+        assertFalse(socket.transferable)
+        assertTrue(file("a").transferable)
+    }
+
+    @Test
+    fun `a folder link opens at its target, a broken one at itself`() {
+        val toDir = RemoteEntry("etc", "/root/etc", EntryType.DIR, link = LinkTarget("../mnt/etc", "/mnt/etc"))
+        assertEquals("/mnt/etc", toDir.folderPath)
+        assertEquals("/x/plain", dir("plain").folderPath)
     }
 
     @Test

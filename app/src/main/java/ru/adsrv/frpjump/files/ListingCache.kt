@@ -14,6 +14,8 @@ data class CachedListing(
     /** Milliseconds since the epoch. */
     @SerialName("saved_at") val savedAt: Long,
     @SerialName("entries") val entries: List<RemoteEntry>,
+    /** The folder had more than [ListingCache.MAX_ENTRIES]; only those were kept. */
+    @SerialName("truncated") val truncated: Boolean = false,
 )
 
 @Serializable
@@ -30,7 +32,7 @@ class ListingCache(
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     fun save(profile: String, device: String, port: Int, path: String, entries: List<RemoteEntry>) {
-        val listing = CachedListing(path, now(), entries.take(MAX_ENTRIES))
+        val listing = CachedListing(path, now(), entries.take(MAX_ENTRIES), truncated = entries.size > MAX_ENTRIES)
         storageFor(profile, key(device, port, path)).write(WireJson.encodeToString(listing))
     }
 
@@ -53,7 +55,7 @@ class ListingCache(
     private fun homeKey(user: String) = "~$user"
 
     companion object {
-        /** Enough for any folder one scrolls through; a bigger one is cut rather than written whole. */
+        /** Enough for any folder one scrolls through; a bigger one is cut (and marked so) rather than written whole. */
         const val MAX_ENTRIES = 5000
 
         /** A file name for (device, port, path): no path characters reach the file system. */

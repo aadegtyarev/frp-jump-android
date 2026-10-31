@@ -67,16 +67,24 @@ object PhoneFiles {
         runCatching { DocumentsContract.deleteDocument(context.contentResolver, doc) }
     }
 
-    /** A fresh file in the app's cache for a file to open or share, in a folder of its own so names never clash. */
-    fun openCacheFile(context: Context, name: String): File {
-        val dir = File(File(context.cacheDir, OPEN_DIR), System.nanoTime().toString())
+    /**
+     * A fresh file in the app's cache for a file of [profile] to open or
+     * share, in a folder of its own so names never clash; delete that folder
+     * ([File.getParentFile]) when done with it.
+     */
+    fun openCacheFile(context: Context, profile: String, name: String): File {
+        val dir = File(openCacheDir(context, profile), System.nanoTime().toString())
         if (!dir.mkdirs() && !dir.isDirectory) throw IOException("cannot make $dir")
-        return File(dir, name.replace('/', '_'))
+        return File(dir, safeLocalName(name))
     }
 
-    /** Files handed to other apps more than [maxAgeMs] ago: those apps have long read them. */
+    /** The files of [profile] handed to other apps (removed with the profile). */
+    fun openCacheDir(context: Context, profile: String): File = File(File(context.cacheDir, OPEN_DIR), safeLocalName(profile))
+
+    /** Files handed to other apps more than [maxAgeMs] ago, of every profile: those apps have long read them. */
     fun pruneOpenCache(context: Context, maxAgeMs: Long, now: Long = System.currentTimeMillis()) {
-        File(context.cacheDir, OPEN_DIR).listFiles()?.filter { now - it.lastModified() > maxAgeMs }?.forEach { it.deleteRecursively() }
+        File(context.cacheDir, OPEN_DIR).listFiles()?.flatMap { it.listFiles()?.toList().orEmpty() }
+            ?.filter { now - it.lastModified() > maxAgeMs }?.forEach { it.deleteRecursively() }
     }
 
     /** Where the offline listings of [profile] are kept ([ListingCache]). */

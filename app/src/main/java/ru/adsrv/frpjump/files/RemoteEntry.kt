@@ -36,6 +36,16 @@ data class RemoteEntry(
 ) {
     val hidden: Boolean get() = name.startsWith(".")
     val isDir: Boolean get() = type == EntryType.DIR
+
+    /**
+     * Whether it can be downloaded: a file, or a link whose target the app
+     * could not look at (no permission, a loop) but which is not broken;
+     * the device then says itself whether it serves it.
+     */
+    val transferable: Boolean get() = type == EntryType.FILE || (link != null && !link.broken && type == EntryType.OTHER)
+
+    /** Where a tap on a folder (or a link to one) leads: a link's target, a physical path. */
+    val folderPath: String get() = link?.takeIf { !it.broken }?.path ?: path
 }
 
 /**
@@ -48,14 +58,12 @@ fun visibleListing(entries: List<RemoteEntry>, showHidden: Boolean): List<Remote
         .sortedWith(compareBy<RemoteEntry> { !it.isDir }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }.thenBy { it.name })
 
 /**
- * A symlink at [linkPath] whose text is [raw]: its absolute target, broken
- * when [targetType] is null (`stat` found nothing at the end of the chain).
+ * A symlink at [linkPath] whose text is [raw]: its target made absolute
+ * against the link's folder, which must be a physical path for a relative
+ * [raw] to resolve right ([readFolder] gives one). [broken]: nothing there.
  */
-fun linkTarget(linkPath: String, raw: String, targetType: EntryType?): LinkTarget =
-    LinkTarget(raw, resolvePath(parentOf(linkPath), raw), broken = targetType == null)
-
-/** The type a row shows for a link whose target is [targetType] (null when broken). */
-fun linkRowType(targetType: EntryType?): EntryType = targetType ?: EntryType.OTHER
+fun linkTarget(linkPath: String, raw: String, broken: Boolean): LinkTarget =
+    LinkTarget(raw, resolvePath(parentOf(linkPath), raw), broken)
 
 /** "→ /mnt/data/etc", as a link's row shows its target. */
 fun linkLabel(target: LinkTarget): String = "→ ${target.path}"

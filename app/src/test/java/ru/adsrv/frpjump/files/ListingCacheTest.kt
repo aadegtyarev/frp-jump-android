@@ -50,9 +50,13 @@ class ListingCacheTest {
     }
 
     @Test
-    fun `a huge folder is cut, not refused`() {
+    fun `a huge folder is cut and marked so, not refused`() {
         val many = (1..ListingCache.MAX_ENTRIES + 10).map { RemoteEntry("f$it", "/d/f$it", EntryType.FILE) }
         cache.save("p1", "wb-1", 22, "/d", many)
-        assertEquals(ListingCache.MAX_ENTRIES, cache.load("p1", "wb-1", 22, "/d")?.entries?.size)
+        val read = cache.load("p1", "wb-1", 22, "/d")
+        assertEquals(ListingCache.MAX_ENTRIES, read?.entries?.size)
+        assertEquals(true, read?.truncated)
+        cache.save("p1", "wb-1", 22, "/root", entries)
+        assertEquals(false, cache.load("p1", "wb-1", 22, "/root")?.truncated)
     }
 }

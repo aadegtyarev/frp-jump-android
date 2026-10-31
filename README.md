@@ -451,29 +451,46 @@ each other; both log in through `ssh/SshConnector.kt`.
 - It opens in the user's home folder. The path bar on top: tap a part to
   go there, tap the last part to type a path (absolute, relative, `~`).
   Back goes up a folder and leaves at `/`; the arrow in the bar leaves at
-  once.
+  once. The path shown is always the folder's real one (links resolved),
+  so relative link targets in it are shown right.
 - Folders first, then files, by name; size and modified time. Dot names
   only with "⋮ › Show hidden files", remembered in `settings.json`.
 - Symlinks carry a link badge and their target (`→ /mnt/data/etc`); a link
-  to a folder opens as one, a broken link says so. Long press on a link:
-  "Go to the target" (the target folder, or the folder its target is in).
+  to a folder opens at its target, a broken one (nothing at the target)
+  says so. A target the user may not look at, or a loop, is not "broken":
+  it can still be downloaded, the device says whether it serves it. Long
+  press on a link: "Go to the target" (the target folder, or the folder
+  its target is in). Links are looked into eight at a time.
 - Tap a file: it is downloaded to the app's cache and handed to another app
   ("Open with", through the FileProvider). Long press: Download, Share.
   Download writes into a phone folder chosen once with the system folder
-  picker (kept with a persistable grant; "⋮" changes it); a name that is
-  there already becomes `name (1).ext`. Progress shows on the row, the
-  result as a toast.
+  picker (kept with a persistable grant; "⋮" changes it, and losing access
+  to it asks for it again); a name that is there already becomes
+  `name (1).ext`. A download that fails or is cancelled is deleted, never
+  left half written under its name.
 - "+" uploads files picked with the system picker into the folder shown,
-  one after another, each under a hidden `.name.frpjump-part` that is
-  renamed at the end, so a half upload never replaces a file; a name
-  that is taken becomes `name (1).ext`.
+  one at a time, each written to a hidden `.name.frpjump-part` (a long
+  name is cut to fit 255 bytes, with a short hash) and renamed at the
+  end, so a half upload never replaces a file. A part file left by an
+  interrupted upload is replaced; a failed or cancelled upload removes
+  its own before the connection closes. A taken name becomes
+  `name (1).ext`; names being uploaded to are held, so two uploads of one
+  name get two names, and a name taken just before the rename moves the
+  upload to the next one.
+- Progress shows on the row; a failure stays there, in plain words, with
+  Retry and Dismiss. A refused login offers "Change login" (the login
+  dialog again) instead of Retry; a host key to decide on asks as the
+  terminal does, also when a transfer meets it.
 - Pull to refresh. With the tunnel down, or SSH failing, each folder shows
   as last listed (kept per profile, device, port and folder in the app's
-  cache, `files-listings/`, removed when the profile is forgotten), marked
-  "No connection", with Retry (which connects the tunnel when it is down);
+  cache, `files-listings/`, at most 5000 entries a folder, which the screen
+  then says; removed when the profile is forgotten), marked "No
+  connection", with Retry (which connects the tunnel when it is down);
   nothing can be downloaded or uploaded then.
 - Transfers belong to the screen in this version: leaving it stops them.
-  Files handed to other apps stay in the cache (`files-open/`) for a day.
+  Files handed to other apps (`files-open/<profile>/`) are deleted when
+  the file screen closes, when the profile is forgotten, and at app start
+  when older than a day.
 
 ## Third-party libraries
 
