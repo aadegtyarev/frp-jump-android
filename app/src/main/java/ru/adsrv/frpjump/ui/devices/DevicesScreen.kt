@@ -133,7 +133,7 @@ fun DevicesScreen(
     }
     // The bar's "disconnect all": this profile's tunnels, as its count shows; asked first, a spinner until the server was told.
     var confirmDisconnect by remember { mutableStateOf<ProfileItem?>(null) }
-    var disconnecting by remember { mutableStateOf(false) }
+    var disconnecting by remember { mutableStateOf<String?>(null) }
     // Search: the bar turns into a field and the list follows it; ✕ or Back closes it and shows them all again.
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -157,7 +157,7 @@ fun DevicesScreen(
             if (searching) {
                 SearchBar(query, onQuery = { query = it }, onClose = closeSearch, focus = focusOnOpen, onFocused = { focusOnOpen = false })
             } else {
-                Header(current, onProfiles, onTunnels, disconnecting, onDisconnect = { confirmDisconnect = current }, onSearch = {
+                Header(current, onProfiles, onTunnels, disconnecting = current != null && disconnecting == current.id, onDisconnect = { confirmDisconnect = current }, onSearch = {
                     searching = true
                     focusOnOpen = true
                 }.takeIf { !state.devices.isNullOrEmpty() })
@@ -197,8 +197,8 @@ fun DevicesScreen(
             confirmButton = {
                 TextButton(onClick = {
                     confirmDisconnect = null
-                    disconnecting = true
-                    vm.actions.disconnectProfile(profile.id) { disconnecting = false }
+                    disconnecting = profile.id
+                    vm.actions.disconnectProfile(profile.id) { if (disconnecting == profile.id) disconnecting = null }
                 }) { Text(stringResource(R.string.disconnect), color = colors.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDisconnect = null }) { Text(stringResource(R.string.cancel)) } },
@@ -236,9 +236,9 @@ private fun Header(
             // Named on the button, so the spinner keeps the name too.
             IconButton(onClick = onDisconnect, enabled = !disconnecting, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) {
                 if (disconnecting) {
-                    CircularProgressIndicator(Modifier.size(18.dp), color = colors.ink, strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(18.dp), color = colors.error, strokeWidth = 2.dp)
                 } else {
-                    Icon(PowerGlyph, contentDescription = null, tint = colors.ink, modifier = Modifier.size(22.dp))
+                    Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
                 }
             }
         }

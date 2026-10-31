@@ -143,16 +143,21 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /**
-     * Every tunnel of [profile] (the ✕ on the Devices tab's tunnel count);
+     * Every tunnel of [profile] (the power button on the Devices tab's bar);
      * a notice says how many went, or that the server was not told and they
      * may come back. [onDone] once the server was asked (main thread).
      */
     fun disconnectProfile(profile: String, onDone: () -> Unit = {}) {
-        val tunnels = runtime(profile)?.tunnels ?: return onDone()
+        val tunnels = runtime(profile)?.tunnels ?: run {
+            app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
+            return onDone()
+        }
         app.appScope.launch {
-            val count = tunnels.state.value.tunnels.size
+            // As the bar's chip counts them; none up yet (e.g. still being restored): no "0".
+            val count = app.profiles.tunnelsByProfileNow()[profile] ?: 0
             if (tunnels.disconnectAll()) {
-                app.notices.show(Texts.get(R.string.tunnels_disconnected, count), NoticeKind.DONE)
+                val text = if (count > 0) Texts.get(R.string.tunnels_disconnected, count) else Texts.get(R.string.tunnels_disconnected_unknown)
+                app.notices.show(text, NoticeKind.DONE)
             } else {
                 app.notices.show(Texts.get(R.string.disconnect_all_failed), NoticeKind.WARN, long = true)
             }

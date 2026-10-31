@@ -22,7 +22,7 @@ fun openThrough(sessions: List<SessionOn>, files: List<TunnelRef>, tunnel: Tunne
     return OpenThrough(sessions.count { it.live && on(it.tunnel) }, files.count(on))
 }
 
-/** What closes when every tunnel of [profile] disconnects (the ✕ on the Devices tab's tunnel count). */
+/** What closes when every tunnel of [profile] disconnects (the power button on the Devices tab's bar). */
 fun openOnProfile(sessions: List<SessionOn>, files: List<TunnelRef>, profile: String): OpenThrough =
     OpenThrough(sessions.count { it.live && it.tunnel.profile == profile }, files.count { it.profile == profile })
 
