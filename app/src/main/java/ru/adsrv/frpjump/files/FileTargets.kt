@@ -30,6 +30,9 @@ class FileTargets {
         targets[id] = target
     }
 
+    /** The file screens open now (each until its screen is closed). */
+    fun all(): List<FilesTarget> = targets.values.toList()
+
     fun remove(id: Int) {
         targets.remove(id)
     }

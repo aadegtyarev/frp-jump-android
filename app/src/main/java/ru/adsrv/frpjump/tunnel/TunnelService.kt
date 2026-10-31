@@ -108,6 +108,8 @@ class TunnelService : Service() {
                     val summary = TunnelSummary.of(up, pending ?: record?.values?.sum())
                     if (serviceNeeded(summary.tunnels, pending)) View(summary, waiting, failed) else null
                 }
+                    // "Disconnect all" here cannot ask: the title says what it would close.
+                    .combine(app.ssh.liveCount) { view, sessions -> view?.copy(sessions = sessions) }
                     .distinctUntilChanged()
                     .collect { view ->
                         if (view == null) {
@@ -133,6 +135,8 @@ class TunnelService : Service() {
         val waiting: Waiting? = null,
         /** The last "Disconnect all" could not tell a server. */
         val disconnectFailed: Boolean = false,
+        /** Terminal sessions not ended, which "Disconnect all" closes. */
+        val sessions: Int = 0,
     )
 
     /** Android 13+ tells the whole app of a new language (Settings › Language): the notification says it too. */
@@ -178,9 +182,15 @@ class TunnelService : Service() {
 
     /**
      * "N tunnels", or "N tunnels in M profiles" when more than one profile
-     * has tunnels; "Restoring (N) tunnels…" while none runs yet after a restart.
+     * has tunnels, then " · M terminal sessions" when any is open;
+     * "Restoring (N) tunnels…" while none runs yet after a restart.
      */
-    private fun title(res: Resources, summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
+    private fun title(res: Resources, view: View): String =
+        notificationTitle(tunnelsLine(res, view.summary), tunnelsTitle(view.summary), view.sessions) {
+            res.getQuantityString(R.plurals.notification_terminal_sessions, it, it)
+        }
+
+    private fun tunnelsLine(res: Resources, summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
         TunnelsTitle.RestoringUnknown -> res.getString(R.string.tunnels_restoring_unknown)
         is TunnelsTitle.Restoring -> res.getQuantityString(R.plurals.tunnels_restoring, title.count, title.count)
         is TunnelsTitle.Up -> {
@@ -203,7 +213,6 @@ class TunnelService : Service() {
     }
 
     private fun notification(view: View): Notification {
-        val summary = view.summary
         val res = localized().resources
         // Created, or renamed into the app's current language.
         tunnelsChannel(this, res)
@@ -215,7 +224,7 @@ class TunnelService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_jump)
-            .setContentTitle(title(res, summary))
+            .setContentTitle(title(res, view))
             .setContentText(text(res, view))
             .setContentIntent(open)
             .setOngoing(true)

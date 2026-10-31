@@ -84,6 +84,7 @@ import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
+import ru.adsrv.frpjump.ssh.saysTunnelClosed
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
 import ru.adsrv.frpjump.ui.FolderGlyph
@@ -135,6 +136,15 @@ fun TerminalScreen(
     /** The session whose device and port the login dialog of a long press on "+" is for. */
     var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
+    // The session shown went because its tunnel was closed (Disconnect, the notification): say so, not vanish silently.
+    var shownId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(selected?.id) {
+        val before = shownId
+        shownId = selected?.id
+        if (saysTunnelClosed(before, shownId, { sessions.find(it) != null }, sessions::closedByTunnel)) {
+            Toast.makeText(context, context.getString(R.string.ssh_tunnel_closed), Toast.LENGTH_SHORT).show()
+        }
+    }
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
     // Leaving keeps the sessions: the first time, say where they are (not when Files covers the screen).
     fun leave() {

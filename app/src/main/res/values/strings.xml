@@ -186,6 +186,18 @@
     <string name="connect">Connect</string>
     <string name="connect_named">Connect “%s”</string>
     <string name="disconnect_named">Disconnect “%s”</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="disconnect_confirm_title">Disconnect “%s”?</string>
+    <string name="disconnect_all_confirm_title">Disconnect all tunnels?</string>
+    <plurals name="disconnect_closes_sessions">
+        <item quantity="one">%d terminal session will close.</item>
+        <item quantity="other">%d terminal sessions will close.</item>
+    </plurals>
+    <string name="disconnect_closes_files">Open Files screens lose the connection; their transfers stop.</string>
+    <plurals name="notification_terminal_sessions">
+        <item quantity="one">%d terminal session</item>
+        <item quantity="other">%d terminal sessions</item>
+    </plurals>
     <string name="retry">Retry</string>
     <string name="open">Open</string>
     <string name="terminal">Terminal</string>

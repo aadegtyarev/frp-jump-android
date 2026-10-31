@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -63,6 +65,7 @@ import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
+import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
@@ -293,6 +296,9 @@ class ConnectionUi {
     /** The row whose "Files" was tapped: the same login dialog, for a file screen. */
     var filesLogin by mutableStateOf<ConnectionRow?>(null)
     var deleting by mutableStateOf<ConnectionRow?>(null)
+
+    /** The row whose Disconnect would close terminal sessions or file screens: asked first. */
+    var disconnecting by mutableStateOf<ConnectionRow?>(null)
     var editing by mutableStateOf<ConnectionRow?>(null)
     var menu by mutableStateOf<String?>(null)
 
@@ -345,7 +351,8 @@ fun rememberRowActions(
                 else -> actions.openSession(row)?.let(onOpenTerminal) ?: run { ui.login = row }
             }
         },
-        disconnect = actions::disconnect,
+        // Sessions and file screens on the tunnel close with it: ask first when there are any.
+        disconnect = { row -> if (actions.openThrough(row).any) ui.disconnecting = row else actions.disconnect(row) },
         copy = copy,
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
@@ -434,7 +441,7 @@ fun ConnectionDialogs(
             onDismissRequest = { ui.direct = null },
             title = { Text(stringResource(if (kept) R.string.state_kept_through_server else R.string.state_through_server)) },
             text = {
-                androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(if (kept) R.string.direct_kept_text else R.string.direct_failed_text, device))
                     androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
                     Button(
@@ -460,6 +467,23 @@ fun ConnectionDialogs(
             confirmButton = {},
         )
     }
+    ui.disconnecting?.let { row ->
+        // Counted when asked: what is open now, not when Disconnect was tapped.
+        val open = actions.openThrough(row)
+        AlertDialog(
+            onDismissRequest = { ui.disconnecting = null },
+            title = { Text(stringResource(R.string.disconnect_confirm_title, rowName(row))) },
+            // Counted when asked; nothing open by now: no empty body.
+            text = if (open.any) ({ OpenThroughText(open) }) else null,
+            confirmButton = {
+                TextButton(onClick = {
+                    ui.disconnecting = null
+                    actions.disconnect(row)
+                }) { Text(stringResource(R.string.disconnect), color = AppTheme.colors.error) }
+            },
+            dismissButton = { TextButton(onClick = { ui.disconnecting = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     ui.deleting?.let { row ->
         var busy by remember(row.key) { mutableStateOf(false) }
         var error by remember(row.key) { mutableStateOf<String?>(null) }
@@ -467,8 +491,14 @@ fun ConnectionDialogs(
             onDismissRequest = { if (!busy) ui.deleting = null },
             title = { Text(stringResource(R.string.delete_title, rowName(row))) },
             text = {
-                androidx.compose.foundation.layout.Column {
-                    Text(stringResource(if (actions.deleteDisconnects(row)) R.string.delete_text_tunnel else R.string.delete_text))
+                Column {
+                    val disconnects = actions.deleteDisconnects(row)
+                    Text(stringResource(if (disconnects) R.string.delete_text_tunnel else R.string.delete_text))
+                    // What closes with the tunnel, as Disconnect says it.
+                    if (disconnects) {
+                        val open = actions.openThrough(row)
+                        if (open.any) OpenThroughText(open, Modifier.padding(top = 8.dp))
+                    }
                     error?.let { Text(it, color = AppTheme.colors.error, modifier = Modifier.padding(top = 8.dp)) }
                 }
             },
@@ -516,5 +546,17 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, context.getString(R.string.no_ssh_app), Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * What closes with the tunnels being disconnected: "N terminal sessions
+ * will close", and that open file screens lose their connection.
+ */
+@Composable
+fun OpenThroughText(open: OpenThrough, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (open.sessions > 0) Text(pluralStringResource(R.plurals.disconnect_closes_sessions, open.sessions, open.sessions))
+        if (open.files > 0) Text(stringResource(R.string.disconnect_closes_files))
     }
 }

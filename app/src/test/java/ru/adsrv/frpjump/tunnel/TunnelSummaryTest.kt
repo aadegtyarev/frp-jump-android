@@ -38,4 +38,14 @@ class TunnelSummaryTest {
         val unknown = TunnelSummary.of(mapOf("work" to 1), restoring = null)
         assertEquals(TunnelsTitle.Up(unknown), tunnelsTitle(unknown))
     }
+
+    @Test
+    fun `the notification title adds open terminal sessions while tunnels are up`() {
+        val words = { n: Int -> "$n terminal sessions" }
+        val up = TunnelsTitle.Up(TunnelSummary(2, 1))
+        assertEquals("2 tunnels · 3 terminal sessions", notificationTitle("2 tunnels", up, 3, words))
+        assertEquals("2 tunnels", notificationTitle("2 tunnels", up, 0, words))
+        // Restoring: no sessions can be on tunnels that are not up yet.
+        assertEquals("Restoring 2 tunnels…", notificationTitle("Restoring 2 tunnels…", TunnelsTitle.Restoring(2), 1, words))
+    }
 }
