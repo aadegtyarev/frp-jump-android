@@ -121,9 +121,12 @@ port, which stay keyed by (profile, device, port).
   running on its local port, so Undo brings it back with every session as
   it was (`undo/TunnelDisconnects.kt`; the counts that keep the service
   running still see it). Connect, Terminal, Files or MQTT on a dark row
-  takes back that tunnel's disconnect alone. "Disconnect all" with nothing
-  up yet (tunnels still being restored after a restart) tells the servers
-  at once, as below.
+  takes back that tunnel's disconnect alone; while a disconnect is being
+  done it waits for it and connects afresh. "Disconnect all" tells the
+  servers of profiles with nothing up yet (still being restored after a
+  restart) at once, as below. A tunnel already gone when the notice goes
+  is not disconnected again, and the notification's "Disconnect all" drops
+  the disconnects still waiting.
 - Delete does not ask: the row goes at once and a top notice "Deleted: N ·
   Undo" stays about 6 s (several deletes in a row share it; with
   disconnects or closes among them it counts each kind: "Deleted: 1 ·
@@ -183,7 +186,7 @@ not parse is left in place and nothing is migrated from it; a
   "· M sessions" (terminal and MQTT) when any is open, with "Disconnect all" (all
   profiles), which disconnects at once (there is no Undo in a notification):
   the title is the warning. Tunnels and sessions waiting for an Undo are
-  not counted.
+  not counted; with only such tunnels left it reads "Disconnecting…".
 
 ## Restore after kill and reboot
 

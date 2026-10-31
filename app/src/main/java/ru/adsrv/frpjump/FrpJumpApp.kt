@@ -216,7 +216,10 @@ class FrpJumpApp : Application() {
 
     /** Disconnecting tunnels with Undo: dark at once, stopped when the notice goes. Main thread. */
     val disconnects by lazy {
-        TunnelDisconnects(pendingUndo) { t ->
+        TunnelDisconnects(
+            pendingUndo,
+            isUp = { t -> profiles.runtime(t.profile)?.tunnels?.state?.value?.tunnels?.any { it.device == t.device && it.port == t.port } == true },
+        ) { t ->
             // In the tunnel manager's own scope, as a disconnect always ran; a failure shows on its row.
             profiles.runtime(t.profile)?.tunnels?.disconnectAsync(t.device, t.port)?.join()
         }

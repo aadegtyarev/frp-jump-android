@@ -15,13 +15,31 @@ import ru.adsrv.frpjump.tunnel.TunnelRef
  */
 class TunnelDisconnects(
     private val pendingUndo: PendingUndo,
+    /** Whether [TunnelRef] is up now: one gone meanwhile (the notification's "Disconnect all") is not disconnected again. */
+    private val isUp: (TunnelRef) -> Boolean,
     /** Disconnects [TunnelRef] for good; returns once done (failures say so on its row). */
     private val disconnectNow: suspend (TunnelRef) -> Unit,
 ) {
     /** Each of [tunnels] dark now, disconnected when the notice goes; one already dark is left as it is. */
     fun disconnect(tunnels: List<TunnelRef>) = tunnels.forEach { t ->
-        pendingUndo.enqueue(key(t), commit = { disconnectNow(t) }, kind = UndoKind.DISCONNECTED)
+        pendingUndo.enqueue(key(t), commit = { if (isUp(t)) disconnectNow(t) }, kind = UndoKind.DISCONNECTED)
     }
+
+    /** Whether [tunnel]'s disconnect is being done now: Undo is gone, it is going down. */
+    fun disconnecting(tunnel: TunnelRef): Boolean = pendingUndo.committing(key(tunnel))
+
+    /**
+     * Suspends while [tunnel]'s disconnect is being done, so what uses it
+     * next connects afresh rather than onto a tunnel going down.
+     */
+    suspend fun awaitDisconnected(tunnel: TunnelRef) = pendingUndo.awaitDone(key(tunnel))
+
+    /**
+     * Every tunnel went down at once by other means (the notification's
+     * "Disconnect all"): the disconnects still waiting mean nothing now and
+     * go, with their notice when nothing else waits on it.
+     */
+    fun dropWaiting() = pendingUndo.waitingKeys().filter { it.startsWith(TUNNEL_PREFIX) }.forEach { pendingUndo.withdraw(it) }
 
     /**
      * [tunnel] used again while its disconnect waits (Connect, Terminal,
@@ -37,4 +55,8 @@ class TunnelDisconnects(
     }
 
     private fun key(t: TunnelRef) = PendingUndo.tunnelKey(t.profile, t.device, t.port)
+
+    private companion object {
+        const val TUNNEL_PREFIX = "tunnel:"
+    }
 }

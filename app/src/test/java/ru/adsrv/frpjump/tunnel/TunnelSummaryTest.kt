@@ -48,4 +48,11 @@ class TunnelSummaryTest {
         // Restoring: no sessions can be on tunnels that are not up yet.
         assertEquals("Restoring 2 tunnels…", notificationTitle("Restoring 2 tunnels…", TunnelsTitle.Restoring(2), 1, words))
     }
+
+    @Test
+    fun `every tunnel waiting for its Undo reads disconnecting, not zero, and some left read their count`() {
+        assertEquals(TunnelsTitle.Disconnecting, tunnelsTitle(TunnelSummary.of(emptyMap(), restoring = 0).copy(dark = 2)))
+        val some = TunnelSummary.of(mapOf("p1" to 1), restoring = 0).copy(dark = 1)
+        assertEquals(TunnelsTitle.Up(some), tunnelsTitle(some))
+    }
 }

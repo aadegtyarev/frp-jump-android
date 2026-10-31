@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.undo
 
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -35,11 +37,13 @@ class TunnelDisconnectsTest {
             undoOnNotice = undo.takeIf { c != null }
         },
     )
-    private val disconnects = TunnelDisconnects(pending) { stopped += it }
-
     private val ssh = TunnelRef("p1", "dev-a", 22)
     private val web = TunnelRef("p1", "dev-a", 80)
     private val other = TunnelRef("p2", "dev-b", 22)
+
+    /** The tunnels up now, as the managers say. */
+    private val up = mutableSetOf(ssh, web, other)
+    private val disconnects = TunnelDisconnects(pending, isUp = { it in up }) { stopped += it }
 
     private fun tunnel(t: TunnelRef) = Tunnel(t.device, t.port, "g-${t.device}-${t.port}", 40000 + t.port, VisitorState(TunnelStatus.DIRECT))
 
@@ -129,5 +133,71 @@ class TunnelDisconnectsTest {
         assertFalse(disconnects.revive(web))
         expire()
         assertEquals(listOf(other), stopped)
+    }
+
+    @Test
+    fun `a tunnel gone meanwhile is not disconnected again`() {
+        disconnects.disconnect(listOf(ssh, other))
+        // The notification's "Disconnect all" took ssh down while the notice was on screen.
+        up -= ssh
+        expire()
+        assertEquals(listOf(other), stopped)
+    }
+
+    @Test
+    fun `after the notification's disconnect all the waiting disconnects go, other actions stay`() {
+        disconnects.disconnect(listOf(ssh, other))
+        pending.enqueue(PendingUndo.connectionKey("p1", "c1"), commit = {})
+        disconnects.dropWaiting()
+        assertEquals(mapOf(UndoKind.DELETED to 1), counts)
+        assertTrue(dark().isEmpty())
+        disconnects.disconnect(listOf(web))
+        disconnects.dropWaiting()
+        pending.enqueue(PendingUndo.connectionKey("p1", "c2"), commit = {})
+        expire()
+        assertTrue(stopped.isEmpty())
+        // With nothing else waiting the notice goes too.
+        disconnects.disconnect(listOf(web))
+        disconnects.dropWaiting()
+        assertNull(counts)
+        assertNull(timer)
+    }
+
+    @Test
+    fun `a tunnel being disconnected cannot be taken back, and what uses it waits until it is down`() = runBlocking {
+        val runs = mutableListOf<suspend () -> Unit>()
+        val slow = PendingUndo(timer = { _, _ -> {} }, run = { runs += it }, announce = { _, _ -> })
+        val going = TunnelDisconnects(slow, isUp = { true }) { stopped += it }
+        going.disconnect(listOf(ssh, other))
+        assertFalse(going.disconnecting(ssh))
+        slow.commitAll()
+        // The whole batch is being done, the later one too.
+        assertTrue(going.disconnecting(ssh))
+        assertTrue(going.disconnecting(other))
+        assertFalse(going.revive(ssh))
+        var connected = false
+        val waiter = launch {
+            going.awaitDisconnected(other)
+            connected = true
+        }
+        yield()
+        assertFalse(connected)
+        runs.single()()
+        waiter.join()
+        assertTrue(connected)
+        assertEquals(listOf(ssh, other), stopped)
+        assertFalse(going.disconnecting(ssh))
+        // Nothing being done: no wait.
+        going.awaitDisconnected(web)
+    }
+
+    @Test
+    fun `the screens leave dark tunnels out and keep the rest of the state`() {
+        val state = TunnelsState(tunnels = listOf(tunnel(ssh), tunnel(web)), errors = mapOf("dev-a:22" to "x"), syncError = "y")
+        assertTrue(state.withoutDark(emptySet()) === state)
+        val shown = state.withoutDark(setOf("dev-a:22"))
+        assertEquals(listOf(tunnel(web)), shown.tunnels)
+        assertEquals(state.errors, shown.errors)
+        assertEquals("y", shown.syncError)
     }
 }

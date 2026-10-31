@@ -157,7 +157,7 @@ private fun SessionLine(title: String, state: String, stateColor: Color, profile
                 Text(state, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = stateColor)
             }
             // At the row's end, as Disconnect on a connection row: ✕ as the other closes (search, a transfer).
-            IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.session_close_named, title), tint = colors.muted, modifier = Modifier.size(20.dp))
             }
         }

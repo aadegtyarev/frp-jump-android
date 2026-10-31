@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import ru.adsrv.frpjump.ports.profilePortKey
 import ru.adsrv.frpjump.ports.profilePortPrefix
@@ -92,6 +93,19 @@ class PendingUndo(
         }
         return true
     }
+
+    /** Whether the action of [key] is being done now: its notice went, its commit has not ended. */
+    @Synchronized
+    fun committing(key: String): Boolean = key in _hidden.value && waiting.none { it.key == key }
+
+    /** Suspends until the action of [key] is neither waiting nor being done. */
+    suspend fun awaitDone(key: String) {
+        hidden.first { key !in it }
+    }
+
+    /** The keys waiting for the notice to go, in order. */
+    @Synchronized
+    fun waitingKeys(): List<String> = waiting.map { it.key }
 
     /** The notice for what waits now is on screen: it stays its full time from here. */
     @Synchronized

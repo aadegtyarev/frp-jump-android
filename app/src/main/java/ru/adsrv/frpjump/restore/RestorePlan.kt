@@ -14,6 +14,14 @@ fun pendingRestore(record: Map<String, Int>?, listed: Set<String>?, up: Map<Stri
     else -> record.filterKeys { it in listed && (up[it] ?: 0) == 0 }.values.sum()
 }
 
+/**
+ * The [listed] profiles whose tunnels are all still to come back: [record]ed
+ * with some, none [up] yet. "Disconnect all" tells their servers at once,
+ * as nothing of them is on screen to wait for an Undo.
+ */
+fun restoringProfiles(record: Map<String, Int>?, listed: Set<String>, up: Map<String, Int>): Set<String> =
+    record.orEmpty().filter { (id, count) -> count > 0 && id in listed && (up[id] ?: 0) == 0 }.keys
+
 /** After a reboot: the tunnels the record lists, worth starting the service for when above 0. */
 fun tunnelsToRestoreOnBoot(record: Map<String, Int>): Int = record.values.filter { it > 0 }.sum()
 

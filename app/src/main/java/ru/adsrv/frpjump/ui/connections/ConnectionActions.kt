@@ -52,6 +52,7 @@ import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.undo.TunnelDisconnects
+import ru.adsrv.frpjump.restore.restoringProfiles
 import ru.adsrv.frpjump.ui.userMessage
 import java.io.IOException
 
@@ -88,8 +89,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val runtime = runtime(profile) ?: throw IOException(Texts.get(R.string.profile_gone))
         val key = localPortKey(device, port)
         fun up(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }?.localPort
-        // Used again while its disconnect waits for Undo: it stays up.
-        revive(profile, device, port)
+        // Used again while its disconnect waits for Undo: it stays up. Being disconnected: connect afresh after.
+        if (!revive(profile, device, port)) app.disconnects.awaitDisconnected(TunnelRef(profile, device, port))
         up(runtime.tunnels.state.value)?.let { return it }
         if (runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, kind)
         return withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
@@ -103,7 +104,17 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun connect(row: ConnectionRow) {
         val c = row.connection
         if (revive(row.profile, c.device, c.port)) return
-        runtime(row.profile)?.tunnels?.connectAsync(c.device, c.port, c.kind)
+        val tunnels = runtime(row.profile)?.tunnels ?: return
+        val ref = TunnelRef(row.profile, c.device, c.port)
+        // Its disconnect is being done: connect once it is down, not into it (the tap is not lost).
+        if (app.disconnects.disconnecting(ref)) {
+            app.appScope.launch {
+                app.disconnects.awaitDisconnected(ref)
+                tunnels.connectAsync(c.device, c.port, c.kind)
+            }
+        } else {
+            tunnels.connectAsync(c.device, c.port, c.kind)
+        }
     }
 
     /** A tunnel whose disconnect waits for Undo, used again from its row: it stays up ([TunnelDisconnects.revive]). Main thread. */
@@ -132,14 +143,18 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
 
     /**
      * "Disconnect all": every tunnel of every profile up now, with Undo
-     * ([TunnelDisconnects]); [onDone] at once. With none up yet (still being
-     * restored after a restart) there is nothing to show going: every server
-     * is told now, and [onDone] once it was asked (main thread).
+     * ([TunnelDisconnects]); [onDone] at once. Profiles whose tunnels are
+     * all still being restored after a restart have nothing on screen to
+     * wait for: their servers are told now. With none up anywhere, every
+     * server is told now, and [onDone] once it was asked (main thread).
      */
     fun disconnectAll(onDone: () -> Unit = {}) {
-        val shown = shownTunnels(app.profiles.state.value.runtimes.values)
+        val runtimes = app.profiles.state.value.runtimes
+        val shown = shownTunnels(runtimes.values)
         if (shown.isNotEmpty()) {
             app.disconnects.disconnect(shown)
+            val restoring = restoringProfiles(app.restoreRecord.profiles.value, runtimes.keys, app.profiles.tunnelsByProfileNow())
+            restoring.mapNotNull(runtimes::get).forEach { r -> app.appScope.launch { r.tunnels.disconnectAll() } }
             return onDone()
         }
         app.appScope.launch {
@@ -367,6 +382,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun openMqtt(row: ConnectionRow): Int? {
         val c = row.connection
         revive(row.profile, c.device, c.port)
+        // Going down with its tunnel: [openMqttWhenUp] waits for it and opens a new one.
+        if (app.disconnects.disconnecting(TunnelRef(row.profile, c.device, c.port))) return null
         app.mqtt.find(row.profile, c.id)?.let { return it.id }
         val localPort = row.tunnel?.localPort ?: return null
         if (runtime(row.profile) == null) return null

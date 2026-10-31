@@ -92,6 +92,8 @@ class TunnelService : Service() {
             app.appScope.launch {
                 profiles.awaitLoaded()
                 profiles.disconnectAll()
+                // Disconnects waiting for an Undo were done here just now.
+                app.disconnects.dropWaiting()
             }
         }
         if (watcher == null) {
@@ -106,7 +108,7 @@ class TunnelService : Service() {
                     profiles.restoreWaiting,
                     profiles.disconnectAllFailed,
                 ) { (up, shown), pending, record, waiting, failed ->
-                    val summary = TunnelSummary.of(shown, pending ?: record?.values?.sum())
+                    val summary = TunnelSummary.of(shown, pending ?: record?.values?.sum()).copy(dark = up.values.sum() - shown.values.sum())
                     if (serviceNeeded(up.values.sum(), pending)) View(summary, waiting, failed) else null
                 }
                     // "Disconnect all" here cannot ask: the title says what it would close.
@@ -193,6 +195,7 @@ class TunnelService : Service() {
 
     private fun tunnelsLine(res: Resources, summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
         TunnelsTitle.RestoringUnknown -> res.getString(R.string.tunnels_restoring_unknown)
+        TunnelsTitle.Disconnecting -> res.getString(R.string.state_disconnecting)
         is TunnelsTitle.Restoring -> res.getQuantityString(R.plurals.tunnels_restoring, title.count, title.count)
         is TunnelsTitle.Up -> {
             val tunnels = res.getQuantityString(R.plurals.tunnels, summary.tunnels, summary.tunnels)
@@ -206,7 +209,7 @@ class TunnelService : Service() {
 
     /** While tunnels are still to come back: a failed "Disconnect all" first, then what they wait for. */
     private fun text(res: Resources, view: View): String? = when {
-        tunnelsTitle(view.summary) is TunnelsTitle.Up -> null
+        tunnelsTitle(view.summary).let { it is TunnelsTitle.Up || it is TunnelsTitle.Disconnecting } -> null
         view.disconnectFailed -> res.getString(R.string.disconnect_all_failed)
         view.waiting == Waiting.UNLOCK -> res.getString(R.string.restore_waiting_unlock)
         view.waiting == Waiting.NETWORK -> res.getString(R.string.restore_waiting_network)
