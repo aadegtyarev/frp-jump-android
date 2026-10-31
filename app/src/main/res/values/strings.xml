@@ -386,6 +386,7 @@
     <string name="key_install_save_failed">Key login works, but the app could not save it: %s. Logins stay with the password.</string>
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
+    <string name="terminal_text_size">Text size</string>
     <string name="terminal_keyboard">Keyboard</string>
     <plurals name="sessions_left_running">
         <item quantity="one">%d session keeps running: Sessions tab</item>

@@ -409,6 +409,7 @@
     <string name="key_install_save_failed">Вход по ключу работает, но приложение не смогло это запомнить: %s. Вход остаётся по паролю.</string>
     <string name="terminal_text_smaller">Мельче</string>
     <string name="terminal_text_larger">Крупнее</string>
+    <string name="terminal_text_size">Размер текста</string>
     <string name="terminal_keyboard">Клавиатура</string>
     <plurals name="sessions_left_running">
         <item quantity="one">%d сессия продолжает работать: вкладка «Сессии»</item>

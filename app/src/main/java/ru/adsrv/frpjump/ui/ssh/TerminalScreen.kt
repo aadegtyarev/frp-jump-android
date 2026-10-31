@@ -338,17 +338,24 @@ fun TerminalScreen(
                     IconButton(onClick = { setFullscreen(true) }) {
                         Icon(FullscreenGlyph, contentDescription = stringResource(R.string.fullscreen), modifier = Modifier.size(20.dp))
                     }
-                    BarButton("A\u2212", smaller, enabled = fontSp > MIN_FONT_SP) {
-                        sessions.fontSize.value = (fontSp - 1).coerceAtLeast(MIN_FONT_SP)
-                    }
-                    BarButton("A+", larger, enabled = fontSp < MAX_FONT_SP) {
-                        sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
-                    }
                     Box {
                         IconButton(onClick = { barMenu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
                         }
                         DropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false }) {
+                            // Text size stays here, not on the bar, so the device name fits; the menu stays open while sizing.
+                            Row(
+                                Modifier.padding(start = 16.dp, end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(stringResource(R.string.terminal_text_size), Modifier.weight(1f, fill = false).padding(end = 12.dp))
+                                BarButton("A\u2212", smaller, enabled = fontSp > MIN_FONT_SP, onMenu = true) {
+                                    sessions.fontSize.value = (fontSp - 1).coerceAtLeast(MIN_FONT_SP)
+                                }
+                                BarButton("A+", larger, enabled = fontSp < MAX_FONT_SP, onMenu = true) {
+                                    sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
+                                }
+                            }
                             // Off while the device is being asked: a second tap would only ask again.
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.terminal_close_all, selected.device)) },
@@ -565,7 +572,7 @@ fun TerminalScreen(
 
 /** A narrow text button of the terminal's bar, so the device's name keeps its room. */
 @Composable
-private fun BarButton(text: String, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun BarButton(text: String, description: String, enabled: Boolean = true, onMenu: Boolean = false, onClick: () -> Unit) {
     val colors = AppTheme.colors
     Box(
         Modifier
@@ -575,7 +582,11 @@ private fun BarButton(text: String, description: String, enabled: Boolean = true
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) colors.onTerm else colors.termMuted)
+        Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = when {
+            !enabled -> colors.termMuted
+            onMenu -> colors.ink
+            else -> colors.onTerm
+        })
     }
 }
 
