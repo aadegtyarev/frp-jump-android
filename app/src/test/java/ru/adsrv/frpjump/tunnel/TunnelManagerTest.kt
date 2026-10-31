@@ -322,6 +322,21 @@ class TunnelManagerTest {
     }
 
     @Test
+    fun `a tunnel that worked again may move again`() = runBlocking {
+        manager.sync()
+        repeat(3) {
+            val before = frpc.applies
+            frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use #$it"))
+            withTimeout(5_000) { while (frpc.applies == before) delay(20) }
+        }
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
+        delay(100)
+        val before = frpc.applies
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use again"))
+        withTimeout(5_000) { while (frpc.applies == before) delay(20) }
+    }
+
+    @Test
     fun `other start errors do not move the tunnel`() = runBlocking {
         manager.sync()
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "proxy not found"))

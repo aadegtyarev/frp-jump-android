@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.tunnel
 
+import java.util.concurrent.ConcurrentHashMap
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -136,8 +137,8 @@ class TunnelManager(
     /** "Retry direct" count per grant id ([VisitorSpec.attempt]); only touched under [syncing]. */
     private val attempts = mutableMapOf<String, Int>()
 
-    /** Moves to another local port per grant id, after its port was taken ([rebind]); only touched under [syncing]. */
-    private val rebinds = mutableMapOf<String, Int>()
+    /** Moves to another local port per grant id since it last worked ([rebind]); cleared by the states' collector too. */
+    private val rebinds = ConcurrentHashMap<String, Int>()
 
     /** Ports the next [apply] probes although frpc was given them: it could not listen there. */
     private var reprobe: Set<Int> = emptySet()
@@ -171,6 +172,8 @@ class TunnelManager(
         // Another app took a tunnel's local port before frpc could listen on it: move the tunnel.
         scope.launch {
             runner.states.collect { states ->
+                // A tunnel that works again may move again the next time its port is taken.
+                rebinds.keys.removeAll(states.filterValues { it.status != TunnelStatus.FAILED && it.status != TunnelStatus.CONNECTING }.keys)
                 val taken = states.filterValues(::portTaken).keys
                 if (taken.isNotEmpty()) scope.launch { rebind(taken) }
             }
@@ -305,11 +308,13 @@ class TunnelManager(
 
     /**
      * Tunnels in [grants] whose local port is taken by someone else get a
-     * free one, at most [MAX_REBINDS] times each, and frpc reloads.
+     * free one, at most [MAX_REBINDS] times each until it works again, and
+     * frpc reloads.
      */
     private suspend fun rebind(grants: Set<String>) = syncing.withLock {
         val credentials = credentials() ?: return@withLock
         val desired = lastDesired ?: return@withLock
+        if (session.removed.value) return@withLock
         val still = grants.filter { grant -> runner.states.value[grant]?.let(::portTaken) == true && (rebinds[grant] ?: 0) < MAX_REBINDS }
         if (still.isEmpty()) return@withLock
         still.forEach { rebinds[it] = (rebinds[it] ?: 0) + 1 }

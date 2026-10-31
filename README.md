@@ -109,7 +109,7 @@ not parse is left in place and nothing is migrated from it; a
   so `127.0.0.1:<port>` bookmarks keep working and two profiles never share
   a port. When another app holds a tunnel's port and frpc reports "address
   already in use", the tunnel moves to a free port and frpc reloads (up to
-  three times per tunnel).
+  three times in a row per tunnel).
 - frpc runs from `nativeLibraryDir` as a child process, one per profile with
   tunnels; its config, cert, key and CA are written 0600 into
   `no_backup/frpc/<profile id>/`. The key and the config are
