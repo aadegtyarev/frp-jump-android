@@ -41,8 +41,11 @@ Anything that does not serve one of these is out.
 
 ## Connecting
 
-- Broker: `127.0.0.1:<local port>` of the tunnel. MQTT 3.1.1 (5 later if
-  needed). Client id `frpjump-<random>`, clean session.
+- Broker: `127.0.0.1:<local port>` of the tunnel. MQTT 5, falling back to
+  3.1.1 when the broker refuses 5: the current Wiren Board firmware on
+  Debian 13 (trixie) ships Mosquitto 2.0.21, which speaks both, and older
+  controllers (Debian 11, Mosquitto 2.0.20) too. Client id
+  `frpjump-<random>`, clean session.
 - Login: none by default; user and password when the broker asks
   (remembered per profile/device/port only with "Remember", sealed like
   SSH passwords). TLS (8883 or a switch) with the certificate pinned on
@@ -126,6 +129,16 @@ there" view.
   fields shipped with the app or imported), not downloaded code: Android
   forbids loading foreign code into an app of this kind safely.
 
+## Later: charts
+
+Not in the first stages, but the data model keeps room for it: numeric
+values of chosen topics are collected while the session runs and drawn as
+charts over time, several on one chart with their own scales, to see how
+parameters depend on each other (a room's temperature against a valve's
+position, a current against a relay). The topic history then needs a
+longer, numeric-only buffer per charted topic; nothing else in the
+explorer changes for it.
+
 ## Stored on the phone
 
 | What | Where |
@@ -143,6 +156,7 @@ there" view.
 4. Retained delete for a topic and a branch.
 5. Login and TLS, subscriptions other than `#`.
 6. Payload views as plugins (declarative), first plugin when wanted.
+7. Later: charts of chosen numeric topics, overlaid.
 
 ## Acceptance (a Wiren Board on the tunnel)
 
@@ -156,7 +170,7 @@ there" view.
   is gone after a reconnect.
 - Leaving and returning keeps the session; the tree is not rebuilt.
 
-## Open questions
+## Decided
 
-- MQTT 5 needed now (user properties, response topics), or 3.1.1 is
-  enough at first?
+- MQTT 5 with a 3.1.1 fallback, after the brokers on the owner's
+  controllers (Mosquitto 2.0.20 and 2.0.21).
