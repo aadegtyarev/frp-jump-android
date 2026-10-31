@@ -332,6 +332,12 @@
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
     <string name="terminal_keyboard">Keyboard</string>
+    <plurals name="terminal_left_running">
+        <item quantity="one">%d session keeps running: Terminals tab</item>
+        <item quantity="other">%d sessions keep running: Terminals tab</item>
+    </plurals>
+    <string name="terminal_close_title">Close %s?</string>
+    <string name="terminal_close_text">The session ends and what runs in it on the device stops.</string>
     <string name="terminal_close_session">Close session</string>
     <string name="terminal_reconnect">Reconnect</string>
     <string name="terminal_status_host_key_unknown">Waiting for the host key decision</string>

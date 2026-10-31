@@ -48,6 +48,9 @@ class SshSessions(
     /** The terminal screen while it is shown; set and cleared on the main thread. */
     var listener: TerminalScreenListener? = null
 
+    /** "Sessions keep running" was said once in this process: leaving the terminal says it the first time. */
+    var leftRunningHintShown = false
+
     init {
         scope.launch(Dispatchers.Main) {
             tunnelsUp.distinctUntilChanged().collect { up ->
