@@ -64,6 +64,7 @@ import ru.adsrv.frpjump.ui.connections.LocalAddress
 import ru.adsrv.frpjump.ui.connections.MainButton
 import ru.adsrv.frpjump.ui.connections.RowActions
 import ru.adsrv.frpjump.ui.connections.StatePill
+import ru.adsrv.frpjump.ui.connections.offersDirectChoice
 import ru.adsrv.frpjump.ui.connections.kindLabel
 import ru.adsrv.frpjump.ui.connections.mainActionLabel
 import ru.adsrv.frpjump.ui.connections.problemOf
@@ -280,7 +281,9 @@ private fun ConnectionCard(
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val state = stateOf(row)
-                if (state != null) StatePill(state.first, state.second) else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
+                if (state != null) {
+                    StatePill(state.first, state.second, onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) })
+                } else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
                 // The address gives way (ellipsis) before the main action does.
                 row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f)) } ?: Spacer(Modifier.weight(1f))
                 if (up) MainButton(mainActionLabel(row)) { actions.main(row) } else ConnectButton(row) { actions.connect(row) }

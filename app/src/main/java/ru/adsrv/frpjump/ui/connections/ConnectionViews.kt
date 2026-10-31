@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +54,7 @@ import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
@@ -84,12 +87,24 @@ fun stateOf(row: ConnectionRow): Pair<String, Tone>? {
         tunnel == null -> null
         else -> when (tunnel.state.status) {
             TunnelStatus.CONNECTING -> stringResource(R.string.state_connecting) to Tone.NEUTRAL
-            TunnelStatus.READY -> stringResource(R.string.state_connected) to Tone.GOOD
+            TunnelStatus.TRYING -> stringResource(R.string.state_trying_direct) to Tone.NEUTRAL
             TunnelStatus.DIRECT -> stringResource(R.string.state_direct) to Tone.GOOD
-            TunnelStatus.RELAYED -> stringResource(R.string.state_through_server) to Tone.WARN
+            // With direct off it is simply how tunnels work; otherwise direct would be better.
+            TunnelStatus.RELAYED -> stringResource(R.string.state_through_server) to (if (tunnel.direct == DirectMode.OFF) Tone.GOOD else Tone.WARN)
             TunnelStatus.FAILED -> stringResource(R.string.state_failed) to Tone.BAD
         }
     }
+}
+
+/**
+ * Whether tapping [row]'s state offers "Retry direct" / "Keep through the
+ * server": it goes through the server because direct did not work, or
+ * because the owner kept it so on this network.
+ */
+fun offersDirectChoice(row: ConnectionRow): Boolean {
+    val tunnel = row.tunnel ?: return false
+    if (row.pending != null || tunnel.state.status != TunnelStatus.RELAYED) return false
+    return tunnel.direct == DirectMode.KEPT || (tunnel.direct == DirectMode.ON && tunnel.state.directFailed)
 }
 
 /** What went wrong with [row], in plain words: its last connect/disconnect, or frpc's reason. */
@@ -108,18 +123,20 @@ fun toneColors(tone: Tone): Pair<Color, Color> {
     }
 }
 
-/** The state as a pill, as the device card shows it. */
+/** The state as a pill, as the device card shows it; [onClick] makes it a button (with a "›"). */
 @Composable
-fun StatePill(text: String, tone: Tone) {
+fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null) {
     val (ink, container) = toneColors(tone)
     Text(
-        text,
+        if (onClick != null) "$text  ›" else text,
         color = ink,
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
         modifier = Modifier
+            .clip(CircleShape)
             .background(container, CircleShape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }
@@ -224,6 +241,9 @@ class ConnectionUi {
     var deleting by mutableStateOf<ConnectionRow?>(null)
     var editing by mutableStateOf<ConnectionRow?>(null)
     var menu by mutableStateOf<String?>(null)
+
+    /** The row whose "Through the server" was tapped: Retry direct / Keep through the server. */
+    var direct by mutableStateOf<ConnectionRow?>(null)
 }
 
 /** Everything a row can do, wired to [actions] and the screen's navigation. */
@@ -236,6 +256,8 @@ class RowActions(
     val sshApp: (ConnectionRow) -> Unit,
     val change: (ConnectionRow) -> Unit,
     val delete: (ConnectionRow) -> Unit,
+    /** Tapped "Through the server". */
+    val directChoice: (ConnectionRow) -> Unit,
 )
 
 @Composable
@@ -271,6 +293,7 @@ fun rememberRowActions(
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
         change = { ui.editing = it },
         delete = { ui.deleting = it },
+        directChoice = { ui.direct = it },
     )
 }
 
@@ -322,6 +345,28 @@ fun ConnectionDialogs(
                 actions.openSsh(row, user, method, password, remember)?.let(onOpenTerminal)
             },
             onDismiss = { ui.login = null },
+        )
+    }
+    ui.direct?.let { row ->
+        val kept = row.tunnel?.direct == DirectMode.KEPT
+        AlertDialog(
+            onDismissRequest = { ui.direct = null },
+            title = { Text(stringResource(R.string.state_through_server)) },
+            text = {
+                Text(stringResource(if (kept) R.string.direct_kept_text else R.string.direct_failed_text, row.connection.device))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ui.direct = null
+                    actions.retryDirect(row)
+                }) { Text(stringResource(R.string.retry_direct)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    ui.direct = null
+                    if (!kept) actions.keepThroughServer(row)
+                }) { Text(stringResource(R.string.keep_through_server)) }
+            },
         )
     }
     ui.deleting?.let { row ->

@@ -7,6 +7,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -16,6 +18,7 @@ import ru.adsrv.frpjump.connections.ConnectionStore
 import ru.adsrv.frpjump.connections.migrateDevicePorts
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceListCache
+import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.session.Poller
 import ru.adsrv.frpjump.session.ProfileSession
@@ -25,6 +28,7 @@ import ru.adsrv.frpjump.ssh.SshLoginMemory
 import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.CredentialStore
 import ru.adsrv.frpjump.store.TextStorage
+import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.FrpcRunner
 import ru.adsrv.frpjump.tunnel.TunnelManager
 import ru.adsrv.frpjump.web.WebCertStore
@@ -48,6 +52,10 @@ class ProfileShared(
     val scope: CoroutineScope,
     /** A profile file as a [TextStorage]: [AtomicTextFile] in the app. */
     val storageFor: (File) -> TextStorage = ::AtomicTextFile,
+    /** "Keep through the server" choices of all profiles. */
+    val directKept: DirectKeptStore,
+    /** The current network's identity ([ru.adsrv.frpjump.direct.networkIdentity]); null without one. */
+    val network: StateFlow<String?>,
 )
 
 /**
@@ -91,6 +99,13 @@ class ProfileRuntime(
         // Shipped as a "native library": Android only allows exec from nativeLibraryDir.
         runner = FrpcRunner(shared.frpcBinary, File(shared.frpcRoot, id)),
         startService = shared.startService,
+        directMode = { device ->
+            when {
+                !shared.settings.value.direct -> DirectMode.OFF
+                shared.directKept.isKept(id, device, shared.network.value) -> DirectMode.KEPT
+                else -> DirectMode.ON
+            }
+        },
     )
 
     /** Whether the app shows this profile. */
@@ -98,17 +113,22 @@ class ProfileRuntime(
         currentId.map { it == id }.stateIn(scope, SharingStarted.Eagerly, currentId.value == id)
 
     init {
-        shared.settings.value.let {
-            tunnels.portRange = it.localPorts
-            tunnels.relayOnly = it.relayOnly
-        }
+        tunnels.portRange = shared.settings.value.localPorts
         scope.launch {
-            shared.settings.drop(1).collect {
-                tunnels.portRange = it.localPorts
-                tunnels.relayOnly = it.relayOnly
+            shared.settings.map { it.localPorts }.distinctUntilChanged().drop(1).collect {
+                tunnels.portRange = it
                 // Running tunnels pick the change up now; otherwise the next poll does.
                 if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.syncAsync()
             }
+        }
+        // The setting or the network changed whether tunnels try direct: frpc reloads the
+        // tunnels that change, the others keep their connections. ("Keep" and "Retry"
+        // apply themselves, see DirectChoices.)
+        scope.launch {
+            combine(shared.settings.map { it.direct }, shared.network) { direct, network -> direct to network }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.reapply() }
         }
         Poller(
             scope = scope,

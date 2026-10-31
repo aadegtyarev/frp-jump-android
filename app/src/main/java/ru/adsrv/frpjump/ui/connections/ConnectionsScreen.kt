@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.connections
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -189,7 +190,16 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                         )
                         val state = stateOf(row)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (state != null) Text(state.first, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = toneInk(state.second))
+                            if (state != null) {
+                                val choice = offersDirectChoice(row)
+                                Text(
+                                    if (choice) "${state.first}  ›" else state.first,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = toneInk(state.second),
+                                    modifier = if (choice) Modifier.clip(RoundedCornerShape(6.dp)).clickable { actions.directChoice(row) } else Modifier,
+                                )
+                            }
                             if (row.tunnel != null) {
                                 LocalAddress(row.tunnel.localPort, size = 12)
                             } else if (state == null) {

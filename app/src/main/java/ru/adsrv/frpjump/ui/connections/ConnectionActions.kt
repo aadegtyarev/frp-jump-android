@@ -33,6 +33,16 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         runtime(row.profile)?.tunnels?.disconnectAsync(row.connection.device, row.connection.port)
     }
 
+    /** "Retry direct" for [row]'s tunnel; kept through the server no more on this network. */
+    fun retryDirect(row: ConnectionRow) {
+        app.appScope.launch { app.directChoices.retryDirect(row.profile, row.connection.device, row.connection.port) }
+    }
+
+    /** "Keep through the server" for [row]'s device on this network. */
+    fun keepThroughServer(row: ConnectionRow) {
+        app.appScope.launch { app.directChoices.keepThroughServer(row.profile, row.connection.device) }
+    }
+
     /** Every tunnel of every profile. */
     fun disconnectAll() = app.profiles.disconnectAllAsync()
 

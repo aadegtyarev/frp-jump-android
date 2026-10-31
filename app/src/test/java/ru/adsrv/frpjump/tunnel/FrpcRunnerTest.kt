@@ -26,7 +26,6 @@ class FrpcRunnerTest {
         keyPem = "key",
         caPem = "ca",
         visitors = listOf(VisitorSpec("g1", "s1", 47200)),
-        relayOnly = false,
         connection = "server",
     )
 

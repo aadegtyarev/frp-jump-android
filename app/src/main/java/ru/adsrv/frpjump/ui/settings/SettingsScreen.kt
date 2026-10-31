@@ -60,6 +60,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
@@ -68,6 +69,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
@@ -130,15 +132,10 @@ fun SettingsScreen(
             }
             SectionTitle("Tunnels")
             ListItem(
-                headlineContent = { Text("Relay only") },
-                supportingContent = {
-                    Text(
-                        "Always through the frp-jump relay, no peer-to-peer attempt (like frp-jump-client set-p2p off). " +
-                            "Changing it restarts open tunnels, which drops their connections.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                },
-                trailingContent = { Switch(checked = settings.relayOnly, onCheckedChange = vm::setRelayOnly) },
+                headlineContent = { Text(stringResource(R.string.setting_direct)) },
+                supportingContent = { Text(stringResource(R.string.setting_direct_hint), style = MaterialTheme.typography.bodySmall) },
+                trailingContent = { Switch(checked = settings.direct, onCheckedChange = null) },
+                modifier = Modifier.toggleable(value = settings.direct, role = Role.Switch, onValueChange = vm::setDirect),
             )
             LocalPortsItem(settings.localPortFirst, settings.localPortLast, vm::setLocalPorts)
             SectionTitle("Background")

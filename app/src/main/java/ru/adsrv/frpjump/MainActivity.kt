@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump
 
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -29,6 +31,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        takeOpenDevice(intent)
         setContent {
             FrpJumpTheme {
                 AppNav()
@@ -36,9 +39,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        takeOpenDevice(intent)
+    }
+
+    /** A notification asked for a device card: the navigation shows it ([ru.adsrv.frpjump.ui.AppNav]). */
+    private fun takeOpenDevice(intent: Intent?) {
+        if (intent?.action != ACTION_OPEN_DEVICE) return
+        val profile = intent.getStringExtra(EXTRA_PROFILE) ?: return
+        val device = intent.getStringExtra(EXTRA_DEVICE) ?: return
+        (application as FrpJumpApp).openDevice.value = OpenDevice(profile, device)
+        // Once: not again when the activity is recreated from this intent.
+        intent.action = null
+    }
+
     /** Dark mode switched while open (uiMode is handled here, not by recreating): status bar icons follow it. */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         enableEdgeToEdge()
+    }
+
+    companion object {
+        private const val ACTION_OPEN_DEVICE = "ru.adsrv.frpjump.OPEN_DEVICE"
+        private const val EXTRA_PROFILE = "profile"
+        private const val EXTRA_DEVICE = "device"
+
+        /** Opens [device]'s card in [profile], over whatever the app shows. */
+        fun openDevice(context: Context, profile: String, device: String): Intent =
+            Intent(context, MainActivity::class.java)
+                .setAction(ACTION_OPEN_DEVICE)
+                .putExtra(EXTRA_PROFILE, profile)
+                .putExtra(EXTRA_DEVICE, device)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
 }

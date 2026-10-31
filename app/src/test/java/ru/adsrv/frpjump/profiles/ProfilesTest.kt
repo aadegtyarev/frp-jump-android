@@ -16,8 +16,10 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.api.FrpJumpApi
+import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.settings.AppSettings
+import ru.adsrv.frpjump.ssh.MemoryStorage
 import ru.adsrv.frpjump.store.StoredEnrollment
 import java.io.File
 
@@ -38,6 +40,8 @@ class ProfilesTest {
         startService = { false },
         scope = scope,
         storageFor = files::storage,
+        directKept = DirectKeptStore(MemoryStorage()),
+        network = MutableStateFlow(null),
     )
 
     private fun store() = ProfileStore(filesDir, keystore::box, files::storage, newId = { "id${++ids}" })

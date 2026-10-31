@@ -29,12 +29,12 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     private val _state = MutableStateFlow(SettingsUiState())
     val state: StateFlow<SettingsUiState> = _state
 
-    /** Background poll, relay only, local ports. */
+    /** Background poll, direct connection, local ports. */
     val settings: StateFlow<AppSettings> = app.settings.settings
 
     fun setBackgroundPoll(poll: BackgroundPoll) = save { it.copy(backgroundPoll = poll) }
 
-    fun setRelayOnly(relayOnly: Boolean) = save { it.copy(relayOnly = relayOnly) }
+    fun setDirect(direct: Boolean) = save { it.copy(direct = direct) }
 
     /** Returns why the range was refused, or null once it is saved. */
     fun setLocalPorts(first: Int?, last: Int?): String? {

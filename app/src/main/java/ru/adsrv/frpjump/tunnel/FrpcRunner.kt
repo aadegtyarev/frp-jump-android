@@ -15,24 +15,27 @@ class FrpcLaunch(
     val keyPem: String,
     val caPem: String,
     val visitors: List<VisitorSpec>,
-    val relayOnly: Boolean,
     /** Server, device and token: frpc applies them only at start. */
     val connection: String,
 ) {
     val grantIds: List<String> get() = visitors.map { it.grantId }
 
-    /** Whether going from [old] to this needs a new frpc rather than a reload of its visitors. */
+    /**
+     * Whether going from [old] to this needs a new frpc rather than a reload
+     * of its visitors. Switching a tunnel between direct and through the
+     * server is a reload: frpc closes only the changed visitors' listeners,
+     * and connections already handed to the stcp visitor carry on.
+     */
     fun needsRestartFrom(old: FrpcLaunch): Boolean =
-        connection != old.connection || certPem != old.certPem || keyPem != old.keyPem || caPem != old.caPem ||
-            relayOnly != old.relayOnly
+        connection != old.connection || certPem != old.certPem || keyPem != old.keyPem || caPem != old.caPem
 
-    /** Grants whose visitors a reload from [old] starts (new or changed), in config order. */
+    /** Visitors a reload from [old] starts (new or changed), by name in config order. */
     fun restartedSince(old: FrpcLaunch): List<String> {
-        val before = old.visitors.associateBy { it.grantId }
-        return visitors.filter { before[it.grantId] != it }.map { it.grantId }
+        val before = visitorEntries(old.visitors).associateBy { it["name"] }
+        return visitorEntries(visitors).filter { before[it["name"]] != it }.map { it["name"] as String }
     }
 
-    override fun toString() = "FrpcLaunch(grants=$grantIds, relayOnly=$relayOnly)"
+    override fun toString() = "FrpcLaunch(visitors=$visitors)"
 }
 
 /**
@@ -122,7 +125,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     }
 
     private fun reload(current: Run, launch: FrpcLaunch, config: String): Boolean {
-        current.parser.reconfigure(launch.grantIds, launch.restartedSince(current.launch))
+        current.parser.reconfigure(launch.visitors, launch.restartedSince(current.launch))
         _states.value = current.parser.snapshot()
         writePrivateFile(configFile, config)
         current.launch = launch
@@ -144,7 +147,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
         writePrivateFile(File(tls.caFile), launch.caPem)
         writePrivateFile(File(tls.keyFile), launch.keyPem)
         writePrivateFile(configFile, config)
-        val parser = FrpcLogParser(launch.grantIds, launch.relayOnly)
+        val parser = FrpcLogParser(launch.visitors)
         _states.value = parser.snapshot()
         val started = ProcessBuilder(binary.path, "-c", configFile.path)
             .directory(workDir)
@@ -176,6 +179,12 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     }
 
     override fun recentLog(): List<String> = log.snapshot()
+
+    @Synchronized
+    override fun expireTrying() {
+        val current = run ?: return
+        if (current.parser.expire()) _states.value = current.parser.snapshot()
+    }
 
     private fun stopProcess() {
         generation++

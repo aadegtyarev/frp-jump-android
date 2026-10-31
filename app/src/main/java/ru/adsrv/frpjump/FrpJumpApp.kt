@@ -8,6 +8,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.FrpJumpApi
+import ru.adsrv.frpjump.direct.DirectChoices
+import ru.adsrv.frpjump.direct.DirectKeptStore
+import ru.adsrv.frpjump.direct.DirectNotifier
+import ru.adsrv.frpjump.direct.NetworkWatcher
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfileShared
@@ -27,6 +31,9 @@ import ru.adsrv.frpjump.ui.web.clearWebData
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
+/** A device card of a profile, to open from outside the app's screens. */
+data class OpenDevice(val profile: String, val device: String)
+
 class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
     lateinit var profiles: Profiles
@@ -41,6 +48,17 @@ class FrpJumpApp : Application() {
         private set
     lateinit var settings: SettingsStore
         private set
+    lateinit var directKept: DirectKeptStore
+        private set
+    lateinit var network: NetworkWatcher
+        private set
+    lateinit var directChoices: DirectChoices
+        private set
+    lateinit var directNotifier: DirectNotifier
+        private set
+
+    /** A device card to show, asked for by a notification; taken by the navigation. */
+    val openDevice = MutableStateFlow<OpenDevice?>(null)
 
     val session = AppSession()
 
@@ -53,6 +71,8 @@ class FrpJumpApp : Application() {
     override fun onCreate() {
         super.onCreate()
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
+        directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))
+        network = NetworkWatcher(this).also { it.start() }
         val frpcRoot = File(noBackupFilesDir, "frpc")
         val shared = ProfileShared(
             api = api,
@@ -63,13 +83,19 @@ class FrpJumpApp : Application() {
             frpcRoot = frpcRoot,
             startService = { TunnelService.start(this) },
             scope = appScope,
+            directKept = directKept,
+            network = network.id,
         )
         val store = ProfileStore(filesDir, boxFor = ::KeystoreSecretBox, storageFor = ::AtomicTextFile)
         profiles = Profiles(store) { profile, profileStore, currentId ->
             ProfileRuntime(profile.id, profileStore.credentials(profile), profileStore.dir(profile.id), currentId, shared)
         }
+        directChoices = DirectChoices(profiles, directKept, network.id)
+        directNotifier = DirectNotifier(this, profiles).also { it.start(appScope) }
         // Keystore and disk (and the v1 upgrade): off the main thread. The UI waits for it.
         appScope.launch(Dispatchers.IO) {
+            // Before any profile applies its tunnels.
+            directKept.load()
             // v1 kept one frpc's files right in here; each profile now has a directory of its own.
             frpcRoot.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
             if (profiles.load()) {
@@ -110,6 +136,7 @@ class FrpJumpApp : Application() {
         ssh.closeProfile(id)
         profiles.forget(id, keepData) { last ->
             sshPasswords.forgetProfile(id)
+            directKept.removeProfile(id)
             if (last) {
                 sshKeys.wipe()
                 sshPasswords.wipe()

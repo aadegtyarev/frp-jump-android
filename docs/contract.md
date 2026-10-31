@@ -124,8 +124,9 @@ re-enroll.
 - Direct failed: the connection works through the server right away, the
   card says "Through the server", and a notification "Direct didn't work:
   <name>" offers "Retry direct" and "Keep through the server". The second
-  one stops offering for this device on the current network (Wi-Fi name or
-  mobile) until the owner retries from the card.
+  one stops offering for this device on the current network (the Wi-Fi
+  network, recognised without the location permission, or mobile data)
+  until the owner retries from the card.
 - A direct tunnel that drops mid-session falls back to the server the same
   way, with the same notification.
 - Tapping the state on the card offers the same two actions.
@@ -193,7 +194,7 @@ version and update).
 | --- | --- |
 | Per profile: device token, cert, key, CA | app-private files, encrypted with a Keystore key |
 | SSH private key, remembered passwords | same |
-| Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, settings | app-private storage |
+| Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
 
 Nothing leaves the phone except calls to the frp-jump servers, the tunnels and
 the update check.

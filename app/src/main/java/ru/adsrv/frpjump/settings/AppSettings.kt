@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 import ru.adsrv.frpjump.api.WireJson
 import ru.adsrv.frpjump.store.TextStorage
 
@@ -21,8 +25,12 @@ enum class BackgroundPoll(val ms: Long?, val label: String) {
 @Serializable
 data class AppSettings(
     @SerialName("background_poll") val backgroundPoll: BackgroundPoll = BackgroundPoll.OFF,
-    /** Like `frp-jump-client set-p2p off`: one stcp visitor per tunnel, bound directly. */
-    @SerialName("relay_only") val relayOnly: Boolean = false,
+    /**
+     * "Direct connection (P2P)": try a peer-to-peer tunnel and fall back to the
+     * server. Off is `frp-jump-client set-p2p off`: one stcp visitor per
+     * tunnel, bound directly, no attempts.
+     */
+    @SerialName("direct") val direct: Boolean = true,
     @SerialName("local_port_first") val localPortFirst: Int = DEFAULT_PORTS.first,
     @SerialName("local_port_last") val localPortLast: Int = DEFAULT_PORTS.last,
 ) {
@@ -61,11 +69,23 @@ class SettingsStore(private val storage: TextStorage) {
     }
 
     private fun read(): AppSettings {
-        val stored = runCatching { storage.read()?.let { WireJson.decodeFromString<AppSettings>(it) } }.getOrNull() ?: return AppSettings()
+        val stored = runCatching { storage.read()?.let(::decode) }.getOrNull() ?: return AppSettings()
         return if (portRangeProblem(stored.localPortFirst, stored.localPortLast) == null) {
             stored
         } else {
             stored.copy(localPortFirst = AppSettings.DEFAULT_PORTS.first, localPortLast = AppSettings.DEFAULT_PORTS.last)
         }
+    }
+
+    private fun decode(text: String): AppSettings {
+        val json = WireJson.parseToJsonElement(text).jsonObject
+        val settings = WireJson.decodeFromJsonElement<AppSettings>(json)
+        // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
+        val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
+        return if ("direct" !in json && relayOnly != null) settings.copy(direct = !relayOnly) else settings
+    }
+
+    private companion object {
+        const val LEGACY_RELAY_ONLY = "relay_only"
     }
 }

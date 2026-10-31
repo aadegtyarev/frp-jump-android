@@ -9,7 +9,9 @@ Behaviour is defined in [docs/contract.md](docs/contract.md).
 
 Current stage: profiles (switcher, list, add, name and colour, forget), the
 device list, named connections on the device card and in the Connections
-tab, the in-app web view (HTTP and HTTPS), the SSH terminal and settings (relay only, local ports, background checks, battery
+tab, direct or through-the-server tunnels with the "Direct didn't work"
+notification, the in-app web view (HTTP and HTTPS), the SSH terminal and
+settings (direct connection, local ports, background checks, battery
 optimisation, SSH keys). The app has its own light and dark colour scheme
 (`ui/Palette.kt`), following the system.
 
@@ -94,9 +96,11 @@ not parse is left in place and nothing is migrated from it; a
   `tcp` otherwise, as the Linux client classifies them), then polls
   desired state every second for up to 15 s until the grant shows up.
 - Desired state is the only source of truth: frpc runs one stcp + xtcp
-  visitor pair per consumed grant, laid out as the Linux agent's
-  `driver/frp/config.py` does, except frpc logs at `info` so the app can tell
-  connecting / ready / direct / relayed / failed from its output.
+  visitor pair per consumed grant (a single stcp one when direct is off
+  for it), laid out as the Linux agent's `driver/frp/config.py` does,
+  except frpc logs at `info` so the app can tell connecting / trying
+  direct / direct / through the server / failed from its output, and the
+  xtcp visitor keeps its tunnel open (see below).
 - Local ports come from 40000-40999 and stay with (profile, device, port),
   so `127.0.0.1:<port>` bookmarks keep working and two profiles never share
   a port.
@@ -135,11 +139,76 @@ shows whether the app is exempt from battery optimisation, with a button
 to the system dialog (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, fine for a
 sideloaded app).
 
+## Direct or through the server
+
+With "Direct connection (P2P)" on (the default) every tunnel has an xtcp
+visitor that punches a peer-to-peer path and hands each connection to the
+stcp visitor (through the server) when there is none within 500 ms, so a
+connection never waits for the outcome.
+
+- Connecting shows "Trying direct…" for up to 10 s, then "Direct" or
+  "Through the server". The xtcp visitor has `keepTunnelOpen`, so it
+  punches as soon as it starts instead of on the first connection.
+- frpc's log is the only source of the outcome (its admin API reports
+  proxies, not visitors), read by `tunnel/FrpcLogParser.kt` per visitor
+  name: `establishing nat hole connection successful` is a punched hole,
+  but frpc then dials QUIC over it, which can still fail (`init tunnel
+  session error`, seen behind the emulator's NAT 5 s later), so the tunnel
+  is "Direct" when that error has not come in 6 s. `nathole prepare /
+  exchange info error`, `make hole error`, `init tunnel session error` or
+  no success in 10 s: "Through the server". `nathole precheck error` comes
+  on every new connection, while the device's frpc restarts for the new
+  grant: the app tries again 2 s later within the same 10 s.
+- A direct tunnel that dies (its periodic check or a connection logs `get
+  tunnel connection error` / `open tunnel error`) is "Trying direct…"
+  again while frpc punches anew, with the same outcomes.
+- Through the server after trying: a "Direct didn't work: <name>"
+  notification (own channel "Direct connection", apart from the tunnels'
+  one) with "Retry direct" and "Keep through the server"; tapping it opens
+  the device card. The same two answers sit behind the "Through the
+  server ›" state on the card and in the Connections tab. The actions run
+  in the app process, which the foreground service keeps alive, so they
+  work with the app closed.
+- "Retry direct" renames the tunnel's xtcp visitor (`<grant>-xtcp-visitor-N`)
+  and reloads frpc: only that visitor restarts and punches again;
+  connections already going through the server stay (frpc closes only a
+  visitor's listeners, not the connections it handed to the stcp visitor),
+  and other tunnels are untouched.
+- "Keep through the server" switches the device's tunnels to a single
+  stcp visitor on the current network (by reload, same as above): no more
+  attempts or notifications there until "Retry direct" from the card. The
+  choices are kept in `direct_kept.json` per profile, device and network.
+  The network is recognised without the location permission the Wi-Fi
+  name needs: mobile data is one network; any other is its kind plus a
+  hash of its gateways (an IPv6 router's link-local address usually
+  carries its MAC), DNS servers, search domains and IPv4 subnets
+  (`direct/NetworkIdentity.kt`). Two plain Wi-Fis with identical settings
+  look the same.
+- While frpc stays through the server after a failure it retries by itself
+  quietly (below); a success turns the tunnel "Direct" without a word.
+
+Keepalive (frp 0.70, `client/visitor/xtcp.go`, `pkg/config/v1`): the xtcp
+visitor sets `keepTunnelOpen = true`, `minRetryInterval = 30` (every 30 s
+it opens a stream on the tunnel to check it and punches again if it is
+dead, upstream default 90 s) and `maxRetriesAnHour = 8` (upstream default:
+after a burst of 8, one failed attempt per 7.5 min, so a network that
+never punches costs little). `[transport.quic]` is written out as
+`keepalivePeriod = 10`, `maxIdleTimeout = 30` (upstream defaults): a PING
+every 10 s keeps an idle tunnel's NAT mapping open, and a silent peer ends
+the tunnel within 30 s for the check to notice.
+
+Over a direct tunnel the device sees a connection only once the phone's
+side sends its first bytes (QUIC opens the stream lazily): fine for HTTP
+and SSH clients, which speak first or at once; a protocol where the
+server must speak first to an idle client would wait.
+
 ## Settings
 
-- Relay only: one `stcp` visitor per tunnel bound directly, as
-  `frp-jump-client set-p2p off`; tunnels show "Relayed". Changing it
-  restarts frpc.
+- Direct connection (P2P): see above; off is one `stcp` visitor per tunnel
+  bound directly, as `frp-jump-client set-p2p off`, with no attempts and
+  no notifications. Switching it reloads frpc (connections through the
+  server stay; direct ones end). A `relay_only` saved by 0.2.0-beta1 and
+  earlier is read as the opposite of this switch.
 - Local ports: a range within 1024-65535 of at least 10 ports, 40000-40999
   by default. Existing mappings stay unless they fall outside a new range.
 - Settings are kept in `settings.json`; "Forget this phone" keeps them.
@@ -196,7 +265,7 @@ rewrites `frpc.toml` and calls frpc's admin API (`GET /api/reload`, on
 and frpc swaps only the visitors that changed. Open SSH sessions and web
 sockets of the other tunnels stay up. frpc is restarted (dropping them)
 only when the reload fails or something frpc reads only at start changes:
-the server, the device's TLS material or token, or "Relay only".
+the server, the device's TLS material or token.
 
 The other end still restarts: a connect or disconnect changes what the
 target device exposes, and its Linux agent restarts its own frpc on any

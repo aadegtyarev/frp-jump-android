@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -31,6 +32,12 @@ import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
 
+/**
+ * Whether a tunnel tries a direct path: [OFF] by the setting, [KEPT] through
+ * the server because the owner chose so for its device on this network.
+ */
+enum class DirectMode { ON, KEPT, OFF }
+
 /** One consumed grant as the card shows it. */
 data class Tunnel(
     val device: String,
@@ -38,6 +45,7 @@ data class Tunnel(
     val grantId: String,
     val localPort: Int,
     val state: VisitorState,
+    val direct: DirectMode = DirectMode.ON,
 ) {
     val key get() = localPortKey(device, port)
 }
@@ -58,6 +66,8 @@ data class TunnelsState(
 
 private data class Core(
     val planned: List<PlannedTunnel> = emptyList(),
+    /** Per grant id, as last applied. */
+    val modes: Map<String, DirectMode> = emptyMap(),
     val pending: Map<String, PendingOp> = emptyMap(),
     val errors: Map<String, String> = emptyMap(),
     val syncError: String? = null,
@@ -90,6 +100,8 @@ class TunnelManager(
      * itself once no profile lists a tunnel ([TunnelService]).
      */
     private val startService: () -> Boolean,
+    /** Per device: try direct, or not (setting off, or kept through the server on this network). Read on every apply. */
+    private val directMode: (device: String) -> DirectMode = { DirectMode.ON },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
@@ -102,9 +114,11 @@ class TunnelManager(
     @Volatile
     var portRange: IntRange = 40000..40999
 
-    /** From the settings; a change restarts frpc on the next sync. */
-    @Volatile
-    var relayOnly: Boolean = false
+    /** The last desired state applied, for [reapply]; only touched under [syncing]. */
+    private var lastDesired: DesiredStateResponse? = null
+
+    /** "Retry direct" count per grant id ([VisitorSpec.attempt]); only touched under [syncing]. */
+    private val attempts = mutableMapOf<String, Int>()
 
     val state: StateFlow<TunnelsState> = combine(core, runner.states) { c, states ->
         TunnelsState(
@@ -115,6 +129,7 @@ class TunnelManager(
                     grantId = it.grant.grantId,
                     localPort = it.localPort,
                     state = states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING),
+                    direct = c.modes[it.grant.grantId] ?: DirectMode.ON,
                 )
             },
             pending = c.pending,
@@ -129,6 +144,22 @@ class TunnelManager(
         // the REMOVED screen says tunnels are stopped, so stop them.
         scope.launch {
             session.removed.collect { removed -> if (removed) syncing.withLock { stopAllLocked() } }
+        }
+        // "Trying direct…" ends after TRY_DIRECT_MS, and a punch is confirmed, even when frpc says nothing more.
+        scope.launch {
+            runner.states.collectLatest { states ->
+                // The device has no direct tunnel to meet yet: try again soon, not at frpc's next check.
+                val waiting = states.filterValues { it.status == TunnelStatus.TRYING && it.waitingForPeer }.keys
+                if (waiting.isNotEmpty()) {
+                    delay(PEER_RETRY_MS)
+                    // Not in this block: the reload's new states cancel it.
+                    scope.launch { retryGrants(waiting) }
+                }
+                while (states.values.any { it.status == TunnelStatus.TRYING || it.confirming }) {
+                    delay(EXPIRY_TICK_MS)
+                    withContext(Dispatchers.IO) { runner.expireTrying() }
+                }
+            }
         }
     }
 
@@ -193,9 +224,62 @@ class TunnelManager(
         return true
     }
 
+    /**
+     * Applies the last desired state again, without asking the server:
+     * whether a tunnel tries direct changed (the setting, "Keep through the
+     * server", the network). frpc reloads only the tunnels that changed.
+     */
+    suspend fun reapply() = syncing.withLock {
+        val credentials = credentials() ?: return@withLock
+        val desired = lastDesired ?: return@withLock
+        if (session.removed.value) return@withLock
+        applyQuietly(credentials, desired)
+    }
+
+    fun reapplyAsync() = scope.launch { reapply() }
+
+    /**
+     * "Retry direct" for [device]:[port]: its xtcp visitor gets a new name,
+     * so the reload starts it afresh and it punches again at once, while
+     * the other tunnels (and this one's connections through the server)
+     * stay. False when no such tunnel is up.
+     */
+    suspend fun retryDirect(device: String, port: Int): Boolean = syncing.withLock {
+        val credentials = credentials() ?: return@withLock false
+        val desired = lastDesired ?: return@withLock false
+        val grant = core.value.planned.firstOrNull { it.grant.exposerDeviceName == device && it.grant.targetPort == port }
+            ?: return@withLock false
+        attempts[grant.grant.grantId] = (attempts[grant.grant.grantId] ?: 0) + 1
+        applyQuietly(credentials, desired)
+        true
+    }
+
+    fun retryDirectAsync(device: String, port: Int) = scope.launch { retryDirect(device, port) }
+
+    /** A new attempt for [grants] that are still trying direct and waiting for their device. */
+    private suspend fun retryGrants(grants: Set<String>) = syncing.withLock {
+        val credentials = credentials() ?: return@withLock
+        val desired = lastDesired ?: return@withLock
+        val still = grants.filter { runner.states.value[it]?.waitingForPeer == true && core.value.modes[it] == DirectMode.ON }
+        if (still.isEmpty()) return@withLock
+        still.forEach { attempts[it] = (attempts[it] ?: 0) + 1 }
+        applyQuietly(credentials, desired)
+    }
+
+    private suspend fun applyQuietly(credentials: Credentials, desired: DesiredStateResponse) {
+        try {
+            apply(credentials, desired)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "reapply failed: ${e.userMessage()}")
+        }
+    }
+
     /** Stops frpc and the service; the caller holds [syncing]. */
     private suspend fun stopAllLocked() {
         withContext(Dispatchers.IO) { runner.stop() }
+        lastDesired = null
         core.update { it.copy(planned = emptyList()) }
         stopService()
     }
@@ -285,25 +369,33 @@ class TunnelManager(
             runner.wipe()
             localPorts.removeProfile(profile)
         }
+        lastDesired = null
         core.value = Core()
         stopService()
         wipeCredentials()
     }
 
     private suspend fun apply(credentials: Credentials, desired: DesiredStateResponse) {
-        val planned = withContext(Dispatchers.IO) {
+        lastDesired = desired
+        val live = desired.consumed.map { it.grantId }.toSet()
+        attempts.keys.retainAll(live)
+        val (planned, modes) = withContext(Dispatchers.IO) {
             // Under the shared map's lock: two profiles planning at once never pick the same port.
             val plan = localPorts.update { ports ->
                 planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts)
             }
+            val modes = plan.associate { it.grant.grantId to directMode(it.grant.exposerDeviceName) }
             if (plan.isEmpty()) {
                 runner.stop()
             } else {
-                runner.apply(launchFor(credentials, plan), plan.map { it.localPort }.toSet())
+                val visitors = plan.map {
+                    it.visitor(direct = modes[it.grant.grantId] == DirectMode.ON, attempt = attempts[it.grant.grantId] ?: 0)
+                }
+                runner.apply(launchFor(credentials, visitors), plan.map { it.localPort }.toSet())
             }
-            plan
+            plan to modes
         }
-        core.update { it.copy(planned = planned) }
+        core.update { it.copy(planned = planned, modes = modes) }
         if (planned.isEmpty()) stopService() else if (!serviceUp) serviceUp = startService()
     }
 
@@ -315,9 +407,7 @@ class TunnelManager(
         serviceUp = false
     }
 
-    private fun launchFor(c: Credentials, plan: List<PlannedTunnel>): FrpcLaunch {
-        val relayOnly = relayOnly
-        val visitors = plan.map { it.visitor() }
+    private fun launchFor(c: Credentials, visitors: List<VisitorSpec>): FrpcLaunch {
         return FrpcLaunch(
             configFor = { tls, admin ->
                 Toml.write(
@@ -329,7 +419,6 @@ class TunnelManager(
                         serverPort = c.serverPort,
                         tls = tls,
                         visitors = visitors,
-                        relayOnly = relayOnly,
                         admin = admin,
                     ),
                 )
@@ -338,7 +427,6 @@ class TunnelManager(
             keyPem = c.keyPem,
             caPem = c.caCertPem,
             visitors = visitors,
-            relayOnly = relayOnly,
             connection = listOf(c.deviceId, c.apiToken, c.serverAddr, c.serverPort.toString()).joinToString("\n"),
         )
     }
@@ -360,5 +448,7 @@ class TunnelManager(
     private companion object {
         const val TAG = "TunnelManager"
         const val CONNECT_WAIT_SECONDS = 15
+        const val EXPIRY_TICK_MS = 1_000L
+        const val PEER_RETRY_MS = 2_000L
     }
 }

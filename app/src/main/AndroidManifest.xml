@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Which network the phone is on, for "Keep through the server" (no location, no Wi-Fi name). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -30,6 +32,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The "Direct didn't work" notification's actions. -->
+        <receiver
+            android:name=".direct.DirectActionReceiver"
+            android:exported="false" />
 
         <!-- specialUse: dataSync is capped at 6 h a day for apps targeting Android 15. -->
         <service

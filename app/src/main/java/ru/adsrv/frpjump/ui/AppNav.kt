@@ -23,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,6 +98,16 @@ fun AppNav() {
     // The server rejected the current profile's token: its polling has stopped; say so wherever we are.
     LaunchedEffect(removed) {
         if (removed && nav.currentDestination?.route != Routes.REMOVED) nav.replaceAll(Routes.REMOVED)
+    }
+    // A notification's tap: that profile's device card, over whatever is shown.
+    val openDevice by app.openDevice.collectAsStateWithLifecycle()
+    LaunchedEffect(openDevice) {
+        val request = openDevice ?: return@LaunchedEffect
+        val route = nav.currentBackStackEntryFlow.map { it.destination.route }.first { it != Routes.LOADING }
+        app.openDevice.value = null
+        if (route in setOf(Routes.ENROLL, Routes.REMOVED, Routes.STORAGE) || app.profiles.runtime(request.profile) == null) return@LaunchedEffect
+        app.profiles.setCurrent(request.profile)
+        nav.navigate(Routes.device(request.device)) { popUpTo(Routes.DEVICE) { inclusive = true } }
     }
     NavHost(navController = nav, startDestination = Routes.LOADING) {
         composable(Routes.LOADING) {

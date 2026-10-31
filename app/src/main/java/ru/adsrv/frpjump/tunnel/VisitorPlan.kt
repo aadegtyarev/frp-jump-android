@@ -8,7 +8,7 @@ import ru.adsrv.frpjump.ports.profilePortKey
 /** A consumed grant and the local port it is served on. */
 data class PlannedTunnel(val grant: ConsumedGrant, val localPort: Int) {
     val key get() = localPortKey(grant.exposerDeviceName, grant.targetPort)
-    fun visitor() = VisitorSpec(grant.grantId, grant.secret, localPort)
+    fun visitor(direct: Boolean = true, attempt: Int = 0) = VisitorSpec(grant.grantId, grant.secret, localPort, direct, attempt)
 }
 
 /**
