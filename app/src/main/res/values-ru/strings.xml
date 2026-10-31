@@ -737,7 +737,7 @@
     <string name="mqtt_closed">Сессия закрыта</string>
     <string name="mqtt_snapshot_refused">Брокер не разрешает читать всё дерево</string>
     <string name="mqtt_limit_reached">Достигнут предел топиков: %1$s; новые топики не показываются</string>
-    <string name="mqtt_snapshot_timed_out">Дерево читалось 10 с, брокер всё ещё присылал: часть топиков может отсутствовать</string>
+    <string name="mqtt_snapshot_timed_out">Дерево читалось 10 с, новые топики всё ещё приходили: часть может отсутствовать</string>
     <string name="mqtt_branch_refused">Брокер не разрешает читать эту ветку</string>
     <string name="mqtt_no_messages">Сообщений нет</string>
     <string name="mqtt_show_value">Показать значение</string>

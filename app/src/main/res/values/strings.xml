@@ -696,7 +696,7 @@
     <string name="mqtt_closed">The session is closed</string>
     <string name="mqtt_snapshot_refused">The broker does not allow reading the whole tree</string>
     <string name="mqtt_limit_reached">Topic limit reached: %1$s; new topics are not shown</string>
-    <string name="mqtt_snapshot_timed_out">The tree was read for 10 s, the broker kept sending: some topics may be missing</string>
+    <string name="mqtt_snapshot_timed_out">The tree was read for 10 s, new topics kept coming: some may be missing</string>
     <string name="mqtt_branch_refused">The broker does not allow reading this branch</string>
     <string name="mqtt_no_messages">No messages</string>
     <string name="mqtt_show_value">Show the value</string>
