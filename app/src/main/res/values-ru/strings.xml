@@ -464,6 +464,9 @@
     <string name="copied">Скопировано</string>
     <string name="terminal_more_keys">Ещё клавиши</string>
     <string name="terminal_not_open">Сессия не открыта.</string>
+    <string name="terminal_new_session">Новая сессия</string>
+    <string name="terminal_new_session_as">Войти другим пользователем</string>
+    <string name="terminal_tab_menu">Закрыть или переподключить</string>
     <string name="snippet_run">Выполнить</string>
     <string name="snippet_type">Ввести</string>
     <string name="snippet_add_first">+ Добавить команду</string>

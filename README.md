@@ -403,7 +403,8 @@ port) and Key or Password, then opens a session to
   not open yet is doing. The small round button (drag it aside) or Back
   leaves it, a second Back leaves the terminal. The terminal remembers it
   separately from the web pages. Landscape with the keyboard up hides the
-  bar anyway; hide the keyboard to reach the icon.
+  bar anyway, and the session tabs too while there is only one session;
+  hide the keyboard to reach the icon.
 - Snippets: a row of saved commands above the keys. Tap types a command
   without Enter (to finish it first), long press types it and presses
   Enter; the manager says so. The last chip ("+ Add command" while there
@@ -415,10 +416,22 @@ port) and Key or Password, then opens a session to
   is. A held Ctrl / Alt does not apply to a snippet: it is typed as saved,
   and sending it releases the hold. A write that fails keeps the list as it
   was and says so (as a setting that cannot be saved does).
-- Sessions live in the app, not in the screen: several at once, as tabs
-  with the profile's colour, user and device; the Terminals tab leads back. A session ends when its
-  tunnel goes (Disconnect, Disconnect all, Forget); "Reconnect" starts a new
-  one with the same login.
+- Sessions live in the app, not in the screen: several at once; the
+  Terminals tab leads back. A session ends when its tunnel goes (Disconnect,
+  Disconnect all, Forget); "Reconnect" starts a new one with the same login.
+- Session tabs: a thin row between the bar and the terminal, shown with one
+  session too (`ui/ssh/SessionTabs.kt`). A tab has the profile's colour
+  dot and "user · device" (":port" when not 22); a second and third
+  session to the same user, device and port read "· 2", "· 3". A small
+  spinner and a dimmed name while connecting, a red dot next to the
+  profile's once it ended or failed. Tap switches (no swipes: the terminal
+  uses them to select text); the row scrolls and brings the selected tab
+  into view. Long press: Close session / Reconnect. Closing the tab shown
+  shows its left neighbour. "+" at the end opens another session to the
+  selected one's device and port with the same login, at once, and selects
+  it (a remembered password forgotten since asks with the login dialog);
+  long press on "+" opens the login dialog for that device and port, to log
+  in as another user.
 - "Open in external app" sends `ssh://<user>@127.0.0.1:<port>` to an SSH app
   (Termius, JuiceSSH, …).
 

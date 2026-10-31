@@ -250,6 +250,10 @@ fun AppNav() {
                 onOpenFiles = { s ->
                     nav.navigate(Routes.files(app.fileTargets.put(FilesTarget(s.profile, s.device, s.port, s.user, s.auth))))
                 },
+                rememberLogin = { s, login ->
+                    // Only the dialog's next start: a write that fails changes nothing else.
+                    app.appScope.launch(Dispatchers.IO) { runCatching { app.profiles.runtime(s.profile)?.sshLogins?.remember(s.device, s.port, login) } }
+                },
             )
         }
         composable(Routes.FILES) { entry ->

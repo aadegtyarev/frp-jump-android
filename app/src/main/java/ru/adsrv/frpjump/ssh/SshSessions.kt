@@ -75,6 +75,19 @@ class SshSessions(
         return fresh
     }
 
+    /**
+     * Another session to [id]'s device and port, as [user] with [auth]
+     * (by default the same login), after the others. Main thread.
+     */
+    fun openLike(id: Int, user: String? = null, auth: SshAuth? = null): SshSession? {
+        val from = find(id) ?: return null
+        return open(from.profile, from.hostKeys, from.device, from.port, from.localPort, user ?: from.user, auth ?: from.auth)
+    }
+
+    /** Whether a password is kept for [user] on [session]'s device and port; cheap, nothing is unsealed. */
+    fun hasRememberedPassword(session: SshSession, user: String): Boolean =
+        env.passwords.has(session.profile, session.device, session.port, user.trim())
+
     fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed)) {
         val session = _sessions.value.firstOrNull { it.id == id } ?: return
         session.close(reason)

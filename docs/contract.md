@@ -146,7 +146,9 @@ re-enroll.
 As in v1: user + key or password, one generated ed25519 key per phone (shared
 by all profiles), host keys pinned per profile+device+port, passwords stored
 only on "remember", several sessions at once. New: a row of snippets (saved
-commands, owner-defined) above the extra keys.
+commands, owner-defined) above the extra keys; the sessions as a row of tabs
+above the terminal, where "+" opens another session to the same device with
+the same login (long press: as another user).
 
 ### 8. Background, kill and reboot
 
