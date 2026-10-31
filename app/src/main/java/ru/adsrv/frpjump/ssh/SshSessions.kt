@@ -59,7 +59,9 @@ class SshSessions(
 
     /** Opens a new session to [device]:[port] of [profile] and starts connecting. Main thread. */
     fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth): SshSession {
-        val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen())
+        val target = SshTarget(user, device, port)
+        val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
+        val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number)
         _sessions.update { it + session }
         session.connect()
         return session
@@ -69,11 +71,24 @@ class SshSessions(
     fun reconnect(id: Int): SshSession? {
         val old = _sessions.value.firstOrNull { it.id == id } ?: return null
         old.close()
-        val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, old.user, old.auth, env, scope, ClientForScreen())
+        val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, old.user, old.auth, env, scope, ClientForScreen(), old.number)
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         fresh.connect()
         return fresh
     }
+
+    /**
+     * Another session to [id]'s device and port, as [user] with [auth]
+     * (by default the same login), after the others. Main thread.
+     */
+    fun openLike(id: Int, user: String? = null, auth: SshAuth? = null): SshSession? {
+        val from = find(id) ?: return null
+        return open(from.profile, from.hostKeys, from.device, from.port, from.localPort, user ?: from.user, auth ?: from.auth)
+    }
+
+    /** Whether a password is kept for [user] on [session]'s device and port; cheap, nothing is unsealed. */
+    fun hasRememberedPassword(session: SshSession, user: String): Boolean =
+        env.passwords.has(session.profile, session.device, session.port, user.trim())
 
     fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed)) {
         val session = _sessions.value.firstOrNull { it.id == id } ?: return
@@ -173,6 +188,17 @@ class SshSessions(
         const val DEFAULT_FONT_SP = 14
     }
 }
+
+/** Who a session logs in as and where. */
+data class SshTarget(val user: String, val device: String, val port: Int)
+
+/**
+ * A new session's number among the [open] ones (target, number) to the
+ * same [target]: one past the highest, so closing one renumbers nothing;
+ * 1 when none is open.
+ */
+fun nextSessionNumber(open: List<Pair<SshTarget, Int>>, target: SshTarget): Int =
+    (open.filter { it.first == target }.maxOfOrNull { it.second } ?: 0) + 1
 
 /**
  * What a toast shows of [text] put on the clipboard: its first non-blank

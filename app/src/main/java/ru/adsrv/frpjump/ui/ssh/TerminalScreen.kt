@@ -11,11 +11,9 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -27,13 +25,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -86,6 +77,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.snippets.SnippetStore
+import ru.adsrv.frpjump.ssh.SshAuth
+import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
@@ -111,6 +105,8 @@ fun TerminalScreen(
     onBack: () -> Unit,
     /** "Files" for the selected session's device, port and login. */
     onOpenFiles: (SshSession) -> Unit,
+    /** Keeps the login typed in the dialog of a long press on "+" for that session's device and port. */
+    rememberLogin: (SshSession, SshLogin) -> Unit,
 ) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
     val snippets by snippetStore.snippets.collectAsStateWithLifecycle()
@@ -136,9 +132,38 @@ fun TerminalScreen(
     }
     val fontSp by sessions.fontSize.collectAsStateWithLifecycle()
     var selectedId by rememberSaveable { mutableStateOf(initialId) }
+    /** The session whose device and port the login dialog of a long press on "+" is for. */
+    var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
     if (selected == null) return
+    val gone = stringResource(R.string.terminal_session_gone)
+    // A new tab is selected; when the session to copy closed meanwhile, a toast says so.
+    fun openedOrGone(opened: SshSession?) {
+        if (opened != null) selectedId = opened.id else Toast.makeText(context, gone, Toast.LENGTH_SHORT).show()
+    }
+    // Closing the tab shown shows its neighbour, not the first tab.
+    fun closeTab(id: Int) {
+        selectionAfterClose(list.map { it.id }, selected.id, id)?.let { selectedId = it }
+        sessions.close(id)
+    }
+    fun reconnectTab(id: Int) {
+        sessions.reconnect(id)?.let { selectedId = it.id }
+    }
+    val tabActions = SessionTabActions(
+        select = { selectedId = it },
+        close = ::closeTab,
+        reconnect = ::reconnectTab,
+        // The same login at once; a refused one, or a remembered password since forgotten, needs the dialog.
+        add = {
+            if (reusesLogin(selected.auth, selected.authRefused) { sessions.hasRememberedPassword(selected, selected.user) }) {
+                openedOrGone(sessions.openLike(selected.id))
+            } else {
+                loginLikeId = selected.id
+            }
+        },
+        addAs = { loginLikeId = selected.id },
+    )
     val state by selected.state.collectAsStateWithLifecycle()
     val modifiers = remember { Modifiers() }
     val current = rememberUpdatedState(selected)
@@ -180,7 +205,7 @@ fun TerminalScreen(
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val colors = AppTheme.colors
     val notOpen = stringResource(R.string.terminal_not_open)
-    // Full screen: no bar, no session tabs, no system bars; the snippets and extra keys stay, typing needs them.
+    // Full screen: no bar, no system bars, the session tabs only for several; the snippets and extra keys stay, typing needs them.
     val (fullscreen, setFullscreen) = rememberFullscreen(FullscreenOf.TERMINAL)
     BackHandler(enabled = fullscreen) { setFullscreen(false) }
     SystemBarsHidden(fullscreen)
@@ -236,7 +261,7 @@ fun TerminalScreen(
                     BarButton("A+", larger, enabled = fontSp < MAX_FONT_SP) {
                         sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
                     }
-                    IconButton(onClick = { sessions.close(selected.id) }) {
+                    IconButton(onClick = { closeTab(selected.id) }) {
                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.terminal_close_session))
                     }
                 },
@@ -251,9 +276,10 @@ fun TerminalScreen(
                     .consumeWindowInsets(padding)
                     .imePadding(),
             ) {
-                // Kept in full screen too: thin, and the only way to see and switch the sessions there.
-                if (list.size > 1) {
-                    SessionTabs(list, selected.id, profileColors) { selectedId = it }
+                // Always under the bar. Full screen and landscape with the keyboard up keep it
+                // only for several sessions: there it is the only way to see and switch them.
+                if (!(fullscreen || compact) || list.size > 1) {
+                    SessionTabs(list, selected.id, profileColors, tabActions)
                 }
                 // Full screen has no bar: say what the session is doing until it is open.
                 if (fullscreen && state != SshState.Open && state !is SshState.Ended) {
@@ -289,7 +315,7 @@ fun TerminalScreen(
                     ) {
                         Text(ended.message, fontSize = 13.sp, color = colors.onTerm, modifier = Modifier.weight(1f))
                         TextButton(
-                            onClick = { sessions.reconnect(selected.id)?.let { selectedId = it.id } },
+                            onClick = { reconnectTab(selected.id) },
                             colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
                         ) { Text(stringResource(R.string.terminal_reconnect)) }
                     }
@@ -320,17 +346,43 @@ fun TerminalScreen(
         }
     }
     if (managing) SnippetsSheet(snippets, snippetActions, onDismiss = { managing = false })
+    // The session the dialog is for closed under it (its tunnel went): say so rather than vanish.
+    val loginFrom = loginLikeId?.let { id -> list.firstOrNull { it.id == id } }
+    LaunchedEffect(loginLikeId, loginFrom == null) {
+        if (loginLikeId != null && loginFrom == null) {
+            loginLikeId = null
+            Toast.makeText(context, gone, Toast.LENGTH_SHORT).show()
+        }
+    }
+    loginFrom?.let { from ->
+        SshLoginDialog(
+            target = "${from.device}:${from.port}",
+            initial = loginLike(from.user, from.auth),
+            hasRememberedPassword = { sessions.hasRememberedPassword(from, it) },
+            onConnect = { user, method, password, remember ->
+                loginLikeId = null
+                val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
+                rememberLogin(from, login)
+                val auth = when (method) {
+                    SshAuthMethod.KEY -> SshAuth.Key
+                    SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
+                }
+                openedOrGone(sessions.openLike(from.id, login.user, auth))
+            },
+            onDismiss = { loginLikeId = null },
+        )
+    }
 
     when (val s = state) {
         is SshState.HostKeyUnknown -> HostKeyTrustDialog(
             "${selected.device}:${selected.port}", s.presented,
             onTrust = selected::trustHostKey,
-            onCancel = { sessions.close(selected.id) },
+            onCancel = { closeTab(selected.id) },
         )
         is SshState.HostKeyChanged -> HostKeyChangedDialog(
             "${selected.device}:${selected.port}", s.pinned, s.presented,
             onForget = selected::forgetOldHostKey,
-            onCancel = { sessions.close(selected.id) },
+            onCancel = { closeTab(selected.id) },
         )
         else -> Unit
     }
@@ -349,56 +401,6 @@ private fun BarButton(text: String, description: String, enabled: Boolean = true
         contentAlignment = Alignment.Center,
     ) {
         Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) colors.onTerm else colors.termMuted)
-    }
-}
-
-/** The open sessions as the mockup's tabs: the profile's colour, then user and device. */
-@Composable
-private fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<String, String>, onSelect: (Int) -> Unit) {
-    val colors = AppTheme.colors
-    val labels = list.map { s -> "${s.user} \u00B7 ${s.device}" + if (s.port != 22) ":${s.port}" else "" }
-    val row = rememberLazyListState()
-    val at = list.indexOfFirst { it.id == selectedId }
-    // A tab picked or opened off screen comes into view.
-    LaunchedEffect(at) { if (at >= 0) row.animateScrollToItem(at) }
-    LazyRow(
-        state = row,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.termBar)
-            .selectableGroup(),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        itemsIndexed(list, key = { _, s -> s.id }) { index, s ->
-            val on = s.id == selectedId
-            // Two shells as the same user to the same device look alike otherwise.
-            val label = if (labels.count { it == labels[index] } > 1) "${index + 1}. ${labels[index]}" else labels[index]
-            Row(
-                Modifier
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (on) colors.termKey else Color.Transparent)
-                    .selectable(selected = on, role = Role.Tab) { onSelect(s.id) }
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .background(colors.termProfile(profileColors[s.profile] ?: "grey"), CircleShape),
-                )
-                Text(
-                    label,
-                    fontSize = 13.sp,
-                    color = if (on) colors.onTerm else colors.termMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 200.dp),
-                )
-            }
-        }
     }
 }
 

@@ -52,6 +52,9 @@ class AppColors(private val palette: Palette) {
     val onTerm = Color(palette.onTerm)
     val termMuted = Color(palette.termMuted)
 
+    /** Ended or failed on the terminal's dark bars, in either theme. */
+    val termError = Color(DarkPalette.error)
+
     /** A profile's colour on the terminal's dark bars, in either theme. */
     fun termProfile(name: String): Color = Color(DarkPalette.profiles.getValue(profileColor(name)))
 
