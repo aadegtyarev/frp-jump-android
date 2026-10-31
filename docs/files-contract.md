@@ -131,6 +131,41 @@ transfers that resume and run in the background.
 - A finished upload is renamed to its name at the end, so a half-written
   file never replaces a good one.
 
+### 8. Search
+
+Decided 2026-10-31: by name only; content is searched in the terminal.
+
+- The magnifier in the top bar opens the search field over it, as on
+  Devices and in the MQTT explorer (✕ or Back closes it and clears it).
+- Typing filters the folder shown at once, on the phone: the rows whose
+  name holds the text, ignoring case. Taps work as on the full list; a
+  folder opened from it closes the search.
+- Under them, "Search subfolders" looks for the same text in the names
+  below this folder, on the device (`find` over the files' SSH
+  connection). Hits come in as they are found, each as its path relative
+  to this folder, under "Searching… N found" with Stop. A tap on a folder
+  opens it; on a file, its card, over the hits.
+- It stays on the folder's file system (`find -xdev`: no `/proc`, `/sys`
+  or other mounts below), does not follow symlinks, skips hidden names
+  while hidden files are off (switching them runs a search going again,
+  and clears one that is over), and passes
+  over folders it may not read, saying how many there were. It ends by itself after 500 hits ("Showing the first 500") or two
+  minutes ("Stopped after 2 minutes"). Changing the text, closing the
+  search, opening another folder or leaving the screen stops it, and the
+  `find` on the device with it.
+- Ignoring case on the device is sure for Latin letters only: other
+  letters fold as the device's locale does, and a hint under the action
+  says so when the text has them. A `/` in the text: "Searching by name
+  only, without /" in place of the action.
+- Nothing found: "Nothing found in subfolders". `find` failed or is
+  missing: what it said, with Retry. A login that refuses commands
+  (nologin) says so; no answer within 15 seconds (an SFTP-only login,
+  or a stalled device): "The device did not answer the search command",
+  with Retry. A folder it cannot enter: "Folder unavailable". Offline: the filter works on the
+  folder as last seen; the search in subfolders needs the connection.
+- It does not search file contents, use patterns or regular expressions
+  (the text is taken literally), or remember past searches.
+
 ## Feedback (the UI rules applied)
 
 - Each operation shows progress where it was started (a bar on the row, a
@@ -155,6 +190,7 @@ transfers that resume and run in the background.
 3. Transfer queue in the service, notification, resume and retries.
 4. Text editor with symlink-safe save and change detection.
 5. Pack and unpack.
+6. Search by name: the folder's filter and the search in subfolders.
 
 Each stage a separate PR, reviewed, checked on the emulator against a test
 device, then a build for the owner's phone.
@@ -169,6 +205,9 @@ device, then a build for the owner's phone.
   the target has the new content and its old mode.
 - Pack a folder to `.tar.gz`, download it, unpack another on the device.
 - No network: the last listing shows with "No connection".
+- In `/etc`, type `wb-`: the folder's matching rows show at once;
+  "Search subfolders" lists `wb-rules/…` hits as they come; Stop ends it
+  and the `find` on the device is gone (`pgrep find`).
 
 ## Open questions
 

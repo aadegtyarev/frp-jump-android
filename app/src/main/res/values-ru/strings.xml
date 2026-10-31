@@ -700,6 +700,32 @@
         <item quantity="many">%d файлов уже передаются.</item>
         <item quantity="other">%d файла уже передаются.</item>
     </plurals>
+    <string name="files_search">Поиск по имени</string>
+    <string name="files_search_hint">Часть имени</string>
+    <string name="files_search_no_match">Здесь нет имён с «%s».</string>
+    <string name="files_search_subfolders">Искать во вложенных папках</string>
+    <string name="files_searching">Ищу… найдено %d</string>
+    <string name="files_search_stop">Стоп</string>
+    <string name="files_search_again">Искать снова</string>
+    <string name="files_search_found">Во вложенных папках найдено %d</string>
+    <string name="files_search_none">Ничего не найдено</string>
+    <string name="files_search_capped">Показаны первые %d</string>
+    <string name="files_search_timed_out">Остановлено через 2 минуты · найдено %d</string>
+    <string name="files_search_stopped">Остановлено · найдено %d</string>
+    <string name="files_search_failed">Поиск не удался: %s</string>
+    <string name="files_search_failed_plain">Поиск прервался, устройство не сказало почему.</string>
+    <string name="files_search_no_find">На устройстве нет команды find.</string>
+    <string name="files_search_no_commands">Этому входу нельзя выполнять команды на устройстве, только передавать файлы.</string>
+    <string name="files_search_no_root">Папка недоступна.</string>
+    <string name="files_search_no_answer">Устройство не ответило на команду поиска: вход может не разрешать команды.</string>
+    <string name="files_search_case_hint">Регистр русских букв на устройстве может учитываться.</string>
+    <string name="files_search_slash_hint">Ищу только по имени, без /.</string>
+    <plurals name="files_search_skipped">
+        <item quantity="one">Не удалось прочитать %d папку</item>
+        <item quantity="few">Не удалось прочитать %d папки</item>
+        <item quantity="many">Не удалось прочитать %d папок</item>
+        <item quantity="other">Не удалось прочитать %d папки</item>
+    </plurals>
     <string name="files_cancel_transfer">Отменить передачу</string>
     <plurals name="files_leave_title">
         <item quantity="one">Идёт %d передача</item>

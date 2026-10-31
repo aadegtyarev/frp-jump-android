@@ -661,6 +661,30 @@
         <item quantity="one">%d file is being transferred already.</item>
         <item quantity="other">%d files are being transferred already.</item>
     </plurals>
+    <string name="files_search">Search by name</string>
+    <string name="files_search_hint">Part of a name</string>
+    <string name="files_search_no_match">No names here hold “%s”.</string>
+    <string name="files_search_subfolders">Search subfolders</string>
+    <string name="files_searching">Searching… %d found</string>
+    <string name="files_search_stop">Stop</string>
+    <string name="files_search_again">Search again</string>
+    <string name="files_search_found">%d found in subfolders</string>
+    <string name="files_search_none">Nothing found in subfolders</string>
+    <string name="files_search_capped">Showing the first %d</string>
+    <string name="files_search_timed_out">Stopped after 2 minutes · %d found</string>
+    <string name="files_search_stopped">Stopped · %d found</string>
+    <string name="files_search_failed">The search failed: %s</string>
+    <string name="files_search_failed_plain">The search stopped: the device did not say why.</string>
+    <string name="files_search_no_find">The device has no find command.</string>
+    <string name="files_search_no_commands">This login may not run commands on the device, only transfer files.</string>
+    <string name="files_search_no_root">Folder unavailable.</string>
+    <string name="files_search_no_answer">The device did not answer the search command: the login may not allow commands.</string>
+    <string name="files_search_case_hint">On the device, case may matter for non-Latin letters.</string>
+    <string name="files_search_slash_hint">Searching by name only, without /.</string>
+    <plurals name="files_search_skipped">
+        <item quantity="one">%d folder could not be read</item>
+        <item quantity="other">%d folders could not be read</item>
+    </plurals>
     <string name="files_cancel_transfer">Cancel transfer</string>
     <plurals name="files_leave_title">
         <item quantity="one">%d transfer in progress</item>
