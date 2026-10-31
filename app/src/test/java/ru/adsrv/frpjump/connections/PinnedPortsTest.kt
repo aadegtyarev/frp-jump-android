@@ -13,7 +13,7 @@ class PinnedPortsTest {
     )
     private val held = listOf(HeldPort("p1", "wb", 80, 40000))
 
-    private fun problem(text: String, device: String = "wb", port: Int? = 80, editing: String? = null, profile: String = "p1") =
+    private fun problem(text: String, device: String = "mqtt", port: Int? = 1883, editing: String? = null, profile: String = "p1") =
         localPortProblem(text, profile, device, port, editing, pins, held)?.reason
 
     @Test
@@ -57,6 +57,23 @@ class PinnedPortsTest {
     fun `a port another tunnel listens on now is refused, the own tunnel's is not`() {
         assertEquals(LocalPortProblem.Reason.IN_USE, problem("40000", device = "mqtt", port = 1883))
         assertNull(problem("40000", device = "wb", port = 80))
+    }
+
+    @Test
+    fun `a new pin for a tunnel up on another port is refused, it would move under its sessions`() {
+        val p = localPortProblem("41000", "p1", "wb", 80, null, pins, held)
+        assertEquals(LocalPortProblem.Reason.TUNNEL_UP_OTHER_PORT, p?.reason)
+        assertEquals("40000", p?.other)
+        // Auto there is fine, and so is pinning the port it is on now.
+        assertNull(problem("", device = "wb", port = 80))
+    }
+
+    @Test
+    fun `the save checks again, against a pin another profile took meanwhile`() {
+        val mine = Connection("new", "llm2", 9000, PortKind.TCP, localPort = 18022)
+        assertEquals(LocalPortProblem.Reason.PINNED_ELSEWHERE, pinProblemOnSave("p1", mine, pins, held)?.reason)
+        assertNull(pinProblemOnSave("p1", mine.copy(localPort = 18100), pins, held))
+        assertNull(pinProblemOnSave("p1", mine.copy(localPort = null), pins, held))
     }
 
     @Test

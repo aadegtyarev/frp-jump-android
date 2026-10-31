@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.connections
 
+import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ports.localPortKey
 
 /** A saved connection's pinned local port, as the checks see every profile's. */
@@ -25,6 +26,12 @@ data class LocalPortProblem(val reason: Reason, val other: String? = null) {
 
         /** Another tunnel listens on it now. */
         IN_USE,
+
+        /**
+         * This device and port's own tunnel is up on another local port
+         * ([other]): pinning would move it and cut what runs through it.
+         */
+        TUNNEL_UP_OTHER_PORT,
     }
 }
 
@@ -39,8 +46,9 @@ fun parseLocalPort(text: String): Int? {
 /**
  * What stops [text] from being pinned by the connection [editingId] (null:
  * a new one) of [profile] to [device]:[port]: a number out of range, a pin
- * of another connection anywhere, another pin on the same tunnel, or a
- * tunnel that listens on it now. Connections to the same device and port
+ * of another connection anywhere, another pin on the same tunnel, a
+ * tunnel that listens on it now, or this device and port's own tunnel up
+ * on another port (pinning would move it under its sessions). Connections to the same device and port
  * share one tunnel, so the same pin there is fine. Blank ("Auto") is fine.
  */
 fun localPortProblem(
@@ -64,6 +72,9 @@ fun localPortProblem(
     }
     held.firstOrNull { it.localPort == wanted && !sameTunnel(it.profile, it.device, it.port) }?.let {
         return LocalPortProblem(LocalPortProblem.Reason.IN_USE, "${it.device}:${it.port}")
+    }
+    held.firstOrNull { sameTunnel(it.profile, it.device, it.port) && it.localPort != wanted }?.let {
+        return LocalPortProblem(LocalPortProblem.Reason.TUNNEL_UP_OTHER_PORT, it.localPort.toString())
     }
     return null
 }
@@ -99,4 +110,26 @@ fun pinToRelease(before: Connection?, after: List<Connection>): Pair<String, Int
     val pin = before?.localPort ?: return null
     val key = localPortKey(before.device, before.port)
     return if (tunnelPins(after)[key] == pin) null else key to pin
+}
+
+/**
+ * [connection]'s pin checked once more as it is saved, against [pins] of
+ * every profile and the tunnels up now ([held]): the sheet's view may be
+ * old by then. Null when it pins nothing or may pin what it does.
+ */
+fun pinProblemOnSave(profile: String, connection: Connection, pins: List<PortPin>, held: List<HeldPort>): LocalPortProblem? {
+    val pin = connection.localPort ?: return null
+    return localPortProblem(pin.toString(), profile, connection.device, connection.port, connection.id, pins, held)
+}
+
+/** A pin the save refused ([pinProblemOnSave]); nothing was saved. */
+class PinRefused(val problem: LocalPortProblem) : Exception("pin refused: ${problem.reason}")
+
+/** The words for [problem]: a string resource and its arguments, for the sheet and for a refused save alike. */
+fun localPortProblemWords(problem: LocalPortProblem): Pair<Int, List<Any>> = when (problem.reason) {
+    LocalPortProblem.Reason.OUT_OF_RANGE -> R.string.local_port_out_of_range to listOf(MIN_PINNED_PORT)
+    LocalPortProblem.Reason.PINNED_ELSEWHERE -> R.string.local_port_pinned_elsewhere to listOf(problem.other.orEmpty())
+    LocalPortProblem.Reason.OTHER_PIN_ON_TUNNEL -> R.string.local_port_other_pin to listOf(problem.other.orEmpty())
+    LocalPortProblem.Reason.IN_USE -> R.string.local_port_in_use to listOf(problem.other.orEmpty())
+    LocalPortProblem.Reason.TUNNEL_UP_OTHER_PORT -> R.string.local_port_tunnel_up to listOf(problem.other.orEmpty())
 }

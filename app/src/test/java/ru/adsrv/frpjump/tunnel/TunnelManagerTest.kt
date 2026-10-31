@@ -37,6 +37,7 @@ class TunnelManagerTest {
         @Volatile var applies = 0
         @Volatile var wiped = false
         @Volatile var last: FrpcLaunch? = null
+        val launches = java.util.Collections.synchronizedList(mutableListOf<FrpcLaunch>())
         @Volatile var expiries = 0
 
         override fun apply(launch: FrpcLaunch, ports: Set<Int>) {
@@ -44,6 +45,7 @@ class TunnelManagerTest {
             applies++
             heldPorts = ports
             last = launch
+            launches += launch
         }
 
         override fun expireTrying() {
@@ -382,8 +384,39 @@ class TunnelManagerTest {
         )
         withTimeout(5_000) { while (frpc.applies < 3) delay(20) }
         // Dropped for one reload, then back on its pin; the other tunnel never left.
-        assertEquals(setOf(18080), frpc.last!!.visitors.filter { it.grantId == "g1" }.map { it.localPort }.toSet())
-        assertTrue(frpc.last!!.visitors.any { it.grantId == "g2" })
+        val middle = frpc.launches[1].visitors.map { it.grantId }
+        assertEquals(listOf("g2"), middle)
+        assertEquals(setOf(18080), frpc.launches[2].visitors.filter { it.grantId == "g1" }.map { it.localPort }.toSet())
+        assertTrue(frpc.launches[2].visitors.any { it.grantId == "g2" })
+        // Meanwhile it kept saying its port is taken, not "Connecting…".
+        assertEquals(TunnelStatus.FAILED, manager.state.value.tunnels.first { it.grantId == "g1" }.state.status)
+    }
+
+    @Test
+    fun `the retry stops when the pinned tunnel is disconnected`() = runBlocking {
+        pins = mapOf("wb:80" to 18080)
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use"))
+        manager.disconnect("wb", 80)
+        frpc.states.value = emptyMap()
+        val applies = frpc.applies
+        delay(600)
+        assertEquals(applies, frpc.applies)
+    }
+
+    @Test
+    fun `the retry stops when the port is no longer pinned`() = runBlocking {
+        pins = mapOf("wb:80" to 18080)
+        api.consumed = listOf(grant, ConsumedGrant("g2", "secret2", "svc2", "tcp", "wb", 22))
+        manager.sync()
+        frpc.states.value = mapOf("g2" to VisitorState(TunnelStatus.RELAYED), "g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use"))
+        pins = emptyMap()
+        manager.reapply()
+        val from = frpc.launches.size
+        delay(600)
+        // No more reloads that leave it out to try its old pin again (an auto tunnel moves instead).
+        assertTrue(frpc.launches.drop(from).all { launch -> launch.visitors.any { it.grantId == "g1" } })
+        assertTrue(frpc.launches.drop(from).none { launch -> launch.visitors.any { it.grantId == "g1" && it.localPort == 18080 } })
     }
 
     @Test

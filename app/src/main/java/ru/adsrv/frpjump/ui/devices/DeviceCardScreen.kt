@@ -72,6 +72,7 @@ import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.ui.connections.kindLabel
 import ru.adsrv.frpjump.ui.connections.mainActionLabel
 import ru.adsrv.frpjump.ui.connections.problemOf
+import ru.adsrv.frpjump.ui.connections.rememberLocalPortContext
 import ru.adsrv.frpjump.ui.connections.rememberNotificationsFirst
 import ru.adsrv.frpjump.ui.connections.rememberRowActions
 import ru.adsrv.frpjump.ui.connections.rowName
@@ -190,7 +191,7 @@ fun DeviceCardScreen(
             editing = null,
             portLocked = false,
             existing = vm.connections(),
-            ports = vm.actions.localPortContext(vm.profile),
+            ports = rememberLocalPortContext(vm.actions, vm.profile),
             onSave = { connection, connectNow, done ->
                 val save = { vm.actions.save(vm.profile, connection, previous = null, connectNow = connectNow, onDone = done) }
                 if (connectNow) notificationsFirst(save) else save()
@@ -284,7 +285,7 @@ private fun ConnectionCard(
                     // On a line of its own: next to a long state and the main action it would be cut.
                     if (row.tunnel != null || sessions.total > 0) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f, fill = false)) }
+                            row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f, fill = false), pinned = it.pinned) }
                             SessionsPill(sessions)
                         }
                     }

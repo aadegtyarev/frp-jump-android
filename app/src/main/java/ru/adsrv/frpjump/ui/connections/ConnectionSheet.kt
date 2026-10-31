@@ -46,7 +46,7 @@ import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionDraft
 import ru.adsrv.frpjump.connections.LocalPortContext
 import ru.adsrv.frpjump.connections.LocalPortProblem
-import ru.adsrv.frpjump.connections.MIN_PINNED_PORT
+import ru.adsrv.frpjump.connections.localPortProblemWords
 import ru.adsrv.frpjump.connections.PORT_PRESETS
 import ru.adsrv.frpjump.connections.asksForHttps
 import ru.adsrv.frpjump.connections.schemeIsHttps
@@ -281,12 +281,8 @@ fun ConnectionSheet(
 
 /** Why a typed local port cannot be pinned, in words. */
 @Composable
-private fun localPortProblemText(problem: LocalPortProblem): String = when (problem.reason) {
-    LocalPortProblem.Reason.OUT_OF_RANGE -> stringResource(R.string.local_port_out_of_range, MIN_PINNED_PORT)
-    LocalPortProblem.Reason.PINNED_ELSEWHERE -> stringResource(R.string.local_port_pinned_elsewhere, problem.other.orEmpty())
-    LocalPortProblem.Reason.OTHER_PIN_ON_TUNNEL -> stringResource(R.string.local_port_other_pin, problem.other.orEmpty())
-    LocalPortProblem.Reason.IN_USE -> stringResource(R.string.local_port_in_use, problem.other.orEmpty())
-}
+private fun localPortProblemText(problem: LocalPortProblem): String =
+    localPortProblemWords(problem).let { (res, args) -> stringResource(res, *args.toTypedArray()) }
 
 /** Web / SSH / TCP as the mockup's segmented control. */
 @Composable

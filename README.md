@@ -90,10 +90,16 @@ port, which stay keyed by (profile, device, port).
   Two connections cannot pin the same port; connections to the same device
   and port share one tunnel, so they may name the same pin or stay Auto,
   but not two different pins; a port another tunnel listens on now is
-  refused ("The tunnel to wb:80 uses it now"); a port only kept for an
-  auto tunnel that is not up is taken, and that tunnel gets another one
-  when it next connects. The field is locked while the tunnel is up, as
-  the port is. Restore after a reboot and Copy address use the pin
+  refused ("The tunnel to wb:80 uses it now"), and so is a pin for a
+  device and port whose tunnel is up on another port (it would move under
+  its sessions: disconnect first); a port only kept for an auto tunnel
+  that is not up is taken, and that tunnel gets another one when it next
+  connects. The field is locked while the tunnel is up, as the port is.
+  The sheet's check follows tunnels and pins as they change, and the save
+  checks again under the shared map's lock, against every profile's pins
+  and the tunnels up then; a pin refused there is not saved and the sheet
+  says why. A pinned address carries a small pin on the card and in the
+  Connections tab. Restore after a reboot and Copy address use the pin
   (`connections/PinnedPorts.kt`, `reservePins`, `planTunnels`). Deleting
   the connection, or changing it to Auto or another port, releases the
   old pin from the shared map unless another connection to the same
@@ -141,10 +147,12 @@ not parse is left in place and nothing is migrated from it; a
   a port. When another app holds a tunnel's port and frpc reports "address
   already in use", the tunnel moves to a free port and frpc reloads (up to
   three times in a row per tunnel). A pinned port (below) never moves: the
-  card says "Port N is taken by another app" and the tunnel stays on it,
-  trying it again every 30 s (frpc drops that visitor for one reload and
-  takes it back, the other tunnels untouched; alone, frpc restarts) until
-  it is up, disconnected or no longer pinned.
+  card says "Port N is taken by another app" (and that changing it takes
+  a disconnect) and the tunnel stays on it, trying it again every 30 s
+  (frpc drops that visitor for one reload and takes it back, the other
+  tunnels untouched; alone, frpc restarts; meanwhile the card keeps
+  saying the port is taken) until it is up, disconnected or no longer
+  pinned.
 - frpc runs from `nativeLibraryDir` as a child process, one per profile with
   tunnels; its config, cert, key and CA are written 0600 into
   `no_backup/frpc/<profile id>/`. The key and the config are
