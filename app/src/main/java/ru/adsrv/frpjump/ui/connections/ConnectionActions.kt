@@ -48,6 +48,7 @@ import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelsState
+import ru.adsrv.frpjump.tunnel.openOnProfile
 import ru.adsrv.frpjump.tunnel.openThrough
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.ui.userMessage
@@ -108,11 +109,16 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      * [row]'s tunnel disconnects, or every tunnel when [row] is null: the
      * owner is asked before they are lost. Main thread.
      */
-    fun openThrough(row: ConnectionRow?): OpenThrough {
-        val sessions = app.ssh.sessions.value.map { SessionOn(TunnelRef(it.profile, it.device, it.port), it.state.value !is SshState.Ended) }
-        val files = app.fileTargets.all().map { TunnelRef(it.profile, it.device, it.port) }
-        return openThrough(sessions, files, row?.let { TunnelRef(it.profile, it.connection.device, it.connection.port) })
-    }
+    fun openThrough(row: ConnectionRow?): OpenThrough =
+        openThrough(openSessions(), openFiles(), row?.let { TunnelRef(it.profile, it.connection.device, it.connection.port) })
+
+    /** [openThrough] for every tunnel of [profile]. Main thread. */
+    fun openOnProfile(profile: String): OpenThrough = openOnProfile(openSessions(), openFiles(), profile)
+
+    private fun openSessions() =
+        app.ssh.sessions.value.map { SessionOn(TunnelRef(it.profile, it.device, it.port), it.state.value !is SshState.Ended) }
+
+    private fun openFiles() = app.fileTargets.all().map { TunnelRef(it.profile, it.device, it.port) }
 
     /** "Retry direct" for [row]'s device: all its tunnels through the server try again, kept no more on this network. */
     fun retryDirect(row: ConnectionRow) {
@@ -132,6 +138,29 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun disconnectAll(onDone: () -> Unit = {}) {
         app.appScope.launch {
             app.profiles.disconnectAll()
+            onDone()
+        }
+    }
+
+    /**
+     * Every tunnel of [profile] (the power button on the Devices tab's bar);
+     * a notice says how many went, or that the server was not told and they
+     * may come back. [onDone] once the server was asked (main thread).
+     */
+    fun disconnectProfile(profile: String, onDone: () -> Unit = {}) {
+        val tunnels = runtime(profile)?.tunnels ?: run {
+            app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
+            return onDone()
+        }
+        app.appScope.launch {
+            // As the bar's chip counts them; none up yet (e.g. still being restored): no "0".
+            val count = app.profiles.tunnelsByProfileNow()[profile] ?: 0
+            if (tunnels.disconnectAll()) {
+                val text = if (count > 0) Texts.get(R.string.tunnels_disconnected, count) else Texts.get(R.string.tunnels_disconnected_unknown)
+                app.notices.show(text, NoticeKind.DONE)
+            } else {
+                app.notices.show(Texts.get(R.string.disconnect_all_failed), NoticeKind.WARN, long = true)
+            }
             onDone()
         }
     }

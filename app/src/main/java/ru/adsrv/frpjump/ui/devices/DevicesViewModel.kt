@@ -20,6 +20,7 @@ import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.tunnelPorts
 import ru.adsrv.frpjump.devices.tunnelsFirst
 import ru.adsrv.frpjump.session.Notice
+import ru.adsrv.frpjump.ui.connections.ConnectionActions
 import java.time.Instant
 
 data class DevicesUiState(
@@ -47,6 +48,9 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, app.profiles.current?.devices)
     private val refreshing = MutableStateFlow(false)
+
+    /** The bar's "disconnect all" for the current profile. */
+    val actions = ConnectionActions(app, viewModelScope)
 
     /** The list is on screen. */
     private var shown = false
