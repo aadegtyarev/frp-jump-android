@@ -62,10 +62,16 @@ A profile is one enrollment: one server, one device name, its own token,
 certificate and key. The owner may have several, for example "Work" and
 "Home", which are different users on the same or different servers.
 
-1. On a laptop: `frp-jump-client devices add-token --name phone`.
-2. In the app, "Add profile": scan a QR code of the enroll line, or paste the
-   line as is (`frp-jump-client enroll https://… <token> [--name phone]`;
-   a bare `<url> <token>` works too; line breaks and extra spaces are ignored).
+1. On a laptop: `frp-jump-client devices add-token --name phone --qr`; it
+   prints the enroll line and a QR code of it in the terminal.
+2. In the app, "Add profile": scan the QR code (the camera is asked for at
+   that tap; the code reads on a dark or a light terminal, where it comes out
+   inverted), or paste the line as is
+   (`frp-jump-client enroll https://… <token> [--name phone]`; a bare
+   `<url> <token>` works too; line breaks and extra spaces are ignored; the
+   CLI's `--name <pick-a-name>` placeholder counts as no name). A scanned
+   code fills the line as a paste would; a code that is not an enroll line
+   says so on the scanner, which keeps scanning.
 3. The owner gives the profile a name and a colour (prefilled from the server
    host). The app calls `POST /api/agent/enroll` and stores the credentials
    encrypted with a Keystore key.

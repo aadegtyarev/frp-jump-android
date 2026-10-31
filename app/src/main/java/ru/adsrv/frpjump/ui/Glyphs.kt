@@ -73,3 +73,42 @@ val PlusGlyph: ImageVector = glyph("Plus", 2.4f) {
     moveTo(5f, 12f)
     horizontalLineTo(19f)
 }
+
+/** A viewfinder's corners with a scan line: "Scan QR code". */
+val ScanGlyph: ImageVector = glyph("Scan") {
+    moveTo(4f, 8f)
+    verticalLineTo(5f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 4f)
+    horizontalLineTo(8f)
+    moveTo(16f, 4f)
+    horizontalLineTo(19f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20f, y1 = 5f)
+    verticalLineTo(8f)
+    moveTo(20f, 16f)
+    verticalLineTo(19f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 20f)
+    horizontalLineTo(16f)
+    moveTo(8f, 20f)
+    horizontalLineTo(5f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 19f)
+    verticalLineTo(16f)
+    moveTo(7f, 12f)
+    horizontalLineTo(17f)
+}
+
+/** A flashlight: the scanner's torch. */
+val TorchGlyph: ImageVector = glyph("Torch") {
+    moveTo(7f, 3f)
+    horizontalLineTo(17f)
+    verticalLineTo(7f)
+    lineTo(15f, 10f)
+    verticalLineTo(20f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 14f, y1 = 21f)
+    horizontalLineTo(10f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 9f, y1 = 20f)
+    verticalLineTo(10f)
+    lineTo(7f, 7f)
+    close()
+    moveTo(12f, 13f)
+    verticalLineTo(15f)
+}

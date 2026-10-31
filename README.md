@@ -13,7 +13,7 @@ tab, direct or through-the-server tunnels with the "Direct didn't work"
 notification, the in-app web view (HTTP and HTTPS), the SSH terminal and
 settings (direct connection, local ports, background checks, battery
 optimisation, SSH keys), and tunnels coming back after the process is
-killed or the phone reboots. The app has its own light and dark colour scheme
+killed or the phone reboots, and enrolling by scanning the laptop's QR code. The app has its own light and dark colour scheme
 (`ui/Palette.kt`), following the system.
 
 ## Profiles
@@ -350,6 +350,8 @@ and phone-only changes (a moved local port) keep their connections.
 | [BouncyCastle](https://www.bouncycastle.org/) bcprov / bcpkix (via sshj) | 1.84 | MIT (Bouncy Castle licence) |
 | [Termux](https://github.com/termux/termux-app) terminal-emulator / terminal-view (JitPack) | v0.118.3 | Apache-2.0 |
 | slf4j-api, asn-one (via sshj) | 2.0.17, 0.6.0 | MIT, Apache-2.0 |
+| [CameraX](https://developer.android.com/jetpack/androidx/releases/camera) camera-camera2 / camera-lifecycle / camera-view | 1.4.1 | Apache-2.0 |
+| [ZXing](https://github.com/zxing/zxing) core | 3.5.3 | Apache-2.0 |
 
 termux-app as a whole is GPLv3, but its LICENSE.md lists terminal-emulator
 and terminal-view as Apache-2.0 (derived from Jack Palevich's Terminal
@@ -387,12 +389,32 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 On a laptop that is already enrolled:
 
 ```sh
-frp-jump-client devices add-token --name phone
+frp-jump-client devices add-token --name phone --qr
 ```
 
-Paste the printed `frp-jump-client enroll https://… <token> --name phone` line
-into the app as is; line breaks from a narrow terminal are fine. A bare
-`<url> <token>` works too. The token is single-use.
+It prints the enroll line and, below it, a QR code of the same line drawn
+with block characters. In the app, "Add profile" (or the first screen):
+
+- "Scan QR code" opens the camera, asking for the permission at that tap.
+  A code that is an enroll line ticks, closes the scanner and fills the
+  line field, which is then read as a paste is; any other code says "This
+  QR is not a frp-jump enroll line" and scanning goes on. The torch button
+  helps with a dim screen. The terminal draws light modules as glyphs, so
+  on a light terminal the code comes out inverted; the scanner reads both.
+  Refused once, a line says what the camera is for; refused for good, a
+  line offers "Open settings". Pasting works either way.
+- Or paste the printed `frp-jump-client enroll https://… <token> --name phone`
+  line as is; line breaks from a narrow terminal are fine. A bare
+  `<url> <token>` works too. Without `--name` on the laptop the line ends in
+  `--name <pick-a-name>`: that placeholder is ignored, and the app asks for
+  the phone's name when the server wants one.
+
+Either way the app shows "Server: <host>"; name and colour the profile and
+tap "Connect phone". The token is single-use.
+
+Frames are decoded with ZXing (`enroll/QrDecoder.kt`: QR only, try harder,
+also inverted) on one background thread, the newest frame only, from
+CameraX's analysis stream; no Google Play Services.
 
 ## License
 
