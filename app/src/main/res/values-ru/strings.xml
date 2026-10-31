@@ -631,6 +631,12 @@
     <string name="files_folder_not_kept">Телефон не дал приложению постоянный доступ к этой папке; выберите другую.</string>
     <string name="files_gone">Этот экран файлов уже закрыт. Откройте «Файлы» снова из подключения.</string>
     <string name="files_link_badge">Ссылка</string>
+    <string name="files_kind_folder">Папка</string>
+    <string name="files_kind_file">Файл</string>
+    <string name="files_kind_executable">Исполняемый файл</string>
+    <string name="files_kind_archive">Архив</string>
+    <string name="files_kind_special">Специальный файл</string>
+    <string name="files_kind_broken_link">Битая ссылка</string>
     <string name="files_problem_no_such">нет такого файла или папки</string>
     <string name="files_problem_permission">нет прав</string>
     <string name="files_problem_space_device">на устройстве нет места</string>

@@ -57,6 +57,10 @@ class PaletteContrastTest {
         put("warning on card", p.warning to p.card)
         put("error on card", p.error to p.card)
         put("accent on card", p.accent to p.card)
+        // A file row's kind glyph on its tile.
+        put("archive on tile", p.archive to p.tile)
+        put("executable on tile", p.executable to p.tile)
+        put("error on tile", p.error to p.tile)
         PROFILE_COLORS.forEach { put("$it on card", p.profiles.getValue(it) to p.card) }
         // A session tab's profile dot: the dark theme's shades, the terminal being dark in both.
         PROFILE_COLORS.forEach { put("$it on termKey", DarkPalette.profiles.getValue(it) to p.termKey) }

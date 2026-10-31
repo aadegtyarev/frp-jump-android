@@ -280,6 +280,60 @@ val OtherFileGlyph: ImageVector = glyph("OtherFile", 1.8f) {
     verticalLineTo(17.01f)
 }
 
+/** A box with a lid and a handle: an archive. */
+val ArchiveGlyph: ImageVector = glyph("Archive", 1.8f) {
+    roundRect(3f, 4f, 18f, 5f, 1f)
+    moveTo(5f, 9f)
+    verticalLineTo(18f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 20f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 19f, y1 = 18f)
+    verticalLineTo(9f)
+    moveTo(10f, 13f)
+    horizontalLineTo(14f)
+}
+
+/** A sheet with a folded corner and a prompt: an executable file. */
+val ExecutableGlyph: ImageVector = glyph("Executable", 1.8f) {
+    moveTo(14f, 3f)
+    horizontalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 5f, y1 = 5f)
+    verticalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 21f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 19f, y1 = 19f)
+    verticalLineTo(8f)
+    close()
+    moveTo(14f, 3f)
+    verticalLineTo(8f)
+    horizontalLineTo(19f)
+    moveTo(8.5f, 12f)
+    lineTo(10.5f, 14f)
+    lineTo(8.5f, 16f)
+    moveTo(12.5f, 16f)
+    horizontalLineTo(15.5f)
+}
+
+/** Two chain links pulled apart, with marks at the break: a link whose target is gone. */
+val BrokenLinkGlyph: ImageVector = glyph("BrokenLink") {
+    moveTo(13.5f, 6.5f)
+    lineTo(14f, 6f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19.7f, y1 = 11.7f)
+    lineTo(17.5f, 13.9f)
+    moveTo(10.5f, 17.5f)
+    lineTo(10f, 18f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4.3f, y1 = 12.3f)
+    lineTo(6.5f, 10.1f)
+    moveTo(8f, 3f)
+    verticalLineTo(5f)
+    moveTo(3f, 8f)
+    horizontalLineTo(5f)
+    moveTo(16f, 21f)
+    verticalLineTo(19f)
+    moveTo(21f, 16f)
+    horizontalLineTo(19f)
+}
+
 /** A magnifier: search. */
 val SearchGlyph: ImageVector = glyph("Search") {
     moveTo(4f, 10.5f)

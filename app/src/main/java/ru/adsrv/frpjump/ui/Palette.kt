@@ -48,6 +48,9 @@ data class Palette(
     val onError: Long,
     val errorContainer: Long,
     val onErrorContainer: Long,
+    /** A file row's glyph on [tile]: an archive (muted amber), an executable (muted green). Folders keep the accent. */
+    val archive: Long,
+    val executable: Long,
     /** The terminal's bars (title, tabs, snippets, extra keys): dark in both themes, around a black terminal. */
     val termBar: Long,
     /** A key, a selected tab on [termBar]. */
@@ -91,6 +94,8 @@ val LightPalette = Palette(
     onError = 0xFFFFFFFF,
     errorContainer = 0xFFFDECEA,
     onErrorContainer = 0xFFB42318,
+    archive = 0xFF96681F,
+    executable = 0xFF55803A,
     termBar = 0xFF17211E,
     termKey = 0xFF26302D,
     termLine = 0xFF33403C,
@@ -135,6 +140,8 @@ val DarkPalette = Palette(
     onError = 0xFF2A0E0B,
     errorContainer = 0xFF4A2622,
     onErrorContainer = 0xFFF7B9B0,
+    archive = 0xFFCFA562,
+    executable = 0xFFA3C585,
     termBar = 0xFF1A1917,
     termKey = 0xFF302E2B,
     termLine = 0xFF3F3C38,

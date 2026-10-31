@@ -600,6 +600,12 @@
     <string name="files_folder_not_kept">The phone did not let the app keep access to that folder; choose another one.</string>
     <string name="files_gone">This file screen is no longer open. Open Files again from the connection.</string>
     <string name="files_link_badge">Link</string>
+    <string name="files_kind_folder">Folder</string>
+    <string name="files_kind_file">File</string>
+    <string name="files_kind_executable">Executable file</string>
+    <string name="files_kind_archive">Archive</string>
+    <string name="files_kind_special">Special file</string>
+    <string name="files_kind_broken_link">Broken link</string>
     <string name="files_problem_no_such">no such file or folder</string>
     <string name="files_problem_permission">permission denied</string>
     <string name="files_problem_space_device">no space left on the device</string>
