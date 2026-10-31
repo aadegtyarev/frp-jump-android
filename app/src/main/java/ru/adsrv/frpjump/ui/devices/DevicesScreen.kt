@@ -2,14 +2,10 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.border
@@ -144,7 +140,12 @@ fun DevicesScreen(
         if (searchedProfile != null && searchedProfile != now) closeSearch()
         searchedProfile = now
     }
+    // The row swiped open, one at a time; another profile shown starts with none. Back closes it first.
+    val openRow = remember(current?.id) { OpenRow() }
+    BackHandler(enabled = openRow.name != null) { openRow.close() }
     Scaffold(
+        // Anywhere on the screen, after the rows saw the finger: one landing off the open row closes it.
+        modifier = Modifier.closesOpenRow(openRow),
         topBar = {
             if (searching) {
                 SearchBar(
@@ -180,7 +181,7 @@ fun DevicesScreen(
             } else state.error?.let { error ->
                 Text(error, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, query, vm::pull, onOpen, onDisconnect = { device -> current?.let { vm.actions.disconnectDevice(it.id, device) } })
+            DeviceRows(state, query, openRow, vm::pull, onOpen, onDisconnect = { device -> current?.let { vm.actions.disconnectDevice(it.id, device) } })
         }
     }
 }
@@ -266,19 +267,17 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
 /**
  * The device rows; a row with tunnels open swipes left to show its power
  * button ([onDisconnect] with the device's name). One row is open at a time;
- * it slides back when the list moves or a finger lands anywhere else.
+ * it slides back when the list moves or refreshes (and, from the screen
+ * around it, on Back or a finger landing anywhere else).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit, onOpen: (String) -> Unit, onDisconnect: (String) -> Unit) {
+private fun DeviceRows(state: DevicesUiState, query: String, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onDisconnect: (String) -> Unit) {
     val listState = rememberLazyListState()
-    // The row shown aside, by device name; the row a finger came down on, for the list to compare.
-    var openRow by remember { mutableStateOf<String?>(null) }
-    val touched = remember { arrayOfNulls<String>(1) }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow = null }
+    LaunchedEffect(listState, openRow) {
+        snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() }
     }
-    LaunchedEffect(state.refreshing) { if (state.refreshing) openRow = null }
+    LaunchedEffect(state.refreshing) { if (state.refreshing) openRow.close() }
     PullToRefreshBox(
         isRefreshing = state.refreshing,
         onRefresh = onPull,
@@ -286,16 +285,7 @@ private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit,
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                // Last, after the rows saw the finger: one landing off the open row closes it.
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
-                        if (touched[0] != openRow) openRow = null
-                        touched[0] = null
-                    }
-                },
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -321,30 +311,25 @@ private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit,
             }
             items(shown, key = { it.name }) { device ->
                 val ports = state.tunnelPorts[device.name].orEmpty()
-                val open = openRow == device.name
+                val open = openRow.name == device.name
                 SwipeReveal(
                     open = open,
                     enabled = ports.isNotEmpty(),
-                    onOpenChange = { now -> if (now) openRow = device.name else if (openRow == device.name) openRow = null },
+                    onOpenChange = { now -> openRow.reported(device.name, now) },
                     actionWidth = REVEAL_WIDTH,
                     action = {
                         DisconnectDeviceButton(device.name) {
-                            openRow = null
+                            openRow.close()
                             onDisconnect(device.name)
                         }
                     },
-                    modifier = Modifier.pointerInput(device.name) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                            touched[0] = device.name
-                        }
-                    },
+                    modifier = Modifier.touchesRow(openRow, device.name),
                 ) {
                     DeviceItem(
                         device,
                         ports,
                         // Open: a tap puts it back; closed, it opens the card as before.
-                        onClick = { if (open) openRow = null else onOpen(device.name) },
+                        onClick = { if (open) openRow.close() else onOpen(device.name) },
                         onDisconnect = { onDisconnect(device.name) }.takeIf { ports.isNotEmpty() },
                     )
                 }
