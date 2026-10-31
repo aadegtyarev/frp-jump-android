@@ -132,10 +132,19 @@ same local ports, when Android kills the process or the phone reboots.
   its tunnels run, whichever profile is shown and whatever the background
   setting; then it polls as usual (below).
 - Process killed: the tunnels service is sticky, so Android starts it again
-  (in about a second on the emulator) and the app's start brings the
-  tunnels back. Until they run the notification says "Restoring N
-  tunnels…"; "Disconnect all" there also disconnects tunnels not yet back
-  (it asks the server for them).
+  (after 1 s, then longer when it keeps being killed) and the app's start
+  brings the tunnels back. Until they run the notification and the
+  Connections tab say "Restoring N tunnels…" ("Restoring tunnels…" before
+  the record is read), with "Waiting for network…" or "Waiting for
+  unlock…" when that is what holds them. "Disconnect all" there also
+  disconnects tunnels not yet back (it asks the server for them); when a
+  server cannot be told, frpc stops anyway but the record stays, and "Couldn't
+  reach the server. Tunnels may come back." is shown where it was tapped.
+  Profiles that cannot be read on a cold start are tried again (10 s, 30 s,
+  then every minute, five times).
+- A frpc that outlived a killed process would hold the local ports: its pid
+  is kept in `frpc.pid` next to its config, and the next start kills it
+  first, if `/proc/<pid>/cmdline` is still that frpc on that config.
 - Reboot: `restore/BootReceiver.kt` takes `BOOT_COMPLETED` and starts the
   service when the record lists tunnels. Android 12+ lets an app start a
   foreground service from `BOOT_COMPLETED`; Android 15 bars only `dataSync`,
@@ -150,8 +159,13 @@ same local ports, when Android kills the process or the phone reboots.
   optimisation, the app may always start it; Settings shows "Battery ·
   Android may stop tunnels · Fix" while it is not.
 - After a restore the direct-or-server logic runs as on a connect: "Trying
-  direct…", and a "Direct didn't work" notification only on failure (a
-  device kept through the server stays so).
+  direct…", "Direct" or "Through the server". "Direct didn't work" is
+  offered once per device and network: the offers made are kept in
+  `direct_offered.json`, so tunnels brought back that fail the same way
+  do not offer it again. A device is offered again after all its tunnels
+  went direct there, its tunnels are gone, or "Retry direct".
+- With notifications not allowed (13+) none of these notices can show:
+  the device list says so in one line, with "Allow".
 - Force stop in the system settings disables all of this until the app is
   opened again (Android's rule); the tunnels then come back on opening.
 

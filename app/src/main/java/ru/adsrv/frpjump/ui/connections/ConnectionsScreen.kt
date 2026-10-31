@@ -109,8 +109,8 @@ fun ConnectionsScreen(
                         }
                     }
                 }
-                // Where "Disconnect all" was tapped: why tunnels may come back.
-                if (state.disconnectAllFailed && !disconnecting && (state.active.isNotEmpty() || restoring != null)) {
+                // Where "Disconnect all" was tapped: why tunnels may come back, until they are back.
+                if (state.disconnectAllFailed && !disconnecting && restoring != null) {
                     Text(stringResource(R.string.disconnect_all_failed), fontSize = 14.sp, color = colors.error)
                 }
                 restoring?.let { count ->

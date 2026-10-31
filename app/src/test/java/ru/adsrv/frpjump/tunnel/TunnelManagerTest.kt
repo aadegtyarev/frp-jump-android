@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ApiException
+import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.ConnectResponse
 import ru.adsrv.frpjump.api.ConsumedGrant
 import ru.adsrv.frpjump.api.DesiredStateResponse
@@ -371,7 +372,7 @@ class TunnelManagerTest {
 
     @Test
     fun `polls say what a restore waits for`() = runBlocking {
-        api.failure = IOException("offline")
+        api.failure = NetworkException("Cannot reach s: offline", IOException("offline"))
         manager.poll()
         eventually("waiting for network") { manager.state.value.waiting == Waiting.NETWORK }
         api.failure = null

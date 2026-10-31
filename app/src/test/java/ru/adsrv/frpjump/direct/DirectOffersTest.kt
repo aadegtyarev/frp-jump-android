@@ -126,4 +126,13 @@ class DirectOffersTest {
         offers.retried("work", "wb")
         assertEquals(1, settledOn(restarted(), "wifi:a", tunnels = listOf(tunnel(failed))).size)
     }
+
+    @Test
+    fun `one tunnel going direct while another still tries keeps the offer made`() {
+        val direct = tunnel(VisitorState(TunnelStatus.DIRECT))
+        assertEquals(1, settledOn(offers, "wifi:a", tunnels = listOf(direct, tunnel(failed, port = 22))).size)
+        val after = restarted()
+        offeredOn(after, "wifi:a", tunnels = mapOf("work" to listOf(direct, tunnel(VisitorState(TunnelStatus.TRYING), port = 22))))
+        assertEquals(emptyList<DirectOffer>(), settledOn(after, "wifi:a", tunnels = listOf(direct, tunnel(failed, port = 22))))
+    }
 }

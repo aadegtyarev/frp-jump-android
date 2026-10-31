@@ -176,10 +176,10 @@ class TunnelService : Service() {
         }
     }
 
-    /** A failed "Disconnect all" first, then what a restore waits for. */
+    /** While tunnels are still to come back: a failed "Disconnect all" first, then what they wait for. */
     private fun text(view: View): String? = when {
-        view.disconnectFailed -> getString(R.string.disconnect_all_failed)
         tunnelsTitle(view.summary) is TunnelsTitle.Up -> null
+        view.disconnectFailed -> getString(R.string.disconnect_all_failed)
         view.waiting == Waiting.UNLOCK -> getString(R.string.restore_waiting_unlock)
         view.waiting == Waiting.NETWORK -> getString(R.string.restore_waiting_network)
         else -> null

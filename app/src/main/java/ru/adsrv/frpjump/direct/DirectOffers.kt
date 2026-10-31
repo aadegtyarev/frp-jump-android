@@ -38,7 +38,7 @@ data class OfferList(val offers: List<DirectOffer>, val recheckInMs: Long?)
  * failure offers again.
  *
  * Once offered on a network, a device is not offered there again ([memory],
- * kept across restarts) until it goes direct there, its tunnels are gone
+ * kept across restarts) until all its tunnels go direct there, its tunnels are gone
  * (not while its profile's tunnels are still being brought back after a
  * restart) or the owner retries direct ([retried]): tunnels brought back
  * after the process was killed or the phone rebooted fail the same way,
@@ -92,10 +92,15 @@ class DirectOffers(
         return OfferList(offers, waiting.minOrNull())
     }
 
-    /** Devices gone direct on [network], or whose tunnels are gone: they may be offered again. */
+    /**
+     * Devices gone direct on [network] (every tunnel of theirs: one going
+     * direct while another still tries says nothing yet), or whose tunnels
+     * are gone: they may be offered again.
+     */
     private fun forgetEnded(tunnels: Map<String, List<Tunnel>>, network: String?, restoring: Set<String>) {
         val direct = tunnels.flatMap { (profile, list) ->
-            list.filter { it.state.status == TunnelStatus.DIRECT }.map { OfferedDirect(profile, it.device, network.orEmpty()) }
+            list.groupBy { it.device }.filterValues { all -> all.all { it.state.status == TunnelStatus.DIRECT } }
+                .keys.map { OfferedDirect(profile, it, network.orEmpty()) }
         }.toSet()
         val up = tunnels.mapValues { (_, list) -> list.map { it.device }.toSet() }
         memory.removeIf { entry ->

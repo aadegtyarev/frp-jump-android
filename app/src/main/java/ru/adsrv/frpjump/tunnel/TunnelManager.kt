@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.ApiException
+import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
@@ -225,10 +226,13 @@ class TunnelManager(
             SyncResult(null, ok = false)
         } catch (e: Exception) {
             if (noteRemoval(e, credentials)) stopAllLocked()
-            core.update { it.copy(syncError = e.userMessage(), waiting = if (e is IOException) Waiting.NETWORK else null) }
+            core.update { it.copy(syncError = e.userMessage(), waiting = if (e.isNoNetwork()) Waiting.NETWORK else null) }
             SyncResult(null, ok = false)
         }
     }
+
+    /** The server could not be reached at all (not an answer it gave). */
+    private fun Exception.isNoNetwork() = this is IOException || (this is NetworkException && cause is IOException)
 
     /**
      * A 401 means the server no longer knows this token: the profile was
