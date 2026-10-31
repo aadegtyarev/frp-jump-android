@@ -351,6 +351,18 @@
     <string name="web_no_app">No app can open %s</string>
 
     <!-- SSH console -->
+    <string name="close">Close</string>
+    <string name="key_login">Use key login</string>
+    <string name="key_login_title">Key login: %s</string>
+    <string name="key_install_working">Installing the phone’s key…</string>
+    <string name="key_install_password_note">The password is needed once, to add the phone’s key to ~/.ssh/authorized_keys on the device. It is not kept.</string>
+    <string name="key_install_confirm">Install key</string>
+    <string name="key_install_done">Key installed, key login works</string>
+    <string name="key_install_done_password_kept">Key login works and is now used, but the remembered password could not be forgotten: %s</string>
+    <string name="key_install_refused">The key is in ~/.ssh/authorized_keys, but the device refused it for “%s”: sshd may forbid key logins or read keys from another file (AuthorizedKeysFile). Logins stay with the password.</string>
+    <string name="key_install_command_failed">Could not add the key: %s. Logins stay with the password.</string>
+    <string name="key_install_connection_failed">Could not connect: %s. Logins stay with the password.</string>
+    <string name="key_install_save_failed">Key login works, but the app could not save it: %s. Logins stay with the password.</string>
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
     <string name="terminal_keyboard">Keyboard</string>
@@ -390,6 +402,10 @@
     <string name="ssh_failed">SSH failed: %s</string>
     <string name="ssh_key_refused">The device did not accept this phone’s key for “%1$s”. Add the key from Settings › %2$s to ~/.ssh/authorized_keys there, or log in with a password.</string>
     <string name="ssh_password_refused">Wrong user name or password for “%s”.</string>
+    <string name="ssh_saved_password_refused">The saved password didn’t work for “%s”; it is kept until you enter another.</string>
+    <string name="ssh_saved_password_unreadable">The saved password for “%s” can’t be read on this phone. Enter it again.</string>
+    <string name="ssh_saved_password_missing">No password is saved for “%s” now. Enter it.</string>
+    <string name="terminal_change_login">Change login</string>
     <string name="ssh_connection_lost">Connection lost: %s</string>
     <string name="ssh_logged_out">Logged out (exit %d).</string>
     <string name="ssh_connection_closed">Connection closed.</string>

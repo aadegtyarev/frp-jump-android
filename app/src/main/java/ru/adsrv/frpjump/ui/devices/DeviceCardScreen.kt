@@ -170,7 +170,7 @@ fun DeviceCardScreen(
             items(state.rows, key = { it.key }) { row ->
                 ConnectionCard(
                     row = row,
-                    sshMethod = if (row.connection.kind == PortKind.SSH) vm.actions.sshLogin(row).method else null,
+                    sshMethod = if (row.connection.kind == PortKind.SSH) state.sshMethods[row.connection.port] else null,
                     menuOpen = ui.menu == row.key,
                     onMenu = { ui.menu = if (it) row.key else null },
                     actions = actions,

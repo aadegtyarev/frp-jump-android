@@ -427,8 +427,41 @@ port) and Key or Password, then opens a session to
   the app's key. Private keys, passphrases and remembered passwords are
   sealed with a Keystore AES-GCM key of their own (`frpjump-ssh`), so
   re-enrolling the phone keeps them; forgetting the last profile wipes them.
-- Password: kept only when "Remember on this phone" is ticked; a remembered
-  password that is refused is dropped.
+- Password: "Remember on this phone" is ticked by default (sealed as
+  above); unticking it forgets the remembered one once the login works. A
+  remembered password that is refused is kept, not dropped: the session
+  ends with "The saved password didn’t work", and "Change login" next to
+  Reconnect (and in an ended tab's long-press menu) opens the login dialog
+  with the session's user and method; the new session takes that tab (its
+  number too, when the user stays the same), and a new password typed with
+  Remember ticked replaces the old one. A remembered password that cannot
+  be unsealed on this phone (the Keystore key went) says so and asks for
+  it again, rather than "wrong password".
+- "Use key login" (in the "⋮" menu of a saved SSH connection and in a
+  session tab's long-press menu, while that login is by password) moves it
+  to the phone's key in one tap, as `ssh-copy-id` does. It runs over the
+  open session as that user when there is one, else over a password login
+  (the remembered password, or the dialog asks once; a remembered one that
+  is refused is kept and the dialog asks; the tunnel is brought up if it
+  is down). One fixed `sh` script on one line (`ssh/KeyInstall.kt`, so csh
+  login shells take it too) reads the key line from stdin (checked first:
+  a known type, a base64 key, no control characters). When the same key is
+  in `~/.ssh/authorized_keys` already it ends there and changes nothing;
+  otherwise it makes `~/.ssh` and the file if they are missing, makes them
+  private (700 / 600, not through a symlink, a chmod that fails does not
+  stop it) and appends the key. A script still running after 30 s is
+  closed and reported as timed out; Cancel in the progress dialog closes
+  the connection. Then a fresh login with the app's own key (not an
+  imported one) must succeed; only then the remembered method for that
+  device and port becomes Key and the remembered password for the user is
+  forgotten ("Key installed, key login works"; should forgetting the
+  password fail, it says so). Otherwise nothing in the app changes and a
+  dialog says why, with Retry: the key was refused (sshd forbids keys, or
+  reads them from another `AuthorizedKeysFile`), the command failed (the
+  first line it wrote to stderr), or the connection failed. What may be
+  left on the device then: `~/.ssh` and `authorized_keys` made or made
+  private, and the key line appended (when the key was refused after it
+  was written). Host keys are asked about as for the terminal.
 - Host keys are pinned per (profile, device name, target port) on first use, shown as
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.
