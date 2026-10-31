@@ -34,15 +34,14 @@ class FrpcReloadTest {
     }
 
     /** The fake's config: what the real one says about the admin API, plus a switch to refuse reloads. */
-    private fun launch(vararg grants: String, relayOnly: Boolean = false, refuseReload: Boolean = false) = FrpcLaunch(
+    private fun launch(vararg grants: String, direct: Boolean = true, refuseReload: Boolean = false) = FrpcLaunch(
         configFor = { _, admin ->
-            "port=${admin.port}\nuser=${admin.user}\npassword=${admin.password}\nrefuse=$refuseReload\nvisitors=${grants.joinToString(",")}\n"
+            "port=${admin.port}\nuser=${admin.user}\npassword=${admin.password}\nrefuse=$refuseReload\nvisitors=${grants.joinToString(",")}\ndirect=$direct\n"
         },
         certPem = "cert",
         keyPem = "key",
         caPem = "ca",
-        visitors = grants.mapIndexed { i, g -> VisitorSpec(g, "s", 47300 + i) },
-        relayOnly = relayOnly,
+        visitors = grants.mapIndexed { i, g -> VisitorSpec(g, "s", 47300 + i, direct = direct) },
         connection = "relay",
     )
 
@@ -76,15 +75,25 @@ class FrpcReloadTest {
     }
 
     @Test
-    fun `a refused reload or a relay-only switch restarts frpc`() {
+    fun `a refused reload restarts frpc`() {
         runner.apply(launch("g1"), setOf(47300))
         waitForLog("admin ready")
         runner.apply(launch("g1", "g2", refuseReload = true), setOf(47300, 47301))
         assertEquals(FrpcRunner.Change.STARTED, runner.lastChange)
         waitForLog("admin ready", count = 2)
-        runner.apply(launch("g1", "g2", relayOnly = true), setOf(47300, 47301))
-        assertEquals(FrpcRunner.Change.STARTED, runner.lastChange)
-        waitForLog("admin ready", count = 3)
+    }
+
+    @Test
+    fun `switching direct off and on reloads the running frpc`() {
+        runner.apply(launch("g1", "g2"), setOf(47300, 47301))
+        waitForLog("admin ready")
+        runner.apply(launch("g1", "g2", direct = false), setOf(47300, 47301))
+        assertEquals(FrpcRunner.Change.RELOADED, runner.lastChange)
+        waitForLog("reloaded visitors=g1,g2", count = 1)
+        runner.apply(launch("g1", "g2"), setOf(47300, 47301))
+        assertEquals(FrpcRunner.Change.RELOADED, runner.lastChange)
+        waitForLog("reloaded visitors=g1,g2", count = 2)
+        assertEquals(1, runner.recentLog().count { "admin ready" in it })
     }
 
     private companion object {

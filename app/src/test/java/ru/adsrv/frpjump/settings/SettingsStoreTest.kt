@@ -11,26 +11,44 @@ class SettingsStoreTest {
     fun `defaults are background off, p2p, ports 40000-40999`() {
         val settings = SettingsStore(MemoryStorage()).settings.value
         assertEquals(BackgroundPoll.OFF, settings.backgroundPoll)
-        assertEquals(false, settings.relayOnly)
+        assertEquals(true, settings.direct)
         assertEquals(40000..40999, settings.localPorts)
     }
 
     @Test
     fun `changes persist`() {
         val storage = MemoryStorage()
-        SettingsStore(storage).update { it.copy(backgroundPoll = BackgroundPoll.SECONDS_30, relayOnly = true, localPortFirst = 50000, localPortLast = 50009) }
+        SettingsStore(storage).update { it.copy(backgroundPoll = BackgroundPoll.SECONDS_30, direct = false, localPortFirst = 50000, localPortLast = 50009) }
         val reread = SettingsStore(storage).settings.value
         assertEquals(BackgroundPoll.SECONDS_30, reread.backgroundPoll)
-        assertEquals(true, reread.relayOnly)
+        assertEquals(false, reread.direct)
         assertEquals(50000..50009, reread.localPorts)
     }
 
     @Test
     fun `unreadable or invalid files fall back to the defaults`() {
         assertEquals(AppSettings(), SettingsStore(MemoryStorage("{not json")).settings.value)
-        val bad = SettingsStore(MemoryStorage("""{"relay_only":true,"local_port_first":80,"local_port_last":90}""")).settings.value
-        assertEquals(true, bad.relayOnly)
+        val bad = SettingsStore(MemoryStorage("""{"direct":false,"local_port_first":80,"local_port_last":90}""")).settings.value
+        assertEquals(false, bad.direct)
         assertEquals(40000..40999, bad.localPorts)
+    }
+
+    @Test
+    fun `the old relay-only switch becomes direct, the other way round`() {
+        val relayOnly = MemoryStorage("""{"background_poll":"1m","relay_only":true,"local_port_first":40000,"local_port_last":40999}""")
+        val migrated = SettingsStore(relayOnly).settings.value
+        assertEquals(false, migrated.direct)
+        assertEquals(BackgroundPoll.MINUTE_1, migrated.backgroundPoll)
+        assertEquals(true, SettingsStore(MemoryStorage("""{"relay_only":false}""")).settings.value.direct)
+        assertEquals(true, SettingsStore(MemoryStorage("""{"background_poll":"30s"}""")).settings.value.direct)
+    }
+
+    @Test
+    fun `once saved, the new key wins and the old one is gone`() {
+        val storage = MemoryStorage("""{"relay_only":true}""")
+        SettingsStore(storage).update { it.copy(direct = true) }
+        assertEquals(false, storage.text!!.contains("relay_only"))
+        assertEquals(true, SettingsStore(storage).settings.value.direct)
     }
 
     @Test

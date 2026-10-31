@@ -77,7 +77,7 @@ class ConnectionRowsTest {
                 ConsumedGrant("$profile-${it.port}", "s", "svc", wireProtocolFor(it.kind, it.port), it.device, it.port)
             }
             val planned = storage.update { ports -> planTunnels(profile, grants, ports, allocator, emptySet()) }
-            val tunnels = planned.map { Tunnel(it.grant.exposerDeviceName, it.grant.targetPort, it.grant.grantId, it.localPort, VisitorState(TunnelStatus.READY)) }
+            val tunnels = planned.map { Tunnel(it.grant.exposerDeviceName, it.grant.targetPort, it.grant.grantId, it.localPort, VisitorState(TunnelStatus.TRYING)) }
             return connectionRows(profile, connections, TunnelsState(tunnels = tunnels))
         }
         val work = rowsOf("work", listOf(root, admin))

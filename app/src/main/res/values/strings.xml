@@ -102,6 +102,18 @@
         <item quantity="other">%2$s in %1$d profiles</item>
     </plurals>
     <string name="disconnect_all">Disconnect all</string>
+
+    <!-- Direct or through the server -->
+    <string name="setting_direct">Direct connection (P2P)</string>
+    <string name="setting_direct_hint">Faster. If it does not work, connections go through the server.</string>
+    <string name="direct_channel">Direct connection</string>
+    <string name="direct_channel_description">When a direct connection did not work and a connection went through the server</string>
+    <string name="direct_failed_title">Direct didn’t work: %s</string>
+    <string name="direct_failed_text">%s already works through the server. The network does not seem to let direct connections through.</string>
+    <string name="direct_kept_text">%s is kept through the server on this network.</string>
+    <string name="retry_direct">Retry direct</string>
+    <string name="keep_through_server">Keep through the server</string>
+    <string name="keep_no_network">No network right now: the choice is kept per network. Try again once connected.</string>
     <!-- Bottom navigation -->
     <string name="tab_devices">Devices</string>
     <string name="tab_connections">Connections</string>
@@ -118,9 +130,10 @@
     <string name="state_not_connected">Not connected</string>
     <string name="state_connecting">Connecting…</string>
     <string name="state_disconnecting">Disconnecting…</string>
-    <string name="state_connected">Connected</string>
+    <string name="state_trying_direct">Trying direct…</string>
     <string name="state_direct">Direct</string>
     <string name="state_through_server">Through the server</string>
+    <string name="state_kept_through_server">Kept through the server</string>
     <string name="state_failed">Failed</string>
 
     <!-- Connection rows and their actions -->

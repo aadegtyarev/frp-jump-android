@@ -19,6 +19,9 @@ interface FrpcControl {
     /** [stop], then removes everything frpc had on disk ("Forget this phone"). */
     fun wipe()
 
+    /** Ends "Trying direct…" that went on too long ([FrpcLogParser.expire]). */
+    fun expireTrying()
+
     /** frpc's recent output, for diagnostics. */
     fun recentLog(): List<String>
 }

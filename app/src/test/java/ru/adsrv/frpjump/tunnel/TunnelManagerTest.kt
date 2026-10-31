@@ -31,11 +31,18 @@ class TunnelManagerTest {
         @Volatile var running = false
         @Volatile var applies = 0
         @Volatile var wiped = false
+        @Volatile var last: FrpcLaunch? = null
+        @Volatile var expiries = 0
 
         override fun apply(launch: FrpcLaunch, ports: Set<Int>) {
             running = true
             applies++
             heldPorts = ports
+            last = launch
+        }
+
+        override fun expireTrying() {
+            expiries++
         }
 
         override fun stop() {
@@ -82,6 +89,7 @@ class TunnelManagerTest {
     private val api = FakeApi()
     private val ports = MemoryStorage()
     private var serviceStarts = 0
+    @Volatile private var mode = DirectMode.ON
     private val manager = TunnelManager(
         profile = "p1",
         enrollment = { stored },
@@ -90,6 +98,7 @@ class TunnelManagerTest {
         localPorts = LocalPortStore(ports),
         runner = frpc,
         startService = { serviceStarts++; true },
+        directMode = { mode },
     ).apply { portRange = 47100..47199 }
 
     private suspend fun eventually(what: String, check: () -> Boolean) = withTimeout(2_000) {
@@ -182,5 +191,89 @@ class TunnelManagerTest {
         stored = StoredEnrollment.Unavailable("KeyStoreException")
         manager.sync()
         assertTrue(frpc.running)
+    }
+
+    @Test
+    fun `direct on, kept or off decides the tunnel's visitors`() = runBlocking {
+        manager.sync()
+        assertEquals(true, frpc.last!!.visitors.single().direct)
+        eventually("listed as direct") { manager.state.value.tunnels.single().direct == DirectMode.ON }
+        mode = DirectMode.KEPT
+        manager.sync()
+        assertEquals(false, frpc.last!!.visitors.single().direct)
+        eventually("listed as kept") { manager.state.value.tunnels.single().direct == DirectMode.KEPT }
+        mode = DirectMode.OFF
+        manager.sync()
+        assertEquals(false, frpc.last!!.visitors.single().direct)
+    }
+
+    @Test
+    fun `reapply changes the visitors without asking the server`() = runBlocking {
+        manager.sync()
+        api.failure = IllegalStateException("offline")
+        mode = DirectMode.KEPT
+        manager.reapply()
+        assertEquals(false, frpc.last!!.visitors.single().direct)
+    }
+
+    @Test
+    fun `retry direct gives the device's tunnels not direct a new attempt, kept across polls`() = runBlocking {
+        api.consumed = listOf(grant, ConsumedGrant("g2", "secret", "svc", "ssh", "wb", 22), ConsumedGrant("g3", "secret", "svc", "tcp", "other", 80))
+        manager.sync()
+        frpc.states.value = mapOf(
+            "g1" to VisitorState(TunnelStatus.RELAYED, directFailed = true),
+            "g2" to VisitorState(TunnelStatus.DIRECT),
+            "g3" to VisitorState(TunnelStatus.RELAYED, directFailed = true),
+        )
+        assertTrue(manager.retryDirect("wb"))
+        assertEquals(mapOf("g1" to 1, "g2" to 0, "g3" to 0), frpc.last!!.visitors.associate { it.grantId to it.attempt })
+        manager.sync()
+        assertEquals("a poll does not undo it", 1, frpc.last!!.visitors.first().attempt)
+        assertFalse("no such device", manager.retryDirect("nowhere"))
+    }
+
+    @Test
+    fun `turning direct again starts a new attempt`() = runBlocking {
+        manager.sync()
+        assertEquals(0, frpc.last!!.visitors.single().attempt)
+        mode = DirectMode.KEPT
+        manager.reapply()
+        mode = DirectMode.ON
+        manager.reapply()
+        assertEquals(true, frpc.last!!.visitors.single().direct)
+        assertEquals("not the old xtcp name: its late lines would count", 1, frpc.last!!.visitors.single().attempt)
+        manager.reapply()
+        assertEquals("only on the change", 1, frpc.last!!.visitors.single().attempt)
+    }
+
+    @Test
+    fun `nothing is reapplied after the tunnels stopped`() = runBlocking {
+        manager.sync()
+        stored = StoredEnrollment.NotEnrolled
+        manager.sync()
+        stored = StoredEnrollment.Enrolled(credentials("t1"))
+        val applies = frpc.applies
+        manager.reapply()
+        assertEquals(applies, frpc.applies)
+        assertFalse(frpc.running)
+    }
+
+    @Test
+    fun `trying direct is expired while it lasts`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.TRYING))
+        withTimeout(3_000) { while (frpc.expiries == 0) delay(20) }
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.DIRECT))
+        val expiries = frpc.expiries
+        delay(1_500)
+        assertTrue("no ticks once it is decided", frpc.expiries <= expiries + 1)
+    }
+
+    @Test
+    fun `a device not ready yet gets another attempt shortly`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.TRYING, waitingForPeer = true))
+        withTimeout(5_000) { while (frpc.last!!.visitors.single().attempt == 0) delay(20) }
+        assertEquals(1, frpc.last!!.visitors.single().attempt)
     }
 }
