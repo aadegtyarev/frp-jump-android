@@ -288,6 +288,7 @@ val SearchGlyph: ImageVector = glyph("Search") {
     close()
     moveTo(15.2f, 15.2f)
     lineTo(20f, 20f)
+}
 
 /** An arrow down onto a tray: download to the phone. */
 val DownloadGlyph: ImageVector = glyph("Download") {
