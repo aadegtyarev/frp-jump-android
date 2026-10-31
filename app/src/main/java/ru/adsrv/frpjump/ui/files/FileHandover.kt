@@ -18,7 +18,13 @@ import java.io.File
  * for that one file, through the app's FileProvider.
  */
 fun handOver(context: Context, file: File, mime: String, name: String, share: Boolean) {
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
+    // A file outside the provider's folders: say so rather than crash.
+    val uri = try {
+        FileProvider.getUriForFile(context, "${context.packageName}.updates", file)
+    } catch (_: IllegalArgumentException) {
+        context.notice(context.getString(R.string.files_hand_over_failed, name), NoticeKind.WARN, long = true)
+        return
+    }
     val intent = if (share) {
         Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri)
     } else {
@@ -37,7 +43,12 @@ fun handOver(context: Context, file: File, mime: String, name: String, share: Bo
 
 /** Shares several files downloaded to the cache in one go (`ACTION_SEND_MULTIPLE`), read access to those only. */
 fun shareAll(context: Context, files: List<Pair<File, String>>) {
-    val uris = files.map { (file, _) -> FileProvider.getUriForFile(context, "${context.packageName}.updates", file) }
+    val uris = try {
+        files.map { (file, _) -> FileProvider.getUriForFile(context, "${context.packageName}.updates", file) }
+    } catch (_: IllegalArgumentException) {
+        context.notice(context.getString(R.string.files_hand_over_failed, files.first().second), NoticeKind.WARN, long = true)
+        return
+    }
     val intent = Intent(Intent.ACTION_SEND_MULTIPLE)
         .setType(shareType(files.map { (_, name) -> PhoneFiles.mimeType(name) }))
         .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))

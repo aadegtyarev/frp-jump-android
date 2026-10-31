@@ -48,6 +48,10 @@ class PaletteContrastTest {
         // Snackbars: Material's inverse surface is ink with the ground as text.
         put("ground on ink", p.ground to p.ink)
         PROFILE_COLORS.forEach { put("onProfile on $it", p.onProfile to p.profiles.getValue(it)) }
+        // The text viewer's syntax colours, on the card (ui/files/SyntaxStyles.kt); accent, muted, error, warning are above.
+        put("executable on card (strings, code)", p.executable to p.card)
+        put("archive on card (Markdown marks)", p.archive to p.card)
+        for (name in listOf("blue", "purple", "orange", "crimson")) put("$name on card (syntax)", p.profiles.getValue(name) to p.card)
     }
 
     /** Marks that carry meaning alone (status dots, profile colours): 3:1 against the card (1.4.11). */

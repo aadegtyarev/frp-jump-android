@@ -96,10 +96,61 @@ transfers that resume and run in the background.
 ### 5. View and edit
 
 - Tap a file: its card opens. Open there: text files (by extension and
-  content sniffing, up to 2 MB) open in the app's editor (stage 4); others
-  are downloaded to the cache and handed to another app (Open with…), as
-  web downloads are.
-- Editor: monospace, line numbers off, search, undo; "Save" uploads it back.
+  content sniffing, up to 2 MB) open in the app's viewer (the editor comes
+  in stage 4); others are downloaded to the cache and handed to another
+  app (Open with…), as web downloads are.
+- Viewer (decided 2026-11-01, read only): the file downloads to the cache
+  with its bar on the card (Cancel, a failure with Retry), then shows over
+  the file screen; Back or the arrow closes it. A name known as binary
+  (images, media, archives, `.pdf`, `.apk`, `.db`, …) goes to Open with at
+  once. Any other file over 2 MB goes to Open with, and a note says why.
+  The rest is downloaded and looked at: no NUL byte and mostly printable
+  UTF-8 in its first 8 KB, and still at most 2 MB as downloaded → the
+  viewer, else Open with. A name known as text (`.txt`, `.log`, `.md`,
+  `.json`, `.yaml`, `.conf`, `.ini`, `.sh`, `.js`, systemd units, `.env`,
+  dotfiles such as `.bashrc`, …) picks the colours; it is looked at all
+  the same, as a name can lie.
+- The viewer's copy is deleted as it closes. Share and Open with from the
+  viewer hand on a copy of their own, kept as files opened with other apps
+  are. Copies left by a viewer that did not close (the screen or the
+  process went) go once a few minutes old: when a file screen goes, and at
+  the next start. A copy gone from under a viewer (the cache cleared)
+  closes it with a note.
+- It shows the text as UTF-8 (a bad byte shows as �), monospace, line
+  numbers off, lines wrapped; "⋮" has Wrap lines, Line numbers, the text
+  size (A− / A+, shared with the terminal), Copy all, Share and Open with.
+  It scrolls by line, so a 2 MB log of 50 000 lines scrolls smoothly; a
+  line longer than 1000 characters (minified JSON, a long log line) is
+  shown in pieces of 1000, each piece after the first marked `↪`. Control
+  characters show as their signs (`␛`, a lone CR as `␍`). TalkBack reads
+  each row's text, without its number or `↪`.
+  Copy all takes up to 128 K characters (the system clipboard's limit is
+  near); a larger file says to use Share. A copy of a secret-looking file
+  (`.env`, keys, `.nmconnection`) is marked sensitive, so Android 13 and
+  later do not preview it.
+- A `.conf`, `.cfg` or `.cnf` whose text is a JSON object or array (as
+  `wb-mqtt-serial.conf`) is coloured as JSON; otherwise as INI.
+- Colours, from the theme's colours in light and dark, picked by the
+  file's name and, without a known one, its first line (`#!` of a shell or
+  `node`, a leading `{` / `[`, `---`, a log timestamp): Markdown (headings,
+  emphasis, inline and fenced code, links, list marks, quotes); logs
+  (time stamps; ERROR/FATAL/CRIT in red, WARN in amber, INFO/DEBUG muted);
+  JSON (keys, strings, numbers, `true` / `false` / `null`); YAML (keys,
+  comments, strings, anchors and aliases, list dashes, block scalars);
+  INI, conf, properties, systemd units, `.env` (`[sections]`, keys,
+  comments); shell (comments, strings, `$variables`, keywords);
+  JavaScript, wb-rules among it (comments, strings, keywords, numbers,
+  regular expressions). Anything else is plain text. Colouring is by line
+  with the state a line leaves (an open fence, block comment, quote or
+  here-document), worked out off the main thread; the text shows at once
+  and the colours follow. Lines over 4000 characters stay plain in
+  Markdown, logs, YAML and INI.
+- Search: the magnifier opens the search field over the top bar, as in
+  the file list; matches of the text, ignoring case, are marked, the
+  current one stronger, with "3 of 17" and next / previous; ✕ or Back
+  closes it. Nothing found: "No matches". It counts up to 10 000 matches.
+  The keyboard shrinks the text, so a match stepped to is never under it.
+- Editor (stage 4): the viewer plus editing, undo; "Save" uploads it back.
 - Saving through a symlink writes the file it points to, never replaces the
   link with a regular file: the app resolves the real path, writes a
   temporary file next to it, keeps its mode, then renames it over the real
@@ -180,7 +231,8 @@ Decided 2026-10-31: by name only; content is searched in the terminal.
 | Download folder choice, hidden-files toggle, last folder per connection | app-private settings |
 | Last listings for offline view | app-private cache, per connection |
 | Partial downloads | the chosen folder (`.part`), removed on cancel |
-| Files opened for viewing or editing | app cache, wiped on exit and daily |
+| Files opened with other apps | app cache, wiped on exit and daily |
+| Files shown in the viewer | app cache, deleted as the viewer closes |
 
 ## Delivery
 
@@ -191,6 +243,7 @@ Decided 2026-10-31: by name only; content is searched in the terminal.
 4. Text editor with symlink-safe save and change detection.
 5. Pack and unpack.
 6. Search by name: the folder's filter and the search in subfolders.
+7. Text viewer with minimal colouring (before the editor of stage 4).
 
 Each stage a separate PR, reviewed, checked on the emulator against a test
 device, then a build for the owner's phone.
@@ -205,11 +258,14 @@ device, then a build for the owner's phone.
   the target has the new content and its old mode.
 - Pack a folder to `.tar.gz`, download it, unpack another on the device.
 - No network: the last listing shows with "No connection".
+- Open a 2 MB log: it shows in the viewer, scrolls smoothly, ERROR
+  marked red; search `error` steps through the matches. A `.png` opens with
+  another app; a 5 MB log too, with a note.
 - In `/etc`, type `wb-`: the folder's matching rows show at once;
   "Search subfolders" lists `wb-rules/…` hits as they come; Stop ends it
   and the `find` on the device is gone (`pgrep find`).
 
 ## Open questions
 
-- Whether the editor needs syntax colouring (JS, JSON, YAML) or plain text
-  is enough at first.
+- Decided 2026-11-01: minimal colouring by format (see "5. View and
+  edit"), in a viewer first; the editor reuses it.

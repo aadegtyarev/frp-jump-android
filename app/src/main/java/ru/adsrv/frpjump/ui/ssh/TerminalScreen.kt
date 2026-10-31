@@ -689,5 +689,5 @@ private class ViewClient(
     }
 }
 
-private const val MIN_FONT_SP = 8
-private const val MAX_FONT_SP = 28
+internal const val MIN_FONT_SP = 8
+internal const val MAX_FONT_SP = 28

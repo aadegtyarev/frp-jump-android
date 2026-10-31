@@ -52,6 +52,11 @@ import ru.adsrv.frpjump.files.SearchEnd
 import ru.adsrv.frpjump.files.runOneByOne
 import ru.adsrv.frpjump.files.searchNames
 import ru.adsrv.frpjump.files.targetFolder
+import ru.adsrv.frpjump.files.text.OpenRoute
+import ru.adsrv.frpjump.files.text.SNIFF_BYTES
+import ru.adsrv.frpjump.files.text.Viewable
+import ru.adsrv.frpjump.files.text.openRoute
+import ru.adsrv.frpjump.files.text.viewable
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
@@ -213,6 +218,9 @@ sealed interface FilesEvent {
     /** Hand [file] (the device's [path]) to another app: view it ([share] false) or share it. */
     data class Handover(val path: String, val file: File, val mime: String, val name: String, val share: Boolean) : FilesEvent
 
+    /** Show [file] (the device's [path], named [name]) in the text viewer. */
+    data class View(val path: String, val file: File, val name: String) : FilesEvent
+
     /** Share several files at once, each with its name. */
     data class ShareMany(val files: List<Pair<File, String>>) : FilesEvent
 
@@ -235,6 +243,12 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     var target: FilesTarget? = app.fileTargets.get(targetId)
         private set
     private val runtime = target?.let { app.profiles.runtime(it.profile) }
+
+    /** The copy the viewer shows now, deleted when the screen or session goes without the viewer closing it. Main thread. */
+    private var viewedCopy: File? = null
+
+    /** The text size of the viewer: the terminal's, so A− / A+ in one sizes both. */
+    val textSize: MutableStateFlow<Int> get() = app.ssh.fontSize
 
     /** Lives until [close]; leaving the screen while kept does not end it. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -577,8 +591,69 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         }
     }
 
-    /** Tap on a file: to the cache, then "Open with". */
-    fun openWith(entry: RemoteEntry) {
+    /**
+     * Open on a file's card: a file that may be text to the viewer's cache,
+     * then, if its start reads as text and it is at most 2 MB as
+     * downloaded, the viewer; anything else to another app, a file over
+     * 2 MB saying why.
+     */
+    fun openFile(entry: RemoteEntry) {
+        when (openRoute(entry.name, entry.size)) {
+            OpenRoute.OTHER_APP -> openWith(entry)
+            OpenRoute.TOO_LARGE -> {
+                toast(Texts.get(R.string.files_view_too_large, entry.name))
+                openWith(entry)
+            }
+            OpenRoute.VIEW, OpenRoute.SNIFF -> transfer(entry, TransferKind.OPEN) { b, progress ->
+                val file = toCache(b, entry, progress, forViewer = true)
+                // A text name holding binary, or a file that grew past the limit since it was listed: another app.
+                val view = withContext(Dispatchers.IO) { viewerVerdict(file) }
+                currentCoroutineContext().ensureActive()
+                if (view == Viewable.YES) {
+                    viewedCopy?.let(::deleteViewCopy)
+                    viewedCopy = file
+                    _events.send(FilesEvent.View(entry.path, file, entry.name))
+                } else {
+                    if (view == Viewable.TOO_LARGE) toast(Texts.get(R.string.files_view_too_large, entry.name))
+                    val handed = withContext(Dispatchers.IO) { PhoneFiles.moveToOpenCache(app, checkNotNull(target).profile, file) }
+                    _events.send(FilesEvent.Handover(entry.path, handed, PhoneFiles.mimeType(entry.name), entry.name, share = false))
+                }
+            }
+        }
+    }
+
+    /** The viewer was closed on [viewed]: its copy goes (anything handed on from it was a copy of its own). */
+    fun closeViewed(viewed: ViewedFile) {
+        val file = File(viewed.local)
+        if (viewedCopy == file) viewedCopy = null
+        deleteViewCopy(file)
+    }
+
+    /** The viewer's copy [file] goes, with its folder. */
+    private fun deleteViewCopy(file: File) {
+        app.appScope.launch(Dispatchers.IO) { file.parentFile?.deleteRecursively() }
+    }
+
+    /**
+     * Share or Open with from the viewer: a copy of its file into the
+     * cache other apps are served from, handed on from there; the viewer's
+     * own copy stays its own and goes as it closes.
+     */
+    fun handOverViewed(viewed: ViewedFile, share: Boolean) {
+        val profile = target?.profile ?: return
+        scope.launch {
+            val copy = try {
+                withContext(Dispatchers.IO) { PhoneFiles.copyToOpenCache(app, profile, File(viewed.local)) }
+            } catch (e: IOException) {
+                toast(Texts.get(R.string.viewer_hand_over_failed, fileProblem(PhoneSideException(e))), NoticeKind.WARN)
+                return@launch
+            }
+            _events.send(FilesEvent.Handover(viewed.path, copy, viewerType(viewed.name), viewed.name, share))
+        }
+    }
+
+    /** Tap on a file that is not text: to the cache, then "Open with". */
+    private fun openWith(entry: RemoteEntry) {
         transfer(entry, TransferKind.OPEN) { b, progress -> handover(b, entry, progress, share = false) }
     }
 
@@ -592,7 +667,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         _state.update { it.copy(downloads = it.downloads - entry.path) }
         when (failed.kind) {
             TransferKind.DOWNLOAD -> download(entry)
-            TransferKind.OPEN -> openWith(entry)
+            TransferKind.OPEN -> openFile(entry)
             TransferKind.SHARE -> share(entry)
         }
     }
@@ -608,12 +683,12 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         _events.send(FilesEvent.Handover(entry.path, file, PhoneFiles.mimeType(entry.name), entry.name, share))
     }
 
-    /** [entry] downloaded into the app's cache, for another app. */
-    private suspend fun toCache(b: SftpBrowser, entry: RemoteEntry, progress: (Long, Long) -> Unit): File {
+    /** [entry] downloaded into the app's cache, for another app or ([forViewer]) the viewer. */
+    private suspend fun toCache(b: SftpBrowser, entry: RemoteEntry, progress: (Long, Long) -> Unit, forViewer: Boolean = false): File {
         val t = checkNotNull(target)
         val file = withContext(Dispatchers.IO) {
             val file = try {
-                PhoneFiles.openCacheFile(app, t.profile, entry.name)
+                if (forViewer) PhoneFiles.viewCacheFile(app, t.profile, entry.name) else PhoneFiles.openCacheFile(app, t.profile, entry.name)
             } catch (e: IOException) {
                 throw PhoneSideException(e)
             }
@@ -1019,6 +1094,10 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      */
     override fun leave() {
         clearSearch()
+        // A viewer open as the screen went goes with it, without a close of its own: its copy goes here.
+        viewedCopy?.let(::deleteViewCopy)
+        viewedCopy = null
+        app.appScope.launch(Dispatchers.IO) { PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS) }
         _state.update { it.copy(downloads = emptyMap(), uploads = emptyList(), selection = FileSelection()) }
         app.appScope.launch(Dispatchers.IO) { withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() } }
     }
@@ -1044,18 +1123,43 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     override fun close() {
         val b = browser
         browser = null
+        viewedCopy?.let(::deleteViewCopy)
+        viewedCopy = null
         app.appScope.launch(Dispatchers.IO) {
             withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() }
             b?.close()
             PhoneFiles.pruneOpenCache(app, HANDED_OVER_KEEP_MS)
+            PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS)
         }
         scope.cancel()
         app.fileTargets.remove(targetId)
     }
 
     private companion object {
+        /** Whether the viewer takes [file], by its size and its start. */
+        fun viewerVerdict(file: File): Viewable {
+            val head = ByteArray(SNIFF_BYTES)
+            val read = file.inputStream().use { input ->
+                var n = 0
+                while (n < head.size) {
+                    val r = input.read(head, n, head.size - n)
+                    if (r < 0) break
+                    n += r
+                }
+                n
+            }
+            return viewable(file.length(), head, read)
+        }
+
         const val CLEANUP_WAIT_MS = 15_000L
         const val HANDED_OVER_KEEP_MS = 2 * 60 * 60 * 1000L
+
+        /**
+         * Viewer copies older than this go when a file screen goes: copies a
+         * lost screen left behind. A viewer open under another file screen
+         * keeps its copy for Share unless it has been open that long.
+         */
+        const val VIEW_LEFT_MS = 60 * 60 * 1000L
 
         /** A row's bar moves in steps of a percent at most: a big file must not redraw the list thousands of times. */
         fun throttled(report: (Long, Long) -> Unit): (Long, Long) -> Unit {
