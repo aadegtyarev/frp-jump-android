@@ -147,4 +147,17 @@ class EnrollLineParserTest {
         error("https://way.example.com:0 $token")
         error("https:///path $token")
     }
+
+    @Test
+    fun nameTheServerWouldRefuseIsRefusedHere() {
+        assertEquals(EnrollLineProblem.BAD_NAME, error("frp-jump-client enroll https://way.example.com $token --name ph\u0007one"))
+        assertEquals(EnrollLineProblem.BAD_NAME, error("frp-jump-client enroll https://way.example.com $token --name ${"a".repeat(64)}"))
+        assertEquals(EnrollLineProblem.BAD_NAME, error("frp-jump-client enroll https://way.example.com $token --name -phone"))
+        assertEquals("phone_2", ok("frp-jump-client enroll https://way.example.com $token --name phone_2").requestedName)
+    }
+
+    @Test
+    fun overLongUrlIsRefused() {
+        assertEquals(EnrollLineProblem.BAD_URL, error("frp-jump-client enroll https://way.example.com/${"x".repeat(3000)} $token"))
+    }
 }

@@ -256,4 +256,5 @@ private fun EnrollLineProblem.text(): String = when (this) {
     EnrollLineProblem.HTTP -> Texts.get(R.string.enroll_line_http)
     EnrollLineProblem.BAD_URL -> Texts.get(R.string.enroll_line_bad_url)
     EnrollLineProblem.BAD_TOKEN -> Texts.plural(R.plurals.enroll_line_bad_token, EnrollLineParser.TOKEN_LENGTH, EnrollLineParser.TOKEN_LENGTH)
+    EnrollLineProblem.BAD_NAME -> Texts.get(R.string.enroll_line_bad_name)
 }

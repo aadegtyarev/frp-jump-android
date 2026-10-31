@@ -343,6 +343,7 @@
         <item quantity="many">В токене должно быть %d символов; проверьте, что строка скопирована целиком.</item>
         <item quantity="other">В токене должно быть %d символа; проверьте, что строка скопирована целиком.</item>
     </plurals>
+    <string name="enroll_line_bad_name">Имя после --name: только латинские буквы, цифры, _ и -, до 63 символов, начинается с буквы или цифры.</string>
     <string name="enroll_line_http">Адрес сервера должен начинаться с https://, а не с http://.</string>
     <string name="enroll_line_bad_url">Нужен https://-адрес сервера, а за ним токен; адрес прочитать не удалось.</string>
     <plurals name="enroll_line_bad_token">

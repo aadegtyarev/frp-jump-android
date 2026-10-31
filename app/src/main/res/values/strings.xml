@@ -324,6 +324,7 @@
         <item quantity="one">The token should be %d character; check that the whole line was copied.</item>
         <item quantity="other">The token should be %d characters; check that the whole line was copied.</item>
     </plurals>
+    <string name="enroll_line_bad_name">The name after --name may have only Latin letters, digits, _ and -, up to 63, starting with a letter or digit.</string>
     <string name="enroll_line_http">The server URL must start with https://, not http://.</string>
     <string name="enroll_line_bad_url">Expected an https:// server URL followed by the token; could not read a URL in it.</string>
     <plurals name="enroll_line_bad_token">
