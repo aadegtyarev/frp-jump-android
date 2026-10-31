@@ -64,10 +64,12 @@ class ConnectionTest {
 
     @Test
     fun `a preset chip fills in its name, unless the owner typed one`() {
-        val homeui = PortPreset(80, "homeui")
+        val nodeRed = PortPreset(1880, "Node-RED")
         val grafana = PortPreset(3000, "Grafana")
-        assertEquals("homeui", nameAfterPreset("", homeui))
-        assertEquals("Grafana", nameAfterPreset("homeui", grafana))
+        assertEquals("Node-RED", nameAfterPreset("", nodeRed))
+        assertEquals("Grafana", nameAfterPreset("Node-RED", grafana))
+        // A web port preset without a name leaves the default ("Web") to the kind.
+        assertEquals("", nameAfterPreset("", PortPreset(80)))
         assertEquals("", nameAfterPreset("Grafana", PortPreset(8080)))
         assertEquals("My UI", nameAfterPreset("My UI", grafana))
         assertTrue(isPresetName(" MQTT "))

@@ -168,7 +168,8 @@ fun ConnectionSheet(
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         PORT_PRESETS.getValue(kind).forEach { preset ->
                             val label = preset.name?.let { stringResource(R.string.preset_named, it, preset.port) }
-                                ?: if (kind == PortKind.WEB && preset.port == 443) stringResource(R.string.preset_named, "HTTPS", 443) else preset.port.toString()
+                                ?: webSchemeLabel(kind, preset.port)?.let { stringResource(R.string.preset_named, it, preset.port) }
+                                ?: preset.port.toString()
                             PresetChip(label, selected = parsePort(portText) == preset.port) {
                                 portText = preset.port.toString()
                                 name = nameAfterPreset(name, preset)
@@ -268,4 +269,12 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
+}
+
+/** The web presets on their standard ports say their scheme: "HTTP · 80", "HTTPS · 443". */
+private fun webSchemeLabel(kind: PortKind, port: Int): String? = when {
+    kind != PortKind.WEB -> null
+    port == 80 -> "HTTP"
+    port == 443 -> "HTTPS"
+    else -> null
 }

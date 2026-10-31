@@ -59,7 +59,7 @@ data class PortPreset(val port: Int, val name: String? = null)
 /** Presets per kind, as the contract lists them; the first is what picking the kind fills in. */
 val PORT_PRESETS: Map<PortKind, List<PortPreset>> = mapOf(
     PortKind.WEB to listOf(
-        PortPreset(80, "homeui"),
+        PortPreset(80),
         PortPreset(443),
         PortPreset(8080),
         PortPreset(1880, "Node-RED"),
@@ -73,7 +73,7 @@ val PORT_PRESETS: Map<PortKind, List<PortPreset>> = mapOf(
     ),
 )
 
-/** A name a preset fills in ("homeui"), not one the owner typed. */
+/** A name a preset fills in ("Grafana"), not one the owner typed. */
 fun isPresetName(name: String): Boolean = PORT_PRESETS.values.flatten().any { it.name != null && it.name == name.trim() }
 
 /**
