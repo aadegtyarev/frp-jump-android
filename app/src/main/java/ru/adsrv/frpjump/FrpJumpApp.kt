@@ -37,6 +37,7 @@ import ru.adsrv.frpjump.mqtt.MqttEnvironment
 import ru.adsrv.frpjump.mqtt.MqttLogins
 import ru.adsrv.frpjump.mqtt.MqttSessions
 import ru.adsrv.frpjump.mqtt.PinStore
+import ru.adsrv.frpjump.mqtt.PublishMemory
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfileShared
@@ -97,6 +98,10 @@ class FrpJumpApp : Application() {
 
     /** The MQTT explorer's pins, per connection. */
     lateinit var mqttPins: PinStore
+        private set
+
+    /** The publish sheet's retain, QoS and recent payloads per topic, per connection. */
+    lateinit var mqttPublished: PublishMemory
         private set
 
     /** The MQTT explorer's sessions, one per connection. */
@@ -343,6 +348,7 @@ class FrpJumpApp : Application() {
         )
         mqttLogins = MqttLogins(AtomicTextFile(File(filesDir, "mqtt_logins.json")), sshBox)
         mqttPins = PinStore(AtomicTextFile(File(filesDir, "mqtt_pins.json")))
+        mqttPublished = PublishMemory(AtomicTextFile(File(filesDir, "mqtt_published.json")))
         mqtt = MqttSessions(
             env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler()),
             tunnelsUp = profiles.upTunnels,
@@ -360,7 +366,7 @@ class FrpJumpApp : Application() {
     /**
      * Forget profile [id] on this phone: close its SSH and MQTT sessions,
      * stop its frpc, wipe its credentials, key, lists, ports, remembered SSH
-     * passwords, broker logins and MQTT pins ([Profiles.forget]). [keepData] keeps the profile, empty,
+     * passwords, broker logins, MQTT pins and publish memory ([Profiles.forget]). [keepData] keeps the profile, empty,
      * with its custom ports, logins, host keys and passwords (enrolling it
      * again after its server removed it). Otherwise the web views' data goes
      * too when it is this profile's, and with the last profile also the
@@ -378,9 +384,11 @@ class FrpJumpApp : Application() {
             mqtt.changeStored {
                 mqttLogins.forgetProfile(id)
                 mqttPins.forgetProfile(id)
+                mqttPublished.forgetProfile(id)
                 if (last) {
                     mqttLogins.wipe()
                     mqttPins.wipe()
+                    mqttPublished.wipe()
                 }
             }
             sshEnv.refusals.forgetProfile(id)

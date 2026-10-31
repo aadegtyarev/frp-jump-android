@@ -1,6 +1,29 @@
 package ru.adsrv.frpjump.ui.mqtt
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import ru.adsrv.frpjump.mqtt.JsonProblem
+import ru.adsrv.frpjump.mqtt.MAX_JSON_BYTES
+import ru.adsrv.frpjump.mqtt.MAX_JSON_DEPTH
+import ru.adsrv.frpjump.mqtt.PublishRequest
+import ru.adsrv.frpjump.mqtt.SentTopic
+import ru.adsrv.frpjump.mqtt.checkJson
+import ru.adsrv.frpjump.mqtt.formatJson
+import ru.adsrv.frpjump.mqtt.oneLineText
+import ru.adsrv.frpjump.ui.files.SecondaryButton
+import ru.adsrv.frpjump.ui.notice
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,26 +69,54 @@ import ru.adsrv.frpjump.ui.Segmented
 /** QoS levels offered, as the switch shows them. */
 private val QOS_LEVELS = listOf(0, 1, 2)
 
+/** The payload's formats, as the switch shows them: text, then JSON. */
+private val FORMATS = listOf(false, true)
+
+/** Characters of a recent payload shown on its chip. */
+private const val RECENT_CHARS = 40
+
 /**
  * "Publish…" of a topic's or a branch's card: the topic prefilled with
  * [path], cursor at its end, so a subtopic is a `/name` away; the value as
- * text; Retain (off) and QoS (1). Send checks the topic first and answers
- * under the button; it is off, saying why, while the session is not open.
- * The sheet stays open after an answer, so the next value is one tap away.
+ * Text or JSON (checked as typed, Format pretty-prints it); the last
+ * payloads sent to the topic in the field, a tap puts one in the value;
+ * Retain, QoS and the format as last sent to [path] (from [published]),
+ * else retain off, QoS 1, Text. Send checks the topic and, as JSON, the
+ * value first and answers under the button; it is off, saying why, while
+ * the session is not open. The sheet stays open after an answer, so the
+ * next value is one tap away.
  */
 @Composable
 fun PublishSheet(
     path: String,
     state: MqttState,
-    onPublish: (topic: String, payload: String, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) -> Unit,
+    published: List<SentTopic>?,
+    onPublish: (PublishRequest, done: (PublishAnswer) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
+    val context = LocalContext.current
     var topic by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(path, TextRange(path.length))) }
     var payload by rememberSaveable { mutableStateOf("") }
-    var retain by rememberSaveable { mutableStateOf(false) }
-    var qos by rememberSaveable { mutableStateOf(1) }
+    val last = published?.firstOrNull { it.topic == path }
+    var json by rememberSaveable { mutableStateOf(last?.json ?: false) }
+    var retain by rememberSaveable { mutableStateOf(last?.retain ?: false) }
+    var qos by rememberSaveable { mutableStateOf(last?.qos ?: 1) }
+    // The settings last sent to [path] are taken once, when read: a choice made since is not overridden.
+    var settled by rememberSaveable { mutableStateOf(published != null) }
+    LaunchedEffect(published) {
+        if (settled || published == null) return@LaunchedEffect
+        settled = true
+        published.firstOrNull { it.topic == path }?.let {
+            retain = it.retain
+            qos = it.qos
+            json = it.json
+        }
+    }
     var problem by remember { mutableStateOf<TopicProblem?>(null) }
+    // An empty JSON value is flagged once Send or Format was tapped, not while the field is still untouched.
+    var jsonFlagged by remember { mutableStateOf(false) }
+    val jsonCheck = remember(payload, json) { if (json) checkJson(payload) else null }
     var sending by remember { mutableStateOf(false) }
     var answer by remember { mutableStateOf<PublishAnswer?>(null) }
     var edits by remember { mutableStateOf(0) }
@@ -75,6 +126,11 @@ fun PublishSheet(
     fun changed() {
         answer = null
         edits++
+    }
+    fun setPayload(text: String) {
+        payload = text
+        jsonFlagged = false
+        changed()
     }
     AppSheet(title = stringResource(R.string.mqtt_publish_title), onDismiss = onDismiss) {
         Field(
@@ -93,21 +149,56 @@ fun PublishSheet(
             problem = problem?.let { topicProblemText(it) },
             note = stringResource(R.string.mqtt_topic_reserved).takeIf { isReservedTopic(topic.text) },
         )
-        Field(
-            label = stringResource(R.string.mqtt_card_value),
-            value = payload,
-            onValueChange = {
-                payload = it
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Segmented(FORMATS, json, label = { stringResource(if (it) R.string.mqtt_view_json else R.string.mqtt_view_text) }, onPick = {
+                settled = true
+                json = it
+                jsonFlagged = false
                 changed()
-            },
-            mono = true,
-            singleLine = false,
-            minLines = 3,
-        )
+            })
+            Field(
+                label = stringResource(R.string.mqtt_card_value),
+                value = payload,
+                onValueChange = ::setPayload,
+                mono = true,
+                singleLine = false,
+                minLines = 3,
+                problem = jsonCheck?.problem?.takeIf { it != JsonProblem.Empty || jsonFlagged }?.let { jsonProblemText(it) },
+            )
+            if (json) {
+                SecondaryButton(stringResource(R.string.mqtt_publish_format_json), null, enabled = true, Modifier.fillMaxWidth()) {
+                    val element = jsonCheck?.element
+                    if (element == null) {
+                        jsonFlagged = true
+                        return@SecondaryButton
+                    }
+                    val formatted = formatJson(element)
+                    if (formatted == payload) {
+                        context.notice(context.getString(R.string.mqtt_publish_formatted_already))
+                    } else {
+                        setPayload(formatted)
+                    }
+                }
+            }
+        }
+        val recent = published?.firstOrNull { it.topic == topic.text }?.payloads.orEmpty()
+        if (recent.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.mqtt_publish_recent), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val use = stringResource(R.string.mqtt_publish_recent_use)
+                    val empty = stringResource(R.string.mqtt_empty_value)
+                    recent.forEach { sent ->
+                        RecentChip(if (sent.isEmpty()) empty else oneLineText(sent, RECENT_CHARS), use) { setPayload(sent) }
+                    }
+                }
+            }
+        }
         Row(
             Modifier
                 .fillMaxWidth()
                 .toggleable(value = retain, role = Role.Switch, onValueChange = {
+                    settled = true
                     retain = it
                     changed()
                 }),
@@ -123,6 +214,7 @@ fun PublishSheet(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.mqtt_publish_qos), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
             Segmented(QOS_LEVELS, qos, label = { it.toString() }, onPick = {
+                settled = true
                 qos = it
                 changed()
             })
@@ -137,11 +229,14 @@ fun PublishSheet(
                     val text = topic.text
                     val found = topicProblem(text)
                     problem = found
-                    if (found != null) return@MainButton
+                    // As JSON, a value that is not JSON is not sent: its problem shows under the field.
+                    val notJson = jsonCheck?.problem != null
+                    if (notJson) jsonFlagged = true
+                    if (found != null || notJson) return@MainButton
                     sending = true
                     answer = null
                     val sentAt = edits
-                    onPublish(text, payload, qos, retain) {
+                    onPublish(PublishRequest(text, payload, qos, retain, json)) {
                         sending = false
                         // An edit made while sending makes the answer stale: drop it.
                         if (edits == sentAt) answer = it
@@ -166,6 +261,38 @@ fun PublishSheet(
             }
         }
     }
+}
+
+/** A payload sent before, on one line; a tap puts it in the value field. */
+@Composable
+private fun RecentChip(text: String, onClickLabel: String, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier
+            .height(36.dp)
+            .widthIn(max = 240.dp)
+            .clip(shape)
+            .border(1.dp, colors.outline, shape)
+            .clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun jsonProblemText(problem: JsonProblem): String = when (problem) {
+    JsonProblem.Empty -> stringResource(R.string.mqtt_publish_json_empty)
+    JsonProblem.TooLarge -> stringResource(R.string.mqtt_publish_json_too_large, MAX_JSON_BYTES / 1024)
+    JsonProblem.TooDeep -> stringResource(R.string.mqtt_publish_json_too_deep, MAX_JSON_DEPTH)
+    is JsonProblem.Invalid ->
+        if (problem.line != null && problem.column != null) {
+            stringResource(R.string.mqtt_publish_json_invalid_at, problem.line, problem.column)
+        } else {
+            stringResource(R.string.mqtt_publish_json_invalid)
+        }
 }
 
 /** Why Send is off: the session's state, in the words of the explorer's banner. */

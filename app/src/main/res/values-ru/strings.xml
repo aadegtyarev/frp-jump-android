@@ -805,4 +805,13 @@
     <string name="mqtt_publish_lost">Связь пропала до ответа брокера</string>
     <string name="mqtt_publish_timeout">Брокер не ответил за %1$d с</string>
     <string name="mqtt_publish_failed">Не отправлено: %1$s</string>
+    <string name="mqtt_publish_format_json">Отформатировать</string>
+    <string name="mqtt_publish_formatted_already">Уже отформатировано</string>
+    <string name="mqtt_publish_json_empty">Пусто: для JSON нужно значение</string>
+    <string name="mqtt_publish_json_too_large">Больше %1$d КБ: слишком большое для проверки JSON, отправьте как текст</string>
+    <string name="mqtt_publish_json_too_deep">Вложенность глубже %1$d уровней</string>
+    <string name="mqtt_publish_json_invalid">Не JSON</string>
+    <string name="mqtt_publish_json_invalid_at">Не JSON: строка %1$d, столбец %2$d</string>
+    <string name="mqtt_publish_recent">Отправляли раньше</string>
+    <string name="mqtt_publish_recent_use">подставить в значение</string>
 </resources>

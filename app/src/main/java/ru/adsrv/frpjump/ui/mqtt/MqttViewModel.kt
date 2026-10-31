@@ -24,6 +24,9 @@ import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.PinMask
 import ru.adsrv.frpjump.mqtt.PublishAnswer
 import ru.adsrv.frpjump.mqtt.PublishFailure
+import ru.adsrv.frpjump.mqtt.PublishRequest
+import ru.adsrv.frpjump.mqtt.SentTopic
+import ru.adsrv.frpjump.mqtt.wasSent
 import ru.adsrv.frpjump.mqtt.SnapshotState
 import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
@@ -267,11 +270,37 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         return null
     }
 
-    /** Send of the publish sheet: [payload] as UTF-8 to [topic] (checked by the sheet); [done] gets the answer on the main thread. */
-    fun publish(topic: String, payload: String, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) {
+    /**
+     * What the publish sheet remembers of this connection's topics, the most
+     * recently sent first; null until read.
+     */
+    val published = MutableStateFlow<List<SentTopic>?>(null)
+
+    init {
+        session?.let { s ->
+            viewModelScope.launch(Dispatchers.IO) {
+                val stored = app.mqttPublished.get(s.profile, s.connectionId)
+                // A send remembered meanwhile already holds what was read and more.
+                published.compareAndSet(null, stored)
+            }
+        }
+    }
+
+    /**
+     * Send of the publish sheet (the topic checked by it); [done] gets the
+     * answer on the main thread. A message that left the phone is
+     * remembered for its topic: the payload, retain, QoS and format.
+     */
+    fun publish(request: PublishRequest, done: (PublishAnswer) -> Unit) {
         val s = session ?: return done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
-        s.publish(topic, payload.toByteArray(Charsets.UTF_8), qos, retain) { answer ->
+        val memory = app.mqttPublished
+        s.publish(request.topic, request.payload.toByteArray(Charsets.UTF_8), request.qos, request.retain) { answer ->
             viewModelScope.launch(Dispatchers.Main) { done(answer) }
+            if (wasSent(answer)) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    published.value = with(request) { memory.sent(s.profile, s.connectionId, topic, payload, retain, qos, json) }
+                }
+            }
         }
     }
 

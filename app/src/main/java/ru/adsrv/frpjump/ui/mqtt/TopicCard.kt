@@ -60,6 +60,8 @@ import ru.adsrv.frpjump.mqtt.PayloadView
 import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.PinMask
 import ru.adsrv.frpjump.mqtt.PublishAnswer
+import ru.adsrv.frpjump.mqtt.PublishRequest
+import ru.adsrv.frpjump.mqtt.SentTopic
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.ValueLine
 import ru.adsrv.frpjump.mqtt.copiedValue
@@ -119,7 +121,9 @@ fun TopicCard(
     state: MqttState,
     onPin: (PinMask) -> String,
     onUnpin: (PinMask) -> Unit,
-    onPublish: (topic: String, payload: String, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) -> Unit,
+    /** What the publish sheet remembers of the connection's topics; null until read. */
+    published: List<SentTopic>?,
+    onPublish: (PublishRequest, done: (PublishAnswer) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -198,7 +202,7 @@ fun TopicCard(
         }
     }
     if (publishing) {
-        PublishSheet(path = path.format(), state = state, onPublish = onPublish, onDismiss = { publishing = false })
+        PublishSheet(path = path.format(), state = state, published = published, onPublish = onPublish, onDismiss = { publishing = false })
     }
     if (picking) {
         PinSheet(
