@@ -100,6 +100,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     val focused by vm.focused.collectAsStateWithLifecycle()
+    val published by vm.published.collectAsStateWithLifecycle()
     val colors = AppTheme.colors
     val session = vm.session
     var menu by remember { mutableStateOf(false) }
@@ -222,6 +223,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             state = state.state,
             onPin = { vm.pin(card.path, it) },
             onUnpin = { vm.unpin(card.path, it) },
+            published = published,
             onPublish = vm::publish,
             onDismiss = vm::closeCard,
         )

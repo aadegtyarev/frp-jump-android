@@ -233,7 +233,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      */
     private suspend fun commitDelete(row: ConnectionRow) {
         val runtime = runtime(row.profile) ?: return
-        // Its explorer session, broker login and MQTT pins go with it: first, so a
+        // Its explorer session, broker login, MQTT pins and publish memory go with it: first, so a
         // failure leaves the connection itself in place, as the message says.
         app.mqtt.closeConnection(row.profile, row.connection.id)
         val failure = try {
@@ -241,6 +241,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
                 app.mqtt.changeStored {
                     app.mqttLogins.forget(row.profile, row.connection.id)
                     app.mqttPins.forget(row.profile, row.connection.id)
+                    app.mqttPublished.forget(row.profile, row.connection.id)
                 }
                 runtime.connections.remove(row.connection.id)
                 // Its pin, unless another connection to that device and port still has it, is free again.

@@ -765,4 +765,14 @@
     <string name="mqtt_publish_lost">The connection dropped before the broker answered</string>
     <string name="mqtt_publish_timeout">No answer from the broker in %1$d s</string>
     <string name="mqtt_publish_failed">Not sent: %1$s</string>
+    <string name="mqtt_publish_format_json">Format</string>
+    <string name="mqtt_publish_formatted_already">Already formatted</string>
+    <string name="mqtt_publish_format_too_large">Formatted it would be over %1$d KB, too large to send as JSON: left as it is</string>
+    <string name="mqtt_publish_json_empty">Empty: JSON needs a value</string>
+    <string name="mqtt_publish_json_too_large">Over %1$d KB: too large to check as JSON, send it as Text</string>
+    <string name="mqtt_publish_json_too_deep">Nested deeper than %1$d levels</string>
+    <string name="mqtt_publish_json_invalid">Not valid JSON</string>
+    <string name="mqtt_publish_json_invalid_at">Not valid JSON: line %1$d, column %2$d</string>
+    <string name="mqtt_publish_recent">Sent before</string>
+    <string name="mqtt_publish_recent_use">put in the value</string>
 </resources>

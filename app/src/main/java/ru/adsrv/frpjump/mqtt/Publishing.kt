@@ -1,5 +1,11 @@
 package ru.adsrv.frpjump.mqtt
 
+/** What the publish sheet's Send sends: [payload] as UTF-8 to [topic]; [json] is the format it was written in. */
+data class PublishRequest(val topic: String, val payload: String, val qos: Int, val retain: Boolean, val json: Boolean)
+
+/** Whether [answer] means the message left the phone: what the sheet remembers. */
+fun wasSent(answer: PublishAnswer): Boolean = answer == PublishAnswer.Accepted || answer == PublishAnswer.Unconfirmed
+
 /** What Send answers, shown under the button. */
 sealed interface PublishAnswer {
     /** MQTT 5, QoS 1 or 2: PUBACK / PUBREC with a success reason code. */
