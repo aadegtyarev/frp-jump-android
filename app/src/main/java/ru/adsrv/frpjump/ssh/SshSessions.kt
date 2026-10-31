@@ -5,8 +5,6 @@ import ru.adsrv.frpjump.locale.Texts
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.termux.terminal.TerminalSession
@@ -90,7 +88,8 @@ class SshSessions(
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    /** The last "copied" toast, cancelled by the next: a host repeating OSC 52 must not queue them up. */
+    private var copyToast: Toast? = null
 
     /** Callbacks from one session's emulator, forwarded to the screen when it shows that session. */
     private inner class ClientForScreen : TerminalSessionClient {
@@ -109,9 +108,16 @@ class SshSessions(
          */
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
             if (text.isNullOrEmpty()) return
-            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(Texts.get(R.string.terminal), text))
-            val preview = text.lineSequence().first().let { if (it.length > COPY_PREVIEW || text.contains('\n')) it.take(COPY_PREVIEW) + "…" else it }
-            mainHandler.post { Toast.makeText(context, Texts.get(R.string.terminal_copied, preview), Toast.LENGTH_SHORT).show() }
+            val copied = text.take(MAX_COPY)
+            try {
+                context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(Texts.get(R.string.terminal), copied))
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "clipboard not set: ${e.javaClass.simpleName}")
+                return
+            }
+            // Called on the main thread (the emulator parses there); one toast, not a queue of them.
+            copyToast?.cancel()
+            copyToast = Toast.makeText(context, Texts.get(R.string.terminal_copied, copyPreview(copied, COPY_PREVIEW)), Toast.LENGTH_SHORT).also { it.show() }
         }
 
         override fun onPasteTextFromClipboard(session: TerminalSession?) {
@@ -161,6 +167,24 @@ class SshSessions(
 
         /** Characters of copied text the toast shows. */
         private const val COPY_PREVIEW = 40
+
+        /** The most a terminal puts on the clipboard: an OSC 52 of megabytes would not fit through Binder. */
+        private const val MAX_COPY = 64 * 1024
         const val DEFAULT_FONT_SP = 14
     }
 }
+
+/**
+ * What a toast shows of [text] put on the clipboard: its first non-blank
+ * line without control or bidi-override characters (a remote host chooses
+ * the text), cut to [max] code points, "…" when anything was left out.
+ */
+fun copyPreview(text: String, max: Int): String {
+    val clean = text.filterNot { it.isISOControl() && it != '\n' && it != '\r' || it in BIDI_CONTROLS }
+    val lines = clean.lines().map { it.trim() }
+    val first = lines.firstOrNull { it.isNotEmpty() } ?: return "…"
+    val cut = if (first.codePointCount(0, first.length) > max) first.substring(0, first.offsetByCodePoints(0, max)) else first
+    return if (cut.length < first.length || lines.count { it.isNotEmpty() } > 1) "$cut…" else cut
+}
+
+private val BIDI_CONTROLS = ('\u202A'..'\u202E').toSet() + ('\u2066'..'\u2069').toSet() + setOf('\u200E', '\u200F', '\u061C')
