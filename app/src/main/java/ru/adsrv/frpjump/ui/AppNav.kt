@@ -215,6 +215,7 @@ fun AppNav() {
                     profiles = profiles,
                     onProfiles = { sheet = true },
                     onOpen = { nav.navigate(Routes.device(it)) },
+                    onTunnels = { nav.goToTab(Tab.CONNECTIONS) },
                 )
             }
             if (sheet) ProfileListSheet(profilesVm, nav, app, onDismiss = { sheet = false })
