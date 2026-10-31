@@ -20,6 +20,8 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # The key's secrets live in this environment, open to main and v* tags only.
+    environment: release
     permissions:
       contents: write
     env:

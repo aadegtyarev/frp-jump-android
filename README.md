@@ -474,8 +474,9 @@ so a phone that has a debug build (or one signed with another key) has to
 uninstall it once before the first release goes on.
 
 Releases are built and published by GitHub Actions
-(`.github/workflows/release.yml`), which holds the key in the repository
-secrets `FRPJUMP_RELEASE_KEYSTORE_B64` (the PKCS#12 file, base64) and
+(`.github/workflows/release.yml`), which holds the key in the secrets of the
+GitHub environment `release`, open only to `main` and `v*` tags:
+`FRPJUMP_RELEASE_KEYSTORE_B64` (the PKCS#12 file, base64) and
 `FRPJUMP_RELEASE_STORE_PASSWORD` (store and key password, alias `frpjump`).
 To publish a version:
 
