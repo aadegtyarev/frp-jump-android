@@ -5,6 +5,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -53,6 +57,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -70,6 +76,8 @@ import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.filterDevices
+import ru.adsrv.frpjump.devices.portsShown
+import ru.adsrv.frpjump.ui.LinkGlyph
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.NotificationsOffLine
@@ -86,7 +94,8 @@ import java.time.Instant
 /**
  * The current profile's devices under the profile switcher. [profiles]
  * feeds the switcher, the tunnel count and the line about profiles
- * removed on their servers; [onProfiles] opens the profile list.
+ * removed on their servers; [onProfiles] opens the profile list,
+ * [onTunnels] the Connections tab (the tunnel count's tap).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +104,7 @@ fun DevicesScreen(
     profiles: List<ProfileItem>,
     onProfiles: () -> Unit,
     onOpen: (String) -> Unit,
+    onTunnels: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
@@ -139,7 +149,7 @@ fun DevicesScreen(
             if (searching) {
                 SearchBar(query, onQuery = { query = it }, onClose = closeSearch, focus = focusOnOpen, onFocused = { focusOnOpen = false })
             } else {
-                Header(current, onProfiles, onSearch = {
+                Header(current, onProfiles, onTunnels, onSearch = {
                     searching = true
                     focusOnOpen = true
                 }.takeIf { !state.devices.isNullOrEmpty() })
@@ -167,11 +177,12 @@ fun DevicesScreen(
 }
 
 /**
- * The switcher, this profile's tunnel count and search ([onSearch], null
- * while there is nothing to search); terminals and settings are tabs of their own.
+ * The switcher, this profile's tunnel count (a tap: [onTunnels]) and search
+ * ([onSearch], null while there is nothing to search); terminals and
+ * settings are tabs of their own.
  */
 @Composable
-private fun Header(current: ProfileItem?, onProfiles: () -> Unit, onSearch: (() -> Unit)?) {
+private fun Header(current: ProfileItem?, onProfiles: () -> Unit, onTunnels: () -> Unit, onSearch: (() -> Unit)?) {
     val colors = AppTheme.colors
     Row(
         Modifier
@@ -181,13 +192,28 @@ private fun Header(current: ProfileItem?, onProfiles: () -> Unit, onSearch: (() 
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.weight(1f)) { ProfileSwitcher(current, onProfiles) }
-        current?.tunnels?.takeIf { it > 0 }?.let {
-            Chip(pluralStringResource(R.plurals.tunnels, it, it), colors.accentContainer, colors.onAccentContainer)
-        }
+        current?.tunnels?.takeIf { it > 0 }?.let { TunnelsChip(it, onTunnels) }
         onSearch?.let {
             IconButton(onClick = it, modifier = Modifier.size(44.dp)) {
                 Icon(SearchGlyph, contentDescription = stringResource(R.string.devices_search), tint = colors.ink, modifier = Modifier.size(22.dp))
             }
+        }
+    }
+}
+
+/** The tunnel count; a tap leads to Connections, open ones on top. Tall as the bar for the finger, the ripple on the chip. */
+@Composable
+private fun TunnelsChip(count: Int, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    val source = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .heightIn(min = 44.dp)
+            .clickable(source, indication = null, role = Role.Button, onClickLabel = stringResource(R.string.tunnels_show), onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.clip(CircleShape).indication(source, ripple())) {
+            Chip(pluralStringResource(R.plurals.tunnels, count, count), colors.accentContainer, colors.onAccentContainer)
         }
     }
 }
@@ -311,14 +337,14 @@ private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit,
                 }
             }
             items(shown, key = { it.name }) { device ->
-                DeviceItem(device, onClick = { onOpen(device.name) })
+                DeviceItem(device, state.tunnelPorts[device.name].orEmpty(), onClick = { onOpen(device.name) })
             }
         }
     }
 }
 
 @Composable
-private fun DeviceItem(device: DeviceRow, onClick: () -> Unit) {
+private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit) {
     val colors = AppTheme.colors
     Surface(onClick = onClick, color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -336,19 +362,48 @@ private fun DeviceItem(device: DeviceRow, onClick: () -> Unit) {
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    when {
-                        device.online && device.stale -> wasOnline(device)
-                        device.online -> stringResource(R.string.device_online)
-                        device.lastSeen == null -> stringResource(R.string.device_never_seen)
-                        else -> stringResource(R.string.device_last_seen, ageText(device.lastSeen))
-                    },
-                    fontSize = 13.sp,
-                    color = colors.muted,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when {
+                            device.online && device.stale -> wasOnline(device)
+                            device.online -> stringResource(R.string.device_online)
+                            device.lastSeen == null -> stringResource(R.string.device_never_seen)
+                            else -> stringResource(R.string.device_last_seen, ageText(device.lastSeen))
+                        },
+                        fontSize = 13.sp,
+                        color = colors.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (ports.isNotEmpty()) TunnelPorts(ports)
+                }
             }
             if (device.disabled) Chip(stringResource(R.string.device_disabled), colors.errorContainer, colors.onErrorContainer)
         }
+    }
+}
+
+/** " · ⛓ 22 80 +2": the ports this phone has tunnels open to, in the accent; read out in words. */
+@Composable
+private fun TunnelPorts(ports: List<Int>) {
+    val colors = AppTheme.colors
+    val (shown, more) = portsShown(ports)
+    val spoken = stringResource(R.string.device_tunnels_open, ports.joinToString(", "))
+    Row(
+        Modifier.clearAndSetSemantics { contentDescription = spoken },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(" · ", fontSize = 13.sp, color = colors.muted)
+        Icon(LinkGlyph, contentDescription = null, tint = colors.accent, modifier = Modifier.size(13.dp))
+        Text(
+            (shown.map { it.toString() } + listOfNotNull("+$more".takeIf { more > 0 })).joinToString(" ", prefix = " "),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.accent,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 

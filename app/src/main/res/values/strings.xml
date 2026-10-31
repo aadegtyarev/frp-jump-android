@@ -92,6 +92,8 @@
 
     <!-- Device list -->
     <string name="device_online">Online</string>
+    <string name="device_tunnels_open">Tunnels open: %s</string>
+    <string name="tunnels_show">Show connections</string>
     <string name="device_was_online">Was online</string>
     <string name="device_last_seen">Last seen %s</string>
     <string name="device_disabled">Disabled</string>

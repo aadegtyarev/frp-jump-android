@@ -17,6 +17,8 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.devices.tunnelPorts
+import ru.adsrv.frpjump.devices.tunnelsFirst
 import ru.adsrv.frpjump.session.Notice
 import java.time.Instant
 
@@ -29,6 +31,8 @@ data class DevicesUiState(
     val staleSince: Instant? = null,
     /** The failure is the network, not the server. */
     val unreachable: Boolean = false,
+    /** Ports this phone has tunnels open to, by device; those devices are listed first. */
+    val tunnelPorts: Map<String, List<Int>> = emptyMap(),
 )
 
 /**
@@ -48,16 +52,23 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     private var shown = false
 
     val state: StateFlow<DevicesUiState> =
-        combine(directory.flatMapLatest { it?.state ?: flowOf(DeviceList()) }, refreshing) { list, busy ->
+        combine(listAndTunnels(), refreshing) { (list, ports), busy ->
             DevicesUiState(
-                devices = list.devices,
+                devices = list.devices?.let { tunnelsFirst(it, ports) },
                 refreshing = busy,
                 error = list.error,
                 // A list restored at start is not a failure yet: no banner until a fetch fails.
                 staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
                 unreachable = list.unreachable,
+                tunnelPorts = ports,
             )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
+
+    /** The current profile's list with its own tunnels' ports, so a switch never mixes two profiles. */
+    private fun listAndTunnels() = app.profiles.state.map { it.current }.distinctUntilChanged().flatMapLatest { runtime ->
+        runtime?.let { r -> combine(r.devices.state, r.tunnels.state) { list, tunnels -> list to tunnelPorts(tunnels.tunnels) } }
+            ?: flowOf(DeviceList() to emptyMap())
+    }
 
     /** A message left by the screen before (e.g. after "Forget profile"); shown once. */
     val notice: StateFlow<Notice?> = app.session.notice
