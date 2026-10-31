@@ -6,6 +6,9 @@ import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -17,11 +20,18 @@ import ru.adsrv.frpjump.ui.FrpJumpTheme
 
 /**
  * An AppCompat activity for Settings › Language: on Android 10–12 AppCompat
- * gives it the app's language and recreates it when that changes (Android
- * 13+ does both itself). Locale is not in configChanges, so a new language
- * recreates the activity; Compose keeps its saved state across it.
+ * gives it the app's language (Android 13+ does that itself). A new language
+ * does not recreate it (locale is in configChanges, so an open web page
+ * stays): the screens are drawn again with [configuration].
  */
 class MainActivity : AppCompatActivity() {
+    /**
+     * The activity's configuration as last changed. On Android 13+ Compose
+     * hears of a new language from its view as well; on 10–12 only this
+     * call from AppCompat says it, so the content reads it from here.
+     */
+    private val configuration = mutableStateOf<Configuration?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -39,8 +49,12 @@ class MainActivity : AppCompatActivity() {
         }
         takeOpenDevice(intent)
         setContent {
-            FrpJumpTheme {
-                AppNav()
+            val config = configuration.value ?: LocalConfiguration.current
+            // stringResource() reads the activity's resources, which AppCompat has updated by then.
+            CompositionLocalProvider(LocalConfiguration provides config) {
+                FrpJumpTheme {
+                    AppNav()
+                }
             }
         }
     }
@@ -60,10 +74,15 @@ class MainActivity : AppCompatActivity() {
         intent.action = null
     }
 
-    /** Dark mode switched while open (uiMode is handled here, not by recreating): status bar icons follow it. */
+    /**
+     * Dark mode switched while open (uiMode is handled here, not by
+     * recreating): status bar icons follow it. A new language: the content
+     * is drawn again in it.
+     */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         enableEdgeToEdge()
+        configuration.value = Configuration(newConfig)
     }
 
     companion object {

@@ -17,15 +17,11 @@ class ConnectionNamesMigrationTest {
         readConnections("[${record(name, port, kind, user)}]").single().customName
 
     @Test
-    fun `made-up names become the default name`() {
+    fun `names made up from the kind and port become the default name`() {
         // "Web 8080" / "TCP 1234" / "SSH 2222": the kind and the port in English.
         assertNull(customName("Web 8080", 8080, "web"))
         assertNull(customName("TCP 1234", 1234, "tcp"))
-        // A preset's name, and an SSH connection named after its user.
-        assertNull(customName("homeui", 80, "web"))
-        assertNull(customName("MQTT", 1883, "tcp"))
-        assertNull(customName("admin", 22, "ssh", user = "admin"))
-        assertNull(customName("root", 2222, "ssh"))
+        assertNull(customName("SSH 2222", 2222, "ssh"))
         // From the upgrade of 0.1: the two presets and ports without a label.
         assertNull(customName("Web", 80, "web"))
         assertNull(customName("SSH", 22, "ssh", user = "root"))
@@ -34,32 +30,35 @@ class ConnectionNamesMigrationTest {
     }
 
     @Test
-    fun `the owner's names stay as typed`() {
+    fun `the owner's names, presets' and SSH users' stay as they are`() {
         assertEquals("Router", customName("Router", 80, "web"))
         assertEquals("Роутер", customName("Роутер", 80, "web"))
-        // Only an exact match counts: another port, kind or user is the owner's choice.
+        // Not renamed to "Web" or "SSH": they say the same in any language.
+        assertEquals("homeui", customName("homeui", 80, "web"))
+        assertEquals("MQTT", customName("MQTT", 1883, "tcp"))
+        assertEquals("admin", customName("admin", 22, "ssh", user = "admin"))
+        // Only an exact match counts: another port or kind is the owner's choice.
         assertEquals("Web 8081", customName("Web 8081", 8080, "web"))
         assertEquals("TCP 8080", customName("TCP 8080", 8080, "web"))
         assertEquals("Web", customName("Web", 8080, "web"))
         assertEquals("SSH", customName("SSH", 2222, "ssh"))
-        assertEquals("homeui", customName("homeui", 8080, "web"))
-        assertEquals("root", customName("root", 22, "ssh", user = "admin"))
         assertEquals("web 8080", customName("web 8080", 8080, "web"))
     }
 
     @Test
     fun `a made-up name whose default another connection on the port shows is kept`() {
-        // 0.1's presets next to connections added since with the new made-up names.
         val list = readConnections(
             "[" + listOf(
                 record("Web", 80, "web"),
-                record("SSH", 22, "ssh", user = "root"),
                 record("homeui", 80, "web"),
+                record("SSH", 22, "ssh", user = "root"),
                 record("root", 22, "ssh", user = "root"),
-                record("Port 1883", 1883, "tcp"),
+                // Another row on 8080 already reads "Web 8080": "Port 8080" stays as it was.
+                record("Port 8080", 8080, "web"),
+                record("Web 8080", 8080, "web"),
             ).joinToString(",") + "]",
         )
-        assertEquals(listOf("Web", "SSH", null, null, null), list.map { it.customName })
+        assertEquals(listOf(null, "homeui", null, "root", "Port 8080", null), list.map { it.customName })
     }
 
     @Test

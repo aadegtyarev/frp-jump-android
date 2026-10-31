@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.AppLanguage
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.locale.applyAppLanguage
+import ru.adsrv.frpjump.tunnel.TunnelService
 import ru.adsrv.frpjump.ssh.publicLineOfPrivateKey
 import ru.adsrv.frpjump.ui.userMessage
 
@@ -51,6 +53,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     /** Switches the language at once (main thread); the settings keep a copy for Android 10–12 ([restoreAppLanguage]). */
     fun setLanguage(language: AppLanguage) {
         applyAppLanguage(language)
+        // Android 13+ tells the tunnels service of the new language itself.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) TunnelService.refresh(app)
         save { it.copy(language = language) }
     }
 

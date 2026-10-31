@@ -182,7 +182,6 @@
     <string name="connection_sub_ssh_key">%1$s · port %2$d · %3$s · phone key</string>
     <string name="connection_sub_ssh_password">%1$s · port %2$d · %3$s · password</string>
     <string name="connection_unsaved">Port %d</string>
-    <string name="connection_default_name" translatable="false">%1$s %2$d</string>
     <string name="connection_actions">Actions with “%s”</string>
     <string name="connect">Connect</string>
     <string name="connect_named">Connect “%s”</string>
@@ -299,10 +298,16 @@
     <string name="enroll_line_name_empty">--name needs a value.</string>
     <string name="enroll_line_no_url">Expected the server URL and the token.</string>
     <string name="enroll_line_too_short">Expected the server URL followed by the token.</string>
-    <string name="enroll_line_token_length">The token should be %d characters; check that the whole line was copied.</string>
+    <plurals name="enroll_line_token_length">
+        <item quantity="one">The token should be %d character; check that the whole line was copied.</item>
+        <item quantity="other">The token should be %d characters; check that the whole line was copied.</item>
+    </plurals>
     <string name="enroll_line_http">The server URL must start with https://, not http://.</string>
     <string name="enroll_line_bad_url">Expected an https:// server URL followed by the token; could not read a URL in it.</string>
-    <string name="enroll_line_bad_token">The token does not look right: it is %d letters, digits, - or _.</string>
+    <plurals name="enroll_line_bad_token">
+        <item quantity="one">The token does not look right: it is %d letter, digit, - or _.</item>
+        <item quantity="other">The token does not look right: it is %d letters, digits, - or _.</item>
+    </plurals>
 
     <!-- Stored credentials unreadable -->
     <string name="storage_unreadable">This phone’s stored credentials cannot be read right now. Nothing was deleted; try again in a moment.</string>
@@ -370,7 +375,10 @@
     <string name="ports_missing">Enter two port numbers.</string>
     <string name="ports_outside">Ports must be within %1$d–%2$d.</string>
     <string name="ports_reversed">The first port must not be above the last.</string>
-    <string name="ports_too_small">Use at least %d ports.</string>
+    <plurals name="ports_too_small">
+        <item quantity="one">Use at least %d port.</item>
+        <item quantity="other">Use at least %d ports.</item>
+    </plurals>
     <string name="background_poll">Check the server in the background</string>
     <string name="poll_off">Off</string>
     <plurals name="poll_seconds">

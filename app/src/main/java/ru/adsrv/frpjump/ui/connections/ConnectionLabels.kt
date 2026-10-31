@@ -18,12 +18,8 @@ fun kindWord(context: Context, kind: PortKind): String = context.getString(
     },
 )
 
-/** "Web 8080" for a connection without a name of its own, in [context]'s language. */
-fun genericConnectionName(context: Context): (PortKind, Int) -> String =
-    { kind, port -> context.getString(R.string.connection_default_name, kindWord(context, kind), port) }
-
 /** What [connection] is called, in [context]'s language (notifications: a localized context). */
-fun connectionLabel(context: Context, connection: Connection): String = connection.label(genericConnectionName(context))
+fun connectionLabel(context: Context, connection: Connection): String = connection.label { kindWord(context, it) }
 
 /** What [connection] is called, in the app's language. */
 @Composable

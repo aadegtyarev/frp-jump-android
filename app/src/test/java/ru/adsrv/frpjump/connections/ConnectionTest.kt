@@ -8,7 +8,7 @@ import org.junit.Test
 import ru.adsrv.frpjump.ports.PortKind
 
 class ConnectionTest {
-    private val fallback = { kind: PortKind, port: Int -> "${kind.name} $port" }
+    private val fallback = { kind: PortKind -> kind.name }
 
     private fun conn(id: String, device: String, port: Int, name: String, kind: PortKind = PortKind.WEB) =
         Connection(id, device, port, kind, name)
@@ -39,38 +39,49 @@ class ConnectionTest {
     }
 
     @Test
-    fun `a blank name is saved as none and shows the preset's, the SSH user or the fallback`() {
+    fun `a blank name is saved as none and shows the kind, and the port unless it is the kind's own`() {
         assertNull(customNameOf(ConnectionDraft(PortKind.WEB, "80", " ")))
         assertEquals("My UI", customNameOf(ConnectionDraft(PortKind.WEB, "80", "  My UI ")))
-        assertEquals("homeui", draftLabel(ConnectionDraft(PortKind.WEB, "80", " "), fallback))
-        assertEquals("MQTT", draftLabel(ConnectionDraft(PortKind.TCP, "1883", ""), fallback))
-        assertEquals("admin", draftLabel(ConnectionDraft(PortKind.SSH, "22", "", user = "admin"), fallback))
+        assertEquals("WEB", draftLabel(ConnectionDraft(PortKind.WEB, "80", " "), fallback))
+        assertEquals("WEB HTTPS", draftLabel(ConnectionDraft(PortKind.WEB, "443", ""), fallback))
         assertEquals("WEB 8080", draftLabel(ConnectionDraft(PortKind.WEB, "8080", ""), fallback))
-        // A preset port of another kind does not lend its name.
+        assertEquals("SSH", draftLabel(ConnectionDraft(PortKind.SSH, "22", "", user = "admin"), fallback))
+        assertEquals("SSH 2222", draftLabel(ConnectionDraft(PortKind.SSH, "2222", ""), fallback))
+        // TCP has no port of its own; a web port under another kind is just a port.
+        assertEquals("TCP 1883", draftLabel(ConnectionDraft(PortKind.TCP, "1883", ""), fallback))
         assertEquals("TCP 80", draftLabel(ConnectionDraft(PortKind.TCP, "80", ""), fallback))
         assertEquals("My UI", draftLabel(ConnectionDraft(PortKind.WEB, "80", "  My UI "), fallback))
     }
 
     @Test
     fun `a connection without a name of its own is called by the default in the words given`() {
-        val russian = { kind: PortKind, port: Int -> (if (kind == PortKind.WEB) "Веб" else kind.name) + " $port" }
+        val russian = { kind: PortKind -> if (kind == PortKind.WEB) "Веб" else kind.name }
         assertEquals("Веб 8080", Connection("1", "wb", 8080, PortKind.WEB, null).label(russian))
-        assertEquals("WEB 8080", Connection("1", "wb", 8080, PortKind.WEB, null).label(fallback))
-        assertEquals("homeui", Connection("1", "wb", 80, PortKind.WEB, null).label(russian))
-        // The SSH default follows the user, root when none is set.
-        assertEquals("pi", Connection("1", "wb", 22, PortKind.SSH, null, user = "pi").label(russian))
-        assertEquals("root", Connection("1", "wb", 22, PortKind.SSH, null).label(russian))
+        assertEquals("Веб", Connection("1", "wb", 80, PortKind.WEB, null).label(russian))
+        assertEquals("SSH", Connection("1", "wb", 22, PortKind.SSH, null, user = "pi").label(russian))
         assertEquals("Мой", Connection("1", "wb", 8080, PortKind.WEB, "Мой").label(russian))
+    }
+
+    @Test
+    fun `a preset chip fills in its name, unless the owner typed one`() {
+        val homeui = PortPreset(80, "homeui")
+        val grafana = PortPreset(3000, "Grafana")
+        assertEquals("homeui", nameAfterPreset("", homeui))
+        assertEquals("Grafana", nameAfterPreset("homeui", grafana))
+        assertEquals("", nameAfterPreset("Grafana", PortPreset(8080)))
+        assertEquals("My UI", nameAfterPreset("My UI", grafana))
+        assertTrue(isPresetName(" MQTT "))
+        assertFalse(isPresetName("root"))
     }
 
     @Test
     fun `several connections to one port need different names`() {
         val existing = listOf(conn("a", "wb", 22, "root", PortKind.SSH))
-        val draft = ConnectionDraft(PortKind.SSH, "22", "", user = "root")
+        val draft = ConnectionDraft(PortKind.SSH, "22", "root", user = "root")
         assertTrue(draftProblems(draft.copy(name = "ROOT"), "wb", existing, editingId = null, fallback).nameTaken)
         assertFalse(draftProblems(draft.copy(name = "admin"), "wb", existing, editingId = null, fallback).nameTaken)
-        // Unnamed, it would be called "root" too.
-        assertTrue(draftProblems(draft, "wb", existing, editingId = null, fallback).nameTaken)
+        // Unnamed, it would be called "SSH": free here.
+        assertFalse(draftProblems(draft.copy(name = ""), "wb", existing, editingId = null, fallback).nameTaken)
         // The same name on another port or device is fine; so is a connection keeping its own name.
         assertFalse(draftProblems(draft.copy(portText = "2222"), "wb", existing, null, fallback).nameTaken)
         assertFalse(draftProblems(draft, "other", existing, null, fallback).nameTaken)
@@ -78,6 +89,7 @@ class ConnectionTest {
         // Names are compared as shown: an unnamed connection by its default name.
         val unnamed = listOf(Connection("b", "wb", 8080, PortKind.WEB, null))
         assertTrue(draftProblems(ConnectionDraft(PortKind.WEB, "8080", "web 8080"), "wb", unnamed, null, fallback).nameTaken)
+        assertTrue(draftProblems(ConnectionDraft(PortKind.WEB, "8080", ""), "wb", unnamed, null, fallback).nameTaken)
     }
 
     @Test

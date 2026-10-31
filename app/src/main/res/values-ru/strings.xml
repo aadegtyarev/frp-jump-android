@@ -94,7 +94,7 @@
 
     <!-- Device list -->
     <string name="device_online">Онлайн</string>
-    <string name="device_was_online">Был онлайн</string>
+    <string name="device_was_online">Был в сети</string>
     <string name="device_last_seen">Был в сети %s</string>
     <string name="device_disabled">Отключено</string>
     <string name="devices_empty">Других устройств пока нет.</string>
@@ -132,7 +132,7 @@
         <item quantity="many">Нажмите, чтобы восстановить %d туннелей</item>
         <item quantity="other">Нажмите, чтобы восстановить %d туннеля</item>
     </plurals>
-    <string name="restore_notice_text">Android остановил приложение с открытыми туннелями и не дал им запуститься снова в фоне. Настройки › Батарея позволят им возвращаться самим.</string>
+    <string name="restore_notice_text">Android остановил приложение с открытыми туннелями и не дал им запуститься снова в фоне. Чтобы туннели возвращались сами, отключите ограничение в Настройки › Батарея.</string>
     <string name="restore_notice_title_unknown">Нажмите, чтобы восстановить туннели</string>
     <plurals name="keep_notice_title">
         <item quantity="one">Нажмите, чтобы не потерять %d туннель</item>
@@ -181,7 +181,7 @@
     <string name="state_trying_direct">Пробую напрямую…</string>
     <string name="state_direct">Напрямую</string>
     <string name="state_through_server">Через сервер</string>
-    <string name="state_kept_through_server">Через сервер по выбору</string>
+    <string name="state_kept_through_server">Через сервер (ваш выбор)</string>
     <string name="state_failed">Ошибка</string>
 
     <!-- Connection rows and their actions -->
@@ -213,7 +213,7 @@
 
     <!-- Device card -->
     <string name="device_profile_chip">Профиль «%s»</string>
-    <string name="device_offline">Офлайн</string>
+    <string name="device_offline">Не в сети</string>
     <string name="connections_header">Подключения</string>
     <string name="connections_active_of">%1$d из %2$d активны</string>
     <string name="device_no_connections">Подключений пока нет. Добавьте веб-страницу, SSH или любой TCP-порт этого устройства.</string>
@@ -259,7 +259,7 @@
     <string name="cert_fingerprint_before">SHA-256, которому доверяли</string>
     <string name="cert_trust">Доверять</string>
     <string name="cert_trust_new">Доверять новому</string>
-    <string name="cert_refused">Не открыто: сертификату не доверились.</string>
+    <string name="cert_refused">Не открыто: вы не доверились сертификату.</string>
     <string name="cert_try_again">Попробовать снова</string>
     <string name="download_https">Файлы HTTPS-подключения здесь не скачать: системный загрузчик не доверяет сертификату, подтверждённому в приложении.</string>
     <string name="protocol_clash_ssh">Этот порт уже занят SSH-подключением; SSH и другие типы не могут делить порт.</string>
@@ -311,10 +311,20 @@
     <string name="enroll_line_name_empty">После --name нужно имя.</string>
     <string name="enroll_line_no_url">Нужны адрес сервера и токен.</string>
     <string name="enroll_line_too_short">Нужен адрес сервера, а за ним токен.</string>
-    <string name="enroll_line_token_length">В токене должно быть %d символа; проверьте, что строка скопирована целиком.</string>
+    <plurals name="enroll_line_token_length">
+        <item quantity="one">В токене должен быть %d символ; проверьте, что строка скопирована целиком.</item>
+        <item quantity="few">В токене должно быть %d символа; проверьте, что строка скопирована целиком.</item>
+        <item quantity="many">В токене должно быть %d символов; проверьте, что строка скопирована целиком.</item>
+        <item quantity="other">В токене должно быть %d символа; проверьте, что строка скопирована целиком.</item>
+    </plurals>
     <string name="enroll_line_http">Адрес сервера должен начинаться с https://, а не с http://.</string>
     <string name="enroll_line_bad_url">Нужен https://-адрес сервера, а за ним токен; адрес прочитать не удалось.</string>
-    <string name="enroll_line_bad_token">Токен не похож на настоящий: в нём %d символа — буквы, цифры, - или _.</string>
+    <plurals name="enroll_line_bad_token">
+        <item quantity="one">Токен не похож на настоящий: в нём %d символ — буквы, цифры, - или _.</item>
+        <item quantity="few">Токен не похож на настоящий: в нём %d символа — буквы, цифры, - или _.</item>
+        <item quantity="many">Токен не похож на настоящий: в нём %d символов — буквы, цифры, - или _.</item>
+        <item quantity="other">Токен не похож на настоящий: в нём %d символа — буквы, цифры, - или _.</item>
+    </plurals>
 
     <!-- Stored credentials unreadable -->
     <string name="storage_unreadable">Сохранённые ключи доступа сейчас не читаются. Ничего не удалено; попробуйте чуть позже.</string>
@@ -340,7 +350,7 @@
     <string name="host_key_first">Первое SSH-подключение к %s. Его ключ хоста:</string>
     <string name="host_key_check">Если это действительно оно, на устройстве команда `%s` покажет ту же строку. Ключ запомнится для этого устройства и порта.</string>
     <string name="host_key_changed_title">Ключ хоста изменился</string>
-    <string name="host_key_changed_text">%s показывает не тот ключ хоста, которому доверяли раньше. Так бывает после переустановки или сброса прошивки, но это может значить и то, что кто-то вклинился посередине. Ничего не отправлено.</string>
+    <string name="host_key_changed_text">%s показывает не тот ключ хоста, которому доверяли раньше. Так бывает после переустановки или сброса прошивки, но это может значить и то, что кто-то вмешался в соединение. Ничего не отправлено.</string>
     <string name="host_key_trusted_before">Доверяли раньше:</string>
     <string name="host_key_shown_now">Показан сейчас:</string>
     <string name="host_key_forget_hint">Забывайте старый ключ, только если знаете, почему он изменился; потом спрошу, доверять ли новому.</string>
@@ -368,7 +378,7 @@
 
     <!-- Settings -->
     <string name="settings_tunnels">Туннели</string>
-    <string name="settings_background">Фон</string>
+    <string name="settings_background">Работа в фоне</string>
     <string name="settings_app">Приложение</string>
     <string name="language">Язык</string>
     <string name="language_system">Как в системе</string>
@@ -379,7 +389,12 @@
     <string name="ports_missing">Укажите оба номера порта.</string>
     <string name="ports_outside">Порты должны быть в пределах %1$d–%2$d.</string>
     <string name="ports_reversed">Первый порт не может быть больше последнего.</string>
-    <string name="ports_too_small">Нужно хотя бы %d портов.</string>
+    <plurals name="ports_too_small">
+        <item quantity="one">Нужен хотя бы %d порт.</item>
+        <item quantity="few">Нужно хотя бы %d порта.</item>
+        <item quantity="many">Нужно хотя бы %d портов.</item>
+        <item quantity="other">Нужно хотя бы %d порта.</item>
+    </plurals>
     <string name="background_poll">Проверять сервер в фоне</string>
     <string name="poll_off">Выкл.</string>
     <plurals name="poll_seconds">
@@ -413,7 +428,7 @@
     <string name="key_file_unreadable">Не удалось прочитать этот файл.</string>
     <string name="key_passphrase">Парольная фраза ключа</string>
     <string name="key_passphrase_label">Парольная фраза (пусто, если нет)</string>
-    <string name="frpc_login_failed">Не удалось войти на relay-сервер: %s</string>
+    <string name="frpc_login_failed">Не удалось подключиться к серверу туннелей: %s</string>
     <string name="frpc_stopped">frpc остановился (код %d)</string>
     <string name="terminal_status_open">%1$s через %2$s</string>
 </resources>

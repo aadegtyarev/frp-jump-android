@@ -288,12 +288,19 @@ server must speak first to an idle client would wait.
   after a reboot) speak it too. Code without a screen takes its texts from
   `locale/Texts.kt`, in the app's language.
 - Connections without a name of their own show a default made at display
-  time in the current language ("Web 8080" / "Веб 8080", a preset's name,
-  the SSH user). Names the app made up in English up to 0.2.0-beta1 are
-  read as "no name of its own" when they match exactly
+  time in the current language: the kind, and the port unless it is the
+  kind's own ("Web" / "Веб" on 80, "Web HTTPS" on 443, "SSH" on 22, "Веб
+  8080", "TCP 1883"). A preset chip in the sheet (homeui, MQTT, ...) fills
+  in its name, which the owner may change. Names the app made up from the
+  kind and port up to 0.2.0-beta1 ("Web", "SSH", "Port 8080", "Web 8080")
+  are read as "no name of its own" when they match exactly
   (`connections/ConnectionMigration.kt`, `readConnections`), unless another
-  connection to the same port already shows that default; names typed by
-  the owner stay as typed.
+  connection to the same port already shows that default; all other names
+  stay as they are.
+- `connections.json` is written in the new format (`custom_name`) on the
+  first change. A build older than this one cannot read it: going back to
+  one loses the list of connections (the file is kept aside as
+  `connections.corrupt.json`, nothing else is lost).
 - Settings are kept in `settings.json`; "Forget this phone" keeps them.
 
 ## Web ports

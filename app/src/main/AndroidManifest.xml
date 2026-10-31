@@ -29,11 +29,11 @@
         android:icon="@android:drawable/sym_def_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.FrpJump">
-        <!-- Compose redraws for rotation, resizing and keyboards itself: not recreating the
-             activity keeps the web view's page (and its live connections) across them. -->
+        <!-- Compose redraws for rotation, resizing, keyboards and a new language itself: not
+             recreating the activity keeps the web view's page (and its live connections) across them. -->
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode|locale|layoutDirection"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

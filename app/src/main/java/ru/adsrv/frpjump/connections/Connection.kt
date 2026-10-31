@@ -33,20 +33,27 @@ data class Connection(
     /** The SSH user, `root` when none is set. */
     val sshUser: String get() = user?.trim()?.takeIf { it.isNotEmpty() } ?: SshLogin.DEFAULT_USER
 
-    /** What the connection is called: its own name, else [defaultConnectionName] with [generic] for "Web 8080". */
-    fun label(generic: (PortKind, Int) -> String): String =
-        customName ?: defaultConnectionName(kind, port, sshUser.takeIf { kind == PortKind.SSH }, generic)
+    /** What the connection is called: its own name, else [defaultConnectionName] with [kindWord] ("Web", "Веб"). */
+    fun label(kindWord: (PortKind) -> String): String = customName ?: defaultConnectionName(kind, port, kindWord)
 }
 
 /**
- * The name of a connection the owner did not name: its preset's ("homeui",
- * "MQTT"), the SSH [user], or [generic] ("Web 8080", "Веб 8080"), which says
- * the kind in the app's language.
+ * The name of a connection the owner did not name: its kind, and the port
+ * unless it is the kind's own: "Web" (80), "Web HTTPS" (443), "SSH" (22),
+ * "Web 8080", "SSH 2222", "TCP 1883". [kindWord] says the kind in the app's
+ * language ("Веб 8080").
  */
-fun defaultConnectionName(kind: PortKind, port: Int, user: String?, generic: (PortKind, Int) -> String): String =
-    presetName(kind, port) ?: user?.trim()?.takeIf { kind == PortKind.SSH && it.isNotEmpty() } ?: generic(kind, port)
+fun defaultConnectionName(kind: PortKind, port: Int, kindWord: (PortKind) -> String): String {
+    val word = kindWord(kind)
+    return when {
+        kind == PortKind.WEB && port == 80 -> word
+        kind == PortKind.WEB && port == 443 -> "$word HTTPS"
+        kind == PortKind.SSH && port == 22 -> word
+        else -> "$word $port"
+    }
+}
 
-/** A port the "New connection" sheet offers to tap; [name] is the name it suggests, if any. */
+/** A port the "New connection" sheet offers to tap; [name], if any, is filled in as the connection's name. */
 data class PortPreset(val port: Int, val name: String? = null)
 
 /** Presets per kind, as the contract lists them; the first is what picking the kind fills in. */
@@ -66,8 +73,16 @@ val PORT_PRESETS: Map<PortKind, List<PortPreset>> = mapOf(
     ),
 )
 
-/** The name a preset of [kind] suggests for [port]; null when there is none. */
-fun presetName(kind: PortKind, port: Int): String? = PORT_PRESETS[kind]?.firstOrNull { it.port == port }?.name
+/** A name a preset fills in ("homeui"), not one the owner typed. */
+fun isPresetName(name: String): Boolean = PORT_PRESETS.values.flatten().any { it.name != null && it.name == name.trim() }
+
+/**
+ * The name field once [preset] is tapped: blank or filled in by another
+ * preset, it takes the preset's name (none for a preset without one); a
+ * name the owner typed stays.
+ */
+fun nameAfterPreset(current: String, preset: PortPreset): String =
+    if (current.isBlank() || isPresetName(current)) preset.name.orEmpty() else current
 
 /** Why a typed port is not usable. */
 enum class PortProblem { MISSING, OUT_OF_RANGE }
@@ -114,32 +129,32 @@ data class DraftProblems(
 /** The name [draft] is saved under: what was typed; null (none) leaves the [defaultConnectionName]. */
 fun customNameOf(draft: ConnectionDraft): String? = draft.name.trim().takeIf { it.isNotEmpty() }
 
-/** What [draft] would be called once saved, with [generic] for "Web 8080". */
-fun draftLabel(draft: ConnectionDraft, generic: (PortKind, Int) -> String): String {
+/** What [draft] would be called once saved, with [kindWord] for the default name. */
+fun draftLabel(draft: ConnectionDraft, kindWord: (PortKind) -> String): String {
     customNameOf(draft)?.let { return it }
     val port = parsePort(draft.portText) ?: return ""
-    return defaultConnectionName(draft.kind, port, draft.user.takeIf { draft.kind == PortKind.SSH }, generic)
+    return defaultConnectionName(draft.kind, port, kindWord)
 }
 
 /**
  * What stops [draft] from being saved to [device]: a bad port, a name
  * already used on that device and port (by any connection but [editingId]),
  * SSH without a user, or a kind the port's other connections cannot share. Names
- * are compared as shown ([Connection.label], [draftLabel] with [generic]).
+ * are compared as shown ([Connection.label], [draftLabel] with [kindWord]).
  */
 fun draftProblems(
     draft: ConnectionDraft,
     device: String,
     existing: List<Connection>,
     editingId: String?,
-    generic: (PortKind, Int) -> String,
+    kindWord: (PortKind) -> String,
 ): DraftProblems {
-    val name = draftLabel(draft, generic)
+    val name = draftLabel(draft, kindWord)
     val port = parsePort(draft.portText)
     return DraftProblems(
         port = portProblem(draft.portText),
         nameTaken = port != null && existing.any {
-            it.id != editingId && it.device == device && it.port == port && it.label(generic).trim().equals(name.trim(), ignoreCase = true)
+            it.id != editingId && it.device == device && it.port == port && it.label(kindWord).trim().equals(name.trim(), ignoreCase = true)
         },
         userMissing = draft.kind == PortKind.SSH && draft.user.isBlank(),
         protocolClash = port?.let { p ->

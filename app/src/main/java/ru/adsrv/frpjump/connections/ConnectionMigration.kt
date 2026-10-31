@@ -96,16 +96,16 @@ fun migrateDevicePorts(
 
 /**
  * Reads `connections.json`. Up to 0.2.0-beta1 every connection had a `name`,
- * also when the app made it up ("Web 8080", "homeui", the SSH user, and from
- * the upgrade of 0.1 "Web", "SSH", "Port 8080"), so English made-up names
- * stayed English in any language. Such a record gets no name of its own
- * when its `name` is exactly what the app made up for it, and then shows
- * the default name in the app's language; any other `name` was typed by the
- * owner and is kept as is. So is a made-up name whose default another
- * connection to the same device and port already shows (0.1's "Web" next
- * to a "homeui" on port 80): two rows must not read the same. Records
- * written since carry `custom_name` only. Throws when the text is not a
- * list of connections.
+ * also when the app made one up from the kind and port ("Web 8080", "TCP
+ * 1883", and from the upgrade of 0.1 "Web", "SSH", "Port 8080"), so made-up
+ * names stayed English in any language. Such a record gets no name of its
+ * own, and shows the default name ([defaultConnectionName]) in the app's
+ * language; every other `name` is kept as is: typed by the owner, or a
+ * preset's or the SSH user's, which say the same in any language. So is a
+ * made-up name whose default another connection to the same device and port
+ * already shows: two rows must not read the same. Records written since
+ * carry `custom_name` only. Throws when the text is not a list of
+ * connections.
  */
 fun readConnections(text: String): List<Connection> {
     val records = WireJson.parseToJsonElement(text).jsonArray.map { element ->
@@ -115,10 +115,10 @@ fun readConnections(text: String): List<Connection> {
         connection to legacyName?.takeUnless { CUSTOM_NAME in record }
     }
     // What each row reads as now, in English as the old names were made.
-    val shown = records.map { (c, legacy) -> legacy?.trim() ?: c.label(::oldGenericName) }
+    val shown = records.map { (c, legacy) -> legacy?.trim() ?: c.label(OLD_KIND_WORDS::getValue) }
     return records.mapIndexed { i, (c, legacy) ->
         if (legacy == null) return@mapIndexed c
-        val default = c.copy(customName = null).label(::oldGenericName)
+        val default = defaultConnectionName(c.kind, c.port, OLD_KIND_WORDS::getValue)
         val taken = records.indices.any { j ->
             j != i && records[j].first.device == c.device && records[j].first.port == c.port && shown[j].equals(default, ignoreCase = true)
         }
@@ -126,17 +126,14 @@ fun readConnections(text: String): List<Connection> {
     }
 }
 
-/** [name] is one the app made up for [c] up to 0.2.0-beta1, in English. */
+/** [name] is one the app made up for [c] from its kind and port up to 0.2.0-beta1, in English. */
 private fun madeUpName(name: String, c: Connection): Boolean {
     val n = name.trim()
     return n.isEmpty() ||
-        n == defaultConnectionName(c.kind, c.port, c.sshUser.takeIf { c.kind == PortKind.SSH }, ::oldGenericName) ||
+        n == "${OLD_KIND_WORDS.getValue(c.kind)} ${c.port}" ||
         n == "Port ${c.port}" ||
         LEGACY_PRESETS[c.port]?.let { (presetName, kind) -> n == presetName && c.kind == kind } == true
 }
-
-/** "Web 8080" as the app said it in English. */
-private fun oldGenericName(kind: PortKind, port: Int) = "${OLD_KIND_WORDS.getValue(kind)} $port"
 
 /** The kinds as the English "Web 8080" said them. */
 private val OLD_KIND_WORDS = mapOf(PortKind.WEB to "Web", PortKind.SSH to "SSH", PortKind.TCP to "TCP")

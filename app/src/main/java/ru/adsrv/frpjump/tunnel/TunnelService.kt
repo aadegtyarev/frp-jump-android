@@ -62,6 +62,11 @@ class TunnelService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Already in the foreground with its notification: only say it again, in the app's language now.
+        if (intent?.action == ACTION_REFRESH && running) {
+            shown?.let { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(it)) }
+            return START_STICKY
+        }
         val app = application as FrpJumpApp
         val profiles = app.profiles
         // Always first, even when the tunnels are already gone: a service started with
@@ -224,6 +229,7 @@ class TunnelService : Service() {
         const val CHANNEL = "tunnels"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_DISCONNECT_ALL = "ru.adsrv.frpjump.DISCONNECT_ALL"
+        private const val ACTION_REFRESH = "ru.adsrv.frpjump.REFRESH_NOTIFICATION"
 
         /** Whether the service runs in the foreground now. */
         @Volatile
@@ -244,6 +250,17 @@ class TunnelService : Service() {
          * app, which starts it ([ru.adsrv.frpjump.FrpJumpApp]): to restore them
          * when this [restarting] process brings them back, else to keep them.
          */
+        /**
+         * Says the notification again in the app's language, after Settings ›
+         * Language on Android 10–12 (13+ tells the service itself). Called
+         * from the app in the foreground; nothing when the service is not up.
+         */
+        fun refresh(context: Context) {
+            if (!running) return
+            runCatching { context.startService(Intent(context, TunnelService::class.java).setAction(ACTION_REFRESH)) }
+                .onFailure { Log.w(TAG, "cannot refresh the notification: ${it.message}") }
+        }
+
         fun start(context: Context, restarting: Boolean = !everInForeground): Boolean = try {
             ContextCompat.startForegroundService(context, Intent(context, TunnelService::class.java))
             true

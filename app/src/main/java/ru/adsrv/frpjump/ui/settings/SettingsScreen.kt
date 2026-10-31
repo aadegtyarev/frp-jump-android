@@ -36,6 +36,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -395,7 +396,7 @@ private fun portRangeText(problem: PortRangeProblem): String = when (problem) {
     PortRangeProblem.MISSING -> stringResource(R.string.ports_missing)
     PortRangeProblem.OUTSIDE -> stringResource(R.string.ports_outside, MIN_LOCAL_PORT, MAX_LOCAL_PORT)
     PortRangeProblem.REVERSED -> stringResource(R.string.ports_reversed)
-    PortRangeProblem.TOO_SMALL -> stringResource(R.string.ports_too_small, MIN_LOCAL_PORTS)
+    PortRangeProblem.TOO_SMALL -> pluralStringResource(R.plurals.ports_too_small, MIN_LOCAL_PORTS, MIN_LOCAL_PORTS)
 }
 
 /**
@@ -405,8 +406,9 @@ private fun portRangeText(problem: PortRangeProblem): String = when (problem) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LanguageItem(onSelect: (AppLanguage) -> Unit) {
-    // Read again whenever the activity comes back with a new language.
-    var selected by remember { mutableStateOf(currentAppLanguage()) }
+    // Read again with every new language: it may also be set in the system's app settings.
+    val locales = LocalConfiguration.current.locales
+    var selected by remember(locales) { mutableStateOf(currentAppLanguage()) }
     ListItem(
         headlineContent = { Text(stringResource(R.string.language)) },
         supportingContent = {

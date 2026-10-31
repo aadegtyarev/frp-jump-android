@@ -252,8 +252,8 @@ private fun EnrollLineProblem.text(): String = when (this) {
     EnrollLineProblem.NAME_WITHOUT_VALUE -> Texts.get(R.string.enroll_line_name_empty)
     EnrollLineProblem.NOTHING_AFTER_COMMAND -> Texts.get(R.string.enroll_line_no_url)
     EnrollLineProblem.TOO_SHORT -> Texts.get(R.string.enroll_line_too_short)
-    EnrollLineProblem.TOKEN_LENGTH -> Texts.get(R.string.enroll_line_token_length, EnrollLineParser.TOKEN_LENGTH)
+    EnrollLineProblem.TOKEN_LENGTH -> Texts.plural(R.plurals.enroll_line_token_length, EnrollLineParser.TOKEN_LENGTH, EnrollLineParser.TOKEN_LENGTH)
     EnrollLineProblem.HTTP -> Texts.get(R.string.enroll_line_http)
     EnrollLineProblem.BAD_URL -> Texts.get(R.string.enroll_line_bad_url)
-    EnrollLineProblem.BAD_TOKEN -> Texts.get(R.string.enroll_line_bad_token, EnrollLineParser.TOKEN_LENGTH)
+    EnrollLineProblem.BAD_TOKEN -> Texts.plural(R.plurals.enroll_line_bad_token, EnrollLineParser.TOKEN_LENGTH, EnrollLineParser.TOKEN_LENGTH)
 }
