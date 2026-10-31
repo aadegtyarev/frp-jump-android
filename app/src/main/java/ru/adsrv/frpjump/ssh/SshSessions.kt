@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import net.schmizz.sshj.SSHClient
 import ru.adsrv.frpjump.ports.profilePortKey
 
 /** What the terminal screen hears about the sessions it shows. */
@@ -110,6 +111,12 @@ class SshSessions(
     /** Whether a password is kept for [user] on [session]'s device and port; cheap, nothing is unsealed. */
     fun hasRememberedPassword(session: SshSession, user: String): Boolean =
         env.passwords.has(session.profile, session.device, session.port, user.trim())
+
+    /** An open, logged-in connection of a session as [user] to [device]:[port] of [profile]; any thread. */
+    fun liveClient(profile: String, device: String, port: Int, user: String): SSHClient? =
+        _sessions.value.asReversed()
+            .filter { it.profile == profile && it.device == device && it.port == port && it.user == user }
+            .firstNotNullOfOrNull { it.openClient() }
 
     fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed)) {
         val session = _sessions.value.firstOrNull { it.id == id } ?: return

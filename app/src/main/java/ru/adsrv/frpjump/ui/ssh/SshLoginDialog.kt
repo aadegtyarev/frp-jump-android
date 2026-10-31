@@ -30,7 +30,9 @@ import androidx.compose.ui.unit.sp
 /**
  * User name (remembered per device and port), then this phone's key or a
  * password. A password is kept only if "Remember" is ticked; an empty
- * field with a remembered password uses that one.
+ * field with a remembered password uses that one. [passwordOnly] asks for
+ * a password just once ("Use key login"): no method, nothing to remember,
+ * [note] says what for, [problem] what went wrong the last time.
  */
 @Composable
 fun SshLoginDialog(
@@ -39,16 +41,21 @@ fun SshLoginDialog(
     hasRememberedPassword: (user: String) -> Boolean,
     onConnect: (user: String, method: SshAuthMethod, password: String, remember: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    title: String? = null,
+    passwordOnly: Boolean = false,
+    note: String? = null,
+    problem: String? = null,
+    confirmLabel: String? = null,
 ) {
     var user by rememberSaveable { mutableStateOf(initial.user) }
-    var method by rememberSaveable { mutableStateOf(initial.method) }
+    var method by rememberSaveable { mutableStateOf(if (passwordOnly) SshAuthMethod.PASSWORD else initial.method) }
     var password by remember { mutableStateOf("") }
     val remembered = method == SshAuthMethod.PASSWORD && hasRememberedPassword(user)
     var remember by rememberSaveable(user) { mutableStateOf(hasRememberedPassword(user)) }
     val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ssh_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+        title = { Text(title ?: stringResource(R.string.ssh_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Field(
@@ -57,12 +64,15 @@ fun SshLoginDialog(
                     onValueChange = { user = it.trim() },
                     keyboard = KeyboardType.Ascii,
                 )
-                Segmented(
-                    options = listOf(SshAuthMethod.KEY, SshAuthMethod.PASSWORD),
-                    selected = method,
-                    label = { stringResource(if (it == SshAuthMethod.KEY) R.string.ssh_method_key else R.string.ssh_method_password) },
-                    onPick = { method = it },
-                )
+                if (!passwordOnly) {
+                    Segmented(
+                        options = listOf(SshAuthMethod.KEY, SshAuthMethod.PASSWORD),
+                        selected = method,
+                        label = { stringResource(if (it == SshAuthMethod.KEY) R.string.ssh_method_key else R.string.ssh_method_password) },
+                        onPick = { method = it },
+                    )
+                }
+                note?.let { Text(it, fontSize = 13.sp, color = AppTheme.colors.muted) }
                 if (method == SshAuthMethod.KEY) {
                     Text(
                         stringResource(R.string.ssh_login_key_hint, stringResource(R.string.ssh_public_key)),
@@ -75,15 +85,18 @@ fun SshLoginDialog(
                         { password = it },
                         stringResource(if (remembered) R.string.ssh_password_remembered else R.string.ssh_method_password),
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = remember, onCheckedChange = { remember = it })
-                        Text(stringResource(R.string.ssh_remember_password))
+                    if (!passwordOnly) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = remember, onCheckedChange = { remember = it })
+                            Text(stringResource(R.string.ssh_remember_password))
+                        }
                     }
                 }
+                problem?.let { Text(it, fontSize = 13.sp, color = AppTheme.colors.error) }
             }
         },
         confirmButton = {
-            TextButton(enabled = ready, onClick = { onConnect(user, method, password, remember) }) { Text(stringResource(R.string.connect)) }
+            TextButton(enabled = ready, onClick = { onConnect(user, method, password, remember) }) { Text(confirmLabel ?: stringResource(R.string.connect)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

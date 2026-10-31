@@ -62,7 +62,12 @@ import ru.adsrv.frpjump.ui.profiles.ProfilesSheet
 import ru.adsrv.frpjump.ui.profiles.ProfilesViewModel
 import ru.adsrv.frpjump.ui.settings.SettingsScreen
 import ru.adsrv.frpjump.ui.settings.SettingsViewModel
+import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.ui.ssh.TerminalScreen
+import ru.adsrv.frpjump.ssh.KeyInstallTarget
+import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.SshAuth
+import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ui.web.WebScreen
 
 private object Routes {
@@ -253,6 +258,13 @@ fun AppNav() {
                 rememberLogin = { s, login ->
                     // Only the dialog's next start: a write that fails changes nothing else.
                     app.appScope.launch(Dispatchers.IO) { runCatching { app.profiles.runtime(s.profile)?.sshLogins?.remember(s.device, s.port, login) } }
+                },
+                keyLogin = remember { KeyLoginFlow(KeyInstaller(app.sshEnv, app.ssh), app.appScope) },
+                keyLoginTarget = { s ->
+                    // Offered while this login is by password: the session's own, and the one remembered for its port.
+                    app.profiles.runtime(s.profile)
+                        ?.takeIf { s.auth is SshAuth.Password && it.sshLogins.get(s.device, s.port).method == SshAuthMethod.PASSWORD }
+                        ?.let { r -> KeyInstallTarget(s.profile, r.hostKeys, s.device, s.port, s.user, r.sshLogins) { s.localPort } }
                 },
             )
         }

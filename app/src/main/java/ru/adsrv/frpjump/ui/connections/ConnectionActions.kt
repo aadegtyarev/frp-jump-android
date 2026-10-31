@@ -4,7 +4,10 @@ import android.widget.Toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
@@ -14,6 +17,9 @@ import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.ports.localPortKey
+import ru.adsrv.frpjump.ports.PortKind
+import ru.adsrv.frpjump.ssh.KeyInstallTarget
+import ru.adsrv.frpjump.ssh.KeyInstaller
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
@@ -21,8 +27,14 @@ import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
+import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.tunnel.openThrough
+import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.ui.userMessage
+import java.io.IOException
+
+/** How long "Use key login" waits for a tunnel it brought up. */
+private const val TUNNEL_WAIT_MS = 45_000L
 
 /**
  * What the device card and the Connections tab do with a connection, for
@@ -31,6 +43,33 @@ import ru.adsrv.frpjump.ui.userMessage
  */
 class ConnectionActions(private val app: FrpJumpApp, private val scope: CoroutineScope) {
     private fun runtime(profile: String) = app.profiles.runtime(profile)
+
+    /** "Use key login": in the app's scope, so it finishes when the screen goes. */
+    val keyLogin = KeyLoginFlow(KeyInstaller(app.sshEnv, app.ssh), app.appScope)
+
+    /** Starts "Use key login" for [row]'s user, device and port. Main thread. */
+    fun startKeyLogin(row: ConnectionRow) {
+        val runtime = runtime(row.profile) ?: return
+        val c = row.connection
+        val target = KeyInstallTarget(row.profile, runtime.hostKeys, c.device, c.port, sshLogin(row).user, runtime.sshLogins) {
+            tunnelPort(row.profile, c.device, c.port)
+        }
+        keyLogin.start(target)
+    }
+
+    /**
+     * The local port of the tunnel to [device]:[port], brought up when it is
+     * down; throws [IOException] with why when it does not come up.
+     */
+    private suspend fun tunnelPort(profile: String, device: String, port: Int): Int {
+        val runtime = runtime(profile) ?: throw IOException(Texts.get(R.string.profile_gone))
+        val key = localPortKey(device, port)
+        fun up(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }?.localPort
+        up(runtime.tunnels.state.value)?.let { return it }
+        if (runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, PortKind.SSH)
+        return withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
+            ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
+    }
 
     fun connect(row: ConnectionRow) {
         val c = row.connection

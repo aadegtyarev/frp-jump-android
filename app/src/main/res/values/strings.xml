@@ -351,6 +351,17 @@
     <string name="web_no_app">No app can open %s</string>
 
     <!-- SSH console -->
+    <string name="close">Close</string>
+    <string name="key_login">Use key login</string>
+    <string name="key_login_title">Key login: %s</string>
+    <string name="key_install_working">Installing the phone’s key…</string>
+    <string name="key_install_password_note">The password is needed once, to add the phone’s key to ~/.ssh/authorized_keys on the device. It is not kept.</string>
+    <string name="key_install_confirm">Install key</string>
+    <string name="key_install_done">Key installed, key login works</string>
+    <string name="key_install_refused">The key is in ~/.ssh/authorized_keys, but the device refused it for “%s”: sshd may forbid key logins or read keys from another file (AuthorizedKeysFile). Logins stay with the password.</string>
+    <string name="key_install_command_failed">Could not add the key: %s. Logins stay with the password.</string>
+    <string name="key_install_connection_failed">Could not connect: %s. Logins stay with the password.</string>
+    <string name="key_install_save_failed">Key login works, but the app could not save it: %s. Logins stay with the password.</string>
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
     <string name="terminal_keyboard">Keyboard</string>

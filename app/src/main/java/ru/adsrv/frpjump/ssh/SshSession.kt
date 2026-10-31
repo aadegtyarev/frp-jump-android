@@ -129,6 +129,13 @@ class SshSession(
         }
     }
 
+    /**
+     * The logged-in connection while the shell is open, for another channel
+     * on it ("Use key login" runs its command there); null otherwise.
+     */
+    fun openClient(): SSHClient? =
+        client?.takeIf { _state.value == SshState.Open && it.isConnected && it.isAuthenticated }
+
     fun close(reason: String = Texts.get(R.string.ssh_closed)) {
         closedByUser = true
         end(reason)

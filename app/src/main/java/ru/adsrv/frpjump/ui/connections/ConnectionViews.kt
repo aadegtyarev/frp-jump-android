@@ -70,6 +70,7 @@ import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PowerGlyph
+import ru.adsrv.frpjump.ui.ssh.KeyLoginDialogs
 import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 
 @Composable
@@ -320,6 +321,10 @@ class RowActions(
     val delete: (ConnectionRow) -> Unit,
     /** Tapped "Through the server". */
     val directChoice: (ConnectionRow) -> Unit,
+    /** "Use key login" of a saved SSH connection. */
+    val keyLogin: (ConnectionRow) -> Unit,
+    /** Whether the menu offers "Use key login": the method remembered for its port is Password. */
+    val offersKeyLogin: (ConnectionRow) -> Boolean,
 )
 
 @Composable
@@ -360,6 +365,9 @@ fun rememberRowActions(
         change = { ui.editing = it },
         delete = { ui.deleting = it },
         directChoice = { ui.direct = it },
+        // Down, the tunnel is brought up for it, as Connect does.
+        keyLogin = { row -> if (row.tunnel == null) notificationsFirst { actions.startKeyLogin(row) } else actions.startKeyLogin(row) },
+        offersKeyLogin = { row -> actions.sshLogin(row).method == SshAuthMethod.PASSWORD },
     )
 }
 
@@ -384,6 +392,7 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
         }
         // Down, the tunnel is brought up once the login is given.
         if (row.saved && kind == PortKind.SSH) item(R.string.files, actions.files)
+        if (row.saved && kind == PortKind.SSH && actions.offersKeyLogin(row)) item(R.string.key_login, actions.keyLogin)
         if (row.saved) {
             item(R.string.change, actions.change)
             item(R.string.delete, actions.delete)
@@ -408,6 +417,7 @@ fun ConnectionDialogs(
 ) {
     val context = LocalContext.current
     val notificationsFirst = rememberNotificationsFirst()
+    KeyLoginDialogs(actions.keyLogin)
     ui.filesLogin?.let { row ->
         SshLoginDialog(
             target = "${row.connection.device}:${row.connection.port}",

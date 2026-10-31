@@ -372,6 +372,17 @@
     <string name="web_no_app">Нет приложения, которое откроет %s</string>
 
     <!-- SSH console -->
+    <string name="close">Закрыть</string>
+    <string name="key_login">Вход по ключу</string>
+    <string name="key_login_title">Вход по ключу: %s</string>
+    <string name="key_install_working">Устанавливаю ключ телефона…</string>
+    <string name="key_install_password_note">Пароль нужен один раз — чтобы добавить ключ телефона в ~/.ssh/authorized_keys на устройстве. Он не сохраняется.</string>
+    <string name="key_install_confirm">Установить ключ</string>
+    <string name="key_install_done">Ключ установлен, вход по ключу работает</string>
+    <string name="key_install_refused">Ключ есть в ~/.ssh/authorized_keys, но устройство не пустило по нему «%s»: возможно, sshd запрещает вход по ключу или берёт ключи из другого файла (AuthorizedKeysFile). Вход остаётся по паролю.</string>
+    <string name="key_install_command_failed">Не удалось добавить ключ: %s. Вход остаётся по паролю.</string>
+    <string name="key_install_connection_failed">Не удалось подключиться: %s. Вход остаётся по паролю.</string>
+    <string name="key_install_save_failed">Вход по ключу работает, но приложение не смогло это запомнить: %s. Вход остаётся по паролю.</string>
     <string name="terminal_text_smaller">Мельче</string>
     <string name="terminal_text_larger">Крупнее</string>
     <string name="terminal_keyboard">Клавиатура</string>

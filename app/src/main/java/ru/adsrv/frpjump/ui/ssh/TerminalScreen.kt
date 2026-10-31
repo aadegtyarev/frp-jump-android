@@ -79,6 +79,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
@@ -108,6 +109,10 @@ fun TerminalScreen(
     onOpenFiles: (SshSession) -> Unit,
     /** Keeps the login typed in the dialog of a long press on "+" for that session's device and port. */
     rememberLogin: (SshSession, SshLogin) -> Unit,
+    /** "Use key login", shared with the app's scope. */
+    keyLogin: KeyLoginFlow,
+    /** Where a session's "Use key login" installs the key; null when its login is not by password. */
+    keyLoginTarget: (SshSession) -> KeyInstallTarget?,
 ) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
     val snippets by snippetStore.snippets.collectAsStateWithLifecycle()
@@ -187,6 +192,8 @@ fun TerminalScreen(
             }
         },
         addAs = { loginLikeId = selected.id },
+        keyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget)?.let(keyLogin::start) },
+        offersKeyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget) != null },
     )
     val state by selected.state.collectAsStateWithLifecycle()
     val modifiers = remember { Modifiers() }
@@ -414,6 +421,8 @@ fun TerminalScreen(
             )
         }
     }
+
+    KeyLoginDialogs(keyLogin)
 
     when (val s = state) {
         is SshState.HostKeyUnknown -> HostKeyTrustDialog(

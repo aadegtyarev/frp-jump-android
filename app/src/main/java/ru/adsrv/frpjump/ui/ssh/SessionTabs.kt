@@ -59,12 +59,16 @@ class SessionTabActions(
     val add: () -> Unit,
     /** Long press on "+": the login dialog for the selected one's device and port. */
     val addAs: () -> Unit,
+    /** "Use key login" for a session's user, device and port. */
+    val keyLogin: (Int) -> Unit,
+    /** Whether a tab's menu offers it: that login is still by password. */
+    val offersKeyLogin: (Int) -> Boolean,
 )
 
 /**
  * The open sessions as a thin row of tabs: the profile's colour, user and
  * device, the state when it is not plain open, and "+" at the end. Long
- * press on a tab: Close / Reconnect.
+ * press on a tab: Close / Reconnect / Use key login.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -178,6 +182,12 @@ private fun SessionTab(s: SshSession, label: String, on: Boolean, dot: Color, ac
                 DropdownMenuItem(text = { Text(stringResource(R.string.terminal_reconnect)) }, onClick = {
                     menu = false
                     actions.reconnect(s.id)
+                })
+            }
+            if (actions.offersKeyLogin(s.id)) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.key_login)) }, onClick = {
+                    menu = false
+                    actions.keyLogin(s.id)
                 })
             }
         }

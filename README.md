@@ -429,6 +429,21 @@ port) and Key or Password, then opens a session to
   re-enrolling the phone keeps them; forgetting the last profile wipes them.
 - Password: kept only when "Remember on this phone" is ticked; a remembered
   password that is refused is dropped.
+- "Use key login" (in the "⋮" menu of a saved SSH connection and in a
+  session tab's long-press menu, while that login is by password) moves it
+  to the phone's key in one tap, as `ssh-copy-id` does. It runs over the
+  open session as that user when there is one, else over a password login
+  (the remembered password, or the dialog asks once; the tunnel is brought
+  up if it is down): one fixed `sh` script (`ssh/KeyInstall.kt`) makes
+  `~/.ssh` (700) and `authorized_keys` (600) and appends the key line, read
+  from stdin, unless the same key is already there. Then a fresh login with
+  the key must succeed; only then the remembered method for that device and
+  port becomes Key and the remembered password for the user is forgotten
+  ("Key installed, key login works"). Otherwise nothing in the app changes
+  and a dialog says why, with Retry: the key was refused (sshd forbids keys,
+  or reads them from another `AuthorizedKeysFile`), the command failed (the
+  first line it wrote to stderr), or the connection failed. Host keys are
+  asked about as for the terminal.
 - Host keys are pinned per (profile, device name, target port) on first use, shown as
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.
