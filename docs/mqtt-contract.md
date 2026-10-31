@@ -51,14 +51,16 @@ The same thing is called the same way on every screen:
 ## Where it lives
 
 - A fourth connection kind, **MQTT**, next to Web, SSH and TCP, with the
-  presets 1883 and 8883 (8883 turns TLS on). On the wire it is a plain TCP
+  preset 1883 (8883, which turns TLS on, comes with TLS in stage 5). On the wire it is a plain TCP
   port (`protocol` `tcp`), so the server sees no change. Its main action
   is **MQTT**, which opens the explorer for that tunnel, bringing the
   tunnel up first, as Terminal does for SSH. "Copy address" is in "⋮" as
   for the other kinds. TCP keeps its main action "Copy"; the TCP preset
   1883 moves to the MQTT kind. Existing TCP connections (also on 1883)
   stay TCP; a TCP connection's "⋮" offers **Open as MQTT**, which changes
-  its kind to MQTT and opens the explorer.
+  its kind to MQTT and opens the explorer. It works with the tunnel up:
+  the wire protocol stays `tcp`, so the lock on changing the kind of a
+  live connection does not apply.
 - The bottom bar stays four items. The "Terminals" tab becomes
   **Sessions** and lists terminal and MQTT sessions together, each with its
   connection's name and kind.
@@ -135,10 +137,11 @@ neither option; see "Retained topics" for what that changes.
   refused branch says so on its level.
 - **One message, one entry.** Messages are keyed by topic. One publish can
   arrive more than once when several of the session's subscriptions match
-  it (the open branch and a pin). Under MQTT 5 every subscription carries
-  a subscription identifier and a message is taken only through the first
+  it (the open branch and a pin). Under MQTT 5 the app matches the topic
+  against its own filters and takes a message only through the first
   matching subscription in the order open branch, then pins in their
-  order; copies through the others are dropped. Under 3.1.1 a copy is a
+  order; copies through the others are dropped. (The client library does
+  not let the app set subscription identifiers; the result is the same.) Under 3.1.1 a copy is a
   message identical to the one just received for that topic (payload,
   retain, QoS), arriving before any other message for that topic, at most
   one fewer than the number of matching subscriptions. A copy is never
@@ -172,7 +175,9 @@ neither option; see "Retained topics" for what that changes.
   (`/` › `(empty)` › `devices` › `wb-mr6c_1` for `/devices/wb-mr6c_1`,
   whose first level is empty). Tap a part to go there; tap the path to type
   or paste a topic, taken as is (`/devices/x` and `devices/x` are different
-  places). Back goes up a level, then leaves.
+  places). A typed path to a topic without children opens its parent level
+  and the topic's card; a path nothing has been seen under opens that
+  level, empty, saying so. Back goes up a level, then leaves.
 - Rows are the children of the current level:
   - a branch: name, number of seen topics under it, the newest change's age;
   - a topic with a value: name, the value shortened to one line, its age,
@@ -188,7 +193,8 @@ neither option; see "Retained topics" for what that changes.
   moment and fades back; with system animations off it switches back
   without a fade. Nothing else moves.
 - Search in the top bar filters the current level and below by path
-  substring (`K1`, `meta/error`).
+  substring (`K1`, `meta/error`) and shows the matching topics as a flat
+  list, paths relative to the current level; tap opens the topic.
 
 ## A topic
 
@@ -392,8 +398,10 @@ nothing else in the explorer changes for it.
    publish sheet's switch; Text/JSON/Hex views move onto the same plumbing.
 7. Later: charts of chosen numeric topics, overlaid.
 
-Each stage a separate PR, reviewed, checked on the emulator against a test
-broker, then a build for the owner's phone.
+Each stage is delivered in small PRs, each reviewed; a stage's first
+build for the owner's phone goes out once something in it is visible, then
+after each visible PR. Checked on the emulator against a test broker.
+There is one explorer session per connection.
 
 ## Acceptance
 
