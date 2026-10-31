@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /** A device's file system in memory, with links, refusals and failures on demand. */
@@ -13,7 +14,8 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
     private class File(var bytes: ByteArray, val modified: Long = 0) : Node
     private class Link(val target: String) : Node
 
-    private val nodes = sortedMapOf<String, Node>("/" to Dir)
+    // Uploads in tests run on several threads at once: a plain TreeMap breaks under that.
+    private val nodes = ConcurrentSkipListMap<String, Node>(mapOf("/" to Dir))
 
     /** `stat` of these is refused: no permission to look. */
     val denied = mutableSetOf<String>()
@@ -130,9 +132,9 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
     override fun createExclusive(path: String): OutputStream {
         beforeCreate(path)
         val at = resolve(path, follow = false)
-        if (at in nodes) throw RemoteRefusal(Refusal.OTHER, "exists")
         val file = File(ByteArray(0))
-        nodes[at] = file
+        // Atomic, as O_EXCL is on a real server.
+        if (nodes.putIfAbsent(at, file) != null) throw RemoteRefusal(Refusal.OTHER, "exists")
         val limit = failWritesAfter
         return object : OutputStream() {
             override fun write(b: Int) = write(byteArrayOf(b.toByte()), 0, 1)
