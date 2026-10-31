@@ -41,6 +41,7 @@ import ru.adsrv.frpjump.profiles.ProfileStore
 import ru.adsrv.frpjump.profiles.Profiles
 import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.AppSession
+import ru.adsrv.frpjump.sessions.OpenSessions
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.notices.NoticeAction
@@ -92,6 +93,10 @@ class FrpJumpApp : Application() {
 
     /** The MQTT explorer's sessions, one per connection. */
     lateinit var mqtt: MqttSessions
+        private set
+
+    /** The terminal and MQTT sessions together, as they are counted. */
+    lateinit var sessions: OpenSessions
         private set
 
     /** What every SSH login needs: the terminal's sessions and the file screens share it. */
@@ -306,6 +311,7 @@ class FrpJumpApp : Application() {
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
+        sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow)
         // A kept file session closes with the last terminal session on its tunnel.
         appScope.launch { ssh.through.collect(files::onTerminals) }
     }

@@ -84,6 +84,7 @@ import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
+import ru.adsrv.frpjump.sessions.OpenSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
 import ru.adsrv.frpjump.ssh.saysTunnelClosed
@@ -103,6 +104,8 @@ import ru.adsrv.frpjump.undo.PendingUndo
 @Composable
 fun TerminalScreen(
     sessions: SshSessions,
+    /** The terminal and MQTT sessions together, for "N sessions keep running" on leaving. */
+    allSessions: OpenSessions,
     snippetStore: SnippetStore,
     /** Where a deleted snippet waits for its Undo to run out. */
     pendingUndo: PendingUndo,
@@ -181,10 +184,8 @@ fun TerminalScreen(
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
     // Leaving keeps the sessions: the first time, say where they are (not when Files covers the screen).
     fun leave() {
-        val live = sessions.sessions.value.count { it.state.value !is SshState.Ended }
-        if (live > 0 && !sessions.leftRunningHintShown) {
-            sessions.leftRunningHintShown = true
-            context.notice(context.resources.getQuantityString(R.plurals.terminal_left_running, live, live), NoticeKind.INFO, long = true)
+        allSessions.leftRunning()?.let { live ->
+            context.notice(context.resources.getQuantityString(R.plurals.sessions_left_running, live, live), NoticeKind.INFO, long = true)
         }
         onBack()
     }

@@ -112,11 +112,12 @@ port, which stay keyed by (profile, device, port).
   disconnected.
 - Disconnect, "Disconnect all" and deleting the last connection of a
   tunnel that is up ask first when something open goes with the tunnel:
-  live terminal sessions on it (same profile, device and port; for "all",
-  any) — "N terminal sessions will close" — and open Files screens.
+  live terminal and MQTT sessions on it (same profile, device and port;
+  for "all", any) — "2 terminals and 1 MQTT session will close" — and
+  open Files screens.
   With nothing open they disconnect at once.
-- The bottom navigation: Devices, Connections, Terminals (the open SSH
-  sessions), Settings.
+- The bottom navigation: Devices, Connections, Sessions (the open terminal
+  and MQTT explorer sessions; a tap returns to one), Settings.
 
 Upgrading from 0.2.0-beta1 (or 0.1.x) turns each profile's ports into
 connections on its first start: every port the owner added keeps its
@@ -161,7 +162,7 @@ not parse is left in place and nothing is migrated from it; a
   profile's directory.
 - While at least one tunnel of any profile is up a foreground service (type
   `specialUse`) keeps the process alive and shows "N tunnels" (all profiles),
-  "· M terminal sessions" when any is open, with "Disconnect all" (all
+  "· M sessions" (terminal and MQTT) when any is open, with "Disconnect all" (all
   profiles), which cannot ask first: the title is the warning.
 
 ## Restore after kill and reboot
@@ -559,7 +560,7 @@ filling in the user name leaves the saved password alone.
   and sending it releases the hold. A write that fails keeps the list as it
   was and says so (as a setting that cannot be saved does).
 - Sessions live in the app, not in the screen: several at once; the
-  Terminals tab leads back. A session ends when its tunnel goes (Disconnect,
+  Sessions tab leads back. A session ends when its tunnel goes (Disconnect,
   Disconnect all, Forget); "Reconnect" starts a new one with the same login.
   When the session shown goes that way, the terminal says "The tunnel was
   closed." and shows the next one (or leaves when none is left).

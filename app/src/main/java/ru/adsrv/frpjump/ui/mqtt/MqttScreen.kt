@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.api.relativeAge
 import ru.adsrv.frpjump.mqtt.MqttFailure
 import ru.adsrv.frpjump.mqtt.MqttPath
@@ -80,6 +82,7 @@ import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.StatusBanner
 import ru.adsrv.frpjump.ui.ageText
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.files.PathBar
 import java.text.NumberFormat
 import java.time.Duration
@@ -112,7 +115,15 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
         focusSearch = false
         vm.query.value = ""
     }
-    BackHandler { if (!vm.up()) onBack() }
+    val context = LocalContext.current
+    // Leaving keeps the session: the first time, say where it is.
+    val leave = {
+        vm.leftRunning()?.let { live ->
+            context.notice(context.resources.getQuantityString(R.plurals.sessions_left_running, live, live), NoticeKind.INFO, long = true)
+        }
+        onBack()
+    }
+    BackHandler { if (!vm.up()) leave() }
     // Declared later, so it comes first: Back closes the search before it goes up a level.
     BackHandler(enabled = searching) { closeSearch() }
 
@@ -134,7 +145,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 AppTopBar(
                     title = target.ifEmpty { stringResource(R.string.kind_mqtt) },
                     subtitle = statusWord(state.state),
-                    onBack = onBack,
+                    onBack = leave,
                     actions = {
                         IconButton(onClick = {
                             searching = true

@@ -96,8 +96,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
     }
 
-    /** The terminal sessions of every tunnel, for the SSH rows' counts. */
-    val sessions: Flow<List<SessionOn>> = app.ssh.through
+    /** The sessions of every tunnel, for the SSH rows' counts of terminals. */
+    val sessions: Flow<List<SessionOn>> = app.sessions.through
 
     fun connect(row: ConnectionRow) {
         val c = row.connection
@@ -109,18 +109,15 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /**
-     * The live terminal sessions and open file screens that go when
+     * The live terminal and MQTT sessions and open file screens that go when
      * [row]'s tunnel disconnects, or every tunnel when [row] is null: the
      * owner is asked before they are lost. Main thread.
      */
     fun openThrough(row: ConnectionRow?): OpenThrough =
-        openThrough(openSessions(), openFiles(), row?.let { TunnelRef(it.profile, it.connection.device, it.connection.port) })
+        openThrough(app.sessions.now(), openFiles(), row?.let { TunnelRef(it.profile, it.connection.device, it.connection.port) })
 
     /** [openThrough] for every tunnel of [profile]. Main thread. */
-    fun openOnProfile(profile: String): OpenThrough = openOnProfile(openSessions(), openFiles(), profile)
-
-    private fun openSessions() =
-        app.ssh.sessions.value.map { SessionOn(TunnelRef(it.profile, it.device, it.port), it.state.value !is SshState.Ended) }
+    fun openOnProfile(profile: String): OpenThrough = openOnProfile(app.sessions.now(), openFiles(), profile)
 
     private fun openFiles() = app.fileTargets.all().map { TunnelRef(it.profile, it.device, it.port) }
 
