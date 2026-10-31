@@ -12,7 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release
+  # Per ref: one group for all would drop a second pending tag.
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -47,8 +48,12 @@ jobs:
         run: |
           version=$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)
           [ -n "$version" ] || { echo "no versionName in app/build.gradle.kts" >&2; exit 1; }
-          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "tag $GITHUB_REF_NAME does not match versionName $version" >&2
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "tag $GITHUB_REF_NAME does not match versionName $version" >&2; exit 1; }
+            [ -s "docs/releases/$version.md" ] || { echo "no release notes docs/releases/$version.md" >&2; exit 1; }
+          elif [ "$GITHUB_REF" != refs/heads/main ]; then
+            # A manual run signs with the release key: only what is on main.
+            echo "run it on main, not $GITHUB_REF" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -79,7 +84,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
             scripts/release.sh --publish --notes-file "docs/releases/$VERSION.md"
           else
             scripts/release.sh
@@ -91,7 +96,8 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          # The mapping is not published with the release; keep it here for stack traces.
+          # The mapping is not attached to the release; it stays here for stack traces.
           name: frp-jump-android-${{ steps.version.outputs.version }}
           path: dist/
+          if-no-files-found: error
           retention-days: 90

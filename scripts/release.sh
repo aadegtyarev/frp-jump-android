@@ -8,7 +8,7 @@
 #   scripts/release.sh                                # build and checksum only
 #   scripts/release.sh --publish --notes-file NOTES.md
 #
-# --publish also checks: a clean tree pushed to origin, no v<version> release
+# --publish also checks: a clean tree on origin/main, no v<version> release
 # yet (a v<version> tag only on HEAD, as when CI runs from it),
 # versionCode above the latest v* tag's, apksigner and aapt2 at hand. The
 # R8 mapping goes to dist/ as well, to keep (not published).
@@ -68,8 +68,12 @@ if [ "$PUBLISH" = 1 ]; then
     [ "${tag_code:-0}" -gt "$LAST_CODE" ] && LAST_CODE=$tag_code && LAST_TAG=$tag
   done
   [ "$CODE" -gt "$LAST_CODE" ] || { echo "versionCode $CODE is not above $LAST_CODE of $LAST_TAG" >&2; exit 1; }
-  # The release points at this commit: it must be on GitHub already.
-  [ -n "$(git branch -r --contains HEAD)" ] || { echo "HEAD is not pushed to origin" >&2; exit 1; }
+  # Every installed app takes the release: only a commit merged to main.
+  git merge-base --is-ancestor HEAD origin/main || { echo "HEAD is not on origin/main" >&2; exit 1; }
+  if [ "${GITHUB_ACTIONS:-}" = true ] && [ -z "${FRPJUMP_RELEASE_CERT_SHA256:-}" ]; then
+    echo "CI publishes only with FRPJUMP_RELEASE_CERT_SHA256 set" >&2
+    exit 1
+  fi
 fi
 
 # A signed APK from an earlier build must not pass for this one.

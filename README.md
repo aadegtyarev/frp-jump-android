@@ -488,11 +488,12 @@ To publish a version:
    ```
 
 The workflow builds frpc and the APK, runs the unit tests, then
-`scripts/release.sh --publish`. Running the workflow by hand (Actions ›
-Release › Run workflow) builds and checks the same APK without publishing.
-Either way the APK, its `.sha256` and the R8 mapping are kept as the run's
-artifact for 90 days; download and keep the mapping of each published
-release.
+`scripts/release.sh --publish`. Running the workflow by hand on `main`
+(Actions › Release › Run workflow) builds and checks the same signed APK
+without publishing; on any other branch it refuses. Either way the APK, its
+`.sha256` and the R8 mapping are kept as the run's artifact for 90 days
+(public, as the repository is); download and keep the mapping of each
+published release.
 
 `scripts/release.sh` does the same on this machine:
 
@@ -501,7 +502,7 @@ scripts/release.sh                                   # dist/frp-jump-android-<ve
 scripts/release.sh --publish --notes-file notes.md   # also GitHub release v<version> with the APK and .sha256
 ```
 
-`--publish` refuses unless the tree is clean and pushed, there is no
+`--publish` refuses unless the tree is clean and on `origin/main`, there is no
 `v<version>` release yet and no `v<version>` tag other than on this commit,
 versionCode is above that of every other `v*` tag, and apksigner and aapt2
 are there; the built APK must say the versionName and versionCode of
