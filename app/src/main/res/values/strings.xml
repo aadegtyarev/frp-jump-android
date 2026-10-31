@@ -81,7 +81,10 @@
     <string name="scan_torch_off">Turn the torch off</string>
     <string name="scan_no_torch">This camera has no torch</string>
     <string name="scan_torch_failed">Could not switch the torch</string>
-    <string name="scan_camera_failed">Could not open the camera. Go back and paste the line instead.</string>
+    <string name="scan_camera_failed">Could not open the camera. Pick a picture of the code from the gallery, or go back and paste the line.</string>
+    <string name="scan_from_gallery">From gallery</string>
+    <string name="scan_no_code">No QR code found in this picture</string>
+    <string name="scan_picture_failed">Could not open this picture</string>
     <string name="enroll_phone_name">Name for this phone</string>
     <string name="enroll_step_name">3. Name the profile</string>
     <string name="enroll_submit">Connect phone</string>

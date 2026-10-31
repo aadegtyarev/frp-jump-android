@@ -137,6 +137,19 @@ val TorchGlyph: ImageVector = glyph("Torch") {
     verticalLineTo(15f)
 }
 
+/** A framed landscape with a sun: a picture "From gallery". */
+val PictureGlyph: ImageVector = glyph("Picture") {
+    roundRect(3f, 4f, 18f, 16f, 2f)
+    moveTo(10f, 9f)
+    arcTo(1.5f, 1.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 7f, y1 = 9f)
+    arcTo(1.5f, 1.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 10f, y1 = 9f)
+    moveTo(3f, 17f)
+    lineTo(8.5f, 12f)
+    lineTo(12f, 15f)
+    lineTo(15f, 12.5f)
+    lineTo(21f, 17f)
+}
+
 /** Two opposite arrows: direct connection. */
 val SwapGlyph: ImageVector = glyph("Swap") {
     moveTo(4f, 8f)
