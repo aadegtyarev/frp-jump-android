@@ -35,8 +35,8 @@ class MqttSessions(
     val sessions: StateFlow<List<MqttSession>> = _sessions
     private var nextId = 1
 
-    /** Sessions closed because their tunnel went away (ids are never reused); main thread. */
-    private val closedByTunnel = mutableSetOf<Int>()
+    /** Sessions closed because their tunnel went away (ids are never reused); written on the main thread, read from any. */
+    private val closedByTunnel: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     /** How many sessions have not ended, as it changes. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -109,6 +109,6 @@ class MqttSessions(
      */
     fun changeStored(change: () -> Unit) = env.scheduler.runAfterPending(change)
 
-    /** Whether session [id] went because its tunnel was closed. Main thread. */
+    /** Whether session [id] went because its tunnel was closed. Any thread. */
     fun closedByTunnel(id: Int): Boolean = id in closedByTunnel
 }

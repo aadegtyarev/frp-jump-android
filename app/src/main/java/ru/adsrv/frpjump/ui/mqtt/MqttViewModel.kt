@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -18,6 +20,8 @@ import ru.adsrv.frpjump.mqtt.MqttSession
 import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.SnapshotState
 import ru.adsrv.frpjump.mqtt.TopicNode
+import ru.adsrv.frpjump.mqtt.TopicProblem
+import ru.adsrv.frpjump.mqtt.topicProblem
 import ru.adsrv.frpjump.mqtt.pinnedAt
 
 /** One row of a level: a node of the tree, or the root's `$SYS` before anything was seen there. */
@@ -71,7 +75,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 delay(REFRESH_MS)
             }
         }
-        combine(s.state, s.snapshot, s.branch, s.pins, s.refused, query, ticks) { values ->
+        // Searching walks the whole level: again only when the query, the level or the number of topics changes, not every tick.
+        val searches = combine(query.map { it.trim() }, s.branch, ticks.map { s.tree.topicCount }.distinctUntilChanged()) { needle, path, _ ->
+            search(s, path, needle)
+        }.distinctUntilChanged().flowOn(Dispatchers.Default)
+        combine(s.state, s.snapshot, s.branch, s.pins, s.refused, searches, ticks) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -80,7 +88,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[2] as MqttPath,
                 values[3] as List<String>,
                 values[4] as Set<String>,
-                values[5] as String,
+                values[5] as Search,
                 values[6] as Long,
             )
         }.flowOn(Dispatchers.Default)
@@ -98,7 +106,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         path: MqttPath,
         pins: List<String>,
         refused: Set<String>,
-        query: String,
+        search: Search,
         now: Long,
     ): MqttUiState {
         if (path != shownPath) {
@@ -112,9 +120,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             val sys = MqttPath.ROOT.child(SYS)
             if (path.isRoot && children.none { it.path == sys }) add(TopicRow(TopicNode(sys, null, 0, 0, false), pinnedAt(sys, pins)))
         }
-        val needle = query.trim()
-        val found = if (needle.isEmpty()) emptyList() else s.tree.search(path, needle)
-        val hits = found.take(MAX_HITS).mapNotNull { rel -> s.tree.node(MqttPath(path.levels + rel.levels))?.let { SearchHit(rel, it) } }
+        // Hits of another level (the search not yet run again after a move) are not shown.
+        val hits = if (search.path == path) search else Search(path, emptyList(), 0)
         return MqttUiState(
             state = state,
             snapshot = snapshot,
@@ -123,12 +130,22 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             topicCount = s.tree.topicCount,
             limitReached = s.tree.limitReached,
             branchRefused = !path.isRoot && (path.format() + "/#") in refused,
-            hits = hits,
-            hitsTotal = found.size,
+            hits = hits.hits,
+            hitsTotal = hits.total,
             now = now,
             shownSince = shownSince,
             closedByTunnel = state == MqttState.Ended && app.mqtt.closedByTunnel(s.id),
         )
+    }
+
+    /** The hits of [needle] at [path]: at most [MAX_HITS], with their values as they were then. */
+    private data class Search(val path: MqttPath, val hits: List<SearchHit>, val total: Int)
+
+    private fun search(s: MqttSession, path: MqttPath, needle: String): Search {
+        if (needle.isEmpty()) return Search(path, emptyList(), 0)
+        val found = s.tree.search(path, needle)
+        val hits = found.take(MAX_HITS).mapNotNull { rel -> s.tree.node(MqttPath(path.levels + rel.levels))?.let { SearchHit(rel, it) } }
+        return Search(path, hits, found.size)
     }
 
     /** Opens the level [path]. */
@@ -161,25 +178,31 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     }
 
     /**
-     * A path typed in the path bar, taken as is: a topic without children
-     * opens its level with the topic shown; anything else opens as a level,
-     * empty when nothing has been seen there.
+     * A path typed in the path bar, taken as is (`/devices/x` and
+     * `devices/x` are different places): a topic without children opens its
+     * level with the topic shown; anything else opens as a level, empty
+     * when nothing has been seen there. Returns why it cannot be opened,
+     * or null once it is.
      */
-    fun openTyped(text: String) {
+    fun openTyped(text: String): TopicProblem? {
+        topicProblem(text)?.let { return it }
         val path = MqttPath.parse(text)
         val node = session?.tree?.node(path)
         if (node != null && node.value != null && !node.hasChildren) reveal(path) else open(path)
+        return null
     }
 
     /**
-     * "Pin a branch…" of a broker refusing `#`: [text] is pinned with `#`
-     * (the root cannot be) and opened.
+     * "Pin a branch…" of a broker refusing `#`: [text], taken as is like a
+     * typed path, is pinned with `#` and opened. Returns why it cannot be,
+     * or null once it is.
      */
-    fun pinBranch(text: String) {
-        val path = MqttPath.parse(text.trim())
-        if (path.isRoot) return
+    fun pinBranch(text: String): TopicProblem? {
+        topicProblem(text, suffix = "/#")?.let { return it }
+        val path = MqttPath.parse(text)
         session?.pin(path.format() + "/#")
         open(path)
+        return null
     }
 
     fun refreshTree() = session?.refreshTree()

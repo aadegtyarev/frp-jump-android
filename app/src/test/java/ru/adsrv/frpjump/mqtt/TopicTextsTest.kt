@@ -67,4 +67,27 @@ class TopicTextsTest {
         assertFalse(pinnedAt(k1, listOf("/devices/x/controls/#")))
         assertFalse(pinnedAt(MqttPath.ROOT, listOf("#")))
     }
+
+    @Test
+    fun `the joiners ZWNJ and ZWJ stay, other format characters go`() {
+        assertEquals("a\u200Cb\u200Dc", oneLineText("a\u200Cb\u200Dc\u200B"))
+        assertEquals("\uD83D\uDC68\u200D\uD83D\uDCBB", multiLineText("\uD83D\uDC68\u200D\uD83D\uDCBB\u2066", 100))
+    }
+
+    @Test
+    fun `a typed topic is checked as is before it goes out`() {
+        assertNull(topicProblem("/devices/x"))
+        // Not trimmed: spaces are part of a topic.
+        assertNull(topicProblem(" devices "))
+        assertEquals(TopicProblem.EMPTY, topicProblem(""))
+        assertEquals(TopicProblem.WILDCARD, topicProblem("devices/+/controls"))
+        assertEquals(TopicProblem.WILDCARD, topicProblem("devices/#"))
+        assertEquals(TopicProblem.NUL, topicProblem("a\u0000b"))
+        assertNull(topicProblem("a".repeat(MAX_TOPIC_BYTES)))
+        assertEquals(TopicProblem.TOO_LONG, topicProblem("a".repeat(MAX_TOPIC_BYTES + 1)))
+        // Counted in UTF-8 bytes, with what is added for a pin.
+        assertEquals(TopicProblem.TOO_LONG, topicProblem("ж".repeat(MAX_TOPIC_BYTES / 2 + 1)))
+        assertNull(topicProblem("a".repeat(MAX_TOPIC_BYTES - 2), suffix = "/#"))
+        assertEquals(TopicProblem.TOO_LONG, topicProblem("a".repeat(MAX_TOPIC_BYTES - 1), suffix = "/#"))
+    }
 }

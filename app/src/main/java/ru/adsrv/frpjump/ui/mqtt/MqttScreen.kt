@@ -63,7 +63,9 @@ import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.MqttVersion
 import ru.adsrv.frpjump.mqtt.SnapshotEnd
 import ru.adsrv.frpjump.mqtt.SnapshotState
+import ru.adsrv.frpjump.mqtt.MAX_TOPIC_BYTES
 import ru.adsrv.frpjump.mqtt.TopicNode
+import ru.adsrv.frpjump.mqtt.TopicProblem
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.ValueLine
 import ru.adsrv.frpjump.mqtt.decodeUtf8
@@ -190,7 +192,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             SnapshotLine(state)
             Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
             if (searching && query.isNotBlank()) {
-                SearchHits(state, query.trim(), onOpen = { hit ->
+                SearchHits(state, query.trim(), padding, onOpen = { hit ->
                     closeSearch()
                     vm.reveal(MqttPath(state.path.levels + hit.relative.levels))
                 })
@@ -219,10 +221,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             title = stringResource(R.string.mqtt_go_to_topic),
             initial = state.path.format(),
             confirm = stringResource(R.string.files_go),
-            onGo = {
-                typing = false
-                vm.openTyped(it)
-            },
+            onGo = { text -> vm.openTyped(text).also { if (it == null) typing = false } },
             onDismiss = { typing = false },
         )
     }
@@ -231,10 +230,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             title = stringResource(R.string.mqtt_pin_branch),
             initial = state.path.format(),
             confirm = stringResource(R.string.mqtt_pin),
-            onGo = {
-                pinning = false
-                vm.pinBranch(it)
-            },
+            onGo = { text -> vm.pinBranch(text).also { if (it == null) pinning = false } },
             onDismiss = { pinning = false },
         )
     }
@@ -497,10 +493,10 @@ private fun Expanded(node: TopicNode, value: TopicValue) {
 
 /** The topics under the level whose path holds the query, as paths relative to it; a tap shows the topic in its level. */
 @Composable
-private fun SearchHits(state: MqttUiState, query: String, onOpen: (SearchHit) -> Unit) {
+private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues, onOpen: (SearchHit) -> Unit) {
     val colors = AppTheme.colors
     val empty = stringResource(R.string.mqtt_empty_level)
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp)) {
         if (state.hits.isEmpty()) {
             item(key = "none") {
                 Text(
@@ -546,10 +542,16 @@ private fun SearchHits(state: MqttUiState, query: String, onOpen: (SearchHit) ->
     }
 }
 
-/** A topic typed or pasted, taken as is (`/devices/x` and `devices/x` are different places). */
+/**
+ * A topic typed or pasted, taken as is (`/devices/x` and `devices/x` are
+ * different places). [onGo] answers why it cannot be used, or null, and
+ * then the dialog is closed by its caller; a problem stays under the field
+ * until the text changes.
+ */
 @Composable
-private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (String) -> Unit, onDismiss: () -> Unit) {
+private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (String) -> TopicProblem?, onDismiss: () -> Unit) {
     var text by rememberSaveable { mutableStateOf(initial) }
+    var problem by remember { mutableStateOf<TopicProblem?>(null) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     AlertDialog(
@@ -559,18 +561,30 @@ private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (
             Field(
                 label = stringResource(R.string.mqtt_topic),
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = {
+                    text = it
+                    problem = null
+                },
                 mono = true,
                 keyboard = KeyboardType.Uri,
                 focusRequester = focus,
+                problem = problem?.let { topicProblemText(it) },
             )
         },
-        confirmButton = { TextButton(enabled = text.isNotEmpty(), onClick = { onGo(text) }) { Text(confirm) } },
+        confirmButton = { TextButton(enabled = text.isNotEmpty(), onClick = { problem = onGo(text) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
 /** A list key a Bundle can hold, distinct for every path (`/` alone is two empty levels). */
 private fun rowKey(path: MqttPath): String = "${path.levels.size}:" + path.levels.joinToString("\u0000")
+
+@Composable
+private fun topicProblemText(problem: TopicProblem): String = when (problem) {
+    TopicProblem.EMPTY -> stringResource(R.string.mqtt_topic_empty)
+    TopicProblem.WILDCARD -> stringResource(R.string.mqtt_topic_wildcard)
+    TopicProblem.NUL -> stringResource(R.string.mqtt_topic_nul)
+    TopicProblem.TOO_LONG -> stringResource(R.string.mqtt_topic_too_long, MAX_TOPIC_BYTES)
+}
 
 private fun count(n: Int): String = NumberFormat.getIntegerInstance().format(n)

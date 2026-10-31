@@ -716,4 +716,9 @@
     <string name="mqtt_hits_more">The first %1$s of %2$s</string>
     <string name="mqtt_login_title">Broker login: %1$s</string>
     <string name="mqtt_login_wrong">Wrong user or password</string>
+    <string name="path_root">Root</string>
+    <string name="mqtt_topic_empty">Type a topic.</string>
+    <string name="mqtt_topic_wildcard">A topic cannot hold + or #.</string>
+    <string name="mqtt_topic_nul">A topic cannot hold the NUL character.</string>
+    <string name="mqtt_topic_too_long">A topic holds at most %1$d bytes.</string>
 </resources>

@@ -153,6 +153,36 @@ class MqttReconnectTest {
         assertEquals(SnapshotState.Done(SnapshotEnd.TIMED_OUT), session.snapshot.value)
     }
 
+    @Test
+    fun `a filter the client will not build is refused and the rest of the pass still goes out`() {
+        val connector = ScriptedConnector()
+        val subscribed = mutableListOf<String>()
+        val pins = PinStore(MemoryStorage()).apply { set("p", "c", listOf("bad\u0000pin", "a/+")) }
+        val env = MqttEnvironment(MqttLogins(MemoryStorage(), FakeKeystore().box("k")), pins, connector, scheduler)
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env)
+        connector.outcomes += {
+            ConnectOutcome.Opened(object : MqttLink {
+                override fun subscribe(filter: String, done: (granted: Boolean) -> Unit) {
+                    require('\u0000' !in filter) { "malformed" }
+                    subscribed += filter
+                    done(true)
+                }
+
+                override fun unsubscribe(filter: String) = Unit
+
+                override fun close() = Unit
+            })
+        }
+        session.connect()
+        assertEquals(listOf("a/+", "#"), subscribed)
+        assertEquals(setOf("bad\u0000pin"), session.refused.value)
+        assertEquals(SnapshotState.Reading, session.snapshot.value)
+        // Asked again on the next pass, refused again; the good ones are not subscribed twice.
+        session.open(MqttPath.parse("x"))
+        assertEquals(listOf("a/+", "#", "x/#"), subscribed)
+        assertEquals(setOf("bad\u0000pin"), session.refused.value)
+    }
+
     private fun env(connector: MqttConnector) =
         MqttEnvironment(MqttLogins(MemoryStorage(), FakeKeystore().box("k")), PinStore(MemoryStorage()), connector, scheduler)
 

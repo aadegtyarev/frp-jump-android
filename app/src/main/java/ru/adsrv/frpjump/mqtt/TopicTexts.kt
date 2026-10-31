@@ -48,8 +48,9 @@ fun decodeUtf8(payload: ByteArray): String? = try {
 /**
  * [text] safe to show in one line: control characters (line breaks, tabs,
  * escapes) and line or paragraph separators become a space; format
- * characters (bidi overrides and isolates, zero-width marks, BOM), which
- * could reorder or hide what is shown, are dropped; runs of spaces become
+ * characters (bidi overrides and isolates, zero-width space, BOM), which
+ * could reorder or hide what is shown, are dropped, except the joiners
+ * ZWNJ and ZWJ, which only shape text; runs of spaces become
  * one; ends trimmed; cut to [maxChars] with "…", never inside a surrogate
  * pair.
  */
@@ -61,7 +62,11 @@ fun oneLineText(text: String, maxChars: Int = ROW_VALUE_CHARS): String {
         val cp = text.codePointAt(i)
         i += Character.charCount(cp)
         when (Character.getType(cp).toByte()) {
-            Character.FORMAT -> continue
+            Character.FORMAT -> if (cp in JOINERS) {
+                if (space && out.isNotEmpty()) out.append(' ')
+                space = false
+                out.appendCodePoint(cp)
+            }
             Character.CONTROL, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR, Character.SPACE_SEPARATOR -> space = true
             else -> {
                 if (Character.isWhitespace(cp)) {
@@ -93,13 +98,16 @@ fun multiLineText(text: String, maxChars: Int): String {
         when {
             cp == '\n'.code || cp == '\t'.code -> out.appendCodePoint(cp)
             cp == '\r'.code -> if (i >= text.length || text[i] != '\n') out.append('\n')
-            Character.getType(cp).toByte() == Character.FORMAT -> Unit
+            Character.getType(cp).toByte() == Character.FORMAT && cp !in JOINERS -> Unit
             Character.getType(cp).toByte() in BREAKS -> out.append(' ')
             else -> out.appendCodePoint(cp)
         }
     }
     return if (i < text.length) out.toString().trimEnd() + "…" else out.toString()
 }
+
+/** ZWNJ and ZWJ: format characters that shape text (Persian, Indic scripts, emoji sequences); kept. */
+private val JOINERS = setOf(0x200C, 0x200D)
 
 private val BREAKS = setOf(Character.CONTROL, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR)
 
@@ -121,3 +129,33 @@ fun pinnedAt(path: MqttPath, pins: Collection<String>): Boolean {
 
 /** Characters of a value a row shows at most. */
 const val ROW_VALUE_CHARS = 120
+
+/** Why a typed topic cannot be used: the contract's checks before a topic goes to the broker. */
+enum class TopicProblem {
+    EMPTY,
+
+    /** `+` or `#`: a topic names one place, not a filter. */
+    WILDCARD,
+
+    /** The NUL character, which MQTT forbids in a topic. */
+    NUL,
+
+    /** More than [MAX_TOPIC_BYTES] bytes in UTF-8. */
+    TOO_LONG,
+}
+
+/** The most bytes an MQTT topic (or filter) holds in UTF-8. */
+const val MAX_TOPIC_BYTES = 65_535
+
+/**
+ * What stops [text], taken as is (no trimming), from being a topic; null
+ * when it is one. [suffix] is what will be added before it goes out (`/#`
+ * for a pin), counted in the length.
+ */
+fun topicProblem(text: String, suffix: String = ""): TopicProblem? = when {
+    text.isEmpty() -> TopicProblem.EMPTY
+    text.any { it == '+' || it == '#' } -> TopicProblem.WILDCARD
+    text.contains('\u0000') -> TopicProblem.NUL
+    (text + suffix).toByteArray(Charsets.UTF_8).size > MAX_TOPIC_BYTES -> TopicProblem.TOO_LONG
+    else -> null
+}

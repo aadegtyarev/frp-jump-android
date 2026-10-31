@@ -77,7 +77,7 @@ fun PathBar(path: String?, onOpen: (String) -> Unit, onType: () -> Unit) {
 
 /**
  * A place as parts (Files: folders; MQTT: topic levels), the first being
- * the root, `/`: a tap on part `i` opens it ([onOpen] gets `i`), a tap on
+ * the root, `/` (read out as "Root"): a tap on part `i` opens it ([onOpen] gets `i`), a tap on
  * the last one (or the empty end of the bar) lets the owner type a path
  * ([onType], read out as [typeLabel]).
  */
@@ -100,6 +100,7 @@ fun PathBar(labels: List<String>, onOpen: (Int) -> Unit, onType: () -> Unit, typ
             .horizontalScroll(scroll),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val rootSpoken = stringResource(R.string.path_root)
         labels.forEachIndexed { i, label ->
             val last = i == labels.lastIndex
             if (i > 1) Text("/", color = colors.faint, fontSize = 14.sp)
@@ -112,6 +113,8 @@ fun PathBar(labels: List<String>, onOpen: (Int) -> Unit, onType: () -> Unit, typ
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .clickable(role = Role.Button) { if (last) onType() else onOpen(i) }
+                    // "/" alone reads as nothing.
+                    .then(if (i == 0) Modifier.semantics { contentDescription = rootSpoken } else Modifier)
                     .padding(horizontal = 6.dp, vertical = 8.dp),
             )
         }

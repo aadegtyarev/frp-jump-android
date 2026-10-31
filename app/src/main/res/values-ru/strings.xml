@@ -758,4 +758,9 @@
     <string name="mqtt_hits_more">Первые %1$s из %2$s</string>
     <string name="mqtt_login_title">Вход в брокер: %1$s</string>
     <string name="mqtt_login_wrong">Неверный пользователь или пароль</string>
+    <string name="path_root">Корень</string>
+    <string name="mqtt_topic_empty">Введите топик.</string>
+    <string name="mqtt_topic_wildcard">В топике не может быть + или #.</string>
+    <string name="mqtt_topic_nul">В топике не может быть символа NUL.</string>
+    <string name="mqtt_topic_too_long">Топик не длиннее %1$d байт.</string>
 </resources>

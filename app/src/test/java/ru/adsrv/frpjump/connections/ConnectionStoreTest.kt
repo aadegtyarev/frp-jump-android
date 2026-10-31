@@ -25,6 +25,20 @@ class ConnectionStoreTest {
     }
 
     @Test
+    fun `Open as MQTT saves the same connection as MQTT in place, and it reads back as mqtt`() {
+        val store = ConnectionStore(file, copy)
+        val tcp = Connection("1", "wb", 1883, PortKind.TCP, "broker", localPort = 21883)
+        val other = Connection("2", "wb", 22, PortKind.SSH, "root", user = "root")
+        store.save(tcp)
+        store.save(other)
+        store.save(tcp.asMqtt())
+        val expected = listOf(tcp.copy(kind = PortKind.MQTT), other)
+        assertEquals(expected, store.connections.value)
+        assertEquals(expected, ConnectionStore(file, copy).connections.value)
+        org.junit.Assert.assertTrue(file.text!!.contains("\"mqtt\""))
+    }
+
+    @Test
     fun `an unreadable file is kept as a copy before anything is saved over it`() {
         file.text = "{not json"
         val store = ConnectionStore(file, copy)

@@ -413,6 +413,7 @@ fun rememberRowActions(
                     PortKind.WEB -> onOpenWeb(row)
                     // Back to the explorer session of this connection, or a new one; the screen shows it connecting.
                     PortKind.MQTT -> actions.openMqtt(row)?.let(onOpenMqtt)
+                        ?: context.notice(context.getString(if (row.tunnel == null) R.string.files_tunnel_down else R.string.profile_gone), NoticeKind.WARN)
                     // Back to the session already open on this port; a new one is "+" on its tab row.
                     PortKind.SSH -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
                         // A usable remembered login connects at once; the dialog only when there is none.

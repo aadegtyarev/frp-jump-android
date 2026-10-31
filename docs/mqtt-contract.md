@@ -110,7 +110,8 @@ neither option; see "Retained topics" for what that changes.
   - 1 s without a new topic (counted from the broker's SUBACK); new
     values of topics already in the tree do not count, since a live
     controller sends them all the time, while a known retained value
-    re-sent unchanged (the re-delivery after a reconnect) does;
+    re-sent unchanged (the re-delivery after a reconnect or on a
+    branch re-read) does;
   - 10 s after the SUBACK;
   - the session's topic limit.
 
@@ -483,8 +484,10 @@ On a Wiren Board on the tunnel unless said otherwise.
   (the snapshot plus open branches and pins), "Refresh tree" re-takes the
   snapshot; live values start at the first level (economy of traffic and
   phone load).
-- The snapshot's quiet second counts new topics only, not new values of
-  known ones, so a live controller does not run it into the 10 s cap.
+- The snapshot's quiet second counts what fills the tree (new topics,
+  retained values re-sent unchanged, as on a reconnect or a branch
+  re-read), not new values of known topics, so a live controller does not
+  run it into the 10 s cap.
 - At the topic limit new topics stop being added, known ones keep
   updating, and the screen says so.
 - Delete branch publishes only to topics a fresh re-read of the branch

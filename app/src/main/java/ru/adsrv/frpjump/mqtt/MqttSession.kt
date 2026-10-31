@@ -357,13 +357,21 @@ class MqttSession(
         val open = link ?: return
         (subscribed - wanted.toSet()).forEach {
             subscribed -= it
-            if (it !in _refused.value) open.unsubscribe(it)
+            // A filter the client would not take was never subscribed; nothing else depends on this call.
+            if (it !in _refused.value) runCatching { open.unsubscribe(it) }
         }
         wanted.filter { it !in subscribed }.forEach { filter ->
-            subscribed += filter
             val gen = generation
             val run = snapshotRun
-            open.subscribe(filter) { granted -> scheduler.post { if (gen == generation) subscribed(filter, granted, run) } }
+            subscribed += filter
+            try {
+                open.subscribe(filter) { granted -> scheduler.post { if (gen == generation) subscribed(filter, granted, run) } }
+            } catch (e: Exception) {
+                subscribed -= filter
+                // The client refused to build it (a filter it finds malformed): refused, as a SUBACK failure
+                // would say, not marked subscribed, and the rest of the pass (the snapshot's `#`) still goes out.
+                subscribed(filter, granted = false, run)
+            }
         }
     }
 
