@@ -52,7 +52,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -117,17 +119,30 @@ fun DevicesScreen(
     // Search: the bar turns into a field and the list follows it; ✕ or Back closes it and shows them all again.
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    // Focus and keyboard only when the magnifier opened it, not on every return to this screen.
+    var focusOnOpen by rememberSaveable { mutableStateOf(false) }
     val closeSearch = {
         searching = false
         query = ""
+        focusOnOpen = false
     }
     BackHandler(enabled = searching) { closeSearch() }
+    // Another profile shown: its list is not filtered by the old query.
+    var searchedProfile by rememberSaveable { mutableStateOf(current?.id) }
+    LaunchedEffect(current?.id) {
+        val now = current?.id ?: return@LaunchedEffect
+        if (searchedProfile != null && searchedProfile != now) closeSearch()
+        searchedProfile = now
+    }
     Scaffold(
         topBar = {
             if (searching) {
-                SearchBar(query, onQuery = { query = it }, onClose = closeSearch)
+                SearchBar(query, onQuery = { query = it }, onClose = closeSearch, focus = focusOnOpen, onFocused = { focusOnOpen = false })
             } else {
-                Header(current, onProfiles, onSearch = { searching = true }.takeIf { !state.devices.isNullOrEmpty() })
+                Header(current, onProfiles, onSearch = {
+                    searching = true
+                    focusOnOpen = true
+                }.takeIf { !state.devices.isNullOrEmpty() })
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -179,13 +194,16 @@ private fun Header(current: ProfileItem?, onProfiles: () -> Unit, onSearch: (() 
 
 /** The bar while searching: a field in the switcher's shape, focused with the keyboard up, and ✕. */
 @Composable
-private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit) {
+private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, focus: Boolean, onFocused: () -> Unit) {
     val colors = AppTheme.colors
-    val focus = remember { FocusRequester() }
+    val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
-        runCatching { focus.requestFocus() }
+    // [focus]: just opened by the magnifier; once done, a return to the screen leaves the keyboard down.
+    LaunchedEffect(focus) {
+        if (!focus) return@LaunchedEffect
+        runCatching { requester.requestFocus() }
         keyboard?.show()
+        onFocused()
     }
     val label = stringResource(R.string.devices_search)
     Row(
@@ -218,7 +236,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
                     keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
                     modifier = Modifier
                         .weight(1f)
-                        .focusRequester(focus)
+                        .focusRequester(requester)
                         .semantics { contentDescription = label },
                     decorationBox = { field ->
                         Box(contentAlignment = Alignment.CenterStart) {
@@ -282,7 +300,14 @@ private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit,
             // A search that finds nothing says so, rather than leave an empty screen.
             if (!devices.isNullOrEmpty() && shown.isEmpty()) {
                 item {
-                    Text(stringResource(R.string.devices_no_match, query.trim()), color = AppTheme.colors.muted, modifier = Modifier.padding(4.dp))
+                    Text(
+                        stringResource(R.string.devices_no_match, query.trim()),
+                        color = AppTheme.colors.muted,
+                        // Read out as the typing changes it.
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    )
                 }
             }
             items(shown, key = { it.name }) { device ->
