@@ -53,8 +53,8 @@ attach to the two tmux sessions still alive, the build still going.
 
 ### 4. Done with a tab
 
-Closing a tab (the confirmation says its commands stop, as today) ends its
-tmux session on the device. Nothing is left behind that the owner forgot.
+Closing a tab ends its tmux session on the device when the close's Undo
+is gone (UI rules); Undo brings the tab back with its session. Nothing is left behind that the owner forgot.
 
 ### 5. tmux missing
 

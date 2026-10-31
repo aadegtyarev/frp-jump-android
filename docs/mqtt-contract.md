@@ -257,17 +257,20 @@ the tree is the "what is there" view.
   or by Delete.
 - Moving the branch subscription re-delivers the branch's retained
   values; this refreshes marks and is not shown as change (see "Feed").
-- **Delete** (a retained topic, card "⋮"): after a confirm, publishes an
+- **Delete** (a retained topic, card "⋮"): the topic goes from the tree at
+  once with **Undo** (UI rules); when Undo is gone, publishes an
   empty retained message, QoS 1, to it (the MQTT way to remove it); the
   answer as for Send.
 - **Delete branch** (a branch, card "⋮"):
   1. The app re-reads the branch (subscribes `<p>/#` afresh, the snapshot's
      stopping rule) and takes the topics delivered as retained.
-  2. The confirm counts them and says the rest are untouched: "Delete 37
-     retained topics under /devices/wb-old? 4 topics there are not
-     retained and are not affected. This cannot be undone."
-  3. It publishes an empty retained message, QoS 1, to each, with
-     progress ("12 of 37") and **Cancel**, which stops before the next one.
+  2. No confirm: the app unsubscribes the branch and shows, for a few
+     seconds, how many it will delete with **Undo** ("Deleting 37
+     retained topics under /devices/wb-old · 4 not retained, untouched ·
+     Undo"). Undo puts the branch back; nothing was sent.
+  3. When Undo is gone it publishes an empty retained message, QoS 1, to
+     each, with progress ("12 of 37 deleted") and **Stop**, which stops
+     before the next one.
   4. After the last one it re-reads the branch again, then sums up: "N
      deleted, M refused, K came back". Refused: an MQTT 5 reason code on
      the PUBACK. Came back: deleted topics delivered as retained again by
@@ -286,8 +289,8 @@ the tree is the "what is there" view.
   10 s, subscribes the open branch and the pins again and re-takes the
   snapshot, which refreshes values and retained marks. Topics are not
   removed by a reconnect; "Refresh tree" does that.
-- **Disconnecting the connection** closes its session after the usual
-  confirm, which counts it with the terminal sessions.
+- **Disconnecting the connection** closes its session when the
+  disconnect's Undo is gone (UI rules).
 - **Process killed or phone rebooted.** The tunnels come back (contract
   scenario 8); the explorer session does not: the tree lives only in
   memory. "MQTT" opens a new session; its pins are subscribed again.
@@ -445,8 +448,8 @@ On a Wiren Board on the tunnel unless said otherwise.
    - Publish retained `x` to a test topic: marked retained under MQTT 5
      and 3.1.1; publish empty retained: "(cleared)"; an empty non-retained
      message shows `(empty value)`.
-   - A retained branch of a removed device is deleted with one confirm,
-     which counts the retained topics; the summary says "N deleted, 0
+   - A retained branch of a removed device is deleted with one tap, the
+     notice counting the retained topics with Undo; the summary says "N deleted, 0
      refused, 0 came back"; the branch is gone after a reconnect. A device
      that republishes during the delete shows in "came back".
 5. TLS: a broker on 8883 asks to trust its certificate; after the
