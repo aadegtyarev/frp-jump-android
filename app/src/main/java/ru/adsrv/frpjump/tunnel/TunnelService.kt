@@ -214,7 +214,7 @@ class TunnelService : Service() {
             this, 1, Intent(this, TunnelService::class.java).setAction(ACTION_DISCONNECT_ALL), PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+            .setSmallIcon(R.drawable.ic_stat_jump)
             .setContentTitle(title(res, summary))
             .setContentText(text(res, view))
             .setContentIntent(open)
