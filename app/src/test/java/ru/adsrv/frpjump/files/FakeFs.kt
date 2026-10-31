@@ -132,9 +132,9 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
     override fun createExclusive(path: String): OutputStream {
         beforeCreate(path)
         val at = resolve(path, follow = false)
-        if (at in nodes) throw RemoteRefusal(Refusal.OTHER, "exists")
         val file = File(ByteArray(0))
-        nodes[at] = file
+        // Atomic, as O_EXCL is on a real server.
+        if (nodes.putIfAbsent(at, file) != null) throw RemoteRefusal(Refusal.OTHER, "exists")
         val limit = failWritesAfter
         return object : OutputStream() {
             override fun write(b: Int) = write(byteArrayOf(b.toByte()), 0, 1)
