@@ -77,6 +77,10 @@ data class AppSettings(
      * Android 13, and on some phones after it, that also blocks screenshots.
      */
     @SerialName("hide_in_recents") val hideInRecents: Boolean = false,
+    /** The web page full screen (no bars), as last left; see [ru.adsrv.frpjump.ui.rememberFullscreen]. */
+    @SerialName("web_fullscreen") val webFullscreen: Boolean = false,
+    /** The terminal full screen, as last left. */
+    @SerialName("terminal_fullscreen") val terminalFullscreen: Boolean = false,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 

@@ -2,26 +2,22 @@ package ru.adsrv.frpjump.ui.web
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.net.http.SslError
-import android.webkit.RenderProcessGoneDetail
-import android.webkit.SslErrorHandler
-import android.webkit.ValueCallback
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.unit.dp
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Environment
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -30,14 +26,21 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,7 +49,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,27 +59,32 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.viewinterop.AndroidView
-import ru.adsrv.frpjump.BuildConfig
-import ru.adsrv.frpjump.FrpJumpApp
-import java.io.ByteArrayInputStream
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.AlertDialog
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.BuildConfig
+import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
-import ru.adsrv.frpjump.ui.AppTopBar
+import ru.adsrv.frpjump.ui.CollapseButton
+import ru.adsrv.frpjump.ui.CompactTopBar
+import ru.adsrv.frpjump.ui.FullscreenGlyph
+import ru.adsrv.frpjump.ui.FullscreenOf
+import ru.adsrv.frpjump.ui.SystemBarsHidden
+import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.WebNavigation
 import ru.adsrv.frpjump.web.certFingerprint
@@ -209,47 +219,74 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             webView.reload()
         }
     }
+    val (fullscreen, setFullscreen) = rememberFullscreen(FullscreenOf.WEB)
+    val clipboard = LocalClipboardManager.current
     BackHandler(enabled = canGoBack && !rendererGone) { webView.goBack() }
+    // Declared after the page's: Back leaves full screen first, then walks the history.
+    BackHandler(enabled = fullscreen) { setFullscreen(false) }
+    SystemBarsHidden(fullscreen)
 
     Scaffold(
         containerColor = AppTheme.colors.ground,
+        // Full screen: the bars are hidden, the page takes their place too.
+        contentWindowInsets = if (fullscreen) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
-            AppTopBar(
+            if (!fullscreen) CompactTopBar(
                 title = title,
-                subtitle = url,
                 onBack = onBack,
                 actions = {
-                    IconButton(onClick = reload) { Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.web_reload)) }
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.open_in_browser)) },
-                            onClick = {
-                                menu = false
-                                openExternally(context, url)
-                            },
-                        )
+                    IconButton(onClick = { setFullscreen(true) }) { Icon(FullscreenGlyph, contentDescription = stringResource(R.string.fullscreen), modifier = Modifier.size(20.dp)) }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            // The address, as the bar no longer shows it; tap copies it.
+                            DropdownMenuItem(
+                                text = { Text(url, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = AppTheme.colors.muted) },
+                                onClick = {
+                                    menu = false
+                                    clipboard.setText(AnnotatedString(url))
+                                    Toast.makeText(context, context.getString(R.string.address_copied, url), Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.web_reload)) },
+                                onClick = {
+                                    menu = false
+                                    reload()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.open_in_browser)) },
+                                onClick = {
+                                    menu = false
+                                    openExternally(context, url)
+                                },
+                            )
+                        }
                     }
                 },
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (certRefused) {
-                // Above the page, which stays in place for "Try again".
-                Text(stringResource(R.string.cert_refused), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
-                TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.cert_try_again)) }
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (certRefused) {
+                    // Above the page, which stays in place for "Try again".
+                    Text(stringResource(R.string.cert_refused), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                    TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.cert_try_again)) }
+                }
+                if (rendererGone) {
+                    Text(
+                        stringResource(R.string.web_renderer_gone),
+                        modifier = Modifier.padding(16.dp),
+                    )
+                    TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.web_reload)) }
+                } else {
+                    if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+                    AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
+                }
             }
-            if (rendererGone) {
-                Text(
-                    stringResource(R.string.web_renderer_gone),
-                    modifier = Modifier.padding(16.dp),
-                )
-                TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.web_reload)) }
-            } else {
-                if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
-                AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
-            }
+            if (fullscreen) CollapseButton { setFullscreen(false) }
         }
     }
     question?.let { q ->

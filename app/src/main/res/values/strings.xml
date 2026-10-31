@@ -192,6 +192,8 @@
     <string name="copy_address">Copy address</string>
     <string name="terminal_copied">Copied to the clipboard: %s</string>
     <string name="address_copied">Copied %s</string>
+    <string name="fullscreen">Full screen</string>
+    <string name="fullscreen_exit">Exit full screen</string>
     <string name="open_in_browser">Open in browser</string>
     <string name="open_in_ssh_app">Open in external app</string>
     <string name="no_ssh_app">No installed app opens ssh:// links.</string>
