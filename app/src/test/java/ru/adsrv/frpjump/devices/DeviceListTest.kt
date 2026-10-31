@@ -60,5 +60,13 @@ class DeviceListTest {
         assertTrue(wb.online)
         assertTrue(wb.stale)
         assertEquals(Age(AgeUnit.HOURS, 1), wb.lastSeen)
+        assertFalse(wb.checking)
+    }
+
+    @Test
+    fun `only stale rows can be checking`() {
+        val now = fetchedAt.plusSeconds(3600)
+        assertTrue(deviceRows(devices, "phone", fetchedAt, now, stale = true, checking = true).all { it.checking })
+        assertFalse(deviceRows(devices, "phone", now, now, stale = false, checking = true).any { it.checking })
     }
 }

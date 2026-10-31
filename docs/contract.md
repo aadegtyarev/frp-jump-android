@@ -120,7 +120,8 @@ re-enroll.
 - `GET /api/agent/devices`: name, online (last seen < 30 s), last seen time,
   disabled flag. The phone itself is not listed.
 - The last answer is kept on the phone per profile. On start the app shows it
-  at once, then refreshes.
+  at once, then refreshes; until the server answers, devices online in it
+  say "Checking…" rather than an age that is really the app's absence.
 - No answer from the server: the list stays, a banner says "No connection to
   the server · last update <time>", devices show their last known state
   marked as possibly stale. Saved connections are still listed and can be

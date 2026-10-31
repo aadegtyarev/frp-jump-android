@@ -53,8 +53,12 @@ fun shortTime(at: Instant): String {
  * A device online as of a list the server gave earlier: "Was online 2 min
  * ago", counting from when it was last seen, so the words say how old
  * the news is. Nothing more than "Was online" is known without that time.
+ * A list restored at start that the server has not been asked about yet
+ * says "Checking…": its age is the app's absence, not the device's.
  */
 @Composable
 @ReadOnlyComposable
-fun wasOnline(device: DeviceRow): String =
-    device.lastSeen?.let { stringResource(R.string.device_was_online_ago, ageText(it)) } ?: stringResource(R.string.device_was_online)
+fun wasOnline(device: DeviceRow): String = when {
+    device.checking -> stringResource(R.string.device_checking)
+    else -> device.lastSeen?.let { stringResource(R.string.device_was_online_ago, ageText(it)) } ?: stringResource(R.string.device_was_online)
+}

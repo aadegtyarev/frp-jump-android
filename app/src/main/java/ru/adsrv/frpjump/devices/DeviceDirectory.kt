@@ -30,6 +30,8 @@ data class DeviceRow(
     val disabled: Boolean,
     /** From a list the server gave earlier: [online] is as of [DeviceList.updatedAt]. */
     val stale: Boolean = false,
+    /** [stale] and the server not asked yet since the app started: the list is being checked, not old. */
+    val checking: Boolean = false,
 )
 
 data class DeviceList(
@@ -49,11 +51,11 @@ data class DeviceList(
  * Stale rows keep the online flag as of [fetchedAt], since nothing newer is
  * known, but "last seen" counts from [now].
  */
-fun deviceRows(devices: List<OwnedDevice>, ownName: String, fetchedAt: Instant, now: Instant, stale: Boolean): List<DeviceRow> =
+fun deviceRows(devices: List<OwnedDevice>, ownName: String, fetchedAt: Instant, now: Instant, stale: Boolean, checking: Boolean = false): List<DeviceRow> =
     devices.filter { it.name != ownName }.map {
         val seen = presenceOf(it.lastSeenAt, now)
         val online = if (stale) presenceOf(it.lastSeenAt, fetchedAt).online else seen.online
-        DeviceRow(it.name, online, seen.lastSeen, disabled = !it.enabled, stale = stale)
+        DeviceRow(it.name, online, seen.lastSeen, disabled = !it.enabled, stale = stale, checking = stale && checking)
     }
 
 /**
@@ -88,7 +90,8 @@ class DeviceDirectory(
         val fetchedAt = Instant.ofEpochMilli(cached.fetchedAtMs)
         // Keeps the error of a fetch that already failed: the banner shows at once.
         _state.value = _state.value.copy(
-            devices = deviceRows(cached.devices, credentials.deviceName, fetchedAt, Instant.now(), stale = true),
+            // No fetch has failed yet: the rows say they are being checked, not how old they are.
+            devices = deviceRows(cached.devices, credentials.deviceName, fetchedAt, Instant.now(), stale = true, checking = _state.value.error == null),
             updatedAt = fetchedAt,
             stale = true,
         )

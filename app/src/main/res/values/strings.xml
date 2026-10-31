@@ -545,6 +545,7 @@
     <string name="snippet_command">Command</string>
     <string name="snippet_delete">Delete</string>
     <string name="device_was_online_ago">Was online %s</string>
+    <string name="device_checking">Checking…</string>
     <string name="settings_save_failed">Couldn’t save the setting: %s</string>
     <string name="snippet_save_failed">Couldn’t save the commands: %s</string>
     <!-- Settings › Version and update (update/Updater.kt) -->
