@@ -68,6 +68,8 @@ class SshSession(
     private val env: SshEnvironment,
     private val scope: CoroutineScope,
     terminalClient: TerminalSessionClient,
+    /** Its place among the open sessions to the same user, device and port, in the order they were opened; kept while it lives. */
+    val number: Int = 1,
 ) {
     val terminal = RemoteTerminal(terminalClient)
     private val _state = MutableStateFlow<SshState>(SshState.Connecting)
@@ -83,6 +85,11 @@ class SshSession(
 
     @Volatile
     private var closedByUser = false
+
+    /** The device refused [auth]: another session with it would only be refused again. */
+    @Volatile
+    var authRefused = false
+        private set
 
     fun connect() {
         _state.value = SshState.Connecting
@@ -178,6 +185,7 @@ class SshSession(
         } catch (e: CancellationException) {
             throw e
         } catch (e: UserAuthException) {
+            authRefused = true
             runCatching { ssh.disconnect() }
             fail(connector.authFailure())
         } catch (e: Exception) {

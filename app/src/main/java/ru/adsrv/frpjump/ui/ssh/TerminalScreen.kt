@@ -137,6 +137,11 @@ fun TerminalScreen(
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
     if (selected == null) return
+    val gone = stringResource(R.string.terminal_session_gone)
+    // A new tab is selected; when the session to copy closed meanwhile, a toast says so.
+    fun openedOrGone(opened: SshSession?) {
+        if (opened != null) selectedId = opened.id else Toast.makeText(context, gone, Toast.LENGTH_SHORT).show()
+    }
     // Closing the tab shown shows its neighbour, not the first tab.
     fun closeTab(id: Int) {
         selectionAfterClose(list.map { it.id }, selected.id, id)?.let { selectedId = it }
@@ -149,10 +154,10 @@ fun TerminalScreen(
         select = { selectedId = it },
         close = ::closeTab,
         reconnect = ::reconnectTab,
-        // The same login at once; a remembered password since forgotten needs the dialog.
+        // The same login at once; a refused one, or a remembered password since forgotten, needs the dialog.
         add = {
-            if (reusesLogin(selected.auth) { sessions.hasRememberedPassword(selected, selected.user) }) {
-                sessions.openLike(selected.id)?.let { selectedId = it.id }
+            if (reusesLogin(selected.auth, selected.authRefused) { sessions.hasRememberedPassword(selected, selected.user) }) {
+                openedOrGone(sessions.openLike(selected.id))
             } else {
                 loginLikeId = selected.id
             }
@@ -341,7 +346,15 @@ fun TerminalScreen(
         }
     }
     if (managing) SnippetsSheet(snippets, snippetActions, onDismiss = { managing = false })
-    loginLikeId?.let { sessions.find(it) }?.let { from ->
+    // The session the dialog is for closed under it (its tunnel went): say so rather than vanish.
+    val loginFrom = loginLikeId?.let { id -> list.firstOrNull { it.id == id } }
+    LaunchedEffect(loginLikeId, loginFrom == null) {
+        if (loginLikeId != null && loginFrom == null) {
+            loginLikeId = null
+            Toast.makeText(context, gone, Toast.LENGTH_SHORT).show()
+        }
+    }
+    loginFrom?.let { from ->
         SshLoginDialog(
             target = "${from.device}:${from.port}",
             initial = loginLike(from.user, from.auth),
@@ -354,7 +367,7 @@ fun TerminalScreen(
                     SshAuthMethod.KEY -> SshAuth.Key
                     SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
                 }
-                sessions.openLike(from.id, login.user, auth)?.let { selectedId = it.id }
+                openedOrGone(sessions.openLike(from.id, login.user, auth))
             },
             onDismiss = { loginLikeId = null },
         )

@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -70,7 +70,6 @@ class SessionTabActions(
 @Composable
 fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<String, String>, actions: SessionTabActions) {
     val colors = AppTheme.colors
-    val labels = tabLabels(list.map { TabTarget(it.user, it.device, it.port) })
     val row = rememberLazyListState()
     val at = list.indexOfFirst { it.id == selectedId }
     // A tab picked or opened off screen comes into view.
@@ -92,8 +91,8 @@ fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<Stri
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            itemsIndexed(list, key = { _, s -> s.id }) { index, s ->
-                SessionTab(s, labels[index], on = s.id == selectedId, dot = colors.termProfile(profileColors[s.profile] ?: "grey"), actions)
+            items(list, key = { it.id }) { s ->
+                SessionTab(s, tabLabel(s.user, s.device, s.port, s.number), on = s.id == selectedId, dot = colors.termProfile(profileColors[s.profile] ?: "grey"), actions)
             }
         }
         val description = stringResource(R.string.terminal_new_session)
@@ -174,10 +173,13 @@ private fun SessionTab(s: SshSession, label: String, on: Boolean, dot: Color, ac
                 menu = false
                 actions.close(s.id)
             })
-            DropdownMenuItem(text = { Text(stringResource(R.string.terminal_reconnect)) }, onClick = {
-                menu = false
-                actions.reconnect(s.id)
-            })
+            // Only for an ended one: on a live shell it would cut it off unasked.
+            if (ended) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.terminal_reconnect)) }, onClick = {
+                    menu = false
+                    actions.reconnect(s.id)
+                })
+            }
         }
     }
 }

@@ -446,6 +446,7 @@
     <string name="terminal_new_session">New session</string>
     <string name="terminal_new_session_as">Log in as another user</string>
     <string name="terminal_tab_menu">Close or reconnect</string>
+    <string name="terminal_session_gone">The session is gone</string>
     <string name="snippet_run">Run</string>
     <string name="snippet_type">Type</string>
     <string name="snippet_add_first">+ Add command</string>

@@ -10,46 +10,39 @@ import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
 
 class SessionTabsLogicTest {
-    private val root = TabTarget("root", "dev-a", 22)
-
     @Test
-    fun `one session per target has no number`() {
-        assertEquals(
-            listOf("root · dev-a", "admin · dev-a", "root · dev-b"),
-            tabLabels(listOf(root, TabTarget("admin", "dev-a", 22), TabTarget("root", "dev-b", 22))),
-        )
+    fun `the first session to a login has no number, later ones do`() {
+        assertEquals("root \u00B7 dev-a", tabLabel("root", "dev-a", 22, 1))
+        assertEquals("root \u00B7 dev-a \u00B7 3", tabLabel("root", "dev-a", 22, 3))
     }
 
     @Test
-    fun `later sessions to the same user, device and port are numbered`() {
-        val other = TabTarget("admin", "dev-a", 22)
-        assertEquals(
-            listOf("root · dev-a", "admin · dev-a", "root · dev-a · 2", "root · dev-a · 3"),
-            tabLabels(listOf(root, other, root, root)),
-        )
-    }
-
-    @Test
-    fun `another port shows it and counts on its own`() {
-        val p2222 = TabTarget("root", "dev-a", 2222)
-        assertEquals(
-            listOf("root · dev-a", "root · dev-a:2222", "root · dev-a:2222 · 2"),
-            tabLabels(listOf(root, p2222, p2222)),
-        )
+    fun `another port shows it`() {
+        assertEquals("root \u00B7 dev-a:2222 \u00B7 2", tabLabel("root", "dev-a", 2222, 2))
     }
 
     @Test
     fun `key and a password in memory are reused without asking`() {
         var asked = false
-        assertTrue(reusesLogin(SshAuth.Key) { asked = true; false })
-        assertTrue(reusesLogin(SshAuth.Password("typed", remember = false)) { asked = true; false })
+        assertTrue(reusesLogin(SshAuth.Key, refused = false) { asked = true; false })
+        assertTrue(reusesLogin(SshAuth.Password("typed", remember = false), refused = false) { asked = true; false })
         assertFalse(asked)
     }
 
     @Test
+    fun `a refused typed password is not reused`() {
+        assertFalse(reusesLogin(SshAuth.Password("typed", remember = false), refused = true) { true })
+    }
+
+    @Test
+    fun `a refused key is not reused`() {
+        assertFalse(reusesLogin(SshAuth.Key, refused = true) { true })
+    }
+
+    @Test
     fun `a remembered password is reused only while it is kept`() {
-        assertTrue(reusesLogin(SshAuth.Password(null, remember = true)) { true })
-        assertFalse(reusesLogin(SshAuth.Password(null, remember = true)) { false })
+        assertTrue(reusesLogin(SshAuth.Password(null, remember = true), refused = false) { true })
+        assertFalse(reusesLogin(SshAuth.Password(null, remember = true), refused = false) { false })
     }
 
     @Test

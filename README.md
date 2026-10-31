@@ -422,14 +422,19 @@ port) and Key or Password, then opens a session to
 - Session tabs: a thin row between the bar and the terminal, shown with one
   session too (`ui/ssh/SessionTabs.kt`). A tab has the profile's colour
   dot and "user · device" (":port" when not 22); a second and third
-  session to the same user, device and port read "· 2", "· 3". A small
+  session to the same user, device and port read "· 2", "· 3", in the
+  order they were opened, kept while they live (closing one renumbers
+  nothing; the next one counts on from the highest open one). A small
   spinner and a dimmed name while connecting, a red dot next to the
   profile's once it ended or failed. Tap switches (no swipes: the terminal
   uses them to select text); the row scrolls and brings the selected tab
-  into view. Long press: Close session / Reconnect. Closing the tab shown
+  into view. Long press: Close session, and Reconnect once it has ended
+  (never on a live shell). Closing the tab shown
   shows its left neighbour. "+" at the end opens another session to the
   selected one's device and port with the same login, at once, and selects
-  it (a remembered password forgotten since asks with the login dialog);
+  it. A login the device refused, or a remembered password forgotten since,
+  asks with the login dialog instead; a session that went meanwhile says
+  "The session is gone";
   long press on "+" opens the login dialog for that device and port, to log
   in as another user.
 - "Open in external app" sends `ssh://<user>@127.0.0.1:<port>` to an SSH app

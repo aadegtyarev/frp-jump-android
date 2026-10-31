@@ -4,32 +4,27 @@ import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
 
-/** Who a session tab logs in as and where: what its label shows. */
-data class TabTarget(val user: String, val device: String, val port: Int)
-
 /**
- * The tabs' labels, in order: "user · device" (":port" when not 22), and
- * " · 2", " · 3" on the second and later tabs to the same user, device and
- * port, so that two shells there can be told apart.
+ * A session tab's label: "user · device" (":port" when not 22), and
+ * " · 2", " · 3" for the session's [number] among those to the same user,
+ * device and port (see [ru.adsrv.frpjump.ssh.nextSessionNumber]), so that
+ * two shells there can be told apart.
  */
-fun tabLabels(targets: List<TabTarget>): List<String> {
-    val seen = HashMap<TabTarget, Int>()
-    return targets.map { t ->
-        val n = (seen[t] ?: 0) + 1
-        seen[t] = n
-        val base = "${t.user} · ${t.device}" + if (t.port != 22) ":${t.port}" else ""
-        if (n > 1) "$base · $n" else base
-    }
+fun tabLabel(user: String, device: String, port: Int, number: Int): String {
+    val base = "$user · $device" + if (port != 22) ":$port" else ""
+    return if (number > 1) "$base · $number" else base
 }
 
 /**
  * Whether "+" can open another session with [auth] as it is, without the
- * login dialog: a key, or a password the session holds in memory, or a
- * remembered one that is still kept ([hasRememberedPassword], asked only then).
+ * login dialog: not after the device [refused] it; then a key, or a
+ * password the session holds in memory, or a remembered one that is still
+ * kept ([hasRememberedPassword], asked only then).
  */
-fun reusesLogin(auth: SshAuth, hasRememberedPassword: () -> Boolean): Boolean = when (auth) {
-    SshAuth.Key -> true
-    is SshAuth.Password -> auth.typed != null || hasRememberedPassword()
+fun reusesLogin(auth: SshAuth, refused: Boolean, hasRememberedPassword: () -> Boolean): Boolean = when {
+    refused -> false
+    auth is SshAuth.Password -> auth.typed != null || hasRememberedPassword()
+    else -> true
 }
 
 /** The login dialog's start for another session like one as [user] with [auth]. */
