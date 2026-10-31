@@ -59,6 +59,7 @@ import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
 import ru.adsrv.frpjump.ssh.SshSessions
+import ru.adsrv.frpjump.ssh.TmuxNames
 import ru.adsrv.frpjump.ssh.installFullBouncyCastle
 import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.KeystoreSecretBox
@@ -302,7 +303,7 @@ class FrpJumpApp : Application() {
         sshKeys = SshKeyStore(AtomicTextFile(File(filesDir, "ssh_keys.json")), sshBox)
         sshPasswords = SshPasswords(AtomicTextFile(File(filesDir, "ssh_passwords.json")), sshBox)
         webSites = WebSiteMemory(AtomicTextFile(File(filesDir, "web_site.json")))
-        sshEnv = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment)
+        sshEnv = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment, tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))))
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
         // Files handed to other apps a day ago or more (Open with, Share).
         appScope.launch(Dispatchers.IO) { PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS) }
@@ -348,7 +349,7 @@ class FrpJumpApp : Application() {
             scope = appScope,
         )
         sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow, pendingUndo.hidden)
-        closeSessions = SessionCloser(pendingUndo, closeTerminal = { ssh.close(it) }, closeMqtt = mqtt::close)
+        closeSessions = SessionCloser(pendingUndo, closeTerminal = { ssh.close(it, endTmux = true) }, closeMqtt = mqtt::close)
         // A kept file session closes with the last terminal session on its tunnel.
         appScope.launch { ssh.through.collect(files::onTerminals) }
     }

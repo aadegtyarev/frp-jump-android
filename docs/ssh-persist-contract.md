@@ -81,11 +81,19 @@ today, still with auto-reconnect.
 - The command:
 
   ```
-  tmux new-session -A -s frpjump-<install>-<n> \; set-option -t frpjump-<install>-<n> status off \; set-option -t frpjump-<install>-<n> mouse on
+  exec tmux -u new-session -A -s 'frpjump-<install>-<n>' ';' set-option -t '=frpjump-<install>-<n>:' status off ';' set-option -t '=frpjump-<install>-<n>:' mouse on
   ```
 
   `-A` attaches when the session exists and creates it otherwise, so the
   first open, a reconnect and the pick-up after a kill are the same command.
+  `-u`: UTF-8 even when the non-login exec has no `LANG`. Targets are exact
+  (`=name` for a session, `=name:` for a pane), so `-1` never matches
+  `-10`. Every argument is single-quoted and the separator is `';'`, which
+  reads the same in sh, bash, zsh and fish. `tmux` is found on the exec's
+  PATH, the same one the probe used. The probe is
+  `command -v tmux >/dev/null && echo frpjump-tmux && tmux has-session -t '=<name>' && echo frpjump-attach`:
+  only its own markers count, and it also tells whether the session still
+  runs, so a re-attach is told apart from a fresh session.
 - Each tab is one tmux session with one window. The tab bar of the app is
   the only list of sessions the owner sees.
 
@@ -119,8 +127,10 @@ today, still with auto-reconnect.
   "Connection lost · reconnecting (try 3)…" with **Now** (try at once) and
   **Close**. The top bar's status line says "Reconnecting".
 - Tabs not shown get a muted state mark like the existing Ended one.
-- Back with tmux: the bar goes, a short top notice "Reconnected". No text
-  is written into the terminal: tmux redraws the screen on attach.
+- Back with tmux on the same session: the bar goes, a short top notice
+  "Session restored" (only while the app is on screen). No text is written
+  into the terminal: tmux redraws the screen on attach. tmux there but the
+  session gone (the device rebooted): told as without tmux, a new shell.
 - Back without tmux: the emulator is reset to the normal screen (it may
   have been inside `vim` or `htop`), a line `[New shell: the previous one
   ended with the connection]` is written, and the bar shows the same words
@@ -244,8 +254,13 @@ On a Wiren Board reached over the tunnel, from the owner's phone:
 ## Open risks
 
 - **Copy mode eats keys.** After scrolling up, tmux is in copy mode and
-  typed keys are its commands, not the shell's. The owner scrolls back to
-  the bottom or presses `q`; the app does not intervene.
+  typed keys would be its commands. The app watches its own outgoing bytes
+  for a wheel-up report; the owner's next input (key, extra key, snippet,
+  paste) is then held until one exec of
+  `tmux if-shell -F -t '=<name>:' '#{pane_in_mode}' 'send-keys -t =<name>: -X cancel'`
+  has run, and then sent. Costs one round trip on the first key after a
+  scroll; nothing global is bound. A copy mode entered another way (the
+  owner's own key binding) is not noticed.
 - **Sessions of a lost or reinstalled phone stay** on the devices until
   killed by hand (`tmux ls | grep frpjump-`); a new install has a new id and
   does not see them.

@@ -463,8 +463,9 @@ fun TerminalScreen(
                         } else {
                             // The Enter key sends CR; so do line breaks inside a command.
                             val line = text.replace("\r\n", "\r").replace('\n', '\r')
-                            selected.terminal.session.write(if (run) line + "\r" else line)
+                            // Typed first: the snippet must not land in tmux's copy mode.
                             selected.typed()
+                            selected.terminal.session.write(if (run) line + "\r" else line)
                             // A snippet is typed as is, without a held Ctrl / Alt; it uses up the hold.
                             modifiers.ctrl = false
                             modifiers.alt = false

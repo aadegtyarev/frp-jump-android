@@ -430,6 +430,7 @@
     <string name="ssh_logged_out">Logged out (exit %d).</string>
     <string name="ssh_connection_closed">Connection closed.</string>
     <string name="ssh_new_shell">New shell: the previous one ended with the connection</string>
+    <string name="ssh_session_restored">Session restored</string>
     <string name="terminal_reconnecting">Connection lost · reconnecting (try %d)…</string>
     <string name="terminal_reconnect_now">Now</string>
 
