@@ -51,7 +51,7 @@ import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.connections.ConnectionsScreen
 import ru.adsrv.frpjump.ui.connections.ConnectionsViewModel
-import ru.adsrv.frpjump.ui.connections.TerminalsScreen
+import ru.adsrv.frpjump.ui.connections.SessionsScreen
 import ru.adsrv.frpjump.ui.devices.DeviceCardScreen
 import ru.adsrv.frpjump.ui.devices.DeviceCardViewModel
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
@@ -82,7 +82,7 @@ private object Routes {
     const val PROFILE = "profile/{id}"
     const val DEVICES = "devices"
     const val CONNECTIONS = "connections"
-    const val TERMINALS = "terminals"
+    const val SESSIONS = "sessions"
     const val DEVICE = "device/{name}"
     const val SETTINGS = "settings"
     const val STORAGE = "storage"
@@ -102,7 +102,7 @@ private object Routes {
     fun of(tab: Tab) = when (tab) {
         Tab.DEVICES -> DEVICES
         Tab.CONNECTIONS -> CONNECTIONS
-        Tab.TERMINALS -> TERMINALS
+        Tab.SESSIONS -> SESSIONS
         Tab.SETTINGS -> SETTINGS
     }
 }
@@ -236,10 +236,16 @@ fun AppNav() {
                 )
             }
         }
-        composable(Routes.TERMINALS) {
+        composable(Routes.SESSIONS) {
             val profilesState by app.profiles.state.collectAsStateWithLifecycle()
-            TabFrame(Tab.TERMINALS, nav) {
-                TerminalsScreen(app.ssh, profilesState.index.profiles.associate { it.id to it.color }, onOpen = { nav.navigate(Routes.terminal(it)) })
+            TabFrame(Tab.SESSIONS, nav) {
+                SessionsScreen(
+                    terminals = app.ssh,
+                    mqtt = app.mqtt,
+                    profileColors = profilesState.index.profiles.associate { it.id to it.color },
+                    onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
+                    onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
+                )
             }
         }
         composable(Routes.DEVICE) { entry ->
@@ -258,6 +264,7 @@ fun AppNav() {
             val profilesState by app.profiles.state.collectAsStateWithLifecycle()
             TerminalScreen(
                 sessions = app.ssh,
+                allSessions = app.sessions,
                 snippetStore = app.snippets,
                 pendingUndo = app.pendingUndo,
                 profileColors = profilesState.index.profiles.associate { it.id to it.color },

@@ -179,7 +179,7 @@
     <!-- Bottom navigation -->
     <string name="tab_devices">Устройства</string>
     <string name="tab_connections">Подключения</string>
-    <string name="tab_terminals">Терминалы</string>
+    <string name="tab_sessions">Сессии</string>
     <string name="tab_settings">Настройки</string>
 
     <!-- Connection kinds and states -->
@@ -210,18 +210,38 @@
     <string name="disconnect_all_tunnels">Отключить все туннели</string>
     <string name="tunnels_disconnected">Туннели отключены: %d</string>
     <string name="tunnels_disconnected_unknown">Туннели отключены</string>
-    <plurals name="disconnect_closes_sessions">
-        <item quantity="one">Закроется %d сессия терминала.</item>
-        <item quantity="few">Закроются %d сессии терминала.</item>
-        <item quantity="many">Закроется %d сессий терминала.</item>
-        <item quantity="other">Закроется %d сессии терминала.</item>
+    <plurals name="disconnect_closes_terminals">
+        <item quantity="one">Закроется %d терминал.</item>
+        <item quantity="few">Закроются %d терминала.</item>
+        <item quantity="many">Закроются %d терминалов.</item>
+        <item quantity="other">Закроются %d терминала.</item>
+    </plurals>
+    <plurals name="disconnect_closes_mqtt">
+        <item quantity="one">Закроется %d MQTT-сессия.</item>
+        <item quantity="few">Закроются %d MQTT-сессии.</item>
+        <item quantity="many">Закроются %d MQTT-сессий.</item>
+        <item quantity="other">Закроются %d MQTT-сессии.</item>
+    </plurals>
+    <!-- Оба вида: «Закроются 2 терминала и 1 MQTT-сессия.» -->
+    <string name="disconnect_closes_both">Закроются %1$s и %2$s.</string>
+    <plurals name="closing_terminals">
+        <item quantity="one">%d терминал</item>
+        <item quantity="few">%d терминала</item>
+        <item quantity="many">%d терминалов</item>
+        <item quantity="other">%d терминала</item>
+    </plurals>
+    <plurals name="closing_mqtt">
+        <item quantity="one">%d MQTT-сессия</item>
+        <item quantity="few">%d MQTT-сессии</item>
+        <item quantity="many">%d MQTT-сессий</item>
+        <item quantity="other">%d MQTT-сессии</item>
     </plurals>
     <string name="disconnect_closes_files">Открытые «Файлы» потеряют связь, их передачи остановятся.</string>
-    <plurals name="notification_terminal_sessions">
-        <item quantity="one">%d сессия терминала</item>
-        <item quantity="few">%d сессии терминала</item>
-        <item quantity="many">%d сессий терминала</item>
-        <item quantity="other">%d сессии терминала</item>
+    <plurals name="notification_sessions">
+        <item quantity="one">%d сессия</item>
+        <item quantity="few">%d сессии</item>
+        <item quantity="many">%d сессий</item>
+        <item quantity="other">%d сессии</item>
     </plurals>
     <string name="retry">Повторить</string>
     <string name="open">Открыть</string>
@@ -289,8 +309,8 @@
     <string name="connections_saved">Сохранённые</string>
     <string name="connections_empty">Сохранённых подключений пока нет. Откройте устройство и добавьте его кнопкой «Подключение».</string>
 
-    <!-- Terminals tab -->
-    <string name="terminals_empty">Открытых терминалов нет. Подключите SSH-подключение и нажмите «Терминал».</string>
+    <!-- Sessions tab -->
+    <string name="sessions_empty">Открытых сессий нет. Нажмите «Терминал» или «MQTT» у подключения.</string>
     <string name="terminal_state_connecting">Подключение…</string>
     <string name="terminal_state_open">Открыт</string>
     <string name="terminal_state_asks">Ждёт вас</string>
@@ -419,11 +439,11 @@
     <string name="terminal_text_smaller">Мельче</string>
     <string name="terminal_text_larger">Крупнее</string>
     <string name="terminal_keyboard">Клавиатура</string>
-    <plurals name="terminal_left_running">
-        <item quantity="one">%d сессия продолжает работать: вкладка «Терминалы»</item>
-        <item quantity="few">%d сессии продолжают работать: вкладка «Терминалы»</item>
-        <item quantity="many">%d сессий продолжают работать: вкладка «Терминалы»</item>
-        <item quantity="other">%d сессии продолжают работать: вкладка «Терминалы»</item>
+    <plurals name="sessions_left_running">
+        <item quantity="one">%d сессия продолжает работать: вкладка «Сессии»</item>
+        <item quantity="few">%d сессии продолжают работать: вкладка «Сессии»</item>
+        <item quantity="many">%d сессий продолжают работать: вкладка «Сессии»</item>
+        <item quantity="other">%d сессии продолжают работать: вкладка «Сессии»</item>
     </plurals>
     <string name="terminal_close_title">Закрыть %s?</string>
     <string name="terminal_close_text">Сессия завершится, и то, что в ней запущено на устройстве, остановится.</string>
@@ -721,6 +741,10 @@
     <string name="mqtt_state_login">Нужен вход</string>
     <string name="mqtt_connecting">Подключение к брокеру…</string>
     <string name="mqtt_reconnecting">Переподключение…</string>
+    <!-- Состояние MQTT-сессии на вкладке «Сессии»: согласовано с «сессия» -->
+    <string name="mqtt_session_open">Открыта</string>
+    <string name="mqtt_session_ended">Завершена</string>
+    <string name="mqtt_session_not_connected">Не подключена</string>
     <string name="mqtt_state_closed">Закрыта</string>
     <plurals name="mqtt_reading_tree">
         <item quantity="one">Чтение дерева… %s топик</item>

@@ -40,7 +40,7 @@ import ru.adsrv.frpjump.R
 enum class Tab(val label: Int, val icon: ImageVector) {
     DEVICES(R.string.tab_devices, DeviceGlyph),
     CONNECTIONS(R.string.tab_connections, LinkGlyph),
-    TERMINALS(R.string.tab_terminals, TerminalGlyph),
+    SESSIONS(R.string.tab_sessions, TerminalGlyph),
     SETTINGS(R.string.tab_settings, Icons.Outlined.Settings),
 }
 

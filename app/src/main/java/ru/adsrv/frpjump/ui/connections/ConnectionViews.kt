@@ -75,6 +75,7 @@ import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelStatus
+import ru.adsrv.frpjump.tunnel.closingSentence
 import ru.adsrv.frpjump.tunnel.sessionsThrough
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PinGlyph
@@ -627,13 +628,25 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
 }
 
 /**
- * What closes with the tunnels being disconnected: "N terminal sessions
- * will close", and that open file screens lose their connection.
+ * What closes with the tunnels being disconnected: "2 terminals and 1 MQTT
+ * session will close", and that open file screens lose their connection.
  */
 @Composable
 fun OpenThroughText(open: OpenThrough, modifier: Modifier = Modifier) {
+    val sessions = closingSentence(
+        open,
+        terminals = { pluralStringResource(R.plurals.disconnect_closes_terminals, it, it) },
+        mqtt = { pluralStringResource(R.plurals.disconnect_closes_mqtt, it, it) },
+        both = { t, m ->
+            stringResource(
+                R.string.disconnect_closes_both,
+                pluralStringResource(R.plurals.closing_terminals, t, t),
+                pluralStringResource(R.plurals.closing_mqtt, m, m),
+            )
+        },
+    )
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (open.sessions > 0) Text(pluralStringResource(R.plurals.disconnect_closes_sessions, open.sessions, open.sessions))
+        sessions?.let { Text(it) }
         if (open.files > 0) Text(stringResource(R.string.disconnect_closes_files))
     }
 }

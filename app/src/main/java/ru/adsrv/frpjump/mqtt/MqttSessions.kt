@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 
@@ -38,14 +39,6 @@ class MqttSessions(
     /** Sessions closed because their tunnel went away (ids are never reused); written on the main thread, read from any. */
     private val closedByTunnel: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
-    /** How many sessions have not ended, as it changes. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val liveCount: Flow<Int> = _sessions
-        .flatMapLatest { list ->
-            if (list.isEmpty()) flowOf(0) else combine(list.map { it.state }) { states -> states.count { it != MqttState.Ended } }
-        }
-        .distinctUntilChanged()
-
     /** Every session as the connection rows count them: its tunnel, and whether it is still live; as it changes. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val through: Flow<List<SessionOn>> = _sessions
@@ -53,10 +46,15 @@ class MqttSessions(
             if (list.isEmpty()) {
                 flowOf(emptyList())
             } else {
-                combine(list.map { s -> s.state.map { SessionOn(TunnelRef(s.profile, s.device, s.port), it != MqttState.Ended) } }) { it.toList() }
+                combine(list.map { s -> s.state.map { s.on(it) } }) { it.toList() }
             }
         }
         .distinctUntilChanged()
+
+    /** [through] as it is now. Any thread. */
+    fun throughNow(): List<SessionOn> = _sessions.value.map { it.on(it.state.value) }
+
+    private fun MqttSession.on(state: MqttState) = SessionOn(TunnelRef(profile, device, port), state != MqttState.Ended, SessionKind.MQTT)
 
     init {
         scope.launch(main) {

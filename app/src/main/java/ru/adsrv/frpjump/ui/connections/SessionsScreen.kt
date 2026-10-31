@@ -18,12 +18,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.mqtt.MqttSession
+import ru.adsrv.frpjump.mqtt.MqttSessions
+import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
@@ -36,15 +40,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
 
-/** The Terminals tab: the open SSH sessions; tap one to show it in the terminal. */
+/**
+ * The Sessions tab: the open terminal sessions, then the MQTT explorer
+ * sessions; tap one to return to it. They close where they are shown (a
+ * terminal's tab, the explorer's "⋮"), not here.
+ */
 @Composable
-fun TerminalsScreen(
-    sessions: SshSessions,
+fun SessionsScreen(
+    terminals: SshSessions,
+    mqtt: MqttSessions,
     /** Profile id to its colour's name, for the marks. */
     profileColors: Map<String, String>,
-    onOpen: (sessionId: Int) -> Unit,
+    onOpenTerminal: (sessionId: Int) -> Unit,
+    onOpenMqtt: (sessionId: Int) -> Unit,
 ) {
-    val list by sessions.sessions.collectAsStateWithLifecycle()
+    val list by terminals.sessions.collectAsStateWithLifecycle()
+    val explorers by mqtt.sessions.collectAsStateWithLifecycle()
     val colors = AppTheme.colors
     LazyColumn(
         Modifier
@@ -55,28 +66,29 @@ fun TerminalsScreen(
     ) {
         item(key = "title") {
             Text(
-                stringResource(R.string.tab_terminals),
+                stringResource(R.string.tab_sessions),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp),
             )
         }
-        if (list.isEmpty()) {
+        if (list.isEmpty() && explorers.isEmpty()) {
             item(key = "empty") {
                 Surface(color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        TerminalTile(dot = null)
-                        Text(stringResource(R.string.terminals_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.weight(1f))
+                        SessionTile(dot = null) { TerminalIcon() }
+                        Text(stringResource(R.string.sessions_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.weight(1f))
                     }
                 }
             }
         }
-        items(list, key = { it.id }) { session -> SessionLine(session, profileColors[session.profile]) { onOpen(session.id) } }
+        items(list, key = { "t${it.id}" }) { session -> TerminalLine(session, profileColors[session.profile]) { onOpenTerminal(session.id) } }
+        items(explorers, key = { "m${it.id}" }) { session -> MqttLine(session, profileColors[session.profile]) { onOpenMqtt(session.id) } }
     }
 }
 
 @Composable
-private fun SessionLine(session: SshSession, profileColor: String?, onClick: () -> Unit) {
+private fun TerminalLine(session: SshSession, profileColor: String?, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = when (state) {
@@ -85,24 +97,51 @@ private fun SessionLine(session: SshSession, profileColor: String?, onClick: () 
         is SshState.Ended -> stringResource(R.string.terminal_state_ended) to colors.muted
         else -> stringResource(R.string.terminal_state_asks) to colors.warning
     }
+    SessionLine(session.title, text, color, profileColor, onClick) { TerminalIcon() }
+}
+
+/** An explorer session: its device and port, as the explorer's bar names it. */
+@Composable
+private fun MqttLine(session: MqttSession, profileColor: String?, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    val state by session.state.collectAsStateWithLifecycle()
+    val (text, color) = when (state) {
+        MqttState.Connecting -> stringResource(R.string.terminal_state_connecting) to colors.muted
+        is MqttState.Open -> stringResource(R.string.mqtt_session_open) to colors.accent
+        MqttState.Reconnecting -> stringResource(R.string.mqtt_reconnecting) to colors.warning
+        is MqttState.NeedsLogin -> stringResource(R.string.mqtt_state_login) to colors.warning
+        is MqttState.Failed -> stringResource(R.string.mqtt_session_not_connected) to colors.error
+        MqttState.Ended -> stringResource(R.string.mqtt_session_ended) to colors.muted
+    }
+    SessionLine("${session.device}:${session.port}", text, color, profileColor, onClick) {
+        Text(stringResource(R.string.kind_mqtt_tile), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.ink)
+    }
+}
+
+@Composable
+private fun SessionLine(title: String, state: String, stateColor: Color, profileColor: String?, onClick: () -> Unit, glyph: @Composable () -> Unit) {
+    val colors = AppTheme.colors
     Surface(onClick = onClick, color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TerminalTile(dot = colors.profile(profileColor ?: "grey"))
+            SessionTile(dot = colors.profile(profileColor ?: "grey"), glyph = glyph)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(session.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color)
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(state, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = stateColor)
             }
         }
     }
 }
 
-/** The terminal glyph on a tile; [dot], the profile's colour, in the corner. */
 @Composable
-private fun TerminalTile(dot: Color?) {
+private fun TerminalIcon() = Icon(TerminalGlyph, contentDescription = null, tint = AppTheme.colors.ink, modifier = Modifier.size(22.dp))
+
+/** The session's glyph on a tile; [dot], the profile's colour, in the corner. */
+@Composable
+private fun SessionTile(dot: Color?, glyph: @Composable () -> Unit) {
     val colors = AppTheme.colors
     Box(Modifier.size(40.dp)) {
         Box(
@@ -111,7 +150,7 @@ private fun TerminalTile(dot: Color?) {
                 .background(colors.tile, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(TerminalGlyph, contentDescription = null, tint = colors.ink, modifier = Modifier.size(22.dp))
+            glyph()
         }
         dot?.let {
             Box(

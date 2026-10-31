@@ -79,7 +79,7 @@ port, which stay keyed by (profile, device, port).
   and port, and SSH cannot share a port with web or TCP (the server knows a
   port under one protocol). The kind and port of a connected connection
   cannot be changed; moving or deleting the last connection of a port
-  disconnects its tunnel.
+  disconnects its tunnel (a delete, once its Undo is gone).
 - "Local port" in the sheet (any kind): "Auto" (blank) takes one from the
   range in Settings, as before; a number from 1024 to 65535 (inside the
   range or not) pins it, so `127.0.0.1:N` stays the same, e.g. for a
@@ -110,13 +110,19 @@ port, which stay keyed by (profile, device, port).
   each saved one; "Disconnect all" stops every tunnel. Tunnels up without a
   saved connection are listed too, as "Port N", so they can be
   disconnected.
-- Disconnect, "Disconnect all" and deleting the last connection of a
-  tunnel that is up ask first when something open goes with the tunnel:
-  live terminal sessions on it (same profile, device and port; for "all",
-  any) — "N terminal sessions will close" — and open Files screens.
+- Disconnect and "Disconnect all" ask first when something open goes with
+  the tunnel: live terminal and MQTT sessions on it (same profile, device
+  and port; for "all", any) — "2 terminals and 1 MQTT session will close"
+  — and open Files screens.
   With nothing open they disconnect at once.
-- The bottom navigation: Devices, Connections, Terminals (the open SSH
-  sessions), Settings.
+- Delete does not ask: the row goes at once and a top notice "Deleted: N ·
+  Undo" stays about 6 s (several deletes in a row share it). Only when it
+  goes is the connection removed — with its tunnel when it was the last
+  connection of that port, and its MQTT session, login and pins
+  (`undo/PendingUndo.kt`; it also completes when the app goes to the
+  background or locks).
+- The bottom navigation: Devices, Connections, Sessions (the open terminal
+  and MQTT explorer sessions; a tap returns to one), Settings.
 
 Upgrading from 0.2.0-beta1 (or 0.1.x) turns each profile's ports into
 connections on its first start: every port the owner added keeps its
@@ -161,7 +167,7 @@ not parse is left in place and nothing is migrated from it; a
   profile's directory.
 - While at least one tunnel of any profile is up a foreground service (type
   `specialUse`) keeps the process alive and shows "N tunnels" (all profiles),
-  "· M terminal sessions" when any is open, with "Disconnect all" (all
+  "· M sessions" (terminal and MQTT) when any is open, with "Disconnect all" (all
   profiles), which cannot ask first: the title is the warning.
 
 ## Restore after kill and reboot
@@ -550,7 +556,8 @@ filling in the user name leaves the saved password alone.
 - Snippets: a row of saved commands above the keys. Tap types a command
   without Enter (to finish it first), long press types it and presses
   Enter; the manager says so. The last chip ("+ Add command" while there
-  are none) opens it: add, change, delete, ↑ / ↓ to reorder. One list per
+  are none) opens it: add, change, delete (with Undo, as connections),
+  ↑ / ↓ to reorder. One list per
   phone, for every profile and device, in `snippets.json`
   (`snippets/SnippetStore.kt`; a file that does not parse is kept as
   `snippets.corrupt.json`). Sent only into an open session; otherwise the
@@ -559,7 +566,7 @@ filling in the user name leaves the saved password alone.
   and sending it releases the hold. A write that fails keeps the list as it
   was and says so (as a setting that cannot be saved does).
 - Sessions live in the app, not in the screen: several at once; the
-  Terminals tab leads back. A session ends when its tunnel goes (Disconnect,
+  Sessions tab leads back. A session ends when its tunnel goes (Disconnect,
   Disconnect all, Forget); "Reconnect" starts a new one with the same login.
   When the session shown goes that way, the terminal says "The tunnel was
   closed." and shows the next one (or leaves when none is left).

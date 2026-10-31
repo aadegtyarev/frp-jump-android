@@ -165,7 +165,7 @@
     <!-- Bottom navigation -->
     <string name="tab_devices">Devices</string>
     <string name="tab_connections">Connections</string>
-    <string name="tab_terminals">Terminals</string>
+    <string name="tab_sessions">Sessions</string>
     <string name="tab_settings">Settings</string>
 
     <!-- Connection kinds and states (the same words on every screen) -->
@@ -202,14 +202,28 @@
     <string name="disconnect_all_tunnels">Disconnect all tunnels</string>
     <string name="tunnels_disconnected">Tunnels disconnected: %d</string>
     <string name="tunnels_disconnected_unknown">Tunnels disconnected</string>
-    <plurals name="disconnect_closes_sessions">
-        <item quantity="one">%d terminal session will close.</item>
-        <item quantity="other">%d terminal sessions will close.</item>
+    <plurals name="disconnect_closes_terminals">
+        <item quantity="one">%d terminal will close.</item>
+        <item quantity="other">%d terminals will close.</item>
+    </plurals>
+    <plurals name="disconnect_closes_mqtt">
+        <item quantity="one">%d MQTT session will close.</item>
+        <item quantity="other">%d MQTT sessions will close.</item>
+    </plurals>
+    <!-- Both kinds: "2 terminals and 1 MQTT session will close." -->
+    <string name="disconnect_closes_both">%1$s and %2$s will close.</string>
+    <plurals name="closing_terminals">
+        <item quantity="one">%d terminal</item>
+        <item quantity="other">%d terminals</item>
+    </plurals>
+    <plurals name="closing_mqtt">
+        <item quantity="one">%d MQTT session</item>
+        <item quantity="other">%d MQTT sessions</item>
     </plurals>
     <string name="disconnect_closes_files">Open Files screens lose the connection; their transfers stop.</string>
-    <plurals name="notification_terminal_sessions">
-        <item quantity="one">%d terminal session</item>
-        <item quantity="other">%d terminal sessions</item>
+    <plurals name="notification_sessions">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
     </plurals>
     <string name="retry">Retry</string>
     <string name="open">Open</string>
@@ -276,8 +290,8 @@
     <string name="connections_empty">No saved connections yet. Open a device and add one with “Connection”.</string>
     <string name="connection_on_device" translatable="false">· %s</string>
 
-    <!-- Terminals tab -->
-    <string name="terminals_empty">No open terminals. Connect an SSH connection and tap “Terminal”.</string>
+    <!-- Sessions tab -->
+    <string name="sessions_empty">No open sessions. Tap “Terminal” or “MQTT” on a connection.</string>
     <string name="terminal_state_connecting">Connecting…</string>
     <string name="terminal_state_open">Open</string>
     <string name="terminal_state_asks">Waiting for you</string>
@@ -394,9 +408,9 @@
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
     <string name="terminal_keyboard">Keyboard</string>
-    <plurals name="terminal_left_running">
-        <item quantity="one">%d session keeps running: Terminals tab</item>
-        <item quantity="other">%d sessions keep running: Terminals tab</item>
+    <plurals name="sessions_left_running">
+        <item quantity="one">%d session keeps running: Sessions tab</item>
+        <item quantity="other">%d sessions keep running: Sessions tab</item>
     </plurals>
     <string name="terminal_close_title">Close %s?</string>
     <string name="terminal_close_text">The session ends and what runs in it on the device stops.</string>
@@ -682,6 +696,10 @@
     <string name="mqtt_version_311" translatable="false">MQTT 3.1.1</string>
     <string name="mqtt_connecting">Connecting to the broker…</string>
     <string name="mqtt_reconnecting">Reconnecting…</string>
+    <!-- An MQTT session's state on the Sessions tab (Russian agrees with «сессия») -->
+    <string name="mqtt_session_open">Open</string>
+    <string name="mqtt_session_ended">Ended</string>
+    <string name="mqtt_session_not_connected">Not connected</string>
     <string name="mqtt_state_closed">Closed</string>
     <plurals name="mqtt_reading_tree">
         <item quantity="one">Reading the tree… %s topic</item>

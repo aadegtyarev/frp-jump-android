@@ -273,6 +273,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     /** "Close session": disconnects for good; the tunnel stays. */
     fun closeSession() = app.mqtt.close(sessionId)
 
+    /** Leaving the explorer: the count for "N sessions keep running", the first time only (see [OpenSessions.leftRunning]). */
+    fun leftRunning(): Int? = app.sessions.leftRunning()
+
     companion object {
         /** How often the open level is read again while shown. */
         const val REFRESH_MS = 1_000L

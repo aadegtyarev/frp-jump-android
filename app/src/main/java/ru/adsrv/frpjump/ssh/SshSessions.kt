@@ -25,6 +25,7 @@ import net.schmizz.sshj.SSHClient
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 
@@ -55,14 +56,6 @@ class SshSessions(
     /** Sessions closed because their tunnel went away (ids are never reused); main thread. */
     private val closedByTunnel = mutableSetOf<Int>()
 
-    /** How many sessions have not ended, as it changes (the notification counts them). */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val liveCount: Flow<Int> = _sessions
-        .flatMapLatest { list ->
-            if (list.isEmpty()) flowOf(0) else combine(list.map { it.state }) { states -> states.count { it !is SshState.Ended } }
-        }
-        .distinctUntilChanged()
-
     /** Every session as the connection rows count them: its tunnel, and whether it is still live; as it changes. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val through: Flow<List<SessionOn>> = _sessions
@@ -70,19 +63,21 @@ class SshSessions(
             if (list.isEmpty()) {
                 flowOf(emptyList())
             } else {
-                combine(list.map { s -> s.state.map { SessionOn(TunnelRef(s.profile, s.device, s.port), it !is SshState.Ended) } }) { it.toList() }
+                combine(list.map { s -> s.state.map { s.on(it) } }) { it.toList() }
             }
         }
         .distinctUntilChanged()
+
+    /** [through] as it is now. Main thread. */
+    fun throughNow(): List<SessionOn> = _sessions.value.map { it.on(it.state.value) }
+
+    private fun SshSession.on(state: SshState) = SessionOn(TunnelRef(profile, device, port), state !is SshState.Ended, SessionKind.TERMINAL)
 
     /** Terminal text size in sp, shared by all sessions. */
     val fontSize = MutableStateFlow(DEFAULT_FONT_SP)
 
     /** The terminal screen while it is shown; set and cleared on the main thread. */
     var listener: TerminalScreenListener? = null
-
-    /** "Sessions keep running" was said once in this process: leaving the terminal says it the first time. */
-    var leftRunningHintShown = false
 
     init {
         scope.launch(Dispatchers.Main) {

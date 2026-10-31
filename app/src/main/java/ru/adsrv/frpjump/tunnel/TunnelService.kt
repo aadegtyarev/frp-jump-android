@@ -109,7 +109,7 @@ class TunnelService : Service() {
                     if (serviceNeeded(summary.tunnels, pending)) View(summary, waiting, failed) else null
                 }
                     // "Disconnect all" here cannot ask: the title says what it would close.
-                    .combine(app.ssh.liveCount) { view, sessions -> view?.copy(sessions = sessions) }
+                    .combine(app.sessions.liveCount) { view, sessions -> view?.copy(sessions = sessions) }
                     .distinctUntilChanged()
                     .collect { view ->
                         if (view == null) {
@@ -135,7 +135,7 @@ class TunnelService : Service() {
         val waiting: Waiting? = null,
         /** The last "Disconnect all" could not tell a server. */
         val disconnectFailed: Boolean = false,
-        /** Terminal sessions not ended, which "Disconnect all" closes. */
+        /** Terminal and MQTT sessions not ended, which "Disconnect all" closes. */
         val sessions: Int = 0,
     )
 
@@ -182,12 +182,12 @@ class TunnelService : Service() {
 
     /**
      * "N tunnels", or "N tunnels in M profiles" when more than one profile
-     * has tunnels, then " · M terminal sessions" when any is open;
+     * has tunnels, then " · M sessions" when any is open;
      * "Restoring (N) tunnels…" while none runs yet after a restart.
      */
     private fun title(res: Resources, view: View): String =
         notificationTitle(tunnelsLine(res, view.summary), tunnelsTitle(view.summary), view.sessions) {
-            res.getQuantityString(R.plurals.notification_terminal_sessions, it, it)
+            res.getQuantityString(R.plurals.notification_sessions, it, it)
         }
 
     private fun tunnelsLine(res: Resources, summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
