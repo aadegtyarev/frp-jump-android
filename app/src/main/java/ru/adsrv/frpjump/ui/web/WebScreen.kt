@@ -32,8 +32,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -228,8 +231,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
 
     Scaffold(
         containerColor = AppTheme.colors.ground,
-        // Full screen: the bars are hidden, the page takes their place too.
-        contentWindowInsets = if (fullscreen) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
+        // Full screen: the bars are hidden and the page takes their place; a cutout still counts.
+        contentWindowInsets = if (fullscreen) WindowInsets.displayCutout else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             if (!fullscreen) CompactTopBar(
                 title = title,
@@ -268,7 +271,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        // The keyboard shrinks the page, so a field it would cover scrolls into view.
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 if (certRefused) {
                     // Above the page, which stays in place for "Try again".
