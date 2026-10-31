@@ -220,9 +220,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val runtime = runtime(row.profile) ?: return onDone(null)
         scope.launch {
             val all = runtime.connections.connections.value
+            // Its explorer session, broker login and MQTT pins go with it.
+            app.mqtt.closeConnection(row.profile, row.connection.id)
             val failure = try {
                 withContext(Dispatchers.IO) {
                     runtime.connections.remove(row.connection.id)
+                    app.mqttLogins.forget(row.profile, row.connection.id)
+                    app.mqttPins.forget(row.profile, row.connection.id)
                     // Its pin, unless another connection to that device and port still has it, is free again.
                     pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
                         runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }

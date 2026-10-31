@@ -26,6 +26,26 @@
 # sshj logs through slf4j; with no binding on the classpath it is a no-op.
 -dontwarn org.slf4j.impl.**
 
+# The MQTT client (HiveMQ) runs on Netty and JCTools, which reach their own
+# fields by name: Netty through Atomic*FieldUpdater ("refCnt", "result"),
+# JCTools through Unsafe offsets looked up by field name. Renamed, they fail
+# at run time, so member names stay (the HiveMQ client's Android setup).
+-keepclassmembernames class io.netty.** { *; }
+-keepclassmembers class org.jctools.** { *; }
+# Optional parts the app leaves out, never reached on Android: HiveMQ's
+# WebSocket, proxy and epoll transports (netty-codec-http, netty-handler-proxy,
+# netty-transport-native-epoll), Netty's native TLS (tcnative) and Jetty
+# ALPN/NPN, its log4j loggers, and its BlockHound integration (JVM tests).
+-dontwarn io.netty.channel.epoll.**
+-dontwarn io.netty.handler.codec.http.**
+-dontwarn io.netty.handler.proxy.**
+-dontwarn io.netty.internal.tcnative.**
+-dontwarn org.eclipse.jetty.alpn.**
+-dontwarn org.eclipse.jetty.npn.**
+-dontwarn org.apache.log4j.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn reactor.blockhound.integration.**
+
 # Stack traces in a release crash report keep file and line numbers;
 # the mapping file (app/build/outputs/mapping/release/mapping.txt) turns
 # the obfuscated names back.

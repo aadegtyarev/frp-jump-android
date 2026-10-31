@@ -85,6 +85,8 @@ android {
         // BouncyCastle jars each carry their own OSGi manifests; none is needed on Android.
         resources {
             excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+            // Netty's jars (under the MQTT client) each carry a JAR index and a version list; neither is read on Android.
+            excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties")
         }
     }
 }
@@ -124,6 +126,8 @@ dependencies {
     implementation(libs.zxing.core)
     // Settings › Unlock with fingerprint: BiometricPrompt with the screen lock as the fallback.
     implementation(libs.androidx.biometric)
+    // The MQTT explorer: MQTT 5 and 3.1.1 (docs/mqtt-contract.md).
+    implementation(libs.hivemq.mqtt.client)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
