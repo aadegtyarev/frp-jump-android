@@ -5,7 +5,10 @@ import ru.adsrv.frpjump.locale.Texts
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
@@ -87,6 +90,8 @@ class SshSessions(
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     /** Callbacks from one session's emulator, forwarded to the screen when it shows that session. */
     private inner class ClientForScreen : TerminalSessionClient {
         override fun onTextChanged(changedSession: TerminalSession) {
@@ -97,9 +102,16 @@ class SshSessions(
 
         override fun onSessionFinished(finishedSession: TerminalSession) = Unit
 
+        /**
+         * The owner's own copy of a selection, and also a remote program's
+         * OSC 52, which writes the clipboard unasked: either way a toast
+         * shows what went there.
+         */
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
             if (text.isNullOrEmpty()) return
             context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(Texts.get(R.string.terminal), text))
+            val preview = text.lineSequence().first().let { if (it.length > COPY_PREVIEW || text.contains('\n')) it.take(COPY_PREVIEW) + "…" else it }
+            mainHandler.post { Toast.makeText(context, Texts.get(R.string.terminal_copied, preview), Toast.LENGTH_SHORT).show() }
         }
 
         override fun onPasteTextFromClipboard(session: TerminalSession?) {
@@ -146,6 +158,9 @@ class SshSessions(
 
     companion object {
         private const val TAG = "SshSessions"
+
+        /** Characters of copied text the toast shows. */
+        private const val COPY_PREVIEW = 40
         const val DEFAULT_FONT_SP = 14
     }
 }
