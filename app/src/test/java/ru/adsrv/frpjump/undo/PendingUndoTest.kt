@@ -41,8 +41,20 @@ class PendingUndoTest {
         delete("snippet:a")
         assertEquals(setOf("snippet:a"), pending.hidden.value)
         assertEquals(1, shown)
-        assertEquals(PendingUndo.DELAY_MS, timerDelay)
         assertTrue(done.isEmpty())
+    }
+
+    @Test
+    fun `its time counts from when the notice shows, capped while it cannot`() {
+        delete("snippet:a")
+        assertEquals(PendingUndo.CAP_MS, timerDelay)
+        pending.noticeShown()
+        assertEquals(PendingUndo.DELAY_MS, timerDelay)
+        // Capped: never shown, it is still done.
+        delete("snippet:b")
+        assertEquals(PendingUndo.CAP_MS, timerDelay)
+        expire()
+        assertEquals(listOf("snippet:a", "snippet:b"), done)
     }
 
     @Test
@@ -120,13 +132,18 @@ class PendingUndoTest {
     }
 
     @Test
-    fun `a key stays hidden while its commit runs and shows again if it fails`() {
-        val running = mutableListOf<suspend () -> Unit>()
-        val slow = PendingUndo(timer = { _, _ -> {} }, run = { running += it }, announce = { _, _ -> })
-        slow.enqueue("snippet:a", commit = { error("disk full") })
+    fun `a batch's commits run one after another, a failed one shows again and the rest still run`() {
+        val runs = mutableListOf<suspend () -> Unit>()
+        val order = mutableListOf<String>()
+        val slow = PendingUndo(timer = { _, _ -> {} }, run = { runs += it }, announce = { _, _ -> })
+        slow.enqueue("connection:p1/1", commit = { order += "1"; error("disk full") })
+        slow.enqueue("connection:p1/2", commit = { order += "2" })
         slow.commitAll()
-        assertEquals(setOf("snippet:a"), slow.hidden.value)
-        runCatching { runBlocking { running.single()() } }
+        // Hidden until done: one run for the whole batch, not started yet.
+        assertEquals(1, runs.size)
+        assertEquals(setOf("connection:p1/1", "connection:p1/2"), slow.hidden.value)
+        runBlocking { runs.single()() }
+        assertEquals(listOf("1", "2"), order)
         assertEquals(emptySet<String>(), slow.hidden.value)
     }
 }

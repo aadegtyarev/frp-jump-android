@@ -21,6 +21,7 @@ import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.asMqtt
 import ru.adsrv.frpjump.connections.HeldPort
 import ru.adsrv.frpjump.connections.LocalPortContext
+import ru.adsrv.frpjump.connections.disconnectsAfterDelete
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
 import ru.adsrv.frpjump.connections.PinRefused
 import ru.adsrv.frpjump.connections.localPortProblemWords
@@ -232,16 +233,16 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      */
     private suspend fun commitDelete(row: ConnectionRow) {
         val runtime = runtime(row.profile) ?: return
-        val all = runtime.connections.connections.value
-        // Its explorer session, broker login and MQTT pins go with it.
+        // Its explorer session, broker login and MQTT pins go with it: first, so a
+        // failure leaves the connection itself in place, as the message says.
         app.mqtt.closeConnection(row.profile, row.connection.id)
         val failure = try {
             withContext(Dispatchers.IO) {
-                runtime.connections.remove(row.connection.id)
                 app.mqtt.changeStored {
                     app.mqttLogins.forget(row.profile, row.connection.id)
                     app.mqttPins.forget(row.profile, row.connection.id)
                 }
+                runtime.connections.remove(row.connection.id)
                 // Its pin, unless another connection to that device and port still has it, is free again.
                 pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
                     runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }
@@ -257,10 +258,10 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             app.notices.show(Texts.get(R.string.delete_failed, failure), NoticeKind.WARN, long = true)
             return
         }
-        // As the tunnel is now, not when Delete was tapped.
+        // As the list and the tunnel are now: of several deletes on one tunnel, the last one disconnects it.
         val key = localPortKey(row.connection.device, row.connection.port)
         val up = runtime.tunnels.state.value.tunnels.any { it.key == key }
-        if (up && lastOnItsTunnel(row.connection, all)) disconnect(row)
+        if (disconnectsAfterDelete(row.connection, runtime.connections.connections.value, up)) disconnect(row)
     }
 
     /**

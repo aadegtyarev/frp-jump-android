@@ -182,7 +182,7 @@ class FrpJumpApp : Application() {
                 if (count == null) {
                     notices.dismissKey(UNDO_NOTICE)
                 } else {
-                    notices.show(Texts.get(R.string.undo_deleted, count), NoticeKind.DONE, key = UNDO_NOTICE, action = NoticeAction(Texts.get(R.string.undo), undo))
+                    notices.show(Texts.get(R.string.undo_deleted, count), NoticeKind.DONE, key = UNDO_NOTICE, action = NoticeAction(Texts.get(R.string.undo), undo), first = true)
                 }
             },
         )
@@ -277,6 +277,12 @@ class FrpJumpApp : Application() {
                     notices.toBackground()
                 }
             }
+        }
+        // Undo's time counts from when its notice is on screen (a host draws it), not from the tap.
+        appScope.launch {
+            combine(notices.queue, notices.hosts) { queue, hosts -> queue.shown?.takeIf { it.key == UNDO_NOTICE && hosts.isNotEmpty() }?.id }
+                .distinctUntilChanged()
+                .collect { if (it != null) pendingUndo.noticeShown() }
         }
         appScope.launch {
             lock.locked.collect {

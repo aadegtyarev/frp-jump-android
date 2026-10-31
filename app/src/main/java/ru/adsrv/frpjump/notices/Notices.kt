@@ -30,10 +30,11 @@ class Notices(
     private val _hosts = MutableStateFlow<List<Any>>(emptyList())
     val hosts: StateFlow<List<Any>> = _hosts
 
-    fun show(text: String, kind: NoticeKind = NoticeKind.INFO, long: Boolean = false, key: String? = null, action: NoticeAction? = null) {
+    /** [first]: shown before anything else and never dropped (Undo, whose time counts). */
+    fun show(text: String, kind: NoticeKind = NoticeKind.INFO, long: Boolean = false, key: String? = null, action: NoticeAction? = null, first: Boolean = false) {
         if (locked()) return
         if (!foreground()) return fallback(text, long)
-        val notice = TopNotice(ids.getAndIncrement(), text, kind, long, key, action)
+        val notice = TopNotice(ids.getAndIncrement(), text, kind, long, key, action, first)
         synchronized(_queue) { _queue.value = _queue.value.post(notice) }
     }
 

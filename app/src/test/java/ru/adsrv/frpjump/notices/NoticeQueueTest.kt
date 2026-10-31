@@ -54,4 +54,18 @@ class NoticeQueueTest {
         assertEquals(listOf(2L), q.dismissKey("undo").items.map { it.id })
         assertEquals(listOf(3L), NoticeQueue().post(n(3)).post(n(1, key = "undo")).dismissKey("undo").items.map { it.id })
     }
+
+    @Test
+    fun `an Undo notice goes before the one shown and is never dropped`() {
+        val undo = TopNotice(9, "Deleted: 1", key = "undo", first = true)
+        var q = NoticeQueue(limit = 2).post(n(1)).post(undo)
+        assertEquals(listOf(9L, 1L), q.items.map { it.id })
+        q = q.post(n(2)).post(n(3)).post(n(4))
+        assertEquals(9L, q.shown?.id)
+        assertEquals(3, q.items.size)
+        // A count changed: in front again, in its place.
+        q = q.post(undo.copy(id = 10, text = "Deleted: 2"))
+        assertEquals(10L, q.shown?.id)
+        assertEquals(1, q.items.count { it.key == "undo" })
+    }
 }

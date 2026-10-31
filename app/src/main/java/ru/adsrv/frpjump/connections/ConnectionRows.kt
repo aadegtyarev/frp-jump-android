@@ -73,3 +73,10 @@ fun activeFirst(rows: List<ConnectionRow>): Pair<List<ConnectionRow>, List<Conne
 fun lastOnItsTunnel(removed: Connection, all: List<Connection>): Boolean =
     all.none { it.id != removed.id && it.device == removed.device && it.port == removed.port }
 
+
+/**
+ * Whether deleting [removed] disconnects its tunnel: it is [up] and no
+ * connection [left] after the delete (the stored list as it is now) still
+ * uses it. Several deletes on one tunnel: the last one does it.
+ */
+fun disconnectsAfterDelete(removed: Connection, left: List<Connection>, up: Boolean): Boolean = up && lastOnItsTunnel(removed, left)

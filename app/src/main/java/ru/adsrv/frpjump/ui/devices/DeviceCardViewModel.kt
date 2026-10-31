@@ -42,34 +42,30 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
     val state: StateFlow<DeviceCardUiState> =
         combine(
             // A connection deleted while its Undo is on screen is not listed.
-            combine(runtime.connections.connections, app.pendingUndo.hidden) { connections, hidden -> shown(connections, hidden) },
+            combine(runtime.connections.connections, app.pendingUndo.hidden) { connections, hidden -> connections to hidden },
             runtime.tunnels.state,
             runtime.devices.state,
             app.profiles.state.map { s -> s.index.find(profile)?.name.orEmpty() },
             // "Use key login" changes a method: the subtitle follows.
             runtime.sshLogins.changes,
-        ) { connections, tunnels, list, profileName, _ -> uiState(connections, tunnels, list, profileName) }
+        ) { (connections, hidden), tunnels, list, profileName, _ -> uiState(connections, hidden, tunnels, list, profileName) }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
                 // As it is now: the card never flashes "no connections" before the first emission.
                 uiState(
-                    shown(runtime.connections.connections.value, app.pendingUndo.hidden.value),
+                    runtime.connections.connections.value,
+                    app.pendingUndo.hidden.value,
                     runtime.tunnels.state.value,
                     runtime.devices.state.value,
                     app.profiles.state.value.index.find(profile)?.name.orEmpty(),
                 ),
             )
 
-    /** [connections] less those deleted while their Undo is on screen. */
-    private fun shown(connections: List<Connection>, hidden: Set<String>): List<Connection> {
-        val ids = PendingUndo.connectionIds(hidden, profile)
-        return if (ids.isEmpty()) connections else connections.filter { it.id !in ids }
-    }
-
-    private fun uiState(connections: List<Connection>, tunnels: TunnelsState, list: DeviceList, profileName: String) =
+    private fun uiState(connections: List<Connection>, hidden: Set<String>, tunnels: TunnelsState, list: DeviceList, profileName: String) =
         DeviceCardUiState(
-            rows = connectionRows(profile, connections, tunnels, device),
+            // Hidden in the rows, not before them: their tunnel must not show as an unsaved one.
+            rows = connectionRows(profile, connections, tunnels, device, hidden = PendingUndo.connectionIds(hidden, profile)),
             device = list.devices?.firstOrNull { it.name == device },
             profileName = profileName,
             syncError = tunnels.syncError,
