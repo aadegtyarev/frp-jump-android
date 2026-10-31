@@ -7,6 +7,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -60,6 +65,9 @@ import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.notices.TopNotice
 import kotlin.math.roundToInt
 
+/** How long a notice's place stays guarded after it ran out with a button on it. */
+private const val TAP_GUARD_MS = 1_000L
+
 /** The app's [Notices], from any screen's context. */
 val Context.notices: Notices get() = (applicationContext as FrpJumpApp).notices
 
@@ -88,13 +96,43 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
     // Kept while it slides out.
     var last by remember { mutableStateOf<TopNotice?>(null) }
     if (shown != null) last = shown
+    // A notice with a button (Undo) that runs out leaves its place guarded for a moment: a tap meant
+    // for its button lands on nothing rather than on the bar button under it.
+    var height by remember { mutableIntStateOf(0) }
+    var ranOut by remember { mutableStateOf<Long?>(null) }
+    var guarded by remember { mutableStateOf(false) }
     LaunchedEffect(shown?.id) {
         val now = shown ?: return@LaunchedEffect
         delay(now.durationMs)
+        if (now.action != null) ranOut = now.id
         notices.dismiss(now.id)
     }
+    LaunchedEffect(ranOut) {
+        if (ranOut == null) return@LaunchedEffect
+        try {
+            guarded = true
+            delay(TAP_GUARD_MS)
+        } finally {
+            guarded = false
+        }
+    }
     // Centred on a wide screen.
+    val underBars = if (edge) {
+        Modifier.windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+    } else {
+        Modifier
+    }
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        if (guarded && shown == null && height > 0) {
+            Box(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .then(underBars)
+                    .height(with(LocalDensity.current) { height.toDp() })
+                    .pointerInput(Unit) { detectTapGestures { } },
+            )
+        }
         AnimatedVisibility(
             visible = shown != null,
             enter = slideInVertically { -it } + fadeIn(),
@@ -102,13 +140,8 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .then(
-                    if (edge) {
-                        Modifier.windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    } else {
-                        Modifier
-                    },
-                )
+                .then(underBars)
+                .onSizeChanged { if (it.height > 0) height = it.height }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             last?.let { NoticeCard(it, onDismiss = { notices.dismiss(it.id) }) }
