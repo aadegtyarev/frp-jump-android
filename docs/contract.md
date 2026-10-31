@@ -43,6 +43,13 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
 - Failures are shown next to what failed, in plain words, with the action
   that may fix it (retry, open settings).
 - The same thing is called the same way on every screen and in notifications.
+- Consistency: controls that do the same action look the same everywhere —
+  same glyph, same kind of control, same placement relative to what they act
+  on (Disconnect is the same button on a connection row, a device card and
+  the Devices top bar). Similar actions look alike, with only the difference
+  that matters (a folder and a file tile share shape and size and differ by
+  glyph and tint). A new control starts from an existing one, not from a
+  new design.
 - Keep screens light. Each screen shows the main action and the state; a
   clear icon replaces a caption where the meaning is obvious. Rare actions
   (rename, delete, copy address, open in another app, forget profile) live in
@@ -52,8 +59,10 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
   is a warm graphite, not black, with a toned-down accent and its own status
   and profile colours; text contrast at least WCAG AA in both. Follows the
   system, or set by hand in settings.
-- No technical details on the main screens: ports, addresses and frpc states
-  are on the card or in details, not in the lists.
+- No technical details on the main screens: addresses and frpc states are on
+  the card or in details, not in the lists. The one exception is the compact
+  mark of open tunnel ports on a device row (link glyph and port numbers),
+  which tells at a glance where a tunnel is open.
 
 ## Scenarios
 
