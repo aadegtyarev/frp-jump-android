@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ssh
 
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -49,7 +51,7 @@ class SshSessions(
         scope.launch(Dispatchers.Main) {
             tunnelsUp.distinctUntilChanged().collect { up ->
                 _sessions.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }
-                    .forEach { close(it.id, "The tunnel was closed.") }
+                    .forEach { close(it.id, Texts.get(R.string.ssh_tunnel_closed)) }
             }
         }
     }
@@ -72,7 +74,7 @@ class SshSessions(
         return fresh
     }
 
-    fun close(id: Int, reason: String = "Closed.") {
+    fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed)) {
         val session = _sessions.value.firstOrNull { it.id == id } ?: return
         session.close(reason)
         _sessions.update { list -> list.filter { it.id != id } }
@@ -97,7 +99,7 @@ class SshSessions(
 
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
             if (text.isNullOrEmpty()) return
-            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Terminal", text))
+            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(Texts.get(R.string.terminal), text))
         }
 
         override fun onPasteTextFromClipboard(session: TerminalSession?) {

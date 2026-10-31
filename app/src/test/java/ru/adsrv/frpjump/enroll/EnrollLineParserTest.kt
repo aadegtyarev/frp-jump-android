@@ -15,10 +15,10 @@ class EnrollLineParserTest {
         return (result as EnrollLineResult.Ok).line
     }
 
-    private fun error(text: String): String {
+    private fun error(text: String): EnrollLineProblem {
         val result = EnrollLineParser.parse(text)
         assertTrue("expected Error, got $result", result is EnrollLineResult.Error)
-        return (result as EnrollLineResult.Error).message
+        return (result as EnrollLineResult.Error).problem
     }
 
     @Test
@@ -98,10 +98,8 @@ class EnrollLineParserTest {
     }
 
     @Test
-    fun errorsNeverQuoteTheToken() {
-        val bad = token.dropLast(1) + "!"
-        assertTrue(!error("https://way.example.com $bad").contains(bad.take(10)))
-        assertTrue(!error("http://way.example.com $token").contains(token.take(10)))
+    fun badTokenIsNamedWithoutQuotingIt() {
+        assertEquals(EnrollLineProblem.BAD_TOKEN, error("https://way.example.com ${token.dropLast(1)}!"))
     }
 
     @Test
@@ -125,18 +123,18 @@ class EnrollLineParserTest {
 
     @Test
     fun httpRejected() {
-        assertTrue(error("frp-jump-client enroll http://way.example.com $token").contains("https://"))
+        assertEquals(EnrollLineProblem.HTTP, error("frp-jump-client enroll http://way.example.com $token"))
     }
 
     @Test
     fun garbageRejected() {
-        error("")
-        error("   \n ")
+        assertEquals(EnrollLineProblem.EMPTY, error(""))
+        assertEquals(EnrollLineProblem.EMPTY, error("   \n "))
         error("hello world")
-        error("frp-jump-client enroll")
-        error("frp-jump-client enroll https://way.example.com")
-        error("https://way.example.com $token --name")
-        error("https://way.example.com ${token.drop(1)}")
+        assertEquals(EnrollLineProblem.NOTHING_AFTER_COMMAND, error("frp-jump-client enroll"))
+        assertEquals(EnrollLineProblem.TOO_SHORT, error("frp-jump-client enroll https://way.example.com"))
+        assertEquals(EnrollLineProblem.NAME_WITHOUT_VALUE, error("https://way.example.com $token --name"))
+        assertEquals(EnrollLineProblem.TOKEN_LENGTH, error("https://way.example.com ${token.drop(1)}"))
         error("https://way.example.com tok\$en!")
         error("ftp://way.example.com $token")
     }

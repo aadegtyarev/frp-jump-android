@@ -32,6 +32,8 @@ import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.R
 import java.io.IOException
 
 /**
@@ -222,7 +224,7 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: ProtocolMismatchException) {
-            core.update { it.copy(mismatch = e.message) }
+            core.update { it.copy(mismatch = e.userMessage()) }
             SyncResult(null, ok = false)
         } catch (e: Exception) {
             if (noteRemoval(e, credentials)) stopAllLocked()
@@ -336,7 +338,7 @@ class TunnelManager(
                 val desired = sync()
                 if (desired != null && desired.consumed.any { it.grantId == grant.grantId }) return
             }
-            fail(key, "The server has not listed the connection yet; it will appear on a later poll.")
+            fail(key, Texts.get(R.string.tunnel_not_listed))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

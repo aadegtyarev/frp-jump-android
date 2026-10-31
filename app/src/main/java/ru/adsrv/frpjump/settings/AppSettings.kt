@@ -10,16 +10,17 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import ru.adsrv.frpjump.api.WireJson
+import ru.adsrv.frpjump.locale.AppLanguage
 import ru.adsrv.frpjump.store.TextStorage
 
 /** How often to poll with the app closed, while tunnels are up; [ms] null is off. */
 @Serializable
-enum class BackgroundPoll(val ms: Long?, val label: String) {
-    @SerialName("off") OFF(null, "Off"),
-    @SerialName("30s") SECONDS_30(30_000L, "30 s"),
-    @SerialName("1m") MINUTE_1(60_000L, "1 min"),
-    @SerialName("5m") MINUTES_5(300_000L, "5 min"),
-    @SerialName("15m") MINUTES_15(900_000L, "15 min"),
+enum class BackgroundPoll(val ms: Long?) {
+    @SerialName("off") OFF(null),
+    @SerialName("30s") SECONDS_30(30_000L),
+    @SerialName("1m") MINUTE_1(60_000L),
+    @SerialName("5m") MINUTES_5(300_000L),
+    @SerialName("15m") MINUTES_15(900_000L),
 }
 
 @Serializable
@@ -33,6 +34,12 @@ data class AppSettings(
     @SerialName("direct") val direct: Boolean = true,
     @SerialName("local_port_first") val localPortFirst: Int = DEFAULT_PORTS.first,
     @SerialName("local_port_last") val localPortLast: Int = DEFAULT_PORTS.last,
+    /**
+     * Settings › Language as last chosen in the app. Android 13+ and AppCompat
+     * keep the choice themselves; this copy only stands in before AppCompat
+     * has read its own on Android 10–12 ([ru.adsrv.frpjump.locale.restoreAppLanguage]).
+     */
+    @SerialName("language") val language: AppLanguage = AppLanguage.SYSTEM,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -45,12 +52,15 @@ const val MIN_LOCAL_PORT = 1024
 const val MAX_LOCAL_PORT = 65535
 const val MIN_LOCAL_PORTS = 10
 
+/** Why a local port range is not usable. */
+enum class PortRangeProblem { MISSING, OUTSIDE, REVERSED, TOO_SMALL }
+
 /** Null when [first]..[last] is a usable local port range, else why not. */
-fun portRangeProblem(first: Int?, last: Int?): String? = when {
-    first == null || last == null -> "Enter two port numbers."
-    first < MIN_LOCAL_PORT || last > MAX_LOCAL_PORT -> "Ports must be within $MIN_LOCAL_PORT-$MAX_LOCAL_PORT."
-    last < first -> "The first port must not be above the last."
-    last - first + 1 < MIN_LOCAL_PORTS -> "Use at least $MIN_LOCAL_PORTS ports."
+fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
+    first == null || last == null -> PortRangeProblem.MISSING
+    first < MIN_LOCAL_PORT || last > MAX_LOCAL_PORT -> PortRangeProblem.OUTSIDE
+    last < first -> PortRangeProblem.REVERSED
+    last - first + 1 < MIN_LOCAL_PORTS -> PortRangeProblem.TOO_SMALL
     else -> null
 }
 

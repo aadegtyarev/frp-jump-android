@@ -50,14 +50,13 @@ import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.NotificationsOffLine
 import ru.adsrv.frpjump.ui.DeviceGlyph
+import ru.adsrv.frpjump.ui.ageText
+import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.profiles.Chip
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
 import ru.adsrv.frpjump.ui.profiles.ProfileSwitcher
 import ru.adsrv.frpjump.ui.profiles.removedElsewhere
 import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * The current profile's devices under the profile switcher. [profiles]
@@ -208,7 +207,8 @@ private fun DeviceItem(device: DeviceRow, onClick: () -> Unit) {
                     when {
                         device.online && device.stale -> stringResource(R.string.device_was_online)
                         device.online -> stringResource(R.string.device_online)
-                        else -> stringResource(R.string.device_last_seen, device.lastSeen)
+                        device.lastSeen == null -> stringResource(R.string.device_never_seen)
+                        else -> stringResource(R.string.device_last_seen, ageText(device.lastSeen))
                     },
                     fontSize = 13.sp,
                     color = colors.muted,
@@ -270,12 +270,4 @@ private fun OfflineBanner(since: Instant, unreachable: Boolean, error: String?, 
             )
         }
     }
-}
-
-/** "14:02" today, "30 Oct 14:02" otherwise, in the phone's zone. */
-private fun shortTime(at: Instant): String {
-    val local = at.atZone(ZoneId.systemDefault())
-    val today = LocalDate.now(local.zone)
-    val pattern = if (local.toLocalDate() == today) "HH:mm" else "d MMM HH:mm"
-    return DateTimeFormatter.ofPattern(pattern).format(local)
 }

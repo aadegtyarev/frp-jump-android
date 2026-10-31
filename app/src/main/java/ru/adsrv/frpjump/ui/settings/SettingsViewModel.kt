@@ -11,7 +11,12 @@ import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.settings.AppSettings
 import ru.adsrv.frpjump.settings.BackgroundPoll
+import ru.adsrv.frpjump.settings.PortRangeProblem
 import ru.adsrv.frpjump.settings.portRangeProblem
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.AppLanguage
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.locale.applyAppLanguage
 import ru.adsrv.frpjump.ssh.publicLineOfPrivateKey
 import ru.adsrv.frpjump.ui.userMessage
 
@@ -37,10 +42,16 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     fun setDirect(direct: Boolean) = save { it.copy(direct = direct) }
 
     /** Returns why the range was refused, or null once it is saved. */
-    fun setLocalPorts(first: Int?, last: Int?): String? {
+    fun setLocalPorts(first: Int?, last: Int?): PortRangeProblem? {
         portRangeProblem(first, last)?.let { return it }
         save { it.copy(localPortFirst = first!!, localPortLast = last!!) }
         return null
+    }
+
+    /** Switches the language at once (main thread); the settings keep a copy for Android 10–12 ([restoreAppLanguage]). */
+    fun setLanguage(language: AppLanguage) {
+        applyAppLanguage(language)
+        save { it.copy(language = language) }
     }
 
     private fun save(change: (AppSettings) -> AppSettings) {
@@ -55,7 +66,7 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
                 }
                 _state.update { it.copy(sshPublicKey = line, importedKey = imported) }
             } catch (e: Exception) {
-                _state.update { it.copy(sshPublicKeyError = "Cannot make or read the SSH key: ${e.userMessage()}") }
+                _state.update { it.copy(sshPublicKeyError = Texts.get(R.string.ssh_key_failed, e.userMessage())) }
             }
         }
     }
@@ -74,7 +85,7 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
                 }
                 _state.update { it.copy(importedKey = line, importError = null) }
             } catch (e: Exception) {
-                _state.update { it.copy(importError = "Not a usable private key, or a wrong passphrase (${e.userMessage()}).") }
+                _state.update { it.copy(importError = Texts.get(R.string.import_key_failed, e.userMessage())) }
             }
         }
     }

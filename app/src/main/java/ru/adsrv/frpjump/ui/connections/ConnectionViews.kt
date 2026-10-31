@@ -75,7 +75,7 @@ fun kindLabel(kind: PortKind): String = stringResource(
 /** The connection's name; "Port N" for a tunnel no saved connection names. */
 @Composable
 fun rowName(row: ConnectionRow): String =
-    if (row.saved) row.connection.name else stringResource(R.string.connection_unsaved, row.connection.port)
+    if (row.saved) connectionLabel(row.connection) else stringResource(R.string.connection_unsaved, row.connection.port)
 
 /** How a state reads: its colour family. */
 enum class Tone { GOOD, WARN, BAD, NEUTRAL }
@@ -401,7 +401,7 @@ fun ConnectionDialogs(
         var error by remember(row.key) { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { if (!busy) ui.deleting = null },
-            title = { Text(stringResource(R.string.delete_title, row.connection.name)) },
+            title = { Text(stringResource(R.string.delete_title, rowName(row))) },
             text = {
                 androidx.compose.foundation.layout.Column {
                     Text(stringResource(if (actions.deleteDisconnects(row)) R.string.delete_text_tunnel else R.string.delete_text))

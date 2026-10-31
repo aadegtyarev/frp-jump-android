@@ -9,6 +9,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -27,6 +29,7 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.MainActivity
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.localized
 import ru.adsrv.frpjump.restore.RestoreNotice
 import ru.adsrv.frpjump.restore.serviceNeeded
 
@@ -53,6 +56,8 @@ class TunnelService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var watcher: Job? = null
     private var lastStartId = 0
+    /** What the notification shows now; said again in a new language. */
+    private var shown: View? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -108,6 +113,7 @@ class TunnelService : Service() {
                         } else {
                             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(view))
                         }
+                        shown = view
                     }
             }
         }
@@ -123,6 +129,12 @@ class TunnelService : Service() {
         /** The last "Disconnect all" could not tell a server. */
         val disconnectFailed: Boolean = false,
     )
+
+    /** Android 13+ tells the whole app of a new language (Settings › Language): the notification says it too. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        shown?.let { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(it)) }
+    }
 
     override fun onDestroy() {
         running = false
@@ -163,13 +175,13 @@ class TunnelService : Service() {
      * "N tunnels", or "N tunnels in M profiles" when more than one profile
      * has tunnels; "Restoring (N) tunnels…" while none runs yet after a restart.
      */
-    private fun title(summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
-        TunnelsTitle.RestoringUnknown -> getString(R.string.tunnels_restoring_unknown)
-        is TunnelsTitle.Restoring -> resources.getQuantityString(R.plurals.tunnels_restoring, title.count, title.count)
+    private fun title(res: Resources, summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
+        TunnelsTitle.RestoringUnknown -> res.getString(R.string.tunnels_restoring_unknown)
+        is TunnelsTitle.Restoring -> res.getQuantityString(R.plurals.tunnels_restoring, title.count, title.count)
         is TunnelsTitle.Up -> {
-            val tunnels = resources.getQuantityString(R.plurals.tunnels, summary.tunnels, summary.tunnels)
+            val tunnels = res.getQuantityString(R.plurals.tunnels, summary.tunnels, summary.tunnels)
             if (summary.namesProfiles) {
-                resources.getQuantityString(R.plurals.tunnels_in_profiles, summary.profiles, summary.profiles, tunnels)
+                res.getQuantityString(R.plurals.tunnels_in_profiles, summary.profiles, summary.profiles, tunnels)
             } else {
                 tunnels
             }
@@ -177,22 +189,19 @@ class TunnelService : Service() {
     }
 
     /** While tunnels are still to come back: a failed "Disconnect all" first, then what they wait for. */
-    private fun text(view: View): String? = when {
+    private fun text(res: Resources, view: View): String? = when {
         tunnelsTitle(view.summary) is TunnelsTitle.Up -> null
-        view.disconnectFailed -> getString(R.string.disconnect_all_failed)
-        view.waiting == Waiting.UNLOCK -> getString(R.string.restore_waiting_unlock)
-        view.waiting == Waiting.NETWORK -> getString(R.string.restore_waiting_network)
+        view.disconnectFailed -> res.getString(R.string.disconnect_all_failed)
+        view.waiting == Waiting.UNLOCK -> res.getString(R.string.restore_waiting_unlock)
+        view.waiting == Waiting.NETWORK -> res.getString(R.string.restore_waiting_network)
         else -> null
     }
 
     private fun notification(view: View): Notification {
         val summary = view.summary
-        val manager = getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(CHANNEL) == null) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW),
-            )
-        }
+        val res = localized().resources
+        // Created, or renamed into the app's current language.
+        tunnelsChannel(this, res)
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
@@ -201,12 +210,12 @@ class TunnelService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle(title(summary))
-            .setContentText(text(view))
+            .setContentTitle(title(res, summary))
+            .setContentText(text(res, view))
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(0, getString(R.string.disconnect_all), disconnectAll)
+            .addAction(0, res.getString(R.string.disconnect_all), disconnectAll)
             .build()
     }
 
@@ -248,4 +257,11 @@ class TunnelService : Service() {
             false
         }
     }
+}
+
+/** The tunnels channel ([TunnelService.CHANNEL]), created or renamed in [res]'s language. */
+fun tunnelsChannel(context: Context, res: Resources) {
+    context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+        NotificationChannel(TunnelService.CHANNEL, res.getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW),
+    )
 }

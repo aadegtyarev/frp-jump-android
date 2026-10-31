@@ -26,12 +26,12 @@ class PresenceTest {
     @Test
     fun garbageTimestamp() {
         assertNull(parseServerTime("yesterday"))
-        assertEquals(Presence(online = false, lastSeen = "never"), presenceOf("yesterday", now))
+        assertEquals(Presence(online = false, lastSeen = null), presenceOf("yesterday", now))
     }
 
     @Test
     fun neverSeen() {
-        assertEquals(Presence(online = false, lastSeen = "never"), presenceOf(null, now))
+        assertEquals(Presence(online = false, lastSeen = null), presenceOf(null, now))
     }
 
     @Test
@@ -45,16 +45,16 @@ class PresenceTest {
     fun serverClockSlightlyAhead() {
         val p = presenceOf("2026-10-30T12:00:03", now)
         assertTrue(p.online)
-        assertEquals("just now", p.lastSeen)
+        assertEquals(Age(AgeUnit.NOW, 0), p.lastSeen)
     }
 
     @Test
     fun relativeLastSeen() {
-        assertEquals("just now", presenceOf("2026-10-30T11:59:58", now).lastSeen)
-        assertEquals("12s ago", presenceOf("2026-10-30T11:59:48", now).lastSeen)
-        assertEquals("5 min ago", presenceOf("2026-10-30T11:55:00", now).lastSeen)
-        assertEquals("2 h ago", presenceOf("2026-10-30T09:30:00", now).lastSeen)
-        assertEquals("3 d ago", presenceOf("2026-10-27T12:00:00", now).lastSeen)
-        assertEquals("just now", relativeAge(Duration.ofSeconds(-40)))
+        assertEquals(Age(AgeUnit.NOW, 0), presenceOf("2026-10-30T11:59:58", now).lastSeen)
+        assertEquals(Age(AgeUnit.SECONDS, 12), presenceOf("2026-10-30T11:59:48", now).lastSeen)
+        assertEquals(Age(AgeUnit.MINUTES, 5), presenceOf("2026-10-30T11:55:00", now).lastSeen)
+        assertEquals(Age(AgeUnit.HOURS, 2), presenceOf("2026-10-30T09:30:00", now).lastSeen)
+        assertEquals(Age(AgeUnit.DAYS, 3), presenceOf("2026-10-27T12:00:00", now).lastSeen)
+        assertEquals(Age(AgeUnit.NOW, 0), relativeAge(Duration.ofSeconds(-40)))
     }
 }

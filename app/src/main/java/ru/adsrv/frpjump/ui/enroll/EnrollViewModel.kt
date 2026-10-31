@@ -24,6 +24,8 @@ import ru.adsrv.frpjump.profiles.profileColor
 import ru.adsrv.frpjump.profiles.profileName
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.store.StoredEnrollment
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.enroll.EnrollLineProblem
 import ru.adsrv.frpjump.ui.userMessage
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -117,11 +119,11 @@ class EnrollViewModel(
         val current = _state.value
         if (current.busy) return
         val line = when (val parsed = EnrollLineParser.parse(current.text)) {
-            is EnrollLineResult.Error -> return _state.update { it.copy(error = parsed.message) }
+            is EnrollLineResult.Error -> return _state.update { it.copy(error = parsed.problem.text()) }
             is EnrollLineResult.Ok -> parsed.line
         }
         val profile = profileName(current.profileName)
-            ?: return _state.update { it.copy(profileNameError = app.getString(R.string.profile_name_missing)) }
+            ?: return _state.update { it.copy(profileNameError = Texts.get(R.string.profile_name_missing)) }
         val name = if (current.needsName) current.name.trim() else line.requestedName
         _state.update { it.copy(busy = true, error = null, profileNameError = null) }
         // The server spends the token as it answers: the call and the storing run in the app
@@ -146,7 +148,7 @@ class EnrollViewModel(
                 is EnrollOutcome.NotStored -> _state.update {
                     it.copy(
                         busy = false,
-                        error = app.getString(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device),
+                        error = Texts.get(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device),
                     )
                 }
             }
@@ -173,8 +175,8 @@ class EnrollViewModel(
 
     private fun postOutcome(outcome: EnrollOutcome) {
         val text = when (outcome) {
-            is EnrollOutcome.Stored -> app.getString(R.string.profile_added, outcome.name)
-            is EnrollOutcome.NotStored -> app.getString(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device)
+            is EnrollOutcome.Stored -> Texts.get(R.string.profile_added, outcome.name)
+            is EnrollOutcome.NotStored -> Texts.get(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device)
             is EnrollOutcome.Refused -> return
         }
         app.session.postNotice(text, forProfile = app.profiles.state.value.index.current)
@@ -242,4 +244,16 @@ class EnrollViewModel(
     private companion object {
         const val TAG = "EnrollViewModel"
     }
+}
+
+/** Why the pasted line is not an enroll line, in the app's language. */
+private fun EnrollLineProblem.text(): String = when (this) {
+    EnrollLineProblem.EMPTY -> Texts.get(R.string.enroll_line_empty)
+    EnrollLineProblem.NAME_WITHOUT_VALUE -> Texts.get(R.string.enroll_line_name_empty)
+    EnrollLineProblem.NOTHING_AFTER_COMMAND -> Texts.get(R.string.enroll_line_no_url)
+    EnrollLineProblem.TOO_SHORT -> Texts.get(R.string.enroll_line_too_short)
+    EnrollLineProblem.TOKEN_LENGTH -> Texts.get(R.string.enroll_line_token_length, EnrollLineParser.TOKEN_LENGTH)
+    EnrollLineProblem.HTTP -> Texts.get(R.string.enroll_line_http)
+    EnrollLineProblem.BAD_URL -> Texts.get(R.string.enroll_line_bad_url)
+    EnrollLineProblem.BAD_TOKEN -> Texts.get(R.string.enroll_line_bad_token, EnrollLineParser.TOKEN_LENGTH)
 }

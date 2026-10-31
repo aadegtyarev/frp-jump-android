@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">frp-jump</string>
+    <string name="app_name" translatable="false">frp-jump</string>
 
     <!-- Common -->
     <string name="back">Back</string>
@@ -66,10 +66,10 @@
     <string name="new_profile">New profile</string>
     <string name="enroll_step_invite">1. Get an invitation</string>
     <string name="enroll_step_invite_text">On a computer with frp-jump, run this command. It prints the line and a QR code of it.</string>
-    <string name="enroll_command">frp-jump-client devices add-token --name phone --qr</string>
+    <string name="enroll_command" translatable="false">frp-jump-client devices add-token --name phone --qr</string>
     <string name="enroll_step_paste">2. Scan or paste</string>
     <string name="enroll_line_label">Or paste the whole line</string>
-    <string name="enroll_line_placeholder">frp-jump-client enroll https://… &lt;token&gt;</string>
+    <string name="enroll_line_placeholder" translatable="false">frp-jump-client enroll https://… &lt;token&gt;</string>
     <string name="enroll_line_ok">Server: %s</string>
     <string name="enroll_scan">Scan QR code</string>
     <string name="camera_rationale">The camera only reads the QR code; nothing is recorded. Tap Scan QR code again to allow it, or paste the line.</string>
@@ -161,11 +161,11 @@
 
     <!-- Connection kinds and states (the same words on every screen) -->
     <string name="kind_web">Web</string>
-    <string name="kind_ssh">SSH</string>
-    <string name="kind_tcp">TCP</string>
-    <string name="kind_web_tile">WEB</string>
-    <string name="kind_ssh_tile">SSH</string>
-    <string name="kind_tcp_tile">TCP</string>
+    <string name="kind_ssh" translatable="false">SSH</string>
+    <string name="kind_tcp" translatable="false">TCP</string>
+    <string name="kind_web_tile" translatable="false">WEB</string>
+    <string name="kind_ssh_tile" translatable="false">SSH</string>
+    <string name="kind_tcp_tile" translatable="false">TCP</string>
     <string name="state_not_connected">Not connected</string>
     <string name="state_connecting">Connecting…</string>
     <string name="state_disconnecting">Disconnecting…</string>
@@ -177,12 +177,12 @@
 
     <!-- Connection rows and their actions -->
     <string name="connection_sub">%1$s · port %2$d</string>
-    <string name="connection_sub_short">%1$s · %2$d</string>
+    <string name="connection_sub_short" translatable="false">%1$s · %2$d</string>
     <string name="connection_sub_https">%1$s · port %2$d · HTTPS</string>
     <string name="connection_sub_ssh_key">%1$s · port %2$d · %3$s · phone key</string>
     <string name="connection_sub_ssh_password">%1$s · port %2$d · %3$s · password</string>
     <string name="connection_unsaved">Port %d</string>
-    <string name="connection_default_name">%1$s %2$d</string>
+    <string name="connection_default_name" translatable="false">%1$s %2$d</string>
     <string name="connection_actions">Actions with “%s”</string>
     <string name="connect">Connect</string>
     <string name="connect_named">Connect “%s”</string>
@@ -221,11 +221,11 @@
     <string name="port_on_device">Port on the device</string>
     <string name="port_missing">Enter a port.</string>
     <string name="port_out_of_range">A port is a number from 1 to 65535.</string>
-    <string name="preset_named">%1$s · %2$d</string>
+    <string name="preset_named" translatable="false">%1$s · %2$d</string>
     <string name="connection_name">Name</string>
     <string name="connection_name_hint">For example: %s</string>
     <string name="connection_name_taken">Another connection to this port already has this name.</string>
-    <string name="https">HTTPS</string>
+    <string name="https" translatable="false">HTTPS</string>
     <string name="https_hint">A self-signed certificate is remembered after you confirm it on the first visit</string>
     <string name="ssh_user">User</string>
     <string name="ssh_user_missing">Enter a user.</string>
@@ -236,7 +236,7 @@
     <string name="connections_active">Active · %d</string>
     <string name="connections_saved">Saved</string>
     <string name="connections_empty">No saved connections yet. Open a device and add one with “Connection”.</string>
-    <string name="connection_on_device">· %s</string>
+    <string name="connection_on_device" translatable="false">· %s</string>
 
     <!-- Terminals tab -->
     <string name="terminals_empty">No open terminals. Connect an SSH connection and tap “Terminal”.</string>
@@ -261,4 +261,145 @@
     <string name="protocol_clash_ssh">Another connection uses this port for SSH; SSH and other kinds cannot share a port.</string>
     <string name="protocol_clash_other">Another connection uses this port as Web or TCP; SSH cannot share it.</string>
     <string name="kind_locked">Disconnect to change the kind or the port.</string>
+
+    <!-- Failures in plain words -->
+    <string name="error_not_https">Not an https:// server URL: %s</string>
+    <string name="error_unreachable">Cannot reach %1$s: %2$s</string>
+    <string name="error_broke">Connection to %1$s broke: %2$s</string>
+    <string name="error_redirect">%1$s redirects to %2$s; not following it. Check the server URL.</string>
+    <string name="error_redirect_unknown">an unknown address</string>
+    <string name="error_protocol_update_app">The server speaks protocol %1$d, this app speaks %2$d: update the app.</string>
+    <string name="error_protocol_update_server">The server speaks protocol %1$d, this app speaks %2$d: update the server.</string>
+    <string name="error_unexpected_answer">Unexpected answer from the server.</string>
+    <string name="error_key_missing">The phone’s Keystore key is gone.</string>
+    <string name="error_no_free_port">No free local port in %1$d–%2$d.</string>
+
+    <!-- How long ago a device was seen -->
+    <string name="age_just_now">just now</string>
+    <plurals name="age_seconds">
+        <item quantity="one">%d s ago</item>
+        <item quantity="other">%d s ago</item>
+    </plurals>
+    <plurals name="age_minutes">
+        <item quantity="one">%d min ago</item>
+        <item quantity="other">%d min ago</item>
+    </plurals>
+    <plurals name="age_hours">
+        <item quantity="one">%d h ago</item>
+        <item quantity="other">%d h ago</item>
+    </plurals>
+    <plurals name="age_days">
+        <item quantity="one">%d day ago</item>
+        <item quantity="other">%d days ago</item>
+    </plurals>
+    <string name="device_never_seen">Never seen</string>
+
+    <!-- Why a pasted enroll line was not understood -->
+    <string name="enroll_line_empty">Paste the enroll line printed by frp-jump-client.</string>
+    <string name="enroll_line_name_empty">--name needs a value.</string>
+    <string name="enroll_line_no_url">Expected the server URL and the token.</string>
+    <string name="enroll_line_too_short">Expected the server URL followed by the token.</string>
+    <string name="enroll_line_token_length">The token should be %d characters; check that the whole line was copied.</string>
+    <string name="enroll_line_http">The server URL must start with https://, not http://.</string>
+    <string name="enroll_line_bad_url">Expected an https:// server URL followed by the token; could not read a URL in it.</string>
+    <string name="enroll_line_bad_token">The token does not look right: it is %d letters, digits, - or _.</string>
+
+    <!-- Stored credentials unreadable -->
+    <string name="storage_unreadable">This phone’s stored credentials cannot be read right now. Nothing was deleted; try again in a moment.</string>
+
+    <!-- Web view -->
+    <string name="web_reload">Reload</string>
+    <string name="web_renderer_gone">The page stopped: its renderer crashed or Android closed it to free memory.</string>
+    <string name="web_no_file_picker">No app to pick files with.</string>
+    <string name="web_blocked">Blocked: %s is not this tunnel.</string>
+    <string name="web_download_page_made">The page made this file itself; use “Open in browser” to save it.</string>
+    <string name="web_downloading">Downloading %s</string>
+    <string name="web_no_app">No app can open %s</string>
+
+    <!-- SSH console -->
+    <string name="terminal_text_smaller">Smaller text</string>
+    <string name="terminal_text_larger">Larger text</string>
+    <string name="terminal_keyboard">Keyboard</string>
+    <string name="terminal_close_session">Close session</string>
+    <string name="terminal_reconnect">Reconnect</string>
+    <string name="terminal_status_open">%1$s via %2$s</string>
+    <string name="terminal_status_host_key_unknown">Waiting for the host key decision</string>
+    <string name="terminal_status_host_key_changed">Blocked: host key changed</string>
+    <string name="host_key_trust_title">Trust this device?</string>
+    <string name="host_key_first">First SSH connection to %s. Its host key:</string>
+    <string name="host_key_check">On the device, `%s` prints the same line if this is really it. The key is remembered for this device and port.</string>
+    <string name="host_key_changed_title">Host key changed</string>
+    <string name="host_key_changed_text">%s shows another host key than the one trusted before. That happens after a reinstall or a firmware reset, but it can also mean someone is in between. Nothing was sent.</string>
+    <string name="host_key_trusted_before">Trusted before:</string>
+    <string name="host_key_shown_now">Shown now:</string>
+    <string name="host_key_forget_hint">Forget the old key only if you know why it changed; you will be asked to trust the new one.</string>
+    <string name="host_key_forget">Forget the old key</string>
+    <string name="ssh_login_title">SSH to %s</string>
+    <string name="ssh_method_key">Key</string>
+    <string name="ssh_method_password">Password</string>
+    <string name="ssh_password_remembered">Password (remembered)</string>
+    <string name="ssh_remember_password">Remember on this phone</string>
+    <string name="ssh_login_key_hint">Uses this phone’s key (Settings › %s); the device must have it in ~/.ssh/authorized_keys.</string>
+    <string name="secret_show">Show</string>
+    <string name="secret_hide">Hide</string>
+    <string name="ssh_closed">Closed.</string>
+    <string name="ssh_tunnel_closed">The tunnel was closed.</string>
+    <string name="ssh_note_connecting">Connecting to %1$s (%2$s)…</string>
+    <string name="ssh_note_host_key_unknown">The host key of %s is not known yet.</string>
+    <string name="ssh_note_host_key_changed">WARNING: the host key of %s has changed. Not connecting.</string>
+    <string name="ssh_cannot_connect">Cannot connect: %s</string>
+    <string name="ssh_failed">SSH failed: %s</string>
+    <string name="ssh_key_refused">The device did not accept this phone’s key for “%1$s”. Add the key from Settings › %2$s to ~/.ssh/authorized_keys there, or log in with a password.</string>
+    <string name="ssh_password_refused">Wrong user name or password for “%s”.</string>
+    <string name="ssh_connection_lost">Connection lost: %s</string>
+    <string name="ssh_logged_out">Logged out (exit %d).</string>
+    <string name="ssh_connection_closed">Connection closed.</string>
+
+    <!-- Settings -->
+    <string name="settings_tunnels">Tunnels</string>
+    <string name="settings_background">Background</string>
+    <string name="settings_app">App</string>
+    <string name="language">Language</string>
+    <string name="language_system">System</string>
+    <string name="language_russian" translatable="false">Русский</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="local_ports">Local ports</string>
+    <string name="local_ports_hint">Tunnels listen on 127.0.0.1 on a port from this range and keep it per device and port, so bookmarks stay valid. Ports already given out stay unless they fall outside a new range.</string>
+    <string name="local_ports_from">From</string>
+    <string name="local_ports_to">To</string>
+    <string name="ports_missing">Enter two port numbers.</string>
+    <string name="ports_outside">Ports must be within %1$d–%2$d.</string>
+    <string name="ports_reversed">The first port must not be above the last.</string>
+    <string name="ports_too_small">Use at least %d ports.</string>
+    <string name="background_poll">Check the server in the background</string>
+    <string name="poll_off">Off</string>
+    <plurals name="poll_seconds">
+        <item quantity="one">%d s</item>
+        <item quantity="other">%d s</item>
+    </plurals>
+    <plurals name="poll_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="background_poll_off_hint">Off: with the app closed, open tunnels keep running but nothing is checked; tunnels closed or devices disabled elsewhere are noticed when you open the app.</string>
+    <string name="background_poll_on_hint">With the app closed, every %s while tunnels are up (the “Tunnels” notification is shown): keeps this phone online for the server and closes tunnels that were disconnected or disabled elsewhere.</string>
+    <string name="background_poll_open_hint">While the app is open it checks every 2 s. Without tunnels nothing runs in the background.</string>
+    <string name="ssh_public_key">SSH public key</string>
+    <string name="ssh_public_key_hint">Add this line to ~/.ssh/authorized_keys on a device to log in with this phone’s key.</string>
+    <string name="ssh_key_failed">Cannot make or read the SSH key: %s</string>
+    <string name="copy">Copy</string>
+    <string name="share">Share</string>
+    <string name="imported_key">Imported private key</string>
+    <string name="imported_key_hint">Optional: an OpenSSH private key file you already use, tried before this phone’s key.</string>
+    <string name="imported_key_tried_first">Tried before this phone’s own key:</string>
+    <string name="import_key">Import private key</string>
+    <string name="import_key_short">Import</string>
+    <string name="replace_key">Replace</string>
+    <string name="remove_key">Remove</string>
+    <string name="import_key_failed">Not a usable private key, or a wrong passphrase (%s).</string>
+    <string name="key_file_unreadable">Cannot read that file.</string>
+    <string name="key_passphrase">Key passphrase</string>
+    <string name="key_passphrase_label">Passphrase (empty if none)</string>
+    <string name="frpc_login_failed">Cannot log in to the relay: %s</string>
+    <string name="frpc_stopped">frpc stopped (exit code %d)</string>
 </resources>

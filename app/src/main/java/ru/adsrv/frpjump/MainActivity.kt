@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -15,7 +15,13 @@ import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.ui.AppNav
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 
-class MainActivity : ComponentActivity() {
+/**
+ * An AppCompat activity for Settings › Language: on Android 10–12 AppCompat
+ * gives it the app's language and recreates it when that changes (Android
+ * 13+ does both itself). Locale is not in configChanges, so a new language
+ * recreates the activity; Compose keeps its saved state across it.
+ */
+class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

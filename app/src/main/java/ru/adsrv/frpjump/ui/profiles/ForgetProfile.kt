@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.ui.userMessage
 
@@ -27,10 +28,10 @@ suspend fun forgetProfile(app: FrpJumpApp, id: String): String? {
     val name = app.profiles.state.value.index.find(id)?.name.orEmpty()
     return try {
         val credentials = withContext(Dispatchers.IO) { runtime.store.load() }
-        var notice = app.getString(R.string.profile_forgotten, name)
+        var notice = Texts.get(R.string.profile_forgotten, name)
         if (credentials != null) {
             val laptop = { e: Exception ->
-                app.getString(R.string.forget_server_not_told, e.userMessage(), credentials.deviceName, credentials.deviceName)
+                Texts.get(R.string.forget_server_not_told, e.userMessage(), credentials.deviceName, credentials.deviceName)
             }
             try {
                 app.api.deleteDevice(credentials, credentials.deviceName)
@@ -50,6 +51,6 @@ suspend fun forgetProfile(app: FrpJumpApp, id: String): String? {
         throw e
     } catch (e: Exception) {
         Log.w(TAG, "forget failed: ${e.javaClass.simpleName}")
-        app.getString(R.string.forget_failed, e.userMessage())
+        Texts.get(R.string.forget_failed, e.userMessage())
     }
 }

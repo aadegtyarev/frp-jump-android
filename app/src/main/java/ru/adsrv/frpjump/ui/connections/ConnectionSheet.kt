@@ -60,7 +60,7 @@ import ru.adsrv.frpjump.connections.connectionOf
 import ru.adsrv.frpjump.connections.draftOf
 import ru.adsrv.frpjump.connections.draftProblems
 import ru.adsrv.frpjump.connections.parsePort
-import ru.adsrv.frpjump.connections.resolvedName
+import ru.adsrv.frpjump.connections.draftLabel
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ui.AppTheme
 import java.util.UUID
@@ -96,21 +96,16 @@ fun ConnectionSheet(
     var error by remember { mutableStateOf<String?>(null) }
 
     val draft = ConnectionDraft(kind, portText, name, https, user)
-    val fallbackKinds = mapOf(
-        PortKind.WEB to stringResource(R.string.kind_web),
-        PortKind.SSH to stringResource(R.string.kind_ssh),
-        PortKind.TCP to stringResource(R.string.kind_tcp),
-    )
-    val fallback = { k: PortKind, p: Int -> context.getString(R.string.connection_default_name, fallbackKinds.getValue(k), p) }
-    val savedName = resolvedName(draft, fallback)
-    val problems = draftProblems(draft, savedName, device, existing, editing?.id)
+    val generic = genericConnectionName(context)
+    val shownName = draftLabel(draft, generic)
+    val problems = draftProblems(draft, device, existing, editing?.id, generic)
 
     val save = {
         tried = true
         if (problems.ok && !busy) {
             busy = true
             error = null
-            val connection = connectionOf(draft, editing?.id ?: UUID.randomUUID().toString(), device, savedName)
+            val connection = connectionOf(draft, editing?.id ?: UUID.randomUUID().toString(), device)
             onSave(connection, editing == null && connectNow) { failure ->
                 busy = false
                 if (failure == null) onDismiss() else error = context.getString(R.string.save_failed, failure)
@@ -190,7 +185,7 @@ fun ConnectionSheet(
                 label = stringResource(R.string.connection_name),
                 value = name,
                 onValueChange = { name = it.take(40) },
-                placeholder = stringResource(R.string.connection_name_hint, savedName.ifEmpty { "homeui" }),
+                placeholder = stringResource(R.string.connection_name_hint, shownName.ifEmpty { "homeui" }),
                 problem = stringResource(R.string.connection_name_taken).takeIf { problems.nameTaken },
             )
             if (kind == PortKind.WEB) {

@@ -165,7 +165,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                         pickFiles.launch(intent)
                     } catch (_: ActivityNotFoundException) {
                         files.deliver(Activity.RESULT_CANCELED, null)
-                        Toast.makeText(context, "No app to pick files with.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.web_no_file_picker), Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -225,15 +225,15 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
-                    IconButton(onClick = reload) { Icon(Icons.Filled.Refresh, contentDescription = "Reload") }
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                    IconButton(onClick = reload) { Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.web_reload)) }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
-                            text = { Text("Open in browser") },
+                            text = { Text(stringResource(R.string.open_in_browser)) },
                             onClick = {
                                 menu = false
                                 openExternally(context, url)
@@ -252,10 +252,10 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             }
             if (rendererGone) {
                 Text(
-                    "The page stopped: its renderer crashed or Android closed it to free memory.",
+                    stringResource(R.string.web_renderer_gone),
                     modifier = Modifier.padding(16.dp),
                 )
-                TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Reload") }
+                TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.web_reload)) }
             } else {
                 if (progress in 1..99) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
                 AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
@@ -341,7 +341,7 @@ private fun configure(
             when (webNavigationFor(target, tunnelPort)) {
                 WebNavigation.IN_APP -> return false
                 WebNavigation.EXTERNAL -> openExternally(context, target)
-                WebNavigation.BLOCKED -> Toast.makeText(context, "Blocked: $target is not this tunnel.", Toast.LENGTH_SHORT).show()
+                WebNavigation.BLOCKED -> Toast.makeText(context, context.getString(R.string.web_blocked, target), Toast.LENGTH_SHORT).show()
             }
             return true
         }
@@ -421,8 +421,8 @@ private fun download(
     if (!isTunnelUrl(url, tunnelPort)) {
         when {
             url.startsWith("blob:") || url.startsWith("data:") ->
-                Toast.makeText(context, "The page made this file itself; use \"Open in browser\" to save it.", Toast.LENGTH_LONG).show()
-            isLoopbackHttpUrl(url) -> Toast.makeText(context, "Blocked: $url is not this tunnel.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.web_download_page_made), Toast.LENGTH_LONG).show()
+            isLoopbackHttpUrl(url) -> Toast.makeText(context, context.getString(R.string.web_blocked, url), Toast.LENGTH_SHORT).show()
             else -> openExternally(context, url)
         }
         return
@@ -442,7 +442,7 @@ private fun download(
         CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
         userAgent?.let { request.addRequestHeader("User-Agent", it) }
         context.getSystemService(DownloadManager::class.java).enqueue(request)
-        Toast.makeText(context, "Downloading $name", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.web_downloading, name), Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {
         openExternally(context, url)
     }
@@ -452,7 +452,7 @@ private fun openExternally(context: Context, url: String) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No app can open $url", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.web_no_app, url), Toast.LENGTH_SHORT).show()
     }
 }
 

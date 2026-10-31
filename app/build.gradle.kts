@@ -58,6 +58,8 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    // Per-app language (Settings > Language) on API 29-32 as well: AppCompatDelegate.setApplicationLocales.
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

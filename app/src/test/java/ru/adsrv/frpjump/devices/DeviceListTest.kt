@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.adsrv.frpjump.api.Age
+import ru.adsrv.frpjump.api.AgeUnit
 import ru.adsrv.frpjump.api.OwnedDevice
 import ru.adsrv.frpjump.ssh.MemoryStorage
 import java.time.Instant
@@ -57,6 +59,6 @@ class DeviceListTest {
         val wb = deviceRows(devices, "phone", fetchedAt, now, stale = true).first()
         assertTrue(wb.online)
         assertTrue(wb.stale)
-        assertEquals("1 h ago", wb.lastSeen)
+        assertEquals(Age(AgeUnit.HOURS, 1), wb.lastSeen)
     }
 }

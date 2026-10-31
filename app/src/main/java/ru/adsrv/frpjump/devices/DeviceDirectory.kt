@@ -13,6 +13,7 @@ import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.OwnedDevice
+import ru.adsrv.frpjump.api.Age
 import ru.adsrv.frpjump.api.presenceOf
 import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.CredentialStore
@@ -24,7 +25,8 @@ private const val TAG = "DeviceDirectory"
 data class DeviceRow(
     val name: String,
     val online: Boolean,
-    val lastSeen: String,
+    /** Null: never seen. */
+    val lastSeen: Age?,
     val disabled: Boolean,
     /** From a list the server gave earlier: [online] is as of [DeviceList.updatedAt]. */
     val stale: Boolean = false,

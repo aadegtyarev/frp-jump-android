@@ -1,5 +1,9 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.R
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
@@ -136,14 +140,22 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
-                    TextButton(onClick = { sessions.fontSize.value = (fontSp - 1).coerceAtLeast(MIN_FONT_SP) }) { Text("A\u2212") }
-                    TextButton(onClick = { sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP) }) { Text("A+") }
+                    val smaller = stringResource(R.string.terminal_text_smaller)
+                    val larger = stringResource(R.string.terminal_text_larger)
+                    TextButton(
+                        onClick = { sessions.fontSize.value = (fontSp - 1).coerceAtLeast(MIN_FONT_SP) },
+                        modifier = Modifier.semantics { contentDescription = smaller },
+                    ) { Text("A\u2212") }
+                    TextButton(
+                        onClick = { sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP) },
+                        modifier = Modifier.semantics { contentDescription = larger },
+                    ) { Text("A+") }
                     IconButton(onClick = { sessions.close(selected.id) }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close session")
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.terminal_close_session))
                     }
                 },
             )
@@ -184,7 +196,7 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(ended.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { sessions.reconnect(selected.id)?.let { selectedId = it.id } }) { Text("Reconnect") }
+                    TextButton(onClick = { sessions.reconnect(selected.id)?.let { selectedId = it.id } }) { Text(stringResource(R.string.terminal_reconnect)) }
                 }
             }
             ExtraKeys(
@@ -210,11 +222,12 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
     }
 }
 
+@Composable
 private fun statusLine(session: SshSession, state: SshState): String = when (state) {
-    SshState.Connecting -> "Connecting\u2026"
-    SshState.Open -> "${session.device}:${session.port} via 127.0.0.1:${session.localPort}"
-    is SshState.HostKeyUnknown -> "Waiting for the host key decision"
-    is SshState.HostKeyChanged -> "Blocked: host key changed"
+    SshState.Connecting -> stringResource(R.string.terminal_state_connecting)
+    SshState.Open -> stringResource(R.string.terminal_status_open, "${session.device}:${session.port}", "127.0.0.1:${session.localPort}")
+    is SshState.HostKeyUnknown -> stringResource(R.string.terminal_status_host_key_unknown)
+    is SshState.HostKeyChanged -> stringResource(R.string.terminal_status_host_key_changed)
     is SshState.Ended -> state.message
 }
 
@@ -222,20 +235,19 @@ private fun statusLine(session: SshSession, state: SshState): String = when (sta
 private fun TrustDialog(session: SshSession, presented: PinnedHostKey, onTrust: () -> Unit, onCancel: () -> Unit) {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("Trust this device?") },
+        title = { Text(stringResource(R.string.host_key_trust_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("First SSH connection to ${session.device}:${session.port}. Its host key:")
+                Text(stringResource(R.string.host_key_first, "${session.device}:${session.port}"))
                 KeyText(presented)
                 Text(
-                    "On the device, `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints the same line " +
-                        "if this is really it. The key is remembered for this device and port.",
+                    stringResource(R.string.host_key_check, "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onTrust) { Text("Trust") } },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = onTrust) { Text(stringResource(R.string.cert_trust)) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -249,26 +261,22 @@ private fun ChangedKeyDialog(
 ) {
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("Host key changed", color = MaterialTheme.colorScheme.error) },
+        title = { Text(stringResource(R.string.host_key_changed_title), color = MaterialTheme.colorScheme.error) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "${session.device}:${session.port} shows another host key than the one trusted before. " +
-                        "That happens after a reinstall or a firmware reset, but it can also mean someone is in between. " +
-                        "Nothing was sent.",
-                )
-                Text("Trusted before:", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.host_key_changed_text, "${session.device}:${session.port}"))
+                Text(stringResource(R.string.host_key_trusted_before), style = MaterialTheme.typography.labelMedium)
                 KeyText(pinned)
-                Text("Shown now:", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.host_key_shown_now), style = MaterialTheme.typography.labelMedium)
                 KeyText(presented)
                 Text(
-                    "Forget the old key only if you know why it changed; you will be asked to trust the new one.",
+                    stringResource(R.string.host_key_forget_hint),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onForget) { Text("Forget the old key") } },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = onForget) { Text(stringResource(R.string.host_key_forget)) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -293,7 +301,8 @@ private fun ExtraKeys(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, onKeyboar
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onKeyboard) { Text("\u2328") }
+        val keyboard = stringResource(R.string.terminal_keyboard)
+        TextButton(onClick = onKeyboard, modifier = Modifier.semantics { contentDescription = keyboard }) { Text("\u2328") }
         ExtraKey.entries.forEach { key ->
             when (key) {
                 ExtraKey.CTRL -> FilterChip(selected = modifiers.ctrl, onClick = { modifiers.ctrl = !modifiers.ctrl }, label = { Text(key.label) })
