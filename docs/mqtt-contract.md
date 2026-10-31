@@ -213,17 +213,17 @@ Tapping a topic (or "⋮" on a branch) opens its card, a bottom sheet:
 - the last values with times (up to 20), newest first;
 - actions, by stage:
   - stage 1: **Copy path**, **Copy value**, **Pin…** / **Unpin**;
-  - stage 2: **Publish here**, **Publish under…**;
+  - stage 2: **Publish…**;
   - stage 4: **Delete** (a retained topic) and **Delete branch** (a
     branch), both in the card's "⋮".
 
 ## Publishing
 
-One sheet, opened from a topic, from a branch, or from the "+" of the tree:
+One sheet, opened by **Publish…** in a topic's or a branch's card. There is
+no separate "publish under": the topic field is the way to any other topic.
 
-- **Topic:** prefilled with the selected path; "Publish under…" prefills
-  `<path>/` with the cursor at the end for a new subtopic; any path can be
-  typed or pasted. Checked before Send: not empty, no `+` or `#`, no NUL
+- **Topic:** prefilled with the card's path, cursor at the end, so a
+  subtopic is a `/name` away; any path can be typed over it or pasted. Checked before Send: not empty, no `+` or `#`, no NUL
   character, at most 65 535 bytes in UTF-8. A topic starting with `$`
   gets a warning (brokers reserve these) but can be sent.
 - **Payload:** a text field; a format switch Text / JSON (JSON is
@@ -396,8 +396,11 @@ nothing else in the explorer changes for it.
    (MQTT 5 with the 3.1.1 fallback, anonymous, then login), tree snapshot,
    root and `$SYS`, the open branch live, path bar, search, topic card with
    Text/JSON/Hex, Copy path, Copy value, Pin with masks, reconnect.
-2. Publish (here / under / any path), Text/JSON, retain, QoS, recent
-   payloads, the broker's answer.
+2. Publish, in two slices:
+   - 2a: the sheet (topic, payload as text, retain, QoS), Send and the
+     broker's answer;
+   - 2b: Text/JSON with validation and formatting, recent payloads, retain
+     and QoS remembered per topic.
 3. Feed with pause, filter and pinned topics.
 4. Retained delete for a topic and a branch.
 5. TLS (preset 8883, pinned certificate); the Subscriptions tab: pins
