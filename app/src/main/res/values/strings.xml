@@ -358,6 +358,7 @@
     <string name="key_install_password_note">The password is needed once, to add the phone’s key to ~/.ssh/authorized_keys on the device. It is not kept.</string>
     <string name="key_install_confirm">Install key</string>
     <string name="key_install_done">Key installed, key login works</string>
+    <string name="key_install_done_password_kept">Key login works and is now used, but the remembered password could not be forgotten: %s</string>
     <string name="key_install_refused">The key is in ~/.ssh/authorized_keys, but the device refused it for “%s”: sshd may forbid key logins or read keys from another file (AuthorizedKeysFile). Logins stay with the password.</string>
     <string name="key_install_command_failed">Could not add the key: %s. Logins stay with the password.</string>
     <string name="key_install_connection_failed">Could not connect: %s. Logins stay with the password.</string>

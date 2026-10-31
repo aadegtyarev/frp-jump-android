@@ -7,8 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
@@ -16,8 +16,8 @@ import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
 import ru.adsrv.frpjump.files.FilesTarget
-import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.PortKind
+import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
 import ru.adsrv.frpjump.ssh.SshAuth

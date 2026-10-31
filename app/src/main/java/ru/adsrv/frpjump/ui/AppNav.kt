@@ -43,6 +43,11 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.ports.localPortKey
+import ru.adsrv.frpjump.ssh.KeyInstallTarget
+import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.SshAuth
+import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.connections.ConnectionsScreen
 import ru.adsrv.frpjump.ui.connections.ConnectionsViewModel
@@ -64,11 +69,8 @@ import ru.adsrv.frpjump.ui.settings.SettingsScreen
 import ru.adsrv.frpjump.ui.settings.SettingsViewModel
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.ui.ssh.TerminalScreen
-import ru.adsrv.frpjump.ssh.KeyInstallTarget
-import ru.adsrv.frpjump.ssh.KeyInstaller
-import ru.adsrv.frpjump.ssh.SshAuth
-import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ui.web.WebScreen
+import java.io.IOException
 
 private object Routes {
     const val LOADING = "loading"
@@ -264,7 +266,14 @@ fun AppNav() {
                     // Offered while this login is by password: the session's own, and the one remembered for its port.
                     app.profiles.runtime(s.profile)
                         ?.takeIf { s.auth is SshAuth.Password && it.sshLogins.get(s.device, s.port).method == SshAuthMethod.PASSWORD }
-                        ?.let { r -> KeyInstallTarget(s.profile, r.hostKeys, s.device, s.port, s.user, r.sshLogins) { s.localPort } }
+                        ?.let { r ->
+                            KeyInstallTarget(s.profile, r.hostKeys, s.device, s.port, s.user, r.sshLogins) {
+                                // The tunnel's port now, not the one the session was opened on.
+                                val key = localPortKey(s.device, s.port)
+                                r.tunnels.state.value.tunnels.firstOrNull { it.key == key }?.localPort
+                                    ?: throw IOException(Texts.get(R.string.files_tunnel_down))
+                            }
+                        }
                 },
             )
         }

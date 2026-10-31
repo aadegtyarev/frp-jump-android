@@ -21,6 +21,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
@@ -60,6 +62,9 @@ class KeyLoginFlow(private val installer: KeyInstaller, private val scope: Corou
     /** The password typed for this run, kept for a retry after the host key is trusted. */
     private var typed: String? = null
 
+    /** The run going; a result of one cancelled or replaced is dropped. */
+    private var job: Job? = null
+
     fun start(target: KeyInstallTarget) {
         if (step != null) return
         typed = null
@@ -76,7 +81,7 @@ class KeyLoginFlow(private val installer: KeyInstaller, private val scope: Corou
     fun hostKeyAnswered() {
         val s = step as? KeyLoginStep.HostKey ?: return
         step = KeyLoginStep.Working(s.target)
-        scope.launch {
+        job = scope.launch(Dispatchers.Main) {
             withContext(Dispatchers.IO) {
                 when (s.check) {
                     is HostKeyCheck.Changed -> s.target.hostKeys.forget(s.target.device, s.target.port)
@@ -99,10 +104,21 @@ class KeyLoginFlow(private val installer: KeyInstaller, private val scope: Corou
         step = null
     }
 
+    /** "Cancel" while it works: its connections close, nothing is saved, the dialog goes. */
+    fun cancel() {
+        job?.cancel()
+        job = null
+        installer.cancel()
+        dismiss()
+    }
+
     private fun run(target: KeyInstallTarget) {
         step = KeyLoginStep.Working(target)
-        scope.launch(Dispatchers.Main) {
-            step = when (val result = installer.install(target, typed)) {
+        job = scope.launch(Dispatchers.Main) {
+            val result = installer.install(target, typed)
+            // Every change of the step on the main thread, and only by the run still wanted.
+            if (!isActive) return@launch
+            step = when (result) {
                 is KeyInstallResult.PasswordNeeded -> KeyLoginStep.AskPassword(target, result.refused)
                 is KeyInstallResult.HostKey -> KeyLoginStep.HostKey(target, result.check, result.presented)
                 else -> {
@@ -124,7 +140,7 @@ fun KeyLoginDialogs(flow: KeyLoginFlow) {
     val title = stringResource(R.string.key_login_title, where)
     when (step) {
         is KeyLoginStep.Working -> AlertDialog(
-            // Bounded by the connect and command timeouts; nothing to cut off halfway.
+            // Bounded by the connect and command timeouts; Cancel closes the connection.
             onDismissRequest = {},
             title = { Text(title) },
             text = {
@@ -134,6 +150,7 @@ fun KeyLoginDialogs(flow: KeyLoginFlow) {
                 }
             },
             confirmButton = {},
+            dismissButton = { TextButton(onClick = flow::cancel) { Text(stringResource(R.string.cancel)) } },
         )
         is KeyLoginStep.AskPassword -> SshLoginDialog(
             target = where,
