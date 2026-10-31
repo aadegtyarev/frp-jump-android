@@ -8,14 +8,23 @@
 # needed (stub dist), and -checklinkname=0 is what frp's own wlynxg/anet
 # dependency needs on Go >= 1.23.
 set -euo pipefail
+# The binary goes into the signed APK: the source and the toolchain are
+# pinned by commit and digest, not by tags that can be moved. Raising
+# FRP_VERSION means setting FRP_COMMIT to its tag's commit as well.
 FRP_VERSION=${FRP_VERSION:-0.70.0}
-GO_IMAGE=${GO_IMAGE:-golang:1.25.3}
+FRP_COMMIT=${FRP_COMMIT:-7b6e01f04f286632f0d23715aa17a3bc41234b5c}
+GO_IMAGE=${GO_IMAGE:-golang:1.25.3@sha256:6d4e5e74f47db00f7f24da5f53c1b4198ae46862a47395e30477365458347bf2}
 NDK=${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/26.3.11579264}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=${WORK:-$HOME/.cache/frp-jump-android}
 mkdir -p "$WORK"
 if [ ! -d "$WORK/frp-$FRP_VERSION" ]; then
   git clone -q --depth 1 --branch "v$FRP_VERSION" https://github.com/fatedier/frp.git "$WORK/frp-$FRP_VERSION"
+fi
+HEAD_COMMIT=$(git -C "$WORK/frp-$FRP_VERSION" rev-parse HEAD 2>/dev/null) || HEAD_COMMIT=none
+if [ "$HEAD_COMMIT" != "$FRP_COMMIT" ]; then
+  echo "frp v$FRP_VERSION is $HEAD_COMMIT, not the pinned $FRP_COMMIT; remove $WORK/frp-$FRP_VERSION if the tag moved on purpose" >&2
+  exit 1
 fi
 mkdir -p "$WORK/frp-$FRP_VERSION/web/frpc/dist"
 echo '<!doctype html>' > "$WORK/frp-$FRP_VERSION/web/frpc/dist/index.html"
