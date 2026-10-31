@@ -43,6 +43,18 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
 - Failures are shown next to what failed, in plain words, with the action
   that may fix it (retry, open settings).
 - The same thing is called the same way on every screen and in notifications.
+- Undo instead of confirm. A destructive action happens on screen at once,
+  without a question: the row goes, the tunnel goes dark. A top notice with
+  **Undo** stays about 6 s; until it goes, nothing is done on the device or
+  the server, and Undo puts everything back as it was. Several actions in a
+  row share one notice ("Deleted: 3 · Undo"). If the app is closed in those
+  seconds, the action still completes. This covers deleting a connection, a
+  snippet or an MQTT pin; forgetting a saved password or login;
+  disconnecting a tunnel or all tunnels (it goes dark at once; its terminal
+  and Files sessions close only when Undo is gone); closing a terminal tab
+  (its shell ends when Undo is gone); deleting files; deleting retained MQTT
+  topics. The one confirm left is "Forget profile": it wipes the phone's
+  keys and only a new enroll brings them back.
 - Consistency: controls that do the same action look the same everywhere —
   same glyph, same kind of control, same placement relative to what they act
   on (Disconnect is the same button on a connection row, a device card and
