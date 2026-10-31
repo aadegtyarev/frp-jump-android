@@ -21,7 +21,7 @@ import java.util.Collections
 import kotlin.concurrent.thread
 
 /** One MQTT packet as the fake broker reads it. */
-private class Packet(val type: Int, val body: ByteArray) {
+private class Packet(val type: Int, val body: ByteArray, val flags: Int = 0) {
     /** CONNECT: the protocol level (5 or 4). */
     val level: Int get() = body[6].toInt()
 
@@ -53,7 +53,7 @@ private class Conn(private val socket: Socket) {
             length = length or (b and 0x7f shl shift)
             shift += 7
         } while (b and 0x80 != 0)
-        Packet(header shr 4, ByteArray(length).also { input.readFully(it) })
+        Packet(header shr 4, ByteArray(length).also { input.readFully(it) }, header and 0x0f)
     } catch (e: EOFException) {
         null
     } catch (e: IOException) {
@@ -113,12 +113,24 @@ private class FakeBroker(private val script: (Conn, Int) -> Unit) : AutoCloseabl
     /**
      * Serves an open connection: SUBACK with [subackCode] for each filter
      * ([codeFor] may override it), UNSUBACK, PINGRESP; [onSubscribe] after
-     * each SUBACK.
+     * each SUBACK; a PUBLISH is recorded ("pub <topic> <payload> q<qos> r<retain>")
+     * and a QoS 1 one answered with a PUBACK of [pubackCode] (MQTT 5).
      */
-    fun serve(conn: Conn, v5: Boolean, codeFor: (String) -> Int = { 2 }, onSubscribe: (String) -> Unit = {}) {
+    fun serve(conn: Conn, v5: Boolean, codeFor: (String) -> Int = { 2 }, pubackCode: (String) -> Int = { 0 }, onSubscribe: (String) -> Unit = {}) {
         while (true) {
             val p = conn.read() ?: return
             when (p.type) {
+                3 -> {
+                    val qos = p.flags shr 1 and 3
+                    val length = (p.body[0].toInt() and 0xff shl 8) or (p.body[1].toInt() and 0xff)
+                    val topic = String(p.body, 2, length, Charsets.UTF_8)
+                    var at = 2 + length
+                    val id = intArrayOf(p.body.getOrElse(at) { 0 }.toInt() and 0xff, p.body.getOrElse(at + 1) { 0 }.toInt() and 0xff)
+                    if (qos > 0) at += 2
+                    if (v5) at += 1 + p.body[at] // properties, short here
+                    received += "pub $topic ${String(p.body, at, p.body.size - at, Charsets.UTF_8)} q$qos r${p.flags and 1}"
+                    if (qos == 1) if (v5) conn.send(0x40, id[0], id[1], pubackCode(topic), 0) else conn.send(0x40, id[0], id[1])
+                }
                 8 -> {
                     val filter = p.filter(v5)
                     received += "sub $filter"
@@ -272,5 +284,40 @@ class MqttBrokerTest {
         assertEquals(SnapshotState.Refused, session.snapshot.await { it is SnapshotState.Refused })
         assertEquals(setOf("#"), session.refused.value)
         assertTrue(session.state.value is MqttState.Open)
+    }
+
+    private fun MqttSession.publishNow(topic: String, payload: String, qos: Int, retain: Boolean = false): PublishAnswer {
+        val answer = java.util.concurrent.CompletableFuture<PublishAnswer>()
+        publish(topic, payload.toByteArray(), qos, retain) { answer.complete(it) }
+        return answer.get(10, java.util.concurrent.TimeUnit.SECONDS)
+    }
+
+    @Test
+    fun `MQTT 5 publish answers accepted, refused with the reason code, and QoS 0 unconfirmed`() {
+        val broker = broker { conn, _ ->
+            connect(conn)
+            conn.send(0x20, *connackV5)
+            serve(conn, v5 = true, pubackCode = { if (it == "denied") 0x87 else 0 })
+        }
+        val session = session(broker)
+        session.state.await { it is MqttState.Open }
+        assertEquals(PublishAnswer.Accepted, session.publishNow("/devices/x/controls/K1/on", "1", qos = 1, retain = true))
+        assertEquals(PublishAnswer.Refused(0x87, null), session.publishNow("denied", "1", qos = 1))
+        assertEquals(PublishAnswer.Unconfirmed, session.publishNow("a/b", "x", qos = 0))
+        assertTrue("pub /devices/x/controls/K1/on 1 q1 r1" in broker.received)
+        assertTrue("pub a/b x q0 r0" in broker.received)
+    }
+
+    @Test
+    fun `MQTT 3_1_1 publish is sent, not confirmed`() {
+        val broker = broker { conn, _ ->
+            if (connect(conn).level == 5) return@broker conn.close()
+            conn.send(0x20, *connackV3)
+            serve(conn, v5 = false)
+        }
+        val session = session(broker)
+        assertEquals(MqttState.Open(MqttVersion.V3_1_1), session.state.await { it is MqttState.Open })
+        assertEquals(PublishAnswer.Unconfirmed, session.publishNow("a/b", "x", qos = 1))
+        assertTrue("pub a/b x q1 r0" in broker.received)
     }
 }

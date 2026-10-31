@@ -792,4 +792,17 @@
     <string name="mqtt_topic_wildcard">В топике не может быть + или #.</string>
     <string name="mqtt_topic_nul">В топике не может быть символа NUL.</string>
     <string name="mqtt_topic_too_long">Топик не длиннее %1$d байт.</string>
+    <string name="mqtt_publish_ellipsis">Записать…</string>
+    <string name="mqtt_publish_title">Запись в топик</string>
+    <string name="mqtt_publish_retain">Retain</string>
+    <string name="mqtt_publish_retain_hint">Брокер сохранит значение и отдаст его каждому новому подписчику</string>
+    <string name="mqtt_publish_send">Отправить</string>
+    <string name="mqtt_topic_reserved">Топики на $ брокеры резервируют; этот могут отклонить.</string>
+    <string name="mqtt_publish_accepted">Брокер принял</string>
+    <string name="mqtt_publish_refused">Отказано: %1$s</string>
+    <string name="mqtt_publish_unconfirmed">Отправлено, без подтверждения</string>
+    <string name="mqtt_publish_not_connected">Не отправлено: нет связи с брокером</string>
+    <string name="mqtt_publish_lost">Связь пропала до ответа брокера</string>
+    <string name="mqtt_publish_timeout">Брокер не ответил за %1$d с</string>
+    <string name="mqtt_publish_failed">Не отправлено: %1$s</string>
 </resources>

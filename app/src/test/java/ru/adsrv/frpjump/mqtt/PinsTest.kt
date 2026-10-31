@@ -46,6 +46,8 @@ class PinsTest {
 
                     override fun unsubscribe(filter: String) = Unit
 
+                    override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = Unit
+
                     override fun close() = Unit
                 }),
             )

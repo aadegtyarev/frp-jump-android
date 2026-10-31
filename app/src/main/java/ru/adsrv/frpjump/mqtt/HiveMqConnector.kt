@@ -5,12 +5,17 @@ import com.hivemq.client.mqtt.MqttGlobalPublishFilter
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.exceptions.ConnectionClosedException
 import com.hivemq.client.mqtt.exceptions.ConnectionFailedException
+import com.hivemq.client.mqtt.exceptions.MqttClientStateException
+import com.hivemq.client.mqtt.exceptions.MqttSessionExpiredException
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
 import com.hivemq.client.mqtt.mqtt3.exceptions.Mqtt3ConnAckException
 import com.hivemq.client.mqtt.mqtt3.message.connect.connack.Mqtt3ConnAckReturnCode
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient
 import com.hivemq.client.mqtt.mqtt5.exceptions.Mqtt5ConnAckException
+import com.hivemq.client.mqtt.mqtt5.exceptions.Mqtt5PubAckException
+import com.hivemq.client.mqtt.mqtt5.exceptions.Mqtt5PubRecException
 import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAckReasonCode
+import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5PublishResult
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.Mqtt5RetainHandling
 import java.util.concurrent.CompletionException
 import java.util.concurrent.TimeUnit
@@ -92,6 +97,27 @@ class HiveMqConnector(private val host: String = "127.0.0.1") : MqttConnector {
             client.unsubscribeWith().topicFilter(filter).send()
         }
 
+        override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) {
+            client.publishWith()
+                .topic(topic)
+                .payload(payload)
+                .qos(MqttQos.fromCode(qos) ?: MqttQos.AT_LEAST_ONCE)
+                .retain(retain)
+                .send()
+                .whenComplete { result, error ->
+                    done(
+                        when {
+                            error != null -> publishFailure(error)
+                            result is Mqtt5PublishResult.Mqtt5Qos1Result ->
+                                result.pubAck.let { ackAnswer(it.reasonCode.code, it.reasonString.orElse(null)?.toString()) }
+                            result is Mqtt5PublishResult.Mqtt5Qos2Result ->
+                                result.pubRec.let { ackAnswer(it.reasonCode.code, it.reasonString.orElse(null)?.toString()) }
+                            else -> PublishAnswer.Unconfirmed
+                        },
+                    )
+                }
+        }
+
         override fun close() {
             flags.closed.set(true)
             client.disconnect()
@@ -111,6 +137,17 @@ class HiveMqConnector(private val host: String = "127.0.0.1") : MqttConnector {
             client.unsubscribeWith().topicFilter(filter).send()
         }
 
+        override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) {
+            client.publishWith()
+                .topic(topic)
+                .payload(payload)
+                .qos(MqttQos.fromCode(qos) ?: MqttQos.AT_LEAST_ONCE)
+                .retain(retain)
+                .send()
+                // 3.1.1 brokers drop a refused publish silently: a PUBACK says nothing about it.
+                .whenComplete { _, error -> done(if (error != null) publishFailure(error) else PublishAnswer.Unconfirmed) }
+        }
+
         override fun close() {
             flags.closed.set(true)
             client.disconnect()
@@ -120,6 +157,21 @@ class HiveMqConnector(private val host: String = "127.0.0.1") : MqttConnector {
     companion object {
         const val KEEP_ALIVE_S = 30
         private const val TIMEOUT_S = 10L
+
+        /**
+         * What a failed publish means: an MQTT 5 error PUBACK / PUBREC is the
+         * broker's refusal ([ackAnswer]); the rest failed on the way.
+         */
+        fun publishFailure(error: Throwable): PublishAnswer {
+            val cause = if (error is CompletionException) error.cause ?: error else error
+            return when (cause) {
+                is Mqtt5PubAckException -> cause.mqttMessage.let { ackAnswer(it.reasonCode.code, it.reasonString.orElse(null)?.toString()) }
+                is Mqtt5PubRecException -> cause.mqttMessage.let { ackAnswer(it.reasonCode.code, it.reasonString.orElse(null)?.toString()) }
+                is MqttClientStateException -> PublishAnswer.Failed(PublishFailure.NOT_CONNECTED)
+                is ConnectionClosedException, is MqttSessionExpiredException -> PublishAnswer.Failed(PublishFailure.LOST)
+                else -> PublishAnswer.Failed(PublishFailure.OTHER, cause.javaClass.simpleName)
+            }
+        }
 
         /** What a failed CONNECT means for the session. */
         fun refusal(error: Throwable): ConnectOutcome.Refused {

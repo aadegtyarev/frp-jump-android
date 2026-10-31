@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.FrpJumpApp
@@ -21,6 +22,8 @@ import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.MqttSession
 import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.PinMask
+import ru.adsrv.frpjump.mqtt.PublishAnswer
+import ru.adsrv.frpjump.mqtt.PublishFailure
 import ru.adsrv.frpjump.mqtt.SnapshotState
 import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
@@ -262,6 +265,14 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         session?.pin(path.format() + "/#")
         open(path)
         return null
+    }
+
+    /** Send of the publish sheet: [payload] as UTF-8 to [topic] (checked by the sheet); [done] gets the answer on the main thread. */
+    fun publish(topic: String, payload: String, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) {
+        val s = session ?: return done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
+        s.publish(topic, payload.toByteArray(Charsets.UTF_8), qos, retain) { answer ->
+            viewModelScope.launch(Dispatchers.Main) { done(answer) }
+        }
     }
 
     fun refreshTree() = session?.refreshTree()
