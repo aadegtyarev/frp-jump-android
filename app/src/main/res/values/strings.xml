@@ -547,6 +547,14 @@
     <string name="files_problem_connection">the connection dropped</string>
     <string name="files_problem_folder_access">no access to the download folder; choose it again in ⋮</string>
     <string name="files_problem_phone">the phone could not write or read it (%s)</string>
+    <string name="files_cancel_transfer">Cancel</string>
+    <plurals name="files_leave_title">
+        <item quantity="one">%d transfer in progress</item>
+        <item quantity="other">%d transfers in progress</item>
+    </plurals>
+    <string name="files_leave_text">If you leave, they will be cancelled.</string>
+    <string name="files_stay">Stay</string>
+    <string name="files_leave">Leave and cancel</string>
     <plurals name="files_uploaded_many">
         <item quantity="one">Uploaded %d file</item>
         <item quantity="other">Uploaded %d files</item>

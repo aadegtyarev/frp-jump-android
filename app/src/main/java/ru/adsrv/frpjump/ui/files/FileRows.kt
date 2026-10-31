@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -116,9 +119,10 @@ fun EntryRow(
     onMenu: (Boolean) -> Unit,
     onTap: () -> Unit,
     actions: EntryActions,
-    /** Retry and dismiss of a failed transfer of this row. */
+    /** Retry and dismiss of a failed transfer of this row, cancel of a running one. */
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
@@ -153,7 +157,7 @@ fun EntryRow(
                         if (link.broken) Text(stringResource(R.string.files_broken), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.error, maxLines = 1)
                     }
                 }
-                transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss) }
+                transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss, onCancel = onCancel) }
             }
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenu(false) }, offset = DpOffset(72.dp, 0.dp)) {
@@ -177,7 +181,7 @@ fun EntryRow(
 
 /** A file being uploaded into the folder shown: name and its bar, above the list; failed, the reason and Retry. */
 @Composable
-fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
+fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, onCancel: () -> Unit) {
     val colors = AppTheme.colors
     val failed = transfer.failure != null
     Row(
@@ -201,14 +205,17 @@ fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            TransferLine(transfer, onRetry, onDismiss)
+            TransferLine(transfer, onRetry, onDismiss, onCancel)
         }
     }
 }
 
-/** A transfer's bar; failed, its reason in plain words with Retry and Dismiss, where it was started. */
+/**
+ * A transfer's bar with ✕ to cancel just this one; failed, its reason in
+ * plain words with Retry and Dismiss, where it was started.
+ */
 @Composable
-private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
+private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, onCancel: () -> Unit) {
     val colors = AppTheme.colors
     val failure = transfer.failure
     if (failure != null) {
@@ -220,10 +227,16 @@ private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () 
         return
     }
     val fraction = transfer.fraction
-    if (fraction != null) {
-        LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-    } else {
-        LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val bar = Modifier.weight(1f)
+        if (fraction != null) {
+            LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = bar)
+        } else {
+            LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = bar)
+        }
+        IconButton(onClick = onCancel, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.files_cancel_transfer), tint = colors.muted, modifier = Modifier.size(18.dp))
+        }
     }
 }
 

@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -100,7 +101,10 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
             }
         }
     }
-    BackHandler { if (!vm.up()) onBack() }
+    // Leaving cancels the transfers going: ask first when there are any.
+    var leaving by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (vm.state.value.running == 0) onBack() else { leaving = true } }
+    BackHandler { if (!vm.up()) leave() }
 
     // Where each folder was scrolled to: going back up returns there, and an action keeps it.
     val list = rememberLazyListState()
@@ -123,7 +127,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
             AppTopBar(
                 title = title,
                 subtitle = t?.let { state.user + " · " + statusWord(state.status) },
-                onBack = onBack,
+                onBack = leave,
                 actions = {
                     Box {
                         IconButton(onClick = { menu = true }) {
@@ -188,7 +192,12 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                     contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 88.dp),
                 ) {
                     items(state.uploads, key = { "upload-${it.id}" }) { upload ->
-                        UploadRow(upload.transfer, onRetry = { vm.retryUpload(upload.id) }, onDismiss = { vm.dismissUpload(upload.id) })
+                        UploadRow(
+                            upload.transfer,
+                            onRetry = { vm.retryUpload(upload.id) },
+                            onDismiss = { vm.dismissUpload(upload.id) },
+                            onCancel = { vm.cancelUpload(upload.id) },
+                        )
                     }
                     if (state.entries.isEmpty()) item(key = "empty") { EmptyFolder(state) }
                     items(state.entries, key = { it.name }) { entry ->
@@ -214,6 +223,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                             ),
                             onRetry = { vm.retry(entry) },
                             onDismiss = { vm.dismissFailure(entry.path) },
+                            onCancel = { vm.cancelDownload(entry.path) },
                         )
                         HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 70.dp))
                     }
@@ -222,6 +232,30 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
         }
     }
 
+    if (leaving) {
+        val running = state.running
+        // They finished while the question was up: nothing to cancel, leave as asked.
+        LaunchedEffect(running) {
+            if (running == 0) {
+                leaving = false
+                onBack()
+            }
+        }
+        if (running > 0) {
+            AlertDialog(
+                onDismissRequest = { leaving = false },
+                title = { Text(pluralStringResource(R.plurals.files_leave_title, running, running)) },
+                text = { Text(stringResource(R.string.files_leave_text)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        leaving = false
+                        onBack()
+                    }) { Text(stringResource(R.string.files_leave), color = colors.error) }
+                },
+                dismissButton = { TextButton(onClick = { leaving = false }) { Text(stringResource(R.string.files_stay)) } },
+            )
+        }
+    }
     if (typing) {
         GoToFolderDialog(
             current = state.path ?: "/",

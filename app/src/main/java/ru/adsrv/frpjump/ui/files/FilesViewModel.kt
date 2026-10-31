@@ -7,7 +7,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +58,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /** What the file screen can say about its connection. */
@@ -118,7 +122,13 @@ data class FilesUiState(
     val downloadFolder: String? = null,
 ) {
     val online: Boolean get() = status == FilesStatus.Ready
+
+    /** Transfers going or waiting: what leaving the screen would cancel. */
+    val running: Int get() = runningTransfers(downloads.values + uploads.map { it.transfer })
 }
+
+/** How many of [transfers] are going or waiting; a failed one only waits for Retry or Dismiss. */
+internal fun runningTransfers(transfers: Collection<Transfer>): Int = transfers.count { it.failure == null }
 
 /** What the screen does once, outside its state. */
 sealed interface FilesEvent {
@@ -168,6 +178,12 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     /** One upload at a time from this screen. */
     private val uploadLock = Mutex()
     private val uploadIds = AtomicLong(1)
+
+    /** The job of each download, Open with or Share going, by the device path: Cancel stops just that one. */
+    private val downloadJobs = ConcurrentHashMap<String, Job>()
+
+    /** The job of the upload being written now, by its id. */
+    private val uploadJobs = ConcurrentHashMap<Long, Job>()
 
     init {
         val t = target
@@ -391,22 +407,38 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             return toast(Texts.get(if (entry.link?.broken == true) R.string.files_broken_toast else R.string.files_not_regular, entry.name))
         }
         setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind))
-        transfers.track(
-            viewModelScope.launch(start = TransferJobs.START) {
-                try {
-                    val b = connected(port)
-                    block(b, throttled { done, total -> setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
-                    _state.update { it.copy(downloads = it.downloads - entry.path) }
-                } catch (e: CancellationException) {
-                    _state.update { it.copy(downloads = it.downloads - entry.path) }
-                    throw e
-                } catch (e: Exception) {
-                    val message = connectionTrouble(e) ?: fileProblem(e)
-                    setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, failure = message))
-                    if (isFolderAccess(e)) _events.trySend(FilesEvent.PickFolder(entry))
-                }
-            },
-        )
+        val job = viewModelScope.launch(start = TransferJobs.START) {
+            val me = currentCoroutineContext()[Job]
+            // A cancelled one leaves the row alone: it may show a new transfer of the same file by now.
+            val mine = { downloadJobs[entry.path] === me }
+            try {
+                val b = connected(port)
+                block(b, throttled { done, total -> if (mine()) setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
+                if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
+            } catch (e: CancellationException) {
+                if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
+                throw e
+            } catch (e: Exception) {
+                if (!mine()) return@launch
+                val message = connectionTrouble(e) ?: fileProblem(e)
+                setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, failure = message))
+                if (isFolderAccess(e)) _events.trySend(FilesEvent.PickFolder(entry))
+            } finally {
+                downloadJobs.remove(entry.path, me)
+            }
+        }
+        downloadJobs[entry.path] = job
+        transfers.track(job)
+    }
+
+    /**
+     * Cancel on a running download, Open with or Share: only that one stops;
+     * its half copy is removed as on any cancel. The row clears at once.
+     */
+    fun cancelDownload(path: String) {
+        if (_state.value.downloads[path]?.failure != null) return
+        downloadJobs.remove(path)?.cancel()
+        _state.update { it.copy(downloads = it.downloads - path) }
     }
 
     /** Uploads [uris] one after another into the folder shown now, "Keep both" on a name clash. */
@@ -431,6 +463,16 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         runUploads(listOf(again))
     }
 
+    /**
+     * Cancel on an upload going or waiting: only that one stops, its part
+     * file is removed as on any cancel; the others go on. The row clears at once.
+     */
+    fun cancelUpload(id: Long) {
+        if (_state.value.uploads.none { it.id == id && it.transfer.failure == null }) return
+        _state.update { s -> s.copy(uploads = s.uploads.filterNot { it.id == id }) }
+        uploadJobs.remove(id)?.cancel()
+    }
+
     fun dismissUpload(id: Long) {
         _state.update { s -> s.copy(uploads = s.uploads.filterNot { it.id == id && it.transfer.failure != null }) }
     }
@@ -441,8 +483,20 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             viewModelScope.launch(start = TransferJobs.START) {
                 val uploaded = mutableListOf<String>()
                 for (item in items) {
-                    val name = uploadLock.withLock { uploadOne(t, item) } ?: continue
-                    uploaded += name
+                    // Cancelled while it waited.
+                    if (_state.value.uploads.none { it.id == item.id }) continue
+                    val one = async { uploadLock.withLock { uploadOne(t, item) } }
+                    uploadJobs[item.id] = one
+                    val name = try {
+                        one.await()
+                    } catch (e: CancellationException) {
+                        // Only this upload was cancelled: go on with the next one.
+                        currentCoroutineContext().ensureActive()
+                        null
+                    } finally {
+                        uploadJobs.remove(item.id, one)
+                    }
+                    if (name != null) uploaded += name
                 }
                 when (uploaded.size) {
                     0 -> Unit

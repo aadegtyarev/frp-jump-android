@@ -483,7 +483,8 @@ each other; both log in through `ssh/SshConnector.kt`.
 - It opens in the user's home folder. The path bar on top: tap a part to
   go there, tap the last part to type a path (absolute, relative, `~`).
   Back goes up a folder and leaves at `/`; the arrow in the bar leaves at
-  once. The path shown is always the folder's real one (links resolved),
+  once. Leaving while files are being transferred asks first ("N
+  transfers in progress": Stay, or Leave and cancel). The path shown is always the folder's real one (links resolved),
   so relative link targets in it are shown right.
 - Folders first, then files, by name; size and modified time. Dot names
   only with "⋮ › Show hidden files", remembered in `settings.json`.
@@ -511,8 +512,10 @@ each other; both log in through `ssh/SshConnector.kt`.
   `name (1).ext`; names being uploaded to are held, so two uploads of one
   name get two names, and a name taken just before the rename moves the
   upload to the next one.
-- Progress shows on the row; a failure stays there, in plain words, with
-  Retry and Dismiss. A refused login offers "Change login" (the login
+- Progress shows on the row, with ✕ to cancel just that transfer (its half
+  copy or part file is removed as on any cancel; an upload waiting its turn
+  is dropped, the others go on); a failure stays there, in plain words,
+  with Retry and Dismiss. A refused login offers "Change login" (the login
   dialog again) instead of Retry; a host key to decide on asks as the
   terminal does, also when a transfer meets it.
 - Pull to refresh. With the tunnel down, or SSH failing, each folder shows
@@ -521,7 +524,8 @@ each other; both log in through `ssh/SshConnector.kt`.
   then says; removed when the profile is forgotten), marked "No
   connection", with Retry (which connects the tunnel when it is down);
   nothing can be downloaded or uploaded then.
-- Transfers belong to the screen in this version: leaving it stops them.
+- Transfers belong to the screen in this version: leaving it stops them,
+  which is why leaving with transfers going asks first.
   Files handed to other apps (`files-open/<profile>/`) stay a while, as a
   share target may read them later: closing a file screen removes those
   older than two hours, the app's start those older than a day, and

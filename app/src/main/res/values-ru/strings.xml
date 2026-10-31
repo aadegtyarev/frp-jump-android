@@ -570,6 +570,16 @@
     <string name="files_problem_connection">связь прервалась</string>
     <string name="files_problem_folder_access">нет доступа к папке для скачивания; выберите её снова в ⋮</string>
     <string name="files_problem_phone">телефон не смог записать или прочитать его (%s)</string>
+    <string name="files_cancel_transfer">Отменить</string>
+    <plurals name="files_leave_title">
+        <item quantity="one">Идёт %d передача</item>
+        <item quantity="few">Идут %d передачи</item>
+        <item quantity="many">Идёт %d передач</item>
+        <item quantity="other">Идёт %d передачи</item>
+    </plurals>
+    <string name="files_leave_text">Если уйти, они отменятся.</string>
+    <string name="files_stay">Остаться</string>
+    <string name="files_leave">Уйти</string>
     <plurals name="files_uploaded_many">
         <item quantity="one">Загружен %d файл</item>
         <item quantity="few">Загружено %d файла</item>
