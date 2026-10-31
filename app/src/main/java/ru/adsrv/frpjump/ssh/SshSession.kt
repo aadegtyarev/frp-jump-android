@@ -11,18 +11,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import net.schmizz.keepalive.KeepAliveProvider
-import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
-import net.schmizz.sshj.common.Buffer
-import net.schmizz.sshj.common.KeyType
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.connection.channel.direct.SessionChannel
-import net.schmizz.sshj.transport.verification.HostKeyVerifier
 import net.schmizz.sshj.userauth.UserAuthException
-import net.schmizz.sshj.userauth.password.PasswordUtils
 import java.io.IOException
-import java.security.PublicKey
 
 /** How a session logs in. A password lives only in this object (and, if ticked, sealed on disk). */
 sealed interface SshAuth {
@@ -136,30 +129,30 @@ class SshSession(
         scope.launch(Dispatchers.IO) { runCatching { c.disconnect() } }
     }
 
+    private val connector = SshConnector(profile, hostKeys, device, port, localPort, user, auth, env)
+
     private suspend fun run() {
-        val verifier = PinningVerifier(hostKeys, device, port)
-        val ssh = SSHClient(DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE })
-        ssh.connectTimeout = CONNECT_TIMEOUT_MS
-        ssh.addHostKeyVerifier(verifier)
+        val ssh = connector.newClient()
         client = ssh
         try {
-            ssh.connect(LOOPBACK, localPort)
+            connector.connect(ssh)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
-            runCatching { ssh.disconnect() }
-            val rejected = verifier.rejected
-            when (val check = rejected?.first) {
+        } catch (e: HostKeyRejected) {
+            when (val check = e.check) {
                 HostKeyCheck.Unknown -> {
-                    _state.value = SshState.HostKeyUnknown(rejected.second)
+                    _state.value = SshState.HostKeyUnknown(e.presented)
                     terminal.note(Texts.get(R.string.ssh_note_host_key_unknown, "$device:$port") + "\r\n")
                 }
                 is HostKeyCheck.Changed -> {
-                    _state.value = SshState.HostKeyChanged(check.pinned, rejected.second)
+                    _state.value = SshState.HostKeyChanged(check.pinned, e.presented)
                     terminal.note("\r\n" + Texts.get(R.string.ssh_note_host_key_changed, "$device:$port") + "\r\n")
                 }
-                else -> fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName))
+                HostKeyCheck.Trusted -> fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName))
             }
+            return
+        } catch (e: Exception) {
+            fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName))
             return
         }
         if (closedByUser) {
@@ -167,8 +160,7 @@ class SshSession(
             return
         }
         try {
-            ssh.connection.keepAlive.keepAliveInterval = KEEPALIVE_SECONDS
-            authenticate(ssh)
+            connector.authenticate(ssh)
             val session = ssh.startSession()
             val columns = terminal.columns
             val rows = terminal.rows
@@ -187,45 +179,10 @@ class SshSession(
             throw e
         } catch (e: UserAuthException) {
             runCatching { ssh.disconnect() }
-            fail(authFailure())
+            fail(connector.authFailure())
         } catch (e: Exception) {
             runCatching { ssh.disconnect() }
             fail(Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName))
-        }
-    }
-
-    private fun authenticate(ssh: SSHClient) {
-        when (auth) {
-            SshAuth.Key -> {
-                val providers = env.keys.identities(env.keyComment()).mapNotNull { identity ->
-                    try {
-                        ssh.loadKeys(identity.privateKey, null, identity.passphrase?.let { PasswordUtils.createOneOff(it.toCharArray()) })
-                    } catch (e: IOException) {
-                        Log.w(TAG, "cannot load an SSH key: ${e.message}")
-                        null
-                    }
-                }
-                ssh.authPublickey(user, providers)
-            }
-            is SshAuth.Password -> {
-                val password = auth.typed ?: env.passwords.get(profile, device, port, user)
-                    ?: throw UserAuthException("No remembered password for $user")
-                ssh.authPassword(user, password)
-                if (!auth.remember) {
-                    env.passwords.forget(profile, device, port, user)
-                } else if (auth.typed != null) {
-                    env.passwords.remember(profile, device, port, user, password)
-                }
-            }
-        }
-    }
-
-    private fun authFailure(): String = when (auth) {
-        SshAuth.Key -> Texts.get(R.string.ssh_key_refused, user, Texts.get(R.string.ssh_public_key))
-        is SshAuth.Password -> {
-            // A remembered password that no longer works is not offered again.
-            env.passwords.forget(profile, device, port, user)
-            Texts.get(R.string.ssh_password_refused, user)
         }
     }
 
@@ -252,33 +209,8 @@ class SshSession(
         terminal.note("\r\n[$message]\r\n")
     }
 
-    private class PinningVerifier(
-        private val store: HostKeyStore,
-        private val device: String,
-        private val port: Int,
-    ) : HostKeyVerifier {
-        /** What was refused and why, for the prompt. */
-        @Volatile
-        var rejected: Pair<HostKeyCheck, PinnedHostKey>? = null
-
-        override fun verify(hostname: String, port: Int, key: PublicKey): Boolean {
-            val presented = PinnedHostKey(KeyType.fromKey(key).toString(), sshFingerprint(Buffer.PlainBuffer().putPublicKey(key).compactData))
-            val check = store.check(device, this.port, presented)
-            if (check == HostKeyCheck.Trusted) return true
-            rejected = check to presented
-            return false
-        }
-
-        /** Prefer the pinned key's algorithm, so a device with several keys shows the same one. */
-        override fun findExistingAlgorithms(hostname: String, port: Int): List<String> =
-            store.pinned(device, this.port)?.let { listOf(it.type) }.orEmpty()
-    }
-
     private companion object {
         const val TAG = "SshSession"
-        const val LOOPBACK = "127.0.0.1"
         const val TERM = "xterm-256color"
-        const val CONNECT_TIMEOUT_MS = 20_000
-        const val KEEPALIVE_SECONDS = 20
     }
 }
