@@ -110,9 +110,9 @@ One sheet, opened from a topic, from a branch, or from the "+" of the tree:
   are one tap away.
 - **Retain** and **QoS** (0/1/2), remembered per topic.
 - **Status or command topic.** Which topic a value goes to by default is
-  decided by a plugin (see below): the first plugin, "Command suffix",
-  sends to `<topic>/<suffix>` (for example `/on`, as Wiren Board uses) for
-  topics matching its filters. The sheet then has a switch "Status topic /
+  decided by a plugin (see below): the first plugin, "Status and command
+  topics", maps a status topic to its command topic by a pair of patterns
+  (for example `/devices/{d}/controls/{c}` → `/devices/{d}/controls/{c}/on`). The sheet then has a switch "Status topic /
   Command topic" set by the plugin and changeable for this send. With no
   plugin matching, the value goes to the topic itself.
 - Send gives feedback where it was tapped (sent, or the broker's refusal);
@@ -149,13 +149,23 @@ there" view.
   shipped with the app or imported), not downloaded code: Android forbids
   loading foreign code into an app of this kind safely. Plugins are enabled
   per connection.
-- **First plugin: "Command suffix".** Parameters: topic filters (for
-  example `/devices/+/controls/+`) and a suffix (`on`). For a matching
-  topic it says that the command topic is `<topic>/<suffix>` and that the
-  `<topic>/<suffix>` subtopics are commands, not separate values (the tree
-  shows them under their status topic). It is simple on purpose: it proves
-  the plugin plumbing (description format, matching, enable per
-  connection, override in the publish sheet) before any richer view.
+- **First plugin: "Status and command topics".** A list of rules, each a
+  pair of topic patterns with named segments: a status pattern and a
+  command pattern built from the same names. Examples it ships as presets:
+  - Wiren Board: `/devices/{d}/controls/{c}` → `/devices/{d}/controls/{c}/on`;
+  - Zigbee2MQTT: `zigbee2mqtt/{d}` → `zigbee2mqtt/{d}/set`;
+  - Tasmota: `stat/{d}/{p}` → `cmnd/{d}/{p}`;
+  - a generic "state/set" pair: `{x}/state` → `{x}/set`.
+
+  The owner turns presets on per connection and adds own rules in the app
+  (two patterns, no code), so a new device kind needs a rule, not a plugin.
+  For a topic matching a status pattern, the command topic comes from the
+  other pattern; topics matching a command pattern are shown as commands
+  under their status topic, not as separate values. First match wins; the
+  rule that matched is shown in the publish sheet. It is simple on
+  purpose: it proves the plugin plumbing (description format, matching,
+  enable per connection, override in the publish sheet) before any richer
+  view.
 
 ## Later: charts
 
@@ -185,7 +195,7 @@ explorer changes for it.
 4. Retained delete for a topic and a branch.
 5. Login and TLS; the Subscriptions tab with masks.
 6. Plugin infrastructure (declarative descriptions, matching, enable per
-   connection) with the first plugin, "Command suffix"; Text/JSON/Hex views
+   connection) with the first plugin, "Status and command topics"; Text/JSON/Hex views
    move onto the same plumbing.
 7. Later: charts of chosen numeric topics, overlaid.
 
