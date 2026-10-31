@@ -346,16 +346,23 @@ check interval, the SSH key, language and theme open a sheet.
 ## Web ports
 
 "Open" on a connected web connection shows `http://127.0.0.1:<local port>/`
-(`https://` on 443 or with the HTTPS flag) in an in-app WebView. When an
-HTTPS connection gets a plain HTTP answer (`ERR_SSL_PROTOCOL_ERROR`), the
-page says the device answers over HTTP and offers "Open over HTTP", which
-also clears the connection's flag. An HTTPS certificate
-(self-signed or not, it never matches 127.0.0.1) is shown with its SHA-256
+(`https://` on 443 or with the HTTPS flag) in an in-app WebView. An HTTPS
+certificate (self-signed or not, it never matches 127.0.0.1) is shown with its SHA-256
 fingerprint and accepted only once the owner trusts it; it is then pinned
 per (profile, device, target port) in `web_certs.json`. A different
 certificate later asks again, showing both fingerprints. Files of an HTTPS
 connection are not handed to the system downloader, which would not trust
-the pinned certificate; the app says so. The web view: JavaScript and DOM storage on, cookies kept, Back walks the
+the pinned certificate; the app says so.
+
+When an HTTPS page gets a plain HTTP answer (`ERR_SSL_PROTOCOL_ERROR`, and
+no certificate question or refusal in that load), the screen says the
+device answers this port over HTTP and offers "Open over HTTP": it opens
+http and clears the HTTPS flag of the profile's web connections to that
+device and port. On 443, which always opens over HTTPS, it opens http for
+this time only and says so. A device that closes the connection on a TLS
+handshake instead of answering in HTTP gets WebView's own error page.
+
+The web view: JavaScript and DOM storage on, cookies kept, Back walks the
 page history. The top bar is a thin one (44 dp) with the page's title,
 "Full screen" and "⋮" (the address, which a tap copies; Reload; "Open in
 browser"). Full screen hides the bar and the system bars; a small round

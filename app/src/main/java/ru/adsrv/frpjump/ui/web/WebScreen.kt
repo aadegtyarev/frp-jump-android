@@ -91,6 +91,7 @@ import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.WebNavigation
+import ru.adsrv.frpjump.web.answersInPlainHttp
 import ru.adsrv.frpjump.web.certFingerprint
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
 import ru.adsrv.frpjump.web.isTunnelUrl
@@ -122,6 +123,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     var certRefused by remember { mutableStateOf(false) }
     /** An HTTPS connection whose device answers this port in plain HTTP (ERR_SSL_PROTOCOL_ERROR). */
     var notTls by remember { mutableStateOf(false) }
+    /** The current load hit a certificate question or refusal: its handshake error is not "plain HTTP". */
+    var sslErrorSeen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf(device) }
     var url by remember { mutableStateOf(start) }
@@ -147,16 +150,18 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         configure(
             webView, context, localPort,
             onPage = { pageUrl ->
+                if (pageUrl != url) sslErrorSeen = false
                 url = pageUrl
                 canGoBack = webView.canGoBack()
             },
             onTitle = { title = it.ifBlank { device } },
             onProgress = { progress = it },
             onRendererGone = { rendererGone = true },
-            onMainFrameError = { code, failed ->
-                if (code == WebViewClient.ERROR_FAILED_SSL_HANDSHAKE && failed.startsWith("https://") && isTunnelUrl(failed, localPort)) notTls = true
+            onMainFrameError = { code, description, failed ->
+                if (answersInPlainHttp(code, description, failed, localPort, sslErrorSeen || certRefused || question != null)) notTls = true
             },
             onSslError = { handler, error ->
+                sslErrorSeen = true
                 val cert = error.certificate
                 val fingerprint = runCatching { cert?.x509Certificate?.encoded?.let(::certFingerprint) }.getOrNull()
                 val forTunnel = isTunnelUrl(error.url, localPort)
@@ -217,6 +222,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         }
     }
     val reload: () -> Unit = {
+        notTls = false
+        sslErrorSeen = false
         if (certRefused) {
             certRefused = false
             webView.clearSslPreferences()
@@ -287,8 +294,13 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                         onClick = {
                             notTls = false
                             scope.launch {
-                                val saved = runCatching { withContext(Dispatchers.IO) { useHttp(context, profile, device, targetPort) } }.isSuccess
-                                if (!saved) Toast.makeText(context, context.getString(R.string.web_not_tls_unsaved), Toast.LENGTH_LONG).show()
+                                // 443 always opens over HTTPS: there this is for now only, and the toast says so.
+                                val saved = targetPort != 443 &&
+                                    runCatching { withContext(Dispatchers.IO) { useHttp(context, profile, device, targetPort) } }.getOrDefault(false)
+                                if (!saved) {
+                                    val note = if (targetPort == 443) R.string.web_http_on_443 else R.string.web_not_tls_unsaved
+                                    Toast.makeText(context, context.getString(note), Toast.LENGTH_LONG).show()
+                                }
                                 webView.loadUrl("http://127.0.0.1:$localPort/")
                             }
                         },
@@ -371,8 +383,8 @@ private fun configure(
     onTitle: (String) -> Unit,
     onProgress: (Int) -> Unit,
     onRendererGone: () -> Unit,
-    /** A main-frame load failed with WebViewClient's [Int] error code, for that URL. */
-    onMainFrameError: (Int, String) -> Unit,
+    /** A main-frame load failed: WebViewClient's error code, its description, the URL. */
+    onMainFrameError: (Int, String, String) -> Unit,
     onSslError: (SslErrorHandler, SslError) -> Unit,
     onChooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Unit,
 ) {
@@ -415,7 +427,7 @@ private fun configure(
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) = onPage(url)
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-            if (request.isForMainFrame) onMainFrameError(error.errorCode, request.url.toString())
+            if (request.isForMainFrame) onMainFrameError(error.errorCode, error.description?.toString().orEmpty(), request.url.toString())
         }
 
         /** A self-signed (or any) certificate: only one the owner confirmed for this connection is accepted. */
@@ -553,11 +565,12 @@ private fun Fingerprint(label: String, value: String) {
 
 /**
  * "Open over HTTP": the profile's web connections to [device]:[port] lose
- * their HTTPS flag, so the next Open uses http too. Storage: off the main thread.
+ * their HTTPS flag, so the next Open uses http too; false when none had it
+ * (or the profile is gone). Storage: off the main thread.
  */
-private fun useHttp(context: Context, profile: String, device: String, port: Int) {
-    val store = (context.applicationContext as FrpJumpApp).profiles.runtime(profile)?.connections ?: return
-    store.connections.value
-        .filter { it.device == device && it.port == port && it.https }
-        .forEach { store.save(it.copy(https = false)) }
+private fun useHttp(context: Context, profile: String, device: String, port: Int): Boolean {
+    val store = (context.applicationContext as FrpJumpApp).profiles.runtime(profile)?.connections ?: return false
+    val flagged = store.connections.value.filter { it.device == device && it.port == port && it.https }
+    flagged.forEach { store.save(it.copy(https = false)) }
+    return flagged.isNotEmpty()
 }

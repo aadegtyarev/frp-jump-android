@@ -23,7 +23,8 @@ class ConnectionStore(
 
     /** Adds [connection], or replaces the one with its id in place. */
     @Synchronized
-    fun save(connection: Connection) {
+    fun save(saved: Connection) {
+        val connection = saved.withStandardScheme()
         val now = _connections.value
         write(if (now.any { it.id == connection.id }) now.map { if (it.id == connection.id) connection else it } else now + connection)
     }

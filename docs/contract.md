@@ -116,7 +116,8 @@ re-enroll.
   names (for example SSH as root and as another user).
 - Rename, change and delete a connection from the card or the Connections tab.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
-  first visit. SSH → built-in terminal. TCP → shows and copies the local address.
+  first visit. A device answering an HTTPS connection in plain HTTP is
+  told as such, with "Open over HTTP". SSH → built-in terminal. TCP → shows and copies the local address.
 
 ### 5. Connections tab
 
