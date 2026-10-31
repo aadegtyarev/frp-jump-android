@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
+import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.store.TextStorage
 
 /**
@@ -22,7 +23,8 @@ class ConnectionStore(
 
     /** Adds [connection], or replaces the one with its id in place. */
     @Synchronized
-    fun save(connection: Connection) {
+    fun save(saved: Connection) {
+        val connection = saved.withStandardScheme()
         val now = _connections.value
         write(if (now.any { it.id == connection.id }) now.map { if (it.id == connection.id) connection else it } else now + connection)
     }
@@ -41,7 +43,8 @@ class ConnectionStore(
     /** The stored list; a file that does not parse is kept as [corruptCopy] (the first one) and reads as empty. */
     private fun load(): List<Connection> {
         val text = file.read() ?: return emptyList()
-        return runCatching { readConnections(text) }.getOrElse {
+        // A web connection on 80 or 443 takes that port's scheme, whatever an older version stored.
+        return runCatching { readConnections(text).map { it.withStandardScheme() } }.getOrElse {
             Log.w(TAG, "connections.json does not parse; kept as a copy")
             if (corruptCopy.read() == null) corruptCopy.write(text)
             emptyList()
@@ -54,3 +57,6 @@ class ConnectionStore(
         fun encodeConnections(value: List<Connection>): String = WireJson.encodeToString(value)
     }
 }
+
+private fun Connection.withStandardScheme(): Connection =
+    if (kind == PortKind.WEB) copy(https = schemeIsHttps(port, https)) else this

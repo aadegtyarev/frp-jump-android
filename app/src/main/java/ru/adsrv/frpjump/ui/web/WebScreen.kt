@@ -19,6 +19,7 @@ import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebStorage
@@ -90,6 +91,7 @@ import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.WebNavigation
+import ru.adsrv.frpjump.web.answersInPlainHttp
 import ru.adsrv.frpjump.web.certFingerprint
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
 import ru.adsrv.frpjump.web.isTunnelUrl
@@ -119,6 +121,10 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     val certs = remember(profile) { (context.applicationContext as FrpJumpApp).profiles.runtime(profile)?.webCerts }
     var question by remember { mutableStateOf<CertQuestion?>(null) }
     var certRefused by remember { mutableStateOf(false) }
+    /** An HTTPS connection whose device answers this port in plain HTTP (ERR_SSL_PROTOCOL_ERROR). */
+    var notTls by remember { mutableStateOf(false) }
+    /** The current load hit a certificate question or refusal: its handshake error is not "plain HTTP". */
+    var sslErrorSeen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf(device) }
     var url by remember { mutableStateOf(start) }
@@ -144,13 +150,21 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         configure(
             webView, context, localPort,
             onPage = { pageUrl ->
+                if (pageUrl != url) {
+                    sslErrorSeen = false
+                    notTls = false
+                }
                 url = pageUrl
                 canGoBack = webView.canGoBack()
             },
             onTitle = { title = it.ifBlank { device } },
             onProgress = { progress = it },
             onRendererGone = { rendererGone = true },
+            onMainFrameError = { code, description, failed ->
+                if (answersInPlainHttp(code, description, failed, localPort, sslErrorSeen || certRefused || question != null)) notTls = true
+            },
             onSslError = { handler, error ->
+                sslErrorSeen = true
                 val cert = error.certificate
                 val fingerprint = runCatching { cert?.x509Certificate?.encoded?.let(::certFingerprint) }.getOrNull()
                 val forTunnel = isTunnelUrl(error.url, localPort)
@@ -211,6 +225,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         }
     }
     val reload: () -> Unit = {
+        notTls = false
+        sslErrorSeen = false
         if (certRefused) {
             certRefused = false
             webView.clearSslPreferences()
@@ -274,6 +290,26 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         // The keyboard shrinks the page, so a field it would cover scrolls into view.
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
             Column(modifier = Modifier.fillMaxSize()) {
+                if (notTls) {
+                    // The device speaks HTTP on this port: say so and offer to switch, instead of Chrome's error page.
+                    Text(stringResource(R.string.web_not_tls), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                    TextButton(
+                        onClick = {
+                            notTls = false
+                            scope.launch {
+                                // 443 always opens over HTTPS: there this is for now only, and the toast says so.
+                                val saved = targetPort != 443 &&
+                                    runCatching { withContext(Dispatchers.IO) { useHttp(context, profile, device, targetPort) } }.getOrDefault(false)
+                                if (!saved) {
+                                    val note = if (targetPort == 443) R.string.web_http_on_443 else R.string.web_not_tls_unsaved
+                                    Toast.makeText(context, context.getString(note), Toast.LENGTH_LONG).show()
+                                }
+                                webView.loadUrl("http://127.0.0.1:$localPort/")
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    ) { Text(stringResource(R.string.web_open_http)) }
+                }
                 if (certRefused) {
                     // Above the page, which stays in place for "Try again".
                     Text(stringResource(R.string.cert_refused), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
@@ -350,6 +386,8 @@ private fun configure(
     onTitle: (String) -> Unit,
     onProgress: (Int) -> Unit,
     onRendererGone: () -> Unit,
+    /** A main-frame load failed: WebViewClient's error code, its description, the URL. */
+    onMainFrameError: (Int, String, String) -> Unit,
     onSslError: (SslErrorHandler, SslError) -> Unit,
     onChooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Unit,
 ) {
@@ -390,6 +428,10 @@ private fun configure(
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPage(url)
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) = onPage(url)
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            if (request.isForMainFrame) onMainFrameError(error.errorCode, error.description?.toString().orEmpty(), request.url.toString())
+        }
 
         /** A self-signed (or any) certificate: only one the owner confirmed for this connection is accepted. */
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) = onSslError(handler, error)
@@ -522,4 +564,16 @@ private fun Fingerprint(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.labelMedium)
         Text(value, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
     }
+}
+
+/**
+ * "Open over HTTP": the profile's web connections to [device]:[port] lose
+ * their HTTPS flag, so the next Open uses http too; false when none had it
+ * (or the profile is gone). Storage: off the main thread.
+ */
+private fun useHttp(context: Context, profile: String, device: String, port: Int): Boolean {
+    val store = (context.applicationContext as FrpJumpApp).profiles.runtime(profile)?.connections ?: return false
+    val flagged = store.connections.value.filter { it.device == device && it.port == port && it.https }
+    flagged.forEach { store.save(it.copy(https = false)) }
+    return flagged.isNotEmpty()
 }

@@ -262,6 +262,10 @@
     <string name="cert_fingerprint_before">SHA-256, которому доверяли</string>
     <string name="cert_trust">Доверять</string>
     <string name="cert_trust_new">Доверять новому</string>
+    <string name="web_not_tls">Устройство на этом порту отвечает по HTTP, а не по HTTPS.</string>
+    <string name="web_open_http">Открыть по HTTP</string>
+    <string name="web_http_on_443">Открыто по HTTP только сейчас: порт 443 всегда открывается по HTTPS. Для HTTP укажите порт, на котором устройство его отдаёт.</string>
+    <string name="web_not_tls_unsaved">Открыто по HTTP, но у подключения осталось HTTPS — измените его через «Изменить» в меню подключения.</string>
     <string name="cert_refused">Не открыто: вы не доверились сертификату.</string>
     <string name="cert_try_again">Попробовать снова</string>
     <string name="download_https">Файлы HTTPS-подключения здесь не скачать: системный загрузчик не доверяет сертификату, подтверждённому в приложении.</string>

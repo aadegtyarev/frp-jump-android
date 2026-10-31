@@ -257,6 +257,10 @@
     <string name="cert_fingerprint_before">SHA-256 trusted before</string>
     <string name="cert_trust">Trust</string>
     <string name="cert_trust_new">Trust the new one</string>
+    <string name="web_not_tls">The device answers this port over HTTP, not HTTPS.</string>
+    <string name="web_open_http">Open over HTTP</string>
+    <string name="web_http_on_443">Opened over HTTP for now: port 443 always opens over HTTPS. For HTTP, use the port the device serves it on.</string>
+    <string name="web_not_tls_unsaved">Opened over HTTP; the connection still says HTTPS, change it with Edit in the connection’s menu.</string>
     <string name="cert_refused">Not opened: the certificate was not trusted.</string>
     <string name="cert_try_again">Try again</string>
     <string name="download_https">Files of an HTTPS connection cannot be downloaded here: the system downloader does not trust the certificate you confirmed in the app.</string>
