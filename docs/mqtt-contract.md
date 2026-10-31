@@ -1,7 +1,8 @@
 # frp-jump for Android — MQTT explorer contract
 
-Status: approved by the owner 2026-10-31; revised after review the same day,
-the revision awaiting the owner's check. The UI rules of `docs/contract.md`
+Status: approved by the owner 2026-10-31; revised after review the same day;
+publishing reshaped to the owner's answers the same day (one Publish…,
+editable topic, slices 2a/2b). The UI rules of `docs/contract.md`
 apply unchanged.
 
 A generic MQTT explorer for a broker reached through a frp-jump tunnel: the
@@ -213,23 +214,26 @@ Tapping a topic (or "⋮" on a branch) opens its card, a bottom sheet:
 - the last values with times (up to 20), newest first;
 - actions, by stage:
   - stage 1: **Copy path**, **Copy value**, **Pin…** / **Unpin**;
-  - stage 2: **Publish here**, **Publish under…**;
+  - stage 2: **Publish…**;
   - stage 4: **Delete** (a retained topic) and **Delete branch** (a
     branch), both in the card's "⋮".
 
 ## Publishing
 
-One sheet, opened from a topic, from a branch, or from the "+" of the tree:
+One sheet, opened by **Publish…** in a topic's or a branch's card. There is
+no separate "publish under": the topic field is the way to any other topic.
 
-- **Topic:** prefilled with the selected path; "Publish under…" prefills
-  `<path>/` with the cursor at the end for a new subtopic; any path can be
-  typed or pasted. Checked before Send: not empty, no `+` or `#`, no NUL
-  character, at most 65 535 bytes in UTF-8. A topic starting with `$`
+- **Topic:** prefilled with the card's path, cursor at the end, so a
+  subtopic is a `/name` away; any path can be typed over it or pasted.
+  The prefilled path itself can be sent as is, a branch's too (it is also
+  a topic of that name). Checked before Send: not empty, no `+` or `#`, no
+  NUL character, at most 65 535 bytes in UTF-8. A topic starting with `$`
   gets a warning (brokers reserve these) but can be sent.
-- **Payload:** a text field; a format switch Text / JSON (JSON is
-  validated and can be formatted); the last payloads sent to this topic
-  are one tap away.
-- **Retain** and **QoS** (0/1/2), remembered per topic.
+- **Payload:** a text field. 2b adds a format switch Text / JSON (JSON is
+  validated and can be formatted) and the last payloads sent to this
+  topic, one tap away.
+- **Retain** and **QoS** (0/1/2); 2a starts each sheet at retain off,
+  QoS 1; 2b remembers them per topic.
 - From stage 6 only: the status/command switch (see the plugin below).
   Before it the value goes to the topic in the field, nothing else.
 - Send answers on the button:
@@ -385,7 +389,7 @@ nothing else in the explorer changes for it.
 
 | What | Where |
 | --- | --- |
-| Pins with their masks, enabled plugins and own rules, retain/QoS per topic, last payloads sent (per connection) | app-private storage |
+| Pins with their masks, enabled plugins and own rules, retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
 | Broker logins (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
 | The tree and history | memory only, for the session |
 
@@ -396,8 +400,11 @@ nothing else in the explorer changes for it.
    (MQTT 5 with the 3.1.1 fallback, anonymous, then login), tree snapshot,
    root and `$SYS`, the open branch live, path bar, search, topic card with
    Text/JSON/Hex, Copy path, Copy value, Pin with masks, reconnect.
-2. Publish (here / under / any path), Text/JSON, retain, QoS, recent
-   payloads, the broker's answer.
+2. Publish, in two slices:
+   - 2a: the sheet (topic, payload as text, retain, QoS), Send and the
+     broker's answer;
+   - 2b: Text/JSON with validation and formatting, recent payloads, retain
+     and QoS remembered per topic.
 3. Feed with pause, filter and pinned topics.
 4. Retained delete for a topic and a branch.
 5. TLS (preset 8883, pinned certificate); the Subscriptions tab: pins
@@ -445,10 +452,17 @@ On a Wiren Board on the tunnel unless said otherwise.
    - Leaving and returning keeps the session; the tree is not rebuilt; the
      Sessions tab lists it with the terminals; Disconnect warns "N sessions
      will close" counting both.
-2. Publish `1` to `/devices/wb-mr6c_1/controls/K1/on` switches the relay;
-   the tree shows the new state. A test broker with an ACL denying a
-   topic: QoS 1 under MQTT 5 says "Refused: not authorized"; QoS 0 says
-   "Sent, not confirmed".
+2. Publish:
+   - 2a: from the card of `/devices/wb-mr6c_1/controls/K1`, Publish…,
+     append `/on` to the prefilled path, send `1`: the relay switches and
+     the tree shows the new state. From a branch card, a new subtopic
+     reached by editing the path is created.
+   - 2b: invalid JSON is flagged before Send and Format pretty-prints
+     valid JSON; a payload sent before is one tap away on reopening the
+     sheet for that topic; retain and QoS come back as last set for it.
+   - Answers (2a): a test broker with an ACL denying a topic: QoS 1 under
+     MQTT 5 says "Refused: not authorized"; QoS 0 says "Sent, not
+     confirmed".
 3. The feed of `/devices/wb-msw-v3_21` shows temperature updates; pause
    stops it and counts; pinned topics are on top; navigating away and
    back adds no repeated entries.
