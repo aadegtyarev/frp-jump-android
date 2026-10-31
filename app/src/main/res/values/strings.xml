@@ -699,7 +699,36 @@
     <string name="mqtt_snapshot_timed_out">The tree was read for 10 s, new topics kept coming: some may be missing</string>
     <string name="mqtt_branch_refused">The broker does not allow reading this branch</string>
     <string name="mqtt_no_messages">No messages</string>
-    <string name="mqtt_show_value">Show the value</string>
+    <string name="mqtt_open_card">Open the card</string>
+    <string name="mqtt_branch_card">Branch card</string>
+    <string name="mqtt_unfold">Unfold</string>
+    <string name="mqtt_card_path">Path</string>
+    <string name="mqtt_card_below">Below</string>
+    <string name="mqtt_card_newest">Last change</string>
+    <string name="mqtt_card_value">Value</string>
+    <string name="mqtt_card_pinned">Pinned</string>
+    <string name="mqtt_card_history">Last values</string>
+    <string name="mqtt_view_text">Text</string>
+    <string name="mqtt_view_json" translatable="false">JSON</string>
+    <string name="mqtt_view_hex">Hex</string>
+    <string name="mqtt_value_cut">The value is cut here; Copy value takes up to 64 KB.</string>
+    <plurals name="mqtt_bytes">
+        <item quantity="one">%s byte</item>
+        <item quantity="other">%s bytes</item>
+    </plurals>
+    <string name="mqtt_copy_path">Copy path</string>
+    <string name="mqtt_copy_value">Copy value</string>
+    <string name="mqtt_copied_cut">The first 64 KB copied: %s</string>
+    <string name="mqtt_copy_failed">The clipboard did not take it</string>
+    <string name="mqtt_pin_ellipsis">Pin…</string>
+    <string name="mqtt_pin_title">Pin</string>
+    <string name="mqtt_pin_subtitle">Kept subscribed while a session of this connection is open</string>
+    <string name="mqtt_mask_topic">Topic only</string>
+    <string name="mqtt_mask_level">One level below</string>
+    <string name="mqtt_mask_branch">Whole branch</string>
+    <string name="mqtt_unpin">Unpin</string>
+    <string name="mqtt_pinned_notice">Pinned: %s</string>
+    <string name="mqtt_unpinned_notice">Unpinned: %s</string>
     <string name="mqtt_fold">Fold</string>
     <string name="mqtt_pinned_mark">Pinned</string>
     <string name="mqtt_kind_branch">Branch</string>

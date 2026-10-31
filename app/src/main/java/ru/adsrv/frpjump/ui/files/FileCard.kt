@@ -155,7 +155,7 @@ private fun CardButtons(entry: RemoteEntry, transfer: Transfer?, online: Boolean
 
 /** The sheet's main button, as "Save" of "New connection". */
 @Composable
-private fun PrimaryButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun PrimaryButton(text: String, enabled: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     Button(
         onClick = onClick,
@@ -169,7 +169,7 @@ private fun PrimaryButton(text: String, enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SecondaryButton(text: String, icon: ImageVector?, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun SecondaryButton(text: String, icon: ImageVector?, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val colors = AppTheme.colors
     OutlinedButton(
         onClick = onClick,
@@ -189,7 +189,7 @@ private fun SecondaryButton(text: String, icon: ImageVector?, enabled: Boolean, 
 
 /** A muted label over its value; [problem] after it in the error colour. */
 @Composable
-private fun InfoLine(label: String, value: String, mono: Boolean = false, problem: String? = null) {
+internal fun InfoLine(label: String, value: String, mono: Boolean = false, problem: String? = null) {
     val colors = AppTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, fontSize = 12.sp, color = colors.muted)
@@ -200,7 +200,7 @@ private fun InfoLine(label: String, value: String, mono: Boolean = false, proble
 
 /** The date and time in full, in the app's language and the phone's zone. */
 @Composable
-private fun fullTime(at: Instant): String {
+internal fun fullTime(at: Instant): String {
     val locale = LocalConfiguration.current.locales[0]
     return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).format(at.atZone(ZoneId.systemDefault()))
 }

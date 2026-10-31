@@ -27,6 +27,10 @@ fun pinFilter(topic: MqttPath, mask: PinMask): String {
     }
 }
 
+/** The masks [topic] is pinned with among [pins], in [PinMask] order; empty for the root. */
+fun pinnedMasks(topic: MqttPath, pins: Collection<String>): List<PinMask> =
+    if (topic.isRoot) emptyList() else PinMask.entries.filter { pinFilter(topic, it) in pins }
+
 /**
  * Pins as topic filters in the order they were made, per connection of a
  * profile, kept after sessions and tunnels close. Read on first use, off

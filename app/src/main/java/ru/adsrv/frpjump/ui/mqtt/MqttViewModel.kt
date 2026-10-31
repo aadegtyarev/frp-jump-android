@@ -18,9 +18,13 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.MqttSession
 import ru.adsrv.frpjump.mqtt.MqttState
+import ru.adsrv.frpjump.mqtt.PinMask
 import ru.adsrv.frpjump.mqtt.SnapshotState
 import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
+import ru.adsrv.frpjump.mqtt.TopicValue
+import ru.adsrv.frpjump.mqtt.pinFilter
+import ru.adsrv.frpjump.mqtt.pinnedMasks
 import ru.adsrv.frpjump.mqtt.topicProblem
 import ru.adsrv.frpjump.mqtt.pinnedAt
 
@@ -32,6 +36,19 @@ data class TopicRow(val node: TopicNode, val pinned: Boolean) {
 
 /** A topic search found: its path relative to the level searched, and the node. */
 data class SearchHit(val relative: MqttPath, val node: TopicNode)
+
+/** What the open topic card shows: the node at [path] now (null when nothing is seen there), its last values and pins. */
+data class CardState(
+    val path: MqttPath,
+    val node: TopicNode?,
+    /** Newest first, at most [ru.adsrv.frpjump.mqtt.TopicTree.HISTORY]. */
+    val history: List<TopicValue>,
+    /** The masks [path] is pinned with. */
+    val pinned: List<PinMask>,
+) {
+    /** A branch card (counts) rather than only a topic's: it has children, or it is the root's `$SYS`. */
+    val isBranch: Boolean get() = node?.hasChildren == true || (path.levels.size == 1 && path.name == SYS)
+}
 
 data class MqttUiState(
     val state: MqttState = MqttState.Connecting,
@@ -51,6 +68,8 @@ data class MqttUiState(
     val shownSince: Long = 0,
     /** The session went because its tunnel was disconnected. */
     val closedByTunnel: Boolean = false,
+    /** The topic card open, or null. */
+    val card: CardState? = null,
 )
 
 /**
@@ -65,8 +84,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     /** What the search field holds. */
     val query = MutableStateFlow("")
 
-    /** The topic shown expanded (and scrolled to), e.g. one picked from the search. */
+    /** The topic scrolled to in its level, e.g. a typed one. */
     val focused = MutableStateFlow<MqttPath?>(null)
+
+    /** The node whose card is open; kept here so it outlives a rotation. */
+    val card = MutableStateFlow<MqttPath?>(null)
 
     val state: StateFlow<MqttUiState> = session?.let { s ->
         val ticks = flow {
@@ -79,7 +101,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         val searches = combine(query.map { it.trim() }, s.branch, ticks.map { s.tree.topicCount }.distinctUntilChanged()) { needle, path, _ ->
             search(s, path, needle)
         }.distinctUntilChanged().flowOn(Dispatchers.Default)
-        combine(s.state, s.snapshot, s.branch, s.pins, s.refused, searches, ticks) { values ->
+        combine(s.state, s.snapshot, s.branch, s.pins, s.refused, searches, card, ticks) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -89,7 +111,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[3] as List<String>,
                 values[4] as Set<String>,
                 values[5] as Search,
-                values[6] as Long,
+                values[6] as MqttPath?,
+                values[7] as Long,
             )
         }.flowOn(Dispatchers.Default)
     }.let { it ?: flowOf(MqttUiState(state = MqttState.Ended, closedByTunnel = app.mqtt.closedByTunnel(sessionId))) }
@@ -107,6 +130,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         pins: List<String>,
         refused: Set<String>,
         search: Search,
+        card: MqttPath?,
         now: Long,
     ): MqttUiState {
         if (path != shownPath) {
@@ -135,6 +159,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             now = now,
             shownSince = shownSince,
             closedByTunnel = state == MqttState.Ended && app.mqtt.closedByTunnel(s.id),
+            card = card?.let { CardState(it, s.tree.node(it), s.tree.history(it), pinnedMasks(it, pins)) },
         )
     }
 
@@ -162,20 +187,31 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         return true
     }
 
-    /** A topic's row tapped: shown expanded, or folded again. */
-    fun toggle(path: MqttPath) {
-        focused.value = if (focused.value == path) null else path
+    /** Opens the card of the topic or branch at [path] (a topic's row, a branch's "⋮", a search hit). */
+    fun openCard(path: MqttPath) {
+        card.value = path
+    }
+
+    fun closeCard() {
+        card.value = null
     }
 
     /**
-     * Shows the topic at [path] in its level: that level opens and the
-     * topic's row is expanded and scrolled to (a search hit, a typed topic
-     * without children).
+     * Shows the topic at [path] in its level: that level opens, the
+     * topic's row is scrolled to and its card opens (a typed topic without
+     * children).
      */
     fun reveal(path: MqttPath) {
         session?.open(path.parent)
         focused.value = path
+        card.value = path
     }
+
+    /** Pins [path] with [mask]; returns the topic filter pinned. */
+    fun pin(path: MqttPath, mask: PinMask): String = pinFilter(path, mask).also { session?.pin(it) }
+
+    /** Unpins [path]'s pin with [mask] at once; returns the topic filter unpinned. */
+    fun unpin(path: MqttPath, mask: PinMask): String = pinFilter(path, mask).also { session?.unpin(it) }
 
     /**
      * A path typed in the path bar, taken as is (`/devices/x` and
