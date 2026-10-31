@@ -1,6 +1,6 @@
 # frp-jump for Android — MQTT explorer contract
 
-Status: draft for the owner's review. The UI rules of `docs/contract.md`
+Status: approved by the owner 2026-10-31. The UI rules of `docs/contract.md`
 apply unchanged.
 
 A generic MQTT explorer for a broker reached through a frp-jump tunnel: the
