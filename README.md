@@ -514,7 +514,8 @@ field showing a saved password takes a fill only once it is tapped, so
 filling in the user name leaves the saved password alone.
 
 - A dropped connection reconnects by itself (`ssh/SshReconnect.kt`): a
-  read error, or the connection closing without an exit status, keeps the
+  shell gone without an exit status or signal (a read error, the
+  connection closing, or the connection failing mid-login) keeps the
   tab and its text, and the bar above the snippets reads "Connection lost
   · reconnecting (try N)…" with Now and Close (Close as closing the tab,
   with Undo; while that Undo is on screen, or the tunnel's, it does not

@@ -67,7 +67,8 @@ class SshConnector(
             logIn(ssh)
         } catch (e: UserAuthException) {
             // Kept beyond this tab: Terminal and Files then do not offer a saved password just refused.
-            env.refusals.record(profile, device, port, user, refusal())
+            // The connection failing mid-login is no refusal of the login.
+            if (!authFailedByTransport(e)) env.refusals.record(profile, device, port, user, refusal())
             throw e
         }
         env.refusals.clear(profile, device, port, user)

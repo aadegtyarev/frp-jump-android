@@ -45,10 +45,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     @Volatile
     private var output: OutputStream? = null
 
-    /** Called (on the writer thread) each time typed keys or a snippet go to the shell. */
-    @Volatile
-    var onKeys: (() -> Unit)? = null
-
     /** Copies typed keys to [output]; one thread for the terminal's life, so a reconnect does not race an old one. */
     private val writer by lazy {
         thread(name = "terminal-to-ssh", isDaemon = true) {
@@ -60,7 +56,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                 try {
                     out.write(buffer, 0, count)
                     out.flush()
-                    onKeys?.invoke()
                 } catch (_: IOException) {
                     // The reader sees the same failure and reports it.
                 }
@@ -160,8 +155,13 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         const val QUEUE_CHUNK = 4096
 
         /** See [resetForNewShell]. */
-        const val FRESH_SCREEN = "\u001b[?1049l\u001b[0m\u001b[r\u001b[?25h\u001b[?7h\u001b[?1l\u001b>" +
-            "\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l\u001b[?2004l"
+        const val FRESH_SCREEN =
+            // Main screen, colours, whole-screen scroll region, cursor shown, autowrap, normal cursor keys and keypad.
+            "\u001b[?1049l\u001b[0m\u001b[r\u001b[?25h\u001b[?7h\u001b[?1l\u001b>" +
+                // G0 is ASCII and selected (no line drawing left on), insert, origin and reverse-video modes off.
+                "\u001b(B\u000f\u001b[4l\u001b[?6l\u001b[?5l" +
+                // No mouse reporting, focus events or bracketed paste.
+                "\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l\u001b[?1004l\u001b[?2004l"
 
         /** TerminalSession.MSG_NEW_INPUT. */
         const val MSG_NEW_INPUT = 1

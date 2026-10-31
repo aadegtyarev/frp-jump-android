@@ -464,6 +464,7 @@ fun TerminalScreen(
                             // The Enter key sends CR; so do line breaks inside a command.
                             val line = text.replace("\r\n", "\r").replace('\n', '\r')
                             selected.terminal.session.write(if (run) line + "\r" else line)
+                            selected.typed()
                             // A snippet is typed as is, without a held Ctrl / Alt; it uses up the hold.
                             modifiers.ctrl = false
                             modifiers.alt = false
@@ -473,7 +474,10 @@ fun TerminalScreen(
                 )
                 ExtraKeys(
                     modifiers = modifiers,
-                    onKey = { key -> sendExtraKey(view, key, modifiers) },
+                    onKey = { key ->
+                        selected.typed()
+                        sendExtraKey(view, key, modifiers)
+                    },
                 )
             }
             if (fullscreen) CollapseButton { setFullscreen(false) }
@@ -587,7 +591,11 @@ private class ViewClient(
 
     override fun copyModeChanged(copyMode: Boolean) = Unit
 
-    override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession) = false
+    // The owner's own input (not the terminal's replies to the remote side) ends the "new shell" bar.
+    override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
+        session().typed()
+        return false
+    }
 
     override fun onKeyUp(keyCode: Int, e: KeyEvent) = false
 
@@ -601,7 +609,10 @@ private class ViewClient(
 
     override fun readFnKey() = false
 
-    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession) = false
+    override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
+        session().typed()
+        return false
+    }
 
     /** The grid was (re)measured: tell the remote side. */
     override fun onEmulatorSet() {

@@ -202,7 +202,10 @@ class SshSessions(
             val clip = context.getSystemService(ClipboardManager::class.java).primaryClip ?: return
             val text = (0 until clip.itemCount).joinToString("") { clip.getItemAt(it).coerceToText(context) }
             if (text.isEmpty()) return
-            _sessions.value.firstOrNull { it.terminal.session === session }?.terminal?.paste(text)
+            _sessions.value.firstOrNull { it.terminal.session === session }?.let {
+                it.terminal.paste(text)
+                it.typed()
+            }
         }
 
         override fun onBell(session: TerminalSession) = Unit

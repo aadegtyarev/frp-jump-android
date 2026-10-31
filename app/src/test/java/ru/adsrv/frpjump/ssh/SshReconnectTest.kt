@@ -3,7 +3,11 @@ package ru.adsrv.frpjump.ssh
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import net.schmizz.sshj.common.SSHException
+import net.schmizz.sshj.transport.TransportException
+import net.schmizz.sshj.userauth.UserAuthException
 import org.junit.Test
+import java.util.concurrent.TimeoutException
 
 /** Time by hand: [advanceBy] fires due timers in order. */
 private class FakeClock : ReconnectClock {
@@ -256,12 +260,34 @@ class SshReconnectTest {
     }
 
     @Test
-    fun `only a read error or a close without exit status is a drop`() {
-        assertTrue(shellDropped(readError = true, exitStatus = null, exitSignal = false))
-        assertTrue(shellDropped(readError = false, exitStatus = null, exitSignal = false))
+    fun `a shell gone without an exit status or signal is a drop`() {
+        assertTrue(shellDropped(exitStatus = null, exitSignal = false))
+    }
+
+    @Test
+    fun `an exit status or a signal is a normal end, even with a read error after it`() {
         // `exit`, a logout, a killed shell: Ended with Reconnect, as before.
-        assertFalse(shellDropped(readError = false, exitStatus = 0, exitSignal = false))
-        assertFalse(shellDropped(readError = false, exitStatus = 130, exitSignal = false))
-        assertFalse(shellDropped(readError = false, exitStatus = null, exitSignal = true))
+        assertFalse(shellDropped(exitStatus = 0, exitSignal = false))
+        assertFalse(shellDropped(exitStatus = 130, exitSignal = false))
+        assertFalse(shellDropped(exitStatus = null, exitSignal = true))
+        assertFalse(shellDropped(exitStatus = 1, exitSignal = true))
+    }
+
+    @Test
+    fun `a login failing because the connection went is a failed try, not a refusal`() {
+        // As sshj's chainer wraps an error delivered to the auth promise.
+        assertTrue(authFailedByTransport(UserAuthException(TransportException("Broken transport; encountered EOF"))))
+        assertTrue(authFailedByTransport(UserAuthException(SSHException("Connection reset"))))
+        assertTrue(authFailedByTransport(UserAuthException(TimeoutException("Timeout expired"))))
+        assertTrue(authFailedByTransport(UserAuthException(java.net.SocketException("Connection reset"))))
+        // Inside "Exhausted available authentication methods".
+        assertTrue(authFailedByTransport(UserAuthException("Exhausted available authentication methods", UserAuthException(TransportException("EOF")))))
+    }
+
+    @Test
+    fun `a login the device refuses stays a refusal`() {
+        assertFalse(authFailedByTransport(UserAuthException("Exhausted available authentication methods")))
+        assertFalse(authFailedByTransport(UserAuthException("Exhausted available authentication methods", UserAuthException("publickey auth failed"))))
+        assertFalse(authFailedByTransport(UserAuthException("No readable remembered password for root")))
     }
 }

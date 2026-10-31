@@ -1,6 +1,9 @@
 package ru.adsrv.frpjump.ssh
 
 import android.util.Log
+import net.schmizz.sshj.userauth.UserAuthException
+import java.io.IOException
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
@@ -180,9 +183,26 @@ class SshReconnect(
 
 /**
  * Whether a shell that ended on its own (not closed by the owner) dropped
- * with the connection, and so is tried again: a read error, or the
- * connection closed without an exit status or signal. `exit`, a killed
- * shell or a logout is a normal end.
+ * with the connection, and so is tried again: it went without an exit
+ * status or signal (a read error, or the connection closed under it).
+ * With either one the shell itself ended (`exit`, a logout, a kill), even
+ * if a read error followed: a normal end.
  */
-fun shellDropped(readError: Boolean, exitStatus: Int?, exitSignal: Boolean): Boolean =
-    readError || (exitStatus == null && !exitSignal)
+fun shellDropped(exitStatus: Int?, exitSignal: Boolean): Boolean = exitStatus == null && !exitSignal
+
+/**
+ * Whether a login failure [e] is the connection failing under it, not the
+ * device refusing: sshj delivers a transport error (or a timeout) during
+ * the login as a [UserAuthException] caused by it, possibly inside the
+ * "exhausted methods" one. Such a failure is a failed try, never recorded
+ * as a refusal.
+ */
+fun authFailedByTransport(e: Throwable): Boolean {
+    var cause = e.cause
+    val seen = HashSet<Throwable>()
+    while (cause != null && seen.add(cause)) {
+        if (cause is TimeoutException || (cause is IOException && cause !is UserAuthException)) return true
+        cause = cause.cause
+    }
+    return false
+}
