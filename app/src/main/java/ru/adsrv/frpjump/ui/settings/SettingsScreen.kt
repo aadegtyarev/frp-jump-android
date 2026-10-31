@@ -97,9 +97,12 @@ import ru.adsrv.frpjump.ui.profiles.ForgetProfileDialog
 import ru.adsrv.frpjump.ui.profiles.ForgetState
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
 import ru.adsrv.frpjump.ui.profiles.ProfileTile
+import ru.adsrv.frpjump.ui.shortTime
+import ru.adsrv.frpjump.update.UpdateState
+import java.time.Instant
 
 /** Which sheet or dialog of the settings is open. */
-private enum class Open { PORTS, POLL, SSH_KEY, LANGUAGE, THEME, FORGET, NEEDS_SCREEN_LOCK }
+private enum class Open { PORTS, POLL, SSH_KEY, LANGUAGE, THEME, FORGET, NEEDS_SCREEN_LOCK, UPDATE }
 
 /**
  * Settings as the mockup groups them: profile, tunnels, background,
@@ -118,6 +121,7 @@ fun SettingsScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val update by vm.update.collectAsStateWithLifecycle()
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
     val context = LocalContext.current
     val colors = AppTheme.colors
@@ -242,12 +246,7 @@ fun SettingsScreen(
                 onClick = { open = Open.THEME },
             ) { ValueChevron(themeLabel(settings.theme)) }
             RowDivider()
-            // Updates come with release builds; for now the row only says what is installed.
-            SettingRow(
-                tile = { GlyphTile("i") },
-                label = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.FRPC_VERSION),
-                onClick = null,
-            ) {}
+            VersionRow(update, onCheck = vm::checkForUpdates, onUpdate = { open = Open.UPDATE })
         }
     }
 
@@ -313,7 +312,54 @@ fun SettingsScreen(
             },
             dismissButton = { TextButton(onClick = { open = null }) { Text(stringResource(R.string.cancel)) } },
         )
+        Open.UPDATE -> update.available?.let {
+            UpdateSheet(
+                release = it,
+                download = update.download,
+                onDownload = vm::downloadUpdate,
+                onClearError = vm::clearUpdateError,
+                onDismiss = { open = null },
+            )
+        }
         null -> Unit
+    }
+}
+
+/**
+ * "Version 0.2.0 · frpc 0.70.0", as the mockup: with a newer release, its
+ * version and an "Update" pill that opens [UpdateSheet]; otherwise when it
+ * was last checked, a tap checking again with the progress in place.
+ */
+@Composable
+private fun VersionRow(update: UpdateState, onCheck: () -> Unit, onUpdate: () -> Unit) {
+    val colors = AppTheme.colors
+    val available = update.available
+    val hint = when {
+        available != null -> stringResource(R.string.update_available, available.version)
+        update.checking -> stringResource(R.string.update_checking)
+        update.checkError != null -> update.checkError
+        update.checkedAt != null -> stringResource(R.string.update_up_to_date, shortTime(Instant.ofEpochMilli(update.checkedAt)))
+        else -> stringResource(R.string.update_check_hint)
+    }
+    SettingRow(
+        tile = { GlyphTile("i") },
+        label = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.FRPC_VERSION),
+        hint = hint,
+        hintColor = if (available == null && update.checkError != null) colors.error else colors.muted,
+        enabled = available != null || !update.checking,
+        onClick = if (available != null) onUpdate else onCheck,
+    ) {
+        when {
+            available != null -> Text(
+                stringResource(R.string.update_action),
+                fontSize = 14.sp,
+                color = colors.onAccentContainer,
+                modifier = Modifier
+                    .background(colors.accentContainer, RoundedCornerShape(999.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+            update.checking -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        }
     }
 }
 

@@ -453,4 +453,32 @@
     <string name="device_was_online_ago">Was online %s</string>
     <string name="settings_save_failed">Couldn’t save the setting: %s</string>
     <string name="snippet_save_failed">Couldn’t save the commands: %s</string>
+    <!-- Settings › Version and update (update/Updater.kt) -->
+    <string name="update_available">Update available: %s</string>
+    <string name="update_action">Update</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_up_to_date">Up to date · checked %s</string>
+    <string name="update_check_hint">Tap to check for updates</string>
+    <string name="update_check_failed">Couldn’t check for updates: %s</string>
+    <string name="update_rate_limited">GitHub limits checks without an account. Try again in an hour.</string>
+    <string name="update_title">Update to %s</string>
+    <string name="update_notes">What’s new</string>
+    <string name="update_download_install">Download and install</string>
+    <string name="update_progress">%1$s of %2$s</string>
+    <string name="update_install">Install</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_no_checksum">This release has no SHA-256 file, so the app does not install it.</string>
+    <string name="update_checksum_mismatch">The download does not match the published SHA-256 and was deleted. Try again.</string>
+    <string name="update_download_failed">Download failed: %s</string>
+    <string name="update_allow_title">Allow installing the update</string>
+    <string name="update_allow_text">Android installs an update from an app only once you allow it. Turn on “Allow from this source” for frp-jump and come back: the installation goes on.</string>
+    <string name="update_not_allowed">Installing apps from frp-jump is not allowed, so the update cannot be installed.</string>
+    <string name="update_no_installer">No installer on this phone opens the APK.</string>
+    <string name="update_snackbar">Update %s is available</string>
+    <string name="update_snackbar_show">Show</string>
+    <string name="update_apk_unreadable">The downloaded file is not an APK Android can read; it was deleted.</string>
+    <string name="update_apk_other_app">The downloaded APK is another app, not frp-jump; it was deleted.</string>
+    <string name="update_apk_not_newer">The downloaded APK is not newer than the installed app; it was deleted.</string>
+    <string name="update_apk_other_version">The downloaded APK is not the version this release names; it was deleted.</string>
+    <string name="update_apk_other_signer">The downloaded APK is not signed with this app’s key; it was deleted.</string>
 </resources>

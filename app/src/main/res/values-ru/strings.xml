@@ -474,4 +474,32 @@
     <string name="device_was_online_ago">Был в сети %s</string>
     <string name="settings_save_failed">Не удалось сохранить настройку: %s</string>
     <string name="snippet_save_failed">Не удалось сохранить команды: %s</string>
+    <!-- Настройки › Версия и обновление (update/Updater.kt) -->
+    <string name="update_available">Есть обновление %s</string>
+    <string name="update_action">Обновить</string>
+    <string name="update_checking">Проверка обновлений…</string>
+    <string name="update_up_to_date">Обновлений нет · проверено %s</string>
+    <string name="update_check_hint">Нажмите, чтобы проверить обновления</string>
+    <string name="update_check_failed">Не удалось проверить обновления: %s</string>
+    <string name="update_rate_limited">GitHub ограничивает проверки без учётной записи. Попробуйте через час.</string>
+    <string name="update_title">Обновление до %s</string>
+    <string name="update_notes">Что нового</string>
+    <string name="update_download_install">Скачать и установить</string>
+    <string name="update_progress">%1$s из %2$s</string>
+    <string name="update_install">Установить</string>
+    <string name="update_retry">Повторить</string>
+    <string name="update_no_checksum">У этого выпуска нет файла SHA-256, поэтому приложение его не устанавливает.</string>
+    <string name="update_checksum_mismatch">Скачанный файл не совпадает с опубликованным SHA-256 и удалён. Попробуйте ещё раз.</string>
+    <string name="update_download_failed">Не удалось скачать: %s</string>
+    <string name="update_allow_title">Разрешите установку обновления</string>
+    <string name="update_allow_text">Android устанавливает обновление из приложения, только если это разрешено. Включите «Разрешить установку из этого источника» для frp-jump и вернитесь: установка продолжится.</string>
+    <string name="update_not_allowed">Установка приложений из frp-jump не разрешена, поэтому обновление не установить.</string>
+    <string name="update_no_installer">На телефоне нет установщика, который открыл бы APK.</string>
+    <string name="update_snackbar">Доступно обновление %s</string>
+    <string name="update_snackbar_show">Показать</string>
+    <string name="update_apk_unreadable">Скачанный файл — не APK, который Android может прочитать; он удалён.</string>
+    <string name="update_apk_other_app">Скачанный APK — другое приложение, не frp-jump; он удалён.</string>
+    <string name="update_apk_not_newer">Скачанный APK не новее установленного приложения; он удалён.</string>
+    <string name="update_apk_other_version">Версия скачанного APK не та, что указана в выпуске; он удалён.</string>
+    <string name="update_apk_other_signer">Скачанный APK подписан не ключом этого приложения; он удалён.</string>
 </resources>
