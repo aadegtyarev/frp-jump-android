@@ -72,6 +72,11 @@ data class AppSettings(
      * phone's biometrics or screen lock ([ru.adsrv.frpjump.lock.LockPolicy]).
      */
     @SerialName("app_lock") val appLock: Boolean = false,
+    /**
+     * Settings › Hide in Recents: no picture of the app there. Before
+     * Android 13, and on some phones after it, that also blocks screenshots.
+     */
+    @SerialName("hide_in_recents") val hideInRecents: Boolean = false,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 

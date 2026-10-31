@@ -85,6 +85,7 @@ import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.ChoiceSheet
 import ru.adsrv.frpjump.ui.Field
+import ru.adsrv.frpjump.ui.EyeOffGlyph
 import ru.adsrv.frpjump.ui.FingerprintGlyph
 import ru.adsrv.frpjump.ui.KeyGlyph
 import ru.adsrv.frpjump.ui.RepeatGlyph
@@ -228,6 +229,14 @@ fun SettingsScreen(
                 checked = settings.appLock,
                 busy = lockBusy,
                 onChange = onAppLock,
+            )
+            RowDivider()
+            SwitchRow(
+                tile = { IconTile(EyeOffGlyph) },
+                label = stringResource(R.string.setting_hide_in_recents),
+                hint = stringResource(R.string.setting_hide_in_recents_hint),
+                checked = settings.hideInRecents,
+                onChange = vm::setHideInRecents,
             )
         }
         Group(stringResource(R.string.settings_app)) {

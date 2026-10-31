@@ -436,6 +436,8 @@
     <string name="background_poll_row_hint">Пока открыты туннели</string>
     <string name="setting_app_lock">Вход по отпечатку</string>
     <string name="setting_app_lock_hint">Отпечаток или код телефона при открытии приложения. Туннели при этом работают.</string>
+    <string name="setting_hide_in_recents">Скрывать в недавних</string>
+    <string name="setting_hide_in_recents_hint">Без картинки в недавних. Может запретить скриншоты.</string>
     <string name="setting_app_lock_needs_screen_lock">Нужна блокировка экрана на телефоне</string>
     <string name="lock_needs_screen_lock_text">На телефоне не задана блокировка экрана. Задайте PIN-код, графический ключ или пароль в настройках системы и включите снова.</string>
     <string name="lock_open_settings">Открыть настройки</string>

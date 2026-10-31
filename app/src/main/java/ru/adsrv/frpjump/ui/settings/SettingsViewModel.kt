@@ -94,6 +94,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         }
     }
 
+    fun setHideInRecents(hide: Boolean) = save { it.copy(hideInRecents = hide) }
+
     fun turnOffAppLock() {
         app.lock.unlock()
         save { it.copy(appLock = false) }

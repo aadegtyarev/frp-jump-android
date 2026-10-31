@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.Build
 import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import android.widget.Toast
@@ -22,6 +24,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.lock.AuthResult
 import ru.adsrv.frpjump.ui.AppTheme
@@ -79,6 +83,9 @@ class MainActivity : AppCompatActivity() {
                     visible.value = false
                 }
             }
+        }
+        lifecycleScope.launch {
+            app.settings.settings.map { it.hideInRecents }.distinctUntilChanged().collect(::hideFromRecents)
         }
         lifecycleScope.launch {
             app.lock.locked.collect { locked ->
@@ -177,6 +184,21 @@ class MainActivity : AppCompatActivity() {
                 AuthResult.Cancelled -> getString(R.string.lock_cancelled)
                 is AuthResult.Failed -> getString(R.string.lock_failed, result.message)
             }
+        }
+    }
+
+    /**
+     * Settings › Hide in Recents. Android 13+ can leave just the thumbnail
+     * out (most phones still allow screenshots); before that only
+     * FLAG_SECURE hides it, which also blocks screenshots.
+     */
+    private fun hideFromRecents(hide: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(!hide)
+        } else if (hide) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 
