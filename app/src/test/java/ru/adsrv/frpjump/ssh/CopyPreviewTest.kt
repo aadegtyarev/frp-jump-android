@@ -24,7 +24,7 @@ class CopyPreviewTest {
 
     @Test
     fun `control and bidi override characters are dropped`() =
-        assertEquals("evil.sh", copyPreview("\u001b[31mevil‮.sh\u0007", 40).replace("[31m", ""))
+        assertEquals("evil.sh", copyPreview("\u0007evil\u202E.sh\u0000", 40))
 
     @Test
     fun `a surrogate pair is not cut in half`() = assertEquals("a😀…", copyPreview("a😀bc", 2))
