@@ -19,12 +19,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
@@ -51,7 +57,7 @@ fun BottomNav(selected: Tab, onSelect: (Tab) -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 12.dp)
+                    .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)
                     .selectableGroup(),
             ) {
                 Tab.entries.forEach { tab ->
@@ -63,7 +69,7 @@ fun BottomNav(selected: Tab, onSelect: (Tab) -> Unit) {
                             .heightIn(min = 48.dp)
                             .selectable(selected = on, role = Role.Tab, onClick = { onSelect(tab) }),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Icon(
                             tab.icon,
@@ -71,19 +77,37 @@ fun BottomNav(selected: Tab, onSelect: (Tab) -> Unit) {
                             tint = tint,
                             modifier = Modifier
                                 .background(if (on) colors.accentContainer else colors.card, CircleShape)
-                                .padding(horizontal = 18.dp, vertical = 4.dp)
-                                .size(22.dp),
+                                .padding(horizontal = 16.dp, vertical = 3.dp)
+                                .size(20.dp),
                         )
-                        Text(
-                            stringResource(tab.label),
-                            color = tint,
-                            fontSize = 12.sp,
-                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1,
-                        )
+                        FittingLabel(stringResource(tab.label), tint, bold = on)
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * A tab's label on one line: "Подключения" under a large system font does
+ * not fit a quarter of a phone, so it shrinks a step at a time until it does
+ * (down to [MIN_LABEL_SP], then an ellipsis).
+ */
+@Composable
+private fun FittingLabel(text: String, color: Color, bold: Boolean) {
+    var size by remember(text) { mutableFloatStateOf(LABEL_SP) }
+    Text(
+        text,
+        color = color,
+        fontSize = size.sp,
+        fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = 1,
+        softWrap = false,
+        overflow = if (size <= MIN_LABEL_SP) TextOverflow.Ellipsis else TextOverflow.Clip,
+        onTextLayout = { if (it.hasVisualOverflow && size > MIN_LABEL_SP) size -= 0.5f },
+        modifier = Modifier.padding(horizontal = 2.dp),
+    )
+}
+
+private const val LABEL_SP = 11f
+private const val MIN_LABEL_SP = 8f
