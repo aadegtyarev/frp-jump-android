@@ -88,7 +88,7 @@ object PhoneFiles {
     }
 
     /** Where the offline listings of [profile] are kept ([ListingCache]). */
-    fun listingsDir(context: Context, profile: String): File = File(File(context.cacheDir, LISTINGS_DIR), profile)
+    fun listingsDir(context: Context, profile: String): File = File(File(context.cacheDir, LISTINGS_DIR), safeLocalName(profile))
 
     /** A picked document's name and size, as its provider gives them. */
     fun picked(context: Context, uri: Uri): PickedFile {

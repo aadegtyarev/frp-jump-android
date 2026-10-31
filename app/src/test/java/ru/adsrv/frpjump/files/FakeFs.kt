@@ -10,13 +10,16 @@ import java.util.concurrent.atomic.AtomicInteger
 class FakeFs(private val home: String = "/root") : RemoteFs {
     private sealed interface Node
     private object Dir : Node
-    private class File(var bytes: ByteArray) : Node
+    private class File(var bytes: ByteArray, val modified: Long = 0) : Node
     private class Link(val target: String) : Node
 
     private val nodes = sortedMapOf<String, Node>("/" to Dir)
 
     /** `stat` of these is refused: no permission to look. */
     val denied = mutableSetOf<String>()
+
+    /** Called before each exclusive create, e.g. to have someone else make the file meanwhile. */
+    var beforeCreate: (path: String) -> Unit = {}
 
     /** Called before each rename, e.g. to make the name taken meanwhile. */
     var beforeRename: (from: String, to: String) -> Unit = { _, _ -> }
@@ -32,9 +35,10 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
 
     fun dir(path: String) = apply { mkdirs(path) }
 
-    fun file(path: String, text: String) = apply {
+    /** A file modified at [modified] seconds (0: long ago). */
+    fun file(path: String, text: String, modified: Long = 0) = apply {
         mkdirs(parentOf(path))
-        nodes[path] = File(text.toByteArray())
+        nodes[path] = File(text.toByteArray(), modified)
     }
 
     fun link(path: String, target: String) = apply {
@@ -77,7 +81,7 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
 
     private fun attrs(node: Node) = when (node) {
         Dir -> RemoteAttrs(NodeKind.DIR, 0, 1)
-        is File -> RemoteAttrs(NodeKind.FILE, node.bytes.size.toLong(), 2)
+        is File -> RemoteAttrs(NodeKind.FILE, node.bytes.size.toLong(), node.modified)
         is Link -> RemoteAttrs(NodeKind.LINK, 0, 3)
     }
 
@@ -124,6 +128,7 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
     }
 
     override fun createExclusive(path: String): OutputStream {
+        beforeCreate(path)
         val at = resolve(path, follow = false)
         if (at in nodes) throw RemoteRefusal(Refusal.OTHER, "exists")
         val file = File(ByteArray(0))

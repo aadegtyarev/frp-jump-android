@@ -45,30 +45,46 @@ suspend fun downloadInto(fs: RemoteFs, path: String, sink: DownloadSink, onProgr
 class UploadNames {
     private val held = mutableSetOf<String>()
 
-    /** [name], or the first "Keep both" name neither on the device ([exists], given the path) nor held. */
-    @Synchronized
+    /**
+     * [name], or the first "Keep both" name neither on the device ([exists],
+     * given the path) nor held. The device is asked outside the lock: a
+     * stalled one must not hold up other screens' uploads.
+     */
     fun reserve(scope: String, dir: String, name: String, exists: (String) -> Boolean): String {
-        val free = keepBothName(name) { key(scope, dir, it) in held || exists(childOf(dir, it)) }
-        held += key(scope, dir, free)
-        return free
+        val onDevice = mutableSetOf<String>()
+        while (true) {
+            val candidate = synchronized(held) { keepBothName(name) { key(scope, dir, it) in held || it in onDevice } }
+            if (exists(childOf(dir, candidate))) {
+                onDevice += candidate
+                continue
+            }
+            // Taken by another upload while the device was asked: try the next one.
+            val got = synchronized(held) { held.add(key(scope, dir, candidate)) }
+            if (got) return candidate
+        }
     }
 
-    @Synchronized
     fun release(scope: String, dir: String, name: String) {
-        held -= key(scope, dir, name)
+        synchronized(held) { held -= key(scope, dir, name) }
     }
 
     private fun key(scope: String, dir: String, name: String) = scope + "\n" + childOf(dir, name)
 }
 
+/** A part file younger than this may belong to an upload still going (another phone, another app). */
+const val STALE_PART_SECONDS = 10 * 60L
+
 /**
  * Uploads [input] into folder [dir] of the device [scope] names as [name],
  * or `name (1).ext` when it is taken (on the device, or by another upload
- * in [names]). It is written to a hidden part file next to it, made anew (a part
- * file left by an interrupted upload is removed first), and renamed at the
- * end, so a half upload never replaces anything. When the name was taken
- * between the check and the rename, the next free one is tried once. A
- * failed or cancelled upload removes its part file. Returns the name it got.
+ * in [names]). It is written to a hidden part file next to it and renamed
+ * at the end, so a half upload never replaces anything. A part file there
+ * already is replaced when it is older than [STALE_PART_SECONDS] by its
+ * modified time (an interrupted upload; [nowSeconds] is the device's
+ * clock as best known), else the upload takes the next "Keep both" name.
+ * When the name was taken between the check and the rename, the next free
+ * one is tried once. A failed or cancelled upload removes the part file it
+ * made, never one it did not. Returns the name it got.
  */
 suspend fun uploadInto(
     fs: RemoteFs,
@@ -78,16 +94,37 @@ suspend fun uploadInto(
     name: String,
     names: UploadNames,
     scope: String,
+    nowSeconds: Long = System.currentTimeMillis() / 1000,
     onProgress: (Long, Long) -> Unit,
 ): String {
     val held = mutableListOf<String>()
-    val reserve = { names.reserve(scope, dir, name) { fs.exists(it) }.also { held += it } }
+    // Names whose part file someone else is writing.
+    val busy = mutableSetOf<String>()
+    val reserve = { names.reserve(scope, dir, name) { fs.exists(it) || it.substringAfterLast('/') in busy }.also { held += it } }
     try {
-        var final = reserve()
-        val part = childOf(dir, uploadPartName(final))
-        if (fs.exists(part)) fs.remove(part)
+        var final: String
+        var part: String
+        while (true) {
+            final = reserve()
+            part = childOf(dir, uploadPartName(final))
+            val existing = try {
+                fs.lstat(part)
+            } catch (e: RemoteRefusal) {
+                if (e.reason != Refusal.NO_SUCH) throw e
+                null
+            }
+            if (existing == null) break
+            if (nowSeconds - existing.modified >= STALE_PART_SECONDS) {
+                fs.remove(part)
+                break
+            }
+            busy += final
+        }
+        var created = false
         try {
-            fs.createExclusive(part).use { out -> copy(input, out, size, phoneIsInput = true, onProgress) }
+            val out = fs.createExclusive(part)
+            created = true
+            out.use { copy(input, it, size, phoneIsInput = true, onProgress) }
             try {
                 fs.rename(part, childOf(dir, final))
             } catch (e: RemoteRefusal) {
@@ -96,8 +133,8 @@ suspend fun uploadInto(
                 fs.rename(part, childOf(dir, final))
             }
         } catch (e: Throwable) {
-            // Blocking: it runs in a cancelled coroutine too, before the connection is closed.
-            runCatching { fs.remove(part) }
+            // Ours only. Blocking: it runs in a cancelled coroutine too, before the connection is closed.
+            if (created) runCatching { fs.remove(part) }
             throw e
         }
         return final

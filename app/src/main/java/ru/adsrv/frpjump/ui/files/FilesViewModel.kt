@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import net.schmizz.sshj.userauth.UserAuthException
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
@@ -167,9 +168,6 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     /** One upload at a time from this screen. */
     private val uploadLock = Mutex()
     private val uploadIds = AtomicLong(1)
-
-    /** Folders in the cache with files this screen handed to other apps, removed when it closes. */
-    private val handedOver = mutableListOf<File>()
 
     init {
         val t = target
@@ -380,7 +378,6 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             downloadInto(b.fs, entry.path, sink, progress)
             file
         }
-        file.parentFile?.let { synchronized(handedOver) { handedOver += it } }
         _events.send(FilesEvent.Handover(file, PhoneFiles.mimeType(entry.name), entry.name, share))
     }
 
@@ -470,7 +467,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                     throw PhoneSideException(e)
                 }
                 input.use {
-                    uploadInto(b.fs, it, item.transfer.total, item.dir, name, app.uploadNames, "${t.profile}/${t.device}:${t.port}", throttled { done, total ->
+                    uploadInto(b.fs, it, item.transfer.total, item.dir, name, app.uploadNames, "${t.profile}/${t.device}:${t.port}", onProgress = throttled { done, total ->
                         setTransfer(Transfer(name, done, total))
                     })
                 }
@@ -642,21 +639,26 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     /**
      * The screen is gone: its transfers are cancelled (viewModelScope),
      * each removes its part file or half download, and only then the
-     * connection closes. The files it handed to other apps go too.
+     * connection closes; a transfer stuck on a stalled device is not waited
+     * for long (closing the connection unblocks it). Files handed to other
+     * apps stay a while, as a share target may read them later: only those
+     * older than [HANDED_OVER_KEEP_MS] go.
      */
     override fun onCleared() {
         val b = browser
         browser = null
-        val opened = synchronized(handedOver) { handedOver.toList() }
         app.appScope.launch(Dispatchers.IO) {
-            transfers.cancelAndJoin()
+            withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() }
             b?.close()
-            opened.forEach { it.deleteRecursively() }
+            PhoneFiles.pruneOpenCache(app, HANDED_OVER_KEEP_MS)
         }
         app.fileTargets.remove(targetId)
     }
 
     private companion object {
+        const val CLEANUP_WAIT_MS = 15_000L
+        const val HANDED_OVER_KEEP_MS = 2 * 60 * 60 * 1000L
+
         /** A row's bar moves in steps of a percent at most: a big file must not redraw the list thousands of times. */
         fun throttled(report: (Long, Long) -> Unit): (Long, Long) -> Unit {
             var last = -1L

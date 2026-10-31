@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -130,6 +131,69 @@ class TransfersTest {
         uploadInto(fs, SlowInput("fresh"), 5, "/d", "a.txt", UploadNames(), "dev") { _, _ -> }
         assertEquals("fresh", fs.text("/d/a.txt"))
         assertEquals(listOf("a.txt"), fs.names("/d"))
+    }
+
+    @Test
+    fun `a fresh part file may be another upload's, left alone, the upload takes the next name`() = runBlocking {
+        val now = 1_000_000L
+        val fs = FakeFs().file("/d/.a.txt.frpjump-part", "someone writing", modified = now - 60)
+        val name = uploadInto(fs, SlowInput("mine"), 4, "/d", "a.txt", UploadNames(), "dev", nowSeconds = now) { _, _ -> }
+        assertEquals("a (1).txt", name)
+        assertEquals("mine", fs.text("/d/a (1).txt"))
+        assertEquals("someone writing", fs.text("/d/.a.txt.frpjump-part"))
+    }
+
+    @Test
+    fun `a part file over ten minutes old is an interrupted upload's and is replaced`() = runBlocking {
+        val now = 1_000_000L
+        val fs = FakeFs().file("/d/.a.txt.frpjump-part", "stale", modified = now - STALE_PART_SECONDS)
+        assertEquals("a.txt", uploadInto(fs, SlowInput("mine"), 4, "/d", "a.txt", UploadNames(), "dev", nowSeconds = now) { _, _ -> })
+        assertEquals(listOf("a.txt"), fs.names("/d"))
+    }
+
+    @Test
+    fun `a part file someone else made just before ours is not removed when ours fails`() = runBlocking {
+        val fs = FakeFs().dir("/d")
+        fs.beforeCreate = { path -> fs.file(path, "theirs", modified = Long.MAX_VALUE / 2) }
+        val failure = runCatching { uploadInto(fs, SlowInput("mine"), 4, "/d", "a.txt", UploadNames(), "dev") { _, _ -> } }.exceptionOrNull()
+        assertTrue(failure is RemoteRefusal)
+        assertEquals("theirs", fs.text("/d/.a.txt.frpjump-part"))
+    }
+
+    @Test
+    fun `a device slow to answer does not hold up other uploads' names`() = runBlocking {
+        val names = UploadNames()
+        val asking = java.util.concurrent.CountDownLatch(1)
+        val answer = java.util.concurrent.CountDownLatch(1)
+        val slow = async(Dispatchers.IO) {
+            names.reserve("dev1", "/d", "a.txt") {
+                asking.countDown()
+                answer.await()
+                false
+            }
+        }
+        asking.await()
+        // While dev1's device is being asked, another device's upload reserves and releases.
+        val other = withTimeout(2_000) { withContext(Dispatchers.IO) { names.reserve("dev2", "/d", "a.txt") { false } } }
+        names.release("dev2", "/d", other)
+        assertEquals("a.txt", other)
+        answer.countDown()
+        assertEquals("a.txt", slow.await())
+    }
+
+    @Test
+    fun `a name held while the device was asked moves the reservation to the next one`() {
+        val names = UploadNames()
+        var first = true
+        val got = names.reserve("dev", "/d", "a.txt") {
+            if (first) {
+                first = false
+                // Another upload takes the name while this one asks the device.
+                assertEquals("a.txt", names.reserve("dev", "/d", "a.txt") { false })
+            }
+            false
+        }
+        assertEquals("a (1).txt", got)
     }
 
     @Test

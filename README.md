@@ -471,9 +471,11 @@ each other; both log in through `ssh/SshConnector.kt`.
 - "+" uploads files picked with the system picker into the folder shown,
   one at a time, each written to a hidden `.name.frpjump-part` (a long
   name is cut to fit 255 bytes, with a short hash) and renamed at the
-  end, so a half upload never replaces a file. A part file left by an
-  interrupted upload is replaced; a failed or cancelled upload removes
-  its own before the connection closes. A taken name becomes
+  end, so a half upload never replaces a file. A part file there already
+  is replaced when it is over ten minutes old (an interrupted upload),
+  else the upload takes the next name (another upload may be writing
+  it); a failed or cancelled upload removes the part file it made, and
+  only that one, before the connection closes. A taken name becomes
   `name (1).ext`; names being uploaded to are held, so two uploads of one
   name get two names, and a name taken just before the rename moves the
   upload to the next one.
@@ -488,9 +490,11 @@ each other; both log in through `ssh/SshConnector.kt`.
   connection", with Retry (which connects the tunnel when it is down);
   nothing can be downloaded or uploaded then.
 - Transfers belong to the screen in this version: leaving it stops them.
-  Files handed to other apps (`files-open/<profile>/`) are deleted when
-  the file screen closes, when the profile is forgotten, and at app start
-  when older than a day.
+  Files handed to other apps (`files-open/<profile>/`) stay a while, as a
+  share target may read them later: closing a file screen removes those
+  older than two hours, the app's start those older than a day, and
+  forgetting the profile all of its own. Closing waits up to 15 s for
+  cancelled transfers to clean up, then closes the connection anyway.
 
 ## Third-party libraries
 
