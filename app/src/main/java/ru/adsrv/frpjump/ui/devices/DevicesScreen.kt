@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.devices
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,8 +21,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -30,13 +39,24 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,10 +67,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.devices.filterDevices
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.NotificationsOffLine
 import ru.adsrv.frpjump.ui.DeviceGlyph
+import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.ageText
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.profiles.Chip
@@ -92,9 +114,21 @@ fun DevicesScreen(
     LaunchedEffect(notice, current?.id) {
         if (notice != null) vm.takeNotice()?.let { snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
     }
+    // Search: the bar turns into a field and the list follows it; ✕ or Back closes it and shows them all again.
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val closeSearch = {
+        searching = false
+        query = ""
+    }
+    BackHandler(enabled = searching) { closeSearch() }
     Scaffold(
         topBar = {
-            Header(current, onProfiles)
+            if (searching) {
+                SearchBar(query, onQuery = { query = it }, onClose = closeSearch)
+            } else {
+                Header(current, onProfiles, onSearch = { searching = true }.takeIf { !state.devices.isNullOrEmpty() })
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -112,14 +146,17 @@ fun DevicesScreen(
             } else state.error?.let { error ->
                 Text(error, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, vm::pull, onOpen)
+            DeviceRows(state, query, vm::pull, onOpen)
         }
     }
 }
 
-/** The switcher and this profile's tunnel count; terminals and settings are tabs of their own. */
+/**
+ * The switcher, this profile's tunnel count and search ([onSearch], null
+ * while there is nothing to search); terminals and settings are tabs of their own.
+ */
 @Composable
-private fun Header(current: ProfileItem?, onProfiles: () -> Unit) {
+private fun Header(current: ProfileItem?, onProfiles: () -> Unit, onSearch: (() -> Unit)?) {
     val colors = AppTheme.colors
     Row(
         Modifier
@@ -131,6 +168,69 @@ private fun Header(current: ProfileItem?, onProfiles: () -> Unit) {
         Box(Modifier.weight(1f)) { ProfileSwitcher(current, onProfiles) }
         current?.tunnels?.takeIf { it > 0 }?.let {
             Chip(pluralStringResource(R.plurals.tunnels, it, it), colors.accentContainer, colors.onAccentContainer)
+        }
+        onSearch?.let {
+            IconButton(onClick = it, modifier = Modifier.size(44.dp)) {
+                Icon(SearchGlyph, contentDescription = stringResource(R.string.devices_search), tint = colors.ink, modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+}
+
+/** The bar while searching: a field in the switcher's shape, focused with the keyboard up, and ✕. */
+@Composable
+private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit) {
+    val colors = AppTheme.colors
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        runCatching { focus.requestFocus() }
+        keyboard?.show()
+    }
+    val label = stringResource(R.string.devices_search)
+    Row(
+        Modifier
+            .statusBarsPadding()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = colors.card,
+            border = BorderStroke(1.dp, colors.accent),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 44.dp),
+        ) {
+            Row(
+                Modifier.padding(start = 14.dp, end = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(SearchGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(20.dp))
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQuery,
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 16.sp, color = colors.ink),
+                    cursorBrush = SolidColor(colors.accent),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focus)
+                        .semantics { contentDescription = label },
+                    decorationBox = { field ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty()) Text(stringResource(R.string.devices_search_hint), fontSize = 16.sp, color = colors.muted, maxLines = 1)
+                            field()
+                        }
+                    },
+                )
+                IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.devices_search_close), tint = colors.muted, modifier = Modifier.size(20.dp))
+                }
+            }
         }
     }
 }
@@ -161,7 +261,7 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceRows(state: DevicesUiState, onPull: () -> Unit, onOpen: (String) -> Unit) {
+private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit, onOpen: (String) -> Unit) {
     PullToRefreshBox(
         isRefreshing = state.refreshing,
         onRefresh = onPull,
@@ -178,7 +278,14 @@ private fun DeviceRows(state: DevicesUiState, onPull: () -> Unit, onOpen: (Strin
                     Text(stringResource(R.string.devices_empty), color = AppTheme.colors.muted, modifier = Modifier.padding(4.dp))
                 }
             }
-            items(devices.orEmpty(), key = { it.name }) { device ->
+            val shown = devices?.let { filterDevices(it, query) }.orEmpty()
+            // A search that finds nothing says so, rather than leave an empty screen.
+            if (!devices.isNullOrEmpty() && shown.isEmpty()) {
+                item {
+                    Text(stringResource(R.string.devices_no_match, query.trim()), color = AppTheme.colors.muted, modifier = Modifier.padding(4.dp))
+                }
+            }
+            items(shown, key = { it.name }) { device ->
                 DeviceItem(device, onClick = { onOpen(device.name) })
             }
         }

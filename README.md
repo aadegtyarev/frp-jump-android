@@ -45,6 +45,13 @@ last profile also wipes the SSH key and passwords, as before, before the
 index drops it. Profile directories the index does not list (an add or a
 forget cut short) are deleted with their keys on the next start.
 
+The magnifier next to the switcher searches the device list: the bar
+becomes a field (focused, keyboard up) and the list keeps the devices whose
+name contains what is typed, ignoring case (`devices/DeviceSearch.kt`;
+names only, as connection names like "Web" or "SSH" repeat on most
+devices). The cached list offline filters the same. Nothing found says
+"No devices match …"; ✕ or Back closes the search and shows them all.
+
 Upgrading from 0.1.x makes the single enrollment the first profile on the
 first start, without re-enrolling: v1's files move into the profile's
 directory (each by an atomic rename, the enrollment keeps v1's Keystore key

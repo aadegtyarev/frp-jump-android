@@ -96,6 +96,10 @@
     <string name="device_last_seen">Last seen %s</string>
     <string name="device_disabled">Disabled</string>
     <string name="devices_empty">No other devices yet.</string>
+    <string name="devices_search">Search devices</string>
+    <string name="devices_search_hint">Device name</string>
+    <string name="devices_search_close">Close search</string>
+    <string name="devices_no_match">No devices match “%s”.</string>
     <string name="offline_unreachable">No connection to the server · updated %s</string>
     <string name="offline_server_error">The server returned an error · updated %s</string>
     <string name="tap_to_retry">Tap to retry</string>

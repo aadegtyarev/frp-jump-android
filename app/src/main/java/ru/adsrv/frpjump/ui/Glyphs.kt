@@ -279,3 +279,13 @@ val OtherFileGlyph: ImageVector = glyph("OtherFile", 1.8f) {
     moveTo(12f, 17f)
     verticalLineTo(17.01f)
 }
+
+/** A magnifier: search. */
+val SearchGlyph: ImageVector = glyph("Search") {
+    moveTo(4f, 10.5f)
+    arcTo(6.5f, 6.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17f, y1 = 10.5f)
+    arcTo(6.5f, 6.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 10.5f)
+    close()
+    moveTo(15.2f, 15.2f)
+    lineTo(20f, 20f)
+}
