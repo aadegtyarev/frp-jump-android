@@ -136,6 +136,12 @@ class TunnelManager(
     /** "Retry direct" count per grant id ([VisitorSpec.attempt]); only touched under [syncing]. */
     private val attempts = mutableMapOf<String, Int>()
 
+    /** Moves to another local port per grant id, after its port was taken ([rebind]); only touched under [syncing]. */
+    private val rebinds = mutableMapOf<String, Int>()
+
+    /** Ports the next [apply] probes although frpc was given them: it could not listen there. */
+    private var reprobe: Set<Int> = emptySet()
+
     val state: StateFlow<TunnelsState> = combine(core, runner.states) { c, states ->
         TunnelsState(
             tunnels = c.planned.map {
@@ -161,6 +167,13 @@ class TunnelManager(
         // the REMOVED screen says tunnels are stopped, so stop them.
         scope.launch {
             session.removed.collect { removed -> if (removed) syncing.withLock { stopAllLocked() } }
+        }
+        // Another app took a tunnel's local port before frpc could listen on it: move the tunnel.
+        scope.launch {
+            runner.states.collect { states ->
+                val taken = states.filterValues(::portTaken).keys
+                if (taken.isNotEmpty()) scope.launch { rebind(taken) }
+            }
         }
         // "Trying direct…" ends after TRY_DIRECT_MS, and a punch is confirmed, even when frpc says nothing more.
         scope.launch {
@@ -289,6 +302,24 @@ class TunnelManager(
         still.forEach { attempts[it] = (attempts[it] ?: 0) + 1 }
         applyQuietly(credentials, desired)
     }
+
+    /**
+     * Tunnels in [grants] whose local port is taken by someone else get a
+     * free one, at most [MAX_REBINDS] times each, and frpc reloads.
+     */
+    private suspend fun rebind(grants: Set<String>) = syncing.withLock {
+        val credentials = credentials() ?: return@withLock
+        val desired = lastDesired ?: return@withLock
+        val still = grants.filter { grant -> runner.states.value[grant]?.let(::portTaken) == true && (rebinds[grant] ?: 0) < MAX_REBINDS }
+        if (still.isEmpty()) return@withLock
+        still.forEach { rebinds[it] = (rebinds[it] ?: 0) + 1 }
+        reprobe = core.value.planned.filter { it.grant.grantId in still }.map { it.localPort }.toSet()
+        Log.i(TAG, "local port taken, moving ${still.size} tunnel(s)")
+        applyQuietly(credentials, desired)
+    }
+
+    private fun portTaken(state: VisitorState) =
+        state.status == TunnelStatus.FAILED && state.detail?.contains(PORT_TAKEN, ignoreCase = true) == true
 
     private suspend fun applyQuietly(credentials: Credentials, desired: DesiredStateResponse) {
         try {
@@ -437,10 +468,13 @@ class TunnelManager(
         lastDesired = desired
         val live = desired.consumed.map { it.grantId }.toSet()
         attempts.keys.retainAll(live)
+        rebinds.keys.retainAll(live)
+        val probe = reprobe
+        reprobe = emptySet()
         val (planned, modes) = withContext(Dispatchers.IO) {
             // Under the shared map's lock: two profiles planning at once never pick the same port.
             val plan = localPorts.update { ports ->
-                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts)
+                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe)
             }
             val modes = plan.associate { it.grant.grantId to directMode(it.grant.exposerDeviceName) }
             // Direct again (kept or off until now): a new xtcp name, so lines its old
@@ -515,5 +549,9 @@ class TunnelManager(
         const val CONNECT_WAIT_SECONDS = 15
         const val EXPIRY_TICK_MS = 1_000L
         const val PEER_RETRY_MS = 2_000L
+        const val MAX_REBINDS = 3
+
+        /** In frpc's "start error" when a visitor cannot listen on its port. */
+        const val PORT_TAKEN = "address already in use"
     }
 }

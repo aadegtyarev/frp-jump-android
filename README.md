@@ -107,7 +107,9 @@ not parse is left in place and nothing is migrated from it; a
   xtcp visitor keeps its tunnel open (see below).
 - Local ports come from 40000-40999 and stay with (profile, device, port),
   so `127.0.0.1:<port>` bookmarks keep working and two profiles never share
-  a port.
+  a port. When another app holds a tunnel's port and frpc reports "address
+  already in use", the tunnel moves to a free port and frpc reloads (up to
+  three times per tunnel).
 - frpc runs from `nativeLibraryDir` as a child process, one per profile with
   tunnels; its config, cert, key and CA are written 0600 into
   `no_backup/frpc/<profile id>/`. The key and the config are
