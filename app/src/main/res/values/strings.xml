@@ -439,7 +439,7 @@
     <string name="terminal_close_all_looking">Looking for this phone\'s sessions on %s…</string>
     <string name="terminal_close_all_none">No sessions of this phone on %s</string>
     <string name="terminal_close_all_failed">Could not list the sessions on %1$s: %2$s</string>
-    <string name="terminal_close_all_failed_tabs">Could not list the sessions on %1$s: %2$s. Its tabs are closed; the sessions there keep running</string>
+    <string name="terminal_close_all_failed_tabs">Could not list the sessions on %1$s: %2$s. Closing its tabs only; the sessions there keep running</string>
     <string name="terminal_close_all_still_running">still running: %s</string>
     <string name="terminal_close_all_end_failed">Could not end the sessions on %1$s: %2$s</string>
     <string name="ssh_tmux_failed">tmux did not start (exit %d): a plain shell instead</string>
