@@ -56,7 +56,8 @@ finished on the next start.
 ## Connections
 
 A connection is a device, a port on it, a kind (web, SSH or TCP) and a
-name; web adds an HTTPS flag, SSH the user the login dialog starts with.
+name; web adds an HTTPS flag (only on ports other than 80, which is always
+HTTP, and 443, always HTTPS), SSH the user the login dialog starts with.
 They are kept per profile in `profiles/<id>/connections.json`, in the order
 they were added. Several connections may name the same device and port
 (SSH as root and as another user): they share one tunnel and one local
@@ -345,7 +346,10 @@ check interval, the SSH key, language and theme open a sheet.
 ## Web ports
 
 "Open" on a connected web connection shows `http://127.0.0.1:<local port>/`
-(`https://` with the HTTPS flag) in an in-app WebView. An HTTPS certificate
+(`https://` on 443 or with the HTTPS flag) in an in-app WebView. When an
+HTTPS connection gets a plain HTTP answer (`ERR_SSL_PROTOCOL_ERROR`), the
+page says the device answers over HTTP and offers "Open over HTTP", which
+also clears the connection's flag. An HTTPS certificate
 (self-signed or not, it never matches 127.0.0.1) is shown with its SHA-256
 fingerprint and accepted only once the owner trusts it; it is then pinned
 per (profile, device, target port) in `web_certs.json`. A different

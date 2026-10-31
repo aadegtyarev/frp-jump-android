@@ -107,7 +107,8 @@ re-enroll.
 ### 4. Device card and named connections
 
 - A connection is: device, port on the device, kind (web / SSH / TCP), name,
-  plus for web the HTTPS flag and for SSH the user.
+  plus for web the HTTPS flag (not asked on 80, always HTTP, and 443, always
+  HTTPS) and for SSH the user.
 - "New connection": pick kind, type a port or tap a preset (web: 80, 443,
   8080, 1880, 3000; SSH: 22, 2222; TCP: 1883, 502, 5432), give a name, and
   optionally "connect now".

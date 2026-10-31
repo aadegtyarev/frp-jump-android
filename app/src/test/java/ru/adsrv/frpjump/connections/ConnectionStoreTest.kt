@@ -12,7 +12,7 @@ class ConnectionStoreTest {
     @Test
     fun `connections are added, changed in place and removed, and survive a restart`() {
         val store = ConnectionStore(file, copy)
-        val web = Connection("1", "wb", 80, PortKind.WEB, "homeui")
+        val web = Connection("1", "wb", 8080, PortKind.WEB, "homeui")
         val ssh = Connection("2", "wb", 22, PortKind.SSH, "root", user = "root")
         store.save(web)
         store.save(ssh)
@@ -36,5 +36,16 @@ class ConnectionStoreTest {
         file.text = "{again"
         ConnectionStore(file, copy)
         assertEquals("{not json", copy.text)
+    }
+
+    @Test
+    fun `a stored web connection on 80 or 443 reads with that port's scheme`() {
+        ConnectionStore(file, copy).apply {
+            save(Connection("1", "wb", 80, PortKind.WEB, null, https = true))
+            save(Connection("2", "wb", 443, PortKind.WEB, null, https = false))
+            save(Connection("3", "wb", 8443, PortKind.WEB, null, https = true))
+        }
+        val read = ConnectionStore(file, copy).connections.value.associate { it.id to it.https }
+        assertEquals(mapOf("1" to false, "2" to true, "3" to true), read)
     }
 }

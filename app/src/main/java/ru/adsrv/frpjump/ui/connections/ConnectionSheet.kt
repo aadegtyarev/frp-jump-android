@@ -45,6 +45,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionDraft
 import ru.adsrv.frpjump.connections.PORT_PRESETS
+import ru.adsrv.frpjump.connections.asksForHttps
 import ru.adsrv.frpjump.connections.PortProblem
 import ru.adsrv.frpjump.connections.connectionOf
 import ru.adsrv.frpjump.connections.draftOf
@@ -186,7 +187,8 @@ fun ConnectionSheet(
                 placeholder = stringResource(R.string.connection_name_hint, shownName.ifEmpty { kindWord(kind) }),
                 problem = stringResource(R.string.connection_name_taken).takeIf { problems.nameTaken },
             )
-            if (kind == PortKind.WEB) {
+            // 80 and 443 say their scheme themselves; other ports may be either.
+            if (kind == PortKind.WEB && asksForHttps(parsePort(portText))) {
                 Row(
                     Modifier
                         .fillMaxWidth()

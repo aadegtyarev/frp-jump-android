@@ -172,7 +172,7 @@ fun connectionOf(draft: ConnectionDraft, id: String, device: String): Connection
     port = checkNotNull(parsePort(draft.portText)),
     kind = draft.kind,
     customName = customNameOf(draft),
-    https = draft.kind == PortKind.WEB && draft.https,
+    https = draft.kind == PortKind.WEB && schemeIsHttps(checkNotNull(parsePort(draft.portText)), draft.https),
     user = draft.user.trim().takeIf { draft.kind == PortKind.SSH },
 )
 
@@ -184,3 +184,16 @@ fun draftOf(connection: Connection) = ConnectionDraft(
     https = connection.https,
     user = connection.sshUser,
 )
+
+/**
+ * Whether a web connection to [port] uses HTTPS: 80 is HTTP and 443 HTTPS
+ * by their standard, other ports as the owner set [flag].
+ */
+fun schemeIsHttps(port: Int, flag: Boolean): Boolean = when (port) {
+    80 -> false
+    443 -> true
+    else -> flag
+}
+
+/** Whether the "New connection" sheet asks about HTTPS for [port]: not for 80 and 443, which say it themselves. */
+fun asksForHttps(port: Int?): Boolean = port != 80 && port != 443

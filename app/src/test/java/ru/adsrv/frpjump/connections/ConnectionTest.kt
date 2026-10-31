@@ -137,4 +137,18 @@ class ConnectionTest {
         val root = conn("c", "wb", 22, "root", PortKind.SSH)
         assertNull(draftProblems(ConnectionDraft(PortKind.TCP, "22", "raw"), "wb", listOf(root), null, fallback).protocolClash)
     }
+
+    @Test
+    fun `80 is http and 443 https whatever the flag, other ports as set`() {
+        assertEquals(false, schemeIsHttps(80, true))
+        assertEquals(true, schemeIsHttps(443, false))
+        assertEquals(true, schemeIsHttps(8443, true))
+        assertEquals(false, schemeIsHttps(8080, false))
+        assertEquals(false, asksForHttps(80))
+        assertEquals(false, asksForHttps(443))
+        assertEquals(true, asksForHttps(8080))
+        assertEquals(true, asksForHttps(null))
+        val web80 = connectionOf(ConnectionDraft(PortKind.WEB, "80", "", https = true), "3", "wb")
+        assertEquals(false, web80.https)
+    }
 }
