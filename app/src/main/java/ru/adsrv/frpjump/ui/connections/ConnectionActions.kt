@@ -18,6 +18,10 @@ import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshState
+import ru.adsrv.frpjump.tunnel.OpenThrough
+import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.tunnel.TunnelRef
+import ru.adsrv.frpjump.tunnel.openThrough
 import ru.adsrv.frpjump.ui.userMessage
 
 /**
@@ -35,6 +39,17 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
 
     fun disconnect(row: ConnectionRow) {
         runtime(row.profile)?.tunnels?.disconnectAsync(row.connection.device, row.connection.port)
+    }
+
+    /**
+     * The live terminal sessions and open file screens that go when
+     * [row]'s tunnel disconnects, or every tunnel when [row] is null: the
+     * owner is asked before they are lost. Main thread.
+     */
+    fun openThrough(row: ConnectionRow?): OpenThrough {
+        val sessions = app.ssh.sessions.value.map { SessionOn(TunnelRef(it.profile, it.device, it.port), it.state.value !is SshState.Ended) }
+        val files = app.fileTargets.all().map { TunnelRef(it.profile, it.device, it.port) }
+        return openThrough(sessions, files, row?.let { TunnelRef(it.profile, it.connection.device, it.connection.port) })
     }
 
     /** "Retry direct" for [row]'s device: all its tunnels through the server try again, kept no more on this network. */

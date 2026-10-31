@@ -11,10 +11,14 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.ports.profilePortKey
@@ -42,6 +46,17 @@ class SshSessions(
     val sessions: StateFlow<List<SshSession>> = _sessions
     private var nextId = 1
 
+    /** Sessions closed because their tunnel went away (ids are never reused); main thread. */
+    private val closedByTunnel = mutableSetOf<Int>()
+
+    /** How many sessions have not ended, as it changes (the notification counts them). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val liveCount: Flow<Int> = _sessions
+        .flatMapLatest { list ->
+            if (list.isEmpty()) flowOf(0) else combine(list.map { it.state }) { states -> states.count { it !is SshState.Ended } }
+        }
+        .distinctUntilChanged()
+
     /** Terminal text size in sp, shared by all sessions. */
     val fontSize = MutableStateFlow(DEFAULT_FONT_SP)
 
@@ -55,7 +70,10 @@ class SshSessions(
         scope.launch(Dispatchers.Main) {
             tunnelsUp.distinctUntilChanged().collect { up ->
                 _sessions.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }
-                    .forEach { close(it.id, Texts.get(R.string.ssh_tunnel_closed)) }
+                    .forEach {
+                        close(it.id, Texts.get(R.string.ssh_tunnel_closed))
+                        closedByTunnel += it.id
+                    }
             }
         }
     }
@@ -103,6 +121,9 @@ class SshSessions(
 
     /** Closes the sessions of [profile] ("Forget profile"). */
     fun closeProfile(profile: String) = _sessions.value.filter { it.profile == profile }.forEach { close(it.id) }
+
+    /** Whether session [id] went because its tunnel was closed: the terminal screen says so when it was the one shown. Main thread. */
+    fun closedByTunnel(id: Int): Boolean = id in closedByTunnel
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
 

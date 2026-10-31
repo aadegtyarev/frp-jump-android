@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.ports.PortKind
@@ -293,6 +295,9 @@ class ConnectionUi {
     /** The row whose "Files" was tapped: the same login dialog, for a file screen. */
     var filesLogin by mutableStateOf<ConnectionRow?>(null)
     var deleting by mutableStateOf<ConnectionRow?>(null)
+
+    /** The row whose Disconnect would close terminal sessions or file screens: asked first. */
+    var disconnecting by mutableStateOf<ConnectionRow?>(null)
     var editing by mutableStateOf<ConnectionRow?>(null)
     var menu by mutableStateOf<String?>(null)
 
@@ -345,7 +350,8 @@ fun rememberRowActions(
                 else -> actions.openSession(row)?.let(onOpenTerminal) ?: run { ui.login = row }
             }
         },
-        disconnect = actions::disconnect,
+        // Sessions and file screens on the tunnel close with it: ask first when there are any.
+        disconnect = { row -> if (actions.openThrough(row).any) ui.disconnecting = row else actions.disconnect(row) },
         copy = copy,
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
@@ -460,6 +466,22 @@ fun ConnectionDialogs(
             confirmButton = {},
         )
     }
+    ui.disconnecting?.let { row ->
+        // Counted when asked: what is open now, not when Disconnect was tapped.
+        val open = actions.openThrough(row)
+        AlertDialog(
+            onDismissRequest = { ui.disconnecting = null },
+            title = { Text(stringResource(R.string.disconnect_confirm_title, rowName(row))) },
+            text = { OpenThroughText(open) },
+            confirmButton = {
+                TextButton(onClick = {
+                    ui.disconnecting = null
+                    actions.disconnect(row)
+                }) { Text(stringResource(R.string.disconnect), color = AppTheme.colors.error) }
+            },
+            dismissButton = { TextButton(onClick = { ui.disconnecting = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     ui.deleting?.let { row ->
         var busy by remember(row.key) { mutableStateOf(false) }
         var error by remember(row.key) { mutableStateOf<String?>(null) }
@@ -468,7 +490,13 @@ fun ConnectionDialogs(
             title = { Text(stringResource(R.string.delete_title, rowName(row))) },
             text = {
                 androidx.compose.foundation.layout.Column {
-                    Text(stringResource(if (actions.deleteDisconnects(row)) R.string.delete_text_tunnel else R.string.delete_text))
+                    val disconnects = actions.deleteDisconnects(row)
+                    Text(stringResource(if (disconnects) R.string.delete_text_tunnel else R.string.delete_text))
+                    // What closes with the tunnel, as Disconnect says it.
+                    if (disconnects) {
+                        val open = actions.openThrough(row)
+                        if (open.any) OpenThroughText(open, Modifier.padding(top = 8.dp))
+                    }
                     error?.let { Text(it, color = AppTheme.colors.error, modifier = Modifier.padding(top = 8.dp)) }
                 }
             },
@@ -516,5 +544,17 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, context.getString(R.string.no_ssh_app), Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * What closes with the tunnels being disconnected: "N terminal sessions
+ * will close", and that open file screens lose their connection.
+ */
+@Composable
+fun OpenThroughText(open: OpenThrough, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (open.sessions > 0) Text(pluralStringResource(R.plurals.disconnect_closes_sessions, open.sessions, open.sessions))
+        if (open.files > 0) Text(stringResource(R.string.disconnect_closes_files))
     }
 }
