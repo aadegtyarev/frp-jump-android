@@ -484,8 +484,10 @@ each other; both log in through `ssh/SshConnector.kt`.
   go there, tap the last part to type a path (absolute, relative, `~`).
   Back goes up a folder and leaves at `/`; the arrow in the bar leaves at
   once. Leaving while files are being transferred asks first ("N
-  transfers in progress": Stay, or Leave and cancel). The path shown is always the folder's real one (links resolved),
-  so relative link targets in it are shown right.
+  transfers in progress": Stay, or Leave and cancel); should they all
+  finish meanwhile, the screen leaves, and should one fail, it stays on
+  the failure. The path shown is always the folder's real one (links
+  resolved), so relative link targets in it are shown right.
 - Folders first, then files, by name; size and modified time. Dot names
   only with "⋮ › Show hidden files", remembered in `settings.json`.
 - Symlinks carry a link badge and their target (`→ /mnt/data/etc`); a link

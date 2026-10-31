@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
@@ -234,8 +236,18 @@ private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () 
         } else {
             LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = bar)
         }
-        IconButton(onClick = onCancel, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.files_cancel_transfer), tint = colors.muted, modifier = Modifier.size(18.dp))
+        val label = stringResource(R.string.files_cancel_transfer)
+        Box(
+            Modifier
+                .size(width = 48.dp, height = 24.dp)
+                // A 48 dp target reaching into the row's padding: the line stays as tall as the icon.
+                .requiredSize(48.dp)
+                .clip(CircleShape)
+                .clickable(role = Role.Button, onClick = onCancel)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = null, tint = colors.muted, modifier = Modifier.size(18.dp))
         }
     }
 }

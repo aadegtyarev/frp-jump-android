@@ -102,8 +102,12 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
         }
     }
     // Leaving cancels the transfers going: ask first when there are any.
-    var leaving by remember { mutableStateOf(false) }
-    val leave: () -> Unit = { if (vm.state.value.running == 0) onBack() else { leaving = true } }
+    // Failed transfers when the question was asked; null while it is not up.
+    var leaving by remember { mutableStateOf<Int?>(null) }
+    val leave: () -> Unit = {
+        val now = vm.state.value
+        if (now.running == 0) onBack() else { leaving = now.failed }
+    }
     BackHandler { if (!vm.up()) leave() }
 
     // Where each folder was scrolled to: going back up returns there, and an action keeps it.
@@ -232,27 +236,32 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
         }
     }
 
-    if (leaving) {
+    leaving?.let { failedAtAsk ->
         val running = state.running
-        // They finished while the question was up: nothing to cancel, leave as asked.
-        LaunchedEffect(running) {
-            if (running == 0) {
-                leaving = false
-                onBack()
+        val answer = leaveAnswer(running, failedAtAsk, state.failed)
+        // They ended while the question was up: leave as asked when all went well, else stay on the failures.
+        LaunchedEffect(answer) {
+            when (answer) {
+                LeaveAnswer.ASK -> Unit
+                LeaveAnswer.STAY -> leaving = null
+                LeaveAnswer.LEAVE -> {
+                    leaving = null
+                    onBack()
+                }
             }
         }
-        if (running > 0) {
+        if (answer == LeaveAnswer.ASK) {
             AlertDialog(
-                onDismissRequest = { leaving = false },
+                onDismissRequest = { leaving = null },
                 title = { Text(pluralStringResource(R.plurals.files_leave_title, running, running)) },
                 text = { Text(stringResource(R.string.files_leave_text)) },
                 confirmButton = {
                     TextButton(onClick = {
-                        leaving = false
+                        leaving = null
                         onBack()
                     }) { Text(stringResource(R.string.files_leave), color = colors.error) }
                 },
-                dismissButton = { TextButton(onClick = { leaving = false }) { Text(stringResource(R.string.files_stay)) } },
+                dismissButton = { TextButton(onClick = { leaving = null }) { Text(stringResource(R.string.files_stay)) } },
             )
         }
     }
