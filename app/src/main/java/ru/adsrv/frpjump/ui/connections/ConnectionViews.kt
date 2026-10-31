@@ -594,6 +594,7 @@ fun ConnectionDialogs(
             editing = row.connection,
             portLocked = now.active || now.pending != null,
             existing = existing(row.profile),
+            ports = actions.localPortContext(row.profile),
             onSave = { connection, _, done -> actions.save(row.profile, connection, previous = row.connection, connectNow = false, onDone = done) },
             onDismiss = { ui.editing = null },
         )

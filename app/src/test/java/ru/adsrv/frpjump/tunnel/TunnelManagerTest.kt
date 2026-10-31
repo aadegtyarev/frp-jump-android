@@ -119,7 +119,11 @@ class TunnelManagerTest {
         startService = { serviceStarts++; true },
         directMode = { mode },
         recordTunnels = { record.set("p1", it) },
+        pins = { pins },
     ).apply { portRange = 47100..47199 }
+
+    /** The profile's pinned local ports, as its connections give them. */
+    @Volatile private var pins: Map<String, Int> = emptyMap()
 
     private suspend fun eventually(what: String, check: () -> Boolean) = withTimeout(2_000) {
         while (!check()) delay(10)
@@ -334,6 +338,21 @@ class TunnelManagerTest {
         val before = frpc.applies
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use again"))
         withTimeout(5_000) { while (frpc.applies == before) delay(20) }
+    }
+
+    @Test
+    fun `a pinned tunnel is served on its pin and never moves when its port is taken`() = runBlocking {
+        pins = mapOf("wb:80" to 18080)
+        manager.sync()
+        assertEquals(18080, frpc.last!!.visitors.single().localPort)
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "listen tcp 127.0.0.1:18080: bind: address already in use"))
+        delay(300)
+        assertEquals(1, frpc.applies)
+        val tunnel = manager.state.value.tunnels.single()
+        assertTrue(tunnel.pinned)
+        assertEquals(18080, tunnel.localPort)
+        // Said plainly, not frpc's words.
+        assertFalse(tunnel.state.detail!!.contains("address already in use"))
     }
 
     @Test

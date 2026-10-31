@@ -14,11 +14,16 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.connections.HeldPort
+import ru.adsrv.frpjump.connections.LocalPortContext
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
+import ru.adsrv.frpjump.connections.portPins
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
+import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.ports.reservePins
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
 import ru.adsrv.frpjump.ssh.LoginRefusal
@@ -131,7 +136,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         scope.launch {
             val before = runtime.connections.connections.value
             val failure = try {
-                withContext(Dispatchers.IO) { runtime.connections.save(connection) }
+                withContext(Dispatchers.IO) {
+                    runtime.connections.save(connection)
+                    // Reserved at once in the map all profiles share, so no other tunnel gets it, even while this one is off.
+                    connection.localPort?.let { pin ->
+                        runtime.localPorts.update { ports -> reservePins(ports, mapOf(profilePortKey(profile, connection.device, connection.port) to pin)) }
+                    }
+                }
                 null
             } catch (e: CancellationException) {
                 throw e
@@ -170,6 +181,20 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             if (failure == null && row.active && lastOnItsTunnel(row.connection, all)) disconnect(row)
             onDone(failure)
         }
+    }
+
+    /**
+     * What a pinned local port of [profile] is checked against: the pins of
+     * every profile's connections and the local ports of the tunnels up now.
+     * Main thread.
+     */
+    fun localPortContext(profile: String): LocalPortContext {
+        val runtimes = app.profiles.state.value.runtimes.values
+        return LocalPortContext(
+            profile = profile,
+            pins = runtimes.flatMap { r -> portPins(r.id, r.connections.connections.value) },
+            held = runtimes.flatMap { r -> r.tunnels.state.value.tunnels.map { HeldPort(r.id, it.device, it.port, it.localPort) } },
+        )
     }
 
     /** Whether deleting [row] also disconnects its tunnel. */

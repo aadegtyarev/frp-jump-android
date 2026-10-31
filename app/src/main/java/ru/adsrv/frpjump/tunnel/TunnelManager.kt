@@ -51,6 +51,8 @@ data class Tunnel(
     val localPort: Int,
     val state: VisitorState,
     val direct: DirectMode = DirectMode.ON,
+    /** Its local port is pinned by a connection: never moved, also when another app takes it. */
+    val pinned: Boolean = false,
 ) {
     val key get() = localPortKey(device, port)
 }
@@ -119,6 +121,8 @@ class TunnelManager(
      * ([ru.adsrv.frpjump.restore.RestoreRecord]).
      */
     private val recordTunnels: (count: Int) -> Unit = {},
+    /** The profile's pinned local ports by [localPortKey] ([ru.adsrv.frpjump.connections.tunnelPins]); read on every apply. */
+    private val pins: () -> Map<String, Int> = { emptyMap() },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
@@ -151,8 +155,12 @@ class TunnelManager(
                     port = it.grant.targetPort,
                     grantId = it.grant.grantId,
                     localPort = it.localPort,
-                    state = states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING),
+                    state = (states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING)).let { state ->
+                        // A pinned port stays: say plainly who is in the way.
+                        if (it.pinned && portTaken(state)) state.copy(detail = Texts.get(R.string.local_port_taken_pinned, it.localPort)) else state
+                    },
                     direct = c.modes[it.grant.grantId] ?: DirectMode.ON,
+                    pinned = it.pinned,
                 )
             },
             pending = c.pending,
@@ -309,13 +317,17 @@ class TunnelManager(
     /**
      * Tunnels in [grants] whose local port is taken by someone else get a
      * free one, at most [MAX_REBINDS] times each until it works again, and
-     * frpc reloads.
+     * frpc reloads. A pinned one never moves: it stays failed, saying so,
+     * until the port is free or the connection's pin changes.
      */
     private suspend fun rebind(grants: Set<String>) = syncing.withLock {
         val credentials = credentials() ?: return@withLock
         val desired = lastDesired ?: return@withLock
         if (session.removed.value) return@withLock
-        val still = grants.filter { grant -> runner.states.value[grant]?.let(::portTaken) == true && (rebinds[grant] ?: 0) < MAX_REBINDS }
+        val pinned = core.value.planned.filter { it.pinned }.map { it.grant.grantId }.toSet()
+        val still = grants.filter { grant ->
+            grant !in pinned && runner.states.value[grant]?.let(::portTaken) == true && (rebinds[grant] ?: 0) < MAX_REBINDS
+        }
         if (still.isEmpty()) return@withLock
         still.forEach { rebinds[it] = (rebinds[it] ?: 0) + 1 }
         reprobe = core.value.planned.filter { it.grant.grantId in still }.map { it.localPort }.toSet()
@@ -479,7 +491,7 @@ class TunnelManager(
         val (planned, modes) = withContext(Dispatchers.IO) {
             // Under the shared map's lock: two profiles planning at once never pick the same port.
             val plan = localPorts.update { ports ->
-                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe)
+                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe, pins())
             }
             val modes = plan.associate { it.grant.grantId to directMode(it.grant.exposerDeviceName) }
             // Direct again (kept or off until now): a new xtcp name, so lines its old

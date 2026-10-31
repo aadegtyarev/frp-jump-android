@@ -190,6 +190,7 @@ fun DeviceCardScreen(
             editing = null,
             portLocked = false,
             existing = vm.connections(),
+            ports = vm.actions.localPortContext(vm.profile),
             onSave = { connection, connectNow, done ->
                 val save = { vm.actions.save(vm.profile, connection, previous = null, connectNow = connectNow, onDone = done) }
                 if (connectNow) notificationsFirst(save) else save()

@@ -29,6 +29,12 @@ data class Connection(
     val https: Boolean = false,
     /** SSH: the user the login dialog starts with. */
     val user: String? = null,
+    /**
+     * A local port pinned by the owner (1024–65535), kept for this
+     * connection's tunnel only and never moved; null: "Auto", from the
+     * range in Settings. Connections to the same device and port share it.
+     */
+    @SerialName("local_port") val localPort: Int? = null,
 ) {
     /** The SSH user, `root` when none is set. */
     val sshUser: String get() = user?.trim()?.takeIf { it.isNotEmpty() } ?: SshLogin.DEFAULT_USER
@@ -107,6 +113,8 @@ data class ConnectionDraft(
     val name: String,
     val https: Boolean = false,
     val user: String = SshLogin.DEFAULT_USER,
+    /** Blank: "Auto". */
+    val localPortText: String = "",
 )
 
 data class DraftProblems(
@@ -174,6 +182,7 @@ fun connectionOf(draft: ConnectionDraft, id: String, device: String): Connection
     customName = customNameOf(draft),
     https = draft.kind == PortKind.WEB && schemeIsHttps(checkNotNull(parsePort(draft.portText)), draft.https),
     user = draft.user.trim().takeIf { draft.kind == PortKind.SSH },
+    localPort = parseLocalPort(draft.localPortText)?.takeIf { it in MIN_PINNED_PORT..65535 },
 )
 
 /** The sheet filled in from [connection], for "Change". */
@@ -183,6 +192,7 @@ fun draftOf(connection: Connection) = ConnectionDraft(
     name = connection.customName.orEmpty(),
     https = connection.https,
     user = connection.sshUser,
+    localPortText = connection.localPort?.toString().orEmpty(),
 )
 
 /**

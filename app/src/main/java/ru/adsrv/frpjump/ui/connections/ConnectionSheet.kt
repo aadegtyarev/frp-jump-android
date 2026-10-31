@@ -44,6 +44,9 @@ import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionDraft
+import ru.adsrv.frpjump.connections.LocalPortContext
+import ru.adsrv.frpjump.connections.LocalPortProblem
+import ru.adsrv.frpjump.connections.MIN_PINNED_PORT
 import ru.adsrv.frpjump.connections.PORT_PRESETS
 import ru.adsrv.frpjump.connections.asksForHttps
 import ru.adsrv.frpjump.connections.schemeIsHttps
@@ -76,6 +79,8 @@ fun ConnectionSheet(
     editing: Connection?,
     portLocked: Boolean,
     existing: List<Connection>,
+    /** Every profile's pins and the tunnels up now, for the local port's check. */
+    ports: LocalPortContext,
     onSave: (connection: Connection, connectNow: Boolean, done: (String?) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -87,19 +92,22 @@ fun ConnectionSheet(
     var name by rememberSaveable { mutableStateOf(start.name) }
     var https by rememberSaveable { mutableStateOf(start.https) }
     var user by rememberSaveable { mutableStateOf(start.user) }
+    var localPortText by rememberSaveable { mutableStateOf(start.localPortText) }
     var connectNow by rememberSaveable { mutableStateOf(true) }
     var tried by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val draft = ConnectionDraft(kind, portText, name, https, user)
+    val draft = ConnectionDraft(kind, portText, name, https, user, localPortText)
     val kindWord = { k: PortKind -> kindWord(context, k) }
     val shownName = draftLabel(draft, kindWord)
     val problems = draftProblems(draft, device, existing, editing?.id, kindWord)
+    val localProblem = ports.problem(localPortText, device, parsePort(portText), editing?.id)
+    val ok = problems.ok && localProblem == null
 
     val save = {
         tried = true
-        if (problems.ok && !busy) {
+        if (ok && !busy) {
             busy = true
             error = null
             val connection = connectionOf(draft, editing?.id ?: UUID.randomUUID().toString(), device)
@@ -211,6 +219,18 @@ fun ConnectionSheet(
                         Switch(checked = https, onCheckedChange = null)
                     }
                 }
+                // Blank is "Auto"; a number pins 127.0.0.1:N to this connection for good.
+                Field(
+                    label = stringResource(R.string.local_port),
+                    value = localPortText,
+                    onValueChange = { typed -> localPortText = typed.filter(Char::isDigit).take(5) },
+                    enabled = !portLocked,
+                    mono = true,
+                    keyboard = KeyboardType.Number,
+                    placeholder = stringResource(R.string.local_port_auto),
+                    problem = localProblem?.let { localPortProblemText(it) },
+                    note = stringResource(if (portLocked) R.string.local_port_locked else R.string.local_port_note),
+                )
                 if (kind == PortKind.SSH) {
                     Field(
                         label = stringResource(R.string.ssh_user),
@@ -236,7 +256,7 @@ fun ConnectionSheet(
                     error?.let { Text(it, color = colors.error, fontSize = 14.sp) }
                     Button(
                         onClick = save,
-                        enabled = !busy && (!tried || problems.ok),
+                        enabled = !busy && (!tried || ok),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.accent,
@@ -257,6 +277,15 @@ fun ConnectionSheet(
             }
         }
     }
+}
+
+/** Why a typed local port cannot be pinned, in words. */
+@Composable
+private fun localPortProblemText(problem: LocalPortProblem): String = when (problem.reason) {
+    LocalPortProblem.Reason.OUT_OF_RANGE -> stringResource(R.string.local_port_out_of_range, MIN_PINNED_PORT)
+    LocalPortProblem.Reason.PINNED_ELSEWHERE -> stringResource(R.string.local_port_pinned_elsewhere, problem.other.orEmpty())
+    LocalPortProblem.Reason.OTHER_PIN_ON_TUNNEL -> stringResource(R.string.local_port_other_pin, problem.other.orEmpty())
+    LocalPortProblem.Reason.IN_USE -> stringResource(R.string.local_port_in_use, problem.other.orEmpty())
 }
 
 /** Web / SSH / TCP as the mockup's segmented control. */
