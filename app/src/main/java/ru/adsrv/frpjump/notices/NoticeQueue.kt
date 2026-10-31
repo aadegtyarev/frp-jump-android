@@ -54,6 +54,9 @@ data class NoticeQueue(val items: List<TopNotice> = emptyList(), val limit: Int 
     /** [id] hidden (its time is up, a swipe or a tap); the next one shows. */
     fun dismiss(id: Long): NoticeQueue = copy(items = items.filterNot { it.id == id })
 
+    /** The notice about [key] hidden, shown or waiting (an Undo whose time is up). */
+    fun dismissKey(key: String): NoticeQueue = copy(items = items.filterNot { it.key == key })
+
     companion object {
         const val MAX_WAITING = 3
     }

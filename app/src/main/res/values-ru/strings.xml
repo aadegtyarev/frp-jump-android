@@ -234,6 +234,9 @@
         <item quantity="other">%d завершились</item>
     </plurals>
     <string name="notice_dismiss">Скрыть</string>
+    <!-- Undo instead of confirm: the notice shared by deletes in a row -->
+    <string name="undo_deleted">Удалено: %d</string>
+    <string name="undo">Отменить</string>
     <string name="ssh_password_saved_spoken">%s, сохранён</string>
     <plurals name="terminal_sessions_count">
         <item quantity="one">%d сессия</item>
@@ -252,9 +255,6 @@
     <string name="no_browser">Браузер не установлен; скопируйте адрес.</string>
     <string name="change">Изменить</string>
     <string name="delete">Удалить</string>
-    <string name="delete_title">Удалить «%s»?</string>
-    <string name="delete_text">Подключение будет удалено с телефона.</string>
-    <string name="delete_text_tunnel">Подключение будет удалено с телефона, а его туннель отключится.</string>
     <string name="delete_failed">Не удалось удалить (%s). Попробуйте ещё раз.</string>
     <string name="tunnel_not_listed">Сервер ещё не показал подключение; оно появится при следующей проверке.</string>
 

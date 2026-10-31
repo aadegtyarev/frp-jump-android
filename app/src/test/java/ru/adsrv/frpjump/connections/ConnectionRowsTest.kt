@@ -54,6 +54,13 @@ class ConnectionRowsTest {
     }
 
     @Test
+    fun `a connection deleted with Undo on screen is not listed, nor is its tunnel as unsaved`() {
+        val tunnels = TunnelsState(tunnels = listOf(tunnel("wb", 80, 40002)))
+        val rows = connectionRows("p1", listOf(root, ui), tunnels, hidden = setOf("3"))
+        assertEquals(listOf("1"), rows.map { it.connection.id })
+    }
+
+    @Test
     fun `active ones go first, each group keeps its order`() {
         val tunnels = TunnelsState(tunnels = listOf(tunnel("wb", 80, 40002), tunnel("pc", 22, 40003)))
         val (active, saved) = activeFirst(connectionRows("p1", listOf(root, ui, admin, other), tunnels))

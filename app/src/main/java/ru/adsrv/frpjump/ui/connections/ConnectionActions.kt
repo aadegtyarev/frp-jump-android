@@ -52,6 +52,7 @@ import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.tunnel.openOnProfile
 import ru.adsrv.frpjump.tunnel.openThrough
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
+import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.ui.userMessage
 import java.io.IOException
 
@@ -215,36 +216,51 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /**
-     * Deletes [row]'s connection; its tunnel goes too when no other
-     * connection of the profile uses it. [onDone] gets null, or what went wrong.
+     * Deletes [row]'s connection, with Undo: it leaves the screens at once
+     * and is removed when the notice goes ([ru.adsrv.frpjump.undo.PendingUndo]).
+     * Main thread.
      */
-    fun delete(row: ConnectionRow, onDone: (String?) -> Unit) {
-        val runtime = runtime(row.profile) ?: return onDone(null)
-        scope.launch {
-            val all = runtime.connections.connections.value
-            // Its explorer session, broker login and MQTT pins go with it.
-            app.mqtt.closeConnection(row.profile, row.connection.id)
-            val failure = try {
-                withContext(Dispatchers.IO) {
-                    runtime.connections.remove(row.connection.id)
-                    app.mqtt.changeStored {
-                        app.mqttLogins.forget(row.profile, row.connection.id)
-                        app.mqttPins.forget(row.profile, row.connection.id)
-                    }
-                    // Its pin, unless another connection to that device and port still has it, is free again.
-                    pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
-                        runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }
-                    }
+    fun delete(row: ConnectionRow) {
+        if (!row.saved) return
+        app.pendingUndo.enqueue(PendingUndo.connectionKey(row.profile, row.connection.id), commit = { commitDelete(row) })
+    }
+
+    /**
+     * Removes [row]'s connection; its tunnel goes too when no other
+     * connection of the profile uses it. In the app's scope: the screen may
+     * be gone by now. A failure says why; the row is then shown again.
+     */
+    private suspend fun commitDelete(row: ConnectionRow) {
+        val runtime = runtime(row.profile) ?: return
+        val all = runtime.connections.connections.value
+        // Its explorer session, broker login and MQTT pins go with it.
+        app.mqtt.closeConnection(row.profile, row.connection.id)
+        val failure = try {
+            withContext(Dispatchers.IO) {
+                runtime.connections.remove(row.connection.id)
+                app.mqtt.changeStored {
+                    app.mqttLogins.forget(row.profile, row.connection.id)
+                    app.mqttPins.forget(row.profile, row.connection.id)
                 }
-                null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                e.userMessage()
+                // Its pin, unless another connection to that device and port still has it, is free again.
+                pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
+                    runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }
+                }
             }
-            if (failure == null && row.active && lastOnItsTunnel(row.connection, all)) disconnect(row)
-            onDone(failure)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.userMessage()
         }
+        if (failure != null) {
+            app.notices.show(Texts.get(R.string.delete_failed, failure), NoticeKind.WARN, long = true)
+            return
+        }
+        // As the tunnel is now, not when Delete was tapped.
+        val key = localPortKey(row.connection.device, row.connection.port)
+        val up = runtime.tunnels.state.value.tunnels.any { it.key == key }
+        if (up && lastOnItsTunnel(row.connection, all)) disconnect(row)
     }
 
     /**
@@ -272,10 +288,6 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             held = runtimes.flatMap { r -> r.tunnels.state.value.tunnels.map { HeldPort(r.id, it.device, it.port, it.localPort) } },
         )
     }
-
-    /** Whether deleting [row] also disconnects its tunnel. */
-    fun deleteDisconnects(row: ConnectionRow): Boolean =
-        row.active && lastOnItsTunnel(row.connection, runtime(row.profile)?.connections?.connections?.value.orEmpty())
 
     /** The login dialog's start: the connection's user, the method used last on this port. */
     fun sshLogin(row: ConnectionRow): SshLogin {

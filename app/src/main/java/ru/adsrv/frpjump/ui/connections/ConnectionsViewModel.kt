@@ -16,6 +16,7 @@ import ru.adsrv.frpjump.connections.activeFirst
 import ru.adsrv.frpjump.connections.connectionRows
 import ru.adsrv.frpjump.profiles.ProfilesState
 import ru.adsrv.frpjump.tunnel.Waiting
+import ru.adsrv.frpjump.undo.PendingUndo
 
 data class ConnectionsUiState(
     val active: List<ConnectionRow> = emptyList(),
@@ -41,7 +42,14 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
         if (runtimes.isEmpty()) {
             flowOf(uiState(profiles, emptyList()))
         } else {
-            combine(runtimes.map { r -> combine(r.connections.connections, r.tunnels.state) { c, t -> connectionRows(r.id, c, t) } }) { lists ->
+            combine(
+                runtimes.map { r ->
+                    // A connection deleted while its Undo is on screen is not listed.
+                    combine(r.connections.connections, r.tunnels.state, app.pendingUndo.hidden) { c, t, hidden ->
+                        connectionRows(r.id, c, t, hidden = PendingUndo.connectionIds(hidden, r.id))
+                    }
+                },
+            ) { lists ->
                 uiState(profiles, lists.flatMap { it })
             }
         }

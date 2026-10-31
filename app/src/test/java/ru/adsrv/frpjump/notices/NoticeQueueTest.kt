@@ -47,4 +47,11 @@ class NoticeQueueTest {
         assertEquals(TopNotice.LONG_MS, n(1).copy(long = true).durationMs)
         assertEquals(TopNotice.ACTION_MS, n(1).copy(action = NoticeAction("Open") {}).durationMs)
     }
+
+    @Test
+    fun `a notice is hidden by its key, shown or waiting`() {
+        val q = NoticeQueue().post(n(1, key = "undo")).post(n(2))
+        assertEquals(listOf(2L), q.dismissKey("undo").items.map { it.id })
+        assertEquals(listOf(3L), NoticeQueue().post(n(3)).post(n(1, key = "undo")).dismissKey("undo").items.map { it.id })
+    }
 }

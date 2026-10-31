@@ -24,6 +24,18 @@ const val MAX_SNIPPET_LENGTH = 1000
 fun snippetText(text: String): String? = text.trimEnd().take(MAX_SNIPPET_LENGTH).takeIf { it.isNotBlank() }
 
 /**
+ * The places [id] moves in [all] to step [by] places among those shown
+ * (the others are hidden: deleted, Undo still on screen); 0 when it cannot.
+ */
+fun stepsAmongShown(all: List<Snippet>, shown: (Snippet) -> Boolean, id: String, by: Int): Int {
+    val visible = all.filter(shown)
+    val at = visible.indexOfFirst { it.id == id }
+    val target = visible.getOrNull(at + by)
+    if (at < 0 || by == 0 || target == null) return 0
+    return all.indexOf(target) - all.indexOfFirst { it.id == id }
+}
+
+/**
  * The terminal's snippets, one list per phone (all profiles and devices),
  * in the owner's order. Empty until [load]; every change writes the file.
  * Storage: call off the main thread.

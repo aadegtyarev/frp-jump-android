@@ -347,7 +347,6 @@ class ConnectionUi {
 
     /** The row whose "Files" was tapped: the same login dialog, for a file screen. */
     var filesLogin by mutableStateOf<ConnectionRow?>(null)
-    var deleting by mutableStateOf<ConnectionRow?>(null)
 
     /** The row whose Disconnect would close terminal sessions or file screens: asked first. */
     var disconnecting by mutableStateOf<ConnectionRow?>(null)
@@ -444,7 +443,8 @@ fun rememberRowActions(
             }
         },
         change = { ui.editing = it },
-        delete = { ui.deleting = it },
+        // No question: it goes at once, with Undo on the notice.
+        delete = actions::delete,
         directChoice = { ui.direct = it },
         // Down, the tunnel is brought up for it, as Connect does.
         keyLogin = { row -> if (row.tunnel == null) notificationsFirst { actions.startKeyLogin(row) } else actions.startKeyLogin(row) },
@@ -499,8 +499,8 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
 }
 
 /**
- * The dialogs and the sheet of a connections screen: SSH login, delete,
- * change. [existing] lists a profile's connections, for the sheet's checks.
+ * The dialogs and the sheet of a connections screen: SSH login,
+ * disconnect, change. [existing] lists a profile's connections, for the sheet's checks.
  */
 @Composable
 fun ConnectionDialogs(
@@ -513,7 +513,6 @@ fun ConnectionDialogs(
     /** Opens the file screen whose login has this id. */
     onOpenFiles: (targetId: Int) -> Unit,
 ) {
-    val context = LocalContext.current
     val notificationsFirst = rememberNotificationsFirst()
     KeyLoginDialogs(actions.keyLogin)
     ui.filesLogin?.let { row ->
@@ -592,39 +591,6 @@ fun ConnectionDialogs(
                 }) { Text(stringResource(R.string.disconnect), color = AppTheme.colors.error) }
             },
             dismissButton = { TextButton(onClick = { ui.disconnecting = null }) { Text(stringResource(R.string.cancel)) } },
-        )
-    }
-    ui.deleting?.let { row ->
-        var busy by remember(row.key) { mutableStateOf(false) }
-        var error by remember(row.key) { mutableStateOf<String?>(null) }
-        AlertDialog(
-            onDismissRequest = { if (!busy) ui.deleting = null },
-            title = { Text(stringResource(R.string.delete_title, rowName(row))) },
-            text = {
-                Column {
-                    val disconnects = actions.deleteDisconnects(row)
-                    Text(stringResource(if (disconnects) R.string.delete_text_tunnel else R.string.delete_text))
-                    // What closes with the tunnel, as Disconnect says it.
-                    if (disconnects) {
-                        val open = actions.openThrough(row)
-                        if (open.any) OpenThroughText(open, Modifier.padding(top = 8.dp))
-                    }
-                    error?.let { Text(it, color = AppTheme.colors.error, modifier = Modifier.padding(top = 8.dp)) }
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = !busy, onClick = {
-                    busy = true
-                    error = null
-                    actions.delete(row) { failure ->
-                        busy = false
-                        if (failure == null) ui.deleting = null else error = context.getString(R.string.delete_failed, failure)
-                    }
-                }) {
-                    if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.delete), color = AppTheme.colors.error)
-                }
-            },
-            dismissButton = { TextButton(enabled = !busy, onClick = { ui.deleting = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     ui.editing?.let { row ->

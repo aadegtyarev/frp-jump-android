@@ -90,4 +90,13 @@ class SnippetStoreTest {
         val long = "x".repeat(MAX_SNIPPET_LENGTH + 10)
         assertEquals(MAX_SNIPPET_LENGTH, store().add(long)!!.text.length)
     }
+
+    @Test
+    fun `arrows step past a snippet hidden while its Undo is on screen`() {
+        val all = listOf("a", "h", "b").map { Snippet(it, it) }
+        val shown = { s: Snippet -> s.id != "h" }
+        assertEquals(-2, stepsAmongShown(all, shown, "b", -1))
+        assertEquals(2, stepsAmongShown(all, shown, "a", 1))
+        assertEquals(0, stepsAmongShown(all, shown, "b", 1))
+    }
 }

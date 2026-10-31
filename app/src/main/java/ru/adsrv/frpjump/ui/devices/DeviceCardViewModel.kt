@@ -17,6 +17,7 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.ui.connections.ConnectionActions
+import ru.adsrv.frpjump.undo.PendingUndo
 
 data class DeviceCardUiState(
     val rows: List<ConnectionRow> = emptyList(),
@@ -40,7 +41,8 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
 
     val state: StateFlow<DeviceCardUiState> =
         combine(
-            runtime.connections.connections,
+            // A connection deleted while its Undo is on screen is not listed.
+            combine(runtime.connections.connections, app.pendingUndo.hidden) { connections, hidden -> shown(connections, hidden) },
             runtime.tunnels.state,
             runtime.devices.state,
             app.profiles.state.map { s -> s.index.find(profile)?.name.orEmpty() },
@@ -52,12 +54,18 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
                 SharingStarted.WhileSubscribed(5_000),
                 // As it is now: the card never flashes "no connections" before the first emission.
                 uiState(
-                    runtime.connections.connections.value,
+                    shown(runtime.connections.connections.value, app.pendingUndo.hidden.value),
                     runtime.tunnels.state.value,
                     runtime.devices.state.value,
                     app.profiles.state.value.index.find(profile)?.name.orEmpty(),
                 ),
             )
+
+    /** [connections] less those deleted while their Undo is on screen. */
+    private fun shown(connections: List<Connection>, hidden: Set<String>): List<Connection> {
+        val ids = PendingUndo.connectionIds(hidden, profile)
+        return if (ids.isEmpty()) connections else connections.filter { it.id !in ids }
+    }
 
     private fun uiState(connections: List<Connection>, tunnels: TunnelsState, list: DeviceList, profileName: String) =
         DeviceCardUiState(

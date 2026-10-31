@@ -41,6 +41,10 @@ class Notices(
         synchronized(_queue) { _queue.value = _queue.value.dismiss(id) }
     }
 
+    fun dismissKey(key: String) {
+        synchronized(_queue) { _queue.value = _queue.value.dismissKey(key) }
+    }
+
     /** The app went to the background: what was not seen yet becomes toasts rather than be lost. */
     fun toBackground() {
         val left = synchronized(_queue) { _queue.value.items.also { _queue.value = NoticeQueue() } }
