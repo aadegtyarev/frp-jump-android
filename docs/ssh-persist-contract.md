@@ -155,9 +155,19 @@ today, still with auto-reconnect.
   channel of the tab's connection before it disconnects. When the
   connection is down at that moment the tab still closes and the session
   stays; the owner can clear it with the action below.
-- In the terminal's "⋮": **Close all sessions of this phone on <device>**
-  (asks once, says how many it found) kills every `frpjump-<install>-*`
-  of that user and closes the app's tabs to that device and port.
+- In the terminal's "⋮": **Close all sessions of this phone on <device>**.
+  Undo instead of confirm, as every destructive action (`docs/contract.md`,
+  UI rules): the app first lists the device's `frpjump-<install>-*` of that
+  user (read only; a "Looking for…" notice meanwhile), then the app's tabs
+  to that device and port leave the screen at once and the shared notice
+  counts them with the sessions no tab holds ("Closed: N · Undo", about
+  6 s). Only when it goes are the tabs closed and the sessions found ended,
+  in one exec, checked by listing again; a session still listed is
+  reported. Undo brings the tabs back and ends nothing. Sessions held by a
+  tab that stays (the same device and user through another port or
+  profile) are not ended. Nothing found: "No sessions of this phone on
+  <device>". The device cannot be reached: the tabs still close the same
+  way and the notice says the sessions there keep running.
 
 ### Scrollback and copying inside tmux
 
@@ -223,6 +233,7 @@ device, then a build for the owner's phone.
    command with per-session options, re-attach on reconnect, kill on Close.
 3. **Pick-up after a kill.** `list-sessions` on opening Terminal, one tab
    per session, "Restored N sessions"; "Close all sessions of this phone"
+   (with Undo, see Closing)
    in "⋮".
 4. **The switch and the notice.** The connection field and its row in the
    SSH edit sheet; the once-per-connection notice. `SshSession` gets the
@@ -245,8 +256,9 @@ On a Wiren Board reached over the tunnel, from the owner's phone:
 - Two tabs with `top` and `sleep 600`, `adb shell am kill`, open Terminal on
   the connection: two tabs come back attached, `sleep` still running.
 - Close one tab: `tmux ls` on the device no longer has it. "Close all
-  sessions of this phone": no `frpjump-<install>-*` left; the owner's own
-  tmux session is untouched.
+  sessions of this phone": the tabs go at once with "Closed: N · Undo";
+  Undo brings them back and `tmux ls` is unchanged; once the notice goes,
+  no `frpjump-<install>-*` left; the owner's own tmux session is untouched.
 - In a tmux tab: `seq 5000`, swipe down: tmux history scrolls; long press
   copies a line from it.
 - The switch off: `tmux ls` shows no new session for that connection.

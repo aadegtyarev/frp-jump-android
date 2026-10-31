@@ -386,6 +386,7 @@
     <string name="key_install_save_failed">Key login works, but the app could not save it: %s. Logins stay with the password.</string>
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
+    <string name="terminal_text_size">Text size</string>
     <string name="terminal_keyboard">Keyboard</string>
     <plurals name="sessions_left_running">
         <item quantity="one">%d session keeps running: Sessions tab</item>
@@ -431,6 +432,17 @@
     <string name="ssh_connection_closed">Connection closed.</string>
     <string name="ssh_new_shell">New shell: the previous one ended with the connection</string>
     <string name="ssh_session_restored">Session restored</string>
+    <plurals name="ssh_sessions_restored">
+        <item quantity="one">Restored %d session</item>
+        <item quantity="other">Restored %d sessions</item>
+    </plurals>
+    <string name="terminal_close_all">Close all sessions of this phone on %s</string>
+    <string name="terminal_close_all_looking">Looking for this phone\'s sessions on %s…</string>
+    <string name="terminal_close_all_none">No sessions of this phone on %s</string>
+    <string name="terminal_close_all_failed">Could not list the sessions on %1$s: %2$s</string>
+    <string name="terminal_close_all_failed_tabs">Could not list the sessions on %1$s: %2$s. Closing its tabs only; the sessions there keep running</string>
+    <string name="terminal_close_all_still_running">still running: %s</string>
+    <string name="terminal_close_all_end_failed">Could not end the sessions on %1$s: %2$s</string>
     <string name="ssh_tmux_failed">tmux did not start (exit %d): a plain shell instead</string>
     <string name="terminal_reconnecting">Connection lost · reconnecting (try %d)…</string>
     <string name="terminal_reconnect_now">Now</string>

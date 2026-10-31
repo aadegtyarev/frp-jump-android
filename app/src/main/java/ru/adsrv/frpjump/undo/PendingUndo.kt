@@ -202,6 +202,10 @@ class PendingUndo(
             return darkTunnels(hidden).filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
         }
 
+        /** The key of tmux session [name] of [user] on [profile]'s [device]:[port] that no tab holds, whose end waits. */
+        fun tmuxKey(profile: String, device: String, port: Int, user: String, name: String) =
+            "tmux:" + profilePortKey(profile, device, port) + "/$user/$name"
+
         /** The key of the session [id] of [kind] (ids are per kind), whose close waits. */
         fun sessionKey(kind: SessionKind, id: Int) = "session:${kind.name.lowercase()}/$id"
     }

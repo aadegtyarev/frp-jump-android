@@ -33,6 +33,18 @@ class TmuxNames(private val storage: TextStorage, private val random: Random = S
         return "frpjump-${now.install}-${now.next}"
     }
 
+    /**
+     * Names picked up from a device ([names], this install's): the counter
+     * moves past them, so a new tab never takes one of them, even if the
+     * counter was not saved when they were made.
+     */
+    @Synchronized
+    fun reserve(names: List<String>) {
+        val now = load()
+        val highest = names.filter { it.startsWith("frpjump-${now.install}-") }.maxOfOrNull { tmuxNumber(it) } ?: return
+        if (highest >= now.next) save(now.copy(next = (highest + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()))
+    }
+
     private fun load(): Stored {
         state?.let { return it }
         val read = runCatching { storage.read()?.let { WireJson.decodeFromString<Stored>(it) } }.getOrNull()
@@ -76,6 +88,14 @@ class TabTmux(private val names: TmuxNames, initial: String? = null, disabled: B
     /** The tab's name, made on first call. */
     @Synchronized
     fun name(): String = assigned ?: names.next().also { assigned = it }
+
+    /** Takes [name], a session picked up from the device, as the tab's; only before it has one. */
+    @Synchronized
+    fun adopt(name: String): Boolean {
+        if (assigned != null) return false
+        assigned = name
+        return true
+    }
 
     /** tmux failed to start in this tab ([tmuxFailedToStart]): it opens plain shells from now on. */
     @Volatile

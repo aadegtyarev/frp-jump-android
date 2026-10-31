@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.schmizz.sshj.SSHClient
+import java.io.IOException
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ports.profilePortKey
@@ -111,7 +112,12 @@ class SshSessions(
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(profile, device, port, user)
         val target = SshTarget(user, device, port)
         val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
-        val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number, onReattached = ::sayReattached)
+        // The first tab of this connection in the app: its device may still run tabs of a killed process.
+        val first = hasNoTab(profile, device, port)
+        val session = SshSession(
+            nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number,
+            onReattached = ::sayReattached, pickUp = if (first) ::pickUp else null,
+        )
         _sessions.update { it + session }
         session.connect()
         return session
@@ -129,9 +135,12 @@ class SshSessions(
         val number = replacementNumber(others, SshTarget(old.user, old.device, old.port), old.number, SshTarget(login, old.device, old.port))
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(old.profile, old.device, old.port, login)
         // The same tab, so the same tmux session: it is attached to again when it still runs.
+        // A first tab that never got as far as the pick-up (refused login, host key) still does it.
+        val pickUpStill = old.tmux.assigned == null && _sessions.value.none { it.id != id && it.profile == old.profile && it.device == old.device && it.port == old.port }
         val fresh = SshSession(
             nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
+            pickUp = if (pickUpStill) ::pickUp else null,
         )
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         // After the tries of a drop ran out, the same login tries again the same way.
@@ -178,6 +187,93 @@ class SshSessions(
     fun closedByTunnel(id: Int): Boolean = id in closedByTunnel
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
+
+    private fun hasNoTab(profile: String, device: String, port: Int) =
+        _sessions.value.none { it.profile == profile && it.device == device && it.port == port }
+
+    /** Names [pickUp] handed out whose tabs do not exist yet. */
+    private val claims = PickUpClaims(env.tmuxNames)
+
+    /**
+     * [from], the first tab of its connection, found this install's
+     * sessions [found] on the device (any thread): it takes the first one
+     * that no tab of the app holds, and the rest open as tabs after it
+     * ([openPickedUp]). Tabs opened meanwhile have names of their own made
+     * before their session exists on the device, so they are among the
+     * held ones, never duplicated. Returns the name [from] took, or null:
+     * nothing to pick up, a new session as today.
+     */
+    private fun pickUp(from: SshSession, found: List<String>): String? {
+        val free = claims.claim(found, held = { _sessions.value.mapNotNull { it.tmux.assigned }.toSet() }, adopt = from.tmux::adopt)
+        if (free.isEmpty()) return null
+        scope.launch(Dispatchers.Main) { openPickedUp(from, free.drop(1)) }
+        return free.first()
+    }
+
+    /** The other picked-up sessions as tabs right after [from], in name order; then "Restored N sessions". Main thread. */
+    private fun openPickedUp(from: SshSession, names: List<String>) {
+        try {
+            openPickedUpTabs(from, names)
+        } finally {
+            // Tabs now (or not wanted): free for a later pick-up again.
+            claims.release(names)
+        }
+    }
+
+    private fun openPickedUpTabs(from: SshSession, names: List<String>) {
+        // Closed while logging in: the owner did not want them; they stay on the device.
+        if (find(from.id) == null) return
+        var after = from.id
+        for (name in names) {
+            val target = SshTarget(from.user, from.device, from.port)
+            val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
+            val tab = SshSession(
+                nextId++, from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, env, scope, ClientForScreen(), number,
+                tmuxName = name, onReattached = ::sayReattached, quietAttach = true,
+            )
+            val anchor = after
+            _sessions.update { list ->
+                val at = list.indexOfFirst { it.id == anchor }
+                if (at < 0) list + tab else list.subList(0, at + 1) + tab + list.subList(at + 1, list.size)
+            }
+            after = tab.id
+            tab.connect()
+        }
+        val restored = names.size + 1
+        notices.showInApp(Texts.plural(R.plurals.ssh_sessions_restored, restored, restored), NoticeKind.DONE, key = REATTACHED_KEY)
+    }
+
+    /**
+     * Runs [command] on [from]'s device as its user and returns its
+     * output: on an open tab's connection when there is one, else on a
+     * short connection of its own with the same login. Blocking: an IO
+     * thread. Throws when the device cannot be reached or refuses.
+     */
+    fun runOnDevice(from: SshSession, command: String): String {
+        liveClient(from.profile, from.device, from.port, from.user)?.let { return execOutput(it, command) }
+        val connector = SshConnector(from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, env)
+        val ssh = connector.newClient()
+        connector.connect(ssh)
+        try {
+            connector.authenticate(ssh)
+            return execOutput(ssh, command)
+        } finally {
+            runCatching { ssh.disconnect() }
+        }
+    }
+
+    /** This install's tmux sessions on [from]'s device for its user, by number; see [runOnDevice]. */
+    fun ownTmuxOn(from: SshSession): List<String> = ownTmuxSessions(runOnDevice(from, TMUX_LIST_COMMAND), env.tmuxNames.install)
+
+    /**
+     * Ends tmux sessions [names] on [from]'s device for its user; see
+     * [runOnDevice]. Throws when it cannot, also when any of them still
+     * runs afterwards ([stillRunning]).
+     */
+    fun endTmuxOn(from: SshSession, names: List<String>) {
+        val left = stillRunning(runOnDevice(from, tmuxKillAllAndListCommand(names)), names)
+        if (left.isNotEmpty()) throw IOException(Texts.get(R.string.terminal_close_all_still_running, left.joinToString(", ")))
+    }
 
     /** One notice for any number of tabs back on their tmux sessions at once; none in the background. */
     private fun sayReattached() {
