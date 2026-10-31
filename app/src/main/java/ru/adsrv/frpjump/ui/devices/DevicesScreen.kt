@@ -2,6 +2,16 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
@@ -170,7 +180,7 @@ fun DevicesScreen(
             } else state.error?.let { error ->
                 Text(error, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, query, vm::pull, onOpen)
+            DeviceRows(state, query, vm::pull, onOpen, onDisconnect = { device -> current?.let { vm.actions.disconnectDevice(it.id, device) } })
         }
     }
 }
@@ -253,16 +263,39 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
     )
 }
 
+/**
+ * The device rows; a row with tunnels open swipes left to show its power
+ * button ([onDisconnect] with the device's name). One row is open at a time;
+ * it slides back when the list moves or a finger lands anywhere else.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit, onOpen: (String) -> Unit) {
+private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit, onOpen: (String) -> Unit, onDisconnect: (String) -> Unit) {
+    val listState = rememberLazyListState()
+    // The row shown aside, by device name; the row a finger came down on, for the list to compare.
+    var openRow by remember { mutableStateOf<String?>(null) }
+    val touched = remember { arrayOfNulls<String>(1) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow = null }
+    }
+    LaunchedEffect(state.refreshing) { if (state.refreshing) openRow = null }
     PullToRefreshBox(
         isRefreshing = state.refreshing,
         onRefresh = onPull,
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                // Last, after the rows saw the finger: one landing off the open row closes it.
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+                        if (touched[0] != openRow) openRow = null
+                        touched[0] = null
+                    }
+                },
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -287,16 +320,82 @@ private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit,
                 }
             }
             items(shown, key = { it.name }) { device ->
-                DeviceItem(device, state.tunnelPorts[device.name].orEmpty(), onClick = { onOpen(device.name) })
+                val ports = state.tunnelPorts[device.name].orEmpty()
+                val open = openRow == device.name
+                SwipeReveal(
+                    open = open,
+                    enabled = ports.isNotEmpty(),
+                    onOpenChange = { now -> if (now) openRow = device.name else if (openRow == device.name) openRow = null },
+                    actionWidth = REVEAL_WIDTH,
+                    action = {
+                        DisconnectDeviceButton(device.name) {
+                            openRow = null
+                            onDisconnect(device.name)
+                        }
+                    },
+                    modifier = Modifier.pointerInput(device.name) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            touched[0] = device.name
+                        }
+                    },
+                ) {
+                    DeviceItem(
+                        device,
+                        ports,
+                        // Open: a tap puts it back; closed, it opens the card as before.
+                        onClick = { if (open) openRow = null else onOpen(device.name) },
+                        onDisconnect = { onDisconnect(device.name) }.takeIf { ports.isNotEmpty() },
+                    )
+                }
             }
         }
     }
 }
 
+/** How far a row slides aside for its power button. */
+private val REVEAL_WIDTH = 76.dp
+
+/** The power button behind a row swiped aside: this device's tunnels, as the bar's does for the profile. */
 @Composable
-private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit) {
+private fun DisconnectDeviceButton(device: String, onClick: () -> Unit) {
     val colors = AppTheme.colors
-    Surface(onClick = onClick, color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    val label = stringResource(R.string.disconnect_device_tunnels, device)
+    Surface(
+        onClick = onClick,
+        color = colors.errorContainer,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .width(REVEAL_WIDTH - 6.dp)
+            .fillMaxHeight()
+            .semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/**
+ * One device; [onDisconnect], while it has tunnels, is also offered to
+ * TalkBack as an action of the row, since the swipe is not.
+ */
+@Composable
+private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit, onDisconnect: (() -> Unit)?) {
+    val colors = AppTheme.colors
+    val disconnectLabel = stringResource(R.string.disconnect_device_tunnels, device.name)
+    Surface(
+        onClick = onClick,
+        color = colors.card,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                if (onDisconnect != null) {
+                    customActions = listOf(CustomAccessibilityAction(disconnectLabel) { onDisconnect(); true })
+                }
+            },
+    ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

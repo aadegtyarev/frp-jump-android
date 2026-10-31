@@ -205,6 +205,7 @@
     <string name="disconnect_named">Отключить «%s»</string>
     <string name="disconnect">Отключить</string>
     <string name="disconnect_all_tunnels">Отключить все туннели</string>
+    <string name="disconnect_device_tunnels">Отключить туннели «%s»</string>
     <plurals name="notification_sessions">
         <item quantity="one">%d сессия</item>
         <item quantity="few">%d сессии</item>

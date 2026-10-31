@@ -41,6 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +57,7 @@ import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.connections.ConnectButton
 import ru.adsrv.frpjump.ui.connections.ConnectionDialogs
 import ru.adsrv.frpjump.ui.connections.ConnectionMenu
@@ -114,6 +117,17 @@ fun DeviceCardScreen(
             ) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = colors.ink)
+                }
+                // This device's tunnels, as the power button on the Devices bar does for the profile's: down at once, with Undo.
+                if (state.rows.any { it.active }) {
+                    Box(Modifier.weight(1f))
+                    val label = stringResource(R.string.disconnect_device_tunnels, vm.device)
+                    IconButton(
+                        onClick = { vm.actions.disconnectDevice(vm.profile, vm.device) },
+                        modifier = Modifier.padding(end = 8.dp).size(44.dp).semantics { contentDescription = label },
+                    ) {
+                        Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         },

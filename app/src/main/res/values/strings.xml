@@ -197,6 +197,7 @@
     <string name="disconnect_named">Disconnect “%s”</string>
     <string name="disconnect">Disconnect</string>
     <string name="disconnect_all_tunnels">Disconnect all tunnels</string>
+    <string name="disconnect_device_tunnels">Disconnect tunnels of “%s”</string>
     <plurals name="notification_sessions">
         <item quantity="one">%d session</item>
         <item quantity="other">%d sessions</item>
