@@ -162,7 +162,11 @@ fun QrScannerScreen(onScanned: (String) -> Boolean, onClose: () -> Unit) {
 
         onDispose {
             disposed = true
-            bound?.let { (provider, cases) -> provider.unbind(*cases) }
+            bound?.let { (provider, cases) ->
+                // No frame may reach the executor once it is shut down.
+                cases.filterIsInstance<ImageAnalysis>().forEach { it.clearAnalyzer() }
+                provider.unbind(*cases)
+            }
             camera = null
             analysisThread.shutdown()
         }
