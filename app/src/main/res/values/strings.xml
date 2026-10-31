@@ -696,6 +696,10 @@
     <string name="mqtt_version_311" translatable="false">MQTT 3.1.1</string>
     <string name="mqtt_connecting">Connecting to the broker…</string>
     <string name="mqtt_reconnecting">Reconnecting…</string>
+    <!-- An MQTT session's state on the Sessions tab (Russian agrees with «сессия») -->
+    <string name="mqtt_session_open">Open</string>
+    <string name="mqtt_session_ended">Ended</string>
+    <string name="mqtt_session_not_connected">Not connected</string>
     <string name="mqtt_state_closed">Closed</string>
     <plurals name="mqtt_reading_tree">
         <item quantity="one">Reading the tree… %s topic</item>

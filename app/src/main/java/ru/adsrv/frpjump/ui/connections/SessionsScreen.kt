@@ -107,11 +107,11 @@ private fun MqttLine(session: MqttSession, profileColor: String?, onClick: () ->
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = when (state) {
         MqttState.Connecting -> stringResource(R.string.terminal_state_connecting) to colors.muted
-        is MqttState.Open -> stringResource(R.string.terminal_state_open) to colors.accent
+        is MqttState.Open -> stringResource(R.string.mqtt_session_open) to colors.accent
         MqttState.Reconnecting -> stringResource(R.string.mqtt_reconnecting) to colors.warning
         is MqttState.NeedsLogin -> stringResource(R.string.mqtt_state_login) to colors.warning
-        is MqttState.Failed -> stringResource(R.string.state_not_connected) to colors.error
-        MqttState.Ended -> stringResource(R.string.terminal_state_ended) to colors.muted
+        is MqttState.Failed -> stringResource(R.string.mqtt_session_not_connected) to colors.error
+        MqttState.Ended -> stringResource(R.string.mqtt_session_ended) to colors.muted
     }
     SessionLine("${session.device}:${session.port}", text, color, profileColor, onClick) {
         Text(stringResource(R.string.kind_mqtt_tile), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.ink)

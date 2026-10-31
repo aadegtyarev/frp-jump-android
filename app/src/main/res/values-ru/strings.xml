@@ -741,6 +741,10 @@
     <string name="mqtt_state_login">Нужен вход</string>
     <string name="mqtt_connecting">Подключение к брокеру…</string>
     <string name="mqtt_reconnecting">Переподключение…</string>
+    <!-- Состояние MQTT-сессии на вкладке «Сессии»: согласовано с «сессия» -->
+    <string name="mqtt_session_open">Открыта</string>
+    <string name="mqtt_session_ended">Завершена</string>
+    <string name="mqtt_session_not_connected">Не подключена</string>
     <string name="mqtt_state_closed">Закрыта</string>
     <plurals name="mqtt_reading_tree">
         <item quantity="one">Чтение дерева… %s топик</item>
