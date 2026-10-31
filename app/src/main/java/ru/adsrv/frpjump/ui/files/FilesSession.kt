@@ -296,9 +296,10 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
                     val label = folder?.let { uri -> withContext(Dispatchers.IO) { runCatching { PhoneFiles.folderName(app, Uri.parse(uri)) }.getOrNull() } }
                     _state.update { it.copy(showHidden = hidden, downloadFolder = label) }
                     show(_state.value.path, all)
-                    // Hidden files switched during a search: its hits are for the other setting.
+                    // Hidden files switched: the hits are for the other setting. A search going
+                    // runs again; one that is over goes, and the action is offered again.
                     _state.value.deepSearch?.takeIf { it.hidden != hidden }?.let { search ->
-                        if (_state.value.online) searchSubfolders(search.query) else clearSearch()
+                        if (search.running && _state.value.online) searchSubfolders(search.query) else clearSearch()
                     }
                 }
             }

@@ -677,7 +677,8 @@
     <string name="files_search_failed_plain">The search stopped: the device did not say why.</string>
     <string name="files_search_no_find">The device has no find command.</string>
     <string name="files_search_no_commands">This login may not run commands on the device, only transfer files.</string>
-    <string name="files_search_no_root">This folder is no longer on the device.</string>
+    <string name="files_search_no_root">Folder unavailable.</string>
+    <string name="files_search_no_answer">The device did not answer the search command: the login may not allow commands.</string>
     <string name="files_search_case_hint">On the device, case may matter for non-Latin letters.</string>
     <string name="files_search_slash_hint">Searching by name only, without /.</string>
     <plurals name="files_search_skipped">

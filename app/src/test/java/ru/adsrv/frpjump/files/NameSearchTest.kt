@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.files
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assume
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -96,6 +97,14 @@ class NameSearchTest {
         // Places it could not read, whatever path they name.
         val denied = listOf("find: '/elsewhere/a': Permission denied", "find: '/r/b': No such file or directory")
         assertEquals(SearchOutcome(SearchEnd.DONE, skipped = 7), searchOutcome(1, denied, 7))
+        // A path may hold a usage word: still a place it could not read (GNU, busybox, bfs quoting).
+        val wordy = listOf(
+            "find: '/r/invalid/z': Permission denied",
+            "find: ‘/r/bad dir’: Permission denied",
+            "find: /r/usage: x/unrecognized: Permission denied",
+            "bfs: error: /r/invalid: Permission denied.",
+        )
+        assertEquals(SearchOutcome(SearchEnd.DONE, skipped = 4), searchOutcome(1, wordy, 4))
         listOf(
             "find: unknown predicate `-iname'",
             "find: unrecognized: -xdev",
@@ -136,6 +145,26 @@ class NameSearchTest {
     }
 
     @Test
+    fun anUnreadableFolderNamedLikeAUsageErrorIsSkipped() {
+        touch("sub/invalid/hit-inside")
+        touch("sub/hit-outside")
+        val locked = File(dir, "sub/invalid")
+        locked.setReadable(false, false)
+        locked.setExecutable(false, false)
+        try {
+            // As root every folder reads: nothing to see there.
+            Assume.assumeFalse(locked.listFiles() != null)
+            val got = mutableListOf<Found>()
+            val outcome = runBlocking { searchNames(::LocalCommand, dir.path, "hit", hidden = false) { got += it } }
+            assertEquals(SearchOutcome(SearchEnd.DONE, skipped = 1), outcome)
+            assertEquals(listOf("sub/hit-outside"), got.map { it.relative })
+        } finally {
+            locked.setReadable(true, false)
+            locked.setExecutable(true, false)
+        }
+    }
+
+    @Test
     fun aGoneFolderSaysSo() {
         val outcome = runBlocking { searchNames(::LocalCommand, File(dir, "gone").path, "x", hidden = false) {} }
         assertEquals(SearchEnd.NO_ROOT, outcome.end)
@@ -143,11 +172,14 @@ class NameSearchTest {
 
     @Test
     fun aLoginThatRunsNoCommandsIsToldQuickly() {
-        // SFTP only: nothing ever comes back. Nologin: a message, no sentinel, exit 1.
-        listOf("exec sleep 30", "echo 'This account is currently not available.'; exit 1").forEach { shell ->
+        // SFTP only: nothing ever comes back (no answer). Nologin: a message, no sentinel, exit 1 (refused).
+        mapOf(
+            "exec sleep 30" to SearchEnd.NO_ANSWER,
+            "echo 'This account is currently not available.'; exit 1" to SearchEnd.NO_COMMANDS,
+        ).forEach { (shell, expected) ->
             val started = System.nanoTime()
             val outcome = runBlocking { searchNames({ LocalCommand(shell) }, dir.path, "x", hidden = false, startMs = 1_000) {} }
-            assertEquals(shell, SearchEnd.NO_COMMANDS, outcome.end)
+            assertEquals(shell, expected, outcome.end)
             assertTrue(shell, TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started) < 8)
         }
     }

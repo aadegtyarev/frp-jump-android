@@ -128,10 +128,11 @@ private fun StatusRow(search: DeepSearch, online: Boolean, onStart: () -> Unit, 
         search.end == SearchEnd.TIMED_OUT -> stringResource(R.string.files_search_timed_out, n) to false
         search.end == SearchEnd.NO_FIND -> stringResource(R.string.files_search_no_find) to true
         search.end == SearchEnd.NO_COMMANDS -> stringResource(R.string.files_search_no_commands) to true
+        search.end == SearchEnd.NO_ANSWER -> stringResource(R.string.files_search_no_answer) to true
         search.end == SearchEnd.NO_ROOT -> stringResource(R.string.files_search_no_root) to true
         else -> (search.message?.let { stringResource(R.string.files_search_failed, it) } ?: stringResource(R.string.files_search_failed_plain)) to true
     }
-    val again = !search.running && search.end in setOf(null, SearchEnd.TIMED_OUT, SearchEnd.FAILED)
+    val again = !search.running && search.end in setOf(null, SearchEnd.TIMED_OUT, SearchEnd.FAILED, SearchEnd.NO_ANSWER)
     Row(
         Modifier
             .fillMaxWidth()

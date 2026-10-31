@@ -172,16 +172,32 @@ interface RemoteCommand : Closeable {
 class CommandsRefused(cause: Throwable) : IOException(cause.message, cause)
 
 /**
- * How a search in subfolders ended: [NO_COMMANDS] the login may not run
- * commands (no sentinel came), [NO_ROOT] the folder is gone.
+ * How a search in subfolders ended: [NO_COMMANDS] the login runs no
+ * commands (it ended without the sentinel), [NO_ANSWER] nothing came in
+ * time (maybe such a login, maybe a slow device), [NO_ROOT] the folder
+ * cannot be entered.
  */
-enum class SearchEnd { DONE, CAPPED, TIMED_OUT, FAILED, NO_FIND, NO_COMMANDS, NO_ROOT }
+enum class SearchEnd { DONE, CAPPED, TIMED_OUT, FAILED, NO_FIND, NO_COMMANDS, NO_ANSWER, NO_ROOT }
 
 /** [skipped]: places it could not read; [message]: what `find` said when it [SearchEnd.FAILED]. */
 data class SearchOutcome(val end: SearchEnd, val skipped: Int = 0, val message: String? = null)
 
 /** Words of `find`'s (English) messages about how it was called, not about a place. */
 private val USAGE_MARKERS = listOf("unknown predicate", "unrecognized", "invalid", "paths must precede", "bad ", "unknown option", "missing argument", "usage:")
+
+/** A program's prefix to its message: `find: `, `bfs: error: `. */
+private val PROGRAM_PREFIX = Regex("^[A-Za-z0-9_.-]+:\\s*(?:error:\\s*)?")
+
+/**
+ * Whether a stderr line is about a place (`find: '/r/a': Permission
+ * denied`, busybox `find: /r/a: …`): after the program's prefix it starts
+ * with a quote or `/`. Its path may hold any word, so only the other lines
+ * are looked at for [USAGE_MARKERS].
+ */
+fun isPlaceError(line: String): Boolean {
+    val rest = line.replaceFirst(PROGRAM_PREFIX, "")
+    return rest.firstOrNull()?.let { it == '/' || it in "'\"`‘’“" } == true
+}
 
 /**
  * `find`'s end: its exit [status] and the first [errors] it wrote
@@ -190,7 +206,7 @@ private val USAGE_MARKERS = listOf("unknown predicate", "unrecognized", "invalid
  * counted as skipped; with no message, a non-zero status is a failure.
  */
 fun searchOutcome(status: Int?, errors: List<String>, lines: Int): SearchOutcome {
-    val usage = errors.firstOrNull { line -> USAGE_MARKERS.any { line.contains(it, ignoreCase = true) } }
+    val usage = errors.firstOrNull { line -> !isPlaceError(line) && USAGE_MARKERS.any { line.contains(it, ignoreCase = true) } }
     return when {
         status == 0 -> SearchOutcome(SearchEnd.DONE)
         status == 127 -> SearchOutcome(SearchEnd.NO_FIND)
@@ -203,8 +219,8 @@ fun searchOutcome(status: Int?, errors: List<String>, lines: Int): SearchOutcome
 
 /**
  * Runs [findScript] on [FIND_EXEC] through [start] and hands the hits to
- * [onFound] as they come (on an IO thread). No sentinel within
- * [startMs]: the login runs no commands. Ends at [cap] hits or after
+ * [onFound] as they come (on an IO thread). No sentinel: the login
+ * runs no commands; nothing at all within [startMs]: no answer. Ends at [cap] hits or after
  * [timeoutMs]; cancelled, or ended early, it closes the command, which
  * ends the `find`. Throws what [start] or the connection throws.
  */
@@ -251,8 +267,10 @@ suspend fun searchNames(
                 started.complete(false)
             }
         }
+        val began = withTimeoutOrNull(startMs) { started.await() }
         when {
-            withTimeoutOrNull(startMs) { started.await() } != true -> SearchOutcome(SearchEnd.NO_COMMANDS)
+            began == null -> SearchOutcome(SearchEnd.NO_ANSWER)
+            !began -> SearchOutcome(SearchEnd.NO_COMMANDS)
             withTimeoutOrNull(timeoutMs) { reading.await() } == null -> SearchOutcome(SearchEnd.TIMED_OUT)
             hits.full -> SearchOutcome(SearchEnd.CAPPED)
             else -> {
@@ -299,7 +317,7 @@ private class ErrorLines {
 }
 
 /** How long a login has to start the script ([SEARCH_SENTINEL]) before it counts as one that runs no commands. */
-const val SEARCH_START_MS = 10_000L
+const val SEARCH_START_MS = 15_000L
 
 private const val EXIT_WAIT_MS = 5_000L
 private const val CLOSE_WAIT_MS = 3_000L
