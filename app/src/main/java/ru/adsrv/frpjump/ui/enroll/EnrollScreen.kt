@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +50,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FormCard
 import ru.adsrv.frpjump.ui.FormScreen
+import ru.adsrv.frpjump.ui.PictureGlyph
 import ru.adsrv.frpjump.ui.ScanGlyph
 import ru.adsrv.frpjump.ui.findActivity
 import ru.adsrv.frpjump.ui.profiles.ProfileColorPicker
@@ -116,7 +119,7 @@ private fun InviteCard() {
 private fun LineCard(state: EnrollUiState, vm: EnrollViewModel, onScan: () -> Unit) {
     val colors = AppTheme.colors
     FormCard(title = stringResource(R.string.enroll_step_paste)) {
-        ScanButton(enabled = !state.busy, onScan = onScan)
+        ScanButton(enabled = !state.busy, onScan = onScan, onScanned = vm::onScanned)
         OutlinedTextField(
             value = state.text,
             onValueChange = vm::onText,
@@ -154,13 +157,17 @@ private enum class CameraRefused { ONCE, FOR_GOOD }
 /**
  * "Scan QR code": opens the scanner, asking for the camera at this tap
  * when needed. Refused, a line says why it is wanted (tapping again asks
- * again); refused for good, a line with "Open settings". Pasting works
- * either way. Hidden on a phone without a camera.
+ * again); refused for good, a line with "Open settings". Either way
+ * "From gallery" reads a picture of the code instead, and pasting works.
+ * On a phone without a camera only "From gallery" is offered.
  */
 @Composable
-private fun ScanButton(enabled: Boolean, onScan: () -> Unit) {
+private fun ScanButton(enabled: Boolean, onScan: () -> Unit, onScanned: (String) -> Boolean) {
     val context = LocalContext.current
-    if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) return
+    if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
+        GalleryFallback(enabled, onScanned)
+        return
+    }
     val colors = AppTheme.colors
     var refused by rememberSaveable { mutableStateOf<CameraRefused?>(null) }
     // Back from the settings: allowed there, the line goes.
@@ -201,6 +208,44 @@ private fun ScanButton(enabled: Boolean, onScan: () -> Unit) {
         }
         null -> Unit
     }
+    if (refused != null) GalleryFallback(enabled, onScanned)
+}
+
+/**
+ * "From gallery" without the scanner: a code that is an enroll line fills
+ * the line as a scan does ([onScanned] takes it); anything else gets the
+ * scanner's line about it under the button.
+ */
+@Composable
+private fun GalleryFallback(enabled: Boolean, onScanned: (String) -> Boolean) {
+    val colors = AppTheme.colors
+    var message by rememberSaveable { mutableStateOf<Int?>(null) }
+    val gallery = rememberPicturePicker { result ->
+        message = when (result) {
+            is PictureQr.Code -> if (onScanned(result.text)) null else R.string.scan_not_enroll
+            PictureQr.NoCode -> R.string.scan_no_code
+            PictureQr.Unreadable -> R.string.scan_picture_failed
+        }
+    }
+    OutlinedButton(
+        onClick = {
+            message = null
+            gallery.pick()
+        },
+        enabled = enabled && !gallery.busy,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+    ) {
+        if (gallery.busy) {
+            CircularProgressIndicator(Modifier.size(20.dp), color = colors.accent, strokeWidth = 2.dp)
+        } else {
+            Icon(PictureGlyph, contentDescription = null, modifier = Modifier.size(20.dp), tint = colors.accent)
+        }
+        Text(stringResource(R.string.scan_from_gallery), fontSize = 15.sp, color = colors.accent, modifier = Modifier.padding(start = 10.dp))
+    }
+    message?.let { Text(stringResource(it), fontSize = 13.sp, color = colors.error) }
 }
 
 private fun cameraAllowed(context: Context): Boolean =

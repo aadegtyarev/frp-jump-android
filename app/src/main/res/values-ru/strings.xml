@@ -86,7 +86,10 @@
     <string name="scan_torch_off">Выключить фонарик</string>
     <string name="scan_no_torch">У этой камеры нет фонарика</string>
     <string name="scan_torch_failed">Не удалось переключить фонарик</string>
-    <string name="scan_camera_failed">Не удалось открыть камеру. Вернитесь и вставьте строку.</string>
+    <string name="scan_camera_failed">Не удалось открыть камеру. Выберите картинку с кодом из галереи или вернитесь и вставьте строку.</string>
+    <string name="scan_from_gallery">Из галереи</string>
+    <string name="scan_no_code">На картинке не найден QR-код</string>
+    <string name="scan_picture_failed">Не удалось открыть картинку</string>
     <string name="enroll_phone_name">Имя этого телефона</string>
     <string name="enroll_step_name">3. Как назвать профиль</string>
     <string name="enroll_submit">Подключить телефон</string>

@@ -20,15 +20,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +72,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.enroll.QrDecoder
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PictureGlyph
 import ru.adsrv.frpjump.ui.TorchGlyph
 import ru.adsrv.frpjump.ui.findActivity
 import java.util.concurrent.Executors
@@ -78,6 +83,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [onScanned] gets every code read and answers whether it took it; the
  * first one taken ticks and stops the scanning (the caller closes this).
  * Other codes show [R.string.scan_not_enroll] while scanning goes on.
+ * "From gallery" reads a picture of the code instead (sent to this same
+ * phone, which cannot film its own screen): the same answer, or a line
+ * that there was no code in it, and the scanner stays.
  * Needs the camera permission already granted.
  */
 @Composable
@@ -92,6 +100,28 @@ fun QrScannerScreen(onScanned: (String) -> Boolean, onClose: () -> Unit) {
     /** A line about the last code or the torch, under the viewfinder. */
     var message by remember { mutableStateOf<Int?>(null) }
     val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    /** Set once a code was taken: no more frames are decoded, no more codes handed on. */
+    val done = remember { AtomicBoolean(false) }
+
+    /** A code read from the camera or a picture: taken ticks, anything else says so. */
+    fun onText(text: String) {
+        if (done.get()) return
+        if (take(text)) {
+            done.set(true)
+            val tick = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.KEYBOARD_TAP
+            view.performHapticFeedback(tick)
+        } else {
+            message = R.string.scan_not_enroll
+        }
+    }
+
+    val gallery = rememberPicturePicker { result ->
+        when (result) {
+            is PictureQr.Code -> onText(result.text)
+            PictureQr.NoCode -> message = R.string.scan_no_code
+            PictureQr.Unreadable -> message = R.string.scan_picture_failed
+        }
+    }
 
     BackHandler(onBack = onClose)
 
@@ -120,20 +150,8 @@ fun QrScannerScreen(onScanned: (String) -> Boolean, onClose: () -> Unit) {
     DisposableEffect(lifecycleOwner) {
         val main = ContextCompat.getMainExecutor(context)
         val analysisThread = Executors.newSingleThreadExecutor()
-        val done = AtomicBoolean(false)
         var disposed = false
         var bound: Pair<ProcessCameraProvider, Array<androidx.camera.core.UseCase>>? = null
-
-        fun onText(text: String) {
-            if (disposed || done.get()) return
-            if (take(text)) {
-                done.set(true)
-                val tick = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.KEYBOARD_TAP
-                view.performHapticFeedback(tick)
-            } else {
-                message = R.string.scan_not_enroll
-            }
-        }
 
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
@@ -150,7 +168,7 @@ fun QrScannerScreen(onScanned: (String) -> Boolean, onClose: () -> Unit) {
                             .build(),
                     )
                     .build()
-                analysis.setAnalyzer(analysisThread, QrAnalyzer(done) { text -> main.execute { onText(text) } })
+                analysis.setAnalyzer(analysisThread, QrAnalyzer(done) { text -> main.execute { if (!disposed) onText(text) } })
                 val selector = if (provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
                 camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
                 bound = provider to arrayOf(preview, analysis)
@@ -217,6 +235,17 @@ fun QrScannerScreen(onScanned: (String) -> Boolean, onClose: () -> Unit) {
                 Icon(TorchGlyph, contentDescription = stringResource(if (torch) R.string.scan_torch_off else R.string.scan_torch_on))
             }
         }
+        GalleryButton(
+            busy = gallery.busy,
+            onClick = {
+                message = null
+                gallery.pick()
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .safeDrawingPadding()
+                .padding(bottom = 24.dp),
+        )
     }
 }
 
@@ -228,6 +257,31 @@ private fun overlayButton(on: Boolean) = IconButtonDefaults.iconButtonColors(
     disabledContainerColor = Color.Black.copy(alpha = 0.3f),
     disabledContentColor = Color.White.copy(alpha = 0.4f),
 )
+
+/** "From gallery" at the bottom, light on the camera as the top buttons; a spinner in place of its icon while the picture is read. */
+@Composable
+private fun GalleryButton(busy: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onClick,
+        enabled = !busy,
+        shape = RoundedCornerShape(24.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Black.copy(alpha = 0.45f),
+            contentColor = Color.White,
+            disabledContainerColor = Color.Black.copy(alpha = 0.45f),
+            disabledContentColor = Color.White.copy(alpha = 0.7f),
+        ),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+        modifier = modifier,
+    ) {
+        if (busy) {
+            CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
+        } else {
+            Icon(PictureGlyph, contentDescription = null, modifier = Modifier.size(22.dp))
+        }
+        Text(stringResource(R.string.scan_from_gallery), fontSize = 15.sp, modifier = Modifier.padding(start = 10.dp))
+    }
+}
 
 /** The dimmed camera with a clear square in the middle, its corners marked, the [hint] and [message] under it. */
 @Composable

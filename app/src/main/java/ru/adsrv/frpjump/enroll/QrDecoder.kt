@@ -21,7 +21,7 @@ import com.google.zxing.common.HybridBinarizer
  * Not thread-safe: one instance per analysis thread.
  */
 class QrDecoder {
-    private val reader = MultiFormatReader().apply { setHints(HINTS) }
+    private val reader = MultiFormatReader().apply { setHints(QR_HINTS) }
 
     /**
      * The text of a QR code in the [width]×[height] luminance plane [luma],
@@ -37,12 +37,11 @@ class QrDecoder {
             reader.reset()
         }
     }
-
-    private companion object {
-        val HINTS: Map<DecodeHintType, Any> = mapOf(
-            DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
-            DecodeHintType.TRY_HARDER to true,
-            DecodeHintType.ALSO_INVERTED to true,
-        )
-    }
 }
+
+/** QR only, try harder, also inverted: the camera and pictures read the same codes. */
+internal val QR_HINTS: Map<DecodeHintType, Any> = mapOf(
+    DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+    DecodeHintType.TRY_HARDER to true,
+    DecodeHintType.ALSO_INVERTED to true,
+)

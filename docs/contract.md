@@ -72,7 +72,8 @@ certificate and key. The owner may have several, for example "Work" and
    `<url> <token>` works too; line breaks and extra spaces are ignored; the
    CLI's `--name <pick-a-name>` placeholder counts as no name). A scanned
    code fills the line as a paste would; a code that is not an enroll line
-   says so on the scanner, which keeps scanning.
+   says so on the scanner, which keeps scanning. "From gallery" reads the
+   code from a picture (sent to this same phone) the same way.
 3. The owner gives the profile a name and a colour (prefilled from the server
    host). The app calls `POST /api/agent/enroll` and stores the credentials
    encrypted with a Keystore key.
