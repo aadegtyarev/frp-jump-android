@@ -15,6 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import ru.adsrv.frpjump.settings.BackgroundPoll
+import ru.adsrv.frpjump.settings.MAX_LOCAL_PORT
+import ru.adsrv.frpjump.settings.MIN_LOCAL_PORT
+import ru.adsrv.frpjump.settings.MIN_LOCAL_PORTS
+import ru.adsrv.frpjump.settings.PortRangeProblem
+import ru.adsrv.frpjump.locale.AppLanguage
+import ru.adsrv.frpjump.locale.currentAppLanguage
+import androidx.compose.ui.res.pluralStringResource
 import ru.adsrv.frpjump.ui.SecretField
 import android.content.Intent
 import android.net.Uri
@@ -29,6 +36,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -100,16 +108,16 @@ fun SettingsScreen(
     var pickedKey by remember { mutableStateOf<String?>(null) }
     val pickKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) pickedKey = readSmallText(context, uri)
-        if (uri != null && pickedKey == null) Toast.makeText(context, "Cannot read that file.", Toast.LENGTH_SHORT).show()
+        if (uri != null && pickedKey == null) Toast.makeText(context, context.getString(R.string.key_file_unreadable), Toast.LENGTH_SHORT).show()
     }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings)) },
                 navigationIcon = {
                     onBack?.let {
                         IconButton(onClick = it) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     }
                 },
@@ -130,7 +138,7 @@ fun SettingsScreen(
                     onForget = { confirm = true },
                 )
             }
-            SectionTitle("Tunnels")
+            SectionTitle(stringResource(R.string.settings_tunnels))
             ListItem(
                 headlineContent = { Text(stringResource(R.string.setting_direct)) },
                 supportingContent = { Text(stringResource(R.string.setting_direct_hint), style = MaterialTheme.typography.bodySmall) },
@@ -138,16 +146,16 @@ fun SettingsScreen(
                 modifier = Modifier.toggleable(value = settings.direct, role = Role.Switch, onValueChange = vm::setDirect),
             )
             LocalPortsItem(settings.localPortFirst, settings.localPortLast, vm::setLocalPorts)
-            SectionTitle("Background")
+            SectionTitle(stringResource(R.string.settings_background))
             BackgroundPollItem(settings.backgroundPoll, vm::setBackgroundPoll)
             BatteryItem()
-            SectionTitle("SSH")
+            SectionTitle(stringResource(R.string.kind_ssh))
             ListItem(
-                headlineContent = { Text("SSH public key") },
+                headlineContent = { Text(stringResource(R.string.ssh_public_key)) },
                 supportingContent = {
                     Column {
                         Text(
-                            "Add this line to ~/.ssh/authorized_keys on a device to log in with this phone's key.",
+                            stringResource(R.string.ssh_public_key_hint),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         SelectionContainer {
@@ -163,17 +171,16 @@ fun SettingsScreen(
             )
             state.sshPublicKey?.let { key ->
                 Row(modifier = Modifier.padding(horizontal = 8.dp)) {
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(key)) }) { Text("Copy") }
-                    TextButton(onClick = { shareText(context, key) }) { Text("Share") }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(key)) }) { Text(stringResource(R.string.copy)) }
+                    TextButton(onClick = { shareText(context, key) }) { Text(stringResource(R.string.share)) }
                 }
             }
             ListItem(
-                headlineContent = { Text("Imported private key") },
+                headlineContent = { Text(stringResource(R.string.imported_key)) },
                 supportingContent = {
                     Column {
                         Text(
-                            state.importedKey?.let { "Tried before this phone's own key:" }
-                                ?: "Optional: an OpenSSH private key file you already use, tried before this phone's key.",
+                            stringResource(if (state.importedKey != null) R.string.imported_key_tried_first else R.string.imported_key_hint),
                             style = MaterialTheme.typography.bodySmall,
                         )
                         state.importedKey?.let {
@@ -187,9 +194,11 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     vm.clearImportError()
                     pickKey.launch(arrayOf("*/*"))
-                }) { Text(if (state.importedKey == null) "Import private key" else "Replace") }
-                if (state.importedKey != null) TextButton(onClick = vm::removeImportedKey) { Text("Remove") }
+                }) { Text(stringResource(if (state.importedKey == null) R.string.import_key else R.string.replace_key)) }
+                if (state.importedKey != null) TextButton(onClick = vm::removeImportedKey) { Text(stringResource(R.string.remove_key)) }
             }
+            SectionTitle(stringResource(R.string.settings_app))
+            LanguageItem(vm::setLanguage)
         }
     }
     pickedKey?.let { key ->
@@ -304,28 +313,24 @@ private fun GroupRow(
 }
 
 @Composable
-private fun LocalPortsItem(first: Int, last: Int, onSave: (Int?, Int?) -> String?) {
+private fun LocalPortsItem(first: Int, last: Int, onSave: (Int?, Int?) -> PortRangeProblem?) {
     var firstText by rememberSaveable(first) { mutableStateOf(first.toString()) }
     var lastText by rememberSaveable(last) { mutableStateOf(last.toString()) }
-    var problem by remember { mutableStateOf<String?>(null) }
+    var problem by remember { mutableStateOf<PortRangeProblem?>(null) }
     ListItem(
-        headlineContent = { Text("Local ports") },
+        headlineContent = { Text(stringResource(R.string.local_ports)) },
         supportingContent = {
             Column {
-                Text(
-                    "Tunnels listen on 127.0.0.1 on a port from this range and keep it per device and port, " +
-                        "so bookmarks stay valid. Ports already given out stay unless they fall outside a new range.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Text(stringResource(R.string.local_ports_hint), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PortField("From", firstText, Modifier.weight(1f)) { firstText = it; problem = null }
-                    PortField("To", lastText, Modifier.weight(1f)) { lastText = it; problem = null }
+                    PortField(stringResource(R.string.local_ports_from), firstText, Modifier.weight(1f)) { firstText = it; problem = null }
+                    PortField(stringResource(R.string.local_ports_to), lastText, Modifier.weight(1f)) { lastText = it; problem = null }
                     TextButton(
                         enabled = firstText != first.toString() || lastText != last.toString(),
                         onClick = { problem = onSave(firstText.toIntOrNull(), lastText.toIntOrNull()) },
-                    ) { Text("Save") }
+                    ) { Text(stringResource(R.string.save)) }
                 }
-                problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                problem?.let { Text(portRangeText(it), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
     )
@@ -347,25 +352,85 @@ private fun PortField(label: String, value: String, modifier: Modifier, onChange
 @Composable
 private fun BackgroundPollItem(selected: BackgroundPoll, onSelect: (BackgroundPoll) -> Unit) {
     ListItem(
-        headlineContent = { Text("Check the server in the background") },
+        headlineContent = { Text(stringResource(R.string.background_poll)) },
         supportingContent = {
             Column {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BackgroundPoll.entries.forEach { poll ->
-                        FilterChip(selected = poll == selected, onClick = { onSelect(poll) }, label = { Text(poll.label) })
+                        FilterChip(selected = poll == selected, onClick = { onSelect(poll) }, label = { Text(pollLabel(poll)) })
                     }
                 }
                 Text(
                     if (selected == BackgroundPoll.OFF) {
-                        "Off: with the app closed, open tunnels keep running but nothing is checked; " +
-                            "tunnels closed or devices disabled elsewhere are noticed when you open the app."
+                        stringResource(R.string.background_poll_off_hint)
                     } else {
-                        "With the app closed, every ${selected.label} while tunnels are up (the \"tunnels\" notification is shown): " +
-                            "keeps this phone online for the server and closes tunnels that were disconnected or " +
-                            "disabled elsewhere."
-                    } + " While the app is open it checks every 2 s. Without tunnels nothing runs in the background.",
+                        stringResource(R.string.background_poll_on_hint, pollEvery(selected))
+                    } + " " + stringResource(R.string.background_poll_open_hint),
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+        },
+    )
+}
+
+/** The chip of a poll interval: "Off", "30 s", "1 min". */
+@Composable
+private fun pollLabel(poll: BackgroundPoll): String = when (poll) {
+    BackgroundPoll.OFF -> stringResource(R.string.poll_off)
+    else -> pollEvery(poll)
+}
+
+/** A poll interval as a span of time: "30 s", "5 min". */
+@Composable
+private fun pollEvery(poll: BackgroundPoll): String {
+    val seconds = ((poll.ms ?: 0L) / 1000).toInt()
+    return if (seconds < 60) {
+        pluralStringResource(R.plurals.poll_seconds, seconds, seconds)
+    } else {
+        pluralStringResource(R.plurals.poll_minutes, seconds / 60, seconds / 60)
+    }
+}
+
+@Composable
+private fun portRangeText(problem: PortRangeProblem): String = when (problem) {
+    PortRangeProblem.MISSING -> stringResource(R.string.ports_missing)
+    PortRangeProblem.OUTSIDE -> stringResource(R.string.ports_outside, MIN_LOCAL_PORT, MAX_LOCAL_PORT)
+    PortRangeProblem.REVERSED -> stringResource(R.string.ports_reversed)
+    PortRangeProblem.TOO_SMALL -> pluralStringResource(R.plurals.ports_too_small, MIN_LOCAL_PORTS, MIN_LOCAL_PORTS)
+}
+
+/**
+ * Settings › Language: as the system, Russian or English, applied at once.
+ * The languages are named in their own words, so either can be found.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LanguageItem(onSelect: (AppLanguage) -> Unit) {
+    // Read again with every new language: it may also be set in the system's app settings.
+    val locales = LocalConfiguration.current.locales
+    var selected by remember(locales) { mutableStateOf(currentAppLanguage()) }
+    ListItem(
+        headlineContent = { Text(stringResource(R.string.language)) },
+        supportingContent = {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppLanguage.entries.forEach { language ->
+                    FilterChip(
+                        selected = language == selected,
+                        onClick = {
+                            selected = language
+                            onSelect(language)
+                        },
+                        label = {
+                            Text(
+                                when (language) {
+                                    AppLanguage.SYSTEM -> stringResource(R.string.language_system)
+                                    AppLanguage.RUSSIAN -> stringResource(R.string.language_russian)
+                                    AppLanguage.ENGLISH -> stringResource(R.string.language_english)
+                                },
+                            )
+                        },
+                    )
+                }
             }
         },
     )
@@ -445,12 +510,12 @@ private fun PassphraseDialog(onImport: (String) -> Unit, onDismiss: () -> Unit) 
     var passphrase by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Key passphrase") },
+        title = { Text(stringResource(R.string.key_passphrase)) },
         text = {
-            SecretField(passphrase, { passphrase = it }, "Passphrase (empty if none)")
+            SecretField(passphrase, { passphrase = it }, stringResource(R.string.key_passphrase_label))
         },
-        confirmButton = { TextButton(onClick = { onImport(passphrase) }) { Text("Import") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onImport(passphrase) }) { Text(stringResource(R.string.import_key_short)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -477,7 +542,7 @@ private fun java.io.InputStream.readNBytesCompat(limit: Int): ByteArray {
 
 private fun shareText(context: Context, text: String) {
     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-    context.startActivity(Intent.createChooser(send, "SSH public key"))
+    context.startActivity(Intent.createChooser(send, context.getString(R.string.ssh_public_key)))
 }
 
 private const val MAX_KEY_FILE = 64 * 1024

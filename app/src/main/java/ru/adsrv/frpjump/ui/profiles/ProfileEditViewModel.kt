@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.profiles.profileColor
 import ru.adsrv.frpjump.profiles.profileName
 import ru.adsrv.frpjump.ui.userMessage
@@ -41,7 +42,7 @@ class ProfileEditViewModel(private val app: FrpJumpApp, private val id: String) 
     fun save(onSaved: () -> Unit) {
         val now = _state.value
         if (now.saving) return
-        val name = profileName(now.name) ?: return _state.update { it.copy(nameError = app.getString(R.string.profile_name_missing)) }
+        val name = profileName(now.name) ?: return _state.update { it.copy(nameError = Texts.get(R.string.profile_name_missing)) }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
             val listed = try {
@@ -55,7 +56,7 @@ class ProfileEditViewModel(private val app: FrpJumpApp, private val id: String) 
             }
             _state.update { it.copy(saving = false) }
             // Forgotten while this screen was open: nothing to save; say so where the owner goes back to.
-            if (!listed) app.session.postNotice(app.getString(R.string.profile_gone), forProfile = app.profiles.state.value.index.current)
+            if (!listed) app.session.postNotice(Texts.get(R.string.profile_gone), forProfile = app.profiles.state.value.index.current)
             onSaved()
         }
     }

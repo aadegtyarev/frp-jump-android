@@ -8,7 +8,27 @@ data class EnrollLine(val controlUrl: String, val token: String, val requestedNa
 
 sealed interface EnrollLineResult {
     data class Ok(val line: EnrollLine) : EnrollLineResult
-    data class Error(val message: String) : EnrollLineResult
+    data class Error(val problem: EnrollLineProblem) : EnrollLineResult
+}
+
+/** Why a pasted line is not an enroll line; never carries any of the token. */
+enum class EnrollLineProblem {
+    /** Nothing pasted. */
+    EMPTY,
+    /** `--name` with nothing after it. */
+    NAME_WITHOUT_VALUE,
+    /** Neither a URL nor a token. */
+    NOTHING_AFTER_COMMAND,
+    /** Too short for a URL and a token. */
+    TOO_SHORT,
+    /** The token is cut short or too long. */
+    TOKEN_LENGTH,
+    /** `http://` instead of `https://`. */
+    HTTP,
+    /** No usable `https://` URL before the token. */
+    BAD_URL,
+    /** The token has characters a token never has. */
+    BAD_TOKEN,
 }
 
 /**
@@ -28,7 +48,7 @@ sealed interface EnrollLineResult {
  *   ends (the space before the token survives any wrap). A token may itself start with `-`,
  *   so other `--` fragments are part of the token or the URL, not options.
  *
- * Errors never quote the token.
+ * Errors name the problem only, never any of the token.
  */
 object EnrollLineParser {
     /** `secrets.token_urlsafe(32)`: 32 bytes as unpadded base64url. */
@@ -40,7 +60,7 @@ object EnrollLineParser {
 
     fun parse(text: String): EnrollLineResult {
         val words = text.trim().split(WHITESPACE).filter { it.isNotEmpty() }
-        if (words.isEmpty()) return error("Paste the enroll line printed by frp-jump-client.")
+        if (words.isEmpty()) return error(EnrollLineProblem.EMPTY)
 
         var i = 0
         i = skip(words, i) { it == "sudo" }
@@ -54,26 +74,26 @@ object EnrollLineParser {
             rest
         } else {
             name = (listOf(rest[nameAt].removePrefix("--name").removePrefix("=")) + rest.drop(nameAt + 1)).joinToString("")
-            if (name.isEmpty()) return error("--name needs a value.")
+            if (name.isEmpty()) return error(EnrollLineProblem.NAME_WITHOUT_VALUE)
             rest.take(nameAt)
         }
 
         val joined = body.joinToString("")
-        if (joined.isEmpty()) return error("Expected the server URL and the token.")
-        if (joined.length <= TOKEN_LENGTH) return error("Expected the server URL followed by the token.")
+        if (joined.isEmpty()) return error(EnrollLineProblem.NOTHING_AFTER_COMMAND)
+        if (joined.length <= TOKEN_LENGTH) return error(EnrollLineProblem.TOO_SHORT)
         val url = joined.dropLast(TOKEN_LENGTH)
         val token = joined.takeLast(TOKEN_LENGTH)
         // The space between URL and token survives any wrap, so the URL is made
         // of whole fragments; if not, the token was cut short (or is too long).
         if (body.runningFold(0) { at, word -> at + word.length }.none { it == url.length }) {
-            return error("The token should be $TOKEN_LENGTH characters; check that the whole line was copied.")
+            return error(EnrollLineProblem.TOKEN_LENGTH)
         }
         if (url.startsWith("http://", ignoreCase = true)) {
-            return error("The server URL must start with https://, not http://.")
+            return error(EnrollLineProblem.HTTP)
         }
         val controlUrl = validateControlUrl(url)
-            ?: return error("Expected an https:// server URL followed by the token; could not read a URL in it.")
-        if (!TOKEN.matches(token)) return error("The token does not look right: it is $TOKEN_LENGTH letters, digits, - or _.")
+            ?: return error(EnrollLineProblem.BAD_URL)
+        if (!TOKEN.matches(token)) return error(EnrollLineProblem.BAD_TOKEN)
 
         return EnrollLineResult.Ok(EnrollLine(controlUrl, token, name?.takeUnless(::isPlaceholder)))
     }
@@ -96,7 +116,7 @@ object EnrollLineParser {
     /** `--name <pick-a-name>` printed by the CLI when the token has no fixed name. */
     private fun isPlaceholder(name: String) = name.startsWith("<")
 
-    private fun error(message: String) = EnrollLineResult.Error(message)
+    private fun error(problem: EnrollLineProblem) = EnrollLineResult.Error(problem)
 }
 
 /**

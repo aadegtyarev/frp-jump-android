@@ -27,25 +27,31 @@ fun parseServerTime(text: String): Instant? = try {
     null
 }
 
-data class Presence(val online: Boolean, val lastSeen: String)
+/** How long ago, in the unit it is said in: "just now", "12 s ago", "5 min ago", "2 h ago", "3 d ago". */
+data class Age(val unit: AgeUnit, val count: Int)
+
+enum class AgeUnit { NOW, SECONDS, MINUTES, HOURS, DAYS }
+
+/** [lastSeen] null: never seen. */
+data class Presence(val online: Boolean, val lastSeen: Age?)
 
 /**
  * Online when last seen within [ONLINE_WINDOW] of [now] either way: a server
  * clock slightly ahead of the phone's must not make a live device look offline.
  */
 fun presenceOf(lastSeenAt: String?, now: Instant): Presence {
-    val seen = lastSeenAt?.let(::parseServerTime) ?: return Presence(online = false, lastSeen = "never")
+    val seen = lastSeenAt?.let(::parseServerTime) ?: return Presence(online = false, lastSeen = null)
     val age = Duration.between(seen, now)
     return Presence(online = age.abs() <= ONLINE_WINDOW, lastSeen = relativeAge(age))
 }
 
-fun relativeAge(age: Duration): String {
+fun relativeAge(age: Duration): Age {
     val seconds = age.seconds
     return when {
-        seconds < 5 -> "just now"
-        seconds < 60 -> "${seconds}s ago"
-        seconds < 3600 -> "${seconds / 60} min ago"
-        seconds < 86400 -> "${seconds / 3600} h ago"
-        else -> "${seconds / 86400} d ago"
+        seconds < 5 -> Age(AgeUnit.NOW, 0)
+        seconds < 60 -> Age(AgeUnit.SECONDS, seconds.toInt())
+        seconds < 3600 -> Age(AgeUnit.MINUTES, (seconds / 60).toInt())
+        seconds < 86400 -> Age(AgeUnit.HOURS, (seconds / 3600).toInt())
+        else -> Age(AgeUnit.DAYS, (seconds / 86400).toInt())
     }
 }

@@ -21,15 +21,35 @@ import kotlin.coroutines.resumeWithException
 /** The server answered with an error; [detail] is its `detail` text, shown as is. */
 class ApiException(val status: Int, val detail: String) : Exception(detail)
 
-/** The server could not be reached. */
-class NetworkException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/**
+ * The server could not be reached, or not safely. [host] is the server's
+ * host (the URL itself for [Reason.NOT_HTTPS]); [detail] is the underlying
+ * error, or for [Reason.REDIRECT] the host it redirects to (null: unknown).
+ * The message is English, for the log; [ru.adsrv.frpjump.ui.userMessage]
+ * says it in the app's language.
+ */
+class NetworkException(
+    val reason: Reason,
+    val host: String,
+    val detail: String? = null,
+    cause: Throwable? = null,
+) : Exception(englishMessage(reason, host, detail), cause) {
+    enum class Reason { NOT_HTTPS, UNREACHABLE, BROKE, REDIRECT }
 
+    private companion object {
+        fun englishMessage(reason: Reason, host: String, detail: String?) = when (reason) {
+            Reason.NOT_HTTPS -> "Not an https:// server URL: $host"
+            Reason.UNREACHABLE -> "Cannot reach $host: $detail"
+            Reason.BROKE -> "Connection to $host broke: $detail"
+            Reason.REDIRECT -> "$host redirects to ${detail ?: "an unknown address"}; not following it. Check the server URL."
+        }
+    }
+}
+
+/** The server speaks another wire protocol version; the message (English, for the log) says which side to update. */
 class ProtocolMismatchException(val serverVersion: Int) : Exception(
-    if (serverVersion > PROTOCOL_VERSION) {
-        "The server speaks protocol $serverVersion, this app speaks $PROTOCOL_VERSION: update the app."
-    } else {
-        "The server speaks protocol $serverVersion, this app speaks $PROTOCOL_VERSION: update the server."
-    },
+    "The server speaks protocol $serverVersion, this app speaks $PROTOCOL_VERSION: update the " +
+        (if (serverVersion > PROTOCOL_VERSION) "app." else "server."),
 )
 
 const val AGENT_VERSION = "android-${BuildConfig.VERSION_NAME}"
@@ -118,7 +138,7 @@ class FrpJumpApi(
 
     /** Re-checks the URL on every call, stored ones included: credentials only go over https. */
     private fun endpoint(controlUrl: String, vararg segments: String): HttpUrl {
-        val base = validateControlUrl(controlUrl) ?: throw NetworkException("Not an https:// server URL: $controlUrl")
+        val base = validateControlUrl(controlUrl) ?: throw NetworkException(NetworkException.Reason.NOT_HTTPS, controlUrl)
         val builder = base.toHttpUrl().newBuilder().addPathSegments(AGENT_API_PREFIX.trimStart('/'))
         segments.forEach { builder.addPathSegment(it) }
         return builder.build()
@@ -128,14 +148,14 @@ class FrpJumpApi(
         val response = try {
             http.newCall(request).await()
         } catch (e: IOException) {
-            throw NetworkException("Cannot reach ${request.url.host}: ${e.message ?: e.javaClass.simpleName}", e)
+            throw NetworkException(NetworkException.Reason.UNREACHABLE, request.url.host, e.message ?: e.javaClass.simpleName, e)
         }
         response.use {
-            if (it.isRedirect) throw NetworkException(redirectMessage(request, it.header("Location")))
+            if (it.isRedirect) throw redirectException(request, it.header("Location"))
             val text = try {
                 it.body?.string().orEmpty()
             } catch (e: IOException) {
-                throw NetworkException("Connection to ${request.url.host} broke: ${e.message}", e)
+                throw NetworkException(NetworkException.Reason.BROKE, request.url.host, e.message ?: e.javaClass.simpleName, e)
             }
             if (!it.isSuccessful) throw ApiException(it.code, errorDetail(text).ifBlank { "HTTP ${it.code}" })
             return text
@@ -148,10 +168,8 @@ class FrpJumpApi(
 }
 
 /** Names where the server tried to send us, never the full URL (it may carry a token). */
-internal fun redirectMessage(request: Request, location: String?): String {
-    val target = location?.let { request.url.resolve(it)?.host } ?: "an unknown address"
-    return "${request.url.host} redirects to $target; not following it. Check the server URL."
-}
+internal fun redirectException(request: Request, location: String?): NetworkException =
+    NetworkException(NetworkException.Reason.REDIRECT, request.url.host, location?.let { request.url.resolve(it)?.host })
 
 private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
     cont.invokeOnCancellation { cancel() }

@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,41 +47,45 @@ fun SshLoginDialog(
     val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("SSH to $target") },
+        title = { Text(stringResource(R.string.ssh_login_title, target)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = user,
                     onValueChange = { user = it.trim() },
-                    label = { Text("User") },
+                    label = { Text(stringResource(R.string.ssh_user)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = method == SshAuthMethod.KEY, onClick = { method = SshAuthMethod.KEY }, label = { Text("Key") })
+                    FilterChip(selected = method == SshAuthMethod.KEY, onClick = { method = SshAuthMethod.KEY }, label = { Text(stringResource(R.string.ssh_method_key)) })
                     FilterChip(
                         selected = method == SshAuthMethod.PASSWORD,
                         onClick = { method = SshAuthMethod.PASSWORD },
-                        label = { Text("Password") },
+                        label = { Text(stringResource(R.string.ssh_method_password)) },
                     )
                 }
                 if (method == SshAuthMethod.KEY) {
                     Text(
-                        "Uses this phone's key (Settings → SSH public key); the device must have it in ~/.ssh/authorized_keys.",
+                        stringResource(R.string.ssh_login_key_hint, stringResource(R.string.ssh_public_key)),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 } else {
-                    SecretField(password, { password = it }, if (remembered) "Password (remembered)" else "Password")
+                    SecretField(
+                        password,
+                        { password = it },
+                        stringResource(if (remembered) R.string.ssh_password_remembered else R.string.ssh_method_password),
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = remember, onCheckedChange = { remember = it })
-                        Text("Remember on this phone")
+                        Text(stringResource(R.string.ssh_remember_password))
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = ready, onClick = { onConnect(user, method, password, remember) }) { Text("Connect") }
+            TextButton(enabled = ready, onClick = { onConnect(user, method, password, remember) }) { Text(stringResource(R.string.connect)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

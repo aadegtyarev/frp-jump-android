@@ -5,7 +5,7 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 
 /** Thrown when every port of the range is taken. */
-class NoFreePortException(range: IntRange) :
+class NoFreePortException(val range: IntRange) :
     Exception("No free local port in ${range.first}-${range.last}.")
 
 /** A remote (device, port) within one profile: what a tunnel is listed and looked up by. */

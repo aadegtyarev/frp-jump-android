@@ -48,7 +48,7 @@ fun connectionRows(profile: String, connections: List<Connection>, tunnels: Tunn
     val unsaved = tunnels.tunnels
         .filter { (device == null || it.device == device) && it.key !in named }
         .map { t ->
-            val c = Connection(unsavedId(t.device, t.port), t.device, t.port, PortKind.TCP, name = "")
+            val c = Connection(unsavedId(t.device, t.port), t.device, t.port, PortKind.TCP)
             ConnectionRow(profile, c, saved = false, tunnel = t, pending = tunnels.pending[t.key], error = tunnels.errors[t.key])
         }
     return rows + unsaved

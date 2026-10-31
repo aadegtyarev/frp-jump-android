@@ -50,12 +50,13 @@ class ConnectionMigrationTest {
     )
 
     private fun expected(): List<Connection> = listOf(
-        Connection("c1", "ikar", 80, PortKind.WEB, "Web"),
+        // The presets and a port without a label get the default name, said in the app's language.
+        Connection("c1", "ikar", 80, PortKind.WEB, null),
         Connection("c2", "pc", 5900, PortKind.TCP, "VNC"),
-        Connection("c3", "wb", 80, PortKind.WEB, "Web"),
-        Connection("c4", "wb", 22, PortKind.SSH, "SSH", user = "admin"),
+        Connection("c3", "wb", 80, PortKind.WEB, null),
+        Connection("c4", "wb", 22, PortKind.SSH, null, user = "admin"),
         Connection("c5", "wb", 1883, PortKind.TCP, "MQTT"),
-        Connection("c6", "wb", 2222, PortKind.SSH, "Port 2222", user = "root"),
+        Connection("c6", "wb", 2222, PortKind.SSH, null, user = "root"),
         Connection("c7", "wb", 8080, PortKind.WEB, "Node-RED"),
     )
 
@@ -101,8 +102,8 @@ class ConnectionMigrationTest {
     fun `presets alone, without a ports file, still migrate`() {
         assertTrue(migrate())
         assertEquals(
-            listOf("ikar:80:Web", "wb:80:Web", "wb:22:SSH"),
-            ConnectionStore(connections, MemoryStorage()).connections.value.map { "${it.device}:${it.port}:${it.name}" },
+            listOf("ikar:80:null", "wb:80:null", "wb:22:null"),
+            ConnectionStore(connections, MemoryStorage()).connections.value.map { "${it.device}:${it.port}:${it.customName}" },
         )
     }
 
@@ -146,8 +147,8 @@ class ConnectionMigrationTest {
         legacy.write("""{"wb":[{"port":22,"label":"Console","kind":"ssh"}],"pc":[{"port":80,"label":"Router","kind":"tcp"}]}""")
         migrate()
         assertEquals(
-            listOf("ikar:80:Web", "pc:80:Router", "wb:80:Web", "wb:22:Console"),
-            ConnectionStore(connections, MemoryStorage()).connections.value.map { "${it.device}:${it.port}:${it.name}" },
+            listOf("ikar:80:null", "pc:80:Router", "wb:80:null", "wb:22:Console"),
+            ConnectionStore(connections, MemoryStorage()).connections.value.map { "${it.device}:${it.port}:${it.customName}" },
         )
         assertEquals(PortKind.TCP, ConnectionStore(connections, MemoryStorage()).connections.value[1].kind)
     }
@@ -174,8 +175,8 @@ class ConnectionMigrationTest {
         )
         assertEquals(
             listOf(
-                Connection("c1", "wb", 80, PortKind.WEB, "Web"),
-                Connection("c2", "wb", 22, PortKind.SSH, "SSH", user = "admin"),
+                Connection("c1", "wb", 80, PortKind.WEB, null),
+                Connection("c2", "wb", 22, PortKind.SSH, null, user = "admin"),
                 Connection("c3", "wb", 8080, PortKind.WEB, "Node-RED"),
             ),
             ConnectionStore(files.storage(File(profileDir, "connections.json")), MemoryStorage()).connections.value,

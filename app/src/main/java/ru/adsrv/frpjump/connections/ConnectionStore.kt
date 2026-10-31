@@ -41,7 +41,7 @@ class ConnectionStore(
     /** The stored list; a file that does not parse is kept as [corruptCopy] (the first one) and reads as empty. */
     private fun load(): List<Connection> {
         val text = file.read() ?: return emptyList()
-        return runCatching { WireJson.decodeFromString<List<Connection>>(text) }.getOrElse {
+        return runCatching { readConnections(text) }.getOrElse {
             Log.w(TAG, "connections.json does not parse; kept as a copy")
             if (corruptCopy.read() == null) corruptCopy.write(text)
             emptyList()

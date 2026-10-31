@@ -27,8 +27,10 @@ import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.MainActivity
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
+import ru.adsrv.frpjump.locale.localized
 import ru.adsrv.frpjump.profiles.Profiles
 import ru.adsrv.frpjump.tunnel.Tunnel
+import ru.adsrv.frpjump.ui.connections.connectionLabel
 
 /**
  * Posts "Direct didn't work: <names>" with "Retry direct" and "Keep through
@@ -113,15 +115,19 @@ class DirectNotifier(
         }
 
     /** The names of the connections on the tunnel ("Web, homeui"), or "device:port" when none names it. */
-    private fun nameOf(connections: List<Connection>, t: Tunnel): String =
-        connections.filter { it.device == t.device && it.port == t.port }.map { it.name }.distinct().joinToString(", ")
+    private fun nameOf(connections: List<Connection>, t: Tunnel): String {
+        val text = context.localized()
+        return connections.filter { it.device == t.device && it.port == t.port }.map { connectionLabel(text, it) }.distinct()
+            .joinToString(", ")
             .ifEmpty { "${t.device}:${t.port}" }
+    }
 
+    /** Created, or renamed into the app's current language (only the name and description change). */
     private fun ensureChannel() {
-        if (manager.getNotificationChannel(CHANNEL) != null) return
+        val text = context.localized()
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, context.getString(R.string.direct_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = context.getString(R.string.direct_channel_description)
+            NotificationChannel(CHANNEL, text.getString(R.string.direct_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = text.getString(R.string.direct_channel_description)
             },
         )
     }
@@ -134,18 +140,19 @@ class DirectNotifier(
             MainActivity.openDevice(context, offer.profile, offer.device),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        val text = context.localized()
         return NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(context.getString(R.string.direct_failed_title, offer.names))
-            .setContentText(context.getString(R.string.direct_failed_text, offer.device))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.direct_failed_text, offer.device)))
+            .setContentTitle(text.getString(R.string.direct_failed_title, offer.names))
+            .setContentText(text.getString(R.string.direct_failed_text, offer.device))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text.getString(R.string.direct_failed_text, offer.device)))
             .setContentIntent(open)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setDeleteIntent(DirectActionReceiver.intent(context, DirectActionReceiver.ACTION_DISMISS, offer))
-            .addAction(0, context.getString(R.string.retry_direct), DirectActionReceiver.intent(context, DirectActionReceiver.ACTION_RETRY, offer))
-            .addAction(0, context.getString(R.string.keep_through_server), DirectActionReceiver.intent(context, DirectActionReceiver.ACTION_KEEP, offer))
+            .addAction(0, text.getString(R.string.retry_direct), DirectActionReceiver.intent(context, DirectActionReceiver.ACTION_RETRY, offer))
+            .addAction(0, text.getString(R.string.keep_through_server), DirectActionReceiver.intent(context, DirectActionReceiver.ACTION_KEEP, offer))
             .build()
     }
 

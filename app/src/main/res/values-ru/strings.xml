@@ -1,0 +1,434 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Russian. Terms used the same way everywhere: подключение (a saved connection),
+     туннель, профиль, устройство, напрямую, через сервер. SSH, HTTPS, TCP, frpc,
+     P2P and command lines stay as they are. -->
+<resources>
+    <!-- Common -->
+    <string name="back">Назад</string>
+    <string name="cancel">Отмена</string>
+    <string name="save">Сохранить</string>
+    <string name="more">Ещё</string>
+    <string name="settings">Настройки</string>
+    <plurals name="tunnels">
+        <item quantity="one">%d туннель</item>
+        <item quantity="few">%d туннеля</item>
+        <item quantity="many">%d туннелей</item>
+        <item quantity="other">%d туннеля</item>
+    </plurals>
+    <plurals name="terminals">
+        <item quantity="one">%d терминал</item>
+        <item quantity="few">%d терминала</item>
+        <item quantity="many">%d терминалов</item>
+        <item quantity="other">%d терминала</item>
+    </plurals>
+
+    <!-- Profile colours -->
+    <string name="color_green">Зелёный</string>
+    <string name="color_orange">Оранжевый</string>
+    <string name="color_purple">Фиолетовый</string>
+    <string name="color_blue">Синий</string>
+    <string name="color_crimson">Малиновый</string>
+    <string name="color_grey">Серый</string>
+
+    <!-- Profile switcher and list -->
+    <string name="switch_profile">Сменить профиль</string>
+    <string name="profiles">Профили</string>
+    <string name="profiles_hint">Туннели всех профилей работают одновременно</string>
+    <string name="profile_server">%1$s · телефон «%2$s»</string>
+    <string name="profile_not_enrolled">Не подключён</string>
+    <string name="profile_removed_badge">Удалён</string>
+    <string name="profile_removed_sub">Удалён со своего сервера</string>
+    <string name="profile_current">Открыт сейчас</string>
+    <string name="add_profile">Добавить профиль</string>
+    <string name="other_profiles">Другие профили</string>
+    <string name="name_and_color">Имя и цвет</string>
+    <string name="forget_profile">Забыть профиль</string>
+    <string name="removed_elsewhere_one">Профиль «%s» удалён со своего сервера</string>
+    <plurals name="removed_elsewhere_many">
+        <item quantity="one">%d профиль удалён со своего сервера</item>
+        <item quantity="few">%d профиля удалены со своих серверов</item>
+        <item quantity="many">%d профилей удалены со своих серверов</item>
+        <item quantity="other">%d профиля удалены со своих серверов</item>
+    </plurals>
+
+    <!-- Forget profile -->
+    <string name="forget_title">Забыть «%s»?</string>
+    <string name="forget_text">Его туннели отключатся, а этот телефон («%1$s») будет удалён с %2$s. Ключи доступа и сохранённые списки будут стёрты с телефона.</string>
+    <string name="forget_text_removed">Этот телефон уже удалён с %s. Ключи доступа и сохранённые списки будут стёрты с телефона.</string>
+    <string name="forget_text_local">Его туннели отключатся, а его данные на телефоне будут стёрты.</string>
+    <string name="forget">Забыть</string>
+    <string name="profile_forgotten">Профиль «%s» забыт.</string>
+    <string name="forget_server_not_told">Сервер не получил запрос (%1$s). Удалите «%2$s» с компьютера: frp-jump-client devices delete %3$s</string>
+    <string name="forget_busy">Сейчас забывается другой профиль; дождитесь окончания.</string>
+    <string name="profile_added">Профиль «%s» добавлен.</string>
+    <string name="profile_gone">Этот профиль тем временем забыли.</string>
+    <string name="forget_failed">Не удалось стереть данные профиля (%s). Попробуйте ещё раз.</string>
+
+    <!-- Profile name and colour -->
+    <string name="profile_name">Имя</string>
+    <string name="profile_name_missing">Дайте профилю имя.</string>
+    <string name="profile_color">Цвет профиля</string>
+
+    <!-- Add profile -->
+    <string name="new_profile">Новый профиль</string>
+    <string name="enroll_step_invite">1. Получите приглашение</string>
+    <string name="enroll_step_invite_text">На компьютере с frp-jump выполните команду. Она покажет строку и её QR-код.</string>
+    <string name="enroll_step_paste">2. Отсканируйте или вставьте</string>
+    <string name="enroll_line_label">Или вставьте строку целиком</string>
+    <string name="enroll_line_ok">Сервер: %s</string>
+    <string name="enroll_scan">Сканировать QR-код</string>
+    <string name="camera_rationale">Камера только читает QR-код, ничего не записывается. Нажмите «Сканировать QR-код» ещё раз, чтобы разрешить, или вставьте строку.</string>
+    <string name="camera_denied">Доступ к камере для приложения выключен.</string>
+    <string name="camera_open_settings">Открыть настройки</string>
+    <string name="scan_hint">Наведите камеру на QR-код, который показала команда add-token --qr</string>
+    <string name="scan_not_enroll">Это не QR-код приглашения frp-jump</string>
+    <string name="scan_torch_on">Включить фонарик</string>
+    <string name="scan_torch_off">Выключить фонарик</string>
+    <string name="scan_no_torch">У этой камеры нет фонарика</string>
+    <string name="scan_torch_failed">Не удалось переключить фонарик</string>
+    <string name="scan_camera_failed">Не удалось открыть камеру. Вернитесь и вставьте строку.</string>
+    <string name="enroll_phone_name">Имя этого телефона</string>
+    <string name="enroll_step_name">3. Как назвать профиль</string>
+    <string name="enroll_submit">Подключить телефон</string>
+    <string name="enroll_store_failed">Телефон добавлен на сервер как %1$s, но ключи доступа не удалось сохранить (%2$s). Удалите его с компьютера: frp-jump-client devices delete %3$s</string>
+
+    <!-- Device list -->
+    <string name="device_online">Онлайн</string>
+    <string name="device_was_online">Был в сети</string>
+    <string name="device_last_seen">Был в сети %s</string>
+    <string name="device_disabled">Отключено</string>
+    <string name="devices_empty">Других устройств пока нет.</string>
+    <string name="offline_unreachable">Нет связи с сервером · обновлено в %s</string>
+    <string name="offline_server_error">Сервер ответил ошибкой · обновлено в %s</string>
+    <string name="tap_to_retry">Нажмите, чтобы повторить</string>
+
+    <!-- Removed (current profile) -->
+    <string name="removed_text">Этот телефон удалён с сервера профиля «%s». Его туннели остановлены.</string>
+    <string name="enroll_again">Подключить заново</string>
+    <string name="enroll_again_failed">Не удалось стереть старые ключи доступа (%s). Попробуйте ещё раз.</string>
+
+    <!-- Settings: profile group -->
+    <string name="settings_profile_group">Профиль «%s»</string>
+    <string name="forget_profile_hint">Отключит туннели и удалит телефон с сервера</string>
+
+    <!-- Tunnels notification -->
+    <string name="notification_channel">Туннели</string>
+    <plurals name="tunnels_in_profiles">
+        <item quantity="one">%2$s в %1$d профиле</item>
+        <item quantity="few">%2$s в %1$d профилях</item>
+        <item quantity="many">%2$s в %1$d профилях</item>
+        <item quantity="other">%2$s в %1$d профилях</item>
+    </plurals>
+    <string name="disconnect_all">Отключить всё</string>
+    <plurals name="tunnels_restoring">
+        <item quantity="one">Восстанавливаю %d туннель…</item>
+        <item quantity="few">Восстанавливаю %d туннеля…</item>
+        <item quantity="many">Восстанавливаю %d туннелей…</item>
+        <item quantity="other">Восстанавливаю %d туннеля…</item>
+    </plurals>
+    <plurals name="restore_notice_title">
+        <item quantity="one">Нажмите, чтобы восстановить %d туннель</item>
+        <item quantity="few">Нажмите, чтобы восстановить %d туннеля</item>
+        <item quantity="many">Нажмите, чтобы восстановить %d туннелей</item>
+        <item quantity="other">Нажмите, чтобы восстановить %d туннеля</item>
+    </plurals>
+    <string name="restore_notice_text">Android остановил приложение с открытыми туннелями и не дал им запуститься снова в фоне. Чтобы туннели возвращались сами, отключите ограничение в Настройки › Батарея.</string>
+    <string name="restore_notice_title_unknown">Нажмите, чтобы восстановить туннели</string>
+    <plurals name="keep_notice_title">
+        <item quantity="one">Нажмите, чтобы не потерять %d туннель</item>
+        <item quantity="few">Нажмите, чтобы не потерять %d туннеля</item>
+        <item quantity="many">Нажмите, чтобы не потерять %d туннелей</item>
+        <item quantity="other">Нажмите, чтобы не потерять %d туннеля</item>
+    </plurals>
+    <string name="keep_notice_title_unknown">Нажмите, чтобы не потерять туннели</string>
+    <string name="keep_notice_text">Android не дал запустить службу туннелей в фоне, поэтому может их остановить. Настройки › Батарея позволят ей запускаться самой.</string>
+    <string name="tunnels_restoring_unknown">Восстанавливаю туннели…</string>
+    <string name="restore_waiting_network">Жду сеть…</string>
+    <string name="restore_waiting_unlock">Жду разблокировки…</string>
+    <string name="disconnect_all_failed">Сервер недоступен. Туннели могут вернуться.</string>
+    <string name="notifications_off">Уведомления выключены: о восстановлении туннелей не сообщу</string>
+    <string name="notifications_allow">Разрешить</string>
+
+    <!-- Settings: battery -->
+    <string name="battery">Батарея</string>
+    <string name="battery_hint">Android может останавливать туннели</string>
+    <string name="battery_fix">Исправить</string>
+    <string name="battery_no_settings">На этом телефоне нет экрана оптимизации батареи.</string>
+
+    <!-- Direct or through the server -->
+    <string name="setting_direct">Прямое соединение (P2P)</string>
+    <string name="setting_direct_hint">Быстрее. Не вышло — работает через сервер.</string>
+    <string name="direct_channel">Прямое соединение</string>
+    <string name="direct_channel_description">Когда напрямую не вышло и подключение пошло через сервер</string>
+    <string name="direct_failed_title">Напрямую не вышло: %s</string>
+    <string name="direct_failed_text">%s уже работает через сервер. Сеть, похоже, не пропускает P2P.</string>
+    <string name="direct_kept_text">%s в этой сети работает через сервер.</string>
+    <string name="retry_direct">Повторить напрямую</string>
+    <string name="keep_through_server">Оставить через сервер</string>
+    <string name="keep_no_network">Сейчас нет сети, а выбор запоминается для каждой сети. Попробуйте, когда появится связь.</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_devices">Устройства</string>
+    <string name="tab_connections">Подключения</string>
+    <string name="tab_terminals">Терминалы</string>
+    <string name="tab_settings">Настройки</string>
+
+    <!-- Connection kinds and states -->
+    <string name="kind_web">Веб</string>
+    <string name="state_not_connected">Не подключено</string>
+    <string name="state_connecting">Подключение…</string>
+    <string name="state_disconnecting">Отключение…</string>
+    <string name="state_trying_direct">Пробую напрямую…</string>
+    <string name="state_direct">Напрямую</string>
+    <string name="state_through_server">Через сервер</string>
+    <string name="state_kept_through_server">Через сервер (ваш выбор)</string>
+    <string name="state_failed">Ошибка</string>
+
+    <!-- Connection rows and their actions -->
+    <string name="connection_sub">%1$s · порт %2$d</string>
+    <string name="connection_sub_https">%1$s · порт %2$d · HTTPS</string>
+    <string name="connection_sub_ssh_key">%1$s · порт %2$d · %3$s · ключ телефона</string>
+    <string name="connection_sub_ssh_password">%1$s · порт %2$d · %3$s · пароль</string>
+    <string name="connection_unsaved">Порт %d</string>
+    <string name="connection_actions">Действия с «%s»</string>
+    <string name="connect">Подключить</string>
+    <string name="connect_named">Подключить «%s»</string>
+    <string name="retry">Повторить</string>
+    <string name="disconnect">Отключить</string>
+    <string name="open">Открыть</string>
+    <string name="terminal">Терминал</string>
+    <string name="copy_address">Скопировать адрес</string>
+    <string name="address_copied">Скопировано: %s</string>
+    <string name="open_in_browser">Открыть в браузере</string>
+    <string name="open_in_ssh_app">Открыть в другом приложении</string>
+    <string name="no_ssh_app">Нет приложения, которое открывает ссылки ssh://.</string>
+    <string name="no_browser">Браузер не установлен; скопируйте адрес.</string>
+    <string name="change">Изменить</string>
+    <string name="delete">Удалить</string>
+    <string name="delete_title">Удалить «%s»?</string>
+    <string name="delete_text">Подключение будет удалено с телефона.</string>
+    <string name="delete_text_tunnel">Подключение будет удалено с телефона, а его туннель отключится.</string>
+    <string name="delete_failed">Не удалось удалить (%s). Попробуйте ещё раз.</string>
+    <string name="tunnel_not_listed">Сервер ещё не показал подключение; оно появится при следующей проверке.</string>
+
+    <!-- Device card -->
+    <string name="device_profile_chip">Профиль «%s»</string>
+    <string name="device_offline">Не в сети</string>
+    <string name="connections_header">Подключения</string>
+    <string name="connections_active_of">%1$d из %2$d активны</string>
+    <string name="device_no_connections">Подключений пока нет. Добавьте веб-страницу, SSH или любой TCP-порт этого устройства.</string>
+    <string name="new_connection_button">Подключение</string>
+    <string name="mismatch_banner">%s Открытые туннели остаются как есть.</string>
+
+    <!-- New / change connection sheet -->
+    <string name="new_connection">Новое подключение</string>
+    <string name="change_connection">Изменить подключение</string>
+    <string name="connection_to">к %s</string>
+    <string name="connection_kind">Тип</string>
+    <string name="port_on_device">Порт на устройстве</string>
+    <string name="port_missing">Укажите порт.</string>
+    <string name="port_out_of_range">Порт — это число от 1 до 65535.</string>
+    <string name="connection_name">Имя</string>
+    <string name="connection_name_hint">Например: %s</string>
+    <string name="connection_name_taken">У другого подключения к этому порту уже есть такое имя.</string>
+    <string name="https_hint">Самоподписанный сертификат запомню, когда подтвердите его при первом входе</string>
+    <string name="ssh_user">Пользователь</string>
+    <string name="ssh_user_missing">Укажите пользователя.</string>
+    <string name="connect_now">Подключить сразу</string>
+    <string name="save_failed">Не удалось сохранить (%s). Попробуйте ещё раз.</string>
+
+    <!-- Connections tab -->
+    <string name="connections_active">Активные · %d</string>
+    <string name="connections_saved">Сохранённые</string>
+    <string name="connections_empty">Сохранённых подключений пока нет. Откройте устройство и добавьте его кнопкой «Подключение».</string>
+
+    <!-- Terminals tab -->
+    <string name="terminals_empty">Открытых терминалов нет. Подключите SSH-подключение и нажмите «Терминал».</string>
+    <string name="terminal_state_connecting">Подключение…</string>
+    <string name="terminal_state_open">Открыт</string>
+    <string name="terminal_state_asks">Ждёт вас</string>
+    <string name="terminal_state_ended">Завершён</string>
+
+    <!-- HTTPS certificates -->
+    <string name="cert_unknown_title">Доверять сертификату?</string>
+    <string name="cert_unknown_text">%1$s:%2$d показывает сертификат, которого этот телефон ещё не знает. Прежде чем доверять, сверьте его отпечаток SHA-256 с отпечатком на устройстве.</string>
+    <string name="cert_changed_title">Сертификат изменился</string>
+    <string name="cert_changed_text">%1$s:%2$d показывает не тот сертификат, которому вы доверяли раньше. Если устройство не получало новый сертификат, подключение, возможно, кто-то перехватывает.</string>
+    <string name="cert_issued_to">Кому выдан: %s</string>
+    <string name="cert_fingerprint_now">SHA-256 сейчас</string>
+    <string name="cert_fingerprint_before">SHA-256, которому доверяли</string>
+    <string name="cert_trust">Доверять</string>
+    <string name="cert_trust_new">Доверять новому</string>
+    <string name="cert_refused">Не открыто: вы не доверились сертификату.</string>
+    <string name="cert_try_again">Попробовать снова</string>
+    <string name="download_https">Файлы HTTPS-подключения здесь не скачать: системный загрузчик не доверяет сертификату, подтверждённому в приложении.</string>
+    <string name="protocol_clash_ssh">Этот порт уже занят SSH-подключением; SSH и другие типы не могут делить порт.</string>
+    <string name="protocol_clash_other">Этот порт уже занят веб- или TCP-подключением; SSH не может его делить.</string>
+    <string name="kind_locked">Чтобы сменить тип или порт, отключите подключение.</string>
+
+    <!-- Failures in plain words -->
+    <string name="error_not_https">Это не https://-адрес сервера: %s</string>
+    <string name="error_unreachable">Нет связи с %1$s: %2$s</string>
+    <string name="error_broke">Связь с %1$s оборвалась: %2$s</string>
+    <string name="error_redirect">%1$s перенаправляет на %2$s; не перехожу. Проверьте адрес сервера.</string>
+    <string name="error_redirect_unknown">неизвестный адрес</string>
+    <string name="error_protocol_update_app">Сервер говорит на протоколе %1$d, приложение — на %2$d: обновите приложение.</string>
+    <string name="error_protocol_update_server">Сервер говорит на протоколе %1$d, приложение — на %2$d: обновите сервер.</string>
+    <string name="error_unexpected_answer">Непонятный ответ сервера.</string>
+    <string name="error_key_missing">Ключ телефона в Keystore пропал.</string>
+    <string name="error_no_free_port">Нет свободного локального порта в %1$d–%2$d.</string>
+
+    <!-- How long ago a device was seen -->
+    <string name="age_just_now">только что</string>
+    <plurals name="age_seconds">
+        <item quantity="one">%d с назад</item>
+        <item quantity="few">%d с назад</item>
+        <item quantity="many">%d с назад</item>
+        <item quantity="other">%d с назад</item>
+    </plurals>
+    <plurals name="age_minutes">
+        <item quantity="one">%d мин назад</item>
+        <item quantity="few">%d мин назад</item>
+        <item quantity="many">%d мин назад</item>
+        <item quantity="other">%d мин назад</item>
+    </plurals>
+    <plurals name="age_hours">
+        <item quantity="one">%d ч назад</item>
+        <item quantity="few">%d ч назад</item>
+        <item quantity="many">%d ч назад</item>
+        <item quantity="other">%d ч назад</item>
+    </plurals>
+    <plurals name="age_days">
+        <item quantity="one">%d день назад</item>
+        <item quantity="few">%d дня назад</item>
+        <item quantity="many">%d дней назад</item>
+        <item quantity="other">%d дня назад</item>
+    </plurals>
+    <string name="device_never_seen">Ещё не был в сети</string>
+
+    <!-- Why a pasted enroll line was not understood -->
+    <string name="enroll_line_empty">Вставьте строку, которую показала команда frp-jump-client.</string>
+    <string name="enroll_line_name_empty">После --name нужно имя.</string>
+    <string name="enroll_line_no_url">Нужны адрес сервера и токен.</string>
+    <string name="enroll_line_too_short">Нужен адрес сервера, а за ним токен.</string>
+    <plurals name="enroll_line_token_length">
+        <item quantity="one">В токене должен быть %d символ; проверьте, что строка скопирована целиком.</item>
+        <item quantity="few">В токене должно быть %d символа; проверьте, что строка скопирована целиком.</item>
+        <item quantity="many">В токене должно быть %d символов; проверьте, что строка скопирована целиком.</item>
+        <item quantity="other">В токене должно быть %d символа; проверьте, что строка скопирована целиком.</item>
+    </plurals>
+    <string name="enroll_line_http">Адрес сервера должен начинаться с https://, а не с http://.</string>
+    <string name="enroll_line_bad_url">Нужен https://-адрес сервера, а за ним токен; адрес прочитать не удалось.</string>
+    <plurals name="enroll_line_bad_token">
+        <item quantity="one">Токен не похож на настоящий: в нём %d символ — буквы, цифры, - или _.</item>
+        <item quantity="few">Токен не похож на настоящий: в нём %d символа — буквы, цифры, - или _.</item>
+        <item quantity="many">Токен не похож на настоящий: в нём %d символов — буквы, цифры, - или _.</item>
+        <item quantity="other">Токен не похож на настоящий: в нём %d символа — буквы, цифры, - или _.</item>
+    </plurals>
+
+    <!-- Stored credentials unreadable -->
+    <string name="storage_unreadable">Сохранённые ключи доступа сейчас не читаются. Ничего не удалено; попробуйте чуть позже.</string>
+
+    <!-- Web view -->
+    <string name="web_reload">Обновить</string>
+    <string name="web_renderer_gone">Страница остановилась: её процесс упал или Android закрыл его, чтобы освободить память.</string>
+    <string name="web_no_file_picker">Нет приложения для выбора файлов.</string>
+    <string name="web_blocked">Заблокировано: %s — не этот туннель.</string>
+    <string name="web_download_page_made">Этот файл создала сама страница; сохранить его можно через «Открыть в браузере».</string>
+    <string name="web_downloading">Скачиваю %s</string>
+    <string name="web_no_app">Нет приложения, которое откроет %s</string>
+
+    <!-- SSH console -->
+    <string name="terminal_text_smaller">Мельче</string>
+    <string name="terminal_text_larger">Крупнее</string>
+    <string name="terminal_keyboard">Клавиатура</string>
+    <string name="terminal_close_session">Закрыть сессию</string>
+    <string name="terminal_reconnect">Переподключить</string>
+    <string name="terminal_status_host_key_unknown">Ждёт решения о ключе хоста</string>
+    <string name="terminal_status_host_key_changed">Заблокировано: ключ хоста изменился</string>
+    <string name="host_key_trust_title">Доверять устройству?</string>
+    <string name="host_key_first">Первое SSH-подключение к %s. Его ключ хоста:</string>
+    <string name="host_key_check">Если это действительно оно, на устройстве команда `%s` покажет ту же строку. Ключ запомнится для этого устройства и порта.</string>
+    <string name="host_key_changed_title">Ключ хоста изменился</string>
+    <string name="host_key_changed_text">%s показывает не тот ключ хоста, которому доверяли раньше. Так бывает после переустановки или сброса прошивки, но это может значить и то, что кто-то вмешался в соединение. Ничего не отправлено.</string>
+    <string name="host_key_trusted_before">Доверяли раньше:</string>
+    <string name="host_key_shown_now">Показан сейчас:</string>
+    <string name="host_key_forget_hint">Забывайте старый ключ, только если знаете, почему он изменился; потом спрошу, доверять ли новому.</string>
+    <string name="host_key_forget">Забыть старый ключ</string>
+    <string name="ssh_login_title">SSH на %s</string>
+    <string name="ssh_method_key">Ключ</string>
+    <string name="ssh_method_password">Пароль</string>
+    <string name="ssh_password_remembered">Пароль (запомнен)</string>
+    <string name="ssh_remember_password">Запомнить на телефоне</string>
+    <string name="ssh_login_key_hint">Вход ключом телефона (Настройки › %s); он должен быть в ~/.ssh/authorized_keys на устройстве.</string>
+    <string name="secret_show">Показать</string>
+    <string name="secret_hide">Скрыть</string>
+    <string name="ssh_closed">Закрыто.</string>
+    <string name="ssh_tunnel_closed">Туннель закрыт.</string>
+    <string name="ssh_note_connecting">Подключаюсь к %1$s (%2$s)…</string>
+    <string name="ssh_note_host_key_unknown">Ключ хоста %s пока неизвестен.</string>
+    <string name="ssh_note_host_key_changed">ВНИМАНИЕ: ключ хоста %s изменился. Не подключаюсь.</string>
+    <string name="ssh_cannot_connect">Не удалось подключиться: %s</string>
+    <string name="ssh_failed">Ошибка SSH: %s</string>
+    <string name="ssh_key_refused">Устройство не приняло ключ телефона для «%1$s». Добавьте ключ из Настройки › %2$s в ~/.ssh/authorized_keys на устройстве или войдите по паролю.</string>
+    <string name="ssh_password_refused">Неверный пользователь или пароль для «%s».</string>
+    <string name="ssh_connection_lost">Связь потеряна: %s</string>
+    <string name="ssh_logged_out">Сеанс завершён (код %d).</string>
+    <string name="ssh_connection_closed">Соединение закрыто.</string>
+
+    <!-- Settings -->
+    <string name="settings_tunnels">Туннели</string>
+    <string name="settings_background">Работа в фоне</string>
+    <string name="settings_app">Приложение</string>
+    <string name="language">Язык</string>
+    <string name="language_system">Как в системе</string>
+    <string name="local_ports">Локальные порты</string>
+    <string name="local_ports_hint">Туннели слушают на 127.0.0.1 порт из этого диапазона и сохраняют его за устройством и портом, чтобы закладки не ломались. Уже выданные порты остаются, если не выпадают из нового диапазона.</string>
+    <string name="local_ports_from">С</string>
+    <string name="local_ports_to">По</string>
+    <string name="ports_missing">Укажите оба номера порта.</string>
+    <string name="ports_outside">Порты должны быть в пределах %1$d–%2$d.</string>
+    <string name="ports_reversed">Первый порт не может быть больше последнего.</string>
+    <plurals name="ports_too_small">
+        <item quantity="one">Нужен хотя бы %d порт.</item>
+        <item quantity="few">Нужно хотя бы %d порта.</item>
+        <item quantity="many">Нужно хотя бы %d портов.</item>
+        <item quantity="other">Нужно хотя бы %d порта.</item>
+    </plurals>
+    <string name="background_poll">Проверять сервер в фоне</string>
+    <string name="poll_off">Выкл.</string>
+    <plurals name="poll_seconds">
+        <item quantity="one">%d с</item>
+        <item quantity="few">%d с</item>
+        <item quantity="many">%d с</item>
+        <item quantity="other">%d с</item>
+    </plurals>
+    <plurals name="poll_minutes">
+        <item quantity="one">%d мин</item>
+        <item quantity="few">%d мин</item>
+        <item quantity="many">%d мин</item>
+        <item quantity="other">%d мин</item>
+    </plurals>
+    <string name="background_poll_off_hint">Выключено: когда приложение закрыто, открытые туннели работают, но ничего не проверяется; туннели, закрытые или отключённые в другом месте, будут замечены при открытии приложения.</string>
+    <string name="background_poll_on_hint">Когда приложение закрыто, раз в %s, пока открыты туннели (видно уведомление «Туннели»): телефон остаётся онлайн для сервера, а туннели, закрытые или отключённые в другом месте, закрываются.</string>
+    <string name="background_poll_open_hint">Пока приложение открыто, проверка идёт каждые 2 с. Без туннелей в фоне ничего не работает.</string>
+    <string name="ssh_public_key">SSH-ключ телефона</string>
+    <string name="ssh_public_key_hint">Добавьте эту строку в ~/.ssh/authorized_keys на устройстве, чтобы входить ключом телефона.</string>
+    <string name="ssh_key_failed">Не удалось создать или прочитать SSH-ключ: %s</string>
+    <string name="copy">Копировать</string>
+    <string name="share">Поделиться</string>
+    <string name="imported_key">Импортированный закрытый ключ</string>
+    <string name="imported_key_hint">Необязательно: файл закрытого ключа OpenSSH, которым вы уже пользуетесь; пробуется раньше ключа телефона.</string>
+    <string name="imported_key_tried_first">Пробуется раньше ключа телефона:</string>
+    <string name="import_key">Импортировать закрытый ключ</string>
+    <string name="import_key_short">Импортировать</string>
+    <string name="replace_key">Заменить</string>
+    <string name="remove_key">Удалить</string>
+    <string name="import_key_failed">Это не подходящий закрытый ключ или неверная парольная фраза (%s).</string>
+    <string name="key_file_unreadable">Не удалось прочитать этот файл.</string>
+    <string name="key_passphrase">Парольная фраза ключа</string>
+    <string name="key_passphrase_label">Парольная фраза (пусто, если нет)</string>
+    <string name="frpc_login_failed">Не удалось подключиться к серверу туннелей: %s</string>
+    <string name="frpc_stopped">frpc остановился (код %d)</string>
+    <string name="terminal_status_open">%1$s через %2$s</string>
+</resources>

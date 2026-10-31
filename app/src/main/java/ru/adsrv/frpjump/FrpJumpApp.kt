@@ -15,6 +15,8 @@ import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.direct.DirectOfferedStore
 import ru.adsrv.frpjump.direct.DirectNotifier
 import ru.adsrv.frpjump.direct.NetworkWatcher
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.locale.restoreAppLanguage
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfileShared
@@ -77,7 +79,9 @@ class FrpJumpApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Texts.init(this)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
+        restoreAppLanguage(settings.settings.value.language)
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))
         network = NetworkWatcher(this)
         restoreRecord = RestoreRecord(AtomicTextFile(File(filesDir, "restore.json")))

@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui
 
+import ru.adsrv.frpjump.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,7 +34,7 @@ fun SecretField(value: String, onValueChange: (String) -> Unit, label: String) {
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
         trailingIcon = {
             IconButton(onClick = { shown = !shown }) {
-                Icon(if (shown) EyeOff else Eye, contentDescription = if (shown) "Hide" else "Show")
+                Icon(if (shown) EyeOff else Eye, contentDescription = stringResource(if (shown) R.string.secret_hide else R.string.secret_show))
             }
         },
     )

@@ -38,6 +38,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.ui.connections.ConnectionsScreen
@@ -149,7 +150,7 @@ fun AppNav() {
                             .onSuccess { nav.replaceAll(Routes.ENROLL) }
                             .onFailure {
                                 busy = false
-                                error = app.getString(R.string.enroll_again_failed, it.userMessage())
+                                error = Texts.get(R.string.enroll_again_failed, it.userMessage())
                             }
                     }
                 },
@@ -159,10 +160,9 @@ fun AppNav() {
         composable(Routes.STORAGE) {
             val scope = rememberCoroutineScope()
             MessageScreen(
-                title = "frp-jump",
-                text = "This phone's stored credentials cannot be read right now. " +
-                    "Nothing was deleted; try again in a moment.",
-                action = "Retry",
+                title = stringResource(R.string.app_name),
+                text = stringResource(R.string.storage_unreadable),
+                action = stringResource(R.string.retry),
                 onAction = { scope.launch { routeFor(app).takeIf { it != Routes.STORAGE }?.let(nav::replaceAll) } },
             )
         }

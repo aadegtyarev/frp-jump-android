@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 
 /**
  * The "Direct didn't work" notification's actions: "Retry direct", "Keep
@@ -41,7 +42,7 @@ class DirectActionReceiver : BroadcastReceiver() {
                         ACTION_KEEP -> if (app.directChoices.keepThroughServer(profile, device)) {
                             app.directNotifier.dismiss(profile, device, cancel = true)
                         } else {
-                            Toast.makeText(app, R.string.keep_no_network, Toast.LENGTH_LONG).show()
+                            Toast.makeText(app, Texts.get(R.string.keep_no_network), Toast.LENGTH_LONG).show()
                         }
                     }
                 }

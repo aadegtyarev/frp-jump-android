@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.tunnel
 
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -267,7 +269,7 @@ class FrpcLogParserTest {
         parser.feed(login)
         assertEquals(TunnelStatus.CONNECTING, parser.status())
         parser.exited(1)
-        assertEquals(VisitorState(TunnelStatus.FAILED, "frpc stopped (exit code 1)"), parser.state())
+        assertEquals(VisitorState(TunnelStatus.FAILED, Texts.get(R.string.frpc_stopped, 1)), parser.state())
     }
 
     @Test

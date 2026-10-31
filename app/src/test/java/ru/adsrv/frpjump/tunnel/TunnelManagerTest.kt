@@ -372,7 +372,7 @@ class TunnelManagerTest {
 
     @Test
     fun `polls say what a restore waits for`() = runBlocking {
-        api.failure = NetworkException("Cannot reach s: offline", IOException("offline"))
+        api.failure = NetworkException(NetworkException.Reason.UNREACHABLE, "s", "offline", IOException("offline"))
         manager.poll()
         eventually("waiting for network") { manager.state.value.waiting == Waiting.NETWORK }
         api.failure = null

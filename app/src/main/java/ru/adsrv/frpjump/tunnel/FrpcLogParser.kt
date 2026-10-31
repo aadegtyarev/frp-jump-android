@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.tunnel
 
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
+
 /**
  * What the card shows per tunnel. [TRYING]: a direct tunnel is being
  * punched (up to [TRY_DIRECT_MS]); [RELAYED]: connections go through the
@@ -151,7 +154,7 @@ class FrpcLogParser(
                 order.forEach { set(it, VisitorState(TunnelStatus.CONNECTING)) }
             }
             "login to the server failed" in line || "connect to server error" in line ->
-                order.forEach { set(it, VisitorState(TunnelStatus.FAILED, "Cannot log in to the relay: ${tail(line, "error")}")) }
+                order.forEach { set(it, VisitorState(TunnelStatus.FAILED, Texts.get(R.string.frpc_login_failed, tail(line, "error")))) }
             "start visitor success" in line -> startOrder.removeFirstOrNull()?.let(::started)
             "start error:" in line -> startOrder.removeFirstOrNull()?.let { name ->
                 grantOf(name)?.let { set(it, VisitorState(TunnelStatus.FAILED, tail(line, "start error:"))) }
@@ -180,7 +183,7 @@ class FrpcLogParser(
     /** frpc exited: nothing listens any more. */
     @Synchronized
     fun exited(code: Int) {
-        order.forEach { set(it, VisitorState(TunnelStatus.FAILED, "frpc stopped (exit code $code)")) }
+        order.forEach { set(it, VisitorState(TunnelStatus.FAILED, Texts.get(R.string.frpc_stopped, code))) }
     }
 
     private fun set(grant: String, state: VisitorState) {

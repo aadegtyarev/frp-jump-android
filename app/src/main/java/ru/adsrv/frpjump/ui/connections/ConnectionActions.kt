@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
@@ -43,7 +44,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun keepThroughServer(row: ConnectionRow) {
         app.appScope.launch {
             if (!app.directChoices.keepThroughServer(row.profile, row.connection.device)) {
-                Toast.makeText(app, R.string.keep_no_network, Toast.LENGTH_LONG).show()
+                Toast.makeText(app, Texts.get(R.string.keep_no_network), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -63,7 +64,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      * null, or what went wrong.
      */
     fun save(profile: String, connection: Connection, previous: Connection?, connectNow: Boolean, onDone: (String?) -> Unit) {
-        val runtime = runtime(profile) ?: return onDone(app.getString(R.string.profile_gone))
+        val runtime = runtime(profile) ?: return onDone(Texts.get(R.string.profile_gone))
         scope.launch {
             val before = runtime.connections.connections.value
             val failure = try {

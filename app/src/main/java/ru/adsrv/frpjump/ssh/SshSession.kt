@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ssh
 
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import android.util.Log
 import com.termux.terminal.RemoteTerminal
 import com.termux.terminal.TerminalSessionClient
@@ -91,7 +93,7 @@ class SshSession(
 
     fun connect() {
         _state.value = SshState.Connecting
-        terminal.note("Connecting to $user@$device:$port (127.0.0.1:$localPort)…\r\n")
+        terminal.note(Texts.get(R.string.ssh_note_connecting, "$user@$device:$port", "127.0.0.1:$localPort") + "\r\n")
         scope.launch(Dispatchers.IO) { run() }
     }
 
@@ -127,7 +129,7 @@ class SshSession(
         }
     }
 
-    fun close(reason: String = "Closed.") {
+    fun close(reason: String = Texts.get(R.string.ssh_closed)) {
         closedByUser = true
         end(reason)
         val c = client ?: return
@@ -150,13 +152,13 @@ class SshSession(
             when (val check = rejected?.first) {
                 HostKeyCheck.Unknown -> {
                     _state.value = SshState.HostKeyUnknown(rejected.second)
-                    terminal.note("The host key of $device:$port is not known yet.\r\n")
+                    terminal.note(Texts.get(R.string.ssh_note_host_key_unknown, "$device:$port") + "\r\n")
                 }
                 is HostKeyCheck.Changed -> {
                     _state.value = SshState.HostKeyChanged(check.pinned, rejected.second)
-                    terminal.note("\r\nWARNING: the host key of $device:$port has changed. Not connecting.\r\n")
+                    terminal.note("\r\n" + Texts.get(R.string.ssh_note_host_key_changed, "$device:$port") + "\r\n")
                 }
-                else -> fail("Cannot connect: ${e.message ?: e.javaClass.simpleName}")
+                else -> fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName))
             }
             return
         }
@@ -188,7 +190,7 @@ class SshSession(
             fail(authFailure())
         } catch (e: Exception) {
             runCatching { ssh.disconnect() }
-            fail("SSH failed: ${e.message ?: e.javaClass.simpleName}")
+            fail(Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName))
         }
     }
 
@@ -219,12 +221,11 @@ class SshSession(
     }
 
     private fun authFailure(): String = when (auth) {
-        SshAuth.Key -> "The device did not accept this phone's key for \"$user\". " +
-            "Add the public key from Settings to ~/.ssh/authorized_keys there, or log in with a password."
+        SshAuth.Key -> Texts.get(R.string.ssh_key_refused, user, Texts.get(R.string.ssh_public_key))
         is SshAuth.Password -> {
             // A remembered password that no longer works is not offered again.
             env.passwords.forget(profile, device, port, user)
-            "Wrong user name or password for \"$user\"."
+            Texts.get(R.string.ssh_password_refused, user)
         }
     }
 
@@ -234,9 +235,9 @@ class SshSession(
         if (closedByUser) return
         end(
             when {
-                error != null -> "Connection lost: ${error.message ?: error.javaClass.simpleName}"
-                status != null -> "Logged out (exit $status)."
-                else -> "Connection closed."
+                error != null -> Texts.get(R.string.ssh_connection_lost, error.message ?: error.javaClass.simpleName)
+                status != null -> Texts.get(R.string.ssh_logged_out, status)
+                else -> Texts.get(R.string.ssh_connection_closed)
             },
         )
     }

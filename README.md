@@ -14,7 +14,7 @@ notification, the in-app web view (HTTP and HTTPS), the SSH terminal and
 settings (direct connection, local ports, background checks, battery
 optimisation, SSH keys), and tunnels coming back after the process is
 killed or the phone reboots, and enrolling by scanning the laptop's QR code. The app has its own light and dark colour scheme
-(`ui/Palette.kt`), following the system.
+(`ui/Palette.kt`), following the system, and speaks Russian and English.
 
 ## Profiles
 
@@ -278,6 +278,29 @@ server must speak first to an idle client would wait.
   earlier is read as the opposite of this switch.
 - Local ports: a range within 1024-65535 of at least 10 ports, 40000-40999
   by default. Existing mappings stay unless they fall outside a new range.
+- Language: System (default), Русский, English, applied at once. It is
+  Android's per-app language (`AppCompatDelegate.setApplicationLocales`):
+  on Android 13+ the system keeps it, and it also shows under the app in
+  the system's app language settings (`res/xml/locales_config.xml`); on
+  Android 10-12 AppCompat stores it (`autoStoreLocales`) and applies it to
+  the activity, and `settings.json` keeps a copy that is applied at process
+  start, so notifications of a process started in the background (restore
+  after a reboot) speak it too. Code without a screen takes its texts from
+  `locale/Texts.kt`, in the app's language.
+- Connections without a name of their own show a default made at display
+  time in the current language: the kind, and the port unless it is the
+  kind's own ("Web" / "Веб" on 80, "Web HTTPS" on 443, "SSH" on 22, "Веб
+  8080", "TCP 1883"). A preset chip in the sheet (homeui, MQTT, ...) fills
+  in its name, which the owner may change. Names the app made up from the
+  kind and port up to 0.2.0-beta1 ("Web", "SSH", "Port 8080", "Web 8080")
+  are read as "no name of its own" when they match exactly
+  (`connections/ConnectionMigration.kt`, `readConnections`), unless another
+  connection to the same port already shows that default; all other names
+  stay as they are.
+- `connections.json` is written in the new format (`custom_name`) on the
+  first change. A build older than this one cannot read it: going back to
+  one loses the list of connections (the file is kept aside as
+  `connections.corrupt.json`, nothing else is lost).
 - Settings are kept in `settings.json`; "Forget this phone" keeps them.
 
 ## Web ports
