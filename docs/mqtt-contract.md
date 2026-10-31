@@ -109,12 +109,12 @@ One sheet, opened from a topic, from a branch, or from the "+" of the tree:
   validated and can be formatted); the last payloads sent to this topic
   are one tap away.
 - **Retain** and **QoS** (0/1/2), remembered per topic.
-- **Status or command topic.** A connection may set, in its settings, where
-  a value goes by default: to the topic itself, or to a command topic next
-  to it given by a rule (a suffix such as `/on`, as Wiren Board uses). The
-  sheet then has a switch "Status topic / Command topic" set by the rule
-  and changeable for this send. A payload view (plugin) may define the
-  status/command pair itself and then overrides the rule.
+- **Status or command topic.** Which topic a value goes to by default is
+  decided by a plugin (see below): the first plugin, "Command suffix",
+  sends to `<topic>/<suffix>` (for example `/on`, as Wiren Board uses) for
+  topics matching its filters. The sheet then has a switch "Status topic /
+  Command topic" set by the plugin and changeable for this send. With no
+  plugin matching, the value goes to the topic itself.
 - Send gives feedback where it was tapped (sent, or the broker's refusal);
   if the topic is in the tree its new value shows up there.
 
@@ -145,9 +145,17 @@ there" view.
   a convention (Wiren Board `/devices/+/controls/+`, Zigbee2MQTT, Home
   Assistant discovery) plugs in by declaring its filters and how it shows
   a value and its metadata. The explorer never depends on a view.
-- First plugin form: declarative (a JSON description of filters and
-  fields shipped with the app or imported), not downloaded code: Android
-  forbids loading foreign code into an app of this kind safely.
+- Plugin form: declarative (a JSON description of filters and fields
+  shipped with the app or imported), not downloaded code: Android forbids
+  loading foreign code into an app of this kind safely. Plugins are enabled
+  per connection.
+- **First plugin: "Command suffix".** Parameters: topic filters (for
+  example `/devices/+/controls/+`) and a suffix (`on`). For a matching
+  topic it says that the command topic is `<topic>/<suffix>` and that the
+  `<topic>/<suffix>` subtopics are commands, not separate values (the tree
+  shows them under their status topic). It is simple on purpose: it proves
+  the plugin plumbing (description format, matching, enable per
+  connection, override in the publish sheet) before any richer view.
 
 ## Later: charts
 
@@ -163,7 +171,7 @@ explorer changes for it.
 
 | What | Where |
 | --- | --- |
-| Pinned subscriptions with their masks, the command-topic rule, retain/QoS per topic, last payloads sent (per connection) | app-private storage |
+| Pinned subscriptions with their masks, enabled plugins and their parameters, retain/QoS per topic, last payloads sent (per connection) | app-private storage |
 | Broker passwords (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
 | The tree and history | memory only, for the session |
 
@@ -175,9 +183,10 @@ explorer changes for it.
    payloads.
 3. Feed with pause, filter and watched topics.
 4. Retained delete for a topic and a branch.
-5. Login and TLS; the Subscriptions tab with masks; the command-topic
-   rule.
-6. Payload views as plugins (declarative), first plugin when wanted.
+5. Login and TLS; the Subscriptions tab with masks.
+6. Plugin infrastructure (declarative descriptions, matching, enable per
+   connection) with the first plugin, "Command suffix"; Text/JSON/Hex views
+   move onto the same plumbing.
 7. Later: charts of chosen numeric topics, overlaid.
 
 ## Acceptance (a Wiren Board on the tunnel)
