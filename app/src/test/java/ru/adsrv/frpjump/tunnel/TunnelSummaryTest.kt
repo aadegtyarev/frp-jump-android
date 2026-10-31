@@ -24,4 +24,18 @@ class TunnelSummaryTest {
     fun `no tunnels, no profiles`() {
         assertEquals(TunnelSummary(0, 0), tunnelSummary(emptyMap()))
     }
+
+    @Test
+    fun `just restarted, the record not read yet, restoring without a count`() {
+        assertEquals(TunnelsTitle.RestoringUnknown, tunnelsTitle(TunnelSummary.of(emptyMap(), restoring = null)))
+    }
+
+    @Test
+    fun `restoring with a count until a tunnel is up`() {
+        assertEquals(TunnelsTitle.Restoring(2), tunnelsTitle(TunnelSummary.of(emptyMap(), restoring = 2)))
+        val up = TunnelSummary.of(mapOf("work" to 1), restoring = 1)
+        assertEquals(TunnelsTitle.Up(up), tunnelsTitle(up))
+        val unknown = TunnelSummary.of(mapOf("work" to 1), restoring = null)
+        assertEquals(TunnelsTitle.Up(unknown), tunnelsTitle(unknown))
+    }
 }

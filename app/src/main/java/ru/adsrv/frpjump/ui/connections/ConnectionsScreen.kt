@@ -34,7 +34,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,8 +50,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.tunnel.Waiting
+import androidx.compose.ui.res.pluralStringResource
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.ui.AppTheme
@@ -74,14 +74,9 @@ fun ConnectionsScreen(
     val ui = remember { ConnectionUi() }
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb)
     val colors = AppTheme.colors
-    // "Disconnect all" spins until nothing is active (or gives up after a while: the rows tell the rest).
+    // "Disconnect all" spins until every server was asked (the rows and the line below tell the rest).
     var disconnecting by remember { mutableStateOf(false) }
-    LaunchedEffect(disconnecting, state.active.isEmpty()) {
-        if (disconnecting && state.active.isNotEmpty()) {
-            delay(20_000)
-        }
-        disconnecting = false
-    }
+    val restoring = state.restoring?.takeIf { it > 0 }
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -93,11 +88,11 @@ fun ConnectionsScreen(
             Column(Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.tab_connections), fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    if (state.active.isNotEmpty() || disconnecting) {
+                    if (state.active.isNotEmpty() || restoring != null || disconnecting) {
                         OutlinedButton(
                             onClick = {
                                 disconnecting = true
-                                vm.actions.disconnectAll()
+                                vm.actions.disconnectAll { disconnecting = false }
                             },
                             enabled = !disconnecting,
                             shape = CircleShape,
@@ -113,6 +108,19 @@ fun ConnectionsScreen(
                             Text(stringResource(R.string.disconnect_all), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.error)
                         }
                     }
+                }
+                // Where "Disconnect all" was tapped: why tunnels may come back, until they are back.
+                if (state.disconnectAllFailed && !disconnecting && restoring != null) {
+                    Text(stringResource(R.string.disconnect_all_failed), fontSize = 14.sp, color = colors.error)
+                }
+                restoring?.let { count ->
+                    val waiting = when (state.restoreWaiting) {
+                        Waiting.UNLOCK -> stringResource(R.string.restore_waiting_unlock)
+                        Waiting.NETWORK -> stringResource(R.string.restore_waiting_network)
+                        null -> null
+                    }
+                    val line = pluralStringResource(R.plurals.tunnels_restoring, count, count)
+                    Text(waiting?.let { "$line $it" } ?: line, fontSize = 14.sp, color = colors.muted)
                 }
             }
         }

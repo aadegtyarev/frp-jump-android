@@ -48,6 +48,7 @@ import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.NotificationsOffLine
 import ru.adsrv.frpjump.ui.DeviceGlyph
 import ru.adsrv.frpjump.ui.profiles.Chip
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
@@ -103,6 +104,7 @@ fun DevicesScreen(
                 .padding(padding),
         ) {
             RemovedElsewhereLine(removedElsewhere(profiles), onProfiles)
+            NotificationsOffLine()
             // Above the list, not in it: an item inserted before the first row would be scrolled out of sight.
             val staleSince = state.staleSince
             if (staleSince != null) {

@@ -371,7 +371,13 @@ private fun BackgroundPollItem(selected: BackgroundPoll, onSelect: (BackgroundPo
     )
 }
 
-/** Whether Android may stop the app in the background, and a way to the system setting. */
+/**
+ * "Battery · Android may stop tunnels · Fix", only while the app is not
+ * exempt from battery optimisation: then Android may stop the tunnels
+ * service, and may not let it start again by itself after killing the
+ * process. "Fix" asks for the exemption; back from the system dialog the
+ * row goes once it is granted.
+ */
 @Composable
 private fun BatteryItem() {
     val context = LocalContext.current
@@ -382,29 +388,48 @@ private fun BatteryItem() {
         exempt = power.isIgnoringBatteryOptimizations(context.packageName)
         onPauseOrDispose { }
     }
-    ListItem(
-        headlineContent = { Text("Battery optimisation") },
-        supportingContent = {
+    if (exempt) return
+    val colors = AppTheme.colors
+    Surface(
+        color = colors.card,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 8.dp, end = 16.dp),
+    ) {
+        GroupRow(
+            tile = {
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .background(colors.warningContainer, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("!", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onWarningContainer)
+                }
+            },
+            label = stringResource(R.string.battery),
+            hint = stringResource(R.string.battery_hint),
+            onClick = { askBatteryExemption(context) },
+        ) {
             Text(
-                if (exempt) {
-                    "Not optimised: Android lets tunnels and background checks run with the app closed."
-                } else {
-                    "Optimised: Android (and some vendors' firmware more so) may stop tunnels and background checks " +
-                        "with the app closed."
-                },
-                style = MaterialTheme.typography.bodySmall,
+                stringResource(R.string.battery_fix),
+                fontSize = 14.sp,
+                color = colors.onWarningContainer,
+                modifier = Modifier
+                    .background(colors.warningContainer, RoundedCornerShape(999.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
             )
-        },
-        trailingContent = { TextButton(onClick = { openBatterySettings(context, exempt) }) { Text("Change") } },
-    )
+        }
+    }
 }
 
-/** Asks to exempt the app (a sideloaded app may); the list of all apps when it already is, or as a fallback. */
+/** Asks to exempt the app (a sideloaded app may); the list of all apps as a fallback. */
 @SuppressLint("BatteryLife")
-private fun openBatterySettings(context: Context, exempt: Boolean) {
+private fun askBatteryExemption(context: Context) {
     val ask = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
     val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-    for (intent in if (exempt) listOf(list) else listOf(ask, list)) {
+    for (intent in listOf(ask, list)) {
         try {
             context.startActivity(intent)
             return
@@ -412,7 +437,7 @@ private fun openBatterySettings(context: Context, exempt: Boolean) {
             // Try the next one.
         }
     }
-    Toast.makeText(context, "This phone has no battery optimisation settings screen.", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, context.getString(R.string.battery_no_settings), Toast.LENGTH_SHORT).show()
 }
 
 @Composable

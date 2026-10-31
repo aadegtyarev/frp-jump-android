@@ -12,7 +12,8 @@ device list, named connections on the device card and in the Connections
 tab, direct or through-the-server tunnels with the "Direct didn't work"
 notification, the in-app web view (HTTP and HTTPS), the SSH terminal and
 settings (direct connection, local ports, background checks, battery
-optimisation, SSH keys). The app has its own light and dark colour scheme
+optimisation, SSH keys), and tunnels coming back after the process is
+killed or the phone reboots. The app has its own light and dark colour scheme
 (`ui/Palette.kt`), following the system.
 
 ## Profiles
@@ -114,6 +115,60 @@ not parse is left in place and nothing is migrated from it; a
   `specialUse`) keeps the process alive and shows "N tunnels" (all profiles)
   with "Disconnect all" (all profiles).
 
+## Restore after kill and reboot
+
+Tunnels that were up come back by themselves, in every profile and on the
+same local ports, when Android kills the process or the phone reboots.
+
+- The server keeps the grants (desired state) and the local port map keeps
+  their ports; the app only records which profiles had tunnels up, and how
+  many: `restore.json` in filesDir, profile id to count, written atomically
+  whenever the count changes (`restore/RestoreRecord.kt`). A profile leaves
+  it when it has no tunnel left: "Disconnect all", its last tunnel
+  disconnected here or elsewhere, "Forget profile", its server removing it.
+  A failed poll or a Keystore not readable yet keeps it.
+- A cold start reads the record before any profile polls. A profile in it
+  with no tunnel running polls every 5 s (10 s, 30 s after failures) until
+  its tunnels run, whichever profile is shown and whatever the background
+  setting; then it polls as usual (below).
+- Process killed: the tunnels service is sticky, so Android starts it again
+  (after 1 s, then longer when it keeps being killed) and the app's start
+  brings the tunnels back. Until they run the notification and the
+  Connections tab say "Restoring N tunnels…" ("Restoring tunnels…" before
+  the record is read), with "Waiting for network…" or "Waiting for
+  unlock…" when that is what holds them. "Disconnect all" there also
+  disconnects tunnels not yet back (it asks the server for them); when a
+  server cannot be told, frpc stops anyway but the record stays, and "Couldn't
+  reach the server. Tunnels may come back." is shown where it was tapped.
+  Profiles that cannot be read on a cold start are tried again (10 s, 30 s,
+  then every minute, five times).
+- A frpc that outlived a killed process would hold the local ports: its pid
+  is kept in `frpc.pid` next to its config, and the next start kills it
+  first, if `/proc/<pid>/cmdline` is still that frpc on that config.
+- Reboot: `restore/BootReceiver.kt` takes `BOOT_COMPLETED` and starts the
+  service when the record lists tunnels. Android 12+ lets an app start a
+  foreground service from `BOOT_COMPLETED`; Android 15 bars only `dataSync`,
+  `camera`, `mediaPlayback`, `phoneCall`, `mediaProjection` and
+  `microphone` from it, not `specialUse`. Not `LOCKED_BOOT_COMPLETED`: the
+  credentials are in credential-encrypted storage under Keystore keys, so
+  nothing can start before the first unlock.
+- When Android does not let the service come to the foreground from the
+  background (12+, the app not exempt from battery optimisation, or
+  restricted in the background), a "Tap to restore N tunnels" notification
+  opens the app, which starts the service. Exempt from battery
+  optimisation, the app may always start it; Settings shows "Battery ·
+  Android may stop tunnels · Fix" while it is not.
+- After a restore the direct-or-server logic runs as on a connect: "Trying
+  direct…", "Direct" or "Through the server". "Direct didn't work" is
+  offered once per device and network: the offers made are kept in
+  `direct_offered.json`, so tunnels brought back that fail the same way
+  do not offer it again. A device is offered again after all its tunnels
+  went direct there, its tunnels are gone, or "Retry direct".
+- With notifications not allowed (13+) none of these notices can show:
+  the device list says so in one line, with "Allow".
+- Force stop in the system settings disables all of this until the app is
+  opened again (Android's rule); the tunnels then come back on opening.
+
 ## Polling and background
 
 Each profile has one poll loop: heartbeat + desired state, plus the device
@@ -124,6 +179,7 @@ list while it is on screen.
 | current | visible | any | every 2 s |
 | current | closed | up | at Settings > "Check the server in the background": Off (default), 30 s, 1 min, 5 min, 15 min |
 | other | any | up | at the same background setting |
+| any | any | none yet, recorded up before a kill or reboot | every 5 s until they run |
 | any | closed (or other) | none | never |
 
 The phone exposes nothing, so a background check only keeps it shown
@@ -134,10 +190,11 @@ that is also why there is no WorkManager job for the 15 min option. Off
 keeps tunnels up without checking; changes made elsewhere apply when the
 app is opened.
 
-Android may still stop a background app (Doze, vendor firmware). Settings
-shows whether the app is exempt from battery optimisation, with a button
-to the system dialog (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, fine for a
-sideloaded app).
+Android may still stop a background app (Doze, vendor firmware). While
+the app is not exempt from battery optimisation Settings shows "Battery ·
+Android may stop tunnels" with "Fix", which opens the system dialog
+(`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, fine for a sideloaded app); the
+row goes once the exemption is granted.
 
 ## Direct or through the server
 

@@ -102,6 +102,34 @@
         <item quantity="other">%2$s in %1$d profiles</item>
     </plurals>
     <string name="disconnect_all">Disconnect all</string>
+    <plurals name="tunnels_restoring">
+        <item quantity="one">Restoring %d tunnel…</item>
+        <item quantity="other">Restoring %d tunnels…</item>
+    </plurals>
+    <plurals name="restore_notice_title">
+        <item quantity="one">Tap to restore %d tunnel</item>
+        <item quantity="other">Tap to restore %d tunnels</item>
+    </plurals>
+    <string name="restore_notice_text">Android stopped the app while tunnels were up and did not let them start again in the background. Settings › Battery lets them come back by themselves.</string>
+    <string name="restore_notice_title_unknown">Tap to restore tunnels</string>
+    <plurals name="keep_notice_title">
+        <item quantity="one">Tap to keep %d tunnel running</item>
+        <item quantity="other">Tap to keep %d tunnels running</item>
+    </plurals>
+    <string name="keep_notice_title_unknown">Tap to keep tunnels running</string>
+    <string name="keep_notice_text">Android did not let the tunnels service start in the background, so it may stop the tunnels. Settings › Battery lets it start by itself.</string>
+    <string name="tunnels_restoring_unknown">Restoring tunnels…</string>
+    <string name="restore_waiting_network">Waiting for network…</string>
+    <string name="restore_waiting_unlock">Waiting for unlock…</string>
+    <string name="disconnect_all_failed">Couldn’t reach the server. Tunnels may come back.</string>
+    <string name="notifications_off">Notifications off: no restore notices</string>
+    <string name="notifications_allow">Allow</string>
+
+    <!-- Settings: battery -->
+    <string name="battery">Battery</string>
+    <string name="battery_hint">Android may stop tunnels</string>
+    <string name="battery_fix">Fix</string>
+    <string name="battery_no_settings">This phone has no battery optimisation settings screen.</string>
 
     <!-- Direct or through the server -->
     <string name="setting_direct">Direct connection (P2P)</string>

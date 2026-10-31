@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Settings > Battery optimisation asks for an exemption directly; fine for a sideloaded app. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Tunnels up when the phone was switched off come back after it starts (restore/BootReceiver). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- No backup: the credentials are bound to a Keystore key that never leaves the phone. -->
     <application
@@ -37,6 +39,15 @@
         <receiver
             android:name=".direct.DirectActionReceiver"
             android:exported="false" />
+
+        <!-- After a reboot (once unlocked: the credentials need it), brings back tunnels that were up. -->
+        <receiver
+            android:name=".restore.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- specialUse: dataSync is capped at 6 h a day for apps targeting Android 15. -->
         <service

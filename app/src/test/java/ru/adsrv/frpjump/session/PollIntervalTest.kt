@@ -34,4 +34,23 @@ class PollIntervalTest {
     fun `a removed profile never polls`() {
         assertNull(pollIntervalMs(visible = true, current = true, tunnelsUp = true, backgroundMs = 30_000L, removed = true))
     }
+
+    @Test
+    fun `after a cold start a profile with tunnels to restore polls until they run, whatever the setting`() {
+        // Not shown, background checks off: nothing else would start them.
+        assertEquals(5_000L, pollIntervalMs(visible = false, current = false, tunnelsUp = false, backgroundMs = null, removed = false, restoring = true))
+        assertEquals(5_000L, pollIntervalMs(visible = true, current = false, tunnelsUp = false, backgroundMs = 900_000L, removed = false, restoring = true))
+        assertEquals("the shown one at its own pace", 2_000L, pollIntervalMs(visible = true, current = true, tunnelsUp = false, backgroundMs = null, removed = false, restoring = true))
+    }
+
+    @Test
+    fun `once restored a profile polls as usual`() {
+        assertNull(pollIntervalMs(visible = false, current = false, tunnelsUp = true, backgroundMs = null, removed = false, restoring = true))
+        assertEquals(60_000L, pollIntervalMs(visible = false, current = false, tunnelsUp = true, backgroundMs = 60_000L, removed = false, restoring = true))
+    }
+
+    @Test
+    fun `a removed profile is not restored`() {
+        assertNull(pollIntervalMs(visible = false, current = false, tunnelsUp = false, backgroundMs = null, removed = true, restoring = true))
+    }
 }

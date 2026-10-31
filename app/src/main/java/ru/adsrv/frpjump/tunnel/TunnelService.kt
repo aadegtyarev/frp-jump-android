@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.tunnel
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -20,11 +21,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.MainActivity
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.restore.RestoreNotice
+import ru.adsrv.frpjump.restore.serviceNeeded
 
 /**
  * Keeps the app process (and so every profile's frpc, its children) alive
@@ -34,7 +38,16 @@ import ru.adsrv.frpjump.R
  * run at the background interval while this keeps the process alive.
  * Type `specialUse`: `dataSync` is capped at 6 h a day for apps
  * targeting Android 15, and none of the other types fit a user-started
- * tunnel.
+ * tunnel. It is also not among the types a `BOOT_COMPLETED` receiver may
+ * not start on Android 15.
+ *
+ * Sticky: when Android kills the process with tunnels up, it starts the
+ * service again; the app then reads the [ru.adsrv.frpjump.restore.RestoreRecord]
+ * and its profiles bring their tunnels back from desired state, on the
+ * same local ports. Until they run the notification says "Restoring N
+ * tunnels…". Android 12+ may refuse the foreground start then (the app is
+ * in the background, not exempt from battery optimisation): the service
+ * gives up and [RestoreNotice] asks the owner to tap to bring them back.
  */
 class TunnelService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -44,56 +57,136 @@ class TunnelService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val profiles = (application as FrpJumpApp).profiles
+        val app = application as FrpJumpApp
+        val profiles = app.profiles
         // Always first, even when the tunnels are already gone: a service started with
-        // startForegroundService() that stops before this crashes the app.
-        startInForeground(tunnelSummary(profiles.tunnelsByProfileNow()))
+        // startForegroundService() that stops before this crashes the app. Just after a
+        // restart the record may not be read yet: "Restoring tunnels…" without a count.
+        val recorded = app.restoreRecord.profiles.value?.values?.sum()
+        if (!startInForeground(View(TunnelSummary.of(profiles.tunnelsByProfileNow(), recorded)))) {
+            // Restarted by Android after the process was killed, and not allowed to come to
+            // the foreground from the background: let the owner bring the tunnels back.
+            app.appScope.launch {
+                val count = withContext(Dispatchers.IO) { app.restoreRecord.load() }.values.sum()
+                RestoreNotice.show(app, count, RestoreNotice.Kind.RESTORE)
+            }
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        running = true
+        everInForeground = true
+        RestoreNotice.cancel(this)
         lastStartId = startId
-        if (intent?.action == ACTION_DISCONNECT_ALL) profiles.disconnectAllAsync()
-        if (watcher == null) {
-            // The service stops itself when the last tunnel goes; nobody calls stopService().
-            watcher = scope.launch {
-                profiles.tunnelsByProfile.map(::tunnelSummary).distinctUntilChanged().collect { summary ->
-                    if (summary.tunnels == 0) {
-                        ServiceCompat.stopForeground(this@TunnelService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                        // Not if a newer start is on its way: that one is for new tunnels.
-                        stopSelfResult(lastStartId)
-                    } else {
-                        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(summary))
-                    }
-                }
+        if (intent?.action == ACTION_DISCONNECT_ALL) {
+            // Not before the profiles are read: until then there is nothing to disconnect.
+            app.appScope.launch {
+                profiles.awaitLoaded()
+                profiles.disconnectAll()
             }
         }
-        // Not sticky: if Android kills the process, frpc dies with it and the
-        // tunnels come back from desired state when the app is opened again.
-        return START_NOT_STICKY
+        if (watcher == null) {
+            // The service stops itself when the last tunnel goes and none is still to come
+            // back; nobody calls stopService().
+            watcher = scope.launch {
+                combine(
+                    profiles.tunnelsByProfile,
+                    profiles.restorePending,
+                    app.restoreRecord.profiles,
+                    profiles.restoreWaiting,
+                    profiles.disconnectAllFailed,
+                ) { up, pending, record, waiting, failed ->
+                    val summary = TunnelSummary.of(up, pending ?: record?.values?.sum())
+                    if (serviceNeeded(summary.tunnels, pending)) View(summary, waiting, failed) else null
+                }
+                    .distinctUntilChanged()
+                    .collect { view ->
+                        if (view == null) {
+                            running = false
+                            ServiceCompat.stopForeground(this@TunnelService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                            // Not if a newer start is on its way: that one is for new tunnels.
+                            stopSelfResult(lastStartId)
+                        } else {
+                            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(view))
+                        }
+                    }
+            }
+        }
+        // Sticky: Android starts it again after killing the process, and the tunnels come back.
+        return START_STICKY
     }
 
+    /** What the notification shows. */
+    private data class View(
+        val summary: TunnelSummary,
+        /** Why tunnels still to come back are not back yet. */
+        val waiting: Waiting? = null,
+        /** The last "Disconnect all" could not tell a server. */
+        val disconnectFailed: Boolean = false,
+    )
+
     override fun onDestroy() {
+        running = false
+        // Stopped by Android while not in the foreground: its notification is no longer backed.
+        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         scope.cancel()
         super.onDestroy()
     }
 
-    private fun startInForeground(summary: TunnelSummary) {
+    /**
+     * False when Android does not allow it now: 12+ throws when the service
+     * was started again from the background; for an app the owner restricted
+     * in the background it only logs and leaves the service in the background.
+     */
+    private fun startInForeground(view: View): Boolean {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         } else {
             0
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(summary), type)
-    }
-
-    /** "N tunnels", or "N tunnels in M profiles" when more than one profile has tunnels. */
-    private fun title(summary: TunnelSummary): String {
-        val tunnels = resources.getQuantityString(R.plurals.tunnels, summary.tunnels, summary.tunnels)
-        return if (summary.namesProfiles) {
-            resources.getQuantityString(R.plurals.tunnels_in_profiles, summary.profiles, summary.profiles, tunnels)
-        } else {
-            tunnels
+        return try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(view), type)
+            isInForeground()
+        } catch (e: IllegalStateException) {
+            // ForegroundServiceStartNotAllowedException (an IllegalStateException) on 12+.
+            Log.w(TAG, "cannot come to the foreground now: ${e.message}")
+            false
         }
     }
 
-    private fun notification(summary: TunnelSummary): Notification {
+    /** Whether Android took this service into the foreground (it reports its own services). */
+    @Suppress("DEPRECATION")
+    private fun isInForeground(): Boolean =
+        getSystemService(ActivityManager::class.java).getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == TunnelService::class.java.name && it.foreground }
+
+    /**
+     * "N tunnels", or "N tunnels in M profiles" when more than one profile
+     * has tunnels; "Restoring (N) tunnels…" while none runs yet after a restart.
+     */
+    private fun title(summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
+        TunnelsTitle.RestoringUnknown -> getString(R.string.tunnels_restoring_unknown)
+        is TunnelsTitle.Restoring -> resources.getQuantityString(R.plurals.tunnels_restoring, title.count, title.count)
+        is TunnelsTitle.Up -> {
+            val tunnels = resources.getQuantityString(R.plurals.tunnels, summary.tunnels, summary.tunnels)
+            if (summary.namesProfiles) {
+                resources.getQuantityString(R.plurals.tunnels_in_profiles, summary.profiles, summary.profiles, tunnels)
+            } else {
+                tunnels
+            }
+        }
+    }
+
+    /** While tunnels are still to come back: a failed "Disconnect all" first, then what they wait for. */
+    private fun text(view: View): String? = when {
+        tunnelsTitle(view.summary) is TunnelsTitle.Up -> null
+        view.disconnectFailed -> getString(R.string.disconnect_all_failed)
+        view.waiting == Waiting.UNLOCK -> getString(R.string.restore_waiting_unlock)
+        view.waiting == Waiting.NETWORK -> getString(R.string.restore_waiting_network)
+        else -> null
+    }
+
+    private fun notification(view: View): Notification {
+        val summary = view.summary
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) == null) {
             manager.createNotificationChannel(
@@ -109,6 +202,7 @@ class TunnelService : Service() {
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .setContentTitle(title(summary))
+            .setContentText(text(view))
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -117,16 +211,40 @@ class TunnelService : Service() {
     }
 
     companion object {
-        private const val CHANNEL = "tunnels"
+        private const val TAG = "TunnelService"
+        const val CHANNEL = "tunnels"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_DISCONNECT_ALL = "ru.adsrv.frpjump.DISCONNECT_ALL"
 
-        /** False when Android refuses a start from the background (12+): tunnels run without the guard. */
-        fun start(context: Context): Boolean = try {
+        /** Whether the service runs in the foreground now. */
+        @Volatile
+        var running = false
+            private set
+
+        /**
+         * Whether this process has had the service in the foreground. A
+         * process that never had it and starts tunnels from the background is
+         * bringing them back after a restart (sticky restart, boot).
+         */
+        @Volatile
+        private var everInForeground = false
+
+        /**
+         * False when Android refuses a start from the background (12+): tunnels
+         * run without the guard, and [RestoreNotice] asks the owner to open the
+         * app, which starts it ([ru.adsrv.frpjump.FrpJumpApp]): to restore them
+         * when this [restarting] process brings them back, else to keep them.
+         */
+        fun start(context: Context, restarting: Boolean = !everInForeground): Boolean = try {
             ContextCompat.startForegroundService(context, Intent(context, TunnelService::class.java))
             true
         } catch (e: IllegalStateException) {
-            Log.w("TunnelService", "cannot start the foreground service now: ${e.message}")
+            Log.w(TAG, "cannot start the foreground service now: ${e.message}")
+            if (!running) {
+                val app = context.applicationContext as FrpJumpApp
+                val count = app.restoreRecord.profiles.value?.values?.sum() ?: 0
+                RestoreNotice.show(context, count, if (restarting) RestoreNotice.Kind.RESTORE else RestoreNotice.Kind.KEEP)
+            }
             false
         }
     }

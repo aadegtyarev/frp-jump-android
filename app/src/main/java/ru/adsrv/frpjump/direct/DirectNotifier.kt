@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.MainActivity
 import ru.adsrv.frpjump.R
@@ -36,8 +39,16 @@ import ru.adsrv.frpjump.tunnel.Tunnel
  * actions ([DirectActionReceiver]) work with the app closed.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class DirectNotifier(private val context: Context, private val profiles: Profiles) {
-    private val offers = DirectOffers()
+class DirectNotifier(
+    private val context: Context,
+    private val profiles: Profiles,
+    /** Offers made, kept across restarts; loaded before the profiles. */
+    offered: DirectOfferedStore,
+    private val network: StateFlow<String?>,
+    /** Tunnels by profile as last applied ([ru.adsrv.frpjump.restore.RestoreRecord.profiles]). */
+    private val restoreRecord: StateFlow<Map<String, Int>?>,
+) {
+    private val offers = DirectOffers(memory = offered)
     /** Bumped to look again: an answer, or an offer's delay ran out. */
     private val ticks = MutableStateFlow(0)
     private val manager = context.getSystemService(NotificationManager::class.java)
@@ -50,9 +61,14 @@ class DirectNotifier(private val context: Context, private val profiles: Profile
             manager.activeNotifications.filter { it.id == NOTIFICATION_ID }.forEach { manager.cancel(it.tag, it.id) }
         }
         scope.launch {
-            combine(tunnelsAndNames(), ticks) { (tunnels, connections), _ ->
-                offers.offers(tunnels, SystemClock.elapsedRealtime()) { profile, t -> nameOf(connections[profile].orEmpty(), t) }
-            }.distinctUntilChanged().collect { list ->
+            combine(tunnelsAndNames(), ticks, network, restoreRecord) { (tunnels, connections), _, net, record ->
+                // Still to come back after a restart: their devices keep their offers.
+                val restoring = tunnels.filter { (id, list) -> list.isEmpty() && (record?.get(id) ?: 0) > 0 }.keys
+                offers.offers(tunnels, SystemClock.elapsedRealtime(), net, restoring) { profile, t -> nameOf(connections[profile].orEmpty(), t) }
+            }
+                // The offers made are written to storage.
+                .flowOn(Dispatchers.IO)
+                .distinctUntilChanged().collect { list ->
                 show(list.offers)
                 recheck?.cancel()
                 recheck = list.recheckInMs?.let { wait ->
@@ -64,6 +80,9 @@ class DirectNotifier(private val context: Context, private val profiles: Profile
             }
         }
     }
+
+    /** "Retry direct" on [device]: a failure after it is news again. Storage: off the main thread. */
+    fun retried(profile: String, device: String) = offers.retried(profile, device)
 
     /** The owner swiped it away or answered it: take it back now, and not again in this episode. */
     fun dismiss(profile: String, device: String, cancel: Boolean) {

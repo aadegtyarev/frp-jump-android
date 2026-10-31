@@ -16,15 +16,24 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.restore.pendingRestore
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.tunnel.TunnelsState
+import ru.adsrv.frpjump.tunnel.Waiting
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 
 data class ProfilesState(
     /** False until [Profiles.load] has read (and, from v1, upgraded) the profiles. */
     val loaded: Boolean = false,
     /** Why loading failed; [Profiles.load] may be called again. */
     val failure: String? = null,
+    /** After a failure, [Profiles.loadRetrying] tries again. */
+    val retrying: Boolean = false,
     val index: ProfileIndex = ProfileIndex(),
     val runtimes: Map<String, ProfileRuntime> = emptyMap(),
     /**
@@ -45,6 +54,8 @@ data class ProfilesState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class Profiles(
     private val store: ProfileStore,
+    /** Tunnels by profile as last applied ([ru.adsrv.frpjump.restore.RestoreRecord.profiles]); null until read. */
+    private val restoreRecord: StateFlow<Map<String, Int>?> = MutableStateFlow(emptyMap()),
     private val open: (profile: Profile, store: ProfileStore, currentId: StateFlow<String?>) -> ProfileRuntime,
 ) {
     private val _state = MutableStateFlow(ProfilesState())
@@ -69,6 +80,40 @@ class Profiles(
     /** [tunnelsByProfile] as it is now. */
     fun tunnelsByProfileNow(): Map<String, Int> =
         _state.value.runtimes.mapValues { it.value.tunnels.state.value.tunnels.size }.filterValues { it > 0 }
+
+    /**
+     * Tunnels still to bring back after a cold start (see [pendingRestore]);
+     * null while not known yet. 0 in normal running.
+     */
+    val restorePending: Flow<Int?> =
+        combine(restoreRecord, _state, tunnelsByProfile) { record, state, up ->
+            pendingRestore(
+                record,
+                listed = when {
+                    state.loaded -> state.runtimes.keys
+                    state.failure != null && !state.retrying -> emptySet()
+                    else -> null
+                },
+                up,
+            )
+        }.distinctUntilChanged()
+
+    /**
+     * Why tunnels still to come back are not back yet, when a poll said so:
+     * the Keystore locked first, then no network. Null otherwise.
+     */
+    val restoreWaiting: Flow<Waiting?> =
+        combine(restoreRecord, _state.map { it.runtimes }.distinctUntilChanged().flatMapLatest { runtimes ->
+            if (runtimes.isEmpty()) {
+                flowOf(emptyMap())
+            } else {
+                val ids = runtimes.keys.toList()
+                combine(ids.map { runtimes.getValue(it).tunnels.state }) { states -> ids.zip(states).toMap() }
+            }
+        }) { record, states ->
+            val waiting = states.filter { (id, s) -> (record?.get(id) ?: 0) > 0 && s.tunnels.isEmpty() }.values.mapNotNull { it.waiting }
+            waiting.minOrNull()
+        }.distinctUntilChanged()
 
     /** Every tunnel up, as [profilePortKey]s. */
     val upTunnels: Flow<Set<String>> = allTunnels { states ->
@@ -103,6 +148,20 @@ class Profiles(
                 false
             }
         }
+    }
+
+    /**
+     * [load], tried again after each of [delaysMs] while it fails (a cold
+     * start bringing tunnels back has no screen to retry from). The restore
+     * waits meanwhile, and goes on once the profiles are read.
+     */
+    suspend fun loadRetrying(delaysMs: List<Long>): Boolean {
+        for (wait in delaysMs) {
+            if (load()) return true
+            _state.value = _state.value.copy(retrying = true)
+            delay(wait)
+        }
+        return load().also { if (!it) _state.value = _state.value.copy(retrying = false) }
     }
 
     /**
@@ -169,8 +228,32 @@ class Profiles(
         true
     }
 
-    /** "Disconnect all": every profile's tunnels. */
-    fun disconnectAllAsync() = _state.value.runtimes.values.forEach { it.tunnels.disconnectAllAsync() }
+    private val _disconnectAllFailed = MutableStateFlow(false)
+
+    /**
+     * The last "Disconnect all" could not tell some server: those tunnels
+     * may come back. Cleared when the next one starts.
+     */
+    val disconnectAllFailed: StateFlow<Boolean> = _disconnectAllFailed
+
+    /** Suspends until [load] has finished, well or not. */
+    suspend fun awaitLoaded() {
+        _state.first { it.loaded || it.failure != null }
+    }
+
+    /**
+     * "Disconnect all": every profile's tunnels, at once. False (and
+     * [disconnectAllFailed]) when a server could not be told. With the
+     * profiles unreadable there is nothing to tell them with: nothing runs,
+     * and nothing is brought back until they are read.
+     */
+    suspend fun disconnectAll(): Boolean {
+        _disconnectAllFailed.value = false
+        val runtimes = _state.value.runtimes.values.toList()
+        val told = coroutineScope { runtimes.map { async { it.tunnels.disconnectAll() } }.awaitAll() }.all { it }
+        _disconnectAllFailed.value = !told
+        return told
+    }
 
     /** [changedEnrollment]: a profile whose credentials were just filled in or wiped in place. */
     private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>, changedEnrollment: String? = null) {
