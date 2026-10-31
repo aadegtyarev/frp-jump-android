@@ -61,15 +61,74 @@ class TmuxPickUpTest {
     }
 
     @Test
-    fun `close all counts the tabs and the sessions no tab holds, and ends every session found`() {
+    fun `close all counts the tabs and the sessions no tab holds`() {
         val found = listOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-2", "frpjump-0a1b2c-5")
-        // Tab 7 holds -1, a hidden tab holds -2 (its close is already waiting), tab 8 is a plain shell.
-        val plan = closeAllPlan(listOf(7, 8), setOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-2"), found)
+        val tabs = listOf(
+            CloseAllTab(7, "frpjump-0a1b2c-1", here = true, hidden = false),
+            // A plain shell here.
+            CloseAllTab(8, null, here = true, hidden = false),
+            // Its own close is already waiting: not counted again, its session still ends.
+            CloseAllTab(9, "frpjump-0a1b2c-2", here = true, hidden = true),
+        )
+        val plan = closeAllPlan(tabs, found)
         assertEquals(listOf(7, 8), plan.tabs)
         assertEquals(listOf("frpjump-0a1b2c-5"), plan.orphans)
         assertEquals(found, plan.kill)
         assertEquals(3, plan.count)
-        assertEquals(0, closeAllPlan(emptyList(), emptySet(), emptyList()).count)
+        assertEquals(0, closeAllPlan(emptyList(), emptyList()).count)
+    }
+
+    @Test
+    fun `close all never ends a session a tab that stays holds`() {
+        val found = listOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-2", "frpjump-0a1b2c-3")
+        val tabs = listOf(
+            CloseAllTab(1, "frpjump-0a1b2c-1", here = true, hidden = false),
+            // The same device and user through another port or profile: it stays, so does its session.
+            CloseAllTab(2, "frpjump-0a1b2c-2", here = false, hidden = false),
+            // Elsewhere but already closing with its own Undo: its session may go.
+            CloseAllTab(3, "frpjump-0a1b2c-3", here = false, hidden = true),
+        )
+        val plan = closeAllPlan(tabs, found)
+        assertEquals(listOf(1), plan.tabs)
+        assertEquals(emptyList<String>(), plan.orphans)
+        assertEquals(listOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-3"), plan.kill)
+    }
+
+    @Test
+    fun `a kill is checked by what is still listed, not by the exit status`() {
+        val names = listOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-2")
+        assertEquals(
+            "tmux kill-session -t '=frpjump-0a1b2c-1'; tmux kill-session -t '=frpjump-0a1b2c-2'; tmux list-sessions -F '#{session_name}'",
+            tmuxKillAllAndListCommand(names),
+        )
+        // All gone: the server exits, the listing fails and prints nothing.
+        assertEquals(emptyList<String>(), stillRunning(run(tmuxKillAllAndListCommand(names), tmux = "[ \"\$1\" = kill-session ] || exit 1"), names))
+        // One did not end: it is still listed.
+        val stuck = "if [ \"\$1\" = list-sessions ]; then printf 'work\\nfrpjump-0a1b2c-2\\n'; fi"
+        assertEquals(listOf("frpjump-0a1b2c-2"), stillRunning(run(tmuxKillAllAndListCommand(names), tmux = stuck), names))
+    }
+
+    @Test
+    fun `a pick-up takes only names no tab holds and none handed out to another`() {
+        val names = TmuxNames(MemoryStorage(), Random(1))
+        val i = names.install
+        val claims = PickUpClaims(names)
+        val found = listOf("frpjump-$i-1", "frpjump-$i-2", "frpjump-$i-3")
+        val first = TabTmux(names)
+        // -1 is a tab's already (opened meanwhile, or alive since before).
+        assertEquals(listOf("frpjump-$i-2", "frpjump-$i-3"), claims.claim(found, { setOf("frpjump-$i-1") }, first::adopt))
+        assertEquals("frpjump-$i-2", first.assigned)
+        // Another first tab at once: -2 is held by the tab, -3 is handed out and its tab not made yet.
+        val second = TabTmux(names)
+        assertEquals(emptyList<String>(), claims.claim(found, { setOf("frpjump-$i-1", "frpjump-$i-2") }, second::adopt))
+        assertEquals(null, second.assigned)
+        // -3 not wanted after all (its first tab was closed): free again.
+        claims.release(listOf("frpjump-$i-3"))
+        assertEquals(listOf("frpjump-$i-3"), claims.claim(found, { setOf("frpjump-$i-1", "frpjump-$i-2") }, second::adopt))
+        // The counter moved past what was picked up.
+        assertEquals("frpjump-$i-4", names.next())
+        // A tab that has its name already takes none.
+        assertEquals(emptyList<String>(), claims.claim(listOf("frpjump-$i-9"), { emptySet() }, first::adopt))
     }
 
     @Test

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.schmizz.sshj.SSHClient
+import java.io.IOException
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ports.profilePortKey
@@ -190,8 +191,8 @@ class SshSessions(
     private fun hasNoTab(profile: String, device: String, port: Int) =
         _sessions.value.none { it.profile == profile && it.device == device && it.port == port }
 
-    /** Names [pickUp] handed out whose tabs do not exist yet: two pick-ups never take the same one. */
-    private val pickedUp = mutableSetOf<String>()
+    /** Names [pickUp] handed out whose tabs do not exist yet. */
+    private val claims = PickUpClaims(env.tmuxNames)
 
     /**
      * [from], the first tab of its connection, found this install's
@@ -203,14 +204,8 @@ class SshSessions(
      * nothing to pick up, a new session as today.
      */
     private fun pickUp(from: SshSession, found: List<String>): String? {
-        val free = synchronized(pickedUp) {
-            val held = _sessions.value.mapNotNull { it.tmux.assigned }.toSet() + pickedUp
-            found.filterNot { it in held }.also { names ->
-                if (names.isEmpty() || !from.tmux.adopt(names.first())) return null
-                pickedUp += names.drop(1)
-            }
-        }
-        env.tmuxNames.reserve(free)
+        val free = claims.claim(found, held = { _sessions.value.mapNotNull { it.tmux.assigned }.toSet() }, adopt = from.tmux::adopt)
+        if (free.isEmpty()) return null
         scope.launch(Dispatchers.Main) { openPickedUp(from, free.drop(1)) }
         return free.first()
     }
@@ -221,7 +216,7 @@ class SshSessions(
             openPickedUpTabs(from, names)
         } finally {
             // Tabs now (or not wanted): free for a later pick-up again.
-            synchronized(pickedUp) { pickedUp -= names.toSet() }
+            claims.release(names)
         }
     }
 
@@ -270,9 +265,14 @@ class SshSessions(
     /** This install's tmux sessions on [from]'s device for its user, by number; see [runOnDevice]. */
     fun ownTmuxOn(from: SshSession): List<String> = ownTmuxSessions(runOnDevice(from, TMUX_LIST_COMMAND), env.tmuxNames.install)
 
-    /** Ends tmux sessions [names] on [from]'s device for its user; see [runOnDevice]. */
+    /**
+     * Ends tmux sessions [names] on [from]'s device for its user; see
+     * [runOnDevice]. Throws when it cannot, also when any of them still
+     * runs afterwards ([stillRunning]).
+     */
     fun endTmuxOn(from: SshSession, names: List<String>) {
-        runOnDevice(from, tmuxKillAllCommand(names))
+        val left = stillRunning(runOnDevice(from, tmuxKillAllAndListCommand(names)), names)
+        if (left.isNotEmpty()) throw IOException(Texts.get(R.string.terminal_close_all_still_running, left.joinToString(", ")))
     }
 
     /** One notice for any number of tabs back on their tmux sessions at once; none in the background. */

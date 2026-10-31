@@ -466,6 +466,8 @@
     <string name="terminal_close_all_looking">Ищу сессии этого телефона на %s…</string>
     <string name="terminal_close_all_none">На %s нет сессий этого телефона</string>
     <string name="terminal_close_all_failed">Не удалось получить список сессий на %1$s: %2$s</string>
+    <string name="terminal_close_all_failed_tabs">Не удалось получить список сессий на %1$s: %2$s. Вкладки закрыты, сессии там продолжают работать</string>
+    <string name="terminal_close_all_still_running">ещё работают: %s</string>
     <string name="terminal_close_all_end_failed">Не удалось завершить сессии на %1$s: %2$s</string>
     <string name="ssh_tmux_failed">tmux не запустился (код %d): вместо него обычная оболочка</string>
     <string name="terminal_reconnecting">Связь потеряна · переподключение (попытка %d)…</string>
