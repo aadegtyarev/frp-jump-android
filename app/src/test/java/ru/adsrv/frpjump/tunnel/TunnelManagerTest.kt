@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.tunnel
 
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -293,6 +295,53 @@ class TunnelManagerTest {
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.TRYING, waitingForPeer = true))
         withTimeout(5_000) { while (frpc.last!!.visitors.single().attempt == 0) delay(20) }
         assertEquals(1, frpc.last!!.visitors.single().attempt)
+    }
+
+    @Test
+    fun `a tunnel whose local port another app took moves to a free one`() = runBlocking {
+        manager.sync()
+        val first = frpc.last!!.visitors.single().localPort
+        ServerSocket().use { squatter ->
+            squatter.reuseAddress = true
+            squatter.bind(InetSocketAddress("127.0.0.1", first))
+            frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "listen tcp 127.0.0.1:$first: bind: address already in use"))
+            withTimeout(5_000) { while (frpc.last!!.visitors.single().localPort == first) delay(20) }
+        }
+        assertTrue(frpc.last!!.visitors.single().localPort in 47100..47199)
+    }
+
+    @Test
+    fun `a port taken again and again is moved three times, then left failed`() = runBlocking {
+        manager.sync()
+        repeat(5) {
+            val before = frpc.applies
+            frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use #$it"))
+            if (it < 3) withTimeout(5_000) { while (frpc.applies == before) delay(20) } else delay(300)
+        }
+        assertEquals(4, frpc.applies)
+    }
+
+    @Test
+    fun `a tunnel that worked again may move again`() = runBlocking {
+        manager.sync()
+        repeat(3) {
+            val before = frpc.applies
+            frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use #$it"))
+            withTimeout(5_000) { while (frpc.applies == before) delay(20) }
+        }
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
+        delay(100)
+        val before = frpc.applies
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use again"))
+        withTimeout(5_000) { while (frpc.applies == before) delay(20) }
+    }
+
+    @Test
+    fun `other start errors do not move the tunnel`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "proxy not found"))
+        delay(300)
+        assertEquals(1, frpc.applies)
     }
 
     // The restore record: which profiles a cold start brings back.
