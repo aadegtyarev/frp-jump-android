@@ -28,7 +28,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +51,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -61,6 +64,7 @@ import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 
 @Composable
@@ -225,6 +229,32 @@ fun ConnectButton(row: ConnectionRow, onClick: () -> Unit) {
 }
 
 /**
+ * "Disconnect" of an active row, next to its main action: done with a
+ * connection, the owner drops it where they were. A spinner while it goes.
+ */
+@Composable
+fun DisconnectIcon(row: ConnectionRow, size: Dp, onClick: () -> Unit) {
+    val c = AppTheme.colors
+    val busy = row.pending != null
+    Surface(
+        onClick = onClick,
+        enabled = !busy,
+        shape = RoundedCornerShape(12.dp),
+        color = c.card,
+        border = BorderStroke(1.dp, c.outline),
+        modifier = Modifier.size(size),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = c.error, strokeWidth = 2.dp)
+            } else {
+                Icon(PowerGlyph, contentDescription = stringResource(R.string.disconnect_named, rowName(row)), tint = c.error, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+/**
  * Runs an action that brings a tunnel up after asking for notifications the
  * first time: a notification enqueued while the permission is undecided is
  * dropped, and the service's notification is what "Disconnect all" lives
@@ -325,7 +355,6 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
             })
         }
         if (row.tunnel != null) {
-            item(R.string.disconnect, actions.disconnect)
             if (row.saved && kind != PortKind.TCP) item(R.string.copy_address, actions.copy)
             if (row.saved && kind == PortKind.WEB) item(R.string.open_in_browser, actions.browser)
             if (row.saved && kind == PortKind.SSH) item(R.string.open_in_ssh_app, actions.sshApp)

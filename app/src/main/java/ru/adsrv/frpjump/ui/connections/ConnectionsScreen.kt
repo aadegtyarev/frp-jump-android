@@ -218,6 +218,7 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                         }
                     }
                     if (row.tunnel != null) {
+                        DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
                         MainButton(mainActionLabel(row)) { actions.main(row) }
                     } else {
                         ConnectIcon(row) { actions.connect(row) }

@@ -66,6 +66,14 @@ val TerminalGlyph: ImageVector = glyph("Terminal") {
     horizontalLineTo(17f)
 }
 
+/** A power symbol: "disconnect". */
+val PowerGlyph: ImageVector = glyph("Power") {
+    moveTo(12f, 3f)
+    verticalLineTo(12f)
+    moveTo(6.9f, 6.9f)
+    arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = false, x1 = 17.1f, y1 = 6.9f)
+}
+
 /** A plus, for "add" buttons. */
 val PlusGlyph: ImageVector = glyph("Plus", 2.4f) {
     moveTo(12f, 5f)
