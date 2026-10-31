@@ -63,9 +63,9 @@ they were added. Several connections may name the same device and port
 port, which stay keyed by (profile, device, port).
 
 - The device card lists the device's connections with their tunnel's state,
-  local address and main action (Open, Terminal, Copy address); "⋮" or a
-  long press has Disconnect, Copy address, Open in browser / external app,
-  Change and Delete. "Connection" opens a sheet: kind, port (presets per
+  local address, a Disconnect (power) button and the main action (Open,
+  Terminal, Copy address); "⋮" or a long press has Copy address, Open in
+  browser / external app, Change and Delete. "Connection" opens a sheet: kind, port (presets per
   kind, any 1-65535), name (blank takes the preset's name, the SSH user or
   "Web 8080"), HTTPS or user, "Connect now". Names must differ per device
   and port, and SSH cannot share a port with web or TCP (the server knows a
@@ -73,8 +73,8 @@ port, which stay keyed by (profile, device, port).
   cannot be changed; moving or deleting the last connection of a port
   disconnects its tunnel.
 - The Connections tab lists every profile's connections, marked with the
-  profile's colour: active ones first with state, local address and main
-  action, the rest with a connect button, "⋮" on each; "Disconnect all" stops every
+  profile's colour: active ones first with state, local address, Disconnect
+  and the main action, the rest with a connect button, "⋮" on each; "Disconnect all" stops every
   tunnel. Tunnels up without a saved connection are listed too, as
   "Port N", so they can be disconnected.
 - The bottom navigation: Devices, Connections, Terminals (the open SSH
