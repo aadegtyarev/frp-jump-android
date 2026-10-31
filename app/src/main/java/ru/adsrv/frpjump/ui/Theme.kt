@@ -28,6 +28,7 @@ class AppColors(private val palette: Palette) {
     val muted = Color(palette.muted)
     val faint = Color(palette.faint)
     val accent = Color(palette.accent)
+    val onAccent = Color(palette.onAccent)
     val accentContainer = Color(palette.accentContainer)
     val onAccentContainer = Color(palette.onAccentContainer)
     val strong = Color(palette.strong)

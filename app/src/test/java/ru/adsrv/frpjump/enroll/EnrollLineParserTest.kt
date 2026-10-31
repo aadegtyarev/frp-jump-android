@@ -110,6 +110,15 @@ class EnrollLineParserTest {
     }
 
     @Test
+    fun namePlaceholderInAnyShapeMeansNoName() {
+        // As rich may wrap it, and spelled with `=`.
+        for (tail in listOf("--name <pick-a-\nname>", "--name\n<pick-a-name>", "--name=<pick-a-name>", "--name <pick-a-name>\n")) {
+            val line = ok("frp-jump-client enroll https://way.example.com $token $tail")
+            assertEquals(EnrollLine("https://way.example.com", token, null), line)
+        }
+    }
+
+    @Test
     fun bareUrlAndToken() {
         assertEquals(EnrollLine("https://way.example.com:8443", token, null), ok("https://way.example.com:8443/ $token"))
     }

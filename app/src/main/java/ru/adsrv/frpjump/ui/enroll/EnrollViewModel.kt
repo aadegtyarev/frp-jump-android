@@ -96,6 +96,16 @@ class EnrollViewModel(
         )
     }
 
+    /**
+     * A code the scanner read: taken as the line, as if pasted, when it is an
+     * enroll line. Returns false (the scanner says so and goes on) otherwise.
+     */
+    fun onScanned(text: String): Boolean {
+        if (_state.value.busy || EnrollLineParser.parse(text) !is EnrollLineResult.Ok) return false
+        onText(text)
+        return true
+    }
+
     fun onName(name: String) = _state.update { it.copy(name = name, error = null) }
 
     fun onProfileName(name: String) =

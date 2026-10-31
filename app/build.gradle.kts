@@ -74,6 +74,11 @@ dependencies {
     implementation(libs.bcpkix)
     implementation(libs.termux.terminal.emulator)
     implementation(libs.termux.terminal.view)
+    // QR enroll: CameraX for the preview and frames, ZXing core to decode them (no Play Services).
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.zxing.core)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
