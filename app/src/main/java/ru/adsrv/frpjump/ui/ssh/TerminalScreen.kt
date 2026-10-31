@@ -347,23 +347,33 @@ fun TerminalScreen(
                         .background(Color.Black),
                 )
                 (state as? SshState.Ended)?.let { ended ->
-                    Row(
+                    // The reason on its own line, the buttons under it: side by side with two
+                    // buttons a long reason got squeezed into a column of word fragments.
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(colors.termBar)
-                            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(start = 12.dp, end = 4.dp, top = 8.dp),
                     ) {
-                        Text(ended.message, fontSize = 13.sp, color = colors.onTerm, modifier = Modifier.weight(1f))
-                        TextButton(
-                            onClick = { reconnectTab(selected.id) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
-                        ) { Text(stringResource(R.string.terminal_reconnect)) }
-                        // "Wrong user or password": Reconnect would only repeat it.
-                        TextButton(
-                            onClick = { changeLogin(selected.id) },
-                            colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
-                        ) { Text(stringResource(R.string.terminal_change_login)) }
+                        Text(
+                            ended.message,
+                            fontSize = 13.sp,
+                            color = colors.onTerm,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Row(modifier = Modifier.align(Alignment.End)) {
+                            TextButton(
+                                onClick = { reconnectTab(selected.id) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                            ) { Text(stringResource(R.string.terminal_reconnect)) }
+                            // "Wrong user or password": Reconnect would only repeat it.
+                            TextButton(
+                                onClick = { changeLogin(selected.id) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                            ) { Text(stringResource(R.string.terminal_change_login)) }
+                        }
                     }
                 }
                 HorizontalDivider(color = colors.termLine)
