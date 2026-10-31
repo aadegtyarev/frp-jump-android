@@ -68,11 +68,13 @@ fun PublishSheet(
     var problem by remember { mutableStateOf<TopicProblem?>(null) }
     var sending by remember { mutableStateOf(false) }
     var answer by remember { mutableStateOf<PublishAnswer?>(null) }
+    var edits by remember { mutableStateOf(0) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     // An answer is about what was sent: any change makes it stale.
     fun changed() {
         answer = null
+        edits++
     }
     AppSheet(title = stringResource(R.string.mqtt_publish_title), onDismiss = onDismiss) {
         Field(
@@ -138,9 +140,11 @@ fun PublishSheet(
                     if (found != null) return@MainButton
                     sending = true
                     answer = null
+                    val sentAt = edits
                     onPublish(text, payload, qos, retain) {
                         sending = false
-                        answer = it
+                        // An edit made while sending makes the answer stale: drop it.
+                        if (edits == sentAt) answer = it
                     }
                 },
             )
