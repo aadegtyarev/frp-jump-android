@@ -52,14 +52,21 @@ fun apkProblem(apk: ApkFacts?, installed: ApkFacts, version: String): ApkProblem
 
 /** [ApkFacts] of the APK file [apk]; null when Android cannot read it. Disk: off the main thread. */
 fun archiveFacts(context: Context, apk: File): ApkFacts? =
-    context.packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNING_CERTIFICATES)?.let(::facts)
+    runCatching { context.packageManager.getPackageArchiveInfo(apk.path, SIGNER_FLAGS) }.getOrNull()?.let(::facts)
 
 /** [ApkFacts] of this app as installed. */
 fun installedFacts(context: Context): ApkFacts =
-    facts(context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES))
+    facts(context.packageManager.getPackageInfo(context.packageName, SIGNER_FLAGS))
 
+/** Both: some Android 10-12 builds leave signingInfo empty for an archive but fill the old signatures. */
+@Suppress("DEPRECATION")
+private const val SIGNER_FLAGS = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+
+@Suppress("DEPRECATION")
 private fun facts(info: PackageInfo): ApkFacts {
-    val signers = info.signingInfo?.apkContentsSigners.orEmpty()
+    // The same source on both sides keeps the installed app and the archive comparable.
+    val certificates = info.signingInfo?.apkContentsSigners?.takeIf { it.isNotEmpty() } ?: info.signatures.orEmpty()
+    val signers = certificates
         .map { MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).toHex() }
         .toSet()
     return ApkFacts(info.packageName, info.longVersionCode, info.versionName, signers)

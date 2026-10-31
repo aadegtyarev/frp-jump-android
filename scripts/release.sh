@@ -53,11 +53,13 @@ if [ "$PUBLISH" = 1 ]; then
   fi
   # Android installs an update only with a higher versionCode.
   git fetch -q --tags origin
-  LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -1)
-  if [ -n "$LAST_TAG" ]; then
-    LAST_CODE=$(gradle_value versionCode "$LAST_TAG")
-    [ "$CODE" -gt "${LAST_CODE:-0}" ] || { echo "versionCode $CODE is not above $LAST_CODE of $LAST_TAG" >&2; exit 1; }
-  fi
+  # The highest versionCode over all release tags: tag order alone ranks 0.2.0-beta1 above 0.2.0.
+  LAST_CODE=0
+  for tag in $(git tag --list 'v*'); do
+    tag_code=$(gradle_value versionCode "$tag")
+    [ "${tag_code:-0}" -gt "$LAST_CODE" ] && LAST_CODE=$tag_code && LAST_TAG=$tag
+  done
+  [ "$CODE" -gt "$LAST_CODE" ] || { echo "versionCode $CODE is not above $LAST_CODE of $LAST_TAG" >&2; exit 1; }
   # The release points at this commit: it must be on GitHub already.
   [ -n "$(git branch -r --contains HEAD)" ] || { echo "HEAD is not pushed to origin" >&2; exit 1; }
 fi

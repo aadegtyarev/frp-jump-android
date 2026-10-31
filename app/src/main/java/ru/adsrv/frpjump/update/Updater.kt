@@ -163,7 +163,7 @@ class Updater(
                     val reason = if (!checksumMatches(expected, actual)) {
                         Texts.get(R.string.update_checksum_mismatch)
                     } else {
-                        inspect(apk, release.version)?.let(::problemText)
+                        (runCatching { inspect(apk, release.version) }.getOrElse { ApkProblem.UNREADABLE })?.let(::problemText)
                     }
                     reason?.also { apk.delete() }
                 }
