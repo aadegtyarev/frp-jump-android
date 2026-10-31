@@ -90,6 +90,14 @@ val FullscreenExitGlyph: ImageVector = glyph("FullscreenExit") {
     moveTo(9f, 20f); verticalLineTo(15f); horizontalLineTo(4f)
 }
 
+/** Two overlapping sheets: "Copy". */
+val CopyGlyph: ImageVector = glyph("Copy") {
+    roundRect(9f, 9f, 11f, 11f, 2f)
+    moveTo(5f, 15f); verticalLineTo(6f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 7f, y1 = 4f)
+    horizontalLineTo(15f)
+}
+
 /** A plus, for "add" buttons. */
 val PlusGlyph: ImageVector = glyph("Plus", 2.4f) {
     moveTo(12f, 5f)

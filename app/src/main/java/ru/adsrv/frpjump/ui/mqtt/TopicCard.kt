@@ -72,6 +72,7 @@ import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ssh.copyPreview
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.CopyGlyph
 import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.Segmented
 import ru.adsrv.frpjump.ui.files.InfoLine
@@ -172,11 +173,11 @@ fun TopicCard(
                 if (card.history.isNotEmpty()) History(card.history)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SecondaryButton(stringResource(R.string.mqtt_copy_path), null, enabled = true, Modifier.weight(1f)) {
+                        SecondaryButton(stringResource(R.string.mqtt_copy_path), CopyGlyph, enabled = true, Modifier.weight(1f)) {
                             copy(context, path.format().let { CopiedValue(it, cut = false) })
                         }
                         if (value != null) {
-                            SecondaryButton(stringResource(R.string.mqtt_copy_value), null, enabled = payload != null && view != null, Modifier.weight(1f)) {
+                            SecondaryButton(stringResource(R.string.mqtt_copy_value), CopyGlyph, enabled = payload != null && view != null, Modifier.weight(1f)) {
                                 if (payload != null && view != null) copy(context, copiedValue(payload, view))
                             }
                         }
