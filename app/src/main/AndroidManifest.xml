@@ -17,6 +17,15 @@
     <!-- CAMERA would otherwise imply both as required: phones without a camera enroll by paste. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- Settings › Version: a downloaded update goes to the system installer, which asks the owner. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Which installer opens APKs, to hand the update straight to the system's (update/ApkInstaller.kt). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
 
     <!-- No backup: the credentials are bound to a Keystore key that never leaves the phone. -->
     <application
@@ -65,6 +74,17 @@
                 android:name="autoStoreLocales"
                 android:value="true" />
         </service>
+
+        <!-- Gives the system installer the downloaded update APK, nothing else (res/xml/update_files.xml). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_files" />
+        </provider>
 
         <!-- specialUse: dataSync is capped at 6 h a day for apps targeting Android 15. -->
         <service

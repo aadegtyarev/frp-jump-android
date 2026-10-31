@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -272,8 +275,11 @@ fun AppNav() {
 /** A tab's screen above the bottom navigation; the screen keeps its own status bar padding. */
 @Composable
 private fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
+    val snackbars = remember { SnackbarHostState() }
+    UpdateAnnouncement(selected, snackbars) { nav.goToTab(Tab.SETTINGS) }
     Scaffold(
         bottomBar = { BottomNav(selected) { if (it != selected) nav.goToTab(it) } },
+        snackbarHost = { SnackbarHost(snackbars) },
         containerColor = AppTheme.colors.ground,
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
@@ -283,6 +289,31 @@ private fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable
                 .padding(padding)
                 .consumeWindowInsets(padding),
         ) { content() }
+    }
+}
+
+/**
+ * A newer release, once per version: a snackbar whose "Show" leads to
+ * Settings, where the version row offers it. On Settings itself the row
+ * says it already.
+ */
+@Composable
+private fun UpdateAnnouncement(selected: Tab, snackbars: SnackbarHostState, onShow: () -> Unit) {
+    val updater = (LocalContext.current.applicationContext as FrpJumpApp).updater
+    val update by updater.state.collectAsStateWithLifecycle()
+    // Taken from the updater at once (told once, whether or not the owner looks), then shown.
+    var shown by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(update.announce) {
+        val version = update.announce ?: return@LaunchedEffect
+        updater.announced()
+        if (selected != Tab.SETTINGS) shown = version
+    }
+    val text = shown?.let { stringResource(R.string.update_snackbar, it) }
+    val action = stringResource(R.string.update_snackbar_show)
+    LaunchedEffect(text) {
+        if (text == null) return@LaunchedEffect
+        if (snackbars.showSnackbar(text, actionLabel = action, withDismissAction = true) == SnackbarResult.ActionPerformed) onShow()
+        shown = null
     }
 }
 

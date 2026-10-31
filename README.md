@@ -335,7 +335,7 @@ check interval, the SSH key, language and theme open a sheet.
   locked: the picture is taken when the app is left, unlocked. If the
   screen lock is removed later, the next prompt turns the setting off
   rather than lock the owner out, and says so.
-- Version: the app's and frpc's; updates come with release builds.
+- Version: the app's and frpc's, and updates (see [Updates](#updates)).
 - Settings are kept in `settings.json`; "Forget this phone" keeps them.
 
 ## Web ports
@@ -448,6 +448,66 @@ scripts/build-frpc.sh        # upstream frpc 0.70.0 -> app/src/main/jniLibs/<abi
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.
 If Gradle reports that the toolchain has no `JAVA_COMPILER`, point `JAVA_HOME`
 at a full JDK, e.g. `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`.
+
+## Release
+
+The release build is minified with R8 and shrinks resources
+(`app/proguard-rules.pro` says what is kept and why; the mapping for stack
+traces is `app/build/outputs/mapping/release/mapping.txt`, keep it with the
+release). It is signed with the release key, which never goes into the
+repository. Put its location and passwords in `~/.gradle/gradle.properties`
+(or the environment, same names):
+
+```properties
+FRPJUMP_RELEASE_STORE_FILE=/path/to/frp-jump-release.jks
+FRPJUMP_RELEASE_STORE_PASSWORD=...
+FRPJUMP_RELEASE_KEY_ALIAS=...
+FRPJUMP_RELEASE_KEY_PASSWORD=...
+```
+
+Without all four, `./gradlew assembleRelease` still builds, says so, and
+leaves an unsigned `app-release-unsigned.apk` that cannot be installed; the
+debug build never needs them. Every release must be signed with the same
+key: Android installs an update only over an app with the same signature,
+so a phone that has a debug build (or one signed with another key) has to
+uninstall it once before the first release goes on.
+
+To publish a version: raise `versionName` and `versionCode` in
+`app/build.gradle.kts`, commit, then
+
+```sh
+scripts/release.sh                                   # dist/frp-jump-android-<version>.apk and .apk.sha256
+scripts/release.sh --publish --notes-file notes.md   # also GitHub release v<version> with both files
+```
+
+The release is published as a normal one, not a pre-release, even for a
+version such as `0.2.0-beta2`: the app asks GitHub for the latest release,
+which skips pre-releases and drafts. The notes file is what the app shows
+under "What's new".
+
+## Updates
+
+The app looks for a newer release in this repository's GitHub Releases
+(`releases/latest`, no token): when it is opened and a day has passed since
+GitHub last answered, and whenever the owner taps the version row in
+Settings. The answer's ETag is kept with the release it described, so an
+unchanged release costs a `304 Not Modified`, which GitHub does not count
+against the 60 requests an hour it allows without a token
+(`update/Updater.kt`, `update.json` in the app's files).
+
+- Versions compare as semver, a pre-release before its release:
+  0.2.0-beta1 < 0.2.0-beta2 < 0.2.0 (`update/AppVersion.kt`).
+- A newer release shows in Settings as "Update available: x.y.z" with an
+  "Update" button, and once per version as a snackbar on the other tabs.
+- "Update" opens the release notes and "Download and install". The APK is
+  the release's `.apk` file (`frp-jump-android-<version>.apk` when there are
+  several); it is downloaded into the app's cache with the progress in the
+  sheet and checked against the SHA-256 in `<apk>.sha256`. A release without
+  that file, or a download that does not match it, is not installed.
+- The checked APK goes to the system installer, which asks the owner. If
+  Android does not yet let the app install apps, a dialog says so and opens
+  "Install unknown apps" for it; back with it allowed, installation goes on.
+  Nothing is installed without the owner's taps.
 
 ## Install
 

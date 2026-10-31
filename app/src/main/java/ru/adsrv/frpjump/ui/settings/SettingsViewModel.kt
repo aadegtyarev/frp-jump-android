@@ -28,6 +28,7 @@ import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.ssh.blobOfPublicKeyLine
 import ru.adsrv.frpjump.ssh.sshFingerprint
 import ru.adsrv.frpjump.ui.applyTheme
+import ru.adsrv.frpjump.update.UpdateState
 
 data class SettingsUiState(
     /** This phone's SSH public key line; null until it is read (or made) off the main thread. */
@@ -47,6 +48,15 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     /** Background poll, direct connection, local ports. */
     val settings: StateFlow<AppSettings> = app.settings.settings
+
+    /** Settings › Version: a newer release and its download; the app keeps them across screens. */
+    val update: StateFlow<UpdateState> = app.updater.state
+
+    fun checkForUpdates() = app.updater.check()
+
+    fun downloadUpdate() = app.updater.download()
+
+    fun clearUpdateError() = app.updater.clearDownloadError()
 
     fun setBackgroundPoll(poll: BackgroundPoll) = save { it.copy(backgroundPoll = poll) }
 

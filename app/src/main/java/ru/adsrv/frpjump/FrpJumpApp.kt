@@ -37,6 +37,10 @@ import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.KeystoreSecretBox
 import ru.adsrv.frpjump.tunnel.TunnelService
 import ru.adsrv.frpjump.ui.web.clearWebData
+import ru.adsrv.frpjump.update.ReleaseSource
+import ru.adsrv.frpjump.update.UpdateRecordStore
+import ru.adsrv.frpjump.update.Updater
+import ru.adsrv.frpjump.update.updateDownloads
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
@@ -72,6 +76,10 @@ class FrpJumpApp : Application() {
     lateinit var restoreRecord: RestoreRecord
         private set
     private lateinit var directOffered: DirectOfferedStore
+
+    /** Settings › Version: newer releases on GitHub, their download and check. */
+    lateinit var updater: Updater
+        private set
 
     /** A device card to show, asked for by a notification; taken by the navigation. */
     val openDevice = MutableStateFlow<OpenDevice?>(null)
@@ -148,6 +156,13 @@ class FrpJumpApp : Application() {
                 if (wanted && !TunnelService.running) TunnelService.start(this@FrpJumpApp)
             }
         }
+        updater = Updater(
+            installed = BuildConfig.VERSION_NAME,
+            records = UpdateRecordStore(AtomicTextFile(File(filesDir, "update.json"))),
+            source = ReleaseSource(),
+            downloads = updateDownloads(this),
+            scope = appScope,
+        ).also { it.start(visible) }
         installFullBouncyCastle()
         // Its own Keystore key, shared by all profiles: re-enrolling must not lose the SSH key.
         val sshBox = KeystoreSecretBox(SSH_KEY_ALIAS)
