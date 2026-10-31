@@ -112,3 +112,69 @@ val TorchGlyph: ImageVector = glyph("Torch") {
     moveTo(12f, 13f)
     verticalLineTo(15f)
 }
+
+/** Two opposite arrows: direct connection. */
+val SwapGlyph: ImageVector = glyph("Swap") {
+    moveTo(4f, 8f)
+    horizontalLineTo(19f)
+    moveTo(16f, 5f)
+    lineTo(19f, 8f)
+    lineTo(16f, 11f)
+    moveTo(20f, 16f)
+    horizontalLineTo(5f)
+    moveTo(8f, 13f)
+    lineTo(5f, 16f)
+    lineTo(8f, 19f)
+}
+
+/** A circular arrow: checking again. */
+val RepeatGlyph: ImageVector = glyph("Repeat") {
+    moveTo(19f, 12f)
+    arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 16.9f, y1 = 7f)
+    moveTo(17f, 3f)
+    verticalLineTo(7f)
+    horizontalLineTo(13f)
+}
+
+/** A key: the phone's SSH key. */
+val KeyGlyph: ImageVector = glyph("Key") {
+    moveTo(11f, 12f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11f, y1 = 11.99f)
+    moveTo(11f, 12f)
+    horizontalLineTo(21f)
+    moveTo(18f, 12f)
+    verticalLineTo(15f)
+    moveTo(21f, 12f)
+    verticalLineTo(14f)
+}
+
+/** A fingerprint's ridges: unlock with fingerprint. */
+val FingerprintGlyph: ImageVector = glyph("Fingerprint", 1.8f) {
+    moveTo(6f, 10f)
+    arcTo(6f, 6f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 18f, y1 = 10f)
+    verticalLineTo(13f)
+    moveTo(9f, 19f)
+    curveTo(9.6f, 17.5f, 9f, 14f, 9f, 11f)
+    arcTo(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 15f, y1 = 11f)
+    verticalLineTo(13f)
+    curveTo(15f, 16f, 14f, 18f, 13f, 20f)
+    moveTo(12f, 11f)
+    verticalLineTo(14f)
+    curveTo(12f, 16f, 11.5f, 18f, 10.8f, 20f)
+    moveTo(6f, 14f)
+    verticalLineTo(10f)
+}
+
+/** A circle half filled: light or dark. */
+val ThemeGlyph: ImageVector = ImageVector.Builder("Theme", 24.dp, 24.dp, 24f, 24f)
+    .path(fill = SolidColor(Color.Black)) {
+        moveTo(12f, 4f)
+        arcTo(8f, 8f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 12f, y1 = 20f)
+        close()
+    }
+    .path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f) {
+        moveTo(12f, 4f)
+        arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11.99f, y1 = 4f)
+        close()
+    }
+    .build()

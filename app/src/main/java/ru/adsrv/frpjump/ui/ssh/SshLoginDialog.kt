@@ -5,12 +5,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,7 +20,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
+import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.SecretField
+import ru.adsrv.frpjump.ui.Segmented
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /**
  * User name (remembered per device and port), then this phone's key or a
@@ -47,28 +48,26 @@ fun SshLoginDialog(
     val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ssh_login_title, target)) },
+        title = { Text(stringResource(R.string.ssh_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Field(
+                    label = stringResource(R.string.ssh_user),
                     value = user,
                     onValueChange = { user = it.trim() },
-                    label = { Text(stringResource(R.string.ssh_user)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false),
+                    keyboard = KeyboardType.Ascii,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = method == SshAuthMethod.KEY, onClick = { method = SshAuthMethod.KEY }, label = { Text(stringResource(R.string.ssh_method_key)) })
-                    FilterChip(
-                        selected = method == SshAuthMethod.PASSWORD,
-                        onClick = { method = SshAuthMethod.PASSWORD },
-                        label = { Text(stringResource(R.string.ssh_method_password)) },
-                    )
-                }
+                Segmented(
+                    options = listOf(SshAuthMethod.KEY, SshAuthMethod.PASSWORD),
+                    selected = method,
+                    label = { stringResource(if (it == SshAuthMethod.KEY) R.string.ssh_method_key else R.string.ssh_method_password) },
+                    onPick = { method = it },
+                )
                 if (method == SshAuthMethod.KEY) {
                     Text(
                         stringResource(R.string.ssh_login_key_hint, stringResource(R.string.ssh_public_key)),
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 13.sp,
+                        color = AppTheme.colors.muted,
                     )
                 } else {
                     SecretField(

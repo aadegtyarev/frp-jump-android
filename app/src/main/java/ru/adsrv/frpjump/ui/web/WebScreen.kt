@@ -73,6 +73,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.AppTopBar
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.WebNavigation
 import ru.adsrv.frpjump.web.certFingerprint
@@ -210,24 +212,12 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     BackHandler(enabled = canGoBack && !rendererGone) { webView.goBack() }
 
     Scaffold(
+        containerColor = AppTheme.colors.ground,
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            url,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
+            AppTopBar(
+                title = title,
+                subtitle = url,
+                onBack = onBack,
                 actions = {
                     IconButton(onClick = reload) { Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.web_reload)) }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
@@ -247,7 +237,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (certRefused) {
                 // Above the page, which stays in place for "Try again".
-                Text(stringResource(R.string.cert_refused), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                Text(stringResource(R.string.cert_refused), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
                 TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.cert_try_again)) }
             }
             if (rendererGone) {

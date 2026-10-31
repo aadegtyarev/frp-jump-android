@@ -28,10 +28,22 @@ import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.TerminalGlyph
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Color
 
 /** The Terminals tab: the open SSH sessions; tap one to show it in the terminal. */
 @Composable
-fun TerminalsScreen(sessions: SshSessions, onOpen: (sessionId: Int) -> Unit) {
+fun TerminalsScreen(
+    sessions: SshSessions,
+    /** Profile id to its colour's name, for the marks. */
+    profileColors: Map<String, String>,
+    onOpen: (sessionId: Int) -> Unit,
+) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
     val colors = AppTheme.colors
     LazyColumn(
@@ -50,14 +62,21 @@ fun TerminalsScreen(sessions: SshSessions, onOpen: (sessionId: Int) -> Unit) {
             )
         }
         if (list.isEmpty()) {
-            item(key = "empty") { Text(stringResource(R.string.terminals_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.padding(4.dp)) }
+            item(key = "empty") {
+                Surface(color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        TerminalTile(dot = null)
+                        Text(stringResource(R.string.terminals_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
         }
-        items(list, key = { it.id }) { session -> SessionLine(session) { onOpen(session.id) } }
+        items(list, key = { it.id }) { session -> SessionLine(session, profileColors[session.profile]) { onOpen(session.id) } }
     }
 }
 
 @Composable
-private fun SessionLine(session: SshSession, onClick: () -> Unit) {
+private fun SessionLine(session: SshSession, profileColor: String?, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = when (state) {
@@ -67,11 +86,42 @@ private fun SessionLine(session: SshSession, onClick: () -> Unit) {
         else -> stringResource(R.string.terminal_state_asks) to colors.warning
     }
     Surface(onClick = onClick, color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TerminalTile(dot = colors.profile(profileColor ?: "grey"))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(session.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color)
             }
+        }
+    }
+}
+
+/** The terminal glyph on a tile; [dot], the profile's colour, in the corner. */
+@Composable
+private fun TerminalTile(dot: Color?) {
+    val colors = AppTheme.colors
+    Box(Modifier.size(40.dp)) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .background(colors.tile, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(TerminalGlyph, contentDescription = null, tint = colors.ink, modifier = Modifier.size(22.dp))
+        }
+        dot?.let {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(12.dp)
+                    .background(colors.card, CircleShape)
+                    .padding(2.dp)
+                    .background(it, CircleShape),
+            )
         }
     }
 }

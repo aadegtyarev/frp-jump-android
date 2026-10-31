@@ -15,6 +15,7 @@ bouncycastle = "1.84"
 termux = "v0.118.3"
 camerax = "1.4.1"
 zxing = "3.5.3"
+biometric = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -39,6 +40,7 @@ termux-terminal-view = { module = "com.github.termux.termux-app:terminal-view", 
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 
 [plugins]

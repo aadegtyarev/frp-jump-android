@@ -327,7 +327,6 @@
     <string name="terminal_keyboard">Keyboard</string>
     <string name="terminal_close_session">Close session</string>
     <string name="terminal_reconnect">Reconnect</string>
-    <string name="terminal_status_open">%1$s via %2$s</string>
     <string name="terminal_status_host_key_unknown">Waiting for the host key decision</string>
     <string name="terminal_status_host_key_changed">Blocked: host key changed</string>
     <string name="host_key_trust_title">Trust this device?</string>
@@ -392,7 +391,7 @@
     <string name="background_poll_off_hint">Off: with the app closed, open tunnels keep running but nothing is checked; tunnels closed or devices disabled elsewhere are noticed when you open the app.</string>
     <string name="background_poll_on_hint">With the app closed, every %s while tunnels are up (the “Tunnels” notification is shown): keeps this phone online for the server and closes tunnels that were disconnected or disabled elsewhere.</string>
     <string name="background_poll_open_hint">While the app is open it checks every 2 s. Without tunnels nothing runs in the background.</string>
-    <string name="ssh_public_key">SSH public key</string>
+    <string name="ssh_public_key">Phone SSH key</string>
     <string name="ssh_public_key_hint">Add this line to ~/.ssh/authorized_keys on a device to log in with this phone’s key.</string>
     <string name="ssh_key_failed">Cannot make or read the SSH key: %s</string>
     <string name="copy">Copy</string>
@@ -410,4 +409,48 @@
     <string name="key_passphrase_label">Passphrase (empty if none)</string>
     <string name="frpc_login_failed">Cannot log in to the relay: %s</string>
     <string name="frpc_stopped">frpc stopped (exit code %d)</string>
+
+    <!-- Stage 7: settings, lock, theme, terminal -->
+    <string name="settings_security">Security</string>
+    <string name="background_poll_row_hint">While tunnels are open</string>
+    <string name="setting_app_lock">Unlock with fingerprint</string>
+    <string name="setting_app_lock_hint">Fingerprint or screen lock when the app opens. Tunnels keep running.</string>
+    <string name="setting_app_lock_needs_screen_lock">Needs a screen lock on the phone</string>
+    <string name="lock_needs_screen_lock_text">This phone has no screen lock. Set a PIN, pattern or password in the system settings, then turn this on.</string>
+    <string name="lock_open_settings">Open settings</string>
+    <string name="lock_no_settings">This phone has no screen lock settings screen.</string>
+    <string name="lock_turn_on_title">Turn on unlock with fingerprint</string>
+    <string name="lock_prompt_title">Unlock frp-jump</string>
+    <string name="lock_prompt_subtitle">Fingerprint or screen lock</string>
+    <string name="lock_not_turned_on">Not turned on: not confirmed.</string>
+    <string name="lock_failed">Couldn’t check: %s</string>
+    <string name="lock_cancelled">Not unlocked. Tap “Unlock” to try again.</string>
+    <string name="lock_no_screen_lock_off">The phone has no screen lock any more, so unlock with fingerprint is off.</string>
+    <string name="lock_title">frp-jump is locked</string>
+    <string name="lock_text">Tunnels keep running.</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="language_glyph">Aa</string>
+    <string name="theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="settings_version">Version %1$s · frpc %2$s</string>
+    <string name="copied">Copied</string>
+    <string name="terminal_more_keys">More keys</string>
+    <string name="terminal_not_open">The session is not open.</string>
+    <string name="snippet_run">Run</string>
+    <string name="snippet_type">Type</string>
+    <string name="snippet_add_first">+ Add command</string>
+    <string name="snippets">Commands</string>
+    <string name="snippets_hint">Tap a command to type it; long press types it and presses Enter.</string>
+    <string name="snippets_empty">No saved commands yet. They are kept on this phone for every device.</string>
+    <string name="snippet_move_up">Move up</string>
+    <string name="snippet_move_down">Move down</string>
+    <string name="snippet_add">Add command</string>
+    <string name="snippet_change">Change command</string>
+    <string name="snippet_command">Command</string>
+    <string name="snippet_delete">Delete</string>
+    <string name="device_was_online_ago">Was online %s</string>
+    <string name="settings_save_failed">Couldn’t save the setting: %s</string>
+    <string name="snippet_save_failed">Couldn’t save the commands: %s</string>
 </resources>

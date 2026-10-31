@@ -61,4 +61,41 @@ class SettingsStoreTest {
         assertNotNull(portRangeProblem(40010, 40000))
         assertNotNull(portRangeProblem(null, 40000))
     }
+
+    @Test
+    fun `theme follows the system and the lock is off by default`() {
+        val settings = SettingsStore(MemoryStorage()).settings.value
+        assertEquals(ThemeMode.SYSTEM, settings.theme)
+        assertEquals(false, settings.appLock)
+    }
+
+    @Test
+    fun `theme and lock persist`() {
+        val storage = MemoryStorage()
+        SettingsStore(storage).update { it.copy(theme = ThemeMode.DARK, appLock = true) }
+        val reread = SettingsStore(storage).settings.value
+        assertEquals(ThemeMode.DARK, reread.theme)
+        assertEquals(true, reread.appLock)
+        SettingsStore(storage).update { it.copy(theme = ThemeMode.LIGHT) }
+        assertEquals(ThemeMode.LIGHT, SettingsStore(storage).settings.value.theme)
+    }
+
+    @Test
+    fun `settings of an earlier version get the system theme and keep the rest`() {
+        val old = MemoryStorage("""{"background_poll":"5m","direct":false,"language":"ru","local_port_first":41000,"local_port_last":41099}""")
+        val migrated = SettingsStore(old).settings.value
+        assertEquals(ThemeMode.SYSTEM, migrated.theme)
+        assertEquals(false, migrated.appLock)
+        assertEquals(BackgroundPoll.MINUTES_5, migrated.backgroundPoll)
+        assertEquals(false, migrated.direct)
+        assertEquals(41000..41099, migrated.localPorts)
+    }
+
+    @Test
+    fun `a theme this version does not know is the system one, the rest kept`() {
+        val newer = SettingsStore(MemoryStorage("""{"theme":"amoled","direct":false,"app_lock":true}""")).settings.value
+        assertEquals(ThemeMode.SYSTEM, newer.theme)
+        assertEquals(false, newer.direct)
+        assertEquals(true, newer.appLock)
+    }
 }

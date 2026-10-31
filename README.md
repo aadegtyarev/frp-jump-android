@@ -14,7 +14,9 @@ notification, the in-app web view (HTTP and HTTPS), the SSH terminal and
 settings (direct connection, local ports, background checks, battery
 optimisation, SSH keys), and tunnels coming back after the process is
 killed or the phone reboots, and enrolling by scanning the laptop's QR code. The app has its own light and dark colour scheme
-(`ui/Palette.kt`), following the system, and speaks Russian and English.
+(`ui/Palette.kt`), following the system or set by hand, speaks Russian
+and English, can ask for the fingerprint or screen lock when opened, and
+the terminal has saved commands (snippets).
 
 ## Profiles
 
@@ -271,6 +273,12 @@ server must speak first to an idle client would wait.
 
 ## Settings
 
+Grouped as the mockup: the current profile (name and colour, forget),
+tunnels (direct connection, local ports), background (server checks,
+battery), security (the phone's SSH key, unlock with fingerprint) and the
+app (language, theme, version). Rows show their value; local ports, the
+check interval, the SSH key, language and theme open a sheet.
+
 - Direct connection (P2P): see above; off is one `stcp` visitor per tunnel
   bound directly, as `frp-jump-client set-p2p off`, with no attempts and
   no notifications. Switching it reloads frpc (connections through the
@@ -301,6 +309,33 @@ server must speak first to an idle client would wait.
   first change. A build older than this one cannot read it: going back to
   one loses the list of connections (the file is kept aside as
   `connections.corrupt.json`, nothing else is lost).
+- Theme: System (default), Light, Dark, applied at once and kept in
+  `settings.json` (`theme`; an older file without it, or a value a newer
+  build wrote, reads as System). Compose takes the palette from it, and
+  `AppCompatDelegate.setDefaultNightMode` gives the same to the window, the
+  system's dialogs and the web view; AppCompat keeps that per process only,
+  so the app sets it again at every start (`ui/Theme.kt`). The terminal's
+  bars stay dark in both themes.
+- Unlock with fingerprint: off by default. Turning it on asks for the
+  phone's fingerprint or screen lock first (BiometricPrompt,
+  `BIOMETRIC_STRONG | DEVICE_CREDENTIAL`; Android 10 does not take that
+  pair, so there it is `BIOMETRIC_WEAK | DEVICE_CREDENTIAL`). A phone
+  without a screen lock says so and the switch stays off. When on, the app
+  shows a lock screen and asks again on a cold start and when it comes
+  back after more than 30 s out of sight (`lock/LockPolicy.kt`); a
+  cancelled prompt leaves the lock screen with "Unlock". Only the screen is
+  locked: tunnels, the service and the notification's "Disconnect all" go
+  on, and the screens stay underneath (an open web page or terminal is
+  where it was) but take no input: the focused view lets go, the keyboard
+  is hidden and keys other than Back and volume are dropped. A prompt that
+  ends while the app is away (the owner left with it up) counts the
+  absence from then, so the 30 s rule still holds. Recents shows no picture of the app while the setting is
+  on: `setRecentsScreenshotEnabled(false)` on Android 13+, `FLAG_SECURE`
+  before that (which also blocks screenshots there). Not only while
+  locked: the picture is taken when the app is left, unlocked. If the
+  screen lock is removed later, the next prompt turns the setting off
+  rather than lock the owner out, and says so.
+- Version: the app's and frpc's; updates come with release builds.
 - Settings are kept in `settings.json`; "Forget this phone" keeps them.
 
 ## Web ports
@@ -339,11 +374,24 @@ port) and Key or Password, then opens a session to
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.
 - The terminal requests `xterm-256color` and sends `window-change` when the
-  view or the font size changes. Below it: Esc, Tab, sticky Ctrl / Alt,
-  arrows, `| - / ~`. Long-press selects text (Copy / Paste), pinch or A− / A+
-  changes the font size.
-- Sessions live in the app, not in the screen: several at once, as tabs;
-  the Terminals tab leads back. A session ends when its
+  view or the font size changes. Below it, as the mockup: Esc, Tab, Ctrl,
+  Alt, ↑, ↓ and "⋯", which opens a second row (← → Home End PgUp PgDn
+  `| ~ / -`). Ctrl and Alt stay held, lit, until the next key.
+  Long-press selects text (Copy / Paste), pinch or A− / A+ changes the font
+  size, ⌨ brings the keyboard back.
+- Snippets: a row of saved commands above the keys. Tap types a command
+  without Enter (to finish it first), long press types it and presses
+  Enter; the manager says so. The last chip ("+ Add command" while there
+  are none) opens it: add, change, delete, ↑ / ↓ to reorder. One list per
+  phone, for every profile and device, in `snippets.json`
+  (`snippets/SnippetStore.kt`; a file that does not parse is kept as
+  `snippets.corrupt.json`). Sent only into an open session; otherwise the
+  app says the session is not open. Line breaks are sent as CR, as Enter
+  is. A held Ctrl / Alt does not apply to a snippet: it is typed as saved,
+  and sending it releases the hold. A write that fails keeps the list as it
+  was and says so (as a setting that cannot be saved does).
+- Sessions live in the app, not in the screen: several at once, as tabs
+  with the profile's colour, user and device; the Terminals tab leads back. A session ends when its
   tunnel goes (Disconnect, Disconnect all, Forget); "Reconnect" starts a new
   one with the same login.
 - "Open in external app" sends `ssh://<user>@127.0.0.1:<port>` to an SSH app

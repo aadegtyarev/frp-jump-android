@@ -15,6 +15,8 @@ android {
         targetSdk = 35
         versionCode = 3
         versionName = "0.2.0-beta1"
+        // Shown in Settings › App; the binary is built by scripts/build-frpc.sh (FRP_VERSION).
+        buildConfigField("String", "FRPC_VERSION", "\"0.70.0\"")
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -81,6 +83,8 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.zxing.core)
+    // Settings › Unlock with fingerprint: BiometricPrompt with the screen lock as the fallback.
+    implementation(libs.androidx.biometric)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

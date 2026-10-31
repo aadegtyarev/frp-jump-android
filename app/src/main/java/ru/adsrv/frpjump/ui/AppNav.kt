@@ -214,8 +214,9 @@ fun AppNav() {
             }
         }
         composable(Routes.TERMINALS) {
+            val profilesState by app.profiles.state.collectAsStateWithLifecycle()
             TabFrame(Tab.TERMINALS, nav) {
-                TerminalsScreen(app.ssh, onOpen = { nav.navigate(Routes.terminal(it)) })
+                TerminalsScreen(app.ssh, profilesState.index.profiles.associate { it.id to it.color }, onOpen = { nav.navigate(Routes.terminal(it)) })
             }
         }
         composable(Routes.DEVICE) { entry ->
@@ -229,8 +230,11 @@ fun AppNav() {
             )
         }
         composable(Routes.TERMINAL) { entry ->
+            val profilesState by app.profiles.state.collectAsStateWithLifecycle()
             TerminalScreen(
                 sessions = app.ssh,
+                snippetStore = app.snippets,
+                profileColors = profilesState.index.profiles.associate { it.id to it.color },
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 onBack = { nav.popBackStack() },
             )

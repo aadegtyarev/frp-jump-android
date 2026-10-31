@@ -16,6 +16,8 @@ import ru.adsrv.frpjump.direct.DirectOfferedStore
 import ru.adsrv.frpjump.direct.DirectNotifier
 import ru.adsrv.frpjump.direct.NetworkWatcher
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.lock.AppLock
+import ru.adsrv.frpjump.ui.applyTheme
 import ru.adsrv.frpjump.locale.restoreAppLanguage
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.profiles.ProfileRuntime
@@ -25,6 +27,7 @@ import ru.adsrv.frpjump.profiles.Profiles
 import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.settings.SettingsStore
+import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
@@ -52,6 +55,10 @@ class FrpJumpApp : Application() {
         private set
     lateinit var webSites: WebSiteMemory
         private set
+
+    /** The terminal's saved commands, one list per phone; read off the main thread at start. */
+    lateinit var snippets: SnippetStore
+        private set
     lateinit var settings: SettingsStore
         private set
     lateinit var directKept: DirectKeptStore
@@ -71,6 +78,9 @@ class FrpJumpApp : Application() {
 
     val session = AppSession()
 
+    /** Settings › Unlock with fingerprint: whether the screen is locked now. */
+    val lock = AppLock()
+
     /** Set by the activity while it is started: the current profile then polls every 2 s. */
     val visible = MutableStateFlow(false)
 
@@ -82,10 +92,12 @@ class FrpJumpApp : Application() {
         Texts.init(this)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         restoreAppLanguage(settings.settings.value.language)
+        applyTheme(settings.settings.value.theme)
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))
         network = NetworkWatcher(this)
         restoreRecord = RestoreRecord(AtomicTextFile(File(filesDir, "restore.json")))
         directOffered = DirectOfferedStore(AtomicTextFile(File(filesDir, "direct_offered.json")))
+        snippets = SnippetStore(AtomicTextFile(File(filesDir, "snippets.json")), AtomicTextFile(File(filesDir, "snippets.corrupt.json")))
         val frpcRoot = File(noBackupFilesDir, "frpc")
         val shared = ProfileShared(
             api = api,
@@ -108,6 +120,7 @@ class FrpJumpApp : Application() {
         directChoices = DirectChoices(profiles, directKept, network.id, directNotifier::retried)
         // Keystore and disk (and the v1 upgrade): off the main thread. The UI waits for it.
         appScope.launch(Dispatchers.IO) {
+            snippets.load()
             // Before any profile applies its tunnels.
             directKept.load()
             // Before any tunnel comes back: offers made before a restart are not made again.

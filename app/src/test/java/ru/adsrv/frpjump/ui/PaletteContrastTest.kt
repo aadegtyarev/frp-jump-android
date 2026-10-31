@@ -39,6 +39,12 @@ class PaletteContrastTest {
         put("onWarningContainer on warningContainer", p.onWarningContainer to p.warningContainer)
         put("onError on error", p.onError to p.error)
         put("onErrorContainer on errorContainer", p.onErrorContainer to p.errorContainer)
+        for ((bg, name) in listOf(p.termBar to "termBar", p.termKey to "termKey")) {
+            put("onTerm on $name", p.onTerm to bg)
+            put("termMuted on $name", p.termMuted to bg)
+        }
+        // Ctrl / Alt held.
+        put("onAccent on accent (term)", p.onAccent to p.accent)
         // Snackbars: Material's inverse surface is ink with the ground as text.
         put("ground on ink", p.ground to p.ink)
         PROFILE_COLORS.forEach { put("onProfile on $it", p.onProfile to p.profiles.getValue(it)) }
@@ -52,6 +58,9 @@ class PaletteContrastTest {
         put("error on card", p.error to p.card)
         put("accent on card", p.accent to p.card)
         PROFILE_COLORS.forEach { put("$it on card", p.profiles.getValue(it) to p.card) }
+        // A session tab's profile dot: the dark theme's shades, the terminal being dark in both.
+        PROFILE_COLORS.forEach { put("$it on termKey", DarkPalette.profiles.getValue(it) to p.termKey) }
+        PROFILE_COLORS.forEach { put("$it on termBar", DarkPalette.profiles.getValue(it) to p.termBar) }
     }
 
     private fun check(name: String, p: Palette) {

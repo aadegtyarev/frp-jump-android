@@ -2,7 +2,12 @@ package ru.adsrv.frpjump.settings
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonPrimitive
@@ -23,6 +28,26 @@ enum class BackgroundPoll(val ms: Long?) {
     @SerialName("15m") MINUTES_15(900_000L),
 }
 
+/** Settings › Theme: as the system, or light or dark whatever the system is. */
+@Serializable(with = ThemeModeSerializer::class)
+enum class ThemeMode(val key: String) {
+    SYSTEM("system"),
+    LIGHT("light"),
+    DARK("dark"),
+}
+
+/** By [ThemeMode.key]; a value this version does not know (written by a newer one) is [ThemeMode.SYSTEM]. */
+object ThemeModeSerializer : KSerializer<ThemeMode> {
+    override val descriptor = PrimitiveSerialDescriptor("ThemeMode", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: ThemeMode) = encoder.encodeString(value.key)
+
+    override fun deserialize(decoder: Decoder): ThemeMode {
+        val key = decoder.decodeString()
+        return ThemeMode.entries.firstOrNull { it.key == key } ?: ThemeMode.SYSTEM
+    }
+}
+
 @Serializable
 data class AppSettings(
     @SerialName("background_poll") val backgroundPoll: BackgroundPoll = BackgroundPoll.OFF,
@@ -40,6 +65,13 @@ data class AppSettings(
      * has read its own on Android 10–12 ([ru.adsrv.frpjump.locale.restoreAppLanguage]).
      */
     @SerialName("language") val language: AppLanguage = AppLanguage.SYSTEM,
+    /** Settings › Theme. */
+    @SerialName("theme") val theme: ThemeMode = ThemeMode.SYSTEM,
+    /**
+     * Settings › Unlock with fingerprint: opening the app asks for the
+     * phone's biometrics or screen lock ([ru.adsrv.frpjump.lock.LockPolicy]).
+     */
+    @SerialName("app_lock") val appLock: Boolean = false,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 

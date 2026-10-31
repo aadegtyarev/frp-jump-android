@@ -10,6 +10,7 @@ import androidx.compose.ui.res.stringResource
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.api.Age
 import ru.adsrv.frpjump.api.AgeUnit
+import ru.adsrv.frpjump.devices.DeviceRow
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -47,3 +48,13 @@ fun shortTime(at: Instant): String {
     val skeleton = if (local.toLocalDate() == LocalDate.now(local.zone)) time else "dMMM$time"
     return DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale).format(local)
 }
+
+/**
+ * A device online as of a list the server gave earlier: "Was online 2 min
+ * ago", counting from when it was last seen, so the words say how old
+ * the news is. Nothing more than "Was online" is known without that time.
+ */
+@Composable
+@ReadOnlyComposable
+fun wasOnline(device: DeviceRow): String =
+    device.lastSeen?.let { stringResource(R.string.device_was_online_ago, ageText(it)) } ?: stringResource(R.string.device_was_online)
