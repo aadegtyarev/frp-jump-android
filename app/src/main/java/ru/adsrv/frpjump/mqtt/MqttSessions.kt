@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.mqtt
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,6 +28,8 @@ class MqttSessions(
     /** Every tunnel up, in all profiles, as [profilePortKey]s. */
     tunnelsUp: Flow<Set<String>>,
     scope: CoroutineScope,
+    /** Where tunnel changes are taken: the main thread, a test's own in tests. */
+    main: CoroutineDispatcher = Dispatchers.Main,
 ) {
     private val _sessions = MutableStateFlow<List<MqttSession>>(emptyList())
     val sessions: StateFlow<List<MqttSession>> = _sessions
@@ -56,12 +59,12 @@ class MqttSessions(
         .distinctUntilChanged()
 
     init {
-        scope.launch(Dispatchers.Main) {
+        scope.launch(main) {
             tunnelsUp.distinctUntilChanged().collect { up ->
                 _sessions.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }
                     .forEach {
-                        close(it.id)
                         closedByTunnel += it.id
+                        close(it.id)
                     }
             }
         }
@@ -98,6 +101,13 @@ class MqttSessions(
 
     /** Closes the session of a connection being deleted. */
     fun closeConnection(profile: String, connectionId: String) = find(profile, connectionId)?.let { close(it.id) }
+
+    /**
+     * Runs [change] to the stored logins and pins after every session closed
+     * before has finished writing them (the sessions' thread), and waits for
+     * it. Off the main thread.
+     */
+    fun changeStored(change: () -> Unit) = env.scheduler.runAfterPending(change)
 
     /** Whether session [id] went because its tunnel was closed. Main thread. */
     fun closedByTunnel(id: Int): Boolean = id in closedByTunnel

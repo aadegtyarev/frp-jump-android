@@ -2,7 +2,9 @@ package ru.adsrv.frpjump.mqtt
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Where a session stands. */
 sealed interface MqttState {
@@ -102,6 +104,18 @@ class MqttSession(
     /** The pins' topic filters, in order. */
     val pins: StateFlow<List<String>> = _pins
 
+    private val _dropped = MutableStateFlow(0L)
+
+    /**
+     * Messages dropped because [MAX_PENDING_MESSAGES] were already waiting
+     * for the session's thread (a broker flooding faster than the phone
+     * takes them): the tree may then miss values; the screen can say so.
+     */
+    val dropped: StateFlow<Long> = _dropped
+
+    /** Messages handed over by the client and not yet taken on the scheduler's thread. */
+    private val pending = AtomicInteger()
+
     private val _refused = MutableStateFlow<Set<String>>(emptySet())
 
     /**
@@ -178,10 +192,15 @@ class MqttSession(
         if (link != null) startSnapshot()
     }
 
-    /** Disconnects for good. Any thread. */
+    /**
+     * Disconnects for good. Any thread; the state turns [MqttState.Ended] on
+     * the scheduler's thread, after whatever was posted before, and nothing
+     * changes it afterwards.
+     */
     fun close() {
-        _state.value = MqttState.Ended
         scheduler.post {
+            if (ended) return@post
+            _state.value = MqttState.Ended
             generation++
             cancelReconnect?.invoke()
             cancelSnapshotCheck?.invoke()
@@ -193,6 +212,7 @@ class MqttSession(
     private val ended: Boolean get() = _state.value == MqttState.Ended
 
     private fun begin() {
+        if (ended) return
         cancelReconnect?.invoke()
         if (version == null) sawVersionRefusal = false
         login = env.logins.get(profile, connectionId)
@@ -207,12 +227,22 @@ class MqttSession(
         link?.close()
         link = null
         val events = object : LinkEvents {
-            override fun message(topic: String, payload: ByteArray, retain: Boolean, qos: Int) =
-                scheduler.post { if (gen == generation) onMessage(topic, payload, retain, qos) }
+            override fun message(topic: String, payload: ByteArray, retain: Boolean, qos: Int) {
+                // Past the cap the newest is dropped: the thread is behind, and the tree is not complete anyway.
+                if (pending.incrementAndGet() > MAX_PENDING_MESSAGES) {
+                    pending.decrementAndGet()
+                    _dropped.update { it + 1 }
+                    return
+                }
+                scheduler.post {
+                    pending.decrementAndGet()
+                    if (gen == generation) onMessage(topic, payload, retain, qos)
+                }
+            }
 
             override fun lost() = scheduler.post { if (gen == generation) onLost() }
         }
-        env.connector.connect(ConnectRequest(localPort, clientId, v, login), events) { outcome ->
+        val done = { outcome: ConnectOutcome ->
             scheduler.post {
                 when {
                     gen == generation && !ended -> onOutcome(v, outcome)
@@ -220,6 +250,11 @@ class MqttSession(
                     outcome is ConnectOutcome.Opened -> outcome.link.close()
                 }
             }
+        }
+        try {
+            env.connector.connect(ConnectRequest(localPort, clientId, v, login), events, done)
+        } catch (e: Exception) {
+            done(ConnectOutcome.Refused(ConnectRefusal.OTHER, e.javaClass.simpleName))
         }
     }
 
@@ -231,6 +266,7 @@ class MqttSession(
     }
 
     private fun opened(v: MqttVersion, opened: MqttLink) {
+        if (ended) return opened.close()
         link = opened
         version = v
         reconnectStep = 0
@@ -246,6 +282,7 @@ class MqttSession(
     }
 
     private fun refused(v: MqttVersion, outcome: ConnectOutcome.Refused) {
+        if (ended) return
         val reconnecting = _state.value == MqttState.Reconnecting
         when (outcome.refusal) {
             ConnectRefusal.BAD_LOGIN -> {
@@ -272,7 +309,7 @@ class MqttSession(
     }
 
     private fun onLost() {
-        if (_state.value !is MqttState.Open) return
+        if (ended || _state.value !is MqttState.Open) return
         link = null
         subscribed.clear()
         stopSnapshot()
@@ -377,6 +414,9 @@ class MqttSession(
 
     companion object {
         const val SNAPSHOT_FILTER = "#"
+
+        /** Messages waiting for the scheduler's thread at most, per session. */
+        const val MAX_PENDING_MESSAGES = 10_000
 
         private val random = SecureRandom()
 

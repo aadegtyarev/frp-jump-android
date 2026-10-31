@@ -225,8 +225,10 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             val failure = try {
                 withContext(Dispatchers.IO) {
                     runtime.connections.remove(row.connection.id)
-                    app.mqttLogins.forget(row.profile, row.connection.id)
-                    app.mqttPins.forget(row.profile, row.connection.id)
+                    app.mqtt.changeStored {
+                        app.mqttLogins.forget(row.profile, row.connection.id)
+                        app.mqttPins.forget(row.profile, row.connection.id)
+                    }
                     // Its pin, unless another connection to that device and port still has it, is free again.
                     pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
                         runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }

@@ -270,15 +270,19 @@ class FrpJumpApp : Application() {
         mqtt.closeProfile(id)
         profiles.forget(id, keepData) { last ->
             sshPasswords.forgetProfile(id)
-            mqttLogins.forgetProfile(id)
-            mqttPins.forgetProfile(id)
+            mqtt.changeStored {
+                mqttLogins.forgetProfile(id)
+                mqttPins.forgetProfile(id)
+                if (last) {
+                    mqttLogins.wipe()
+                    mqttPins.wipe()
+                }
+            }
             sshEnv.refusals.forgetProfile(id)
             directKept.removeProfile(id)
             if (last) {
                 sshKeys.wipe()
                 sshPasswords.wipe()
-                mqttLogins.wipe()
-                mqttPins.wipe()
                 KeystoreSecretBox(SSH_KEY_ALIAS).destroy()
             }
         }
