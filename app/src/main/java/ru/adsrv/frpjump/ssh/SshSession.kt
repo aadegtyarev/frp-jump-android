@@ -89,6 +89,14 @@ class SshSession(
     noTmux: Boolean = false,
     /** Back on the tab's tmux session after a drop or Reconnect: a short notice says so. */
     private val onReattached: () -> Unit = {},
+    /**
+     * The first tab of a connection with none in the app: after login it
+     * lists the device's sessions of this install and hands them here
+     * (see [SshSessions]); what this returns, if anything, is the tab's own.
+     */
+    pickUp: ((SshSession, List<String>) -> String?)? = null,
+    /** Picked up after a kill: the first attach says nothing ("Restored N sessions" does). */
+    quietAttach: Boolean = false,
 ) {
     val terminal = RemoteTerminal(terminalClient)
 
@@ -100,6 +108,14 @@ class SshSession(
     private var channelStartedAt = 0L
 
     private val copyMode = CopyModeGuard()
+
+    /** Still to look for sessions to pick up; done once, on the first login that gets that far. */
+    @Volatile
+    private var pickUp = pickUp
+
+    /** The next re-attach is the pick-up's: no "Session restored" of its own. */
+    @Volatile
+    private var quietAttach = quietAttach
 
     init {
         terminal.beforeWrite = { bytes, count -> if (copyMode.beforeWrite(bytes, count)) leaveCopyMode() }
@@ -309,6 +325,20 @@ class SshSession(
             TmuxProbe.ABSENT
         }
 
+    /**
+     * This install's tmux sessions on the device, by number ([ownTmuxSessions]).
+     * As with the probe, a listing that fails on a connection still up
+     * counts as none: the tab opens as without a pick-up.
+     */
+    private fun listOwnTmux(ssh: SSHClient): List<String> =
+        try {
+            ownTmuxSessions(execOutput(ssh, TMUX_LIST_COMMAND), env.tmuxNames.install)
+        } catch (e: IOException) {
+            if (!ssh.isConnected) throw e
+            Log.w(TAG, "tmux list-sessions failed: ${e.javaClass.simpleName}")
+            emptyList()
+        }
+
     /** See [CopyModeGuard]; on the terminal's writer thread, which it holds for one round trip at most. */
     private fun leaveCopyMode() {
         val name = tmux.assigned ?: return
@@ -358,6 +388,13 @@ class SshSession(
         }
         try {
             connector.authenticate(ssh)
+            pickUp?.let { pick ->
+                if (!tmux.disabled && tmux.assigned == null) {
+                    val found = listOwnTmux(ssh)
+                    if (pick(this, found) != null) quietAttach = true
+                }
+                pickUp = null
+            }
             // One short exec first: with tmux the tab's channel attaches to (or creates) its session.
             val name = tmux.name()
             val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name)
@@ -381,9 +418,10 @@ class SshSession(
                     _newShell.value = true
                 }
                 // tmux redraws the screen as it is now: no text of the app's in it.
-                Resumed.REATTACHED -> onReattached()
+                Resumed.REATTACHED -> if (!quietAttach) onReattached()
                 Resumed.FIRST -> Unit
             }
+            quietAttach = false
             dropped = false
             reconnect.succeeded()
             _state.value = SshState.Open

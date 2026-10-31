@@ -431,6 +431,15 @@
     <string name="ssh_connection_closed">Connection closed.</string>
     <string name="ssh_new_shell">New shell: the previous one ended with the connection</string>
     <string name="ssh_session_restored">Session restored</string>
+    <plurals name="ssh_sessions_restored">
+        <item quantity="one">Restored %d session</item>
+        <item quantity="other">Restored %d sessions</item>
+    </plurals>
+    <string name="terminal_close_all">Close all sessions of this phone on %s</string>
+    <string name="terminal_close_all_looking">Looking for this phone\'s sessions on %s…</string>
+    <string name="terminal_close_all_none">No sessions of this phone on %s</string>
+    <string name="terminal_close_all_failed">Could not list the sessions on %1$s: %2$s</string>
+    <string name="terminal_close_all_end_failed">Could not end the sessions on %1$s: %2$s</string>
     <string name="ssh_tmux_failed">tmux did not start (exit %d): a plain shell instead</string>
     <string name="terminal_reconnecting">Connection lost · reconnecting (try %d)…</string>
     <string name="terminal_reconnect_now">Now</string>

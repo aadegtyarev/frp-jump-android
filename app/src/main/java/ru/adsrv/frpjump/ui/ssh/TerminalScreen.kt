@@ -27,7 +27,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -171,6 +174,9 @@ fun TerminalScreen(
         )
     }
     val fontSp by sessions.fontSize.collectAsStateWithLifecycle()
+    var barMenu by remember { mutableStateOf(false) }
+    /** "Close all sessions of this phone" is asking the device. */
+    var closingAll by remember { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf(initialId) }
     /** The session whose device and port the login dialog of a long press on "+" is for. */
     var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -337,6 +343,30 @@ fun TerminalScreen(
                     }
                     BarButton("A+", larger, enabled = fontSp < MAX_FONT_SP) {
                         sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
+                    }
+                    Box {
+                        IconButton(onClick = { barMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
+                        }
+                        DropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false }) {
+                            // Off while the device is being asked: a second tap would only ask again.
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.terminal_close_all, selected.device)) },
+                                enabled = !closingAll,
+                                onClick = {
+                                    barMenu = false
+                                    closingAll = true
+                                    val from = selected
+                                    scope.launch {
+                                        try {
+                                            closeAllOfPhone(context, sessions, pendingUndo, from)
+                                        } finally {
+                                            closingAll = false
+                                        }
+                                    }
+                                },
+                            )
+                        }
                     }
                 },
             )

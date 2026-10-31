@@ -456,6 +456,17 @@
     <string name="ssh_connection_closed">Соединение закрыто.</string>
     <string name="ssh_new_shell">Новая оболочка: прежняя завершилась вместе со связью</string>
     <string name="ssh_session_restored">Сессия восстановлена</string>
+    <plurals name="ssh_sessions_restored">
+        <item quantity="one">Восстановлена %d сессия</item>
+        <item quantity="few">Восстановлены %d сессии</item>
+        <item quantity="many">Восстановлено %d сессий</item>
+        <item quantity="other">Восстановлено %d сессии</item>
+    </plurals>
+    <string name="terminal_close_all">Закрыть все сессии этого телефона на %s</string>
+    <string name="terminal_close_all_looking">Ищу сессии этого телефона на %s…</string>
+    <string name="terminal_close_all_none">На %s нет сессий этого телефона</string>
+    <string name="terminal_close_all_failed">Не удалось получить список сессий на %1$s: %2$s</string>
+    <string name="terminal_close_all_end_failed">Не удалось завершить сессии на %1$s: %2$s</string>
     <string name="ssh_tmux_failed">tmux не запустился (код %d): вместо него обычная оболочка</string>
     <string name="terminal_reconnecting">Связь потеряна · переподключение (попытка %d)…</string>
     <string name="terminal_reconnect_now">Сейчас</string>
