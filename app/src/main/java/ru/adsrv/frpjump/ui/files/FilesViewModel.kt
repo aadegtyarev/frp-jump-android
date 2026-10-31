@@ -8,6 +8,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +31,7 @@ import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.files.PhoneFiles
 import ru.adsrv.frpjump.files.PhoneSideException
 import ru.adsrv.frpjump.files.RemoteEntry
+import ru.adsrv.frpjump.files.RowJobs
 import ru.adsrv.frpjump.files.SftpBrowser
 import ru.adsrv.frpjump.files.TransferJobs
 import ru.adsrv.frpjump.files.downloadInto
@@ -37,6 +41,7 @@ import ru.adsrv.frpjump.files.isFolderAccess
 import ru.adsrv.frpjump.files.parentOf
 import ru.adsrv.frpjump.files.readFolder
 import ru.adsrv.frpjump.files.resolvePath
+import ru.adsrv.frpjump.files.runOneByOne
 import ru.adsrv.frpjump.files.targetFolder
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
@@ -118,6 +123,29 @@ data class FilesUiState(
     val downloadFolder: String? = null,
 ) {
     val online: Boolean get() = status == FilesStatus.Ready
+
+    private val transfers: List<Transfer> get() = downloads.values + uploads.map { it.transfer }
+
+    /** Transfers going or waiting: what leaving the screen would cancel. */
+    val running: Int get() = transfers.count { it.failure == null }
+
+    /** Failed transfers, on their rows with Retry and Dismiss. */
+    val failed: Int get() = transfers.count { it.failure != null }
+}
+
+/** What the "Leave and cancel?" question does as the transfers go on. */
+enum class LeaveAnswer { ASK, LEAVE, STAY }
+
+/**
+ * While the question is up: it stays while transfers go ([running]); once
+ * none does, the screen leaves as asked when they all finished well, and
+ * stays (the question closed) when more failed than when it was asked
+ * ([failedAtAsk], [failedNow]), so the failures are seen.
+ */
+fun leaveAnswer(running: Int, failedAtAsk: Int, failedNow: Int): LeaveAnswer = when {
+    running > 0 -> LeaveAnswer.ASK
+    failedNow > failedAtAsk -> LeaveAnswer.STAY
+    else -> LeaveAnswer.LEAVE
 }
 
 /** What the screen does once, outside its state. */
@@ -168,6 +196,12 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     /** One upload at a time from this screen. */
     private val uploadLock = Mutex()
     private val uploadIds = AtomicLong(1)
+
+    /** The job of each download, Open with or Share going, by the device path: Cancel stops just that one. */
+    private val downloadJobs = RowJobs<String>()
+
+    /** The job of the upload being written now, by its id. */
+    private val uploadJobs = RowJobs<Long>()
 
     init {
         val t = target
@@ -336,6 +370,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                 downloadInto(b.fs, entry.path, sink, progress)
                 name
             }
+            // Cancelled just as it finished: no "downloaded" for a row the owner cancelled.
+            currentCoroutineContext().ensureActive()
             toast(Texts.get(R.string.files_downloaded, name))
         }
     }
@@ -378,6 +414,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             downloadInto(b.fs, entry.path, sink, progress)
             file
         }
+        // Cancelled just as it finished: the file is not opened or shared.
+        currentCoroutineContext().ensureActive()
         _events.send(FilesEvent.Handover(file, PhoneFiles.mimeType(entry.name), entry.name, share))
     }
 
@@ -391,22 +429,38 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             return toast(Texts.get(if (entry.link?.broken == true) R.string.files_broken_toast else R.string.files_not_regular, entry.name))
         }
         setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind))
-        transfers.track(
-            viewModelScope.launch(start = TransferJobs.START) {
-                try {
-                    val b = connected(port)
-                    block(b, throttled { done, total -> setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
-                    _state.update { it.copy(downloads = it.downloads - entry.path) }
-                } catch (e: CancellationException) {
-                    _state.update { it.copy(downloads = it.downloads - entry.path) }
-                    throw e
-                } catch (e: Exception) {
-                    val message = connectionTrouble(e) ?: fileProblem(e)
-                    setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, failure = message))
-                    if (isFolderAccess(e)) _events.trySend(FilesEvent.PickFolder(entry))
-                }
-            },
-        )
+        val job = viewModelScope.launch(start = TransferJobs.START) {
+            val me = currentCoroutineContext().job
+            // A cancelled one leaves the row alone: it may show a new transfer of the same file by now.
+            val mine = { downloadJobs.owns(entry.path, me) }
+            try {
+                val b = connected(port)
+                block(b, throttled { done, total -> if (mine()) setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
+                if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
+            } catch (e: CancellationException) {
+                if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
+                throw e
+            } catch (e: Exception) {
+                if (!mine()) return@launch
+                val message = connectionTrouble(e) ?: fileProblem(e)
+                setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, failure = message))
+                if (isFolderAccess(e)) _events.trySend(FilesEvent.PickFolder(entry))
+            } finally {
+                downloadJobs.release(entry.path, me)
+            }
+        }
+        downloadJobs.put(entry.path, job)
+        transfers.track(job)
+    }
+
+    /**
+     * Cancel on a running download, Open with or Share: only that one stops;
+     * its half copy is removed as on any cancel. The row clears at once.
+     */
+    fun cancelDownload(path: String) {
+        if (_state.value.downloads[path]?.failure != null) return
+        downloadJobs.cancel(path)
+        _state.update { it.copy(downloads = it.downloads - path) }
     }
 
     /** Uploads [uris] one after another into the folder shown now, "Keep both" on a name clash. */
@@ -431,6 +485,16 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         runUploads(listOf(again))
     }
 
+    /**
+     * Cancel on an upload going or waiting: only that one stops, its part
+     * file is removed as on any cancel; the others go on. The row clears at once.
+     */
+    fun cancelUpload(id: Long) {
+        if (_state.value.uploads.none { it.id == id && it.transfer.failure == null }) return
+        _state.update { s -> s.copy(uploads = s.uploads.filterNot { it.id == id }) }
+        uploadJobs.cancel(id)
+    }
+
     fun dismissUpload(id: Long) {
         _state.update { s -> s.copy(uploads = s.uploads.filterNot { it.id == id && it.transfer.failure != null }) }
     }
@@ -439,11 +503,11 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         val t = target ?: return
         transfers.track(
             viewModelScope.launch(start = TransferJobs.START) {
-                val uploaded = mutableListOf<String>()
-                for (item in items) {
-                    val name = uploadLock.withLock { uploadOne(t, item) } ?: continue
-                    uploaded += name
-                }
+                // A row gone from the list was cancelled while it waited.
+                val uploaded = runOneByOne(
+                    items, uploadJobs, key = { it.id },
+                    wanted = { item -> _state.value.uploads.any { it.id == item.id } },
+                ) { item -> uploadLock.withLock { uploadOne(t, item) } }
                 when (uploaded.size) {
                     0 -> Unit
                     1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()))

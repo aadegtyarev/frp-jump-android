@@ -1,8 +1,10 @@
 package ru.adsrv.frpjump.files
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -258,5 +260,82 @@ class TransfersTest {
     @Test
     fun `nothing to wait for returns at once`() = runBlocking {
         TransferJobs().cancelAndJoin()
+    }
+
+    @Test
+    fun `one upload cancelled while it runs, the next ones still complete`() = runBlocking {
+        val jobs = RowJobs<Int>()
+        val started = CompletableDeferred<Unit>()
+        val ran = mutableListOf<Int>()
+        val batch = async {
+            runOneByOne(listOf(1, 2, 3), jobs, key = { it }, wanted = { true }) { item ->
+                ran += item
+                if (item == 2) {
+                    started.complete(Unit)
+                    delay(10_000)
+                }
+                item * 10
+            }
+        }
+        started.await()
+        assertTrue(jobs.cancel(2))
+        assertEquals(listOf(10, 30), withTimeout(5_000) { batch.await() })
+        assertEquals(listOf(1, 2, 3), ran)
+        assertFalse("nothing left registered", jobs.cancel(1) || jobs.cancel(2) || jobs.cancel(3))
+    }
+
+    @Test
+    fun `an upload cancelled while it waited is skipped`() = runBlocking {
+        val ran = mutableListOf<Int>()
+        val done = runOneByOne(listOf(1, 2, 3), RowJobs(), key = { it }, wanted = { it != 2 }) { ran += it; it }
+        assertEquals(listOf(1, 3), done)
+        assertEquals(listOf(1, 3), ran)
+    }
+
+    @Test
+    fun `a cancel between the check and the registration is not missed`() = runBlocking {
+        // Wanted at the first look, gone at the second (cancelled in between).
+        var looks = 0
+        val ran = mutableListOf<Int>()
+        val done = runOneByOne(listOf(1), RowJobs(), key = { it }, wanted = { looks++ == 0 }) { ran += it; it }
+        assertEquals(emptyList<Int>(), done)
+        assertEquals(emptyList<Int>(), ran)
+    }
+
+    @Test
+    fun `leaving the screen cancels the whole batch`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val ran = mutableListOf<Int>()
+        val batch = launch {
+            runOneByOne(listOf(1, 2), RowJobs(), key = { it }, wanted = { true }) { item ->
+                ran += item
+                started.complete(Unit)
+                delay(10_000)
+                item
+            }
+        }
+        started.await()
+        batch.cancel()
+        withTimeout(5_000) { batch.join() }
+        assertTrue(batch.isCancelled)
+        assertEquals(listOf(1), ran)
+    }
+
+    @Test
+    fun `a cancelled job no longer owns its row, a newer one there stays`() {
+        val rows = RowJobs<String>()
+        val old = Job()
+        rows.put("/a", old)
+        assertTrue(rows.owns("/a", old))
+        assertTrue(rows.cancel("/a"))
+        assertTrue(old.isCancelled)
+        assertFalse(rows.owns("/a", old))
+        // Started again before the old one finished cleaning up.
+        val again = Job()
+        rows.put("/a", again)
+        rows.release("/a", old)
+        assertTrue(rows.owns("/a", again))
+        rows.release("/a", again)
+        assertFalse(rows.cancel("/a"))
     }
 }

@@ -15,10 +15,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -33,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
@@ -116,9 +121,10 @@ fun EntryRow(
     onMenu: (Boolean) -> Unit,
     onTap: () -> Unit,
     actions: EntryActions,
-    /** Retry and dismiss of a failed transfer of this row. */
+    /** Retry and dismiss of a failed transfer of this row, cancel of a running one. */
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
@@ -153,7 +159,7 @@ fun EntryRow(
                         if (link.broken) Text(stringResource(R.string.files_broken), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.error, maxLines = 1)
                     }
                 }
-                transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss) }
+                transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss, onCancel = onCancel) }
             }
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenu(false) }, offset = DpOffset(72.dp, 0.dp)) {
@@ -177,7 +183,7 @@ fun EntryRow(
 
 /** A file being uploaded into the folder shown: name and its bar, above the list; failed, the reason and Retry. */
 @Composable
-fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
+fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, onCancel: () -> Unit) {
     val colors = AppTheme.colors
     val failed = transfer.failure != null
     Row(
@@ -201,14 +207,17 @@ fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            TransferLine(transfer, onRetry, onDismiss)
+            TransferLine(transfer, onRetry, onDismiss, onCancel)
         }
     }
 }
 
-/** A transfer's bar; failed, its reason in plain words with Retry and Dismiss, where it was started. */
+/**
+ * A transfer's bar with ✕ to cancel just this one; failed, its reason in
+ * plain words with Retry and Dismiss, where it was started.
+ */
 @Composable
-private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit) {
+private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, onCancel: () -> Unit) {
     val colors = AppTheme.colors
     val failure = transfer.failure
     if (failure != null) {
@@ -220,10 +229,26 @@ private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () 
         return
     }
     val fraction = transfer.fraction
-    if (fraction != null) {
-        LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-    } else {
-        LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val bar = Modifier.weight(1f)
+        if (fraction != null) {
+            LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = bar)
+        } else {
+            LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = bar)
+        }
+        val label = stringResource(R.string.files_cancel_transfer)
+        Box(
+            Modifier
+                .size(width = 48.dp, height = 24.dp)
+                // A 48 dp target reaching into the row's padding: the line stays as tall as the icon.
+                .requiredSize(48.dp)
+                .clip(CircleShape)
+                .clickable(role = Role.Button, onClick = onCancel)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = null, tint = colors.muted, modifier = Modifier.size(18.dp))
+        }
     }
 }
 

@@ -1,10 +1,14 @@
 package ru.adsrv.frpjump.files
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.joinAll
+import java.util.concurrent.ConcurrentHashMap
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -199,3 +203,64 @@ private inline fun <T> phoneSide(phone: Boolean, block: () -> T): T = try {
 
 private const val BUFFER = 32 * 1024
 private const val PROGRESS_STEP = 64 * 1024L
+
+/**
+ * The job going for each row (a download's device path, an upload's id):
+ * Cancel on a row stops just that job, and a job whose row was cancelled
+ * (and maybe started again) knows the row is no longer its own.
+ */
+class RowJobs<K : Any> {
+    private val jobs = ConcurrentHashMap<K, Job>()
+
+    fun put(key: K, job: Job) {
+        jobs[key] = job
+    }
+
+    /** Whether [job] is still the one shown on row [key]: only then may it change the row. */
+    fun owns(key: K, job: Job): Boolean = jobs[key] === job
+
+    /** [job] is done; the row may hold a newer job by now, which stays. */
+    fun release(key: K, job: Job) {
+        jobs.remove(key, job)
+    }
+
+    /** Cancels row [key]'s job; false when none is going. */
+    fun cancel(key: K): Boolean {
+        val job = jobs.remove(key) ?: return false
+        job.cancel()
+        return true
+    }
+}
+
+/**
+ * Runs [items] one after another, each as a job of its own in [jobs] under
+ * [key], so Cancel on one row stops only that one and the rest go on. An
+ * item no longer [wanted] (cancelled while it waited) is skipped; the check
+ * is made again once its job is registered, so a cancel in between is not
+ * missed. Returns what the items that finished gave; cancelling the caller
+ * cancels them all.
+ */
+suspend fun <T, K : Any, R : Any> runOneByOne(
+    items: List<T>,
+    jobs: RowJobs<K>,
+    key: (T) -> K,
+    wanted: (T) -> Boolean,
+    run: suspend (T) -> R?,
+): List<R> = coroutineScope {
+    val done = mutableListOf<R>()
+    for (item in items) {
+        if (!wanted(item)) continue
+        val one = async(start = CoroutineStart.LAZY) { run(item) }
+        jobs.put(key(item), one)
+        if (!wanted(item)) one.cancel()
+        try {
+            one.await()?.let(done::add)
+        } catch (e: CancellationException) {
+            // Only this one was cancelled: go on with the next, unless the caller was.
+            currentCoroutineContext().ensureActive()
+        } finally {
+            jobs.release(key(item), one)
+        }
+    }
+    done
+}
