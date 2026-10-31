@@ -750,15 +750,15 @@
     <string name="mqtt_card_history">Последние значения</string>
     <string name="mqtt_view_text">Текст</string>
     <string name="mqtt_view_hex">Hex</string>
-    <string name="mqtt_value_cut">Значение обрезано; «Копировать значение» берёт до 64 КБ.</string>
+    <string name="mqtt_value_cut">Значение обрезано; кнопка «Значение» копирует до 64 КБ.</string>
     <plurals name="mqtt_bytes">
         <item quantity="one">%s байт</item>
         <item quantity="few">%s байта</item>
         <item quantity="many">%s байт</item>
         <item quantity="other">%s байта</item>
     </plurals>
-    <string name="mqtt_copy_path">Копировать путь</string>
-    <string name="mqtt_copy_value">Копировать значение</string>
+    <string name="mqtt_copy_path">Путь</string>
+    <string name="mqtt_copy_value">Значение</string>
     <string name="mqtt_copied_cut">Скопированы первые 64 КБ: %s</string>
     <string name="mqtt_copy_failed">Буфер обмена не принял текст</string>
     <string name="mqtt_pin_ellipsis">Подписаться…</string>

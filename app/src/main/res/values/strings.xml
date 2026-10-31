@@ -712,13 +712,13 @@
     <string name="mqtt_view_text">Text</string>
     <string name="mqtt_view_json" translatable="false">JSON</string>
     <string name="mqtt_view_hex">Hex</string>
-    <string name="mqtt_value_cut">The value is cut here; Copy value takes up to 64 KB.</string>
+    <string name="mqtt_value_cut">The value is cut here; the Value button copies up to 64 KB.</string>
     <plurals name="mqtt_bytes">
         <item quantity="one">%s byte</item>
         <item quantity="other">%s bytes</item>
     </plurals>
-    <string name="mqtt_copy_path">Copy path</string>
-    <string name="mqtt_copy_value">Copy value</string>
+    <string name="mqtt_copy_path">Path</string>
+    <string name="mqtt_copy_value">Value</string>
     <string name="mqtt_copied_cut">The first 64 KB copied: %s</string>
     <string name="mqtt_copy_failed">The clipboard did not take it</string>
     <string name="mqtt_pin_ellipsis">Pin…</string>
