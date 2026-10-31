@@ -105,7 +105,7 @@ class KeyInstallTest {
     fun `a script that does not end is closed and reported as timed out, its stderr not read`() {
         var closed = false
         var read = false
-        val result = scriptOutcome(finished = { false }, status = { null }, stderr = { read = true; "" }, close = { closed = true })
+        val result = scriptOutcome(end = { ScriptEnd.TIMED_OUT }, status = { null }, stderr = { read = true; "" }, close = { closed = true })
         assertEquals(KeyInstallResult.CommandFailed(SCRIPT_TIMED_OUT), result)
         assertTrue(closed)
         assertFalse(read)
@@ -114,9 +114,17 @@ class KeyInstallTest {
     @Test
     fun `a script that ended is read after it`() {
         var closed = false
-        assertNull(scriptOutcome(finished = { true }, status = { 0 }, stderr = { "" }, close = { closed = true }))
-        assertEquals(KeyInstallResult.CommandFailed("nope"), scriptOutcome({ true }, { 1 }, { "nope\n" }, { closed = true }))
+        assertNull(scriptOutcome(end = { ScriptEnd.DONE }, status = { 0 }, stderr = { "" }, close = { closed = true }))
+        assertEquals(KeyInstallResult.CommandFailed("nope"), scriptOutcome({ ScriptEnd.DONE }, { 1 }, { "nope\n" }, { closed = true }))
         assertFalse(closed)
+    }
+
+    @Test
+    fun `a connection that went while the script ran is a connection failure, not a timeout`() {
+        var read = false
+        val result = scriptOutcome(end = { ScriptEnd.DROPPED }, status = { null }, stderr = { read = true; "" }, close = {})
+        assertEquals(KeyInstallResult.ConnectionFailed(CONNECTION_DROPPED), result)
+        assertFalse(read)
     }
 
     @Test

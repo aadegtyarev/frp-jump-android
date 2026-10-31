@@ -41,3 +41,15 @@ fun loginRefusalText(refusal: LoginRefusal): Int = when (refusal) {
     LoginRefusal.PASSWORD_UNREADABLE -> R.string.ssh_saved_password_unreadable
     LoginRefusal.PASSWORD_MISSING -> R.string.ssh_saved_password_missing
 }
+
+/**
+ * Whether the login dialog may offer the remembered password of [user]
+ * ([kept]: one is kept): not to the user it was just refused for
+ * ([refusedUser], [refusal]) when that was the saved password or it could
+ * not be read; an empty field would only try it again. Another user's
+ * saved password still counts.
+ */
+fun offersSavedPassword(refusal: LoginRefusal?, refusedUser: String?, user: String, kept: () -> Boolean): Boolean {
+    val stale = refusal == LoginRefusal.PASSWORD_SAVED || refusal == LoginRefusal.PASSWORD_UNREADABLE
+    return if (stale && user.trim() == refusedUser) false else kept()
+}

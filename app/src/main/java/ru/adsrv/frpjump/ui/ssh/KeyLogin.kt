@@ -126,6 +126,7 @@ class KeyLoginFlow(private val installer: KeyInstaller, private val scope: Corou
                 is KeyInstallResult.HostKey -> KeyLoginStep.HostKey(target, result.check, result.presented)
                 else -> {
                     typed = null
+                    if (result is KeyInstallResult.Installed || result is KeyInstallResult.InstalledPasswordKept) target.onInstalled()
                     KeyLoginStep.Done(target, result)
                 }
             }

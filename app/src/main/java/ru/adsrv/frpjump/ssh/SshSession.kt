@@ -64,7 +64,7 @@ class SshSession(
     val port: Int,
     val localPort: Int,
     val user: String,
-    val auth: SshAuth,
+    auth: SshAuth,
     private val env: SshEnvironment,
     private val scope: CoroutineScope,
     terminalClient: TerminalSessionClient,
@@ -90,6 +90,21 @@ class SshSession(
     @Volatile
     var authRefused = false
         private set
+
+    /** Why it was refused, when it was: "Change login" then does not offer a refused saved password. */
+    @Volatile
+    var refusal: LoginRefusal? = null
+        private set
+
+    /** How it logs in; Reconnect uses it too. */
+    @Volatile
+    var auth: SshAuth = auth
+        private set
+
+    /** "Use key login" worked for this login: Reconnect uses the key from now on. */
+    fun useKey() {
+        auth = SshAuth.Key
+    }
 
     fun connect() {
         _state.value = SshState.Connecting
@@ -193,6 +208,7 @@ class SshSession(
             throw e
         } catch (e: UserAuthException) {
             authRefused = true
+            refusal = connector.refusal()
             runCatching { ssh.disconnect() }
             fail(connector.authFailure())
         } catch (e: Exception) {

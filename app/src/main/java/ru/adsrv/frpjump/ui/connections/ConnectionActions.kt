@@ -51,9 +51,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun startKeyLogin(row: ConnectionRow) {
         val runtime = runtime(row.profile) ?: return
         val c = row.connection
-        val target = KeyInstallTarget(row.profile, runtime.hostKeys, c.device, c.port, sshLogin(row).user, runtime.sshLogins) {
+        val target = KeyInstallTarget(row.profile, runtime.hostKeys, c.device, c.port, sshLogin(row).user, runtime.sshLogins, localPort = {
             tunnelPort(row.profile, c.device, c.port)
-        }
+        })
         keyLogin.start(target)
     }
 

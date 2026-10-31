@@ -104,18 +104,37 @@ fun commandFailure(status: Int?, stderr: String): KeyInstallResult.CommandFailed
 /** What a script that has not ended within its time says. */
 const val SCRIPT_TIMED_OUT = "timed out"
 
-/**
- * Waits for the script ([finished]: true once it ended in time) and only
- * then reads its [stderr]; one still running is [close]d and reported
- * as timed out, its stderr never read (that read would block).
- */
-fun scriptOutcome(finished: () -> Boolean, status: () -> Int?, stderr: () -> String, close: () -> Unit): KeyInstallResult.CommandFailed? {
-    if (!finished()) {
-        close()
-        return KeyInstallResult.CommandFailed(SCRIPT_TIMED_OUT)
-    }
-    return commandFailure(status(), stderr())
+/** How waiting for the script ended. */
+enum class ScriptEnd {
+    /** It ended in time: its status and stderr are there. */
+    DONE,
+
+    /** Still running, the connection still up. */
+    TIMED_OUT,
+
+    /** The connection went while it ran. */
+    DROPPED,
 }
+
+/**
+ * Waits for the script ([end]) and only then reads its [stderr]; one still
+ * running is [close]d and reported as timed out, its stderr never read
+ * (that read would block); a dropped connection is a connection failure.
+ */
+fun scriptOutcome(end: () -> ScriptEnd, status: () -> Int?, stderr: () -> String, close: () -> Unit): KeyInstallResult? = when (end()) {
+    ScriptEnd.DONE -> commandFailure(status(), stderr())
+    ScriptEnd.TIMED_OUT -> {
+        close()
+        KeyInstallResult.CommandFailed(SCRIPT_TIMED_OUT)
+    }
+    ScriptEnd.DROPPED -> {
+        close()
+        KeyInstallResult.ConnectionFailed(CONNECTION_DROPPED)
+    }
+}
+
+/** What a script whose connection went while it ran says. */
+const val CONNECTION_DROPPED = "the connection dropped"
 
 /** What the owner is told of a final result: a text resource and its arguments. */
 data class KeyInstallText(val res: Int, val args: List<String>, val ok: Boolean)
@@ -143,8 +162,11 @@ class KeyInstallTarget(
     val logins: SshLoginMemory,
     /** The tunnel's local port, brought up if needed; throws [IOException] saying why there is none. */
     val localPort: suspend () -> Int,
+    /** Key login works for [user] now; main thread (a session tab switches its own login to the key). */
+    val onInstalled: () -> Unit = {},
 ) {
-    fun withUser(other: String) = KeyInstallTarget(profile, hostKeys, device, port, other, logins, localPort)
+    /** For another user: [onInstalled] belonged to this one's session, so it is not carried over. */
+    fun withUser(other: String) = if (other == user) this else KeyInstallTarget(profile, hostKeys, device, port, other, logins, localPort)
 }
 
 /**
@@ -158,13 +180,31 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
     /** What the run going now has open: closed by [cancel]. */
     private val open = mutableListOf<Closeable>()
 
-    /** "Cancel" while it works: closes its connections (never an open session's), which ends the blocked call. */
+    /** Set by [cancel] until the next run: whatever that run opens after it is closed at once. */
+    private var cancelled = false
+
+    /**
+     * "Cancel" while it works: closes its connections (never an open
+     * session's, only the channel it ran on), which ends the blocked call.
+     * Closing talks to the network, so it is done off the main thread.
+     */
     fun cancel() {
-        val now = synchronized(open) { open.toList().also { open.clear() } }
-        now.forEach { runCatching { it.close() } }
+        val now = synchronized(open) {
+            cancelled = true
+            open.toList().also { open.clear() }
+        }
+        if (now.isNotEmpty()) Thread({ now.forEach { runCatching { it.close() } } }, "key-install-cancel").start()
     }
 
-    private fun <T : Closeable> hold(c: T): T = c.also { synchronized(open) { open += it } }
+    /** Keeps [c] for [cancel]; after a cancel it is closed at once and the run stops there. */
+    private fun <T : Closeable> hold(c: T): T {
+        val late = synchronized(open) { cancelled.also { if (!it) open += c } }
+        if (late) {
+            runCatching { c.close() }
+            throw IOException("cancelled")
+        }
+        return c
+    }
 
     private fun drop(c: Closeable) {
         synchronized(open) { open -= c }
@@ -173,6 +213,7 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
 
     /** [typed] null: an open session's connection, else the remembered password. Runs on the IO dispatcher. */
     suspend fun install(target: KeyInstallTarget, typed: String?): KeyInstallResult = withContext(Dispatchers.IO) {
+        synchronized(open) { cancelled = false }
         try {
             run(target, typed)
         } catch (e: CancellationException) {
@@ -265,12 +306,17 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
                 close()
             }
             return scriptOutcome(
-                finished = {
+                end = {
                     try {
                         command.join(SCRIPT_TIMEOUT_S, TimeUnit.SECONDS)
-                        !command.isOpen
-                    } catch (e: ConnectionException) {
-                        false
+                    } catch (_: ConnectionException) {
+                        // A timeout, or the connection going: told apart below.
+                    }
+                    when {
+                        command.exitStatus != null && !command.isOpen -> ScriptEnd.DONE
+                        !ssh.isConnected -> ScriptEnd.DROPPED
+                        !command.isOpen -> ScriptEnd.DONE
+                        else -> ScriptEnd.TIMED_OUT
                     }
                 },
                 status = { command.exitStatus },

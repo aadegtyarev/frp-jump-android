@@ -116,7 +116,7 @@ class SshSessions(
 
     /** Whether a password is kept for [user] on [session]'s device and port; cheap, nothing is unsealed. */
     fun hasRememberedPassword(session: SshSession, user: String): Boolean =
-        env.passwords.has(session.profile, session.device, session.port, user.trim())
+        offersSavedPassword(session.refusal, session.user, user) { env.passwords.has(session.profile, session.device, session.port, user.trim()) }
 
     /** An open, logged-in connection of a session as [user] to [device]:[port] of [profile]; any thread. */
     fun liveClient(profile: String, device: String, port: Int, user: String): SSHClient? =

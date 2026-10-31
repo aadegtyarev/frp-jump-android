@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.ssh
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.R
 
@@ -30,5 +32,20 @@ class LoginRefusalTest {
         assertEquals(R.string.ssh_saved_password_refused, loginRefusalText(LoginRefusal.PASSWORD_SAVED))
         assertEquals(R.string.ssh_saved_password_unreadable, loginRefusalText(LoginRefusal.PASSWORD_UNREADABLE))
         assertEquals(R.string.ssh_saved_password_missing, loginRefusalText(LoginRefusal.PASSWORD_MISSING))
+    }
+
+    @Test
+    fun `Change login does not offer the saved password just refused for that user`() {
+        assertFalse(offersSavedPassword(LoginRefusal.PASSWORD_SAVED, "root", "root") { true })
+        assertFalse(offersSavedPassword(LoginRefusal.PASSWORD_UNREADABLE, "root", " root ") { true })
+    }
+
+    @Test
+    fun `another user, or another refusal, keeps its saved password`() {
+        assertTrue(offersSavedPassword(LoginRefusal.PASSWORD_SAVED, "root", "admin") { true })
+        assertTrue(offersSavedPassword(LoginRefusal.PASSWORD_TYPED, "root", "root") { true })
+        assertTrue(offersSavedPassword(LoginRefusal.KEY, "root", "root") { true })
+        assertTrue(offersSavedPassword(null, null, "root") { true })
+        assertFalse(offersSavedPassword(null, null, "root") { false })
     }
 }
