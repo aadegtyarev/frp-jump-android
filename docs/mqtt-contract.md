@@ -56,7 +56,9 @@ The same thing is called the same way on every screen:
   is **MQTT**, which opens the explorer for that tunnel, bringing the
   tunnel up first, as Terminal does for SSH. "Copy address" is in "⋮" as
   for the other kinds. TCP keeps its main action "Copy"; the TCP preset
-  1883 moves to the MQTT kind.
+  1883 moves to the MQTT kind. Existing TCP connections (also on 1883)
+  stay TCP; a TCP connection's "⋮" offers **Open as MQTT**, which changes
+  its kind to MQTT and opens the explorer.
 - The bottom bar stays four items. The "Terminals" tab becomes
   **Sessions** and lists terminal and MQTT sessions together, each with its
   connection's name and kind.
@@ -114,10 +116,12 @@ neither option; see "Retained topics" for what that changes.
   (in "⋮") clears the tree and takes a new snapshot.
 - **The open branch.** Live values come for the branch being viewed: at
   path `<p>` the app is subscribed to `<p>/#`, which also matches `<p>`
-  itself, moving the subscription as the owner navigates. At the root
-  `/` (the whole tree) it is subscribed to `#`; the empty first level is
-  the branch `/#`. A large branch fills up to the session's topic limit
-  and then says so as above.
+  itself, moving the subscription as the owner navigates. The root `/`
+  (the whole tree) is not live, to spare traffic and the phone: it shows
+  the snapshot (and pinned topics), and "Refresh tree" updates it. Live
+  values start at the first level; the empty first level is the branch
+  `/#`. A large branch fills up to the session's topic limit and then says
+  so as above.
 - **`$` topics.** By MQTT rules `#` and any filter starting with `+` never
   match topics starting with `$`, so `$SYS` is never in the snapshot or
   the root. The root always shows a `$SYS` row; opening it subscribes
@@ -133,15 +137,16 @@ neither option; see "Retained topics" for what that changes.
   arrive more than once when several of the session's subscriptions match
   it (the open branch and a pin). Under MQTT 5 every subscription carries
   a subscription identifier and a message is taken only through the first
-  matching subscription in the order root/branch, then pins in their
+  matching subscription in the order open branch, then pins in their
   order; copies through the others are dropped. Under 3.1.1 a copy is a
   message identical to the one just received for that topic (payload,
   retain, QoS), arriving before any other message for that topic, at most
   one fewer than the number of matching subscriptions. A copy is never
   shown, counted or kept in history.
 - **Limit.** One limit for the session: 100 000 topics, 20 values of
-  history each. At the limit no new topics are added (known ones keep
-  updating) and the tree says so; "Refresh tree" starts over.
+  history each. At the limit new topics stop being added while the known
+  ones keep updating, and the tree says so ("Topic limit reached: 100 000;
+  new topics are not shown"); "Refresh tree" starts over.
 
 ## Pins
 
@@ -263,15 +268,16 @@ the tree is the "what is there" view.
      the re-read (under 3.1.1 a refused delete shows up here, as 3.1.1
      reports no refusal).
 
-  Not retained topics are never published to, so no device gets an empty
-  command.
+  Only the topics the fresh re-read delivers as retained are published to,
+  not every seen topic: an empty message to a command topic such as
+  `.../on` could act on the device.
 
 ## A session's life
 
 - **Tunnel drop.** The explorer shows a "Reconnecting…" banner, keeps the
   tree and disables Send. The tunnel comes back on the same local port
   (as all tunnels do); the client reconnects after 1, 2 and 5 s, then every
-  10 s, subscribes the root or branch and the pins again and re-takes the
+  10 s, subscribes the open branch and the pins again and re-takes the
   snapshot, which refreshes values and retained marks. Topics are not
   removed by a reconnect; "Refresh tree" does that.
 - **Disconnecting the connection** closes its session after the usual
@@ -310,11 +316,19 @@ the tree is the "what is there" view.
 - **First plugin: "Status and command topics".** A list of rules, each a
   status pattern, a command pattern and optional exclusions.
   - Pattern syntax: levels split by `/` as in topics; a level is literal
-    text, `{name}` (exactly one level), or `{name...}` (one or more levels,
-    only as the last level). A pattern holds at least one literal level and
-    no MQTT wildcards. A pattern starting with `/` has an empty first
-    level and matches only topics that have one. The command pattern uses
-    only names of the status pattern.
+    text, `{name}` (exactly one level), or `{name...}` (one or more levels;
+    at most one per pattern, at any position). A pattern holds at least one
+    literal level and no MQTT wildcards. A pattern starting with `/` has an
+    empty first level and matches only topics that have one. The command
+    pattern uses only names of the status pattern.
+  - Matching: without `{name...}` the topic has as many levels as the
+    pattern and each level matches in turn (literal: equal text, case
+    sensitive; `{name}`: any one level, which may be empty). With
+    `{name...}` the levels before it match the topic's first levels one by
+    one, the levels after it match the topic's last levels one by one, and
+    `{name...}` takes what is left in between, which must be at least one
+    level. So `{x...}/state` matches `home/light/state` with `x` =
+    `home/light`, and `{x...}/set` then gives `home/light/set`.
   - Order matters: rules are tried top to bottom, the first match wins;
     the owner's own rules come first, then the enabled presets in their
     shipped order, most specific first:
@@ -323,7 +337,8 @@ the tree is the "what is there" view.
     2. Zigbee2MQTT: `zigbee2mqtt/{d}` → `zigbee2mqtt/{d}/set`, except
        `zigbee2mqtt/bridge` and `zigbee2mqtt/bridge/{rest...}`;
     3. Tasmota: `stat/{d}/{p}` → `cmnd/{d}/{p}`, except `stat/{d}/LWT`;
-    4. a generic "state/set" pair: `{x}/state` → `{x}/set`.
+    4. a generic "state/set" pair: `{x...}/state` → `{x...}/set`, except
+       `zigbee2mqtt/bridge/state`.
   - An exclusion is a pattern; a topic matching it is not matched by the
     rule, on either side.
   - For a topic matching a status pattern, the command topic comes from
@@ -361,7 +376,8 @@ nothing else in the explorer changes for it.
 
 ## Delivery
 
-1. The MQTT connection kind (preset 1883) and the Sessions tab; connect
+1. The MQTT connection kind (preset 1883), "Open as MQTT" for TCP
+   connections, and the Sessions tab; connect
    (MQTT 5 with the 3.1.1 fallback, anonymous, then login), tree snapshot,
    root and `$SYS`, the open branch live, path bar, search, topic card with
    Text/JSON/Hex, Copy path, Copy value, Pin with masks, reconnect.
@@ -385,7 +401,9 @@ On a Wiren Board on the tunnel unless said otherwise.
 
 1. Connect, tree, card, pins, login:
    - A new MQTT connection on 1883 has the main action "MQTT"; the
-     explorer opens with the tree; the root holds `(empty)` and `$SYS`;
+     explorer opens with the tree; the root holds `(empty)` and `$SYS`
+     and changes only on "Refresh tree";
+     an old TCP connection on 1883 becomes MQTT by "Open as MQTT";
      `/devices/*/controls/*` and `/devices/*/meta` show live values;
      `wb-mr6c_1/controls/K1` changes as the relay switches.
    - `$SYS` opens and shows the broker's topics.
@@ -430,6 +448,8 @@ On a Wiren Board on the tunnel unless said otherwise.
 6. With the Wiren Board preset on, the publish sheet for `K1` defaults to
    "Command topic", shows the rule, and `1` goes to `K1/on` and switches
    the relay; switched to "Status topic", the value goes to `K1` itself.
+   With the generic preset on, `home/light/state` offers
+   `home/light/set`.
 
 ## Decided
 
@@ -441,28 +461,23 @@ On a Wiren Board on the tunnel unless said otherwise.
 - One concept, the pin (a subscription with a mask); no separate "Watch".
 - Login in stage 1, TLS in stage 5.
 - The change highlight is the age label in the accent colour, nothing more.
-
-## Open questions
-
-- At the root the app holds `#` live for as long as the root is open
-  (bounded by the topic limit). Alternative: the root shows the snapshot
-  only and goes live from the first level down.
-- At the topic limit new topics are dropped and known ones kept (the first
-  version dropped the oldest instead).
-- Delete branch publishes only to topics the re-read delivers as retained,
-  not to every seen topic, so a command topic never gets an empty message.
-- Existing TCP connections on 1883 stay TCP until the owner changes their
-  kind.
-- `{name...}` only as the last level makes the generic `{x}/state` preset
-  match two-level topics only (`light/state`, not `home/light/state`).
+- The root shows the snapshot only, refreshed by "Refresh tree"; live
+  values start at the first level (economy of traffic and phone load).
+- At the topic limit new topics stop being added, known ones keep
+  updating, and the screen says so.
+- Delete branch publishes only to topics a fresh re-read of the branch
+  delivers as retained, so no command topic gets an empty message.
+- Existing TCP connections on 1883 stay TCP; "Open as MQTT" in their "⋮"
+  converts them.
+- Plugin patterns allow one `{name...}` at any position.
 
 ## Open risks
 
 - Memory: 100 000 topics with 20 values each is up to 2 million values; a
   few large payloads per topic could exhaust a phone's memory before the
   limit is reached.
-- A busy broker over mobile data: the snapshot, the root's `#` and large
-  branches pull every message the broker sends, costing data and battery.
+- A busy broker over mobile data: the snapshot and large branches pull
+  every message the broker sends, costing data and battery.
 - The tunnel is a TCP port on 127.0.0.1 open to every app on the phone
   while it is up (`docs/contract.md`); a broker without a password is then
   open to them too.
