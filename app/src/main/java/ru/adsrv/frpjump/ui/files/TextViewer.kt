@@ -124,7 +124,7 @@ private sealed interface Loaded {
  * scrolled sideways, coloured by its format as the colours are worked out
  * off the main thread; search with next / previous; "⋮" for wrapping, line
  * numbers, text size ([fontSize], the terminal's), Copy all, Share, Open with.
- Share and Open with go through [onHandOver] (share or not), which hands
+ * Share and Open with go through [onHandOver] (share or not), which hands
  * on a copy of the file; [onClose] is the one way out, and deletes it.
  */
 @Composable

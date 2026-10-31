@@ -244,6 +244,9 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         private set
     private val runtime = target?.let { app.profiles.runtime(it.profile) }
 
+    /** The copy the viewer shows now, deleted when the screen or session goes without the viewer closing it. Main thread. */
+    private var viewedCopy: File? = null
+
     /** The text size of the viewer: the terminal's, so A− / A+ in one sizes both. */
     val textSize: MutableStateFlow<Int> get() = app.ssh.fontSize
 
@@ -607,6 +610,8 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
                 val view = withContext(Dispatchers.IO) { viewerVerdict(file) }
                 currentCoroutineContext().ensureActive()
                 if (view == Viewable.YES) {
+                    viewedCopy?.let(::deleteViewCopy)
+                    viewedCopy = file
                     _events.send(FilesEvent.View(entry.path, file, entry.name))
                 } else {
                     if (view == Viewable.TOO_LARGE) toast(Texts.get(R.string.files_view_too_large, entry.name))
@@ -619,7 +624,14 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** The viewer was closed on [viewed]: its copy goes (anything handed on from it was a copy of its own). */
     fun closeViewed(viewed: ViewedFile) {
-        app.appScope.launch(Dispatchers.IO) { File(viewed.local).parentFile?.deleteRecursively() }
+        val file = File(viewed.local)
+        if (viewedCopy == file) viewedCopy = null
+        deleteViewCopy(file)
+    }
+
+    /** The viewer's copy [file] goes, with its folder. */
+    private fun deleteViewCopy(file: File) {
+        app.appScope.launch(Dispatchers.IO) { file.parentFile?.deleteRecursively() }
     }
 
     /**
@@ -1082,7 +1094,9 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      */
     override fun leave() {
         clearSearch()
-        // A viewer left open as the screen went: its copy is not deleted by a close.
+        // A viewer open as the screen went goes with it, without a close of its own: its copy goes here.
+        viewedCopy?.let(::deleteViewCopy)
+        viewedCopy = null
         app.appScope.launch(Dispatchers.IO) { PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS) }
         _state.update { it.copy(downloads = emptyMap(), uploads = emptyList(), selection = FileSelection()) }
         app.appScope.launch(Dispatchers.IO) { withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() } }
@@ -1109,6 +1123,8 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     override fun close() {
         val b = browser
         browser = null
+        viewedCopy?.let(::deleteViewCopy)
+        viewedCopy = null
         app.appScope.launch(Dispatchers.IO) {
             withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() }
             b?.close()
@@ -1138,8 +1154,12 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         const val CLEANUP_WAIT_MS = 15_000L
         const val HANDED_OVER_KEEP_MS = 2 * 60 * 60 * 1000L
 
-        /** Viewer copies older than this, when a screen goes: a viewer still open elsewhere has read its text by then. */
-        const val VIEW_LEFT_MS = 5 * 60 * 1000L
+        /**
+         * Viewer copies older than this go when a file screen goes: copies a
+         * lost screen left behind. A viewer open under another file screen
+         * keeps its copy for Share unless it has been open that long.
+         */
+        const val VIEW_LEFT_MS = 60 * 60 * 1000L
 
         /** A row's bar moves in steps of a percent at most: a big file must not redraw the list thousands of times. */
         fun throttled(report: (Long, Long) -> Unit): (Long, Long) -> Unit {

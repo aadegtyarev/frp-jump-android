@@ -88,16 +88,19 @@ object PhoneFiles {
     /** The files of [profile] shown in the viewer (removed with the profile). */
     fun viewCacheDir(context: Context, profile: String): File = File(File(context.cacheDir, VIEW_DIR), safeLocalName(profile))
 
-    /** [file] (of the viewer's cache) moved to a fresh folder of the cache for other apps; it stays where it is when it cannot move. */
+    /** [file] (of the viewer's cache) moved to a fresh folder of the cache for other apps: renamed, or copied and deleted when it cannot be. */
     fun moveToOpenCache(context: Context, profile: String, file: File): File {
         val target = openCacheFile(context, profile, file.name)
-        return if (file.renameTo(target)) {
-            file.parentFile?.deleteRecursively()
-            target
-        } else {
-            target.parentFile?.deleteRecursively()
-            file
+        if (!file.renameTo(target)) {
+            try {
+                file.copyTo(target, overwrite = true)
+            } catch (e: IOException) {
+                target.parentFile?.deleteRecursively()
+                throw e
+            }
         }
+        file.parentFile?.deleteRecursively()
+        return target
     }
 
     /**
