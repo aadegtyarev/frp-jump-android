@@ -276,7 +276,7 @@ server must speak first to an idle client would wait.
 
 Grouped as the mockup: the current profile (name and colour, forget),
 tunnels (direct connection, local ports), background (server checks,
-battery), security (the phone's SSH key, unlock with fingerprint) and the
+battery), security (the phone's SSH key, unlock with fingerprint, hide in Recents) and the
 app (language, theme, version). Rows show their value; local ports, the
 check interval, the SSH key, language and theme open a sheet.
 

@@ -88,6 +88,7 @@ class SettingsStoreTest {
         val migrated = SettingsStore(old).settings.value
         assertEquals(ThemeMode.SYSTEM, migrated.theme)
         assertEquals(false, migrated.appLock)
+        assertEquals(false, migrated.hideInRecents)
         assertEquals(BackgroundPoll.MINUTES_5, migrated.backgroundPoll)
         assertEquals(false, migrated.direct)
         assertEquals(41000..41099, migrated.localPorts)
