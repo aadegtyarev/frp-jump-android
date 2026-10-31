@@ -5,6 +5,18 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+/**
+ * The release key lives outside the repository: these four come from
+ * ~/.gradle/gradle.properties (or -P), else from the environment. Without
+ * all of them assembleRelease still builds, unsigned (README › Release).
+ */
+val releaseSigningKeys = listOf("STORE_FILE", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+    .associateWith { key ->
+        val name = "FRPJUMP_RELEASE_$key"
+        providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull?.takeIf { it.isNotBlank() }
+    }
+val releaseSigned = releaseSigningKeys.values.all { it != null }
+
 android {
     namespace = "ru.adsrv.frpjump"
     compileSdk = 35
@@ -17,14 +29,30 @@ android {
         versionName = "0.2.0-beta1"
         // Shown in Settings › App; the binary is built by scripts/build-frpc.sh (FRP_VERSION).
         buildConfigField("String", "FRPC_VERSION", "\"0.70.0\"")
+        // Settings › Version looks for newer releases here (public GitHub Releases, no token).
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"aadegtyarev/frp-jump-android\"")
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
+    signingConfigs {
+        if (releaseSigned) {
+            create("release") {
+                storeFile = file(releaseSigningKeys.getValue("STORE_FILE")!!)
+                storePassword = releaseSigningKeys.getValue("STORE_PASSWORD")
+                keyAlias = releaseSigningKeys.getValue("KEY_ALIAS")
+                keyPassword = releaseSigningKeys.getValue("KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (releaseSigned) signingConfigs.getByName("release") else null
         }
     }
 
@@ -56,6 +84,14 @@ android {
             excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF")
         }
     }
+}
+
+if (!releaseSigned && gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
+    logger.quiet(
+        "frp-jump: no release signing key (FRPJUMP_RELEASE_STORE_FILE, _STORE_PASSWORD, _KEY_ALIAS, _KEY_PASSWORD " +
+            "in ~/.gradle/gradle.properties or the environment); the release APK is built unsigned " +
+            "(app-release-unsigned.apk) and cannot be installed as it is.",
+    )
 }
 
 dependencies {
