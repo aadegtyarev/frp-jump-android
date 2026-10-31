@@ -6,6 +6,9 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,35 +47,104 @@ fun networkIdentity(kind: NetworkKind, gateways: Collection<String>, dns: Collec
 }
 
 /**
- * The default network's [networkIdentity], kept current by a default
- * network callback; null while there is none. Needs only
- * ACCESS_NETWORK_STATE.
+ * The network id tunnels go by, from the raw ids the system reports: a
+ * new id counts once it has held for [settleMs] (a switch reports a few
+ * passing states: capabilities and links arrive one by one), and losing
+ * the network keeps the last id (without a network nothing goes anywhere,
+ * and a kept device must not turn direct meanwhile). The first id counts
+ * at once.
+ */
+class SettledNetworkId(private val settleMs: Long = SETTLE_MS) {
+    var current: String? = null
+        private set
+    private var pending: String? = null
+    private var pendingSince = 0L
+
+    /** A raw id seen at [now]; returns how long to wait before [settle], or null when nothing is pending. */
+    @Synchronized
+    fun observe(id: String?, now: Long): Long? {
+        when {
+            id == null || id == current -> pending = null
+            current == null -> {
+                current = id
+                pending = null
+            }
+            id != pending -> {
+                pending = id
+                pendingSince = now
+            }
+        }
+        return settle(now)
+    }
+
+    /** Takes a pending id that has held long enough; returns how much longer to wait, or null. */
+    @Synchronized
+    fun settle(now: Long): Long? {
+        val next = pending ?: return null
+        val left = settleMs - (now - pendingSince)
+        if (left > 0) return left
+        current = next
+        pending = null
+        return null
+    }
+
+    companion object {
+        const val SETTLE_MS = 1_000L
+    }
+}
+
+/**
+ * The default network's [networkIdentity], settled ([SettledNetworkId]).
+ * Callbacks of a network that is no longer the default one are ignored.
+ * Needs only ACCESS_NETWORK_STATE. [start] reads the current network at
+ * once (binder calls: off the main thread) and then follows it.
  */
 class NetworkWatcher(context: Context) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val settled = SettledNetworkId()
+    private val handler = Handler(Looper.getMainLooper())
     private val _id = MutableStateFlow<String?>(null)
     val id: StateFlow<String?> = _id
 
+    // Only touched on the ConnectivityThread (and once in start, before the callback exists).
+    private var network: Network? = null
     private var capabilities: NetworkCapabilities? = null
     private var link: LinkProperties? = null
 
     fun start() {
         try {
+            connectivity.activeNetwork?.let { active ->
+                network = active
+                capabilities = connectivity.getNetworkCapabilities(active)
+                link = connectivity.getLinkProperties(active)
+                publish()
+            }
             connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
-                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                override fun onAvailable(n: Network) {
+                    if (n == network) return
+                    network = n
+                    capabilities = null
+                    link = null
+                }
+
+                override fun onCapabilitiesChanged(n: Network, caps: NetworkCapabilities) {
+                    if (n != network) return
                     capabilities = caps
                     publish()
                 }
 
-                override fun onLinkPropertiesChanged(network: Network, lp: LinkProperties) {
+                override fun onLinkPropertiesChanged(n: Network, lp: LinkProperties) {
+                    if (n != network) return
                     link = lp
                     publish()
                 }
 
-                override fun onLost(network: Network) {
+                override fun onLost(n: Network) {
+                    if (n != network) return
+                    network = null
                     capabilities = null
                     link = null
-                    _id.value = null
+                    observe(null)
                 }
             })
         } catch (e: RuntimeException) {
@@ -80,10 +152,25 @@ class NetworkWatcher(context: Context) {
         }
     }
 
-    // Callbacks come one at a time on the ConnectivityThread.
     private fun publish() {
         val caps = capabilities ?: return
         val lp = link ?: return
+        observe(identityOf(caps, lp))
+    }
+
+    private fun observe(raw: String?) {
+        val wait = settled.observe(raw, SystemClock.elapsedRealtime())
+        _id.value = settled.current
+        if (wait != null) handler.postDelayed(::settle, wait)
+    }
+
+    private fun settle() {
+        val wait = settled.settle(SystemClock.elapsedRealtime())
+        _id.value = settled.current
+        if (wait != null) handler.postDelayed(::settle, wait)
+    }
+
+    private fun identityOf(caps: NetworkCapabilities, lp: LinkProperties): String {
         val kind = when {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> NetworkKind.VPN
             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkKind.MOBILE
@@ -93,16 +180,14 @@ class NetworkWatcher(context: Context) {
         }
         val gateways = lp.routes.filter { it.hasGateway() }.mapNotNull { it.gateway?.hostAddress }.toSet()
         val dns = lp.dnsServers.mapNotNull { it.hostAddress }.toSet()
-        val subnets = lp.linkAddresses.filter { it.address is Inet4Address }.mapNotNull { a ->
-            val bytes = a.address.address
+        val subnets = lp.linkAddresses.filter { it.address is Inet4Address }.map { a ->
             val bits = a.prefixLength
             val mask = if (bits == 0) 0 else (-1 shl (32 - bits))
-            val value = bytes.fold(0) { acc, b -> (acc shl 8) or (b.toInt() and 0xff) } and mask
+            val value = a.address.address.fold(0) { acc, b -> (acc shl 8) or (b.toInt() and 0xff) } and mask
             "%d.%d.%d.%d/%d".format(value ushr 24 and 0xff, value ushr 16 and 0xff, value ushr 8 and 0xff, value and 0xff, bits)
         }
-        val domains = lp.domains
         val privateDns = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) lp.privateDnsServerName else null
-        _id.value = networkIdentity(kind, gateways, dns + listOfNotNull(privateDns), domains, subnets)
+        return networkIdentity(kind, gateways, dns + listOfNotNull(privateDns), lp.domains, subnets)
     }
 
     private companion object {

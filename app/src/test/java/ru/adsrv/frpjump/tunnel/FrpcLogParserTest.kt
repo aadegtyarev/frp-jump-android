@@ -290,4 +290,39 @@ class FrpcLogParserTest {
         parser.reconfigure(listOf(g2), restarted = emptyList())
         assertEquals(setOf("g2"), parser.snapshot().keys)
     }
+
+    @Test
+    fun `frpc's own retry of a visitor waits for a login's start lines to be lined up`() {
+        val parser = parser(g1, g2)
+        parser.feed(login)
+        // Lined up: g1 stcp, g1 xtcp, g2 stcp, g2 xtcp. A retry line must not reorder them.
+        parser.feed("2026-10-30 20:31:00.300 [I] [visitor/visitor_manager.go:93] [run] try to start visitor [g2-stcp-visitor]")
+        repeat(2) { parser.feed(startSuccess) }
+        assertEquals(TunnelStatus.TRYING, parser.status("g1"))
+        repeat(2) { parser.feed(startSuccess) }
+        assertEquals(TunnelStatus.TRYING, parser.status("g2"))
+        // Nothing lined up: the retry line names the visitor that starts next.
+        parser.feed("2026-10-30 20:31:10.300 [I] [visitor/visitor_manager.go:93] [run] try to start visitor [g2-xtcp-visitor]")
+        parser.feed("2026-10-30 20:31:10.301 [W] [visitor/visitor_manager.go:126] [run] start error: listen tcp 127.0.0.1:40001: bind: address already in use")
+        assertEquals(TunnelStatus.FAILED, parser.status("g2"))
+        assertEquals(TunnelStatus.TRYING, parser.status("g1"))
+    }
+
+    @Test
+    fun `a carried window does not outlive its attempt`() {
+        val parser = trying()
+        parser.feed(warn("[g1-xtcp-visitor] nathole precheck error: xtcp server for [g1-xtcp] doesn't exist"))
+        // The automatic retry's reload carries the window...
+        parser.reconfigure(listOf(g1.copy(attempt = 1)), restarted = listOf("g1-xtcp-visitor-1"))
+        // ...but the tunnel ends through the server before its visitor starts again.
+        parser.feed(warn("[g1-stcp-visitor] dialRawVisitorConn error: connect to server error: EOF"))
+        assertEquals(TunnelStatus.FAILED, parser.status())
+        now += 60_000
+        // A later retry is a fresh attempt with a full window.
+        parser.reconfigure(listOf(g1.copy(attempt = 2)), restarted = listOf("g1-xtcp-visitor-2"))
+        parser.feed(startSuccess)
+        assertEquals(TunnelStatus.TRYING, parser.status())
+        now += TRY_DIRECT_MS - 1
+        assertFalse(parser.expire())
+    }
 }

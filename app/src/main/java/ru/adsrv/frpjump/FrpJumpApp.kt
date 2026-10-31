@@ -72,7 +72,7 @@ class FrpJumpApp : Application() {
         super.onCreate()
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))
-        network = NetworkWatcher(this).also { it.start() }
+        network = NetworkWatcher(this)
         val frpcRoot = File(noBackupFilesDir, "frpc")
         val shared = ProfileShared(
             api = api,
@@ -96,6 +96,7 @@ class FrpJumpApp : Application() {
         appScope.launch(Dispatchers.IO) {
             // Before any profile applies its tunnels.
             directKept.load()
+            network.start()
             // v1 kept one frpc's files right in here; each profile now has a directory of its own.
             frpcRoot.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
             if (profiles.load()) {

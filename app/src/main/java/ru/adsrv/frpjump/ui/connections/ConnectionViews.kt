@@ -13,7 +13,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -42,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -90,7 +93,12 @@ fun stateOf(row: ConnectionRow): Pair<String, Tone>? {
             TunnelStatus.TRYING -> stringResource(R.string.state_trying_direct) to Tone.NEUTRAL
             TunnelStatus.DIRECT -> stringResource(R.string.state_direct) to Tone.GOOD
             // With direct off it is simply how tunnels work; otherwise direct would be better.
-            TunnelStatus.RELAYED -> stringResource(R.string.state_through_server) to (if (tunnel.direct == DirectMode.OFF) Tone.GOOD else Tone.WARN)
+            TunnelStatus.RELAYED -> when (tunnel.direct) {
+                DirectMode.OFF -> stringResource(R.string.state_through_server) to Tone.GOOD
+                // The owner's own choice: nothing to warn about.
+                DirectMode.KEPT -> stringResource(R.string.state_kept_through_server) to Tone.NEUTRAL
+                DirectMode.ON -> stringResource(R.string.state_through_server) to Tone.WARN
+            }
             TunnelStatus.FAILED -> stringResource(R.string.state_failed) to Tone.BAD
         }
     }
@@ -123,12 +131,15 @@ fun toneColors(tone: Tone): Pair<Color, Color> {
     }
 }
 
-/** The state as a pill, as the device card shows it; [onClick] makes it a button (with a "›"). */
+/**
+ * The state as a pill, as the device card shows it; [onClick] makes it a
+ * button, with a "›" when [chevron] (an offer to act, not just details).
+ */
 @Composable
-fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null) {
+fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: Boolean = true) {
     val (ink, container) = toneColors(tone)
     Text(
-        if (onClick != null) "$text  ›" else text,
+        if (onClick != null && chevron) "$text  ›" else text,
         color = ink,
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
@@ -136,22 +147,27 @@ fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null) {
         modifier = Modifier
             .clip(CircleShape)
             .background(container, CircleShape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }
 
-/** `127.0.0.1:<local port>` in the mockups' monospace. */
+/**
+ * `127.0.0.1:<local port>` in the mockups' monospace; where that does not
+ * fit, `:<local port>` (a cut address is no use).
+ */
 @Composable
 fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier) {
+    var short by remember(port) { mutableStateOf(false) }
     Text(
-        localAddress(port),
+        if (short) ":$port" else localAddress(port),
         fontFamily = FontFamily.Monospace,
         fontSize = size.sp,
         color = AppTheme.colors.muted,
         maxLines = 1,
         softWrap = false,
-        overflow = TextOverflow.Ellipsis,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { if (!short && it.hasVisualOverflow) short = true },
         modifier = modifier,
     )
 }
@@ -349,24 +365,35 @@ fun ConnectionDialogs(
     }
     ui.direct?.let { row ->
         val kept = row.tunnel?.direct == DirectMode.KEPT
+        val device = row.connection.device
         AlertDialog(
             onDismissRequest = { ui.direct = null },
-            title = { Text(stringResource(R.string.state_through_server)) },
+            title = { Text(stringResource(if (kept) R.string.state_kept_through_server else R.string.state_through_server)) },
             text = {
-                Text(stringResource(if (kept) R.string.direct_kept_text else R.string.direct_failed_text, row.connection.device))
+                androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(if (kept) R.string.direct_kept_text else R.string.direct_failed_text, device))
+                    androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            ui.direct = null
+                            actions.retryDirect(row)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AppTheme.colors.accent),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.retry_direct)) }
+                    if (!kept) {
+                        OutlinedButton(
+                            onClick = {
+                                ui.direct = null
+                                actions.keepThroughServer(row)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.keep_through_server), color = AppTheme.colors.accent) }
+                    }
+                }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    ui.direct = null
-                    actions.retryDirect(row)
-                }) { Text(stringResource(R.string.retry_direct)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    ui.direct = null
-                    if (!kept) actions.keepThroughServer(row)
-                }) { Text(stringResource(R.string.keep_through_server)) }
-            },
+            // The two answers are the buttons above, full width; tapping outside closes it.
+            confirmButton = {},
         )
     }
     ui.deleting?.let { row ->

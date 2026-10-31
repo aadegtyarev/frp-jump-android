@@ -17,16 +17,18 @@ class DirectChoices(
     /**
      * "Keep through the server": no more attempts or offers for [device] of
      * [profile] on the current network; its tunnels switch to the server
-     * alone (connections already going through it stay).
+     * alone (connections already going through it stay). False when the
+     * phone is on no network it can tie the choice to: nothing changed.
      */
-    suspend fun keepThroughServer(profile: String, device: String) {
-        withContext(Dispatchers.IO) { kept.keep(profile, device, network.value) }
+    suspend fun keepThroughServer(profile: String, device: String): Boolean {
+        if (!withContext(Dispatchers.IO) { kept.keep(profile, device, network.value) }) return false
         profiles.runtime(profile)?.tunnels?.reapply()
+        return true
     }
 
-    /** "Retry direct": [device] of [profile] tries direct again here, [port]'s tunnel at once. */
-    suspend fun retryDirect(profile: String, device: String, port: Int) {
+    /** "Retry direct": every tunnel of [device] in [profile] that is not direct tries again, here and now. */
+    suspend fun retryDirect(profile: String, device: String) {
         withContext(Dispatchers.IO) { kept.release(profile, device, network.value) }
-        profiles.runtime(profile)?.tunnels?.retryDirect(device, port)
+        profiles.runtime(profile)?.tunnels?.retryDirect(device)
     }
 }

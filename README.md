@@ -162,18 +162,25 @@ connection never waits for the outcome.
 - A direct tunnel that dies (its periodic check or a connection logs `get
   tunnel connection error` / `open tunnel error`) is "Trying direct…"
   again while frpc punches anew, with the same outcomes.
-- Through the server after trying: a "Direct didn't work: <name>"
-  notification (own channel "Direct connection", apart from the tunnels'
-  one) with "Retry direct" and "Keep through the server"; tapping it opens
-  the device card. The same two answers sit behind the "Through the
-  server ›" state on the card and in the Connections tab. The actions run
-  in the app process, which the foreground service keeps alive, so they
-  work with the app closed.
-- "Retry direct" renames the tunnel's xtcp visitor (`<grant>-xtcp-visitor-N`)
-  and reloads frpc: only that visitor restarts and punches again;
-  connections already going through the server stay (frpc closes only a
-  visitor's listeners, not the connections it handed to the stcp visitor),
-  and other tunnels are untouched.
+- Through the server after trying, for 3 s (a punch confirmed late
+  would otherwise flash it): one "Direct didn't work: <names>"
+  notification per device, naming its failed connections (own channel
+  "Direct connection", apart from the tunnels' one), with "Retry direct"
+  and "Keep through the server"; tapping it opens the device card. The
+  same two answers sit behind the "Through the server ›" state on the card
+  and in the Connections tab; a device kept through the server shows
+  "Kept through the server" (neutral), and tapping it offers "Retry
+  direct". The actions run in the app process, which the foreground
+  service keeps alive, so they work with the app closed; notifications a
+  dead process left behind are removed when it starts again.
+- "Retry direct" acts on the whole device: each of its tunnels that is not
+  direct gets its xtcp visitor renamed (`<grant>-xtcp-visitor-N`) and
+  frpc reloads: only those visitors restart and punch again; connections
+  already going through the server stay (frpc closes only a visitor's
+  listeners, not the connections it handed to the stcp visitor), and
+  other tunnels are untouched. A tunnel turning direct again (kept or off
+  until then) gets a new name too, so late lines of its old visitor
+  cannot count for the new attempt.
 - "Keep through the server" switches the device's tunnels to a single
   stcp visitor on the current network (by reload, same as above): no more
   attempts or notifications there until "Retry direct" from the card. The
@@ -183,7 +190,10 @@ connection never waits for the outcome.
   hash of its gateways (an IPv6 router's link-local address usually
   carries its MAC), DNS servers, search domains and IPv4 subnets
   (`direct/NetworkIdentity.kt`). Two plain Wi-Fis with identical settings
-  look the same.
+  look the same. A new network counts once it has held for 1 s (a switch
+  reports passing states), and losing the network keeps the last one, so
+  a kept device does not turn direct meanwhile. Keeping needs a network to
+  tie the choice to; without one the app says so and changes nothing.
 - While frpc stays through the server after a failure it retries by itself
   quietly (below); a success turns the tunnel "Direct" without a word.
 

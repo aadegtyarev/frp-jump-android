@@ -6,9 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -25,9 +28,9 @@ import ru.adsrv.frpjump.profiles.Profiles
 import ru.adsrv.frpjump.tunnel.Tunnel
 
 /**
- * Posts "Direct didn't work: <name>" with "Retry direct" and "Keep through
- * the server" for every tunnel [DirectOffers] lists, and takes it back
- * when the tunnel goes direct, retries, is kept or goes away. Its own
+ * Posts "Direct didn't work: <names>" with "Retry direct" and "Keep through
+ * the server" for every device [DirectOffers] lists, and takes it back
+ * when its tunnels go direct, retry, are kept or go away. Its own
  * channel, apart from the foreground service's. Lives in the app process,
  * which the foreground service keeps alive while tunnels are up, so the
  * actions ([DirectActionReceiver]) work with the app closed.
@@ -35,23 +38,39 @@ import ru.adsrv.frpjump.tunnel.Tunnel
 @OptIn(ExperimentalCoroutinesApi::class)
 class DirectNotifier(private val context: Context, private val profiles: Profiles) {
     private val offers = DirectOffers()
-    private val dismissals = MutableStateFlow(0)
+    /** Bumped to look again: an answer, or an offer's delay ran out. */
+    private val ticks = MutableStateFlow(0)
     private val manager = context.getSystemService(NotificationManager::class.java)
     private var shown: Map<String, DirectOffer> = emptyMap()
+    private var recheck: Job? = null
 
     fun start(scope: CoroutineScope) {
+        // Left over from a process that died with them shown: nothing backs them any more.
+        runCatching {
+            manager.activeNotifications.filter { it.id == NOTIFICATION_ID }.forEach { manager.cancel(it.tag, it.id) }
+        }
         scope.launch {
-            combine(tunnelsAndNames(), dismissals) { (tunnels, connections), _ ->
-                offers.offers(tunnels) { profile, t -> nameOf(connections[profile].orEmpty(), t) }
-            }.distinctUntilChanged().collect(::show)
+            combine(tunnelsAndNames(), ticks) { (tunnels, connections), _ ->
+                offers.offers(tunnels, SystemClock.elapsedRealtime()) { profile, t -> nameOf(connections[profile].orEmpty(), t) }
+            }.distinctUntilChanged().collect { list ->
+                show(list.offers)
+                recheck?.cancel()
+                recheck = list.recheckInMs?.let { wait ->
+                    scope.launch {
+                        delay(wait)
+                        ticks.update { it + 1 }
+                    }
+                }
+            }
         }
     }
 
     /** The owner swiped it away or answered it: take it back now, and not again in this episode. */
-    fun dismiss(grantId: String, key: String?) {
-        offers.dismiss(grantId)
-        if (key != null) manager.cancel(key, NOTIFICATION_ID)
-        dismissals.update { it + 1 }
+    fun dismiss(profile: String, device: String, cancel: Boolean) {
+        val key = offerKey(profile, device)
+        offers.dismiss(key)
+        if (cancel) manager.cancel(key, NOTIFICATION_ID)
+        ticks.update { it + 1 }
     }
 
     private fun show(list: List<DirectOffer>) {
@@ -98,7 +117,7 @@ class DirectNotifier(private val context: Context, private val profiles: Profile
         )
         return NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(context.getString(R.string.direct_failed_title, offer.name))
+            .setContentTitle(context.getString(R.string.direct_failed_title, offer.names))
             .setContentText(context.getString(R.string.direct_failed_text, offer.device))
             .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.direct_failed_text, offer.device)))
             .setContentIntent(open)

@@ -239,22 +239,23 @@ class TunnelManager(
     fun reapplyAsync() = scope.launch { reapply() }
 
     /**
-     * "Retry direct" for [device]:[port]: its xtcp visitor gets a new name,
-     * so the reload starts it afresh and it punches again at once, while
-     * the other tunnels (and this one's connections through the server)
-     * stay. False when no such tunnel is up.
+     * "Retry direct" for [device]: each of its tunnels that is not direct
+     * gets its xtcp visitor renamed, so the reload starts it afresh and it
+     * punches again at once, while the other tunnels (and these ones'
+     * connections through the server) stay. Tunnels kept through the server
+     * until now get theirs from the mode change ([apply]). False when the
+     * device has no tunnel up.
      */
-    suspend fun retryDirect(device: String, port: Int): Boolean = syncing.withLock {
+    suspend fun retryDirect(device: String): Boolean = syncing.withLock {
         val credentials = credentials() ?: return@withLock false
         val desired = lastDesired ?: return@withLock false
-        val grant = core.value.planned.firstOrNull { it.grant.exposerDeviceName == device && it.grant.targetPort == port }
-            ?: return@withLock false
-        attempts[grant.grant.grantId] = (attempts[grant.grant.grantId] ?: 0) + 1
+        val grants = core.value.planned.filter { it.grant.exposerDeviceName == device }.map { it.grant.grantId }
+        if (grants.isEmpty()) return@withLock false
+        grants.filter { core.value.modes[it] == DirectMode.ON && runner.states.value[it]?.status != TunnelStatus.DIRECT }
+            .forEach { attempts[it] = (attempts[it] ?: 0) + 1 }
         applyQuietly(credentials, desired)
         true
     }
-
-    fun retryDirectAsync(device: String, port: Int) = scope.launch { retryDirect(device, port) }
 
     /** A new attempt for [grants] that are still trying direct and waiting for their device. */
     private suspend fun retryGrants(grants: Set<String>) = syncing.withLock {
@@ -385,6 +386,12 @@ class TunnelManager(
                 planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts)
             }
             val modes = plan.associate { it.grant.grantId to directMode(it.grant.exposerDeviceName) }
+            // Direct again (kept or off until now): a new xtcp name, so lines its old
+            // visitor of the same name logged late cannot be taken for this attempt's.
+            val before = core.value.modes
+            modes.forEach { (grant, mode) ->
+                if (mode == DirectMode.ON && before[grant] != null && before[grant] != DirectMode.ON) attempts[grant] = (attempts[grant] ?: 0) + 1
+            }
             if (plan.isEmpty()) {
                 runner.stop()
             } else {

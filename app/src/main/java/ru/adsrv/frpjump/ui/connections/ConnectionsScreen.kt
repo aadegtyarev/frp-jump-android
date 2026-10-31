@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.LinkGlyph
 
@@ -192,8 +193,9 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (state != null) {
                                 val choice = offersDirectChoice(row)
+                                val chevron = choice && row.tunnel?.direct != DirectMode.KEPT
                                 Text(
-                                    if (choice) "${state.first}  ›" else state.first,
+                                    if (chevron) "${state.first}  ›" else state.first,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = toneInk(state.second),

@@ -37,12 +37,13 @@ class DirectKeptStore(private val storage: TextStorage) {
     fun isKept(profile: String, device: String, network: String?): Boolean =
         network != null && KeptThroughServer(profile, device, network) in _kept.value
 
-    /** No-op without a network: there is nothing to tie the choice to. */
+    /** False without a network: there is nothing to tie the choice to. */
     @Synchronized
-    fun keep(profile: String, device: String, network: String?) {
-        if (network == null) return
+    fun keep(profile: String, device: String, network: String?): Boolean {
+        if (network == null) return false
         val entry = KeptThroughServer(profile, device, network)
         save((_kept.value - entry + entry).takeLast(MAX_ENTRIES))
+        return true
     }
 
     /** "Retry direct": [device] tries direct again on [network]. */

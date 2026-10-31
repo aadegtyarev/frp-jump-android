@@ -8,44 +8,77 @@ import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.tunnel.VisitorState
 
 class DirectOffersTest {
-    private val offers = DirectOffers()
+    private val offers = DirectOffers(delayMs = 3_000)
+    private var now = 0L
 
-    private fun tunnel(state: VisitorState, direct: DirectMode = DirectMode.ON, grant: String = "g1", port: Int = 80) =
-        Tunnel("wb", port, grant, 40000 + port, state, direct)
+    private fun tunnel(state: VisitorState, direct: DirectMode = DirectMode.ON, port: Int = 80, device: String = "wb") =
+        Tunnel(device, port, "$device-$port", 40000 + port, state, direct)
 
     private val failed = VisitorState(TunnelStatus.RELAYED, directFailed = true)
 
     private fun offered(vararg tunnels: Tunnel) =
-        offers.offers(mapOf("work" to tunnels.toList())) { _, t -> if (t.port == 80) "homeui" else "Port ${t.port}" }
+        offers.offers(mapOf("work" to tunnels.toList()), now) { _, t -> if (t.port == 80) "Web, homeui" else "SSH" }
 
-    @Test
-    fun `a failed direct attempt is offered, named as its connection`() {
-        assertEquals(listOf(DirectOffer("work", "wb", 80, "g1", "homeui")), offered(tunnel(failed)))
-        assertEquals("work/wb/80", offered(tunnel(failed)).single().key)
+    /** Offered once the failure has lasted the delay. */
+    private fun settled(vararg tunnels: Tunnel): List<DirectOffer> {
+        offered(*tunnels)
+        now += 3_000
+        return offered(*tunnels).offers
     }
 
     @Test
-    fun `trying, direct, off, kept or through the server by choice are not offered`() {
-        assertEquals(emptyList<DirectOffer>(), offered(tunnel(VisitorState(TunnelStatus.TRYING))))
-        assertEquals(emptyList<DirectOffer>(), offered(tunnel(VisitorState(TunnelStatus.DIRECT))))
-        assertEquals(emptyList<DirectOffer>(), offered(tunnel(VisitorState(TunnelStatus.RELAYED), DirectMode.OFF)))
-        assertEquals(emptyList<DirectOffer>(), offered(tunnel(VisitorState(TunnelStatus.RELAYED), DirectMode.KEPT)))
-        assertEquals(emptyList<DirectOffer>(), offered(tunnel(VisitorState(TunnelStatus.FAILED, "offline"))))
+    fun `one offer per device, naming its failed connections`() {
+        val list = settled(tunnel(failed), tunnel(failed, port = 22), tunnel(failed, device = "beelink"))
+        assertEquals(
+            listOf(DirectOffer("work", "wb", "Web, homeui, SSH"), DirectOffer("work", "beelink", "Web, homeui")),
+            list,
+        )
+        assertEquals("work/wb", list.first().key)
     }
 
     @Test
-    fun `a dismissed offer stays away until the next failure`() {
+    fun `offered only after 3 s of failure, and asks to be asked again then`() {
+        now = 10_000
+        val first = offered(tunnel(failed))
+        assertEquals(emptyList<DirectOffer>(), first.offers)
+        assertEquals(3_000L, first.recheckInMs)
+        now += 2_000
+        assertEquals(1_000L, offered(tunnel(failed)).recheckInMs)
+        now += 1_000
+        assertEquals(OfferList(listOf(DirectOffer("work", "wb", "Web, homeui")), null), offered(tunnel(failed)))
+    }
+
+    @Test
+    fun `a punch confirmed within the delay never shows`() {
         offered(tunnel(failed))
-        offers.dismiss("g1")
-        assertEquals(emptyList<DirectOffer>(), offered(tunnel(failed)))
-        // Retried (or went direct and dropped): a new episode.
-        offered(tunnel(VisitorState(TunnelStatus.TRYING)))
-        assertEquals(1, offered(tunnel(failed)).size)
+        now += 2_000
+        assertEquals(OfferList(emptyList(), null), offered(tunnel(VisitorState(TunnelStatus.DIRECT))))
+        now += 2_000
+        assertEquals("the clock starts again", emptyList<DirectOffer>(), offered(tunnel(failed)).offers)
     }
 
     @Test
-    fun `dismissing one tunnel leaves the other offered`() {
-        offers.dismiss("g1")
-        assertEquals(listOf("g2"), offered(tunnel(failed), tunnel(failed, grant = "g2", port = 22)).map { it.grantId })
+    fun `trying, direct, off, kept or failed by the relay are not offered`() {
+        assertEquals(emptyList<DirectOffer>(), settled(tunnel(VisitorState(TunnelStatus.TRYING))))
+        assertEquals(emptyList<DirectOffer>(), settled(tunnel(VisitorState(TunnelStatus.DIRECT))))
+        assertEquals(emptyList<DirectOffer>(), settled(tunnel(VisitorState(TunnelStatus.RELAYED), DirectMode.OFF)))
+        assertEquals(emptyList<DirectOffer>(), settled(tunnel(VisitorState(TunnelStatus.RELAYED), DirectMode.KEPT)))
+        assertEquals(emptyList<DirectOffer>(), settled(tunnel(VisitorState(TunnelStatus.FAILED, "offline"))))
+    }
+
+    @Test
+    fun `a dismissed offer stays away until the device has no failed tunnel`() {
+        settled(tunnel(failed))
+        offers.dismiss("work/wb")
+        assertEquals(emptyList<DirectOffer>(), settled(tunnel(failed), tunnel(failed, port = 22)))
+        // Retried: a new episode.
+        offered(tunnel(VisitorState(TunnelStatus.TRYING)))
+        assertEquals(1, settled(tunnel(failed)).size)
+    }
+
+    @Test
+    fun `dismissing one device leaves the other offered`() {
+        offers.dismiss("work/wb")
+        assertEquals(listOf("beelink"), settled(tunnel(failed), tunnel(failed, device = "beelink")).map { it.device })
     }
 }

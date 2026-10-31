@@ -217,14 +217,33 @@ class TunnelManagerTest {
     }
 
     @Test
-    fun `retry direct gives the tunnel a new attempt, kept across polls`() = runBlocking {
+    fun `retry direct gives the device's tunnels not direct a new attempt, kept across polls`() = runBlocking {
+        api.consumed = listOf(grant, ConsumedGrant("g2", "secret", "svc", "ssh", "wb", 22), ConsumedGrant("g3", "secret", "svc", "tcp", "other", 80))
+        manager.sync()
+        frpc.states.value = mapOf(
+            "g1" to VisitorState(TunnelStatus.RELAYED, directFailed = true),
+            "g2" to VisitorState(TunnelStatus.DIRECT),
+            "g3" to VisitorState(TunnelStatus.RELAYED, directFailed = true),
+        )
+        assertTrue(manager.retryDirect("wb"))
+        assertEquals(mapOf("g1" to 1, "g2" to 0, "g3" to 0), frpc.last!!.visitors.associate { it.grantId to it.attempt })
+        manager.sync()
+        assertEquals("a poll does not undo it", 1, frpc.last!!.visitors.first().attempt)
+        assertFalse("no such device", manager.retryDirect("nowhere"))
+    }
+
+    @Test
+    fun `turning direct again starts a new attempt`() = runBlocking {
         manager.sync()
         assertEquals(0, frpc.last!!.visitors.single().attempt)
-        assertTrue(manager.retryDirect("wb", 80))
-        assertEquals(1, frpc.last!!.visitors.single().attempt)
-        manager.sync()
-        assertEquals("a poll does not undo it", 1, frpc.last!!.visitors.single().attempt)
-        assertFalse("no such tunnel", manager.retryDirect("wb", 22))
+        mode = DirectMode.KEPT
+        manager.reapply()
+        mode = DirectMode.ON
+        manager.reapply()
+        assertEquals(true, frpc.last!!.visitors.single().direct)
+        assertEquals("not the old xtcp name: its late lines would count", 1, frpc.last!!.visitors.single().attempt)
+        manager.reapply()
+        assertEquals("only on the change", 1, frpc.last!!.visitors.single().attempt)
     }
 
     @Test

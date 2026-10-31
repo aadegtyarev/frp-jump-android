@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.connections
 
+import android.widget.Toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,14 +34,18 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         runtime(row.profile)?.tunnels?.disconnectAsync(row.connection.device, row.connection.port)
     }
 
-    /** "Retry direct" for [row]'s tunnel; kept through the server no more on this network. */
+    /** "Retry direct" for [row]'s device: all its tunnels through the server try again, kept no more on this network. */
     fun retryDirect(row: ConnectionRow) {
-        app.appScope.launch { app.directChoices.retryDirect(row.profile, row.connection.device, row.connection.port) }
+        app.appScope.launch { app.directChoices.retryDirect(row.profile, row.connection.device) }
     }
 
-    /** "Keep through the server" for [row]'s device on this network. */
+    /** "Keep through the server" for [row]'s device on this network; says why when there is no network to tie it to. */
     fun keepThroughServer(row: ConnectionRow) {
-        app.appScope.launch { app.directChoices.keepThroughServer(row.profile, row.connection.device) }
+        app.appScope.launch {
+            if (!app.directChoices.keepThroughServer(row.profile, row.connection.device)) {
+                Toast.makeText(app, R.string.keep_no_network, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     /** Every tunnel of every profile. */

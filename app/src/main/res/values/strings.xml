@@ -113,6 +113,7 @@
     <string name="direct_kept_text">%s is kept through the server on this network.</string>
     <string name="retry_direct">Retry direct</string>
     <string name="keep_through_server">Keep through the server</string>
+    <string name="keep_no_network">No network right now: the choice is kept per network. Try again once connected.</string>
     <!-- Bottom navigation -->
     <string name="tab_devices">Devices</string>
     <string name="tab_connections">Connections</string>
@@ -132,6 +133,7 @@
     <string name="state_trying_direct">Trying direct…</string>
     <string name="state_direct">Direct</string>
     <string name="state_through_server">Through the server</string>
+    <string name="state_kept_through_server">Kept through the server</string>
     <string name="state_failed">Failed</string>
 
     <!-- Connection rows and their actions -->

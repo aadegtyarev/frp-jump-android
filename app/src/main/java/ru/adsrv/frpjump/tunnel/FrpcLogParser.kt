@@ -138,8 +138,9 @@ class FrpcLogParser(
         val line = ANSI.replace(rawLine, "")
         val before = states.toMap()
         when {
-            TRY_START.containsMatchIn(line) -> {
-                startOrder.clear()
+            // frpc's own retry of a visitor that failed to start; not while a login or a
+            // reload is still lining up its start lines, which carry no names.
+            TRY_START.containsMatchIn(line) -> if (startOrder.isEmpty()) {
                 TRY_START.find(line)?.groupValues?.get(1)?.let(startOrder::addLast)
             }
             // Visitor-prefixed lines first: their errors may quote "connect to server error".
@@ -189,6 +190,8 @@ class FrpcLogParser(
             tryingSince.remove(grant)
         }
         if (!state.confirming) punchedAt.remove(grant)
+        // A window carried over a reload belongs to that attempt only.
+        if (state.status == TunnelStatus.FAILED || state.status == TunnelStatus.RELAYED) carried.remove(grant)
         states[grant] = state
     }
 

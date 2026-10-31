@@ -65,6 +65,7 @@ import ru.adsrv.frpjump.ui.connections.MainButton
 import ru.adsrv.frpjump.ui.connections.RowActions
 import ru.adsrv.frpjump.ui.connections.StatePill
 import ru.adsrv.frpjump.ui.connections.offersDirectChoice
+import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.ui.connections.kindLabel
 import ru.adsrv.frpjump.ui.connections.mainActionLabel
 import ru.adsrv.frpjump.ui.connections.problemOf
@@ -271,6 +272,8 @@ private fun ConnectionCard(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(rowName(row), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(subtitle(row, sshMethod), fontSize = 13.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // On a line of its own: next to a long state and the main action it would be cut.
+                    row.tunnel?.let { LocalAddress(it.localPort) }
                 }
                 Box {
                     IconButton(onClick = { onMenu(true) }, modifier = Modifier.width(36.dp)) {
@@ -282,10 +285,15 @@ private fun ConnectionCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val state = stateOf(row)
                 if (state != null) {
-                    StatePill(state.first, state.second, onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) })
+                    StatePill(
+                        state.first,
+                        state.second,
+                        onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) },
+                        chevron = row.tunnel?.direct != DirectMode.KEPT,
+                    )
                 } else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
                 // The address gives way (ellipsis) before the main action does.
-                row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f)) } ?: Spacer(Modifier.weight(1f))
+                Spacer(Modifier.weight(1f))
                 if (up) MainButton(mainActionLabel(row)) { actions.main(row) } else ConnectButton(row) { actions.connect(row) }
             }
             problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
