@@ -17,6 +17,7 @@ import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
+import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ui.userMessage
 
 /**
@@ -121,6 +122,17 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     /** Only whether one is kept: the password itself is unsealed by the session, off the main thread. */
     fun hasRememberedPassword(row: ConnectionRow, user: String): Boolean =
         app.sshPasswords.has(row.profile, row.connection.device, row.connection.port, user.trim())
+
+    /**
+     * The session already open to [row]'s device and port in its profile:
+     * the newest live one, else the newest ended one (its output and
+     * Reconnect are still there); null when there is none. Main thread.
+     */
+    fun openSession(row: ConnectionRow): Int? {
+        val c = row.connection
+        val mine = app.ssh.sessions.value.filter { it.profile == row.profile && it.device == c.device && it.port == c.port }
+        return (mine.lastOrNull { it.state.value !is SshState.Ended } ?: mine.lastOrNull())?.id
+    }
 
     /**
      * Remembers the method for this port and opens a session to [row]'s

@@ -345,6 +345,14 @@
     <string name="terminal_text_smaller">Мельче</string>
     <string name="terminal_text_larger">Крупнее</string>
     <string name="terminal_keyboard">Клавиатура</string>
+    <plurals name="terminal_left_running">
+        <item quantity="one">%d сессия продолжает работать: вкладка «Терминалы»</item>
+        <item quantity="few">%d сессии продолжают работать: вкладка «Терминалы»</item>
+        <item quantity="many">%d сессий продолжают работать: вкладка «Терминалы»</item>
+        <item quantity="other">%d сессии продолжают работать: вкладка «Терминалы»</item>
+    </plurals>
+    <string name="terminal_close_title">Закрыть %s?</string>
+    <string name="terminal_close_text">Сессия завершится, и то, что в ней запущено на устройстве, остановится.</string>
     <string name="terminal_close_session">Закрыть сессию</string>
     <string name="terminal_reconnect">Переподключить</string>
     <string name="terminal_status_host_key_unknown">Ждёт решения о ключе хоста</string>

@@ -321,6 +321,7 @@ fun rememberRowActions(
     ui: ConnectionUi,
     actions: ConnectionActions,
     onOpenWeb: (ConnectionRow) -> Unit,
+    onOpenTerminal: (sessionId: Int) -> Unit,
 ): RowActions {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -340,7 +341,8 @@ fun rememberRowActions(
                 row.tunnel == null -> Unit
                 !row.saved || row.connection.kind == PortKind.TCP -> copy(row)
                 row.connection.kind == PortKind.WEB -> onOpenWeb(row)
-                else -> ui.login = row
+                // Back to the session already open on this port; a new one is "+" on its tab row.
+                else -> actions.openSession(row)?.let(onOpenTerminal) ?: run { ui.login = row }
             }
         },
         disconnect = actions::disconnect,

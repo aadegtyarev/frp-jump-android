@@ -28,7 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -86,8 +86,8 @@ import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
-import ru.adsrv.frpjump.ui.FullscreenGlyph
 import ru.adsrv.frpjump.ui.FolderGlyph
+import ru.adsrv.frpjump.ui.FullscreenGlyph
 import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.rememberFullscreen
@@ -136,6 +136,16 @@ fun TerminalScreen(
     var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
+    // Leaving keeps the sessions: the first time, say where they are.
+    DisposableEffect(Unit) {
+        onDispose {
+            val live = sessions.sessions.value.count { it.state.value !is SshState.Ended }
+            if (live > 0 && !sessions.leftRunningHintShown) {
+                sessions.leftRunningHintShown = true
+                Toast.makeText(context, context.resources.getQuantityString(R.plurals.terminal_left_running, live, live), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     if (selected == null) return
     val gone = stringResource(R.string.terminal_session_gone)
     // A new tab is selected; when the session to copy closed meanwhile, a toast says so.
@@ -150,9 +160,14 @@ fun TerminalScreen(
     fun reconnectTab(id: Int) {
         sessions.reconnect(id)?.let { selectedId = it.id }
     }
+    /** A live session asked to close from its tab: confirmed first, its commands stop. */
+    var closing by remember { mutableStateOf<Int?>(null) }
     val tabActions = SessionTabActions(
         select = { selectedId = it },
-        close = ::closeTab,
+        close = { id ->
+            val live = list.firstOrNull { it.id == id }?.state?.value.let { it != null && it !is SshState.Ended }
+            if (live) closing = id else closeTab(id)
+        },
         reconnect = ::reconnectTab,
         // The same login at once; a refused one, or a remembered password since forgotten, needs the dialog.
         add = {
@@ -261,9 +276,6 @@ fun TerminalScreen(
                     BarButton("A+", larger, enabled = fontSp < MAX_FONT_SP) {
                         sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
                     }
-                    IconButton(onClick = { closeTab(selected.id) }) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.terminal_close_session))
-                    }
                 },
             )
         },
@@ -371,6 +383,26 @@ fun TerminalScreen(
             },
             onDismiss = { loginLikeId = null },
         )
+    }
+
+    closing?.let { id ->
+        val session = list.firstOrNull { it.id == id }
+        if (session == null) {
+            closing = null
+        } else {
+            AlertDialog(
+                onDismissRequest = { closing = null },
+                title = { Text(stringResource(R.string.terminal_close_title, session.title)) },
+                text = { Text(stringResource(R.string.terminal_close_text)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        closing = null
+                        closeTab(id)
+                    }) { Text(stringResource(R.string.terminal_close_session), color = colors.error) }
+                },
+                dismissButton = { TextButton(onClick = { closing = null }) { Text(stringResource(R.string.cancel)) } },
+            )
+        }
     }
 
     when (val s = state) {
