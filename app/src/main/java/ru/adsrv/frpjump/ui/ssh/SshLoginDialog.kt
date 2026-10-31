@@ -16,6 +16,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.platform.LocalAutofillManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.ssh.SshAuthMethod
@@ -54,8 +56,19 @@ fun SshLoginDialog(
     // Ticked unless the owner unticks it: the password is sealed on the phone, and typing it every time is what was asked not to be.
     var remember by rememberSaveable { mutableStateOf(true) }
     val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
+    val autofill = LocalAutofillManager.current
+    // A password typed (or filled in) and sent: the password manager may offer to save it.
+    // The dialog closes on Connect, before the login is tried; nothing else to offer then.
+    val connect = {
+        if (method == SshAuthMethod.PASSWORD && password.isNotEmpty()) autofill?.commit() else autofill?.cancel()
+        onConnect(user, method, password, remember)
+    }
+    val dismiss = {
+        autofill?.cancel()
+        onDismiss()
+    }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismiss,
         title = { Text(title ?: stringResource(R.string.ssh_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -64,6 +77,7 @@ fun SshLoginDialog(
                     value = user,
                     onValueChange = { user = it.trim() },
                     keyboard = KeyboardType.Ascii,
+                    contentType = ContentType.Username,
                 )
                 if (!passwordOnly) {
                     Segmented(
@@ -87,6 +101,7 @@ fun SshLoginDialog(
                         stringResource(R.string.ssh_method_password),
                         saved = stringResource(R.string.ssh_password_saved).takeIf { remembered },
                         savedSpoken = stringResource(R.string.ssh_password_saved_spoken, stringResource(R.string.ssh_method_password)),
+                        contentType = ContentType.Password,
                     )
                     if (!passwordOnly) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -99,8 +114,8 @@ fun SshLoginDialog(
             }
         },
         confirmButton = {
-            TextButton(enabled = ready, onClick = { onConnect(user, method, password, remember) }) { Text(confirmLabel ?: stringResource(R.string.connect)) }
+            TextButton(enabled = ready, onClick = connect) { Text(confirmLabel ?: stringResource(R.string.connect)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

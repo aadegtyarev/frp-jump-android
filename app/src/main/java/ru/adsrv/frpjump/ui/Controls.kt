@@ -42,6 +42,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,6 +67,8 @@ fun Field(
     trailingIcon: (@Composable () -> Unit)? = null,
     /** To focus the field when it shows. */
     focusRequester: FocusRequester? = null,
+    /** What a password manager may fill in here (a user name); null: nothing. */
+    contentType: ContentType? = null,
 ) {
     val colors = AppTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -90,7 +95,8 @@ fun Field(
             ),
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+                .then(if (contentType != null) Modifier.semantics { this.contentType = contentType } else Modifier),
         )
     }
 }
