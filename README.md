@@ -451,7 +451,8 @@ at a full JDK, e.g. `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`.
 
 ## Release
 
-The release build is minified with R8 and shrinks resources
+The release build carries frpc for arm64-v8a only (phones; the debug build
+also has x86_64 for the emulator), is minified with R8 and shrinks resources
 (`app/proguard-rules.pro` says what is kept and why; the mapping for stack
 traces is `app/build/outputs/mapping/release/mapping.txt`, keep it with the
 release). It is signed with the release key, which never goes into the
@@ -476,9 +477,14 @@ To publish a version: raise `versionName` and `versionCode` in
 `app/build.gradle.kts`, commit, then
 
 ```sh
-scripts/release.sh                                   # dist/frp-jump-android-<version>.apk and .apk.sha256
-scripts/release.sh --publish --notes-file notes.md   # also GitHub release v<version> with both files
+scripts/release.sh                                   # dist/frp-jump-android-<version>.apk, .apk.sha256, -mapping.txt
+scripts/release.sh --publish --notes-file notes.md   # also GitHub release v<version> with the APK and .sha256
 ```
+
+`--publish` refuses unless the tree is clean and pushed, `v<version>` does
+not exist, versionCode is above the latest `v*` tag's, and apksigner and
+aapt2 are there; the built APK must say the versionName and versionCode of
+`app/build.gradle.kts`. Keep the mapping file of each published release.
 
 The release is published as a normal one, not a pre-release, even for a
 version such as `0.2.0-beta2`: the app asks GitHub for the latest release,
@@ -504,6 +510,18 @@ against the 60 requests an hour it allows without a token
   several); it is downloaded into the app's cache with the progress in the
   sheet and checked against the SHA-256 in `<apk>.sha256`. A release without
   that file, or a download that does not match it, is not installed.
+- Then the APK itself is read (`update/ApkCheck.kt`): it must be this app's
+  package, with a higher versionCode, versionName the release's version, and
+  exactly the installed app's signing certificates. Anything else is
+  deleted and the sheet says why.
+- What each check protects: the SHA-256 only shows the file arrived as it was
+  published (no truncated or swapped download); it comes from the same
+  release, so it does not protect against a release someone else published.
+  The signature check does: only an APK signed with the release key passes,
+  which Android's installer would insist on anyway, but the owner then
+  learns why before the installer opens. Downloads go only to GitHub
+  (`github.com`, `api.github.com`, `*.githubusercontent.com`, https only, no
+  redirect elsewhere) and only from this repository's release files.
 - The checked APK goes to the system installer, which asks the owner. If
   Android does not yet let the app install apps, a dialog says so and opens
   "Install unknown apps" for it; back with it allowed, installation goes on.

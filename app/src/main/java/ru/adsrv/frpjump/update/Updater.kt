@@ -57,6 +57,8 @@ class Updater(
     /** Where downloads go; emptied at start, as a new start means any download there is done with. */
     private val downloads: File,
     private val scope: CoroutineScope,
+    /** Why a checked download may not go to the installer as release `version` ([apkProblem]); called off the main thread. */
+    private val inspect: (apk: File, version: String) -> ApkProblem?,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val _state = MutableStateFlow(UpdateState())
@@ -132,13 +134,18 @@ class Updater(
     /** Downloads the available release's APK and checks its SHA-256; [UpdateDownload.Ready] when done. Main thread. */
     fun download() {
         val release = _state.value.available ?: return
+        // One download at a time; a different release cancels it first ([show]).
         if (downloadJob?.isActive == true) return
         val checksumUrl = release.checksumUrl
         if (checksumUrl == null) {
             _state.update { it.copy(download = UpdateDownload.Failed(Texts.get(R.string.update_no_checksum))) }
             return
         }
-        _state.update { it.copy(download = UpdateDownload.Running(0, release.apkSize)) }
+        // Only while [release] is still the one offered: a result for another is dropped.
+        fun publish(download: UpdateDownload) = _state.update {
+            if (it.available?.apkUrl == release.apkUrl) it.copy(download = download) else it
+        }
+        publish(UpdateDownload.Running(0, release.apkSize))
         downloadJob = scope.launch {
             val result = try {
                 val expected = checksumFor(source.text(checksumUrl), release.apkName)
@@ -149,21 +156,24 @@ class Updater(
                     downloads.mkdirs()
                 }
                 val actual = source.download(release.apkUrl, apk, MAX_APK_BYTES) { read, total ->
-                    _state.update { it.copy(download = UpdateDownload.Running(read, if (total > 0) total else release.apkSize)) }
+                    publish(UpdateDownload.Running(read, if (total > 0) total else release.apkSize))
                 }
-                if (!checksumMatches(expected, actual)) {
-                    withContext(Dispatchers.IO) { apk.delete() }
-                    throw ChecksumMismatchException()
+                // The bytes as published, then the APK as this app's next version from the same key.
+                val refusal = withContext(Dispatchers.IO) {
+                    val reason = if (!checksumMatches(expected, actual)) {
+                        Texts.get(R.string.update_checksum_mismatch)
+                    } else {
+                        inspect(apk, release.version)?.let(::problemText)
+                    }
+                    reason?.also { apk.delete() }
                 }
-                UpdateDownload.Ready(apk)
+                if (refusal == null) UpdateDownload.Ready(apk) else UpdateDownload.Failed(refusal)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: ChecksumMismatchException) {
-                UpdateDownload.Failed(Texts.get(R.string.update_checksum_mismatch))
             } catch (e: Exception) {
                 UpdateDownload.Failed(Texts.get(R.string.update_download_failed, e.userMessage()))
             }
-            _state.update { it.copy(download = result) }
+            publish(result)
         }
     }
 
@@ -174,6 +184,8 @@ class Updater(
 
     private fun show(release: Release?, checkedAt: Long?) {
         val newer = release?.takeIf { isNewer(it.version, installed) }
+        // A download of a release no longer offered stops; its result would be dropped anyway.
+        if (newer?.apkUrl != _state.value.available?.apkUrl) downloadJob?.cancel()
         _state.update { current ->
             current.copy(
                 checkedAt = checkedAt,
@@ -185,7 +197,18 @@ class Updater(
         }
     }
 
+    private fun problemText(problem: ApkProblem): String = Texts.get(
+        when (problem) {
+            ApkProblem.UNREADABLE -> R.string.update_apk_unreadable
+            ApkProblem.OTHER_APP -> R.string.update_apk_other_app
+            ApkProblem.NOT_NEWER -> R.string.update_apk_not_newer
+            ApkProblem.OTHER_VERSION -> R.string.update_apk_other_version
+            ApkProblem.OTHER_SIGNER -> R.string.update_apk_other_signer
+        },
+    )
+
     private companion object {
+
         /** GitHub's answers to too many requests without a token. */
         val RATE_LIMITED = setOf(403, 429)
         /** The APK is about 20 MB; anything this large is not it. */

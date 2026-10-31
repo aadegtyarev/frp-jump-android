@@ -476,4 +476,9 @@
     <string name="update_no_installer">No installer on this phone opens the APK.</string>
     <string name="update_snackbar">Update %s is available</string>
     <string name="update_snackbar_show">Show</string>
+    <string name="update_apk_unreadable">The downloaded file is not an APK Android can read; it was deleted.</string>
+    <string name="update_apk_other_app">The downloaded APK is another app, not frp-jump; it was deleted.</string>
+    <string name="update_apk_not_newer">The downloaded APK is not newer than the installed app; it was deleted.</string>
+    <string name="update_apk_other_version">The downloaded APK is not the version this release names; it was deleted.</string>
+    <string name="update_apk_other_signer">The downloaded APK is not signed with this app’s key; it was deleted.</string>
 </resources>

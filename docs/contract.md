@@ -176,10 +176,16 @@ version and update).
 ### 10. Updates
 
 - Release APKs are signed with one release key kept outside the repository.
-- The app checks for a newer release on start and at most once a day, shows
-  "Update to x.y.z", downloads the APK and hands it to the system installer.
-  Nothing is installed without the owner's tap.
-- Where releases are published: see open decisions.
+- Releases are published as GitHub Releases of this repository, which is
+  public: the APK and its `<apk>.sha256`, read without a token.
+- The app checks for a newer release on start and at most once a day, and
+  when the owner asks from Settings; shows "Update to x.y.z" with the release
+  notes, downloads the APK and hands it to the system installer. Nothing is
+  installed without the owner's tap.
+- Before the installer, the download must match the published SHA-256 and be
+  this app (same package), newer (higher versionCode), the version the
+  release names, and signed with the installed app's key; otherwise it is
+  deleted and the owner is told why.
 
 ## Wire behaviour the app must match
 
@@ -235,12 +241,13 @@ Screens touched by stages 1–5 get the new look in the same stage.
 - System language English → English UI; Russian → Russian.
 - Install 0.2.0, publish 0.2.1: the app offers and installs the update.
 
+## Decided
+
+- Where release APKs live: GitHub Releases of this repository, now public;
+  no token in the app.
+
 ## Open decisions
 
-- Where release APKs live. The repository is private, so its GitHub Releases
-  are not downloadable without a token. Options: a small public repository
-  with release APKs only (recommended), or an APK served from the frp-jump
-  server (needs a server change).
 - frp-jump release tag: the hot-reload change for exposing devices is in
   master but not released; until devices update, their tunnels still restart
   when a grant changes.

@@ -21,9 +21,6 @@ import kotlin.coroutines.resumeWithException
 /** GitHub answered with something other than a release; [status] is the HTTP status. */
 class ReleaseCheckException(val status: Int) : IOException("GitHub answered HTTP $status")
 
-/** A download's SHA-256 is not the one published with it. */
-class ChecksumMismatchException : IOException("SHA-256 does not match the published one")
-
 /**
  * The project's GitHub Releases, read without a token: the latest release
  * (with the ETag of the last answer, so an unchanged one is a cheap 304) and
@@ -34,6 +31,14 @@ class ReleaseSource(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        // Release files redirect to GitHub's storage: redirects are followed, but
+        // never from https to http, and every hop must be one of GitHub's hosts.
+        .followSslRedirects(false)
+        .addNetworkInterceptor { chain ->
+            val url = chain.request().url
+            if (!url.isHttps || !githubHost(url.host)) throw IOException("not a GitHub address: ${url.host}")
+            chain.proceed(chain.request())
+        }
         .build(),
 ) {
     sealed interface Latest {
@@ -59,7 +64,7 @@ class ReleaseSource(
                 response.code == 304 -> Latest.NotModified
                 response.code == 404 -> Latest.None
                 !response.isSuccessful -> throw ReleaseCheckException(response.code)
-                else -> Latest.Fresh(response.body?.string().orEmpty(), response.header("ETag"))
+                else -> Latest.Fresh(response.readText(MAX_RELEASE_JSON), response.header("ETag"))
             }
         }
     }
@@ -68,10 +73,7 @@ class ReleaseSource(
     suspend fun text(url: String, limit: Int = 4096): String = withContext(Dispatchers.IO) {
         http.newCall(get(url)).await().use { response ->
             if (!response.isSuccessful) throw ReleaseCheckException(response.code)
-            val body = response.body ?: throw IOException("empty answer")
-            val bytes = body.byteStream().use { it.readNBytesUpTo(limit + 1) }
-            if (bytes.size > limit) throw IOException("$url is larger than $limit bytes")
-            String(bytes, Charsets.UTF_8)
+            response.readText(limit)
         }
     }
 
@@ -103,13 +105,23 @@ class ReleaseSource(
     }
 
     private fun get(url: String): Request {
-        // Release files redirect to GitHub's storage; the client follows https redirects only.
         require(url.startsWith("https://")) { "not an https URL: $url" }
         return Request.Builder().url(url).build()
     }
 
+    /** The body as text, at most [limit] bytes; a larger one is refused. */
+    private fun Response.readText(limit: Int): String {
+        val body = body ?: throw IOException("empty answer")
+        val bytes = body.byteStream().use { it.readNBytesUpTo(limit + 1) }
+        if (bytes.size > limit) throw IOException("${request.url.host} answered more than $limit bytes")
+        return String(bytes, Charsets.UTF_8)
+    }
+
     companion object {
         const val LATEST_URL = "https://api.github.com/repos/${BuildConfig.UPDATE_REPOSITORY}/releases/latest"
+
+        /** A release's JSON is a few KiB, its notes included. */
+        private const val MAX_RELEASE_JSON = 1024 * 1024
     }
 }
 
@@ -136,6 +148,12 @@ fun copyHashing(input: InputStream, output: OutputStream, maxBytes: Long, onChun
 
 /** Whether a download hashed to [actual] is the file published with checksum [expected]. */
 fun checksumMatches(expected: String, actual: String): Boolean = expected.isNotEmpty() && expected.equals(actual, ignoreCase = true)
+
+/** github.com, api.github.com and GitHub's file storage (*.githubusercontent.com): nothing else is asked for. */
+fun githubHost(host: String): Boolean {
+    val h = host.lowercase()
+    return h == "github.com" || h == "api.github.com" || h.endsWith(".githubusercontent.com")
+}
 
 fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 

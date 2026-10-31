@@ -40,6 +40,9 @@ import ru.adsrv.frpjump.ui.web.clearWebData
 import ru.adsrv.frpjump.update.ReleaseSource
 import ru.adsrv.frpjump.update.UpdateRecordStore
 import ru.adsrv.frpjump.update.Updater
+import ru.adsrv.frpjump.update.apkProblem
+import ru.adsrv.frpjump.update.archiveFacts
+import ru.adsrv.frpjump.update.installedFacts
 import ru.adsrv.frpjump.update.updateDownloads
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
@@ -162,6 +165,7 @@ class FrpJumpApp : Application() {
             source = ReleaseSource(),
             downloads = updateDownloads(this),
             scope = appScope,
+            inspect = { apk, version -> apkProblem(archiveFacts(this, apk), installedFacts(this), version) },
         ).also { it.start(visible) }
         installFullBouncyCastle()
         // Its own Keystore key, shared by all profiles: re-enrolling must not lose the SSH key.

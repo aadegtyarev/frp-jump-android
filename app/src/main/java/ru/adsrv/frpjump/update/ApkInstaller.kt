@@ -19,16 +19,16 @@ object ApkInstaller {
     /** Whether the owner allowed this app to install apps ("Install unknown apps"). */
     fun allowed(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
 
-    /** False when no installer took it. */
+    /** False when there is no system installer to take it. */
     fun install(context: Context, apk: File): Boolean {
         val uri = FileProvider.getUriForFile(context, authority(context), apk)
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, APK_TYPE)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        // Straight to the system's installer: a file manager taking APKs too would otherwise ask "Open with".
-        context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_SYSTEM_ONLY)
-            .firstOrNull()?.activityInfo?.packageName?.let { intent.setPackage(it) }
-        return start(context, intent)
+        // The system's installer only: not a file manager or another app that also takes APKs.
+        val installer = context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_SYSTEM_ONLY)
+            .firstOrNull()?.activityInfo?.packageName ?: return false
+        return start(context, intent.setPackage(installer))
     }
 
     /** This app's "Install unknown apps" switch; the list of all apps as a fallback. */

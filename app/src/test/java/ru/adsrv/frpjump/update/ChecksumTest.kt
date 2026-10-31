@@ -41,4 +41,14 @@ class ChecksumTest {
         assertFalse(checksumMatches(abc, abc.replaceFirst('b', 'c')))
         assertFalse(checksumMatches("", ""))
     }
+
+    @Test
+    fun `only GitHub's hosts`() {
+        listOf("github.com", "api.github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com", "GitHub.com").forEach {
+            assertTrue(it, githubHost(it))
+        }
+        listOf("example.com", "github.com.evil.net", "evilgithub.com", "githubusercontent.com.evil.net", "gist.github.io").forEach {
+            assertFalse(it, githubHost(it))
+        }
+    }
 }

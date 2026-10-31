@@ -31,9 +31,6 @@ android {
         buildConfigField("String", "FRPC_VERSION", "\"0.70.0\"")
         // Settings › Version looks for newer releases here (public GitHub Releases, no token).
         buildConfigField("String", "UPDATE_REPOSITORY", "\"aadegtyarev/frp-jump-android\"")
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
     }
 
     signingConfigs {
@@ -48,7 +45,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // x86_64 too, for the emulator.
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
         release {
+            // Phones only: frpc for x86_64 would double the APK.
+            ndk { abiFilters += listOf("arm64-v8a") }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

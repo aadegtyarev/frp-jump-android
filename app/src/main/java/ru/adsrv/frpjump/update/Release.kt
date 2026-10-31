@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.update
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import ru.adsrv.frpjump.BuildConfig
 import ru.adsrv.frpjump.api.WireJson
 
 /** `GET /repos/{owner}/{repo}/releases/latest`, the fields the app reads. */
@@ -42,13 +43,15 @@ data class Release(
  * one, is a draft, has no version tag or carries no APK. Of several APKs,
  * the one named like the release script names it is taken.
  */
-fun parseRelease(json: String): Release? {
+fun parseRelease(json: String, downloads: String = DOWNLOAD_PREFIX): Release? {
     val release = runCatching { WireJson.decodeFromString<GitHubRelease>(json) }.getOrNull() ?: return null
     if (release.draft) return null
     val version = AppVersion.parse(release.tagName) ?: return null
-    val apks = release.assets.filter { it.name.endsWith(".apk", ignoreCase = true) && it.url.startsWith("https://") }
+    // Only files of this repository's releases, whatever else the answer names.
+    val files = release.assets.filter { it.url.startsWith(downloads) }
+    val apks = files.filter { it.name.endsWith(".apk", ignoreCase = true) }
     val apk = apks.firstOrNull { it.name.startsWith(APK_PREFIX) } ?: apks.firstOrNull() ?: return null
-    val checksum = release.assets.firstOrNull { it.name == apk.name + CHECKSUM_SUFFIX && it.url.startsWith("https://") }
+    val checksum = files.firstOrNull { it.name == apk.name + CHECKSUM_SUFFIX }
     return Release(
         version = version.toString(),
         notes = release.body.orEmpty().trim(),
@@ -76,6 +79,8 @@ fun checksumFor(text: String, apkName: String): String? {
     return null
 }
 
+/** Where this repository's release files are; [parseRelease] takes no other. */
+const val DOWNLOAD_PREFIX = "https://github.com/${BuildConfig.UPDATE_REPOSITORY}/releases/download/"
 const val APK_PREFIX = "frp-jump-android-"
 const val CHECKSUM_SUFFIX = ".sha256"
 private val SHA256_HEX = Regex("""[0-9a-f]{64}""")

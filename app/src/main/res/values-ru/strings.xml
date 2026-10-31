@@ -497,4 +497,9 @@
     <string name="update_no_installer">На телефоне нет установщика, который открыл бы APK.</string>
     <string name="update_snackbar">Доступно обновление %s</string>
     <string name="update_snackbar_show">Показать</string>
+    <string name="update_apk_unreadable">Скачанный файл — не APK, который Android может прочитать; он удалён.</string>
+    <string name="update_apk_other_app">Скачанный APK — другое приложение, не frp-jump; он удалён.</string>
+    <string name="update_apk_not_newer">Скачанный APK не новее установленного приложения; он удалён.</string>
+    <string name="update_apk_other_version">Версия скачанного APK не та, что указана в выпуске; он удалён.</string>
+    <string name="update_apk_other_signer">Скачанный APK подписан не ключом этого приложения; он удалён.</string>
 </resources>

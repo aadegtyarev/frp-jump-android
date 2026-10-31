@@ -5,8 +5,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ReleaseTest {
-    private fun asset(name: String, size: Long = 100) =
-        """{"name":"$name","size":$size,"browser_download_url":"https://github.com/o/r/releases/download/v0.2.1/$name","content_type":"x"}"""
+    private fun asset(name: String, size: Long = 100, url: String = "${DOWNLOAD_PREFIX}v0.2.1/$name") =
+        """{"name":"$name","size":$size,"browser_download_url":"$url","content_type":"x"}"""
 
     private fun release(tag: String = "v0.2.1", draft: Boolean = false, body: String? = "\"Fixes\\n- one\"", vararg assets: String) =
         """{"tag_name":"$tag","name":"frp-jump-android","draft":$draft,"prerelease":false,"body":$body,
@@ -19,8 +19,8 @@ class ReleaseTest {
         assertEquals("Fixes\n- one", r.notes)
         assertEquals("frp-jump-android-0.2.1.apk", r.apkName)
         assertEquals(21_000_000L, r.apkSize)
-        assertEquals("https://github.com/o/r/releases/download/v0.2.1/frp-jump-android-0.2.1.apk", r.apkUrl)
-        assertEquals("https://github.com/o/r/releases/download/v0.2.1/frp-jump-android-0.2.1.apk.sha256", r.checksumUrl)
+        assertEquals("https://github.com/aadegtyarev/frp-jump-android/releases/download/v0.2.1/frp-jump-android-0.2.1.apk", r.apkUrl)
+        assertEquals("https://github.com/aadegtyarev/frp-jump-android/releases/download/v0.2.1/frp-jump-android-0.2.1.apk.sha256", r.checksumUrl)
         assertEquals("https://github.com/o/r/releases/tag/v0.2.1", r.pageUrl)
     }
 
@@ -50,6 +50,22 @@ class ReleaseTest {
         assertNull(parseRelease(release(tag = "nightly", assets = arrayOf(asset("frp-jump-android-0.2.1.apk")))))
         assertNull(parseRelease("""{"message":"Not Found","documentation_url":"https://docs.github.com"}"""))
         assertNull(parseRelease("not json"))
+    }
+
+    @Test
+    fun `files from anywhere but this repository's releases are not taken`() {
+        val elsewhere = "https://github.com/someone/else/releases/download/v0.2.1/frp-jump-android-0.2.1.apk"
+        assertNull(parseRelease(release(assets = arrayOf(asset("frp-jump-android-0.2.1.apk", url = elsewhere)))))
+        assertNull(parseRelease(release(assets = arrayOf(asset("frp-jump-android-0.2.1.apk", url = "http://github.com/aadegtyarev/frp-jump-android/releases/download/v0.2.1/a.apk")))))
+        val foreignChecksum = parseRelease(
+            release(
+                assets = arrayOf(
+                    asset("frp-jump-android-0.2.1.apk"),
+                    asset("frp-jump-android-0.2.1.apk.sha256", url = "https://example.com/frp-jump-android-0.2.1.apk.sha256"),
+                ),
+            ),
+        )!!
+        assertNull(foreignChecksum.checksumUrl)
     }
 
     @Test
