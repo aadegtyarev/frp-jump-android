@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /** A device's file system in memory, with links, refusals and failures on demand. */
@@ -13,7 +14,8 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
     private class File(var bytes: ByteArray, val modified: Long = 0) : Node
     private class Link(val target: String) : Node
 
-    private val nodes = sortedMapOf<String, Node>("/" to Dir)
+    // Uploads in tests run on several threads at once: a plain TreeMap breaks under that.
+    private val nodes = ConcurrentSkipListMap<String, Node>(mapOf("/" to Dir))
 
     /** `stat` of these is refused: no permission to look. */
     val denied = mutableSetOf<String>()
