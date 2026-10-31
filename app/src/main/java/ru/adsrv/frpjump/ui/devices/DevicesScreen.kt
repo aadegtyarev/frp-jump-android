@@ -22,8 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +31,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -76,7 +73,6 @@ import ru.adsrv.frpjump.ui.DeviceGlyph
 import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
-import ru.adsrv.frpjump.ui.connections.OpenThroughText
 import ru.adsrv.frpjump.ui.ageText
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.profiles.Chip
@@ -120,9 +116,6 @@ fun DevicesScreen(
     LaunchedEffect(notice, current?.id) {
         if (notice != null) vm.takeNotice()?.let { snackbar.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
     }
-    // The bar's "disconnect all": this profile's tunnels, as its count shows; asked first, a spinner until the server was told.
-    var confirmDisconnect by remember { mutableStateOf<ProfileItem?>(null) }
-    var disconnecting by remember { mutableStateOf<String?>(null) }
     // Search: the bar turns into a field and the list follows it; ✕ or Back closes it and shows them all again.
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -154,7 +147,8 @@ fun DevicesScreen(
                     hint = stringResource(R.string.devices_search_hint),
                 )
             } else {
-                Header(current, onProfiles, onTunnels, disconnecting = current != null && disconnecting == current.id, onDisconnect = { confirmDisconnect = current }, onSearch = {
+                // The bar's "disconnect all": this profile's tunnels, as its count shows, go down at once, with Undo.
+                Header(current, onProfiles, onTunnels, onDisconnect = { current?.let { vm.actions.disconnectProfile(it.id) } }, onSearch = {
                     searching = true
                     focusOnOpen = true
                 }.takeIf { !state.devices.isNullOrEmpty() })
@@ -179,42 +173,18 @@ fun DevicesScreen(
             DeviceRows(state, query, vm::pull, onOpen)
         }
     }
-    confirmDisconnect?.let { profile ->
-        val open = vm.actions.openOnProfile(profile.id)
-        val colors = AppTheme.colors
-        AlertDialog(
-            onDismissRequest = { confirmDisconnect = null },
-            title = { Text(stringResource(R.string.disconnect_all_confirm_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.disconnect_profile_text, profile.name))
-                    if (open.any) OpenThroughText(open)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDisconnect = null
-                    disconnecting = profile.id
-                    vm.actions.disconnectProfile(profile.id) { if (disconnecting == profile.id) disconnecting = null }
-                }) { Text(stringResource(R.string.disconnect), color = colors.error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmDisconnect = null }) { Text(stringResource(R.string.cancel)) } },
-        )
-    }
 }
 
 /**
  * The switcher, this profile's tunnel count (a tap: [onTunnels]) with the
- * power button that disconnects them all ([onDisconnect]; a spinner while
- * [disconnecting]), and search ([onSearch], null while there is nothing to
- * search); terminals and settings are tabs of their own.
+ * power button that disconnects them all ([onDisconnect]), and search
+ * ([onSearch], null while there is nothing to search); terminals and settings are tabs of their own.
  */
 @Composable
 private fun Header(
     current: ProfileItem?,
     onProfiles: () -> Unit,
     onTunnels: () -> Unit,
-    disconnecting: Boolean,
     onDisconnect: () -> Unit,
     onSearch: (() -> Unit)?,
 ) {
@@ -230,13 +200,8 @@ private fun Header(
         current?.tunnels?.takeIf { it > 0 }?.let {
             TunnelsChip(it, onTunnels)
             val label = stringResource(R.string.disconnect_all_tunnels)
-            // Named on the button, so the spinner keeps the name too.
-            IconButton(onClick = onDisconnect, enabled = !disconnecting, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) {
-                if (disconnecting) {
-                    CircularProgressIndicator(Modifier.size(18.dp), color = colors.error, strokeWidth = 2.dp)
-                } else {
-                    Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
-                }
+            IconButton(onClick = onDisconnect, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) {
+                Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
             }
         }
         onSearch?.let {

@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.undo
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,6 +19,9 @@ class PendingUndoTest {
     private var shown: Int? = null
     private var undoOnNotice: (() -> Unit)? = null
 
+    /** What the notice counts, by kind. */
+    private var kinds: Map<UndoKind, Int>? = null
+
     private val pending = PendingUndo(
         timer = { ms, block ->
             timerDelay = ms
@@ -26,9 +30,10 @@ class PendingUndoTest {
             cancel
         },
         run = { commit -> runBlocking { commit() } },
-        announce = { count, undo ->
-            shown = count
-            undoOnNotice = undo.takeIf { count != null }
+        announce = { counts, undo ->
+            shown = counts?.values?.sum()
+            kinds = counts
+            undoOnNotice = undo.takeIf { counts != null }
         },
     )
 
@@ -145,5 +150,42 @@ class PendingUndoTest {
         runBlocking { runs.single()() }
         assertEquals(listOf("1", "2"), order)
         assertEquals(emptySet<String>(), slow.hidden.value)
+    }
+
+    @Test
+    fun `the notice counts each kind, in a fixed order`() {
+        pending.enqueue("tunnel:p1/a:22", commit = {}, kind = UndoKind.DISCONNECTED)
+        delete("snippet:a")
+        pending.enqueue("tunnel:p1/a:80", commit = {}, kind = UndoKind.DISCONNECTED)
+        assertEquals(mapOf(UndoKind.DISCONNECTED to 2, UndoKind.DELETED to 1), kinds)
+        val word = { kind: UndoKind, n: Int -> "${kind.name.lowercase()} $n" }
+        assertEquals("deleted 1 · disconnected 2", undoText(kinds!!, word))
+        assertEquals("closed 1", undoText(mapOf(UndoKind.CLOSED to 1), word))
+    }
+
+    @Test
+    fun `withdrawing one takes it back alone, the notice counting the rest`() {
+        delete("snippet:a")
+        delete("snippet:b")
+        assertTrue(pending.withdraw("snippet:a"))
+        assertEquals(listOf("snippet:a"), restored)
+        assertEquals(setOf("snippet:b"), pending.hidden.value)
+        assertEquals(1, shown)
+        // Not waiting (any more): nothing to take back.
+        assertFalse(pending.withdraw("snippet:a"))
+        assertFalse(pending.withdraw("snippet:z"))
+        expire()
+        assertEquals(listOf("snippet:b"), done)
+    }
+
+    @Test
+    fun `withdrawing the last one hides the notice and stops its time`() {
+        delete("snippet:a")
+        assertTrue(pending.withdraw("snippet:a"))
+        assertNull(shown)
+        assertNull(timer)
+        assertEquals(emptySet<String>(), pending.hidden.value)
+        pending.commitAll()
+        assertTrue(done.isEmpty())
     }
 }

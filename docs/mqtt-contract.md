@@ -68,10 +68,10 @@ The same thing is called the same way on every screen:
   leaving keeps it connected (the tree keeps filling), with the notice
   "N sessions keep running: Sessions tab"; "MQTT" on the same connection
   returns to its one session; sessions close only deliberately, from the
-  Sessions tab or the explorer's "⋮".
-- Counts of sessions include both kinds: the disconnect warning ("N
-  sessions will close"), the notification ("N sessions") and the "keeps
-  running" notice.
+  Sessions tab (✕ on its row) or the explorer's "⋮", with Undo (UI rules):
+  the session ends when Undo is gone.
+- Counts of sessions include both kinds: the notification ("N sessions")
+  and the "keeps running" notice.
 
 ## Connecting
 

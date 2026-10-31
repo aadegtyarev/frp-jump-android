@@ -65,7 +65,8 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
     private fun uiState(connections: List<Connection>, hidden: Set<String>, tunnels: TunnelsState, list: DeviceList, profileName: String) =
         DeviceCardUiState(
             // Hidden in the rows, not before them: their tunnel must not show as an unsaved one.
-            rows = connectionRows(profile, connections, tunnels, device, hidden = PendingUndo.connectionIds(hidden, profile)),
+            // A tunnel whose disconnect waits for Undo shows down.
+            rows = connectionRows(profile, connections, tunnels.withoutDark(PendingUndo.darkTunnels(hidden, profile)), device, hidden = PendingUndo.connectionIds(hidden, profile)),
             device = list.devices?.firstOrNull { it.name == device },
             profileName = profileName,
             syncError = tunnels.syncError,

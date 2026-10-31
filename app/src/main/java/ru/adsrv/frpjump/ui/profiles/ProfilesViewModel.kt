@@ -42,7 +42,7 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     val items: StateFlow<List<ProfileItem>> =
-        combine(app.profiles.state, app.profiles.tunnelsByProfile, removed, servers) { state, tunnels, gone, known ->
+        combine(app.profiles.state, app.profiles.shownTunnelsByProfile, removed, servers) { state, tunnels, gone, known ->
             profileItems(state.index, tunnels, gone, currentServers(enrollmentsOf(state), known))
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 

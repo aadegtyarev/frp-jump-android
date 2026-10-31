@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -98,6 +97,10 @@ import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.undo.PendingUndo
+import ru.adsrv.frpjump.sessions.SessionCloser
+import ru.adsrv.frpjump.sessions.sessionHidden
+import ru.adsrv.frpjump.tunnel.SessionKind
+import ru.adsrv.frpjump.tunnel.TunnelRef
 
 /** The SSH sessions as tabs, the selected one in a Termux terminal view. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -109,6 +112,8 @@ fun TerminalScreen(
     snippetStore: SnippetStore,
     /** Where a deleted snippet waits for its Undo to run out. */
     pendingUndo: PendingUndo,
+    /** Closes a tab's session when its Undo is gone. */
+    closeSessions: SessionCloser,
     /** Profile id to its colour's name, for the tabs' dots. */
     profileColors: Map<String, String>,
     initialId: Int,
@@ -122,9 +127,13 @@ fun TerminalScreen(
     /** Where a session's "Use key login" installs the key; null when its login is not by password. */
     keyLoginTarget: (SshSession) -> KeyInstallTarget?,
 ) {
-    val list by sessions.sessions.collectAsStateWithLifecycle()
+    val all by sessions.sessions.collectAsStateWithLifecycle()
     val stored by snippetStore.snippets.collectAsStateWithLifecycle()
     val hidden by pendingUndo.hidden.collectAsStateWithLifecycle()
+    // A tab closed, or its tunnel disconnected, while the Undo is on screen is not shown; it still runs.
+    val list = remember(all, hidden) {
+        all.filterNot { sessionHidden(hidden, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) }
+    }
     // One deleted while its Undo is on screen is not offered.
     val snippets = remember(stored, hidden) { stored.filter { PendingUndo.snippetKey(it.id) !in hidden } }
     var managing by rememberSaveable { mutableStateOf(false) }
@@ -196,21 +205,22 @@ fun TerminalScreen(
         if (opened != null) selectedId = opened.id else context.notice(gone, NoticeKind.WARN)
     }
     // Closing the tab shown shows its neighbour, not the first tab.
-    fun closeTab(id: Int) {
+    fun dropTab(id: Int) {
         selectionAfterClose(list.map { it.id }, selected.id, id)?.let { selectedId = it }
         sessions.close(id)
+    }
+    // No question: the tab goes at once, with Undo on the notice; its shell ends when that goes.
+    // Undo brings it back, the same session, selected again.
+    fun closeTab(id: Int) {
+        selectionAfterClose(list.map { it.id }, selected.id, id)?.let { selectedId = it }
+        closeSessions.terminal(id, undo = { selectedId = id })
     }
     fun reconnectTab(id: Int) {
         sessions.reconnect(id)?.let { selectedId = it.id }
     }
-    /** A live session asked to close from its tab: confirmed first, its commands stop. */
-    var closing by remember { mutableStateOf<Int?>(null) }
     val tabActions = SessionTabActions(
         select = { selectedId = it },
-        close = { id ->
-            val live = list.firstOrNull { it.id == id }?.state?.value.let { it != null && it !is SshState.Ended }
-            if (live) closing = id else closeTab(id)
-        },
+        close = ::closeTab,
         reconnect = ::reconnectTab,
         changeLogin = ::changeLogin,
         // The same login at once; a refused one, or a remembered password since forgotten, needs the dialog.
@@ -455,38 +465,18 @@ fun TerminalScreen(
         )
     }
 
-    closing?.let { id ->
-        val session = list.firstOrNull { it.id == id }
-        if (session == null) {
-            closing = null
-        } else {
-            AlertDialog(
-                onDismissRequest = { closing = null },
-                title = { Text(stringResource(R.string.terminal_close_title, session.title)) },
-                text = { Text(stringResource(R.string.terminal_close_text)) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        closing = null
-                        closeTab(id)
-                    }) { Text(stringResource(R.string.terminal_close_session), color = colors.error) }
-                },
-                dismissButton = { TextButton(onClick = { closing = null }) { Text(stringResource(R.string.cancel)) } },
-            )
-        }
-    }
-
     KeyLoginDialogs(keyLogin)
 
     when (val s = state) {
         is SshState.HostKeyUnknown -> HostKeyTrustDialog(
             "${selected.device}:${selected.port}", s.presented,
             onTrust = selected::trustHostKey,
-            onCancel = { closeTab(selected.id) },
+            onCancel = { dropTab(selected.id) },
         )
         is SshState.HostKeyChanged -> HostKeyChangedDialog(
             "${selected.device}:${selected.port}", s.pinned, s.presented,
             onForget = selected::forgetOldHostKey,
-            onCancel = { closeTab(selected.id) },
+            onCancel = { dropTab(selected.id) },
         )
         else -> Unit
     }

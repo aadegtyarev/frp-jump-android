@@ -43,4 +43,12 @@ class RestorePlanTest {
         assertTrue("just restarted, not known yet", serviceNeeded(tunnels = 0, pending = null))
         assertFalse("disconnect all, or the last tunnel gone", serviceNeeded(tunnels = 0, pending = 0))
     }
+
+    @Test
+    fun `disconnect all tells at once only profiles with nothing up yet`() {
+        // p1 has tunnels up (they wait for Undo), p2 is still being restored, p3 had none, p4 is no longer listed.
+        val record = mapOf("p1" to 2, "p2" to 3, "p3" to 0, "p4" to 1)
+        assertEquals(setOf("p2"), restoringProfiles(record, setOf("p1", "p2", "p3"), up = mapOf("p1" to 2)))
+        assertEquals(emptySet<String>(), restoringProfiles(null, setOf("p1"), emptyMap()))
+    }
 }

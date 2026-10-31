@@ -71,7 +71,7 @@ class SshSessions(
     /** [through] as it is now. Main thread. */
     fun throughNow(): List<SessionOn> = _sessions.value.map { it.on(it.state.value) }
 
-    private fun SshSession.on(state: SshState) = SessionOn(TunnelRef(profile, device, port), state !is SshState.Ended, SessionKind.TERMINAL)
+    private fun SshSession.on(state: SshState) = SessionOn(TunnelRef(profile, device, port), state !is SshState.Ended, SessionKind.TERMINAL, id)
 
     /** Terminal text size in sp, shared by all sessions. */
     val fontSize = MutableStateFlow(DEFAULT_FONT_SP)

@@ -6,6 +6,8 @@ data class TunnelSummary(
     val profiles: Int,
     /** Tunnels still to come back after a restart; null when some are but how many is not read yet. */
     val restoring: Int? = 0,
+    /** Tunnels still running while their disconnect waits for Undo: not in [tunnels]. */
+    val dark: Int = 0,
 ) {
     /** "N tunnels in M profiles" is worth saying only when more than one profile has tunnels. */
     val namesProfiles: Boolean get() = profiles > 1
@@ -29,11 +31,15 @@ sealed interface TunnelsTitle {
 
     /** "Restoring tunnels…": just restarted, the record not read yet. */
     data object RestoringUnknown : TunnelsTitle
+
+    /** "Disconnecting…": every tunnel left is waiting for its Undo to go; not "0 tunnels". */
+    data object Disconnecting : TunnelsTitle
 }
 
-/** Restoring while none runs yet, else the tunnels up. */
+/** The tunnels up; with none, those going down, else restoring while none runs yet. */
 fun tunnelsTitle(summary: TunnelSummary): TunnelsTitle = when {
     summary.tunnels > 0 -> TunnelsTitle.Up(summary)
+    summary.dark > 0 -> TunnelsTitle.Disconnecting
     summary.restoring == null -> TunnelsTitle.RestoringUnknown
     summary.restoring > 0 -> TunnelsTitle.Restoring(summary.restoring)
     else -> TunnelsTitle.Up(summary)

@@ -196,31 +196,7 @@
     <string name="connect_named">Connect “%s”</string>
     <string name="disconnect_named">Disconnect “%s”</string>
     <string name="disconnect">Disconnect</string>
-    <string name="disconnect_confirm_title">Disconnect “%s”?</string>
-    <string name="disconnect_all_confirm_title">Disconnect all tunnels?</string>
-    <string name="disconnect_profile_text">Every tunnel of the “%s” profile disconnects.</string>
     <string name="disconnect_all_tunnels">Disconnect all tunnels</string>
-    <string name="tunnels_disconnected">Tunnels disconnected: %d</string>
-    <string name="tunnels_disconnected_unknown">Tunnels disconnected</string>
-    <plurals name="disconnect_closes_terminals">
-        <item quantity="one">%d terminal will close.</item>
-        <item quantity="other">%d terminals will close.</item>
-    </plurals>
-    <plurals name="disconnect_closes_mqtt">
-        <item quantity="one">%d MQTT session will close.</item>
-        <item quantity="other">%d MQTT sessions will close.</item>
-    </plurals>
-    <!-- Both kinds: "2 terminals and 1 MQTT session will close." -->
-    <string name="disconnect_closes_both">%1$s and %2$s will close.</string>
-    <plurals name="closing_terminals">
-        <item quantity="one">%d terminal</item>
-        <item quantity="other">%d terminals</item>
-    </plurals>
-    <plurals name="closing_mqtt">
-        <item quantity="one">%d MQTT session</item>
-        <item quantity="other">%d MQTT sessions</item>
-    </plurals>
-    <string name="disconnect_closes_files">Open Files screens lose the connection; their transfers stop.</string>
     <plurals name="notification_sessions">
         <item quantity="one">%d session</item>
         <item quantity="other">%d sessions</item>
@@ -234,8 +210,10 @@
         <item quantity="other">%d ended</item>
     </plurals>
     <string name="notice_dismiss">Hide</string>
-    <!-- Undo instead of confirm: the notice shared by deletes in a row -->
+    <!-- Undo instead of confirm: the notice shared by deletes, disconnects and closes in a row -->
     <string name="undo_deleted">Deleted: %d</string>
+    <string name="undo_disconnected">Disconnected: %d</string>
+    <string name="undo_closed">Closed: %d</string>
     <string name="undo">Undo</string>
     <string name="ssh_password_saved_spoken">%s, saved</string>
     <plurals name="terminal_sessions_count">
@@ -412,9 +390,8 @@
         <item quantity="one">%d session keeps running: Sessions tab</item>
         <item quantity="other">%d sessions keep running: Sessions tab</item>
     </plurals>
-    <string name="terminal_close_title">Close %s?</string>
-    <string name="terminal_close_text">The session ends and what runs in it on the device stops.</string>
     <string name="terminal_close_session">Close session</string>
+    <string name="session_close_named">Close “%s”</string>
     <string name="terminal_reconnect">Reconnect</string>
     <string name="terminal_status_host_key_unknown">Waiting for the host key decision</string>
     <string name="terminal_status_host_key_changed">Blocked: host key changed</string>

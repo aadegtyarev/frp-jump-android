@@ -48,6 +48,13 @@ data class ProfilesState(
 }
 
 /**
+ * Tunnels up by profile id in [states], without those [dark] (as
+ * [profilePortKey]s); a profile with none left is left out.
+ */
+fun shownTunnelCounts(states: Map<String, TunnelsState>, dark: Set<String>): Map<String, Int> =
+    states.mapValues { (id, s) -> s.tunnels.count { profilePortKey(id, it.device, it.port) !in dark } }.filterValues { it > 0 }
+
+/**
  * The app's profiles and one [ProfileRuntime] for each: every profile polls
  * and runs its own tunnels, whichever one the app shows ([ProfilesState.current]).
  */
@@ -56,6 +63,12 @@ class Profiles(
     private val store: ProfileStore,
     /** Tunnels by profile as last applied ([ru.adsrv.frpjump.restore.RestoreRecord.profiles]); null until read. */
     private val restoreRecord: StateFlow<Map<String, Int>?> = MutableStateFlow(emptyMap()),
+    /**
+     * Tunnels shown as down while their disconnect waits for Undo, as
+     * [profilePortKey]s ([ru.adsrv.frpjump.undo.PendingUndo.darkTunnels]):
+     * they still run, so only the counts the owner sees leave them out.
+     */
+    private val dark: StateFlow<Set<String>> = MutableStateFlow(emptySet()),
     private val open: (profile: Profile, store: ProfileStore, currentId: StateFlow<String?>) -> ProfileRuntime,
 ) {
     private val _state = MutableStateFlow(ProfilesState())
@@ -80,6 +93,18 @@ class Profiles(
     /** [tunnelsByProfile] as it is now. */
     fun tunnelsByProfileNow(): Map<String, Int> =
         _state.value.runtimes.mapValues { it.value.tunnels.state.value.tunnels.size }.filterValues { it > 0 }
+
+    /**
+     * Tunnels up as the owner sees them, by profile: those [dark] (their
+     * disconnect waiting for Undo) left out. What the chip and the
+     * notification count; whether the service runs follows [tunnelsByProfile].
+     */
+    val shownTunnelsByProfile: Flow<Map<String, Int>> =
+        combine(allTunnels { it }, dark) { states, gone -> shownTunnelCounts(states, gone) }.distinctUntilChanged()
+
+    /** [shownTunnelsByProfile] as it is now. */
+    fun shownTunnelsByProfileNow(): Map<String, Int> =
+        shownTunnelCounts(_state.value.runtimes.mapValues { it.value.tunnels.state.value }, dark.value)
 
     /**
      * Tunnels still to bring back after a cold start (see [pendingRestore]);

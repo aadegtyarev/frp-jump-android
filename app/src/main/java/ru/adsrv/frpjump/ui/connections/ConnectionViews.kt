@@ -33,7 +33,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -69,13 +68,11 @@ import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
-import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelStatus
-import ru.adsrv.frpjump.tunnel.closingSentence
 import ru.adsrv.frpjump.tunnel.sessionsThrough
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PinGlyph
@@ -349,8 +346,6 @@ class ConnectionUi {
     /** The row whose "Files" was tapped: the same login dialog, for a file screen. */
     var filesLogin by mutableStateOf<ConnectionRow?>(null)
 
-    /** The row whose Disconnect would close terminal sessions or file screens: asked first. */
-    var disconnecting by mutableStateOf<ConnectionRow?>(null)
     var editing by mutableStateOf<ConnectionRow?>(null)
     var menu by mutableStateOf<String?>(null)
 
@@ -424,8 +419,8 @@ fun rememberRowActions(
                 }
             }
         },
-        // Sessions and file screens on the tunnel close with it: ask first when there are any.
-        disconnect = { row -> if (actions.openThrough(row).any) ui.disconnecting = row else actions.disconnect(row) },
+        // No question: it shows down at once, with Undo on the notice; its sessions close when that goes.
+        disconnect = actions::disconnect,
         copy = copy,
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
@@ -500,8 +495,7 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
 }
 
 /**
- * The dialogs and the sheet of a connections screen: SSH login,
- * disconnect, change. [existing] lists a profile's connections, for the sheet's checks.
+ * The dialogs and the sheet of a connections screen: SSH login, change. [existing] lists a profile's connections, for the sheet's checks.
  */
 @Composable
 fun ConnectionDialogs(
@@ -577,23 +571,6 @@ fun ConnectionDialogs(
             confirmButton = {},
         )
     }
-    ui.disconnecting?.let { row ->
-        // Counted when asked: what is open now, not when Disconnect was tapped.
-        val open = actions.openThrough(row)
-        AlertDialog(
-            onDismissRequest = { ui.disconnecting = null },
-            title = { Text(stringResource(R.string.disconnect_confirm_title, rowName(row))) },
-            // Counted when asked; nothing open by now: no empty body.
-            text = if (open.any) ({ OpenThroughText(open) }) else null,
-            confirmButton = {
-                TextButton(onClick = {
-                    ui.disconnecting = null
-                    actions.disconnect(row)
-                }) { Text(stringResource(R.string.disconnect), color = AppTheme.colors.error) }
-            },
-            dismissButton = { TextButton(onClick = { ui.disconnecting = null }) { Text(stringResource(R.string.cancel)) } },
-        )
-    }
     ui.editing?.let { row ->
         // Live, not as the row was when "Change" was tapped: a tunnel may come up meanwhile.
         val now = rows.firstOrNull { it.key == row.key } ?: row
@@ -624,29 +601,5 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
     } catch (_: ActivityNotFoundException) {
         context.notice(context.getString(R.string.no_ssh_app), NoticeKind.WARN)
-    }
-}
-
-/**
- * What closes with the tunnels being disconnected: "2 terminals and 1 MQTT
- * session will close", and that open file screens lose their connection.
- */
-@Composable
-fun OpenThroughText(open: OpenThrough, modifier: Modifier = Modifier) {
-    val sessions = closingSentence(
-        open,
-        terminals = { pluralStringResource(R.plurals.disconnect_closes_terminals, it, it) },
-        mqtt = { pluralStringResource(R.plurals.disconnect_closes_mqtt, it, it) },
-        both = { t, m ->
-            stringResource(
-                R.string.disconnect_closes_both,
-                pluralStringResource(R.plurals.closing_terminals, t, t),
-                pluralStringResource(R.plurals.closing_mqtt, m, m),
-            )
-        },
-    )
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        sessions?.let { Text(it) }
-        if (open.files > 0) Text(stringResource(R.string.disconnect_closes_files))
     }
 }
