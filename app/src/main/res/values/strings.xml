@@ -208,6 +208,11 @@
     <string name="retry">Retry</string>
     <string name="open">Open</string>
     <string name="terminal">Terminal</string>
+    <string name="terminal_count">Terminal · %d</string>
+    <plurals name="terminal_sessions_count">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
     <string name="copy_address">Copy address</string>
     <string name="terminal_copied">Copied to the clipboard: %s</string>
     <string name="address_copied">Copied %s</string>

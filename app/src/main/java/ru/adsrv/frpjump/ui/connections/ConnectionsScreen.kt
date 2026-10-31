@@ -57,6 +57,7 @@ import ru.adsrv.frpjump.tunnel.Waiting
 import androidx.compose.ui.res.pluralStringResource
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.tunnel.DirectMode
+import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.LinkGlyph
 
@@ -74,6 +75,7 @@ fun ConnectionsScreen(
     onOpenFiles: (targetId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val ui = remember { ConnectionUi() }
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal)
     val colors = AppTheme.colors
@@ -135,11 +137,11 @@ fun ConnectionsScreen(
         }
         if (state.active.isNotEmpty()) {
             item(key = "active") { SectionTitle(stringResource(R.string.connections_active, state.active.size), top = 4) }
-            items(state.active, key = { it.key }) { row -> Line(row, state.colors[row.profile], ui, actions) }
+            items(state.active, key = { it.key }) { row -> Line(row, state.colors[row.profile], row.sessionsIn(sessions), ui, actions) }
         }
         if (state.saved.isNotEmpty()) {
             item(key = "saved") { SectionTitle(stringResource(R.string.connections_saved), top = if (state.active.isEmpty()) 4 else 12) }
-            items(state.saved, key = { it.key }) { row -> Line(row, state.colors[row.profile], ui, actions) }
+            items(state.saved, key = { it.key }) { row -> Line(row, state.colors[row.profile], row.sessionsIn(sessions), ui, actions) }
         }
     }
     if (confirmAll) {
@@ -177,7 +179,7 @@ private fun SectionTitle(text: String, top: Int) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, actions: RowActions) {
+private fun Line(row: ConnectionRow, profileColor: String?, sessions: SessionCount, ui: ConnectionUi, actions: RowActions) {
     val colors = AppTheme.colors
     val c = row.connection
     Box {
@@ -236,11 +238,12 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                             } else if (state == null) {
                                 Text(stringResource(R.string.connection_sub_short, kindLabel(c.kind), c.port), fontSize = 12.sp, color = colors.muted)
                             }
+                            SessionsPill(sessions)
                         }
                     }
                     if (row.tunnel != null) {
                         DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
-                        MainButton(mainActionLabel(row)) { actions.main(row) }
+                        MainButton(mainActionLabel(row, sessions)) { actions.main(row) }
                     } else {
                         ConnectIcon(row) { actions.connect(row) }
                     }

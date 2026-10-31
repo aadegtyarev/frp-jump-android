@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.connections
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
@@ -70,6 +71,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
             ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
     }
+
+    /** The terminal sessions of every tunnel, for the SSH rows' counts. */
+    val sessions: Flow<List<SessionOn>> = app.ssh.through
 
     fun connect(row: ConnectionRow) {
         val c = row.connection

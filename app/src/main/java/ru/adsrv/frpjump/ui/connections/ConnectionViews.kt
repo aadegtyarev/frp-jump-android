@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,7 +68,11 @@ import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.PendingOp
+import ru.adsrv.frpjump.tunnel.SessionCount
+import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelStatus
+import ru.adsrv.frpjump.tunnel.sessionsThrough
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.notice
@@ -186,16 +191,43 @@ fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier) {
 
 fun localAddress(port: Int) = "127.0.0.1:$port"
 
-/** The main action of an active connection: Open, Terminal, or Copy (the address; short, it shares the row with Disconnect). */
+/**
+ * The main action of an active connection: Open, Terminal ("Terminal · 2"
+ * with [sessions] of 2 or more open), or Copy (the address; short, it
+ * shares the row with Disconnect).
+ */
 @Composable
-fun mainActionLabel(row: ConnectionRow): String = stringResource(
-    when {
-        !row.saved -> R.string.copy
-        row.connection.kind == PortKind.WEB -> R.string.open
-        row.connection.kind == PortKind.SSH -> R.string.terminal
-        else -> R.string.copy
-    },
-)
+fun mainActionLabel(row: ConnectionRow, sessions: SessionCount = SessionCount.NONE): String = when {
+    !row.saved -> stringResource(R.string.copy)
+    row.connection.kind == PortKind.WEB -> stringResource(R.string.open)
+    row.connection.kind == PortKind.SSH && sessions.total >= 2 -> stringResource(R.string.terminal_count, sessions.total)
+    row.connection.kind == PortKind.SSH -> stringResource(R.string.terminal)
+    else -> stringResource(R.string.copy)
+}
+
+/** The terminal sessions of an SSH row as [count] has them; nothing for none. */
+fun ConnectionRow.sessionsIn(open: List<SessionOn>): SessionCount =
+    if (connection.kind != PortKind.SSH || !saved) SessionCount.NONE else sessionsThrough(open, TunnelRef(profile, connection.device, connection.port))
+
+/**
+ * "2 sessions" by an SSH row's address: the terminal sessions open on it,
+ * a red dot first when any of them has ended (its tab offers Reconnect).
+ */
+@Composable
+fun SessionsPill(count: SessionCount) {
+    if (count.total == 0) return
+    val c = AppTheme.colors
+    Row(
+        Modifier
+            .background(c.tile, CircleShape)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        if (count.ended > 0) Box(Modifier.size(6.dp).background(c.error, CircleShape))
+        Text(pluralStringResource(R.plurals.terminal_sessions_count, count.total, count.total), fontSize = 12.sp, color = c.muted, maxLines = 1)
+    }
+}
 
 /** A filled accent button of the mockups' rows (40 dp high). */
 @Composable

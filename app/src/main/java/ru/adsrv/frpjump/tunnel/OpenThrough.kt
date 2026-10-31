@@ -21,3 +21,16 @@ fun openThrough(sessions: List<SessionOn>, files: List<TunnelRef>, tunnel: Tunne
     val on = { ref: TunnelRef -> tunnel == null || ref == tunnel }
     return OpenThrough(sessions.count { it.live && on(it.tunnel) }, files.count(on))
 }
+
+/** The terminal sessions through one tunnel: how many, and how many of them have ended. */
+data class SessionCount(val total: Int, val ended: Int) {
+    companion object {
+        val NONE = SessionCount(0, 0)
+    }
+}
+
+/** The [sessions] through [tunnel] (a connection's device and port), as its row shows them. */
+fun sessionsThrough(sessions: List<SessionOn>, tunnel: TunnelRef): SessionCount {
+    val mine = sessions.filter { it.tunnel == tunnel }
+    return SessionCount(mine.size, mine.count { !it.live })
+}

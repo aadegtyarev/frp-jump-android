@@ -428,12 +428,15 @@ Give device web UIs a password, and disconnect tunnels you no longer use.
 ## SSH console
 
 "Terminal" on a connected SSH connection opens the session already open to
-that device and port (the last live one among the tabs, else the last ended one,
-with Reconnect), so leaving the terminal and coming back loses nothing; a new
-session is "+" on the tab row. With none open it asks for the user (the
-connection's, `root` by default; the method is remembered per device and
-port) and Key or Password, then opens a session to
-`127.0.0.1:<local port>`.
+that device and port (the last live one among the tabs, else the last
+ended one, with Reconnect), so leaving the terminal and coming back loses
+nothing; a new session is "+" on the tab row. With none open it asks for
+the user (the connection's, `root` by default; the method is remembered
+per device and port) and Key or Password, then opens a session to
+`127.0.0.1:<local port>`. The SSH row shows the sessions open on its
+device and port: "2 sessions" by the address (a red dot first when one of
+them has ended), and the main button reads "Terminal · 2" from two on
+(`sessionsThrough` in `tunnel/OpenThrough.kt`).
 
 - Key: the app makes one ed25519 key on first use; Settings shows its
   `authorized_keys` line with Copy / Share. "Import private key" takes an

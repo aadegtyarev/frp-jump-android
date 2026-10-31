@@ -18,12 +18,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.schmizz.sshj.SSHClient
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.tunnel.TunnelRef
 
 /** What the terminal screen hears about the sessions it shows. */
 interface TerminalScreenListener {
@@ -57,6 +60,18 @@ class SshSessions(
     val liveCount: Flow<Int> = _sessions
         .flatMapLatest { list ->
             if (list.isEmpty()) flowOf(0) else combine(list.map { it.state }) { states -> states.count { it !is SshState.Ended } }
+        }
+        .distinctUntilChanged()
+
+    /** Every session as the connection rows count them: its tunnel, and whether it is still live; as it changes. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val through: Flow<List<SessionOn>> = _sessions
+        .flatMapLatest { list ->
+            if (list.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(list.map { s -> s.state.map { SessionOn(TunnelRef(s.profile, s.device, s.port), it !is SshState.Ended) } }) { it.toList() }
+            }
         }
         .distinctUntilChanged()
 
