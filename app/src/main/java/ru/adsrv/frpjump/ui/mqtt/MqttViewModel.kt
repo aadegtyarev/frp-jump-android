@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -298,7 +299,13 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             viewModelScope.launch(Dispatchers.Main) { done(answer) }
             if (wasSent(answer)) {
                 viewModelScope.launch(Dispatchers.IO) {
-                    published.value = with(request) { memory.sent(s.profile, s.connectionId, topic, payload, retain, qos, json) }
+                    // Under the store's lock, so overlapping sends show in the order they were stored.
+                    synchronized(memory) {
+                        // A failed write (a full disk) keeps what was sent in memory; the send itself went.
+                        runCatching { with(request) { memory.sent(s.profile, s.connectionId, topic, payload, retain, qos, json) } }
+                            .onFailure { Log.w(TAG, "publish memory not saved: ${it.message}") }
+                        published.value = memory.get(s.profile, s.connectionId)
+                    }
                 }
             }
         }
@@ -322,6 +329,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
 
         /** Search hits listed at most. */
         const val MAX_HITS = 500
+
+        private const val TAG = "MqttViewModel"
     }
 }
 

@@ -23,7 +23,7 @@ data class SentTopic(
  * sessions and tunnels close: per topic its retain, QoS and format as last
  * sent and its last [MAX_PAYLOADS] payloads. Bounded: [MAX_TOPICS] topics
  * a connection, the least recently sent dropped first; a payload over
- * [MAX_PAYLOAD_CHARS] is not kept; at most [MAX_CHARS] of payloads a
+ * [MAX_PAYLOAD_BYTES] is not kept, a topic over [MAX_TOPIC_BYTES] not at all; at most [MAX_CHARS] of payloads a
  * connection, the oldest of the least recent topics dropped first. Read on
  * first use, off the main thread.
  */
@@ -37,14 +37,20 @@ class PublishMemory(private val storage: TextStorage) {
     @Synchronized
     fun get(profile: String, connectionId: String): List<SentTopic> = memory[connectionKey(profile, connectionId)].orEmpty()
 
-    /** Remembers a send of [payload] to [topic] with [retain], [qos] and the format; returns the connection's topics after it. */
+    /**
+     * Remembers a send of [payload] to [topic] with [retain], [qos] and the
+     * format; returns the connection's topics after it. A topic over
+     * [MAX_TOPIC_BYTES] is not remembered. Kept in memory even when writing
+     * the file fails (which then throws).
+     */
     @Synchronized
     fun sent(profile: String, connectionId: String, topic: String, payload: String, retain: Boolean, qos: Int, json: Boolean): List<SentTopic> {
         val key = connectionKey(profile, connectionId)
         val topics = memory[key].orEmpty()
+        if (utf8Length(topic) > MAX_TOPIC_BYTES) return topics
         val before = topics.firstOrNull { it.topic == topic }?.payloads.orEmpty()
-        val payloads = if (payload.length > MAX_PAYLOAD_CHARS) before else (listOf(payload) + (before - payload)).take(MAX_PAYLOADS)
-        val updated = bounded(listOf(SentTopic(topic, retain, qos, json, payloads)) + topics.filter { it.topic != topic })
+        val payloads = if (utf8Length(payload) > MAX_PAYLOAD_BYTES) before else (listOf(payload) + (before - payload)).take(MAX_PAYLOADS)
+        val updated = bounded(listOf(SentTopic(topic, retain, qos.coerceIn(0, 2), json, payloads)) + topics.filter { it.topic != topic })
         save(memory + (key to updated))
         return updated
     }
@@ -69,10 +75,13 @@ class PublishMemory(private val storage: TextStorage) {
 
     private fun read(): Map<String, List<SentTopic>> =
         runCatching { storage.read()?.let { WireJson.decodeFromString<Map<String, List<SentTopic>>>(it) } }.getOrNull().orEmpty()
+            // A QoS the sheet cannot show is taken as the nearest one.
+            .mapValues { (_, topics) -> topics.map { if (it.qos in 0..2) it else it.copy(qos = it.qos.coerceIn(0, 2)) } }
 
     private fun save(value: Map<String, List<SentTopic>>) {
-        storage.write(WireJson.encodeToString(value))
+        // In memory first: a failed write loses only the file's copy.
         loaded = value
+        storage.write(WireJson.encodeToString(value))
     }
 
     companion object {
@@ -82,8 +91,11 @@ class PublishMemory(private val storage: TextStorage) {
         /** Topics kept a connection. */
         const val MAX_TOPICS = 100
 
-        /** A longer payload is sent but not kept. */
-        const val MAX_PAYLOAD_CHARS = 4 * 1024
+        /** A longer payload (UTF-8 bytes) is sent but not kept. */
+        const val MAX_PAYLOAD_BYTES = 4 * 1024
+
+        /** A longer topic (UTF-8 bytes) is sent but nothing of it is kept. */
+        const val MAX_TOPIC_BYTES = 1024
 
         /** Characters of payloads kept a connection in all. */
         const val MAX_CHARS = 64 * 1024

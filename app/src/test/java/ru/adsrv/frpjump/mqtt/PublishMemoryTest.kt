@@ -1,10 +1,15 @@
 package ru.adsrv.frpjump.mqtt
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.ssh.MemoryStorage
+import ru.adsrv.frpjump.store.TextStorage
+import java.io.IOException
+import kotlinx.serialization.encodeToString
+import ru.adsrv.frpjump.api.WireJson
 
 class PublishMemoryTest {
     private fun SentTopic?.payloadsOrNone() = this?.payloads.orEmpty()
@@ -45,10 +50,39 @@ class PublishMemoryTest {
     fun `a payload too long to keep is sent without being remembered, the settings still are`() {
         val memory = PublishMemory(MemoryStorage())
         memory.sent("p", "c", "t", "small", false, 1, false)
-        memory.sent("p", "c", "t", "x".repeat(PublishMemory.MAX_PAYLOAD_CHARS + 1), true, 2, false)
+        // Counted in UTF-8 bytes: at the limit it is kept, a two-byte letter over it is not.
+        memory.sent("p", "c", "t", "x".repeat(PublishMemory.MAX_PAYLOAD_BYTES), false, 1, false)
+        memory.sent("p", "c", "t", "я".repeat(PublishMemory.MAX_PAYLOAD_BYTES / 2 + 1), true, 2, false)
         val t = memory.get("p", "c").of("t")!!
-        assertEquals(listOf("small"), t.payloads)
+        assertEquals(listOf("x".repeat(PublishMemory.MAX_PAYLOAD_BYTES), "small"), t.payloads)
         assertEquals(2, t.qos)
+    }
+
+    @Test
+    fun `a topic too long to keep is not remembered at all`() {
+        val memory = PublishMemory(MemoryStorage())
+        val long = "я".repeat(PublishMemory.MAX_TOPIC_BYTES / 2 + 1)
+        memory.sent("p", "c", long, "1", true, 2, false)
+        assertEquals(emptyList<SentTopic>(), memory.get("p", "c"))
+    }
+
+    @Test
+    fun `a QoS out of range in the file comes back as the nearest one`() {
+        val key = WireJson.encodeToString(listOf("p", "c"))
+        val storage = MemoryStorage(WireJson.encodeToString(mapOf(key to listOf(mapOf("topic" to "t", "qos" to "7")))).replace("\"7\"", "7"))
+        assertEquals(2, PublishMemory(storage).get("p", "c").of("t")!!.qos)
+    }
+
+    @Test
+    fun `what was sent stays in memory when the file cannot be written`() {
+        val storage = object : TextStorage {
+            override fun read(): String? = null
+            override fun write(text: String) = throw IOException("disk full")
+            override fun delete() = Unit
+        }
+        val memory = PublishMemory(storage)
+        assertThrows(IOException::class.java) { memory.sent("p", "c", "t", "1", true, 0, false) }
+        assertEquals(listOf("1"), memory.get("p", "c").of("t").payloadsOrNone())
     }
 
     @Test
@@ -61,7 +95,7 @@ class PublishMemoryTest {
         assertEquals("t${PublishMemory.MAX_TOPICS + 5}", topics.first().topic)
 
         val big = PublishMemory(MemoryStorage())
-        val chunk = PublishMemory.MAX_PAYLOAD_CHARS
+        val chunk = PublishMemory.MAX_PAYLOAD_BYTES
         val count = PublishMemory.MAX_CHARS / chunk + 3
         (1..count).forEach { big.sent("p", "c", "t$it", "$it".padEnd(chunk, '.'), false, 1, false) }
         val kept = big.get("p", "c")

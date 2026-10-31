@@ -5,6 +5,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class PayloadViewTest {
     private fun bytes(text: String) = text.toByteArray(Charsets.UTF_8)
@@ -28,6 +33,25 @@ class PayloadViewTest {
         listOf("21.5", "true", "\"on\"", "null", "{\"a\":", "[1,]", "{a:1}", "hello", "").forEach {
             assertEquals(it, PayloadView.TEXT, detectView(bytes(it)))
         }
+    }
+
+    @Test
+    fun `a deep tree hidden from the text count opens as text, without a stack overflow`() {
+        val hostile = bytes(hostileDeep(20_000))
+        assertEquals(PayloadView.TEXT, readPayload(hostile).view)
+        assertNull(jsonTree(hostile))
+        assertEquals(1, nestingDepth(hostileDeep(20_000)))
+    }
+
+    @Test
+    fun `the depth of a parsed tree is counted without recursion`() {
+        var deep: JsonElement = JsonArray(emptyList())
+        repeat(100_000) { deep = JsonArray(listOf(deep)) }
+        assertTrue(jsonDepth(deep) > MAX_JSON_DEPTH)
+        var atLimit: JsonElement = buildJsonObject { put("a", 1) }
+        repeat(MAX_JSON_DEPTH - 1) { atLimit = JsonArray(listOf(atLimit)) }
+        assertEquals(MAX_JSON_DEPTH, jsonDepth(atLimit))
+        assertEquals(0, jsonDepth(JsonPrimitive(1)))
     }
 
     @Test

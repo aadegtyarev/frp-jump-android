@@ -807,6 +807,7 @@
     <string name="mqtt_publish_failed">Не отправлено: %1$s</string>
     <string name="mqtt_publish_format_json">Отформатировать</string>
     <string name="mqtt_publish_formatted_already">Уже отформатировано</string>
+    <string name="mqtt_publish_format_too_large">После форматирования больше %1$d КБ, как JSON не отправить: оставлено как есть</string>
     <string name="mqtt_publish_json_empty">Пусто: для JSON нужно значение</string>
     <string name="mqtt_publish_json_too_large">Больше %1$d КБ: слишком большое для проверки JSON, отправьте как текст</string>
     <string name="mqtt_publish_json_too_deep">Вложенность глубже %1$d уровней</string>

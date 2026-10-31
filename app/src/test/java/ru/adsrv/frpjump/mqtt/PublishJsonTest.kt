@@ -39,6 +39,8 @@ class PublishJsonTest {
         assertEquals(JsonProblem.TooDeep, checkJson("{\"a\":".repeat(MAX_JSON_DEPTH + 1)).problem)
         val atLimit = "[".repeat(MAX_JSON_DEPTH) + "]".repeat(MAX_JSON_DEPTH)
         assertNull(checkJson(atLimit).problem)
+        // A quote in an unquoted word hides the depth from the count on the text: refused, no crash.
+        assertNotNull(checkJson(hostileDeep(20_000)).problem)
         // Brackets inside strings do not count.
         assertNull(checkJson("\"" + "[".repeat(1000) + "\"").problem)
     }
@@ -50,6 +52,13 @@ class PublishJsonTest {
         // Counted in UTF-8 bytes, not characters.
         val wide = "\"" + "я".repeat(MAX_JSON_BYTES / 2) + "\""
         assertEquals(JsonProblem.TooLarge, checkJson(wide).problem)
+    }
+
+    @Test
+    fun `format that would take the value over the limit gives nothing`() {
+        val compact = "[" + "1,".repeat(20_000) + "1]"
+        val element = checkJson(compact).element!!
+        assertNull(formatJson(element))
     }
 
     @Test
@@ -72,3 +81,10 @@ class PublishJsonTest {
         assertEquals(expected, formatJson(checkJson(expected).element!!))
     }
 }
+
+/**
+ * Arrays nested [depth] deep behind an unquoted word with a quote in it:
+ * the count on the text sees one level (the parser of kotlinx.serialization
+ * 1.7.3 refuses it at the quote; the tree is counted anyway).
+ */
+internal fun hostileDeep(depth: Int) = "[a\"," + "[".repeat(depth) + "]".repeat(depth) + "]"

@@ -35,15 +35,39 @@ private fun parseJsonTree(size: Int, text: String): JsonElement? {
     if (size > MAX_JSON_BYTES) return null
     val start = text.firstOrNull { !it.isWhitespace() }
     if (start != '{' && start != '[') return null
-    // Checked on the text, before any parsing: the lines are built recursively.
+    // Checked on the text first (cheap), then on the tree: the text count can be
+    // fooled (the parser takes unquoted words, `a"` among them), and the lines are built recursively.
     if (nestingDepth(text) > MAX_JSON_DEPTH) return null
     return try {
-        Json.parseToJsonElement(text).takeIf { it is JsonObject || it is JsonArray }
+        Json.parseToJsonElement(text).takeIf { (it is JsonObject || it is JsonArray) && jsonDepth(it) <= MAX_JSON_DEPTH }
     } catch (_: SerializationException) {
         null
     } catch (_: IllegalArgumentException) {
         null
     }
+}
+
+/**
+ * How deep objects and arrays nest in [element] (a scalar: 0), walked
+ * without recursion: safe on any tree the parser built. Stops counting
+ * past [MAX_JSON_DEPTH] + 1.
+ */
+internal fun jsonDepth(element: JsonElement): Int {
+    val stack = ArrayDeque<Pair<JsonElement, Int>>()
+    stack.addLast(element to 1)
+    var max = 0
+    while (stack.isNotEmpty()) {
+        val (e, depth) = stack.removeLast()
+        val children = when (e) {
+            is JsonObject -> e.values
+            is JsonArray -> e
+            else -> continue
+        }
+        max = maxOf(max, depth)
+        if (max > MAX_JSON_DEPTH) return max
+        children.forEach { stack.addLast(it to depth + 1) }
+    }
+    return max
 }
 
 /** How deep `{` and `[` nest in [text], outside strings; malformed text is counted as it comes. */

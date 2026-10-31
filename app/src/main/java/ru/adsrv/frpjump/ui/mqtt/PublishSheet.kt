@@ -23,6 +23,7 @@ import ru.adsrv.frpjump.mqtt.checkJson
 import ru.adsrv.frpjump.mqtt.formatJson
 import ru.adsrv.frpjump.mqtt.oneLineText
 import ru.adsrv.frpjump.ui.files.SecondaryButton
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ui.notice
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -117,6 +118,7 @@ fun PublishSheet(
     // An empty JSON value is flagged once Send or Format was tapped, not while the field is still untouched.
     var jsonFlagged by remember { mutableStateOf(false) }
     val jsonCheck = remember(payload, json) { if (json) checkJson(payload) else null }
+    val jsonProblem = jsonCheck?.problem?.let { jsonProblemText(it) }
     var sending by remember { mutableStateOf(false) }
     var answer by remember { mutableStateOf<PublishAnswer?>(null) }
     var edits by remember { mutableStateOf(0) }
@@ -163,20 +165,22 @@ fun PublishSheet(
                 mono = true,
                 singleLine = false,
                 minLines = 3,
-                problem = jsonCheck?.problem?.takeIf { it != JsonProblem.Empty || jsonFlagged }?.let { jsonProblemText(it) },
+                problem = jsonProblem?.takeIf { jsonCheck?.problem != JsonProblem.Empty || jsonFlagged },
             )
             if (json) {
                 SecondaryButton(stringResource(R.string.mqtt_publish_format_json), null, enabled = true, Modifier.fillMaxWidth()) {
                     val element = jsonCheck?.element
-                    if (element == null) {
-                        jsonFlagged = true
-                        return@SecondaryButton
-                    }
-                    val formatted = formatJson(element)
-                    if (formatted == payload) {
-                        context.notice(context.getString(R.string.mqtt_publish_formatted_already))
-                    } else {
-                        setPayload(formatted)
+                    val formatted = element?.let { formatJson(it) }
+                    when {
+                        // Not JSON: the problem under the field, and said again, so the tap is answered when it already shows.
+                        element == null -> {
+                            jsonFlagged = true
+                            jsonProblem?.let { context.notice(it, NoticeKind.WARN) }
+                        }
+                        // Formatted it would be too large to send as JSON: the value stays as it is.
+                        formatted == null -> context.notice(context.getString(R.string.mqtt_publish_format_too_large, MAX_JSON_BYTES / 1024), NoticeKind.WARN)
+                        formatted == payload -> context.notice(context.getString(R.string.mqtt_publish_formatted_already))
+                        else -> setPayload(formatted)
                     }
                 }
             }
@@ -231,7 +235,10 @@ fun PublishSheet(
                     problem = found
                     // As JSON, a value that is not JSON is not sent: its problem shows under the field.
                     val notJson = jsonCheck?.problem != null
-                    if (notJson) jsonFlagged = true
+                    if (notJson) {
+                        jsonFlagged = true
+                        jsonProblem?.let { context.notice(it, NoticeKind.WARN) }
+                    }
                     if (found != null || notJson) return@MainButton
                     sending = true
                     answer = null

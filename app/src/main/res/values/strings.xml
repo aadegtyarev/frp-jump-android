@@ -767,6 +767,7 @@
     <string name="mqtt_publish_failed">Not sent: %1$s</string>
     <string name="mqtt_publish_format_json">Format</string>
     <string name="mqtt_publish_formatted_already">Already formatted</string>
+    <string name="mqtt_publish_format_too_large">Formatted it would be over %1$d KB, too large to send as JSON: left as it is</string>
     <string name="mqtt_publish_json_empty">Empty: JSON needs a value</string>
     <string name="mqtt_publish_json_too_large">Over %1$d KB: too large to check as JSON, send it as Text</string>
     <string name="mqtt_publish_json_too_deep">Nested deeper than %1$d levels</string>
