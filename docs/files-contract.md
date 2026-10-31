@@ -101,22 +101,32 @@ transfers that resume and run in the background.
   app (Open with…), as web downloads are.
 - Viewer (decided 2026-11-01, read only): the file downloads to the cache
   with its bar on the card (Cancel, a failure with Retry), then shows over
-  the file screen; Back or the arrow closes it. A name the app knows as
-  text (`.txt`, `.log`, `.md`, `.json`, `.yaml`, `.conf`, `.ini`, `.sh`,
-  `.js`, systemd units, `.env`, dotfiles such as `.bashrc`, …) opens in
-  the viewer; a name known as binary (images, media, archives, `.pdf`,
-  `.apk`, `.db`, …) goes to Open with at once; any other name is
-  downloaded and looked at: no NUL byte and mostly printable UTF-8 in its
-  first 8 KB → the viewer, else Open with. Larger than 2 MB: Open with, and
-  a note says why.
+  the file screen; Back or the arrow closes it. A name known as binary
+  (images, media, archives, `.pdf`, `.apk`, `.db`, …) goes to Open with at
+  once. Any other file over 2 MB goes to Open with, and a note says why.
+  The rest is downloaded and looked at: no NUL byte and mostly printable
+  UTF-8 in its first 8 KB, and still at most 2 MB as downloaded → the
+  viewer, else Open with. A name known as text (`.txt`, `.log`, `.md`,
+  `.json`, `.yaml`, `.conf`, `.ini`, `.sh`, `.js`, systemd units, `.env`,
+  dotfiles such as `.bashrc`, …) picks the colours; it is looked at all
+  the same, as a name can lie.
+- The viewer's copy is deleted as it closes, unless Share or Open with
+  handed it to another app from there (then it is kept as files opened
+  with other apps are). Copies left by a viewer the process lost go at the
+  next start, once a few minutes old. A copy gone from under a viewer (the
+  cache cleared) closes it with a note.
 - It shows the text as UTF-8 (a bad byte shows as �), monospace, line
   numbers off, lines wrapped; "⋮" has Wrap lines, Line numbers, the text
   size (A− / A+, shared with the terminal), Copy all, Share and Open with.
   It scrolls by line, so a 2 MB log of 50 000 lines scrolls smoothly; a
   line longer than 1000 characters (minified JSON, a long log line) is
-  shown in pieces of 1000, each piece after the first marked `↪`.
+  shown in pieces of 1000, each piece after the first marked `↪`. Control
+  characters show as their signs (`␛`, a lone CR as `␍`). TalkBack reads
+  each row's text, without its number or `↪`.
   Copy all takes up to 128 K characters (the system clipboard's limit is
-  near); a larger file says to use Share.
+  near); a larger file says to use Share. A copy of a secret-looking file
+  (`.env`, keys, `.nmconnection`) is marked sensitive, so Android 13 and
+  later do not preview it.
 - Colours, from the theme's colours in light and dark, picked by the
   file's name and, without a known one, its first line (`#!` of a shell or
   `node`, a leading `{` / `[`, `---`, a log timestamp): Markdown (headings,
@@ -126,10 +136,12 @@ transfers that resume and run in the background.
   comments, strings, anchors and aliases, list dashes, block scalars);
   INI, conf, properties, systemd units, `.env` (`[sections]`, keys,
   comments); shell (comments, strings, `$variables`, keywords);
-  JavaScript, wb-rules among it (comments, strings, keywords, numbers).
-  Anything else is plain text. Colouring is by line with the state a line
-  leaves (an open fence, block comment or quote), worked out off the main
-  thread; the text shows at once and the colours follow.
+  JavaScript, wb-rules among it (comments, strings, keywords, numbers,
+  regular expressions). Anything else is plain text. Colouring is by line
+  with the state a line leaves (an open fence, block comment, quote or
+  here-document), worked out off the main thread; the text shows at once
+  and the colours follow. Lines over 4000 characters stay plain in
+  Markdown, logs, YAML and INI.
 - Search: the magnifier opens the search field over the top bar, as in
   the file list; matches of the text, ignoring case, are marked, the
   current one stronger, with "3 of 17" and next / previous; ✕ or Back
@@ -215,7 +227,8 @@ Decided 2026-10-31: by name only; content is searched in the terminal.
 | Download folder choice, hidden-files toggle, last folder per connection | app-private settings |
 | Last listings for offline view | app-private cache, per connection |
 | Partial downloads | the chosen folder (`.part`), removed on cancel |
-| Files opened for viewing or editing | app cache, wiped on exit and daily |
+| Files opened with other apps | app cache, wiped on exit and daily |
+| Files shown in the viewer | app cache, deleted as the viewer closes |
 
 ## Delivery
 

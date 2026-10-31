@@ -81,4 +81,13 @@ class TextDocumentTest {
         assertEquals(1, firstMatchAfter(matches, 3, 12))
         assertEquals(3, firstMatchAfter(matches, 3, 23))
     }
+
+    @Test
+    fun `control characters show as their signs, one for one`() {
+        val text = "a\u001b[31mb\rc\td\u007f"
+        val shown = shownText(text, 0, text.length)
+        assertEquals("a\u241b[31mb\u240dc\td\u2421", shown)
+        assertEquals(text.length, shown.length)
+        assertEquals("plain", shownText("xplainx", 1, 6))
+    }
 }

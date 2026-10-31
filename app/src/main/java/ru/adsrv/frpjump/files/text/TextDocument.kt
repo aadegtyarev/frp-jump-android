@@ -130,3 +130,28 @@ fun firstMatchAfter(matches: IntArray, length: Int, offset: Int): Int {
     }
     return lo
 }
+
+/**
+ * [text] from [start] to [end] as the viewer draws it: each control
+ * character but tab shown as its visible sign (ESC as `␛`, a lone CR as
+ * `␍`, DEL as `␡`), one for one, so offsets stay as they are.
+ */
+fun shownText(text: String, start: Int, end: Int): String {
+    var i = start
+    while (i < end && !isHidden(text[i])) i++
+    if (i == end) return text.substring(start, end)
+    val out = StringBuilder(end - start)
+    for (k in start until end) {
+        val c = text[k]
+        out.append(
+            when {
+                !isHidden(c) -> c
+                c == '\u007F' -> '␡'
+                else -> (0x2400 + c.code).toChar()
+            },
+        )
+    }
+    return out.toString()
+}
+
+private fun isHidden(c: Char): Boolean = (c < ' ' && c != '\t') || c == '\u007F'

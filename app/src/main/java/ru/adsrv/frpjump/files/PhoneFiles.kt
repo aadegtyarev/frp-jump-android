@@ -20,6 +20,7 @@ data class PickedFile(val uri: Uri, val name: String, val size: Long)
  */
 object PhoneFiles {
     private const val OPEN_DIR = "files-open"
+    private const val VIEW_DIR = "files-view"
     private const val LISTINGS_DIR = "files-listings"
     private const val FALLBACK_TYPE = "application/octet-stream"
 
@@ -72,19 +73,48 @@ object PhoneFiles {
      * share, in a folder of its own so names never clash; delete that folder
      * ([File.getParentFile]) when done with it.
      */
-    fun openCacheFile(context: Context, profile: String, name: String): File {
-        val dir = File(openCacheDir(context, profile), System.nanoTime().toString())
-        if (!dir.mkdirs() && !dir.isDirectory) throw IOException("cannot make $dir")
-        return File(dir, safeLocalName(name))
-    }
+    fun openCacheFile(context: Context, profile: String, name: String): File = freshFile(openCacheDir(context, profile), name)
 
     /** The files of [profile] handed to other apps (removed with the profile). */
     fun openCacheDir(context: Context, profile: String): File = File(File(context.cacheDir, OPEN_DIR), safeLocalName(profile))
 
+    /**
+     * A fresh file in the app's cache for a file of [profile] to show in
+     * the text viewer, in a folder of its own; the viewer deletes that
+     * folder as it closes, unless it handed the file to another app.
+     */
+    fun viewCacheFile(context: Context, profile: String, name: String): File = freshFile(viewCacheDir(context, profile), name)
+
+    /** The files of [profile] shown in the viewer (removed with the profile). */
+    fun viewCacheDir(context: Context, profile: String): File = File(File(context.cacheDir, VIEW_DIR), safeLocalName(profile))
+
+    /** [file] (of the viewer's cache) moved to a fresh folder of the cache for other apps; it stays where it is when it cannot move. */
+    fun moveToOpenCache(context: Context, profile: String, file: File): File {
+        val target = openCacheFile(context, profile, file.name)
+        return if (file.renameTo(target)) {
+            file.parentFile?.deleteRecursively()
+            target
+        } else {
+            target.parentFile?.deleteRecursively()
+            file
+        }
+    }
+
     /** Files handed to other apps more than [maxAgeMs] ago, of every profile: those apps have long read them. */
-    fun pruneOpenCache(context: Context, maxAgeMs: Long, now: Long = System.currentTimeMillis()) {
-        File(context.cacheDir, OPEN_DIR).listFiles()?.flatMap { it.listFiles()?.toList().orEmpty() }
+    fun pruneOpenCache(context: Context, maxAgeMs: Long, now: Long = System.currentTimeMillis()) = prune(File(context.cacheDir, OPEN_DIR), maxAgeMs, now)
+
+    /** Viewer copies older than [maxAgeMs], of every profile: left by a viewer that did not close (the process went), or handed on from one. */
+    fun pruneViewCache(context: Context, maxAgeMs: Long, now: Long = System.currentTimeMillis()) = prune(File(context.cacheDir, VIEW_DIR), maxAgeMs, now)
+
+    private fun prune(root: File, maxAgeMs: Long, now: Long) {
+        root.listFiles()?.flatMap { it.listFiles()?.toList().orEmpty() }
             ?.filter { now - it.lastModified() > maxAgeMs }?.forEach { it.deleteRecursively() }
+    }
+
+    private fun freshFile(parent: File, name: String): File {
+        val dir = File(parent, System.nanoTime().toString())
+        if (!dir.mkdirs() && !dir.isDirectory) throw IOException("cannot make $dir")
+        return File(dir, safeLocalName(name))
     }
 
     /** Where the offline listings of [profile] are kept ([ListingCache]). */

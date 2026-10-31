@@ -86,4 +86,19 @@ class TextFormatTest {
         assertTrue(looksLikeText("a".repeat(200).toByteArray() + byteArrayOf(0xFF.toByte())))
         assertFalse(looksLikeText("café ".repeat(20).toByteArray(Charsets.ISO_8859_1)))
     }
+
+    @Test
+    fun `the verdict on a downloaded file`() {
+        val text = "hello".toByteArray()
+        assertEquals(Viewable.YES, viewable(5, text, text.size))
+        assertEquals(Viewable.TOO_LARGE, viewable(MAX_VIEW_BYTES + 1, text, text.size))
+        // A text name holding binary is told by its bytes.
+        assertEquals(Viewable.BINARY, viewable(4, byteArrayOf(0x50, 0x4B, 3, 0), 4))
+    }
+
+    @Test
+    fun `secret-looking names`() {
+        for (name in listOf(".env", ".env.local", "prod.env", "server.KEY", "ca.pem", "home.nmconnection", "shadow")) assertTrue(name, looksSecret(name))
+        for (name in listOf("env.txt", "app.log", "keys.md", "README")) assertFalse(name, looksSecret(name))
+    }
 }

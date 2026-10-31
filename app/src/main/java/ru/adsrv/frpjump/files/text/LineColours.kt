@@ -18,15 +18,20 @@ class LineColours(private val doc: TextDocument, private val highlighter: Highli
 
     val finished: Boolean get() = done >= doc.lineCount
 
-    /** Colours up to [lines] more lines; false once all are. */
-    fun advance(lines: Int): Boolean {
+    /**
+     * Colours up to [lines] more lines, stopping early once [keepGoing]
+     * says no (checked before each line: a closed viewer stops at once);
+     * false once all are coloured.
+     */
+    fun advance(lines: Int, keepGoing: () -> Boolean = { true }): Boolean {
         val until = minOf(doc.lineCount, done + lines)
         for (line in done until until) {
+            if (!keepGoing()) break
             scratch.clear()
             state = highlighter.safeLine(doc.line(line), state, scratch)
             spans[line] = if (scratch.size == 0) EMPTY else scratch.toArray()
+            done = line + 1
         }
-        done = until
         return !finished
     }
 

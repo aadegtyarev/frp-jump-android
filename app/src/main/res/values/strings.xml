@@ -828,4 +828,5 @@
     <string name="viewer_copy_failed">The phone did not take the text on the clipboard.</string>
     <string name="viewer_read_failed">Cannot read the downloaded file: %s</string>
     <string name="viewer_out_of_memory">not enough memory on the phone</string>
+    <string name="viewer_file_gone">The downloaded copy of %s is gone; open it again.</string>
 </resources>

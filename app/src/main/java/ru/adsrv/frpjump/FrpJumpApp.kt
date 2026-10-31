@@ -310,8 +310,12 @@ class FrpJumpApp : Application() {
         webSites = WebSiteMemory(AtomicTextFile(File(filesDir, "web_site.json")))
         sshEnv = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment, tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))))
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
-        // Files handed to other apps a day ago or more (Open with, Share).
-        appScope.launch(Dispatchers.IO) { PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS) }
+        // Files handed to other apps a day ago or more (Open with, Share), and viewer copies
+        // left behind when the process went: older than a few minutes, no viewer is reading them.
+        appScope.launch(Dispatchers.IO) {
+            PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS)
+            PhoneFiles.pruneViewCache(this@FrpJumpApp, VIEW_CACHE_AGE_MS)
+        }
         // Deletes waiting for Undo are done when the screens stop: the process may go
         // any time after (swiped away from recents, killed in the background).
         // A message posted just before the app went away is a toast, not lost; none waits over the lock screen.
@@ -400,7 +404,10 @@ class FrpJumpApp : Application() {
             }
         }
         // Its files handed to other apps go in any case; the folders seen on its devices with its data.
-        withContext(Dispatchers.IO) { PhoneFiles.openCacheDir(this@FrpJumpApp, id).deleteRecursively() }
+        withContext(Dispatchers.IO) {
+            PhoneFiles.openCacheDir(this@FrpJumpApp, id).deleteRecursively()
+            PhoneFiles.viewCacheDir(this@FrpJumpApp, id).deleteRecursively()
+        }
         webPages.forgetProfile(id)
         if (keepData) return
         withContext(Dispatchers.IO) { PhoneFiles.listingsDir(this@FrpJumpApp, id).deleteRecursively() }
@@ -418,6 +425,9 @@ class FrpJumpApp : Application() {
         const val SSH_KEY_ALIAS = "frpjump-ssh"
         const val UNDO_NOTICE = "undo"
         const val OPEN_CACHE_AGE_MS = 24 * 60 * 60 * 1000L
+
+        /** Viewer copies older than this go at start-up. */
+        const val VIEW_CACHE_AGE_MS = 5 * 60 * 1000L
         val LOAD_RETRIES_MS = listOf(10_000L, 30_000L, 60_000L, 60_000L, 60_000L)
     }
 }

@@ -54,9 +54,9 @@ import ru.adsrv.frpjump.files.searchNames
 import ru.adsrv.frpjump.files.targetFolder
 import ru.adsrv.frpjump.files.text.OpenRoute
 import ru.adsrv.frpjump.files.text.SNIFF_BYTES
-import ru.adsrv.frpjump.files.text.isTextName
-import ru.adsrv.frpjump.files.text.looksLikeText
+import ru.adsrv.frpjump.files.text.Viewable
 import ru.adsrv.frpjump.files.text.openRoute
+import ru.adsrv.frpjump.files.text.viewable
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
@@ -589,28 +589,43 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     }
 
     /**
-     * Open on a file's card: text (by its name, or by its start once
-     * downloaded) to the cache, then the viewer; anything else, or text
-     * over 2 MB (saying so), to another app.
+     * Open on a file's card: a file that may be text to the viewer's cache,
+     * then, if its start reads as text and it is at most 2 MB as
+     * downloaded, the viewer; anything else to another app, a file over
+     * 2 MB saying why.
      */
     fun openFile(entry: RemoteEntry) {
-        when (val route = openRoute(entry.name, entry.size)) {
+        when (openRoute(entry.name, entry.size)) {
             OpenRoute.OTHER_APP -> openWith(entry)
             OpenRoute.TOO_LARGE -> {
-                // Only a name known as text is worth the note: for others, another app is the expected outcome.
-                if (isTextName(entry.name)) toast(Texts.get(R.string.files_view_too_large, entry.name))
+                toast(Texts.get(R.string.files_view_too_large, entry.name))
                 openWith(entry)
             }
             OpenRoute.VIEW, OpenRoute.SNIFF -> transfer(entry, TransferKind.OPEN) { b, progress ->
-                val file = toCache(b, entry, progress)
-                val text = route == OpenRoute.VIEW || withContext(Dispatchers.IO) { sniffText(file) }
+                val file = toCache(b, entry, progress, forViewer = true)
+                // A text name holding binary, or a file that grew past the limit since it was listed: another app.
+                val view = withContext(Dispatchers.IO) { viewerVerdict(file) }
                 currentCoroutineContext().ensureActive()
-                if (text) {
+                if (view == Viewable.YES) {
                     _events.send(FilesEvent.View(entry.path, file, entry.name))
                 } else {
-                    _events.send(FilesEvent.Handover(entry.path, file, PhoneFiles.mimeType(entry.name), entry.name, share = false))
+                    if (view == Viewable.TOO_LARGE) toast(Texts.get(R.string.files_view_too_large, entry.name))
+                    val handed = withContext(Dispatchers.IO) { PhoneFiles.moveToOpenCache(app, checkNotNull(target).profile, file) }
+                    _events.send(FilesEvent.Handover(entry.path, handed, PhoneFiles.mimeType(entry.name), entry.name, share = false))
                 }
             }
+        }
+    }
+
+    /**
+     * The viewer closed on [file]: it goes, unless the viewer handed it to
+     * another app ([handedOver]), which may still read it; then it stays as
+     * files opened with other apps do.
+     */
+    fun closeViewed(file: File, handedOver: Boolean) {
+        val profile = target?.profile ?: return
+        app.appScope.launch(Dispatchers.IO) {
+            if (handedOver) PhoneFiles.moveToOpenCache(app, profile, file) else file.parentFile?.deleteRecursively()
         }
     }
 
@@ -645,12 +660,12 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         _events.send(FilesEvent.Handover(entry.path, file, PhoneFiles.mimeType(entry.name), entry.name, share))
     }
 
-    /** [entry] downloaded into the app's cache, for another app. */
-    private suspend fun toCache(b: SftpBrowser, entry: RemoteEntry, progress: (Long, Long) -> Unit): File {
+    /** [entry] downloaded into the app's cache, for another app or ([forViewer]) the viewer. */
+    private suspend fun toCache(b: SftpBrowser, entry: RemoteEntry, progress: (Long, Long) -> Unit, forViewer: Boolean = false): File {
         val t = checkNotNull(target)
         val file = withContext(Dispatchers.IO) {
             val file = try {
-                PhoneFiles.openCacheFile(app, t.profile, entry.name)
+                if (forViewer) PhoneFiles.viewCacheFile(app, t.profile, entry.name) else PhoneFiles.openCacheFile(app, t.profile, entry.name)
             } catch (e: IOException) {
                 throw PhoneSideException(e)
             }
@@ -1091,8 +1106,8 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     }
 
     private companion object {
-        /** Whether [file]'s start reads as text. */
-        fun sniffText(file: File): Boolean {
+        /** Whether the viewer takes [file], by its size and its start. */
+        fun viewerVerdict(file: File): Viewable {
             val head = ByteArray(SNIFF_BYTES)
             val read = file.inputStream().use { input ->
                 var n = 0
@@ -1103,7 +1118,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
                 }
                 n
             }
-            return looksLikeText(head, read)
+            return viewable(file.length(), head, read)
         }
 
         const val CLEANUP_WAIT_MS = 15_000L

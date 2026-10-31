@@ -1,6 +1,19 @@
 package ru.adsrv.frpjump.ui.files
 
 import android.content.ClipData
+import android.content.ClipDescription
+import android.os.Build
+import android.os.PersistableBundle
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.isActive
+import ru.adsrv.frpjump.files.text.looksSecret
+import ru.adsrv.frpjump.files.text.shownText
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
@@ -113,16 +126,33 @@ private sealed interface Loaded {
  * scrolled sideways, coloured by its format as the colours are worked out
  * off the main thread; search with next / previous; "⋮" for wrapping, line
  * numbers, text size ([fontSize], the terminal's), Copy all, Share, Open with.
+ * As it goes, [onGone] gets its file and whether it was handed to another
+ * app (then it is kept a while for that app; else it is deleted).
  */
 @Composable
-fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () -> Unit) {
+fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () -> Unit, onGone: (File, Boolean) -> Unit) {
     val colors = AppTheme.colors
     val context = LocalContext.current
     val file = remember(viewed) { File(viewed.local) }
+    // Share or Open with from here: the other app may read the file after the viewer closes.
+    var handedOver by rememberSaveable(viewed) { mutableStateOf(false) }
+    val currentHandedOver by rememberUpdatedState(handedOver)
+    val currentOnGone by rememberUpdatedState(onGone)
+    DisposableEffect(viewed) { onDispose { currentOnGone(file, currentHandedOver) } }
+    val handOverFile = { share: Boolean ->
+        handedOver = true
+        handOver(context, file, viewerType(viewed.name), viewed.name, share = share)
+    }
     var attempt by remember { mutableIntStateOf(0) }
     var loaded by remember(viewed) { mutableStateOf<Loaded>(Loaded.Reading) }
     LaunchedEffect(viewed, attempt) {
         loaded = Loaded.Reading
+        // Gone from the cache (cleared, or swept after the process went): nothing to retry, back to the list.
+        if (!withContext(Dispatchers.IO) { file.isFile }) {
+            context.notice(context.getString(R.string.viewer_file_gone, viewed.name), NoticeKind.WARN, long = true)
+            onClose()
+            return@LaunchedEffect
+        }
         loaded = withContext(Dispatchers.IO) {
             try {
                 val doc = TextDocument.decode(file.readBytes())
@@ -142,7 +172,7 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
         val colours = ready?.colours ?: return@LaunchedEffect
         withContext(Dispatchers.Default) {
             var shown = System.nanoTime()
-            while (colours.advance(COLOUR_BATCH)) {
+            while (colours.advance(COLOUR_BATCH) { isActive }) {
                 if (System.nanoTime() - shown > PUBLISH_EVERY_NS) {
                     shown = System.nanoTime()
                     withContext(Dispatchers.Main) { coloured = colours.done }
@@ -271,8 +301,8 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                                 onNumbers = { numbers = !numbers },
                                 onFont = { fontSize.value = it.coerceIn(MIN_FONT_SP, MAX_FONT_SP) },
                                 onCopy = { ready?.let { copyAll(context, viewed.name, it.doc.text) } },
-                                onShare = { handOver(context, file, viewerType(viewed.name), viewed.name, share = true) },
-                                onOpenWith = { handOver(context, file, viewerType(viewed.name), viewed.name, share = false) },
+                                onShare = { handOverFile(true) },
+                                onOpenWith = { handOverFile(false) },
                             )
                         }
                     },
@@ -290,7 +320,7 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                 is Loaded.Failed -> ReadFailed(
                     message = l.message,
                     onRetry = { attempt++ },
-                    onOpenWith = { handOver(context, file, viewerType(viewed.name), viewed.name, share = false) },
+                    onOpenWith = { handOverFile(false) },
                 )
                 is Loaded.Ready -> {
                     val doc = l.doc
@@ -306,6 +336,7 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                             gutterChars = gutterChars,
                             charPx = charPx,
                             text = text,
+                            continuation = doc.isContinuation(row),
                             style = textStyle,
                             wrap = wrap,
                         )
@@ -315,7 +346,9 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                         Rows(list, doc.rowCount, bottom, Modifier.fillMaxSize(), rowContent)
                     } else {
                         BoxWithConstraints(Modifier.fillMaxSize()) {
-                            val extra = with(density) { (charPx * (doc.widestRow + gutterChars + 3)).toDp() } + ROW_PADDING * 2
+                            // Below Compose's largest constraint: a row is at most 1000 characters, but at 28 sp that is near it.
+                            val px = (charPx * (doc.widestRow + gutterChars + 3)).coerceAtMost(MAX_WIDTH_PX)
+                            val extra = with(density) { px.toDp() } + ROW_PADDING * 2
                             val width: Dp = maxOf(maxWidth, extra)
                             Box(
                                 Modifier
@@ -341,10 +374,16 @@ private fun Rows(list: LazyListState, count: Int, padding: PaddingValues, modifi
 
 /** One row: the line's number (or nothing) in a gutter, then its text. */
 @Composable
-private fun ViewerRow(number: Int?, gutterChars: Int, charPx: Float, text: AnnotatedString, style: TextStyle, wrap: Boolean) {
+private fun ViewerRow(number: Int?, gutterChars: Int, charPx: Float, text: AnnotatedString, continuation: Boolean, style: TextStyle, wrap: Boolean) {
     val colors = AppTheme.colors
     val density = LocalDensity.current
-    Row(Modifier.fillMaxWidth().padding(horizontal = ROW_PADDING)) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = ROW_PADDING)
+            // TalkBack reads the row's text alone: not its number, not the `↪` of a continued line.
+            .clearAndSetSemantics { contentDescription = if (continuation) text.text.substring(1) else text.text },
+    ) {
         if (gutterChars > 0) {
             Text(
                 number?.toString().orEmpty(),
@@ -376,7 +415,7 @@ private fun rowText(doc: TextDocument, row: Int, spans: IntArray?, matches: IntA
         } else {
             0
         }
-        append(doc.text, start, end)
+        append(shownText(doc.text, start, end))
         if (spans != null) {
             var k = firstSpanAfter(spans, start - lineStart)
             while (k < spans.size && spans[k] + lineStart < end) {
@@ -415,7 +454,14 @@ private fun MatchStrip(query: String, settled: Boolean, count: Int, current: Int
             count >= MAX_MATCHES -> stringResource(R.string.viewer_match_of_many, current + 1, MAX_MATCHES)
             else -> stringResource(R.string.viewer_match_of, current + 1, count)
         }
-        Text(text, fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
+        Text(
+            text,
+            fontSize = 13.sp,
+            color = colors.muted,
+            modifier = Modifier
+                .weight(1f)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+        )
         IconButton(onClick = onPrevious, enabled = settled && count > 0) {
             Icon(Icons.Filled.KeyboardArrowUp, contentDescription = stringResource(R.string.viewer_previous))
         }
@@ -456,11 +502,13 @@ private fun ViewerMenu(
             // Text size as in the terminal's menu, and the same size; the menu stays open while sizing.
             Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.terminal_text_size), Modifier.weight(1f, fill = false).padding(end = 12.dp))
-                IconButton(onClick = { onFont(fontSp - 1) }, enabled = fontSp > MIN_FONT_SP) {
-                    Text("A−", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (fontSp > MIN_FONT_SP) colors.ink else colors.muted)
+                val smaller = stringResource(R.string.terminal_text_smaller)
+                val larger = stringResource(R.string.terminal_text_larger)
+                IconButton(onClick = { onFont(fontSp - 1) }, enabled = fontSp > MIN_FONT_SP, modifier = Modifier.semantics { contentDescription = smaller }) {
+                    Text("A−", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (fontSp > MIN_FONT_SP) colors.ink else colors.muted, modifier = Modifier.clearAndSetSemantics {})
                 }
-                IconButton(onClick = { onFont(fontSp + 1) }, enabled = fontSp < MAX_FONT_SP) {
-                    Text("A+", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (fontSp < MAX_FONT_SP) colors.ink else colors.muted)
+                IconButton(onClick = { onFont(fontSp + 1) }, enabled = fontSp < MAX_FONT_SP, modifier = Modifier.semantics { contentDescription = larger }) {
+                    Text("A+", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (fontSp < MAX_FONT_SP) colors.ink else colors.muted, modifier = Modifier.clearAndSetSemantics {})
                 }
             }
             DropdownMenuItem(text = { Text(stringResource(R.string.viewer_copy_all)) }, onClick = {
@@ -502,8 +550,13 @@ private fun copyAll(context: Context, name: String, text: String) {
         context.notice(context.getString(R.string.viewer_copy_too_large), NoticeKind.WARN, long = true)
         return
     }
+    val clip = ClipData.newPlainText(name, text)
+    // Secrets (`.env`, keys): the system does not show them in its clipboard preview.
+    if (looksSecret(name) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+    }
     try {
-        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(name, text))
+        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
     } catch (_: RuntimeException) {
         context.notice(context.getString(R.string.viewer_copy_failed), NoticeKind.WARN)
         return
@@ -515,6 +568,9 @@ private fun copyAll(context: Context, name: String, text: String) {
 private fun viewerType(name: String): String = PhoneFiles.mimeType(name).takeIf { it != "application/octet-stream" } ?: "text/plain"
 
 private val ROW_PADDING = 12.dp
+
+/** The widest unwrapped text, in pixels: under Compose's largest constraint (2^18). */
+private const val MAX_WIDTH_PX = 250_000f
 private const val COLOUR_BATCH = 256
 private const val PUBLISH_EVERY_NS = 80_000_000L
 private const val SEARCH_DEBOUNCE_MS = 200L

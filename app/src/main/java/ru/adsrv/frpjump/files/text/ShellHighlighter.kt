@@ -3,11 +3,16 @@ package ru.adsrv.frpjump.files.text
 /**
  * Shell scripts: `#` comments, `'…'` and `"…"` strings (across lines too),
  * `$name`, `${…}` and `$1` variables (inside `"…"` as well), `NAME=` of an
- * assignment, keywords as whole words. Here-documents show plain.
+ * assignment, keywords as whole words. A here-document (`<<EOF`,
+ * `<<-'END'`) shows plain up to its closing word, without carrying any
+ * quote into it: its state holds the word's hash.
  */
 object ShellHighlighter : Highlighter {
     const val IN_DOUBLE = 1
     const val IN_SINGLE = 2
+    private const val HEREDOC = 1 shl 30
+    private const val HEREDOC_TABS = 1 shl 29
+    private const val HASH_BITS = (1 shl 29) - 1
 
     private val KEYWORDS = setOf(
         "if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac", "in", "function",
@@ -16,6 +21,18 @@ object ShellHighlighter : Highlighter {
     )
 
     override fun line(text: String, state: Int, out: Spans): Int {
+        if (state and HEREDOC != 0) {
+            // `<<-` lets the closing word be indented with tabs.
+            val shown = if (state and HEREDOC_TABS != 0) text.trimStart('\t') else text
+            return if (shown.hashCode() and HASH_BITS == state and HASH_BITS) 0 else state
+        }
+        val heredoc = intArrayOf(0)
+        val after = scan(text, state, out, heredoc)
+        // A here-document begun on this line starts on the next, whatever this line left open.
+        return if (heredoc[0] != 0) heredoc[0] else after
+    }
+
+    private fun scan(text: String, state: Int, out: Spans, heredoc: IntArray): Int {
         val n = text.length
         var i = 0
         when (state) {
@@ -38,6 +55,7 @@ object ShellHighlighter : Highlighter {
                     out.add(i, n, Token.COMMENT)
                     return 0
                 }
+                c == '<' && text.startsWith("<<", i) -> i = hereDocument(text, i, heredoc)
                 c == '\'' -> {
                     val close = text.indexOf('\'', i + 1)
                     if (close < 0) return IN_SINGLE.also { out.add(i, n, Token.STRING) }
@@ -66,6 +84,29 @@ object ShellHighlighter : Highlighter {
             }
         }
         return 0
+    }
+
+    /**
+     * `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"` at [at]: the state of its
+     * body into [heredoc] (the first one on a line counts); `<<<` (a here
+     * string) is passed over. Returns where the scan goes on.
+     */
+    private fun hereDocument(text: String, at: Int, heredoc: IntArray): Int {
+        var j = at + 2
+        if (j < text.length && text[j] == '<') return j + 1
+        val tabs = j < text.length && text[j] == '-'
+        if (tabs) j++
+        while (j < text.length && (text[j] == ' ' || text[j] == '\t')) j++
+        val quote = text.getOrNull(j)?.takeIf { it == '\'' || it == '"' }
+        if (quote != null) j++
+        val start = j
+        while (j < text.length && (isWordChar(text[j]) || text[j] == '-' || text[j] == '.')) j++
+        // `$(( a << 2 ))` shifts: a here-document's word starts with a letter, unless quoted.
+        if (j == start || (quote == null && !(text[start].isLetter() || text[start] == '_'))) return at + 2
+        val word = text.substring(start, j)
+        if (quote != null && text.getOrNull(j) == quote) j++
+        if (heredoc[0] == 0) heredoc[0] = HEREDOC or (if (tabs) HEREDOC_TABS else 0) or (word.hashCode() and HASH_BITS)
+        return j
     }
 
     /**

@@ -8,16 +8,16 @@ const val SNIFF_BYTES = 8 * 1024
 
 /** What Open does with a file, before anything is downloaded. */
 enum class OpenRoute {
-    /** A name known as text: download, then the viewer. */
+    /** A name known as text: download, check the start as for [SNIFF] (a name can lie), then the viewer. */
     VIEW,
 
-    /** A name that says nothing: download, look at the start ([looksLikeText]), then the viewer or another app. */
+    /** A name that says nothing: download, look at the start ([viewable]), then the viewer or another app. */
     SNIFF,
 
     /** A name known as binary: another app at once. */
     OTHER_APP,
 
-    /** Text or not, larger than [MAX_VIEW_BYTES]: another app, saying why. */
+    /** Not binary by name, larger than [MAX_VIEW_BYTES]: another app, saying why. */
     TOO_LARGE,
 }
 
@@ -104,4 +104,26 @@ fun looksLikeText(bytes: ByteArray, length: Int = bytes.size): Boolean {
         }
     }
     return bad * 50 <= n
+}
+
+/** Whether a downloaded file goes to the viewer. */
+enum class Viewable { YES, TOO_LARGE, BINARY }
+
+/**
+ * The viewer's verdict on a downloaded file of [size] bytes whose first
+ * [length] bytes are [head]: over [MAX_VIEW_BYTES] (it grew since it was
+ * listed) or not [looksLikeText] goes to another app.
+ */
+fun viewable(size: Long, head: ByteArray, length: Int): Viewable = when {
+    size > MAX_VIEW_BYTES -> Viewable.TOO_LARGE
+    !looksLikeText(head, length) -> Viewable.BINARY
+    else -> Viewable.YES
+}
+
+/** Names whose text is likely a secret: `.env` files, keys, Wi-Fi connections, password files. */
+fun looksSecret(name: String): Boolean {
+    val lower = name.lowercase()
+    return lower == ".env" || lower.startsWith(".env.") || lower.endsWith(".env") ||
+        lower.endsWith(".pem") || lower.endsWith(".key") || lower.endsWith(".nmconnection") ||
+        lower in setOf("shadow", "gshadow", "credentials", "id_rsa", "id_ed25519", "id_ecdsa")
 }

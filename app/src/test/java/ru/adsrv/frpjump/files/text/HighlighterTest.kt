@@ -183,4 +183,68 @@ class HighlighterTest {
         assertEquals(false, colours.advance(10))
         assertEquals(listOf(Triple(0, 4, Token.COMMENT), Triple(5, 8, Token.KEYWORD)), spanList(colours.of(1)!!))
     }
+
+    @Test
+    fun `shell here-documents show plain up to their word`() {
+        val lines = run(ShellHighlighter, "cat <<'EOF' > x # note", "it's \$HOME \"open", "EOF", "echo ok")
+        assertEquals(listOf("# note" to Token.COMMENT), lines[0])
+        assertEquals(emptyList<Pair<String, Token>>(), lines[1])
+        assertEquals(emptyList<Pair<String, Token>>(), lines[2])
+        assertEquals(emptyList<Pair<String, Token>>(), lines[3])
+        // `<<-` closes on a tab-indented word; `<<<` and shifts are no here-documents.
+        val dash = run(ShellHighlighter, "\tcat <<-END", "\tbody 'x", "\tEND", "x=1")
+        assertEquals(listOf("x" to Token.VARIABLE), dash[3])
+        assertEquals(listOf("'here'" to Token.STRING), run(ShellHighlighter, "cat <<< 'here'", "x")[0])
+        assertEquals(listOf("x" to Token.VARIABLE), run(ShellHighlighter, "echo \$(( 1 << 2 ))", "x=1")[1])
+    }
+
+    @Test
+    fun `javascript regular expressions hold quotes and backticks`() {
+        assertEquals(
+            listOf("var" to Token.KEYWORD, "/[\"'`]+/g" to Token.STRING, "1" to Token.NUMBER),
+            one(JsHighlighter, "var re = /[\"'`]+/g; x = 1"),
+        )
+        assertEquals(listOf("return" to Token.KEYWORD, "/a\\/b/" to Token.STRING), one(JsHighlighter, "return /a\\/b/"))
+        // Division is not a regular expression.
+        assertEquals(listOf("2" to Token.NUMBER, "\"s\"" to Token.STRING), one(JsHighlighter, "a = b / 2 / c + \"s\""))
+    }
+
+    @Test
+    fun `an open javascript template stops at a blank line`() {
+        val lines = run(JsHighlighter, "x = `open", "", "var y")
+        assertEquals(listOf("var" to Token.KEYWORD), lines[2])
+    }
+
+    @Test
+    fun `markdown rules by a scan, spaced ones too`() {
+        assertEquals(listOf("- - -" to Token.MARKER), one(MarkdownHighlighter, "- - -"))
+        assertEquals(listOf("* * *" to Token.MARKER), one(MarkdownHighlighter, "* * *"))
+        val long = "- ".repeat(MAX_PATTERN_LINE / 2 - 1)
+        assertEquals(listOf(long.trimEnd() to Token.MARKER), run(MarkdownHighlighter, long.trimEnd()).single())
+    }
+
+    @Test
+    fun `adversarial lines just under the cap stay fast and never throw`() {
+        val n = MAX_PATTERN_LINE - 1
+        fun fill(unit: String) = unit.repeat(n / unit.length + 1).take(n)
+        val lines = listOf("`", "``a", "[", "[a](", "![a](", "*a", "**a", "_a ", "<http", "http://", "a*", "- ", "> ", "#", ":", "a: ", "- a: ", "&", "\"", "'", "=", "[x", "1.", " ")
+            .map(::fill)
+        for (h in listOf(MarkdownHighlighter, LogHighlighter, YamlHighlighter, IniHighlighter, ShellHighlighter, JsHighlighter, JsonHighlighter)) {
+            for (line in lines) {
+                val started = System.nanoTime()
+                h.line(line, 0, Spans())
+                val ms = (System.nanoTime() - started) / 1_000_000
+                assertTrue("$h on ${line.take(8)}…: $ms ms", ms < 250)
+            }
+        }
+    }
+
+    @Test
+    fun `colouring stops when told to`() {
+        val doc = TextDocument("a\nb\nc\n")
+        val colours = LineColours(doc, LogHighlighter)
+        var asked = 0
+        assertTrue(colours.advance(10) { ++asked <= 1 })
+        assertEquals(1, colours.done)
+    }
 }
