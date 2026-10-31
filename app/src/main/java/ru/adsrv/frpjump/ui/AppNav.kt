@@ -259,6 +259,7 @@ fun AppNav() {
             TerminalScreen(
                 sessions = app.ssh,
                 snippetStore = app.snippets,
+                pendingUndo = app.pendingUndo,
                 profileColors = profilesState.index.profiles.associate { it.id to it.color },
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 onBack = { nav.popBackStack() },

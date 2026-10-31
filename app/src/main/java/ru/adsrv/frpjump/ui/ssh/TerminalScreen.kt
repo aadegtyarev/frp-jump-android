@@ -77,6 +77,7 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.snippets.SnippetStore
+import ru.adsrv.frpjump.snippets.stepsAmongShown
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
@@ -95,6 +96,7 @@ import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.ui.userMessage
+import ru.adsrv.frpjump.undo.PendingUndo
 
 /** The SSH sessions as tabs, the selected one in a Termux terminal view. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -102,6 +104,8 @@ import ru.adsrv.frpjump.ui.userMessage
 fun TerminalScreen(
     sessions: SshSessions,
     snippetStore: SnippetStore,
+    /** Where a deleted snippet waits for its Undo to run out. */
+    pendingUndo: PendingUndo,
     /** Profile id to its colour's name, for the tabs' dots. */
     profileColors: Map<String, String>,
     initialId: Int,
@@ -116,7 +120,10 @@ fun TerminalScreen(
     keyLoginTarget: (SshSession) -> KeyInstallTarget?,
 ) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
-    val snippets by snippetStore.snippets.collectAsStateWithLifecycle()
+    val stored by snippetStore.snippets.collectAsStateWithLifecycle()
+    val hidden by pendingUndo.hidden.collectAsStateWithLifecycle()
+    // One deleted while its Undo is on screen is not offered.
+    val snippets = remember(stored, hidden) { stored.filter { PendingUndo.snippetKey(it.id) !in hidden } }
     var managing by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -133,8 +140,22 @@ fun TerminalScreen(
         SnippetActions(
             add = { text -> write { add(text) } },
             update = { id, text -> write { update(id, text) } },
-            remove = { id -> write { remove(id) } },
-            move = { id, by -> write { move(id, by) } },
+            // No question: it goes at once, with Undo on the notice; removed from the file when that goes.
+            remove = { id ->
+                val app = context.applicationContext
+                pendingUndo.enqueue(PendingUndo.snippetKey(id), commit = {
+                    val failure = withContext(Dispatchers.IO) { runCatching { snippetStore.remove(id) }.exceptionOrNull() }
+                    if (failure != null) {
+                        app.notice(app.getString(R.string.snippet_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
+                    }
+                })
+            },
+            // ↑ ↓ step past a snippet deleted with Undo on screen, as it is not shown.
+            move = { id, by ->
+                val hiddenNow = pendingUndo.hidden.value
+                val steps = stepsAmongShown(snippetStore.snippets.value, { PendingUndo.snippetKey(it.id) !in hiddenNow }, id, by)
+                if (steps != 0) write { move(id, steps) }
+            },
         )
     }
     val fontSp by sessions.fontSize.collectAsStateWithLifecycle()

@@ -7,6 +7,7 @@ import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -42,7 +43,10 @@ import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.snippets.SnippetStore
+import ru.adsrv.frpjump.notices.NoticeAction
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
+import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
@@ -158,6 +162,32 @@ class FrpJumpApp : Application() {
     /** Work that must finish even when the screen that started it goes away. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /**
+     * Deletes waiting for their Undo to run out, with the notice they share
+     * ("Deleted: 3 · Undo"). Commits run in [appScope]; all of them are done
+     * at once when the screens stop or the app locks, see [onCreate].
+     */
+    val pendingUndo by lazy {
+        PendingUndo(
+            timer = { ms, block ->
+                val job = appScope.launch {
+                    delay(ms)
+                    block()
+                }
+                val cancel: () -> Unit = { job.cancel() }
+                cancel
+            },
+            run = { commit -> appScope.launch { commit() } },
+            announce = { count, undo ->
+                if (count == null) {
+                    notices.dismissKey(UNDO_NOTICE)
+                } else {
+                    notices.show(Texts.get(R.string.undo_deleted, count), NoticeKind.DONE, key = UNDO_NOTICE, action = NoticeAction(Texts.get(R.string.undo), undo), first = true)
+                }
+            },
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         Texts.init(this)
@@ -237,9 +267,31 @@ class FrpJumpApp : Application() {
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
         // Files handed to other apps a day ago or more (Open with, Share).
         appScope.launch(Dispatchers.IO) { PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS) }
+        // Deletes waiting for Undo are done when the screens stop: the process may go
+        // any time after (swiped away from recents, killed in the background).
         // A message posted just before the app went away is a toast, not lost; none waits over the lock screen.
-        appScope.launch { visible.collect { if (!it) notices.toBackground() } }
-        appScope.launch { lock.locked.collect { if (it) notices.clear() } }
+        appScope.launch {
+            visible.collect {
+                if (!it) {
+                    pendingUndo.commitAll()
+                    notices.toBackground()
+                }
+            }
+        }
+        // Undo's time counts from when its notice is on screen (a host draws it), not from the tap.
+        appScope.launch {
+            combine(notices.queue, notices.hosts) { queue, hosts -> queue.shown?.takeIf { it.key == UNDO_NOTICE && hosts.isNotEmpty() }?.id }
+                .distinctUntilChanged()
+                .collect { if (it != null) pendingUndo.noticeShown() }
+        }
+        appScope.launch {
+            lock.locked.collect {
+                if (it) {
+                    pendingUndo.commitAll()
+                    notices.clear()
+                }
+            }
+        }
         ssh = SshSessions(
             context = this,
             notices = notices,
@@ -273,6 +325,8 @@ class FrpJumpApp : Application() {
      * interruption leaves it listed rather than them behind.
      */
     suspend fun forgetProfile(id: String, keepData: Boolean) {
+        // Not left to be done on a profile already gone.
+        pendingUndo.commitAll()
         ssh.closeProfile(id)
         mqtt.closeProfile(id)
         profiles.forget(id, keepData) { last ->
@@ -310,6 +364,7 @@ class FrpJumpApp : Application() {
 
     private companion object {
         const val SSH_KEY_ALIAS = "frpjump-ssh"
+        const val UNDO_NOTICE = "undo"
         const val OPEN_CACHE_AGE_MS = 24 * 60 * 60 * 1000L
         val LOAD_RETRIES_MS = listOf(10_000L, 30_000L, 60_000L, 60_000L, 60_000L)
     }

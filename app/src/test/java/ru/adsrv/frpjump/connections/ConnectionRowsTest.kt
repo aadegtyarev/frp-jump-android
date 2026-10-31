@@ -54,6 +54,29 @@ class ConnectionRowsTest {
     }
 
     @Test
+    fun `a connection deleted with Undo on screen is not listed, nor is its tunnel as unsaved`() {
+        val tunnels = TunnelsState(tunnels = listOf(tunnel("wb", 80, 40002)))
+        val rows = connectionRows("p1", listOf(root, ui), tunnels, hidden = setOf("3"))
+        assertEquals(listOf("1"), rows.map { it.connection.id })
+    }
+
+    @Test
+    fun `on a device's card too a hidden connection's tunnel is not an unsaved row`() {
+        val tunnels = TunnelsState(tunnels = listOf(tunnel("wb", 80, 40002)))
+        val rows = connectionRows("p1", listOf(root, ui, other), tunnels, device = "wb", hidden = setOf("3"))
+        assertEquals(listOf("1"), rows.map { it.connection.id })
+        assertTrue(rows.all { it.saved })
+    }
+
+    @Test
+    fun `deleting two connections of one tunnel disconnects it with the last, not before`() {
+        // root and admin share wb:22; each delete checks the list as it is after it.
+        assertFalse(disconnectsAfterDelete(root, listOf(admin, ui), up = true))
+        assertTrue(disconnectsAfterDelete(admin, listOf(ui), up = true))
+        assertFalse(disconnectsAfterDelete(admin, listOf(ui), up = false))
+    }
+
+    @Test
     fun `active ones go first, each group keeps its order`() {
         val tunnels = TunnelsState(tunnels = listOf(tunnel("wb", 80, 40002), tunnel("pc", 22, 40003)))
         val (active, saved) = activeFirst(connectionRows("p1", listOf(root, ui, admin, other), tunnels))

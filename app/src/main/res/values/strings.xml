@@ -220,6 +220,9 @@
         <item quantity="other">%d ended</item>
     </plurals>
     <string name="notice_dismiss">Hide</string>
+    <!-- Undo instead of confirm: the notice shared by deletes in a row -->
+    <string name="undo_deleted">Deleted: %d</string>
+    <string name="undo">Undo</string>
     <string name="ssh_password_saved_spoken">%s, saved</string>
     <plurals name="terminal_sessions_count">
         <item quantity="one">%d session</item>
@@ -236,9 +239,6 @@
     <string name="no_browser">No browser installed; copy the address instead.</string>
     <string name="change">Change</string>
     <string name="delete">Delete</string>
-    <string name="delete_title">Delete “%s”?</string>
-    <string name="delete_text">The connection is removed from this phone.</string>
-    <string name="delete_text_tunnel">The connection is removed from this phone and its tunnel disconnects.</string>
     <string name="delete_failed">Could not delete (%s). Try again.</string>
     <string name="tunnel_not_listed">The server has not listed the connection yet; it will appear on a later poll.</string>
 

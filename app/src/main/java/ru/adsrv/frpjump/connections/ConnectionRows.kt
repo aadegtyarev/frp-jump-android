@@ -35,13 +35,21 @@ private fun unsavedId(device: String, port: Int) = "unsaved:" + localPortKey(dev
 /**
  * [connections] of [profile] (only [device]'s when given) joined with its
  * [tunnels], in the stored order, followed by tunnels up that no connection
- * names, so nothing that runs is hidden.
+ * names, so nothing that runs is hidden. Connections whose ids are in
+ * [hidden] (deleted, Undo still on screen) are left out, and so is a tunnel
+ * only they name: it goes with them, or comes back with them on Undo.
  */
-fun connectionRows(profile: String, connections: List<Connection>, tunnels: TunnelsState, device: String? = null): List<ConnectionRow> {
+fun connectionRows(
+    profile: String,
+    connections: List<Connection>,
+    tunnels: TunnelsState,
+    device: String? = null,
+    hidden: Set<String> = emptySet(),
+): List<ConnectionRow> {
     val byKey = tunnels.tunnels.associateBy { it.key }
     val mine = connections.filter { device == null || it.device == device }
     val named = mine.map { localPortKey(it.device, it.port) }.toSet()
-    val rows = mine.map { c ->
+    val rows = mine.filter { it.id !in hidden }.map { c ->
         val key = localPortKey(c.device, c.port)
         ConnectionRow(profile, c, saved = true, tunnel = byKey[key], pending = tunnels.pending[key], error = tunnels.errors[key])
     }
@@ -65,3 +73,10 @@ fun activeFirst(rows: List<ConnectionRow>): Pair<List<ConnectionRow>, List<Conne
 fun lastOnItsTunnel(removed: Connection, all: List<Connection>): Boolean =
     all.none { it.id != removed.id && it.device == removed.device && it.port == removed.port }
 
+
+/**
+ * Whether deleting [removed] disconnects its tunnel: it is [up] and no
+ * connection [left] after the delete (the stored list as it is now) still
+ * uses it. Several deletes on one tunnel: the last one does it.
+ */
+fun disconnectsAfterDelete(removed: Connection, left: List<Connection>, up: Boolean): Boolean = up && lastOnItsTunnel(removed, left)
