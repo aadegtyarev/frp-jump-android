@@ -27,6 +27,12 @@ import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.ui.applyTheme
 import ru.adsrv.frpjump.locale.restoreAppLanguage
+import ru.adsrv.frpjump.mqtt.ExecutorScheduler
+import ru.adsrv.frpjump.mqtt.HiveMqConnector
+import ru.adsrv.frpjump.mqtt.MqttEnvironment
+import ru.adsrv.frpjump.mqtt.MqttLogins
+import ru.adsrv.frpjump.mqtt.MqttSessions
+import ru.adsrv.frpjump.mqtt.PinStore
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfileShared
@@ -70,6 +76,18 @@ class FrpJumpApp : Application() {
     lateinit var sshPasswords: SshPasswords
         private set
     lateinit var ssh: SshSessions
+        private set
+
+    /** Broker logins kept with Remember, sealed with the SSH passwords' key. */
+    lateinit var mqttLogins: MqttLogins
+        private set
+
+    /** The MQTT explorer's pins, per connection. */
+    lateinit var mqttPins: PinStore
+        private set
+
+    /** The MQTT explorer's sessions, one per connection. */
+    lateinit var mqtt: MqttSessions
         private set
 
     /** What every SSH login needs: the terminal's sessions and the file screens share it. */
@@ -229,6 +247,13 @@ class FrpJumpApp : Application() {
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
+        mqttLogins = MqttLogins(AtomicTextFile(File(filesDir, "mqtt_logins.json")), sshBox)
+        mqttPins = PinStore(AtomicTextFile(File(filesDir, "mqtt_pins.json")))
+        mqtt = MqttSessions(
+            env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler()),
+            tunnelsUp = profiles.upTunnels,
+            scope = appScope,
+        )
         // A kept file session closes with the last terminal session on its tunnel.
         appScope.launch { ssh.through.collect(files::onTerminals) }
     }
@@ -237,9 +262,9 @@ class FrpJumpApp : Application() {
     fun sshKeyComment(): String = "frp-jump@" + (profiles.current?.store?.load()?.deviceName ?: "android")
 
     /**
-     * Forget profile [id] on this phone: close its SSH sessions, stop its
-     * frpc, wipe its credentials, key, lists, ports and remembered SSH
-     * passwords ([Profiles.forget]). [keepData] keeps the profile, empty,
+     * Forget profile [id] on this phone: close its SSH and MQTT sessions,
+     * stop its frpc, wipe its credentials, key, lists, ports, remembered SSH
+     * passwords, broker logins and MQTT pins ([Profiles.forget]). [keepData] keeps the profile, empty,
      * with its custom ports, logins, host keys and passwords (enrolling it
      * again after its server removed it). Otherwise the web views' data goes
      * too when it is this profile's, and with the last profile also the
@@ -249,8 +274,17 @@ class FrpJumpApp : Application() {
      */
     suspend fun forgetProfile(id: String, keepData: Boolean) {
         ssh.closeProfile(id)
+        mqtt.closeProfile(id)
         profiles.forget(id, keepData) { last ->
             sshPasswords.forgetProfile(id)
+            mqtt.changeStored {
+                mqttLogins.forgetProfile(id)
+                mqttPins.forgetProfile(id)
+                if (last) {
+                    mqttLogins.wipe()
+                    mqttPins.wipe()
+                }
+            }
             sshEnv.refusals.forgetProfile(id)
             directKept.removeProfile(id)
             if (last) {
