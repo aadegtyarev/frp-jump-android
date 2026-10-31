@@ -46,7 +46,7 @@ data class Connection(
 /**
  * The name of a connection the owner did not name: its kind, and the port
  * unless it is the kind's own: "Web" (80), "Web HTTPS" (443), "SSH" (22),
- * "Web 8080", "SSH 2222", "TCP 1883". [kindWord] says the kind in the app's
+ * "MQTT" (1883), "Web 8080", "SSH 2222", "TCP 502". [kindWord] says the kind in the app's
  * language ("Веб 8080").
  */
 fun defaultConnectionName(kind: PortKind, port: Int, kindWord: (PortKind) -> String): String {
@@ -55,6 +55,7 @@ fun defaultConnectionName(kind: PortKind, port: Int, kindWord: (PortKind) -> Str
         kind == PortKind.WEB && port == 80 -> word
         kind == PortKind.WEB && port == 443 -> "$word HTTPS"
         kind == PortKind.SSH && port == 22 -> word
+        kind == PortKind.MQTT && port == MQTT_PORT -> word
         else -> "$word $port"
     }
 }
@@ -73,11 +74,22 @@ val PORT_PRESETS: Map<PortKind, List<PortPreset>> = mapOf(
     ),
     PortKind.SSH to listOf(PortPreset(22), PortPreset(2222)),
     PortKind.TCP to listOf(
-        PortPreset(1883, "MQTT"),
         PortPreset(502, "Modbus TCP"),
         PortPreset(5432, "PostgreSQL"),
     ),
+    // No name of its own: the default one says "MQTT" already.
+    PortKind.MQTT to listOf(PortPreset(MQTT_PORT)),
 )
+
+/** The MQTT port without TLS. */
+const val MQTT_PORT = 1883
+
+/**
+ * "Open as MQTT" of a TCP connection: the same connection (id, name,
+ * local port) as the MQTT kind. The wire protocol stays `tcp`, so this is
+ * allowed with the tunnel up.
+ */
+fun Connection.asMqtt(): Connection = copy(kind = PortKind.MQTT, https = false, user = null)
 
 /** A name a preset fills in ("Grafana"), not one the owner typed. */
 fun isPresetName(name: String): Boolean = PORT_PRESETS.values.flatten().any { it.name != null && it.name == name.trim() }

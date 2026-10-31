@@ -100,7 +100,7 @@
     <string name="devices_empty">No other devices yet.</string>
     <string name="devices_search">Search devices</string>
     <string name="devices_search_hint">Device name</string>
-    <string name="devices_search_close">Close search</string>
+    <string name="search_close">Close search</string>
     <string name="devices_no_match">No devices match “%s”.</string>
     <string name="offline_unreachable">No connection to the server · updated %s</string>
     <string name="offline_server_error">The server returned an error · updated %s</string>
@@ -663,4 +663,62 @@
         <item quantity="one">Uploaded %d file</item>
         <item quantity="other">Uploaded %d files</item>
     </plurals>
+
+    <!-- MQTT explorer -->
+    <string name="kind_mqtt" translatable="false">MQTT</string>
+    <string name="kind_mqtt_tile" translatable="false">MQTT</string>
+    <string name="mqtt_open_as">Open as MQTT</string>
+    <string name="mqtt_search">Search topics</string>
+    <string name="mqtt_search_hint">Part of a topic path</string>
+    <string name="mqtt_actions">Explorer actions</string>
+    <string name="mqtt_refresh_tree">Refresh tree</string>
+    <string name="mqtt_empty_level">(empty)</string>
+    <string name="mqtt_go_to_topic">Go to topic</string>
+    <string name="mqtt_topic">Topic</string>
+    <string name="mqtt_pin_branch">Pin a branch…</string>
+    <string name="mqtt_pin">Pin</string>
+    <string name="mqtt_state_login">Login needed</string>
+    <string name="mqtt_version_5" translatable="false">MQTT 5</string>
+    <string name="mqtt_version_311" translatable="false">MQTT 3.1.1</string>
+    <string name="mqtt_connecting">Connecting to the broker…</string>
+    <string name="mqtt_reconnecting">Reconnecting…</string>
+    <string name="mqtt_state_closed">Closed</string>
+    <plurals name="mqtt_reading_tree">
+        <item quantity="one">Reading the tree… %s topic</item>
+        <item quantity="other">Reading the tree… %s topics</item>
+    </plurals>
+    <string name="mqtt_login_needed">The broker asks for a login</string>
+    <string name="mqtt_log_in">Log in</string>
+    <string name="mqtt_no_broker">No broker answers on port %1$d of %2$s</string>
+    <string name="mqtt_no_common_version">The broker refused MQTT 5 and 3.1.1</string>
+    <string name="mqtt_refused">The broker refused the connection</string>
+    <string name="mqtt_closed_by_tunnel">The session closed with its tunnel</string>
+    <string name="mqtt_closed">The session is closed</string>
+    <string name="mqtt_snapshot_refused">The broker does not allow reading the whole tree</string>
+    <string name="mqtt_limit_reached">Topic limit reached: %1$s; new topics are not shown</string>
+    <string name="mqtt_snapshot_timed_out">The tree was read for 10 s, new topics kept coming: some may be missing</string>
+    <string name="mqtt_branch_refused">The broker does not allow reading this branch</string>
+    <string name="mqtt_no_messages">No messages</string>
+    <string name="mqtt_show_value">Show the value</string>
+    <string name="mqtt_fold">Fold</string>
+    <string name="mqtt_pinned_mark">Pinned</string>
+    <string name="mqtt_kind_branch">Branch</string>
+    <string name="mqtt_kind_topic">Topic</string>
+    <string name="mqtt_cleared">(cleared)</string>
+    <string name="mqtt_empty_value">(empty value)</string>
+    <string name="mqtt_retained">retained</string>
+    <plurals name="mqtt_topics">
+        <item quantity="one">%s topic</item>
+        <item quantity="other">%s topics</item>
+    </plurals>
+    <string name="mqtt_qos" translatable="false">QoS %1$d</string>
+    <string name="mqtt_no_match">No topic path holds “%1$s”</string>
+    <string name="mqtt_hits_more">The first %1$s of %2$s</string>
+    <string name="mqtt_login_title">Broker login: %1$s</string>
+    <string name="mqtt_login_wrong">Wrong user or password</string>
+    <string name="path_root">Root</string>
+    <string name="mqtt_topic_empty">Type a topic.</string>
+    <string name="mqtt_topic_wildcard">A topic cannot hold + or #.</string>
+    <string name="mqtt_topic_nul">A topic cannot hold the NUL character.</string>
+    <string name="mqtt_topic_too_long">A topic holds at most %1$d bytes.</string>
 </resources>

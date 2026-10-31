@@ -71,10 +71,22 @@ import java.time.Instant
  */
 @Composable
 fun PathBar(path: String?, onOpen: (String) -> Unit, onType: () -> Unit) {
+    val segments = path?.let(::pathSegments).orEmpty()
+    PathBar(segments.map { it.label }, onOpen = { onOpen(segments[it].path) }, onType = onType, typeLabel = stringResource(R.string.files_go_to_folder))
+}
+
+/**
+ * A place as parts (Files: folders; MQTT: topic levels), the first being
+ * the root, `/` (read out as "Root"): a tap on part `i` opens it ([onOpen] gets `i`), a tap on
+ * the last one (or the empty end of the bar) lets the owner type a path
+ * ([onType], read out as [typeLabel]).
+ */
+@Composable
+fun PathBar(labels: List<String>, onOpen: (Int) -> Unit, onType: () -> Unit, typeLabel: String) {
     val colors = AppTheme.colors
     val scroll = rememberScrollState()
     // The deepest part stays in view.
-    LaunchedEffect(path) { scroll.scrollTo(scroll.maxValue) }
+    LaunchedEffect(labels) { scroll.scrollTo(scroll.maxValue) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -82,25 +94,27 @@ fun PathBar(path: String?, onOpen: (String) -> Unit, onType: () -> Unit) {
             .clip(RoundedCornerShape(12.dp))
             .background(colors.card)
             .border(1.dp, colors.divider, RoundedCornerShape(12.dp))
-            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.files_go_to_folder), onClick = onType)
+            .clickable(role = Role.Button, onClickLabel = typeLabel, onClick = onType)
             .heightIn(min = 40.dp)
             .padding(horizontal = 4.dp)
             .horizontalScroll(scroll),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val segments = path?.let(::pathSegments).orEmpty()
-        segments.forEachIndexed { i, segment ->
-            val last = i == segments.lastIndex
+        val rootSpoken = stringResource(R.string.path_root)
+        labels.forEachIndexed { i, label ->
+            val last = i == labels.lastIndex
             if (i > 1) Text("/", color = colors.faint, fontSize = 14.sp)
             Text(
-                segment.label,
+                label,
                 fontSize = 14.sp,
                 fontWeight = if (last) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (last) colors.ink else colors.accent,
                 maxLines = 1,
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable(role = Role.Button) { if (last) onType() else onOpen(segment.path) }
+                    .clickable(role = Role.Button) { if (last) onType() else onOpen(i) }
+                    // "/" alone reads as nothing.
+                    .then(if (i == 0) Modifier.semantics { contentDescription = rootSpoken } else Modifier)
                     .padding(horizontal = 6.dp, vertical = 8.dp),
             )
         }

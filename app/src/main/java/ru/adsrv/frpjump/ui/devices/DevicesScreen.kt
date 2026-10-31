@@ -1,7 +1,6 @@
 package ru.adsrv.frpjump.ui.devices
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,11 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,11 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -65,9 +55,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,6 +73,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.NotificationsOffLine
 import ru.adsrv.frpjump.ui.DeviceGlyph
+import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.connections.OpenThroughText
@@ -155,7 +144,15 @@ fun DevicesScreen(
     Scaffold(
         topBar = {
             if (searching) {
-                SearchBar(query, onQuery = { query = it }, onClose = closeSearch, focus = focusOnOpen, onFocused = { focusOnOpen = false })
+                SearchBar(
+                    query,
+                    onQuery = { query = it },
+                    onClose = closeSearch,
+                    focus = focusOnOpen,
+                    onFocused = { focusOnOpen = false },
+                    label = stringResource(R.string.devices_search),
+                    hint = stringResource(R.string.devices_search_hint),
+                )
             } else {
                 Header(current, onProfiles, onTunnels, disconnecting = current != null && disconnecting == current.id, onDisconnect = { confirmDisconnect = current }, onSearch = {
                     searching = true
@@ -263,67 +260,6 @@ private fun TunnelsChip(count: Int, onClick: () -> Unit) {
     ) {
         Box(Modifier.clip(CircleShape).indication(source, ripple())) {
             Chip(pluralStringResource(R.plurals.tunnels, count, count), colors.accentContainer, colors.onAccentContainer)
-        }
-    }
-}
-
-/** The bar while searching: a field in the switcher's shape, focused with the keyboard up, and ✕. */
-@Composable
-private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, focus: Boolean, onFocused: () -> Unit) {
-    val colors = AppTheme.colors
-    val requester = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
-    // [focus]: just opened by the magnifier; once done, a return to the screen leaves the keyboard down.
-    LaunchedEffect(focus) {
-        if (!focus) return@LaunchedEffect
-        runCatching { requester.requestFocus() }
-        keyboard?.show()
-        onFocused()
-    }
-    val label = stringResource(R.string.devices_search)
-    Row(
-        Modifier
-            .statusBarsPadding()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Surface(
-            shape = CircleShape,
-            color = colors.card,
-            border = BorderStroke(1.dp, colors.accent),
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = 44.dp),
-        ) {
-            Row(
-                Modifier.padding(start = 14.dp, end = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(SearchGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(20.dp))
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQuery,
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 16.sp, color = colors.ink),
-                    cursorBrush = SolidColor(colors.accent),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(requester)
-                        .semantics { contentDescription = label },
-                    decorationBox = { field ->
-                        Box(contentAlignment = Alignment.CenterStart) {
-                            if (query.isEmpty()) Text(stringResource(R.string.devices_search_hint), fontSize = 16.sp, color = colors.muted, maxLines = 1)
-                            field()
-                        }
-                    },
-                )
-                IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.devices_search_close), tint = colors.muted, modifier = Modifier.size(20.dp))
-                }
-            }
         }
     }
 }

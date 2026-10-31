@@ -89,6 +89,7 @@ fun kindLabel(kind: PortKind): String = stringResource(
         PortKind.WEB -> R.string.kind_web
         PortKind.SSH -> R.string.kind_ssh
         PortKind.TCP -> R.string.kind_tcp
+        PortKind.MQTT -> R.string.kind_mqtt
     },
 )
 
@@ -205,16 +206,18 @@ fun localAddress(port: Int) = "127.0.0.1:$port"
 
 /**
  * The main action of an active connection: Open, Terminal ("Terminal · 2"
- * with [sessions] of 2 or more open), or Copy (the address; short, it
- * shares the row with Disconnect).
+ * with [sessions] of 2 or more open), MQTT (the explorer), or Copy (the
+ * address; short, it shares the row with Disconnect).
  */
 @Composable
 fun mainActionLabel(row: ConnectionRow, sessions: SessionCount = SessionCount.NONE): String = when {
     !row.saved -> stringResource(R.string.copy)
-    row.connection.kind == PortKind.WEB -> stringResource(R.string.open)
-    row.connection.kind == PortKind.SSH && sessions.total >= 2 -> stringResource(R.string.terminal_count, sessions.total)
-    row.connection.kind == PortKind.SSH -> stringResource(R.string.terminal)
-    else -> stringResource(R.string.copy)
+    else -> when (row.connection.kind) {
+        PortKind.WEB -> stringResource(R.string.open)
+        PortKind.SSH -> if (sessions.total >= 2) stringResource(R.string.terminal_count, sessions.total) else stringResource(R.string.terminal)
+        PortKind.TCP -> stringResource(R.string.copy)
+        PortKind.MQTT -> stringResource(R.string.kind_mqtt)
+    }
 }
 
 /** The terminal sessions of an SSH row as [count] has them; nothing for none. */
@@ -375,6 +378,8 @@ class RowActions(
     val offersKeyLogin: (ConnectionRow) -> Boolean,
     /** "Change login": the login dialog, then a terminal with what it gave. */
     val changeLogin: (ConnectionRow) -> Unit,
+    /** "Open as MQTT" of a saved TCP connection: it becomes MQTT and its explorer opens. */
+    val openAsMqtt: (ConnectionRow) -> Unit,
 )
 
 @Composable
@@ -384,6 +389,7 @@ fun rememberRowActions(
     onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenFiles: (targetId: Int) -> Unit,
+    onOpenMqtt: (sessionId: Int) -> Unit,
 ): RowActions {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -401,14 +407,20 @@ fun rememberRowActions(
         main = { row ->
             when {
                 row.tunnel == null -> Unit
-                !row.saved || row.connection.kind == PortKind.TCP -> copy(row)
-                row.connection.kind == PortKind.WEB -> onOpenWeb(row)
-                // Back to the session already open on this port; a new one is "+" on its tab row.
-                else -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
-                    // A usable remembered login connects at once; the dialog only when there is none.
-                    val login = actions.loginAtOnce(row)
-                    val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
-                    if (opened != null) onOpenTerminal(opened) else ui.login = row
+                !row.saved -> copy(row)
+                else -> when (row.connection.kind) {
+                    PortKind.TCP -> copy(row)
+                    PortKind.WEB -> onOpenWeb(row)
+                    // Back to the explorer session of this connection, or a new one; the screen shows it connecting.
+                    PortKind.MQTT -> actions.openMqtt(row)?.let(onOpenMqtt)
+                        ?: context.notice(context.getString(if (row.tunnel == null) R.string.files_tunnel_down else R.string.profile_gone), NoticeKind.WARN)
+                    // Back to the session already open on this port; a new one is "+" on its tab row.
+                    PortKind.SSH -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
+                        // A usable remembered login connects at once; the dialog only when there is none.
+                        val login = actions.loginAtOnce(row)
+                        val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
+                        if (opened != null) onOpenTerminal(opened) else ui.login = row
+                    }
                 }
             }
         },
@@ -438,6 +450,11 @@ fun rememberRowActions(
         keyLogin = { row -> if (row.tunnel == null) notificationsFirst { actions.startKeyLogin(row) } else actions.startKeyLogin(row) },
         offersKeyLogin = { row -> actions.sshLogin(row).method == SshAuthMethod.PASSWORD },
         changeLogin = { ui.login = it },
+        // Down, the tunnel is brought up for it, as Connect does.
+        openAsMqtt = { row ->
+            val open = { actions.openAsMqtt(row, onOpenMqtt) }
+            if (row.tunnel == null && row.pending == null) notificationsFirst(open) else open()
+        },
     )
 }
 
@@ -463,6 +480,7 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
             })
         }
         if (row.tunnel != null) {
+            // TCP's main action is Copy already.
             if (row.saved && kind != PortKind.TCP) item(R.string.copy_address, actions.copy)
             if (row.saved && kind == PortKind.WEB) item(R.string.open_in_browser, actions.browser)
             if (row.saved && kind == PortKind.SSH) item(R.string.open_in_ssh_app, actions.sshApp)
@@ -472,6 +490,7 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
         // Terminal logs in at once with what is remembered: another user or method is chosen here.
         if (row.saved && kind == PortKind.SSH) item(R.string.terminal_change_login, actions.changeLogin)
         if (row.saved && kind == PortKind.SSH && actions.offersKeyLogin(row)) item(R.string.key_login, actions.keyLogin)
+        if (row.saved && kind == PortKind.TCP) item(R.string.mqtt_open_as, actions.openAsMqtt)
         if (row.saved) {
             item(R.string.change, actions.change)
             item(R.string.delete, actions.delete)

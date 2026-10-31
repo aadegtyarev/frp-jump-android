@@ -107,20 +107,26 @@ neither option; see "Retained topics" for what that changes.
   arrives and unsubscribes. On a Wiren Board the retained topics are
   nearly the whole tree, so the snapshot is too. The snapshot ends at the
   first of:
-  - 1 s without any message (counted from the broker's SUBACK);
+  - 1 s without a new topic (counted from the broker's SUBACK); new
+    values of topics already in the tree do not count, since a live
+    controller sends them all the time, while a known retained value
+    re-sent unchanged (the re-delivery after a reconnect or on a
+    branch re-read) does;
   - 10 s after the SUBACK;
   - the session's topic limit.
 
   Ended on 10 s or on the limit, the tree says so ("The tree was read for
-  10 s, the broker kept sending: some topics may be missing" / "Topic
+  10 s, new topics kept coming: some may be missing" / "Topic
   limit reached: 100 000"). A topic that is not retained appears only when
   a message arrives for it while a subscription covers it. "Refresh tree"
   (in "⋮") clears the tree and takes a new snapshot.
 - **The open branch.** Live values come for the branch being viewed: at
   path `<p>` the app is subscribed to `<p>/#`, which also matches `<p>`
   itself, moving the subscription as the owner navigates. The root `/`
-  (the whole tree) is not live, to spare traffic and the phone: it shows
-  the snapshot (and pinned topics), and "Refresh tree" updates it. Live
+  (the whole tree) is not subscribed live, to spare traffic and the phone:
+  its rows show what the session has seen, that is the snapshot plus what
+  the open branches and the pins brought (so their counts and ages move
+  while a branch is open), and "Refresh tree" re-takes the snapshot. Live
   values start at the first level; the empty first level is the branch
   `/#`. A large branch fills up to the session's topic limit and then says
   so as above.
@@ -412,14 +418,16 @@ On a Wiren Board on the tunnel unless said otherwise.
 
 1. Connect, tree, card, pins, login:
    - A new MQTT connection on 1883 has the main action "MQTT"; the
-     explorer opens with the tree; the root holds `(empty)` and `$SYS`
-     and changes only on "Refresh tree";
+     explorer opens with the tree; the root holds `(empty)` and `$SYS`,
+     is not subscribed live and shows what the session has seen;
      an old TCP connection on 1883 becomes MQTT by "Open as MQTT";
      `/devices/*/controls/*` and `/devices/*/meta` show live values;
      `wb-mr6c_1/controls/K1` changes as the relay switches.
    - `$SYS` opens and shows the broker's topics.
-   - A test broker that keeps publishing new topics: the snapshot stops at
-     10 s and says so. The topic limit, lowered in a test build: "Topic
+   - On the Wiren Board, whose values change all the time, the snapshot
+     ends about 1 s after the last new topic and shows no banner. A test
+     broker that keeps publishing new topics: the snapshot stops at 10 s
+     and says so. The topic limit, lowered in a test build: "Topic
      limit reached".
    - `/devices/wb-mr6c_1/meta` shows as JSON, a binary payload as Hex; the
      switch changes the view.
@@ -472,8 +480,14 @@ On a Wiren Board on the tunnel unless said otherwise.
 - One concept, the pin (a subscription with a mask); no separate "Watch".
 - Login in stage 1, TLS in stage 5.
 - The change highlight is the age label in the accent colour, nothing more.
-- The root shows the snapshot only, refreshed by "Refresh tree"; live
-  values start at the first level (economy of traffic and phone load).
+- The root is not subscribed live: it shows what the session has seen
+  (the snapshot plus open branches and pins), "Refresh tree" re-takes the
+  snapshot; live values start at the first level (economy of traffic and
+  phone load).
+- The snapshot's quiet second counts what fills the tree (new topics,
+  retained values re-sent unchanged, as on a reconnect or a branch
+  re-read), not new values of known topics, so a live controller does not
+  run it into the 10 s cap.
 - At the topic limit new topics stop being added, known ones keep
   updating, and the screen says so.
 - Delete branch publishes only to topics a fresh re-read of the branch

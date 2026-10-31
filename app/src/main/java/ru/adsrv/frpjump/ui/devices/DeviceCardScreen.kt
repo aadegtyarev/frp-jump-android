@@ -91,11 +91,12 @@ fun DeviceCardScreen(
     onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenFiles: (targetId: Int) -> Unit,
+    onOpenMqtt: (sessionId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val ui = remember { ConnectionUi() }
-    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles)
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val notificationsFirst = rememberNotificationsFirst()
     var adding by rememberSaveable { mutableStateOf(false) }
     val colors = AppTheme.colors
@@ -336,7 +337,7 @@ private fun subtitle(row: ConnectionRow, sshMethod: SshAuthMethod?): String {
     }
 }
 
-/** WEB / SSH / TCP on a tile, in the accent while connected. */
+/** WEB / SSH / TCP / MQTT on a tile, in the accent while connected. */
 @Composable
 private fun KindTile(kind: PortKind, up: Boolean, saved: Boolean) {
     val colors = AppTheme.colors
@@ -348,10 +349,15 @@ private fun KindTile(kind: PortKind, up: Boolean, saved: Boolean) {
     ) {
         Text(
             stringResource(
-                when {
-                    !saved || kind == PortKind.TCP -> R.string.kind_tcp_tile
-                    kind == PortKind.WEB -> R.string.kind_web_tile
-                    else -> R.string.kind_ssh_tile
+                if (!saved) {
+                    R.string.kind_tcp_tile
+                } else {
+                    when (kind) {
+                        PortKind.WEB -> R.string.kind_web_tile
+                        PortKind.SSH -> R.string.kind_ssh_tile
+                        PortKind.TCP -> R.string.kind_tcp_tile
+                        PortKind.MQTT -> R.string.kind_mqtt_tile
+                    }
                 },
             ),
             fontFamily = FontFamily.Monospace,

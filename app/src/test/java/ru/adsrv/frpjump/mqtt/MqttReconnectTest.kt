@@ -116,6 +116,73 @@ class MqttReconnectTest {
         assertTrue(session.state.value is MqttState.Open)
     }
 
+    @Test
+    fun `live values of known topics do not keep the snapshot going, new topics and re-sent values do`() {
+        val connector = ScriptedConnector()
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env(connector))
+        connector.outcomes += { connector.opened() }
+        session.connect()
+        val events = connector.events!!
+        events.message("/devices/x/controls/t", "21".toByteArray(), retain = true, qos = 0)
+        // A live controller keeps sending new values: not snapshot messages.
+        repeat(3) {
+            scheduler.advanceBy(300)
+            events.message("/devices/x/controls/t", "2$it.5".toByteArray(), retain = true, qos = 0)
+        }
+        scheduler.advanceBy(100)
+        assertEquals(SnapshotState.Done(SnapshotEnd.QUIET), session.snapshot.value)
+
+        // Refresh: the known value re-sent unchanged counts, so does a new topic; 1 s after the last, it ends.
+        session.refreshTree()
+        events.message("/devices/x/controls/t", "1".toByteArray(), retain = true, qos = 0)
+        scheduler.advanceBy(600)
+        events.message("/devices/x/controls/t", "1".toByteArray(), retain = true, qos = 0)
+        scheduler.advanceBy(600)
+        events.message("/devices/x/controls/u", "2".toByteArray(), retain = true, qos = 0)
+        scheduler.advanceBy(900)
+        assertEquals(SnapshotState.Reading, session.snapshot.value)
+        scheduler.advanceBy(100)
+        assertEquals(SnapshotState.Done(SnapshotEnd.QUIET), session.snapshot.value)
+
+        // New topics that never stop: the 10 s cap.
+        session.refreshTree()
+        repeat(40) {
+            events.message("/devices/y/$it", "v".toByteArray(), retain = true, qos = 0)
+            scheduler.advanceBy(300)
+        }
+        assertEquals(SnapshotState.Done(SnapshotEnd.TIMED_OUT), session.snapshot.value)
+    }
+
+    @Test
+    fun `a filter the client will not build is refused and the rest of the pass still goes out`() {
+        val connector = ScriptedConnector()
+        val subscribed = mutableListOf<String>()
+        val pins = PinStore(MemoryStorage()).apply { set("p", "c", listOf("bad\u0000pin", "a/+")) }
+        val env = MqttEnvironment(MqttLogins(MemoryStorage(), FakeKeystore().box("k")), pins, connector, scheduler)
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env)
+        connector.outcomes += {
+            ConnectOutcome.Opened(object : MqttLink {
+                override fun subscribe(filter: String, done: (granted: Boolean) -> Unit) {
+                    require('\u0000' !in filter) { "malformed" }
+                    subscribed += filter
+                    done(true)
+                }
+
+                override fun unsubscribe(filter: String) = Unit
+
+                override fun close() = Unit
+            })
+        }
+        session.connect()
+        assertEquals(listOf("a/+", "#"), subscribed)
+        assertEquals(setOf("bad\u0000pin"), session.refused.value)
+        assertEquals(SnapshotState.Reading, session.snapshot.value)
+        // Asked again on the next pass, refused again; the good ones are not subscribed twice.
+        session.open(MqttPath.parse("x"))
+        assertEquals(listOf("a/+", "#", "x/#"), subscribed)
+        assertEquals(setOf("bad\u0000pin"), session.refused.value)
+    }
+
     private fun env(connector: MqttConnector) =
         MqttEnvironment(MqttLogins(MemoryStorage(), FakeKeystore().box("k")), PinStore(MemoryStorage()), connector, scheduler)
 

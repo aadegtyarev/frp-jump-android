@@ -149,7 +149,7 @@ class MqttSession(
     private var snapshotOn = false
     private var snapshotRun = 0
     private var subackAt: Long? = null
-    private var lastMessageAt: Long? = null
+    private var lastSnapshotMessageAt: Long? = null
     private var cancelSnapshotCheck: (() -> Unit)? = null
 
     /** Starts connecting: the remembered login, else anonymous. */
@@ -332,7 +332,8 @@ class MqttSession(
         if (copies.isCopy(path, payload, retain, qos, matchingFilters(active, path))) return
         val received = tree.receive(path, payload, retain, qos, v)
         if (snapshotOn) {
-            lastMessageAt = scheduler.now()
+            // Only what fills the tree keeps the snapshot going (see SnapshotRule), not live values of known topics.
+            if (received == Received.NEW_TOPIC || received == Received.UNCHANGED) lastSnapshotMessageAt = scheduler.now()
             if (received == Received.OVER_LIMIT) checkSnapshot(snapshotRun)
         }
     }
@@ -356,13 +357,21 @@ class MqttSession(
         val open = link ?: return
         (subscribed - wanted.toSet()).forEach {
             subscribed -= it
-            if (it !in _refused.value) open.unsubscribe(it)
+            // A filter the client would not take was never subscribed; nothing else depends on this call.
+            if (it !in _refused.value) runCatching { open.unsubscribe(it) }
         }
         wanted.filter { it !in subscribed }.forEach { filter ->
-            subscribed += filter
             val gen = generation
             val run = snapshotRun
-            open.subscribe(filter) { granted -> scheduler.post { if (gen == generation) subscribed(filter, granted, run) } }
+            subscribed += filter
+            try {
+                open.subscribe(filter) { granted -> scheduler.post { if (gen == generation) subscribed(filter, granted, run) } }
+            } catch (e: Exception) {
+                subscribed -= filter
+                // The client refused to build it (a filter it finds malformed): refused, as a SUBACK failure
+                // would say, not marked subscribed, and the rest of the pass (the snapshot's `#`) still goes out.
+                subscribed(filter, granted = false, run)
+            }
         }
     }
 
@@ -385,7 +394,7 @@ class MqttSession(
         snapshotOn = true
         snapshotRun++
         subackAt = null
-        lastMessageAt = null
+        lastSnapshotMessageAt = null
         _snapshot.value = SnapshotState.Reading
         subscribed -= SNAPSHOT_FILTER
         reconcile()
@@ -396,9 +405,9 @@ class MqttSession(
         if (!snapshotOn || run != snapshotRun || suback == null) return
         cancelSnapshotCheck?.invoke()
         val now = scheduler.now()
-        val end = SnapshotRule.end(suback, lastMessageAt, now, tree.limitReached)
+        val end = SnapshotRule.end(suback, lastSnapshotMessageAt, now, tree.limitReached)
         if (end == null) {
-            cancelSnapshotCheck = scheduler.schedule(SnapshotRule.nextCheckAt(suback, lastMessageAt) - now) { checkSnapshot(run) }
+            cancelSnapshotCheck = scheduler.schedule(SnapshotRule.nextCheckAt(suback, lastSnapshotMessageAt) - now) { checkSnapshot(run) }
             return
         }
         stopSnapshot()
