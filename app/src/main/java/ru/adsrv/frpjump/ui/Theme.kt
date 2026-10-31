@@ -45,6 +45,8 @@ class AppColors(private val palette: Palette) {
     val error = Color(palette.error)
     val errorContainer = Color(palette.errorContainer)
     val onErrorContainer = Color(palette.onErrorContainer)
+    val archive = Color(palette.archive)
+    val executable = Color(palette.executable)
     val onProfile = Color(palette.onProfile)
     val termBar = Color(palette.termBar)
     val termKey = Color(palette.termKey)

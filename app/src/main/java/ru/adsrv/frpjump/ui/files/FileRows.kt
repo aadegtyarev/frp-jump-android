@@ -49,10 +49,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.files.EntryType
+import ru.adsrv.frpjump.files.FileKind
 import ru.adsrv.frpjump.files.RemoteEntry
+import ru.adsrv.frpjump.files.fileKind
 import ru.adsrv.frpjump.files.linkLabel
 import ru.adsrv.frpjump.files.pathSegments
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.ArchiveGlyph
+import ru.adsrv.frpjump.ui.BrokenLinkGlyph
+import ru.adsrv.frpjump.ui.ExecutableGlyph
 import ru.adsrv.frpjump.ui.FileGlyph
 import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.LinkGlyph
@@ -254,34 +259,53 @@ fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit,
     }
 }
 
-/** Folder, file or other on a tile; a symlink gets a small link badge, a broken one in the error colour. */
+/**
+ * The entry's kind on a tile, by glyph and a muted tint ([fileKind]): a
+ * folder on the accent's tile, a file, an executable, an archive, a special
+ * file; a symlink gets a small link badge over its target's kind, a broken
+ * one a broken chain in the error colour instead.
+ */
 @Composable
 fun EntryIcon(entry: RemoteEntry) {
     val colors = AppTheme.colors
-    val broken = entry.link?.broken == true
+    val kind = fileKind(entry)
     Box {
         Box(
             Modifier
                 .size(40.dp)
-                .background(if (entry.isDir) colors.accentContainer else colors.tile, RoundedCornerShape(12.dp)),
+                .background(if (kind == FileKind.FOLDER) colors.accentContainer else colors.tile, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                when (entry.type) {
-                    EntryType.DIR -> FolderGlyph
-                    EntryType.FILE -> FileGlyph
-                    EntryType.OTHER -> OtherFileGlyph
+                when (kind) {
+                    FileKind.FOLDER -> FolderGlyph
+                    FileKind.FILE -> FileGlyph
+                    FileKind.EXECUTABLE -> ExecutableGlyph
+                    FileKind.ARCHIVE -> ArchiveGlyph
+                    FileKind.SPECIAL -> OtherFileGlyph
+                    FileKind.BROKEN_LINK -> BrokenLinkGlyph
                 },
-                contentDescription = null,
-                tint = when {
-                    broken -> colors.error
-                    entry.isDir -> colors.onAccentContainer
-                    else -> colors.muted
+                contentDescription = stringResource(
+                    when (kind) {
+                        FileKind.FOLDER -> R.string.files_kind_folder
+                        FileKind.FILE -> R.string.files_kind_file
+                        FileKind.EXECUTABLE -> R.string.files_kind_executable
+                        FileKind.ARCHIVE -> R.string.files_kind_archive
+                        FileKind.SPECIAL -> R.string.files_kind_special
+                        FileKind.BROKEN_LINK -> R.string.files_kind_broken_link
+                    },
+                ),
+                tint = when (kind) {
+                    FileKind.FOLDER -> colors.onAccentContainer
+                    FileKind.FILE, FileKind.SPECIAL -> colors.muted
+                    FileKind.EXECUTABLE -> colors.executable
+                    FileKind.ARCHIVE -> colors.archive
+                    FileKind.BROKEN_LINK -> colors.error
                 },
                 modifier = Modifier.size(22.dp),
             )
         }
-        if (entry.link != null) {
+        if (entry.link != null && kind != FileKind.BROKEN_LINK) {
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
@@ -291,7 +315,7 @@ fun EntryIcon(entry: RemoteEntry) {
                     .border(1.dp, colors.outline, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(LinkGlyph, contentDescription = stringResource(R.string.files_link_badge), tint = if (broken) colors.error else colors.accent, modifier = Modifier.size(12.dp))
+                Icon(LinkGlyph, contentDescription = stringResource(R.string.files_link_badge), tint = colors.accent, modifier = Modifier.size(12.dp))
             }
         }
     }
