@@ -250,6 +250,7 @@ fun PublishSheet(
                 busy = sending,
                 enabled = open,
                 error = shown is PublishAnswer.Refused || shown is PublishAnswer.Failed,
+                announce = true,
                 onClick = {
                     val text = topic.text
                     val found = topicProblem(text)
@@ -271,11 +272,6 @@ fun PublishSheet(
                     }
                 },
             )
-            // Read out when it comes (the button's text changes, which is not announced by itself).
-            shown?.let { a ->
-                val spoken = answerText(a)
-                Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite; contentDescription = spoken })
-            }
             // While the session is not open, why Send is off.
             if (!open) {
                 Text(

@@ -12,6 +12,15 @@ import ru.adsrv.frpjump.undo.PendingUndo
 
 class PinsTest {
     @Test
+    fun `the empty first level is pinned only as its children or its branch`() {
+        // Its text is empty, which no topic filter can be: `/+` and `/#`, never "".
+        val leading = MqttPath(listOf(""))
+        assertEquals(listOf(PinMask.ONE_LEVEL_BELOW, PinMask.WHOLE_BRANCH), pinMasksFor(leading))
+        assertEquals(listOf("/+", "/#"), pinMasksFor(leading).map { pinFilter(leading, it) })
+        assertEquals(PinMask.entries.toList(), pinMasksFor(MqttPath.parse("/devices")))
+    }
+
+    @Test
     fun `each mask gives its topic filter`() {
         val k1 = MqttPath.parse("/devices/x/controls/K1")
         assertEquals("/devices/x/controls/K1", pinFilter(k1, PinMask.TOPIC))

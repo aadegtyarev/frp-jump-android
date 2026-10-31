@@ -75,6 +75,8 @@ import ru.adsrv.frpjump.mqtt.nodeLabel
 import ru.adsrv.frpjump.mqtt.pathBarSeparator
 import ru.adsrv.frpjump.mqtt.publishAtLevel
 import ru.adsrv.frpjump.mqtt.shownPath
+import ru.adsrv.frpjump.mqtt.middleEllipsis
+import ru.adsrv.frpjump.ui.HomeGlyph
 import ru.adsrv.frpjump.mqtt.pathAtPart
 import ru.adsrv.frpjump.mqtt.pathBarLabels
 import ru.adsrv.frpjump.mqtt.valueLine
@@ -96,8 +98,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import java.text.NumberFormat
 import java.time.Duration
 
-/** The path bar's root, the whole tree: `#`, the MQTT filter for everything (`/` is a real topic prefix here). */
-private const val ROOT_LABEL = "#"
+/** Characters of a path the search hint shows at most; a longer one is cut in the middle. */
+private const val HINT_PATH_CHARS = 28
 
 /** A value changed this recently (after the level was shown) has its age in the accent colour; branches never do. */
 private const val HIGHLIGHT_MS = 2_000L
@@ -156,7 +158,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     onFocused = { focusSearch = false },
                     label = stringResource(R.string.mqtt_search),
                     // Says where it looks: the open branch and below, or the whole tree.
-                    hint = shownPath(state.searchAt)?.let { stringResource(R.string.mqtt_search_in, it) } ?: stringResource(R.string.mqtt_search_whole),
+                    hint = shownPath(state.searchAt)?.let { stringResource(R.string.mqtt_search_in, middleEllipsis(it, HINT_PATH_CHARS)) }
+                        ?: stringResource(R.string.mqtt_search_whole),
                 )
             } else {
                 AppTopBar(
@@ -213,13 +216,16 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 .padding(top = padding.calculateTopPadding()),
         ) {
             val empty = stringResource(R.string.mqtt_empty_level)
-            val labels = pathBarLabels(state.path, ROOT_LABEL, empty)
+            val labels = pathBarLabels(state.path, "", empty)
+            val leadingSlash = stringResource(R.string.mqtt_leading_slash_spoken)
             PathBar(
                 labels,
                 onOpen = { vm.open(pathAtPart(state.path, it)) },
                 onType = { typing = true },
                 typeLabel = stringResource(R.string.mqtt_go_to_topic),
                 separatorBefore = { pathBarSeparator(state.path, it) },
+                rootIcon = HomeGlyph,
+                spoken = { i -> leadingSlash.takeIf { i == 1 && state.path.levels.firstOrNull() == "" } },
             )
             SnapshotLine(state)
             Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
@@ -262,6 +268,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             published = published,
             onPublish = vm::publish,
             onOpenBranch = {
+                // Going somewhere ends the search it was found by (as a typed path does).
+                closeSearch()
                 vm.closeCard()
                 vm.open(card.path)
             },
@@ -282,7 +290,14 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             title = stringResource(R.string.mqtt_go_to_topic),
             initial = state.path.format(),
             confirm = stringResource(R.string.files_go),
-            onGo = { text -> vm.openTyped(text).also { if (it == null) typing = false } },
+            onGo = { text ->
+                vm.openTyped(text).also {
+                    if (it == null) {
+                        typing = false
+                        closeSearch()
+                    }
+                }
+            },
             onDismiss = { typing = false },
         )
     }

@@ -155,6 +155,9 @@ class MqttSession(
     /** Subscribes sent on this connection and not yet answered: the broker may be re-sending retained values. */
     private var awaitingSuback = 0
 
+    /** When the last subscribe went out: a SUBACK that never comes holds the window open [SnapshotRule.MAX_MS] at most. */
+    private var subscribeSentAt = 0L
+
     /**
      * Until when (scheduler time) messages count as re-delivered on a
      * subscribe: [SnapshotRule.QUIET_MS] after the last SUBACK or the last
@@ -381,7 +384,8 @@ class MqttSession(
         if (copies.isCopy(path, payload, retain, qos, matchingFilters(active, path))) return
         // Retained values a subscribe re-sends were set before they were seen: their time is not known.
         val now = scheduler.now()
-        val onSubscribe = snapshotOn || awaitingSuback > 0 || now <= redeliveryUntil
+        val awaiting = awaitingSuback > 0 && now <= subscribeSentAt + SnapshotRule.MAX_MS
+        val onSubscribe = snapshotOn || awaiting || now <= redeliveryUntil
         val received = tree.receive(path, payload, retain, qos, v, onSubscribe)
         if (onSubscribe && retain && received == Received.NEW_TOPIC) redeliveryUntil = now + SnapshotRule.QUIET_MS
         if (snapshotOn) {
@@ -418,6 +422,7 @@ class MqttSession(
             val run = snapshotRun
             subscribed += filter
             awaitingSuback++
+            subscribeSentAt = scheduler.now()
             try {
                 open.subscribe(filter) { granted -> scheduler.post { if (gen == generation) subscribed(filter, granted, run) } }
             } catch (e: Exception) {
@@ -431,7 +436,7 @@ class MqttSession(
 
     private fun subscribed(filter: String, granted: Boolean, run: Int) {
         awaitingSuback = maxOf(0, awaitingSuback - 1)
-        redeliveryUntil = scheduler.now() + SnapshotRule.QUIET_MS
+        redeliveryUntil = maxOf(redeliveryUntil, scheduler.now() + SnapshotRule.QUIET_MS)
         _refused.value = if (granted) _refused.value - filter else _refused.value + filter
         if (filter != SNAPSHOT_FILTER || !snapshotOn || run != snapshotRun) return
         if (!granted) {

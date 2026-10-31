@@ -49,7 +49,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -208,7 +210,15 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
 
 /** The main button of a sheet: the accent, a spinner on it while [busy]; [error] in the error colours (an answer that failed shown on it). */
 @Composable
-fun MainButton(text: String, busy: Boolean, onClick: () -> Unit, enabled: Boolean = true, error: Boolean = false) {
+fun MainButton(
+    text: String,
+    busy: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    error: Boolean = false,
+    /** Its text is news (an answer shown on it): read out when it changes, and wrapped rather than cut. */
+    announce: Boolean = false,
+) {
     val colors = AppTheme.colors
     Button(
         onClick = onClick,
@@ -222,12 +232,13 @@ fun MainButton(text: String, busy: Boolean, onClick: () -> Unit, enabled: Boolea
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .heightIn(min = 52.dp)
+            .then(if (announce) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier),
     ) {
         if (busy) {
             CircularProgressIndicator(Modifier.size(22.dp), color = colors.onAccent, strokeWidth = 2.dp)
         } else {
-            Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         }
     }
 }

@@ -16,6 +16,14 @@ enum class PinMask {
     WHOLE_BRANCH,
 }
 
+/**
+ * The masks a pin on [path] can take: all three, except for the empty
+ * first level alone (the branch of the topics starting with `/`), which is
+ * no topic (its text is empty) and is pinned only as `/+` or `/#`.
+ */
+fun pinMasksFor(path: MqttPath): List<PinMask> =
+    if (path.format().isEmpty()) listOf(PinMask.ONE_LEVEL_BELOW, PinMask.WHOLE_BRANCH) else PinMask.entries.toList()
+
 /** The topic filter of a pin on [topic] (not the root) with [mask]. */
 fun pinFilter(topic: MqttPath, mask: PinMask): String {
     require(!topic.isRoot) { "the root cannot be pinned" }

@@ -71,6 +71,8 @@ import ru.adsrv.frpjump.mqtt.LastChange
 import ru.adsrv.frpjump.mqtt.branchChangeLine
 import ru.adsrv.frpjump.mqtt.nodeLabel
 import ru.adsrv.frpjump.mqtt.publishFromCard
+import ru.adsrv.frpjump.mqtt.pinMasksFor
+import ru.adsrv.frpjump.mqtt.shownPath
 import ru.adsrv.frpjump.mqtt.multiLineText
 import ru.adsrv.frpjump.mqtt.pinFilter
 import ru.adsrv.frpjump.mqtt.valueLine
@@ -109,8 +111,8 @@ private const val JSON_LINES_SHOWN = 500
 /** Levels of JSON indented at most; deeper lines stay at this indent so they keep a usable width. */
 private const val JSON_INDENT_LEVELS = 8
 
-/** Characters of a one-line text value drawn large. */
-private const val LARGE_VALUE_CHARS = 24
+/** Characters of a one-line text value drawn large: they fit one line at 360 dp with the font at 1.3×. */
+private const val LARGE_VALUE_CHARS = 12
 
 /** Characters of copied text the notice shows, as the terminal's. */
 private const val COPY_PREVIEW = 40
@@ -189,7 +191,9 @@ fun TopicCard(
                     )
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PathLine(path.format()) { copy(context, CopiedValue(path.format(), cut = false)) }
+                    // The empty first level reads (and copies) as `/`, where its topics start.
+                    val shown = shownPath(path).orEmpty()
+                    PathLine(shown) { copy(context, CopiedValue(shown, cut = false)) }
                     val node = card.node
                     if (card.isBranch) {
                         // Only when it says more than the value's own time.
@@ -220,7 +224,7 @@ fun TopicCard(
                             onClick = onOpenBranch,
                         )
                     }
-                    if (card.pinned.size < PinMask.entries.size) {
+                    if (card.pinned.size < pinMasksFor(path).size) {
                         SecondaryButton(stringResource(R.string.mqtt_pin_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { picking = true }
                     }
                 }
@@ -445,7 +449,7 @@ private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, on
     // What a pin gives, said once on top; each mask says what it covers.
     AppSheet(title = stringResource(R.string.mqtt_pin_title), subtitle = stringResource(R.string.mqtt_pin_subtitle), onDismiss = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            PinMask.entries.forEach { mask ->
+            pinMasksFor(path).forEach { mask ->
                 val done = mask in pinned
                 val suggested = mask == initial && !done
                 val pinnedState = stringResource(R.string.mqtt_pinned_mark)

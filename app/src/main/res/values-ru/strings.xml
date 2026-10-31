@@ -782,6 +782,7 @@
     <string name="mqtt_branch_refused">Брокер не разрешает читать эту ветку</string>
     <string name="mqtt_no_messages">Сообщений нет</string>
     <string name="mqtt_leading_slash">/ (ведущий слеш)</string>
+    <string name="mqtt_leading_slash_spoken">ведущий слеш</string>
     <string name="mqtt_open_branch">Открыть ветку</string>
     <string name="mqtt_open_branch_count">Открыть ветку (%1$s)</string>
     <string name="mqtt_search_in">Искать в %1$s</string>

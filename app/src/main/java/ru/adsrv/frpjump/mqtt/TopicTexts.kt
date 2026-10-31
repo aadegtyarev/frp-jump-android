@@ -22,9 +22,9 @@ fun nodeLabel(path: MqttPath, emptyLabel: String, leadingLabel: String): String 
     if (path.levels.size == 1 && path.name.isEmpty()) leadingLabel else levelLabel(path.name, emptyLabel)
 
 /**
- * The path bar's parts for [path]: [rootLabel] (`#`, the whole tree) for
- * the root, then one per level: the empty first level as `/` (so
- * `/devices/x` reads `# /devices / x`), another empty level as
+ * The path bar's parts for [path]: [rootLabel] for the root (the whole
+ * tree, drawn as a house), then one per level: the empty first level as
+ * `/` (so `/devices/x` reads `⌂ /devices / x`), another empty level as
  * [emptyLabel]. Part `i` opens the path of the first `i` levels
  * ([pathAtPart]); [pathBarSeparator] says where a `/` goes between parts.
  */
@@ -196,3 +196,18 @@ fun topicProblem(text: String, suffix: String = ""): TopicProblem? = when {
 
 /** Where search looks: the open [level] and below, or the whole tree (the root) once widened ([whole]). */
 fun searchScope(level: MqttPath, whole: Boolean): MqttPath = if (whole) MqttPath.ROOT else level
+
+/**
+ * [text] in at most [maxChars] characters: cut in the middle with "…", so
+ * both the start and the end of a long path stay readable.
+ */
+fun middleEllipsis(text: String, maxChars: Int): String {
+    if (text.length <= maxChars) return text
+    val keep = maxChars - 1
+    var head = (keep + 1) / 2
+    var tailStart = text.length - (keep - head)
+    // Never split a surrogate pair.
+    if (head > 0 && Character.isHighSurrogate(text[head - 1])) head--
+    if (tailStart < text.length && Character.isLowSurrogate(text[tailStart])) tailStart++
+    return text.substring(0, head) + "…" + text.substring(tailStart)
+}

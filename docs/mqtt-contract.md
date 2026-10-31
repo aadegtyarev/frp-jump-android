@@ -183,13 +183,15 @@ neither option; see "Retained topics" for what that changes.
 
 ## The tree
 
-- A path bar on top as in Files, but its root is `#` (the whole tree, as
-  the filter for everything; `/` would read as a real topic prefix here),
-  then one part per level. The empty first level, under which every topic
-  starting with `/` lives, is the part `/` with no separator after it, so
-  `/devices/wb-mr6c_1` reads `# /devices / wb-mr6c_1`, each of `#`, `/`,
-  `devices` and `wb-mr6c_1` a part of its own; an empty level further
-  down is `(empty)`. Tap a part to go there; tap the path to type
+- A path bar on top as in Files, but its root is a house icon, read out
+  as "Root" (the whole tree; a `/` would read as a real topic prefix
+  here), then one part per level. The empty first level, under which every
+  topic starting with `/` lives, is the part `/` (read out as "leading
+  slash") with no separator after it, so `/devices/wb-mr6c_1` reads
+  `⌂ /devices / wb-mr6c_1`, each of `⌂`, `/`, `devices` and `wb-mr6c_1` a
+  part of its own; an empty level further down is `(empty)`. The card of
+  the empty first level shows and copies its path as `/`, publishes from
+  `/`, and pins only as `/+` or `/#` (its own text is empty, no topic). Tap a part to go there; tap the path to type
   or paste a topic, taken as is (`/devices/x` and `devices/x` are different
   places); the dialog opens with the current path selected whole, so a
   paste replaces it, and the keyboard's action key is Go. A typed path to a topic without children opens its parent level
@@ -213,7 +215,12 @@ neither option; see "Retained topics" for what that changes.
   "before connecting" instead of an age or a time, in the row, the card
   and its history, and is no change of its branches, until a new value
   comes. A branch whose topics are all such reads "before connecting" too.
-  After "Refresh tree" the values re-read are such again.
+  A SUBACK that never comes keeps this window open 10 s after the
+  subscribe at most. "Refresh tree" forgets every value, so the values it
+  re-reads read "before connecting" again (strictly, before the refresh),
+  including ones seen changing earlier in the session; a reconnect keeps
+  the tree, so an equal value re-sent keeps its label and one that changed
+  while away is a change seen at its arrival.
 - Order: `(empty)` first, `$SYS` last, the rest by name in natural order:
   runs of digits compare by number (`K2` before `K10`), other text
   case-insensitively, ties by exact text.
@@ -226,7 +233,9 @@ neither option; see "Retained topics" for what that changes.
   root `/devices/x/controls/K1`); tap opens the topic. The field's hint
   says where it looks ("Search in /devices/x", at the root "Search the
   whole tree"); an empty result in a branch offers **Search the whole
-  tree**, which widens it until the search is closed.
+  tree**, which widens it until the search is closed. A long path in the
+  hint is cut in the middle. Going elsewhere from a hit (its card's Open
+  branch) or by a typed path closes the search.
 - The explorer's "⋮" and an empty level ("No messages") offer **Publish
   here…**: the publish sheet with the topic `<level>/` (cursor at its end,
   so the new topic's name is typed straight after it), a way to create a
@@ -274,9 +283,10 @@ no separate "publish under": the topic field is the way to any other topic.
   QoS 1; 2b remembers them per topic.
 - From stage 6 only: the status/command switch (see the plugin below).
   Before it the value goes to the topic in the field, nothing else.
-- Send answers on the button itself (its label becomes the answer, in
-  the error colours for a refusal or failure, until anything is changed),
-  so nothing in the sheet moves:
+- Send answers on the button itself (its label becomes the answer,
+  wrapping onto a second line rather than cut, in the error colours for a
+  refusal or failure, read out by screen readers, until anything is
+  changed), so nothing below it moves:
   - MQTT 5 with QoS 1 or 2: "Accepted by the broker", or "Refused: <the
     broker's reason>" (for example "not authorized");
   - QoS 0, or 3.1.1 (whose brokers drop a refused publish silently):
@@ -534,7 +544,8 @@ On a Wiren Board on the tunnel unless said otherwise.
 - The explorer stays generic: no vendor conventions (Wiren Board meta,
   titles, units, `/on`, read-only controls) in the explorer itself; they
   come as payload views (plugins).
-- The path bar's root is `#`; the empty first level is `/`.
+- The path bar's root is a house icon ("Root"); the empty first level is
+  `/` ("leading slash").
 - The bottom bar stays four items; "Terminals" becomes "Sessions" for
   terminal and MQTT sessions.
 - One concept, the pin (a subscription with a mask); no separate "Watch".

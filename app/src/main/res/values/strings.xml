@@ -739,6 +739,7 @@
     <string name="mqtt_branch_refused">The broker does not allow reading this branch</string>
     <string name="mqtt_no_messages">No messages</string>
     <string name="mqtt_leading_slash">/ (leading slash)</string>
+    <string name="mqtt_leading_slash_spoken">leading slash</string>
     <string name="mqtt_open_branch">Open branch</string>
     <string name="mqtt_open_branch_count">Open branch (%1$s)</string>
     <string name="mqtt_search_in">Search in %1$s</string>

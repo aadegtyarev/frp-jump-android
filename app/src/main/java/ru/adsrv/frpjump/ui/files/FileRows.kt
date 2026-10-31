@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,6 +90,10 @@ fun PathBar(
     typeLabel: String,
     /** Whether a `/` goes before part `i`; between parts after the root by default. */
     separatorBefore: (Int) -> Boolean = { it > 1 },
+    /** Drawn for the root in place of its label (read out as "Root" either way). */
+    rootIcon: ImageVector? = null,
+    /** What part `i` is read out as when its label alone says too little; null: the label. */
+    spoken: (Int) -> String? = { null },
 ) {
     val colors = AppTheme.colors
     val scroll = rememberScrollState()
@@ -111,19 +116,25 @@ fun PathBar(
         labels.forEachIndexed { i, label ->
             val last = i == labels.lastIndex
             if (separatorBefore(i)) Text("/", color = colors.faint, fontSize = 14.sp)
-            Text(
-                label,
-                fontSize = 14.sp,
-                fontWeight = if (last) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (last) colors.ink else colors.accent,
-                maxLines = 1,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(role = Role.Button) { if (last) onType() else onOpen(i) }
-                    // "/" alone reads as nothing.
-                    .then(if (i == 0) Modifier.semantics { contentDescription = rootSpoken } else Modifier)
-                    .padding(horizontal = 6.dp, vertical = 8.dp),
-            )
+            val said = if (i == 0) rootSpoken else spoken(i)
+            val partModifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(role = Role.Button) { if (last) onType() else onOpen(i) }
+                // "/" alone reads as nothing.
+                .then(if (said != null) Modifier.semantics { contentDescription = said } else Modifier)
+                .padding(horizontal = 6.dp, vertical = 8.dp)
+            if (i == 0 && rootIcon != null) {
+                Icon(rootIcon, contentDescription = null, tint = if (last) colors.ink else colors.accent, modifier = partModifier.size(18.dp))
+            } else {
+                Text(
+                    label,
+                    fontSize = 14.sp,
+                    fontWeight = if (last) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (last) colors.ink else colors.accent,
+                    maxLines = 1,
+                    modifier = partModifier,
+                )
+            }
         }
     }
 }

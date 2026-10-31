@@ -238,6 +238,19 @@ val ThemeGlyph: ImageVector = ImageVector.Builder("Theme", 24.dp, 24.dp, 24f, 24
     }
     .build()
 
+/** A house: the root of a tree (the MQTT explorer's path bar). */
+val HomeGlyph: ImageVector = glyph("Home", 1.8f) {
+    moveTo(4f, 11f)
+    lineTo(12f, 4f)
+    lineTo(20f, 11f)
+    moveTo(6f, 9.5f)
+    verticalLineTo(19f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 20f)
+    horizontalLineTo(17f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 18f, y1 = 19f)
+    verticalLineTo(9.5f)
+}
+
 /** A folder: the file screen, and folders in it. */
 val FolderGlyph: ImageVector = glyph("Folder", 1.8f) {
     moveTo(3f, 7f)

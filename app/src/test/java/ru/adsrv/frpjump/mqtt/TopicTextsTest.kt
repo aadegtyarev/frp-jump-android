@@ -43,6 +43,16 @@ class TopicTextsTest {
     }
 
     @Test
+    fun `a long path in the search hint is cut in the middle`() {
+        assertEquals("/devices/x", middleEllipsis("/devices/x", 12))
+        assertEquals("/devic…ols/K1", middleEllipsis("/devices/wb-mr6c_1/controls/K1", 13))
+        assertEquals(13, middleEllipsis("/devices/wb-mr6c_1/controls/K1", 13).length)
+        // A surrogate pair is never split: the cut moves off it.
+        val cut = middleEllipsis("ab😀cdefgh😀ij", 7)
+        assertTrue(cut.codePoints().noneMatch { it in 0xD800..0xDFFF })
+    }
+
+    @Test
     fun `search looks in the open level, or the whole tree once widened`() {
         val level = MqttPath.parse("/devices/x")
         assertEquals(level, searchScope(level, whole = false))

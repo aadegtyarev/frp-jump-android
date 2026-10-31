@@ -21,6 +21,9 @@ class PublishStartTest {
     @Test
     fun `a branch without a value starts on the topic`() {
         assertEquals(PublishStart("/devices/x", "", focusPayload = false), publishFromCard(MqttPath.parse("/devices/x"), null))
+        // The empty first level's card: `/`, where its topics start, as "Publish here…" there.
+        assertEquals(PublishStart("/", "", focusPayload = false), publishFromCard(MqttPath(listOf("")), null))
+        assertEquals(publishAtLevel(MqttPath(listOf(""))).topic, publishFromCard(MqttPath(listOf("")), null).topic)
     }
 
     @Test

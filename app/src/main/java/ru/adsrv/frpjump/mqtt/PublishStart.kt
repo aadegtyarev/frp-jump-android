@@ -15,10 +15,11 @@ data class PublishStart(val topic: String, val payload: String, val focusPayload
  * value of its own). A topic with a value starts on the value field with
  * that value as text, when it is UTF-8 and at most [PREFILL_MAX_BYTES];
  * else empty. A branch with no value starts on the topic, a `/name` away
- * from a subtopic.
+ * from a subtopic (the empty first level as `/`).
  */
 fun publishFromCard(path: MqttPath, value: TopicValue?): PublishStart =
-    PublishStart(path.format(), prefillPayload(value), focusPayload = value != null)
+    // The empty first level's text is empty; `/` is where its topics start, as "Publish here…" has it.
+    PublishStart(shownPath(path) ?: "", prefillPayload(value), focusPayload = value != null)
 
 /**
  * "Publish here…" at the level [level] (the explorer's "⋮", an empty
