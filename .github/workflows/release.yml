@@ -68,6 +68,16 @@ jobs:
       - name: Unit tests
         run: ./gradlew -q testDebugUnitTest
 
+      - name: Failed tests
+        if: failure()
+        run: |
+          # -q hides which test failed; print each failure's test and message.
+          grep -l '<failure' app/build/test-results/testDebugUnitTest/*.xml | while read -r f; do
+            echo "::group::$f"
+            grep -B1 -A15 '<failure' "$f"
+            echo "::endgroup::"
+          done
+
       - name: Release key
         env:
           KEYSTORE_B64: ${{ secrets.FRPJUMP_RELEASE_KEYSTORE_B64 }}
