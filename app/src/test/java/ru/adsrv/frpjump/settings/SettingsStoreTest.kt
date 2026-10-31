@@ -101,4 +101,17 @@ class SettingsStoreTest {
         assertEquals(false, newer.direct)
         assertEquals(true, newer.appLock)
     }
+
+    @Test
+    fun `files hide dot names and have no download folder until chosen, then remember both`() {
+        val storage = MemoryStorage()
+        val fresh = SettingsStore(storage).settings.value
+        assertEquals(false, fresh.filesShowHidden)
+        assertNull(fresh.filesDownloadFolder)
+        val folder = "content://com.android.externalstorage.documents/tree/primary%3ADownload"
+        SettingsStore(storage).update { it.copy(filesShowHidden = true, filesDownloadFolder = folder) }
+        val reread = SettingsStore(storage).settings.value
+        assertEquals(true, reread.filesShowHidden)
+        assertEquals(folder, reread.filesDownloadFolder)
+    }
 }

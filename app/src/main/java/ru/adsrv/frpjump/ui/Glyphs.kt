@@ -216,3 +216,53 @@ val ThemeGlyph: ImageVector = ImageVector.Builder("Theme", 24.dp, 24.dp, 24f, 24
         close()
     }
     .build()
+
+/** A folder: the file screen, and folders in it. */
+val FolderGlyph: ImageVector = glyph("Folder", 1.8f) {
+    moveTo(3f, 7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 5f)
+    horizontalLineTo(9.5f)
+    lineTo(11.5f, 7f)
+    horizontalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 21f, y1 = 9f)
+    verticalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 19f)
+    horizontalLineTo(5f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 3f, y1 = 17f)
+    close()
+}
+
+/** A sheet with a folded corner: a file. */
+val FileGlyph: ImageVector = glyph("File", 1.8f) {
+    moveTo(14f, 3f)
+    horizontalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 5f, y1 = 5f)
+    verticalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 21f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 19f, y1 = 19f)
+    verticalLineTo(8f)
+    close()
+    moveTo(14f, 3f)
+    verticalLineTo(8f)
+    horizontalLineTo(19f)
+}
+
+/** A sheet with a question in it: a device, socket or a broken link's missing target. */
+val OtherFileGlyph: ImageVector = glyph("OtherFile", 1.8f) {
+    moveTo(7f, 3f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 5f)
+    verticalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17f, y1 = 21f)
+    horizontalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 19f)
+    verticalLineTo(5f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 7f, y1 = 3f)
+    close()
+    moveTo(10f, 10f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 12f, y1 = 12f)
+    verticalLineTo(13.5f)
+    moveTo(12f, 17f)
+    verticalLineTo(17.01f)
+}

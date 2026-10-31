@@ -52,6 +52,9 @@ import ru.adsrv.frpjump.ui.devices.DeviceCardViewModel
 import ru.adsrv.frpjump.ui.devices.DevicesScreen
 import ru.adsrv.frpjump.ui.devices.DevicesViewModel
 import ru.adsrv.frpjump.ui.enroll.EnrollScreen
+import ru.adsrv.frpjump.ui.files.FilesScreen
+import ru.adsrv.frpjump.ui.files.FilesViewModel
+import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.ui.enroll.EnrollViewModel
 import ru.adsrv.frpjump.ui.profiles.ProfileEditScreen
 import ru.adsrv.frpjump.ui.profiles.ProfileEditViewModel
@@ -76,6 +79,8 @@ private object Routes {
     const val REMOVED = "removed"
     const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
     const val TERMINAL = "terminal/{id}"
+    const val FILES = "files/{id}"
+    fun files(id: Int) = "files/$id"
     fun terminal(id: Int) = "terminal/$id"
     fun profile(id: String) = "profile/$id"
     fun device(name: String) = "device/${Uri.encode(name)}"
@@ -213,6 +218,7 @@ fun AppNav() {
                     vm = viewModel { ConnectionsViewModel(app) },
                     onOpenWeb = { nav.navigate(webRoute(it)) },
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
+                    onOpenFiles = { nav.navigate(Routes.files(it)) },
                 )
             }
         }
@@ -230,6 +236,7 @@ fun AppNav() {
                 onBack = { nav.popBackStack() },
                 onOpenWeb = { nav.navigate(webRoute(it)) },
                 onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
+                onOpenFiles = { nav.navigate(Routes.files(it)) },
             )
         }
         composable(Routes.TERMINAL) { entry ->
@@ -240,7 +247,14 @@ fun AppNav() {
                 profileColors = profilesState.index.profiles.associate { it.id to it.color },
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 onBack = { nav.popBackStack() },
+                onOpenFiles = { s ->
+                    nav.navigate(Routes.files(app.fileTargets.put(FilesTarget(s.profile, s.device, s.port, s.user, s.auth))))
+                },
             )
+        }
+        composable(Routes.FILES) { entry ->
+            val id = entry.arguments?.getString("id")?.toIntOrNull() ?: 0
+            FilesScreen(vm = viewModel { FilesViewModel(app, id) }, onBack = { nav.popBackStack() })
         }
         composable(Routes.WEB) { entry ->
             WebScreen(

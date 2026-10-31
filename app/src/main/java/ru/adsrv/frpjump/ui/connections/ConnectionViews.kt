@@ -289,6 +289,9 @@ fun rememberNotificationsFirst(): (() -> Unit) -> Unit {
 @Stable
 class ConnectionUi {
     var login by mutableStateOf<ConnectionRow?>(null)
+
+    /** The row whose "Files" was tapped: the same login dialog, for a file screen. */
+    var filesLogin by mutableStateOf<ConnectionRow?>(null)
     var deleting by mutableStateOf<ConnectionRow?>(null)
     var editing by mutableStateOf<ConnectionRow?>(null)
     var menu by mutableStateOf<String?>(null)
@@ -305,6 +308,8 @@ class RowActions(
     val copy: (ConnectionRow) -> Unit,
     val browser: (ConnectionRow) -> Unit,
     val sshApp: (ConnectionRow) -> Unit,
+    /** "Files" of a saved SSH connection, connected or not. */
+    val files: (ConnectionRow) -> Unit,
     val change: (ConnectionRow) -> Unit,
     val delete: (ConnectionRow) -> Unit,
     /** Tapped "Through the server". */
@@ -342,6 +347,7 @@ fun rememberRowActions(
         copy = copy,
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
+        files = { ui.filesLogin = it },
         change = { ui.editing = it },
         delete = { ui.deleting = it },
         directChoice = { ui.direct = it },
@@ -367,6 +373,8 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
             if (row.saved && kind == PortKind.WEB) item(R.string.open_in_browser, actions.browser)
             if (row.saved && kind == PortKind.SSH) item(R.string.open_in_ssh_app, actions.sshApp)
         }
+        // Down, the tunnel is brought up once the login is given.
+        if (row.saved && kind == PortKind.SSH) item(R.string.files, actions.files)
         if (row.saved) {
             item(R.string.change, actions.change)
             item(R.string.delete, actions.delete)
@@ -386,8 +394,25 @@ fun ConnectionDialogs(
     /** The screen's rows as they are now, for the sheet's lock. */
     rows: List<ConnectionRow>,
     onOpenTerminal: (sessionId: Int) -> Unit,
+    /** Opens the file screen whose login has this id. */
+    onOpenFiles: (targetId: Int) -> Unit,
 ) {
     val context = LocalContext.current
+    val notificationsFirst = rememberNotificationsFirst()
+    ui.filesLogin?.let { row ->
+        SshLoginDialog(
+            target = "${row.connection.device}:${row.connection.port}",
+            initial = actions.sshLogin(row),
+            hasRememberedPassword = { actions.hasRememberedPassword(row, it) },
+            onConnect = { user, method: SshAuthMethod, password, remember ->
+                ui.filesLogin = null
+                // As Terminal needs it: the tunnel first; the file screen waits for it.
+                if (row.tunnel == null && row.pending == null) notificationsFirst { actions.connect(row) }
+                actions.openFiles(row, user, method, password, remember)?.let(onOpenFiles)
+            },
+            onDismiss = { ui.filesLogin = null },
+        )
+    }
     ui.login?.let { row ->
         SshLoginDialog(
             target = "${row.connection.device}:${row.connection.port}",

@@ -12,6 +12,7 @@ import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
+import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
@@ -137,5 +138,22 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
         }
         return app.ssh.open(row.profile, runtime.hostKeys, c.device, c.port, localPort, login.user, auth).id
+    }
+
+    /**
+     * Remembers the method for this port and makes a file screen's login
+     * for [row]; returns its id for the route, or null when the profile is
+     * gone. The tunnel need not be up: the screen waits for it. Main thread.
+     */
+    fun openFiles(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int? {
+        val runtime = runtime(row.profile) ?: return null
+        val c = row.connection
+        val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
+        scope.launch(Dispatchers.IO) { runtime.sshLogins.remember(c.device, c.port, login) }
+        val auth = when (method) {
+            SshAuthMethod.KEY -> SshAuth.Key
+            SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
+        }
+        return app.fileTargets.put(FilesTarget(row.profile, c.device, c.port, login.user, auth))
     }
 }

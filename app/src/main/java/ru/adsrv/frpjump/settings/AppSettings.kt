@@ -81,6 +81,10 @@ data class AppSettings(
     @SerialName("web_fullscreen") val webFullscreen: Boolean = false,
     /** The terminal full screen, as last left. */
     @SerialName("terminal_fullscreen") val terminalFullscreen: Boolean = false,
+    /** Files › ⋮ › Show hidden files: names starting with a dot. */
+    @SerialName("files_show_hidden") val filesShowHidden: Boolean = false,
+    /** The phone folder downloads go to: a document tree URI with a persisted grant, chosen once. */
+    @SerialName("files_download_folder") val filesDownloadFolder: String? = null,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
