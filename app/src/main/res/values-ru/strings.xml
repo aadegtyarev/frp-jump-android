@@ -338,6 +338,7 @@
 
     <!-- Web view -->
     <string name="web_reload">Обновить</string>
+    <string name="web_tunnel_closed">Туннель закрыт</string>
     <string name="web_renderer_gone">Страница остановилась: её процесс упал или Android закрыл его, чтобы освободить память.</string>
     <string name="web_no_file_picker">Нет приложения для выбора файлов.</string>
     <string name="web_blocked">Заблокировано: %s — не этот туннель.</string>
