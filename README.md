@@ -301,7 +301,7 @@ check interval, the SSH key, language and theme open a sheet.
 - Connections without a name of their own show a default made at display
   time in the current language: the kind, and the port unless it is the
   kind's own ("Web" / "Веб" on 80, "Web HTTPS" on 443, "SSH" on 22, "Веб
-  8080", "TCP 1883"). A preset chip in the sheet (homeui, MQTT, ...) fills
+  8080", "TCP 1883"). A preset chip in the sheet (Grafana, MQTT, ...) fills
   in its name, which the owner may change. Names the app made up from the
   kind and port up to 0.2.0-beta1 ("Web", "SSH", "Port 8080", "Web 8080")
   are read as "no name of its own" when they match exactly
