@@ -127,6 +127,12 @@ re-enroll.
   marked as possibly stale. Saved connections are still listed and can be
   opened when the network returns.
 - Pull to refresh; the banner goes away on the first good answer.
+- A device row with tunnels open swipes left to show the power button (the
+  bar's glyph and red tint): it disconnects only that device's tunnels of
+  this profile, with Undo; the device card's bar has the same button. The row
+  slides back on scroll, refresh, Back or a finger landing elsewhere on the
+  screen; a tap on a row still opens the card. TalkBack offers it as the row's action
+  "Disconnect tunnels of <device>"; rows without tunnels do not swipe.
 
 ### 4. Device card and named connections
 

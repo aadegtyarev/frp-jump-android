@@ -72,6 +72,29 @@ class TunnelDisconnectsTest {
     }
 
     @Test
+    fun `a device's swipe takes its tunnels in its profile only, not those dark already`() {
+        val sameNameElsewhere = TunnelRef("p2", "dev-a", 22)
+        val otherDevice = TunnelRef("p1", "dev-b", 22)
+        val everything = listOf(ssh, web, other, sameNameElsewhere, otherDevice)
+        assertEquals(listOf(ssh, web), disconnects.shownOn(everything, "p1", "dev-a"))
+        disconnects.disconnect(listOf(web))
+        assertEquals(listOf(ssh), disconnects.shownOn(everything, "p1", "dev-a"))
+        assertTrue(disconnects.shownOn(everything, "p1", "dev-none").isEmpty())
+    }
+
+    @Test
+    fun `a device's swipe darkens each of its tunnels under one notice and stops them when it goes`() {
+        disconnects.disconnect(disconnects.shownOn(all, "p1", "dev-a"))
+        assertEquals(mapOf(UndoKind.DISCONNECTED to 2), counts)
+        assertTrue(stopped.isEmpty())
+        assertEquals(mapOf("p2" to 1), shownTunnelCounts(running, dark()))
+        // A second swipe finds nothing left on the device.
+        assertTrue(disconnects.shownOn(all, "p1", "dev-a").isEmpty())
+        expire()
+        assertEquals(listOf(ssh, web), stopped)
+    }
+
+    @Test
     fun `Undo brings it back as it was and nothing is stopped`() {
         disconnects.disconnect(listOf(ssh))
         undoOnNotice!!.invoke()

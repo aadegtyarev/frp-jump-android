@@ -2,6 +2,12 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
@@ -134,7 +140,12 @@ fun DevicesScreen(
         if (searchedProfile != null && searchedProfile != now) closeSearch()
         searchedProfile = now
     }
+    // The row swiped open, one at a time; another profile shown starts with none. Back closes it first.
+    val openRow = remember(current?.id) { OpenRow() }
+    BackHandler(enabled = openRow.name != null) { openRow.close() }
     Scaffold(
+        // Anywhere on the screen, after the rows saw the finger: one landing off the open row closes it.
+        modifier = Modifier.closesOpenRow(openRow),
         topBar = {
             if (searching) {
                 SearchBar(
@@ -170,7 +181,7 @@ fun DevicesScreen(
             } else state.error?.let { error ->
                 Text(error, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
-            DeviceRows(state, query, vm::pull, onOpen)
+            DeviceRows(state, query, openRow, vm::pull, onOpen, onDisconnect = { device -> current?.let { vm.actions.disconnectDevice(it.id, device) } })
         }
     }
 }
@@ -253,15 +264,27 @@ private fun RemovedElsewhereLine(removed: List<ProfileItem>, onClick: () -> Unit
     )
 }
 
+/**
+ * The device rows; a row with tunnels open swipes left to show its power
+ * button ([onDisconnect] with the device's name). One row is open at a time;
+ * it slides back when the list moves or refreshes (and, from the screen
+ * around it, on Back or a finger landing anywhere else).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit, onOpen: (String) -> Unit) {
+private fun DeviceRows(state: DevicesUiState, query: String, openRow: OpenRow, onPull: () -> Unit, onOpen: (String) -> Unit, onDisconnect: (String) -> Unit) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, openRow) {
+        snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() }
+    }
+    LaunchedEffect(state.refreshing) { if (state.refreshing) openRow.close() }
     PullToRefreshBox(
         isRefreshing = state.refreshing,
         onRefresh = onPull,
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -287,16 +310,77 @@ private fun DeviceRows(state: DevicesUiState, query: String, onPull: () -> Unit,
                 }
             }
             items(shown, key = { it.name }) { device ->
-                DeviceItem(device, state.tunnelPorts[device.name].orEmpty(), onClick = { onOpen(device.name) })
+                val ports = state.tunnelPorts[device.name].orEmpty()
+                val open = openRow.name == device.name
+                SwipeReveal(
+                    open = open,
+                    enabled = ports.isNotEmpty(),
+                    onOpenChange = { now -> openRow.reported(device.name, now) },
+                    actionWidth = REVEAL_WIDTH,
+                    action = {
+                        DisconnectDeviceButton(device.name) {
+                            openRow.close()
+                            onDisconnect(device.name)
+                        }
+                    },
+                    modifier = Modifier.touchesRow(openRow, device.name),
+                ) {
+                    DeviceItem(
+                        device,
+                        ports,
+                        // Open: a tap puts it back; closed, it opens the card as before.
+                        onClick = { if (open) openRow.close() else onOpen(device.name) },
+                        onDisconnect = { onDisconnect(device.name) }.takeIf { ports.isNotEmpty() },
+                    )
+                }
             }
         }
     }
 }
 
+/** How far a row slides aside for its power button. */
+private val REVEAL_WIDTH = 76.dp
+
+/** The power button behind a row swiped aside: this device's tunnels, as the bar's does for the profile. */
 @Composable
-private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit) {
+private fun DisconnectDeviceButton(device: String, onClick: () -> Unit) {
     val colors = AppTheme.colors
-    Surface(onClick = onClick, color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    val label = stringResource(R.string.disconnect_device_tunnels, device)
+    Surface(
+        onClick = onClick,
+        color = colors.errorContainer,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .width(REVEAL_WIDTH - 6.dp)
+            .fillMaxHeight()
+            .semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/**
+ * One device; [onDisconnect], while it has tunnels, is also offered to
+ * TalkBack as an action of the row, since the swipe is not.
+ */
+@Composable
+private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit, onDisconnect: (() -> Unit)?) {
+    val colors = AppTheme.colors
+    val disconnectLabel = stringResource(R.string.disconnect_device_tunnels, device.name)
+    Surface(
+        onClick = onClick,
+        color = colors.card,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                if (onDisconnect != null) {
+                    customActions = listOf(CustomAccessibilityAction(disconnectLabel) { onDisconnect(); true })
+                }
+            },
+    ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

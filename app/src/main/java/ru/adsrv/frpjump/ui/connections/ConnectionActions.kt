@@ -124,8 +124,11 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun disconnect(row: ConnectionRow) = app.disconnects.disconnect(listOf(TunnelRef(row.profile, row.connection.device, row.connection.port)))
 
     /** The tunnels of [profiles] up as the owner sees them: not those whose disconnect waits already. Main thread. */
-    private fun shownTunnels(profiles: Collection<ProfileRuntime>): List<TunnelRef> =
-        app.disconnects.shown(profiles.flatMap { r -> r.tunnels.state.value.tunnels.map { TunnelRef(r.id, it.device, it.port) } })
+    private fun shownTunnels(profiles: Collection<ProfileRuntime>): List<TunnelRef> = app.disconnects.shown(upTunnels(profiles))
+
+    /** The tunnels of [profiles] up now, as their managers list them. */
+    private fun upTunnels(profiles: Collection<ProfileRuntime>): List<TunnelRef> =
+        profiles.flatMap { r -> r.tunnels.state.value.tunnels.map { TunnelRef(r.id, it.device, it.port) } }
 
     /** "Retry direct" for [row]'s device: all its tunnels through the server try again, kept no more on this network. */
     fun retryDirect(row: ConnectionRow) {
@@ -167,6 +170,15 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun disconnectProfile(profile: String) {
         val runtime = runtime(profile) ?: return app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
         app.disconnects.disconnect(shownTunnels(listOf(runtime)))
+    }
+
+    /**
+     * Every tunnel of [profile] to [device] up now (the swipe on its row of
+     * the Devices tab, the power button on its card), with Undo. Main thread.
+     */
+    fun disconnectDevice(profile: String, device: String) {
+        val runtime = runtime(profile) ?: return app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
+        app.disconnects.disconnect(app.disconnects.shownOn(upTunnels(listOf(runtime)), profile, device))
     }
 
     /**

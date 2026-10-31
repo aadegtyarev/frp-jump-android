@@ -54,6 +54,10 @@ class TunnelDisconnects(
         return up.filter { profilePortKey(it.profile, it.device, it.port) !in dark }
     }
 
+    /** [up] of [profile]'s [device] as the owner sees them: what the swipe on its row disconnects. */
+    fun shownOn(up: List<TunnelRef>, profile: String, device: String): List<TunnelRef> =
+        shown(up).filter { it.profile == profile && it.device == device }
+
     private fun key(t: TunnelRef) = PendingUndo.tunnelKey(t.profile, t.device, t.port)
 
     private companion object {
