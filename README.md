@@ -522,16 +522,35 @@ each other; both log in through `ssh/SshConnector.kt`.
 - Symlinks carry a link badge and their target (`→ /mnt/data/etc`); a link
   to a folder opens at its target, a broken one (nothing at the target)
   says so. A target the user may not look at, or a loop, is not "broken":
-  it can still be downloaded, the device says whether it serves it. Long
-  press on a link: "Go to the target" (the target folder, or the folder
-  its target is in). Links are looked into eight at a time.
-- Tap a file: it is downloaded to the app's cache and handed to another app
-  ("Open with", through the FileProvider). Long press: Download, Share.
-  Download writes into a phone folder chosen once with the system folder
-  picker (kept with a persistable grant; "⋮" changes it, and losing access
-  to it asks for it again); a name that is there already becomes
-  `name (1).ext`. A download that fails or is cancelled is deleted, never
-  left half written under its name.
+  it can still be downloaded, the device says whether it serves it. A
+  link's card has "Go to the target" (the target folder, or the folder its
+  target is in). Links are looked into eight at a time.
+- Tap a folder: it opens. Tap a file, or the small "⋮" at the end of any
+  row: its card, a bottom sheet like "New connection" — name, path, a
+  link's target, size, modified, permissions (`rwxr-xr-x  755`) and owner
+  (SFTP gives the uid and gid as numbers, so numbers are shown). Nothing
+  is transferred until an action is tapped: Open, and for files Download
+  and Share; a folder's card has Open only (folders are not downloaded
+  yet). A transfer of that file shows in the card with its bar and ✕; the
+  card closes when the file is handed to another app.
+- Long press starts selecting: rows get a checkbox, taps add and remove,
+  the bar shows the count, "Select all", and Download and Share while a
+  file is among the picked (folders and special files are left out, and a
+  toast says how many). Back or ✕ ends it, as does going to another
+  folder. The actions come from `ui/files/FileSelection.kt`, where stage 2
+  adds Copy, Move, Rename, Delete. Several files shared at once are
+  downloaded to the cache, then shared together.
+- Open hands the file to another app after downloading it to the app's
+  cache ("Open with", through the FileProvider). Download writes into a
+  phone folder chosen once with the system folder picker (kept with a
+  persistable grant; "⋮" changes it, and losing access to it asks for it
+  again); a name that is there already becomes `name (1).ext`. A download
+  that fails or is cancelled is deleted, never left half written under its
+  name. Downloads, Open with and Share run two at a time; the others wait
+  on their rows ("Waiting…", ✕ drops one). When a batch loses access to
+  the download folder, the picker is asked once and those files are
+  downloaded again into the folder picked; a picker cancelled from the
+  selection keeps the selection.
 - "+" uploads files picked with the system picker into the folder shown,
   one at a time, each written to a hidden `.name.frpjump-part` (a long
   name is cut to fit 255 bytes, with a short hash) and renamed at the

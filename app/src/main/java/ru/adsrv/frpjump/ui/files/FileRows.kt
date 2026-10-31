@@ -22,8 +22,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -33,14 +34,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
@@ -98,29 +102,22 @@ fun PathBar(path: String?, onOpen: (String) -> Unit, onType: () -> Unit) {
     }
 }
 
-/** What a row's long press offers. */
-class EntryActions(
-    val open: (RemoteEntry) -> Unit,
-    val download: (RemoteEntry) -> Unit,
-    val share: (RemoteEntry) -> Unit,
-    val goToTarget: (RemoteEntry) -> Unit,
-)
-
 /**
  * A folder or file: icon by type (a link badge on symlinks), name, size and
- * time, a link's target; a bar while it is being transferred. Long press:
- * Download / Share (files), Open (folders), Go to the target (links).
+ * time, a link's target; a bar while it is being transferred; a small "⋮"
+ * at the end for its card. While selecting ([selecting]), a checkbox takes
+ * the "⋮"'s place and a tap picks the row.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EntryRow(
     entry: RemoteEntry,
     transfer: Transfer?,
-    online: Boolean,
-    menuOpen: Boolean,
-    onMenu: (Boolean) -> Unit,
+    selecting: Boolean,
+    selected: Boolean,
     onTap: () -> Unit,
-    actions: EntryActions,
+    onLongPress: () -> Unit,
+    onDetails: () -> Unit,
     /** Retry and dismiss of a failed transfer of this row, cancel of a running one. */
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
@@ -128,55 +125,57 @@ fun EntryRow(
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val broken = entry.link?.broken == true
-    Box {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onTap, onLongClick = { onMenu(true) })
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            EntryIcon(entry)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(entry.name, fontSize = 15.sp, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val meta = buildList {
-                    if (entry.type == EntryType.FILE) add(Formatter.formatShortFileSize(context, entry.size))
-                    if (entry.modified > 0 && !broken) add(shortTime(Instant.ofEpochSecond(entry.modified)))
-                }.joinToString(" · ")
-                if (meta.isNotEmpty()) Text(meta, fontSize = 12.sp, color = colors.muted, maxLines = 1)
-                entry.link?.let { link ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            linkLabel(link),
-                            fontSize = 12.sp,
-                            color = colors.muted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        if (link.broken) Text(stringResource(R.string.files_broken), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.error, maxLines = 1)
-                    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(if (selected) colors.accentContainer.copy(alpha = 0.55f) else Color.Transparent)
+            // Read out as picked while selecting.
+            .then(if (selecting) Modifier.semantics { this.selected = selected } else Modifier)
+            .combinedClickable(
+                onClickLabel = if (selecting) null else stringResource(if (entry.isDir) R.string.files_open else R.string.files_details_short),
+                onLongClickLabel = stringResource(R.string.files_select),
+                onClick = onTap,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongPress()
+                },
+            )
+            .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        EntryIcon(entry)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(entry.name, fontSize = 15.sp, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val meta = buildList {
+                if (entry.type == EntryType.FILE) add(Formatter.formatShortFileSize(context, entry.size))
+                if (entry.modified > 0 && !broken) add(shortTime(Instant.ofEpochSecond(entry.modified)))
+            }.joinToString(" · ")
+            if (meta.isNotEmpty()) Text(meta, fontSize = 12.sp, color = colors.muted, maxLines = 1)
+            entry.link?.let { link ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        linkLabel(link),
+                        fontSize = 12.sp,
+                        color = colors.muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (link.broken) Text(stringResource(R.string.files_broken), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.error, maxLines = 1)
                 }
-                transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss, onCancel = onCancel) }
             }
+            transfer?.let { TransferLine(it, onRetry = { onRetry() }, onDismiss = onDismiss, onCancel = onCancel) }
         }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenu(false) }, offset = DpOffset(72.dp, 0.dp)) {
-            val item = @Composable { label: Int, enabled: Boolean, action: (RemoteEntry) -> Unit ->
-                DropdownMenuItem(text = { Text(stringResource(label)) }, enabled = enabled, onClick = {
-                    onMenu(false)
-                    action(entry)
-                })
+        if (selecting) {
+            // The row's tap does it; the box only shows it.
+            Checkbox(checked = selected, onCheckedChange = null, modifier = Modifier.size(width = 36.dp, height = 44.dp))
+        } else {
+            IconButton(onClick = onDetails, modifier = Modifier.size(width = 36.dp, height = 44.dp)) {
+                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.files_details, entry.name), tint = colors.muted)
             }
-            if (entry.isDir) {
-                item(R.string.files_open, true, actions.open)
-            } else {
-                val idle = transfer == null || transfer.failure != null
-                item(R.string.files_download, online && idle, actions.download)
-                item(R.string.files_share, online && idle, actions.share)
-            }
-            if (entry.link != null) item(R.string.files_go_to_target, true, actions.goToTarget)
         }
     }
 }
@@ -217,7 +216,7 @@ fun UploadRow(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, on
  * plain words with Retry and Dismiss, where it was started.
  */
 @Composable
-private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, onCancel: () -> Unit) {
+fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit, onCancel: () -> Unit) {
     val colors = AppTheme.colors
     val failure = transfer.failure
     if (failure != null) {
@@ -231,7 +230,10 @@ private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () 
     val fraction = transfer.fraction
     Row(verticalAlignment = Alignment.CenterVertically) {
         val bar = Modifier.weight(1f)
-        if (fraction != null) {
+        if (transfer.waiting) {
+            // Behind the two going: it starts by itself; ✕ drops it.
+            Text(stringResource(R.string.files_waiting), fontSize = 12.sp, color = colors.muted, modifier = bar)
+        } else if (fraction != null) {
             LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = bar)
         } else {
             LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = bar)
@@ -254,7 +256,7 @@ private fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () 
 
 /** Folder, file or other on a tile; a symlink gets a small link badge, a broken one in the error colour. */
 @Composable
-private fun EntryIcon(entry: RemoteEntry) {
+fun EntryIcon(entry: RemoteEntry) {
     val colors = AppTheme.colors
     val broken = entry.link?.broken == true
     Box {

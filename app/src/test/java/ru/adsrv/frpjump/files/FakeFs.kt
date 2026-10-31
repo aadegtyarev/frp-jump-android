@@ -81,10 +81,17 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
         return at
     }
 
-    private fun attrs(node: Node) = when (node) {
-        Dir -> RemoteAttrs(NodeKind.DIR, 0, 1)
-        is File -> RemoteAttrs(NodeKind.FILE, node.bytes.size.toLong(), node.modified)
-        is Link -> RemoteAttrs(NodeKind.LINK, 0, 3)
+    /** Mode, uid and gid by physical path, as SFTP would give them; none when not set. */
+    val owners = mutableMapOf<String, Triple<Int, Long, Long>>()
+
+    private fun attrs(path: String, node: Node): RemoteAttrs {
+        val base = when (node) {
+            Dir -> RemoteAttrs(NodeKind.DIR, 0, 1)
+            is File -> RemoteAttrs(NodeKind.FILE, node.bytes.size.toLong(), node.modified)
+            is Link -> RemoteAttrs(NodeKind.LINK, 0, 3)
+        }
+        val (mode, uid, gid) = owners[path] ?: return base
+        return base.copy(mode = mode, uid = uid, gid = gid)
     }
 
     override fun canonicalize(path: String): String = resolve(path, follow = true).also {
@@ -93,7 +100,7 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
 
     override fun list(path: String): List<Pair<String, RemoteAttrs>> {
         val dir = canonicalize(path)
-        return names(dir).map { it to attrs(nodes.getValue(childOf(dir, it))) }
+        return names(dir).map { it to childOf(dir, it).let { at -> attrs(at, nodes.getValue(at)) } }
     }
 
     override fun stat(path: String): RemoteAttrs {
@@ -102,13 +109,14 @@ class FakeFs(private val home: String = "/root") : RemoteFs {
         try {
             Thread.sleep(5)
             if (path in denied) throw RemoteRefusal(Refusal.PERMISSION)
-            return attrs(nodes[resolve(path, follow = true)] ?: throw RemoteRefusal(Refusal.NO_SUCH))
+            val at = resolve(path, follow = true)
+            return attrs(at, nodes[at] ?: throw RemoteRefusal(Refusal.NO_SUCH))
         } finally {
             statsAtOnce.decrementAndGet()
         }
     }
 
-    override fun lstat(path: String): RemoteAttrs = attrs(nodes[resolve(path, follow = false)] ?: throw RemoteRefusal(Refusal.NO_SUCH))
+    override fun lstat(path: String): RemoteAttrs = resolve(path, follow = false).let { at -> attrs(at, nodes[at] ?: throw RemoteRefusal(Refusal.NO_SUCH)) }
 
     override fun readlink(path: String): String =
         (nodes[resolve(path, follow = false)] as? Link)?.target ?: throw RemoteRefusal(Refusal.OTHER)

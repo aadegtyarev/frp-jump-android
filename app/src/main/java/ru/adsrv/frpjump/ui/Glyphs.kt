@@ -289,3 +289,45 @@ val SearchGlyph: ImageVector = glyph("Search") {
     moveTo(15.2f, 15.2f)
     lineTo(20f, 20f)
 }
+
+/** An arrow down onto a tray: download to the phone. */
+val DownloadGlyph: ImageVector = glyph("Download") {
+    moveTo(12f, 4f)
+    verticalLineTo(15f)
+    moveTo(7f, 10f)
+    lineTo(12f, 15f)
+    lineTo(17f, 10f)
+    moveTo(5f, 19.5f)
+    horizontalLineTo(19f)
+}
+
+/** Three joined dots: share. */
+val ShareGlyph: ImageVector = glyph("Share", 1.8f) {
+    circle(18f, 5.5f, 2.5f)
+    circle(6f, 12f, 2.5f)
+    circle(18f, 18.5f, 2.5f)
+    moveTo(8.2f, 10.8f)
+    lineTo(15.8f, 6.7f)
+    moveTo(8.2f, 13.2f)
+    lineTo(15.8f, 17.3f)
+}
+
+/** A ticked box with another behind it: select all. */
+val SelectAllGlyph: ImageVector = glyph("SelectAll", 1.8f) {
+    roundRect(7f, 7f, 13f, 13f, 2.5f)
+    moveTo(4f, 15f)
+    verticalLineTo(6.5f)
+    arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 6.5f, y1 = 4f)
+    horizontalLineTo(15f)
+    moveTo(10.5f, 13.5f)
+    lineTo(12.5f, 15.5f)
+    lineTo(16.5f, 11f)
+}
+
+/** A circle at ([x], [y]) of radius [r], as two arcs. */
+private fun PathBuilder.circle(x: Float, y: Float, r: Float) {
+    moveTo(x - r, y)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x + r, y1 = y)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x - r, y1 = y)
+    close()
+}

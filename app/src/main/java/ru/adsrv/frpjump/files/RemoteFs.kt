@@ -7,7 +7,15 @@ import java.io.OutputStream
 /** What a file system entry is, as `lstat` says (a link is a link, not its target). */
 enum class NodeKind { DIR, FILE, LINK, OTHER }
 
-data class RemoteAttrs(val kind: NodeKind, val size: Long = 0, val modified: Long = 0)
+/** [mode] the permission bits (`07777`), [uid] and [gid] the owner's ids; null when the server leaves them out. */
+data class RemoteAttrs(
+    val kind: NodeKind,
+    val size: Long = 0,
+    val modified: Long = 0,
+    val mode: Int? = null,
+    val uid: Long? = null,
+    val gid: Long? = null,
+)
 
 /** Why the device refused one operation; the connection is still usable after it. */
 enum class Refusal { NO_SUCH, PERMISSION, NO_SPACE, EXISTS, LOOP, OTHER }
