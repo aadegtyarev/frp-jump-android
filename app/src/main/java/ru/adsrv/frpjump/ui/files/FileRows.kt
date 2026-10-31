@@ -77,12 +77,19 @@ fun PathBar(path: String?, onOpen: (String) -> Unit, onType: () -> Unit) {
 
 /**
  * A place as parts (Files: folders; MQTT: topic levels), the first being
- * the root, `/` (read out as "Root"): a tap on part `i` opens it ([onOpen] gets `i`), a tap on
+ * the root (Files: `/`; MQTT: `#`, read out as "Root"): a tap on part `i` opens it ([onOpen] gets `i`), a tap on
  * the last one (or the empty end of the bar) lets the owner type a path
  * ([onType], read out as [typeLabel]).
  */
 @Composable
-fun PathBar(labels: List<String>, onOpen: (Int) -> Unit, onType: () -> Unit, typeLabel: String) {
+fun PathBar(
+    labels: List<String>,
+    onOpen: (Int) -> Unit,
+    onType: () -> Unit,
+    typeLabel: String,
+    /** Whether a `/` goes before part `i`; between parts after the root by default. */
+    separatorBefore: (Int) -> Boolean = { it > 1 },
+) {
     val colors = AppTheme.colors
     val scroll = rememberScrollState()
     // The deepest part stays in view.
@@ -103,7 +110,7 @@ fun PathBar(labels: List<String>, onOpen: (Int) -> Unit, onType: () -> Unit, typ
         val rootSpoken = stringResource(R.string.path_root)
         labels.forEachIndexed { i, label ->
             val last = i == labels.lastIndex
-            if (i > 1) Text("/", color = colors.faint, fontSize = 14.sp)
+            if (separatorBefore(i)) Text("/", color = colors.faint, fontSize = 14.sp)
             Text(
                 label,
                 fontSize = 14.sp,

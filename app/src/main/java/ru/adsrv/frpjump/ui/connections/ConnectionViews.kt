@@ -204,7 +204,7 @@ fun localAddress(port: Int) = "127.0.0.1:$port"
 
 /**
  * The main action of an active connection: Open, Terminal ("Terminal · 2"
- * with [sessions] of 2 or more open), MQTT (the explorer), or Copy (the
+ * with [sessions] of 2 or more open), Explore (the MQTT explorer), or Copy (the
  * address; short, it shares the row with Disconnect).
  */
 @Composable
@@ -214,7 +214,7 @@ fun mainActionLabel(row: ConnectionRow, sessions: SessionCount = SessionCount.NO
         PortKind.WEB -> stringResource(R.string.open)
         PortKind.SSH -> if (sessions.total >= 2) stringResource(R.string.terminal_count, sessions.total) else stringResource(R.string.terminal)
         PortKind.TCP -> stringResource(R.string.copy)
-        PortKind.MQTT -> stringResource(R.string.kind_mqtt)
+        PortKind.MQTT -> stringResource(R.string.mqtt_explore)
     }
 }
 

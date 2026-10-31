@@ -54,8 +54,9 @@ The same thing is called the same way on every screen:
 - A fourth connection kind, **MQTT**, next to Web, SSH and TCP, with the
   preset 1883 (8883, which turns TLS on, comes with TLS in stage 5). On the wire it is a plain TCP
   port (`protocol` `tcp`), so the server sees no change. Its main action
-  is **MQTT**, which opens the explorer for that tunnel, bringing the
-  tunnel up first, as Terminal does for SSH. "Copy address" is in "⋮" as
+  is **Explore** («Обзор», named for what it opens), which opens the
+  explorer for that tunnel, bringing the tunnel up first, as Terminal
+  does for SSH. "Copy address" is in "⋮" as
   for the other kinds. TCP keeps its main action "Copy"; the TCP preset
   1883 moves to the MQTT kind. Existing TCP connections (also on 1883)
   stay TCP; a TCP connection's "⋮" offers **Open as MQTT**, which changes
@@ -67,7 +68,7 @@ The same thing is called the same way on every screen:
   connection's name and kind.
 - Like the terminal, an explorer session lives in the app, not the screen:
   leaving keeps it connected (the tree keeps filling), with the notice
-  "N sessions keep running: Sessions tab"; "MQTT" on the same connection
+  "N sessions keep running: Sessions tab"; "Explore" on the same connection
   returns to its one session; sessions close only deliberately, from the
   Sessions tab (✕ on its row) or the explorer's "⋮", with Undo (UI rules):
   the session ends when Undo is gone.
@@ -165,7 +166,11 @@ neither option; see "Retained topics" for what that changes.
   - **One level below**: `<t>/+`, the direct children, not `<t>` itself;
   - **Whole branch**: `<t>/#`, `<t>` and everything below it.
 - Pinned from a topic's or a branch's card ("Pin…", choose the mask);
-  "Unpin" on the same card. From stage 5 also typed as a topic filter on
+  "Unpin" on the same card. The Pin sheet says in one line what a pin
+  gives (the value keeps updating while other branches are browsed; the
+  pin is kept for the connection and subscribed again on every connect)
+  and each mask says what it covers (topic only; `+` the direct children;
+  `#` everything inside, the topic too). From stage 5 also typed as a topic filter on
   the Subscriptions tab.
 - A typed topic filter is checked before it is saved: not empty; `#` only
   as a whole level and only the last one; `+` only as a whole level. The
@@ -178,11 +183,16 @@ neither option; see "Retained topics" for what that changes.
 
 ## The tree
 
-- A path bar on top as in Files: `/` is the root, then one part per level
-  (`/` › `(empty)` › `devices` › `wb-mr6c_1` for `/devices/wb-mr6c_1`,
-  whose first level is empty). Tap a part to go there; tap the path to type
+- A path bar on top as in Files, but its root is `#` (the whole tree, as
+  the filter for everything; `/` would read as a real topic prefix here),
+  then one part per level. The empty first level, under which every topic
+  starting with `/` lives, is the part `/` with no separator after it, so
+  `/devices/wb-mr6c_1` reads `# /devices / wb-mr6c_1`, each of `#`, `/`,
+  `devices` and `wb-mr6c_1` a part of its own; an empty level further
+  down is `(empty)`. Tap a part to go there; tap the path to type
   or paste a topic, taken as is (`/devices/x` and `devices/x` are different
-  places). A typed path to a topic without children opens its parent level
+  places); the dialog opens with the current path selected whole, so a
+  paste replaces it, and the keyboard's action key is Go. A typed path to a topic without children opens its parent level
   and the topic's card; a path nothing has been seen under opens that
   level, empty, saying so. Back goes up a level, then leaves.
 - Rows are the children of the current level:
@@ -190,9 +200,20 @@ neither option; see "Retained topics" for what that changes.
   - a topic with a value: name, the value shortened to one line, its age,
     a mark when retained, a pin mark when pinned;
   - a node can be both (a value and children): shown as a branch with its
-    value line;
-  - an empty level is named `(empty)`; an empty value is shown as
-    `(empty value)`.
+    value line; a tap opens its card (the value is what is usually
+    wanted), whose **Open branch (N)** opens its level. A branch without
+    a value of its own opens its level on a tap. Every branch row has
+    "⋮" for its card;
+  - the empty first level is named `/ (leading slash)`; an empty level
+    further down `(empty)`; an empty value is shown as `(empty value)`.
+- Ages: a value delivered as retained when a subscription starts (the
+  snapshot, a branch or pin just subscribed: a topic's first value with
+  the retain flag, until 1 s after the SUBACK or after the last such value)
+  was set before the session saw it, and when is not known. It reads
+  "before connecting" instead of an age or a time, in the row, the card
+  and its history, and is no change of its branches, until a new value
+  comes. A branch whose topics are all such reads "before connecting" too.
+  After "Refresh tree" the values re-read are such again.
 - Order: `(empty)` first, `$SYS` last, the rest by name in natural order:
   runs of digits compare by number (`K2` before `K10`), other text
   case-insensitively, ties by exact text.
@@ -201,20 +222,33 @@ neither option; see "Retained topics" for what that changes.
   without a fade. Nothing else moves.
 - Search in the top bar filters the current level and below by path
   substring (`K1`, `meta/error`) and shows the matching topics as a flat
-  list, paths relative to the current level; tap opens the topic.
+  list, paths relative to the current level as their real text (at the
+  root `/devices/x/controls/K1`); tap opens the topic. The field's hint
+  says where it looks ("Search in /devices/x", at the root "Search the
+  whole tree"); an empty result in a branch offers **Search the whole
+  tree**, which widens it until the search is closed.
+- The explorer's "⋮" and an empty level ("No messages") offer **Publish
+  here…**: the publish sheet with the topic `<level>/` (cursor at its end,
+  so the new topic's name is typed straight after it), a way to create a
+  topic nothing has been seen at; at the root the topic starts empty.
 
 ## A topic
 
 Tapping a topic (or "⋮" on a branch) opens its card, a bottom sheet:
 
-- the full path; the value in full with size, retained, QoS and time;
-- the view: **Text**, **JSON** (pretty-printed, foldable) or **Hex**,
-  detected (not UTF-8 → Hex; UTF-8 that parses as a JSON object or array →
-  JSON; else Text) and switchable by hand for this card;
+- the name, then right under it the value in full, large when it is a
+  short line, with a copy button, then size, retained, QoS and time;
+- the view under it, small: **Text**, **JSON** (pretty-printed, foldable)
+  or **Hex**, detected (not UTF-8 → Hex; UTF-8 that parses as a JSON
+  object or array → JSON; else Text) and switchable by hand for this card;
+- the full path with a copy button; a branch's last change, only when it
+  is not the value's own time;
 - the last values with times (up to 20), newest first;
 - actions, by stage:
-  - stage 1: **Copy path**, **Copy value**, **Pin…** / **Unpin**;
-  - stage 2: **Publish…**;
+  - stage 1: copy path and copy value (the buttons next to them, labelled
+    for screen readers), **Open branch (N)** (a node with children),
+    **Pin…** / **Unpin**;
+  - stage 2: **Publish…**, the card's main (filled) button;
   - stage 4: **Delete** (a retained topic) and **Delete branch** (a
     branch), both in the card's "⋮".
 
@@ -223,20 +257,26 @@ Tapping a topic (or "⋮" on a branch) opens its card, a bottom sheet:
 One sheet, opened by **Publish…** in a topic's or a branch's card. There is
 no separate "publish under": the topic field is the way to any other topic.
 
-- **Topic:** prefilled with the card's path, cursor at the end, so a
-  subtopic is a `/name` away; any path can be typed over it or pasted.
+- **Topic:** prefilled with the card's path (or `<level>/` from "Publish
+  here…"), cursor at the end, so a subtopic is a `/name` away; any path
+  can be typed over it or pasted.
   The prefilled path itself can be sent as is, a branch's too (it is also
   a topic of that name). Checked before Send: not empty, no `+` or `#`, no
   NUL character, at most 65 535 bytes in UTF-8. A topic starting with `$`
   gets a warning (brokers reserve these) but can be sent.
-- **Payload:** a text field. 2b adds a format switch Text / JSON (JSON is
+- **Payload:** a text field. From a topic with a value it starts with
+  that value, selected whole (typing replaces it), when the value is
+  UTF-8 and at most 2 KB, else empty; the focus is then on it. From a
+  branch without a value, or "Publish here…", the focus is on the topic. 2b adds a format switch Text / JSON (JSON is
   validated and can be formatted) and the last payloads sent to this
   topic, one tap away.
 - **Retain** and **QoS** (0/1/2); 2a starts each sheet at retain off,
   QoS 1; 2b remembers them per topic.
 - From stage 6 only: the status/command switch (see the plugin below).
   Before it the value goes to the topic in the field, nothing else.
-- Send answers on the button:
+- Send answers on the button itself (its label becomes the answer, in
+  the error colours for a refusal or failure, until anything is changed),
+  so nothing in the sheet moves:
   - MQTT 5 with QoS 1 or 2: "Accepted by the broker", or "Refused: <the
     broker's reason>" (for example "not authorized");
   - QoS 0, or 3.1.1 (whose brokers drop a refused publish silently):
@@ -303,11 +343,11 @@ the tree is the "what is there" view.
   disconnect's Undo is gone (UI rules).
 - **Process killed or phone rebooted.** The tunnels come back (contract
   scenario 8); the explorer session does not: the tree lives only in
-  memory. "MQTT" opens a new session; its pins are subscribed again.
+  memory. "Explore" opens a new session; its pins are subscribed again.
 
 ## Feedback (the UI rules applied)
 
-- Progress where tapped: the "MQTT" button shows a spinner until the
+- Progress where tapped: the "Explore" button shows a spinner until the
   broker answers; the snapshot and "Refresh tree" show a bar under the
   path bar with the count ("Reading the tree… 1 234 topics"); Delete
   branch shows its progress in its dialog.
@@ -424,8 +464,8 @@ There is one explorer session per connection.
 On a Wiren Board on the tunnel unless said otherwise.
 
 1. Connect, tree, card, pins, login:
-   - A new MQTT connection on 1883 has the main action "MQTT"; the
-     explorer opens with the tree; the root holds `(empty)` and `$SYS`,
+   - A new MQTT connection on 1883 has the main action "Explore"; the
+     explorer opens with the tree; the root holds `/ (leading slash)` and `$SYS`,
      is not subscribed live and shows what the session has seen;
      an old TCP connection on 1883 becomes MQTT by "Open as MQTT";
      `/devices/*/controls/*` and `/devices/*/meta` show live values;
@@ -440,7 +480,7 @@ On a Wiren Board on the tunnel unless said otherwise.
      switch changes the view.
    - Pin `K1` (topic only) and `controls` with "One level below": `K1` and
      the controls update while another branch is open; close the tunnel
-     and open "MQTT" again: both are subscribed again.
+     and open "Explore" again: both are subscribed again.
    - A broker with a password: the login dialog; a wrong password says
      "Wrong user or password"; with Remember the next session connects
      without asking.
@@ -488,7 +528,13 @@ On a Wiren Board on the tunnel unless said otherwise.
 
 - MQTT 5 with a 3.1.1 fallback, after the brokers on the owner's
   controllers (Mosquitto 2.0.20 and 2.0.21).
-- A fourth connection kind, MQTT, with the main action "MQTT".
+- A fourth connection kind, MQTT, with the main action "Explore"
+  (first "MQTT"; renamed after the UX walkthrough to name what it opens,
+  as "Terminal" does for SSH).
+- The explorer stays generic: no vendor conventions (Wiren Board meta,
+  titles, units, `/on`, read-only controls) in the explorer itself; they
+  come as payload views (plugins).
+- The path bar's root is `#`; the empty first level is `/`.
 - The bottom bar stays four items; "Terminals" becomes "Sessions" for
   terminal and MQTT sessions.
 - One concept, the pin (a subscription with a mask); no separate "Watch".

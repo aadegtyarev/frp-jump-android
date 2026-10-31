@@ -18,6 +18,8 @@ import ru.adsrv.frpjump.mqtt.JsonProblem
 import ru.adsrv.frpjump.mqtt.MAX_JSON_BYTES
 import ru.adsrv.frpjump.mqtt.MAX_JSON_DEPTH
 import ru.adsrv.frpjump.mqtt.PublishRequest
+import ru.adsrv.frpjump.mqtt.PublishStart
+import androidx.compose.ui.semantics.contentDescription
 import ru.adsrv.frpjump.mqtt.SentTopic
 import ru.adsrv.frpjump.mqtt.checkJson
 import ru.adsrv.frpjump.mqtt.formatJson
@@ -77,19 +79,22 @@ private val FORMATS = listOf(false, true)
 private const val RECENT_CHARS = 40
 
 /**
- * "Publish…" of a topic's or a branch's card: the topic prefilled with
- * [path], cursor at its end, so a subtopic is a `/name` away; the value as
- * Text or JSON (checked as typed, Format pretty-prints it); the last
- * payloads sent to the topic in the field, a tap puts one in the value;
- * Retain, QoS and the format as last sent to [path] (from [published]),
- * else retain off, QoS 1, Text. Send checks the topic and, as JSON, the
- * value first and answers under the button; it is off, saying why, while
- * the session is not open. The sheet stays open after an answer, so the
- * next value is one tap away.
+ * "Publish…" of a topic's or a branch's card, or "Publish here…" of a
+ * level, as [start] says: the topic prefilled, cursor at its end, so a
+ * subtopic is a `/name` away; the value prefilled (the topic's current
+ * text) and selected whole, so typing replaces it; the focus on the value
+ * for a topic with a value, else on the topic. The value as Text or JSON
+ * (checked as typed, Format pretty-prints it); the last payloads sent to
+ * the topic in the field, a tap puts one in the value; Retain, QoS and the
+ * format as last sent to the prefilled topic (from [published]), else
+ * retain off, QoS 1, Text. Send checks the topic and, as JSON, the value
+ * first and answers on the button itself until something changes; it is
+ * off, saying why, while the session is not open. The sheet stays open
+ * after an answer, so the next value is one tap away.
  */
 @Composable
 fun PublishSheet(
-    path: String,
+    start: PublishStart,
     state: MqttState,
     published: List<SentTopic>?,
     onPublish: (PublishRequest, done: (PublishAnswer) -> Unit) -> Unit,
@@ -97,8 +102,12 @@ fun PublishSheet(
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
+    val path = start.topic
     var topic by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(path, TextRange(path.length))) }
-    var payload by rememberSaveable { mutableStateOf("") }
+    var payloadField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(start.payload, TextRange(0, start.payload.length)))
+    }
+    val payload = payloadField.text
     val last = published?.firstOrNull { it.topic == path }
     var json by rememberSaveable { mutableStateOf(last?.json ?: false) }
     var retain by rememberSaveable { mutableStateOf(last?.retain ?: false) }
@@ -123,14 +132,15 @@ fun PublishSheet(
     var answer by remember { mutableStateOf<PublishAnswer?>(null) }
     var edits by remember { mutableStateOf(0) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val payloadFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { (if (start.focusPayload) payloadFocus else focus).requestFocus() } }
     // An answer is about what was sent: any change makes it stale.
     fun changed() {
         answer = null
         edits++
     }
     fun setPayload(text: String) {
-        payload = text
+        payloadField = TextFieldValue(text, TextRange(text.length))
         jsonFlagged = false
         changed()
     }
@@ -160,11 +170,19 @@ fun PublishSheet(
             })
             Field(
                 label = stringResource(R.string.mqtt_card_value),
-                value = payload,
-                onValueChange = ::setPayload,
+                value = payloadField,
+                onValueChange = {
+                    // A move of the cursor or the selection is no edit.
+                    if (it.text != payloadField.text) {
+                        jsonFlagged = false
+                        changed()
+                    }
+                    payloadField = it
+                },
                 mono = true,
                 singleLine = false,
                 minLines = 3,
+                focusRequester = payloadFocus,
                 problem = jsonProblem?.takeIf { jsonCheck?.problem != JsonProblem.Empty || jsonFlagged },
             )
             if (json) {
@@ -225,10 +243,13 @@ fun PublishSheet(
         }
         val open = state is MqttState.Open
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // The answer is on the button itself until something changes, so nothing below moves.
+            val shown = answer?.takeIf { !sending }
             MainButton(
-                text = stringResource(R.string.mqtt_publish_send),
+                text = shown?.let { answerText(it) } ?: stringResource(R.string.mqtt_publish_send),
                 busy = sending,
                 enabled = open,
+                error = shown is PublishAnswer.Refused || shown is PublishAnswer.Failed,
                 onClick = {
                     val text = topic.text
                     val found = topicProblem(text)
@@ -250,17 +271,18 @@ fun PublishSheet(
                     }
                 },
             )
-            // The answer stays until something changes; while the session is not open, why Send is off.
-            val lines = listOfNotNull(
-                answer?.takeIf { !sending }?.let { answerText(it) to answerColor(it) },
-                blockedText(state).takeIf { !open }?.let { it to colors.muted },
-            )
-            lines.forEach { (text, color) ->
+            // Read out when it comes (the button's text changes, which is not announced by itself).
+            shown?.let { a ->
+                val spoken = answerText(a)
+                Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite; contentDescription = spoken })
+            }
+            // While the session is not open, why Send is off.
+            if (!open) {
                 Text(
-                    text,
+                    blockedText(state),
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
-                    color = color,
+                    color = colors.muted,
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { liveRegion = LiveRegionMode.Polite },
@@ -324,11 +346,4 @@ private fun answerText(answer: PublishAnswer): String = when (answer) {
         PublishFailure.TIMEOUT -> stringResource(R.string.mqtt_publish_timeout, (PUBLISH_TIMEOUT_MS / 1000).toInt())
         PublishFailure.OTHER -> stringResource(R.string.mqtt_publish_failed, answer.detail.orEmpty())
     }
-}
-
-@Composable
-private fun answerColor(answer: PublishAnswer) = when (answer) {
-    PublishAnswer.Accepted -> AppTheme.colors.ink
-    PublishAnswer.Unconfirmed -> AppTheme.colors.muted
-    is PublishAnswer.Refused, is PublishAnswer.Failed -> AppTheme.colors.error
 }

@@ -17,7 +17,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -45,7 +47,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -100,7 +104,12 @@ fun Field(
     }
 }
 
-/** [Field] holding a [TextFieldValue], for a field that sets where the cursor starts (a prefilled path, cursor at its end). */
+/**
+ * [Field] holding a [TextFieldValue], for a field that sets where the
+ * cursor starts or what is selected (a prefilled path, cursor at its end; a
+ * prefilled value, selected whole). [onDone], when given, is the keyboard's
+ * action key (Go) of a single-line field.
+ */
 @Composable
 fun Field(
     label: String,
@@ -112,6 +121,10 @@ fun Field(
     problem: String? = null,
     note: String? = null,
     focusRequester: FocusRequester? = null,
+    singleLine: Boolean = true,
+    /** Lines shown at least when not [singleLine]. */
+    minLines: Int = 1,
+    onDone: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -119,11 +132,17 @@ fun Field(
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            singleLine = true,
+            singleLine = singleLine,
+            minLines = if (singleLine) 1 else minLines,
             isError = problem != null,
             supportingText = (problem ?: note)?.let { { Text(it) } },
             textStyle = fieldTextStyle(mono),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = keyboard,
+                autoCorrectEnabled = false,
+                imeAction = if (onDone != null && singleLine) ImeAction.Go else ImeAction.Default,
+            ),
+            keyboardActions = KeyboardActions(onGo = { onDone?.invoke() }),
             shape = RoundedCornerShape(12.dp),
             colors = fieldColors(),
             modifier = Modifier
@@ -148,13 +167,17 @@ private fun fieldColors(): TextFieldColors {
     )
 }
 
-/** Two or three choices side by side, as the mockup's Web / SSH / TCP switch. */
+/**
+ * Two or three choices side by side, as the mockup's Web / SSH / TCP
+ * switch; [compact] draws it small and only as wide as its choices, for a
+ * secondary switch (a value's view).
+ */
 @Composable
-fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> String, enabled: Boolean = true, onPick: (T) -> Unit) {
+fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> String, enabled: Boolean = true, compact: Boolean = false, onPick: (T) -> Unit) {
     val colors = AppTheme.colors
     Row(
         Modifier
-            .fillMaxWidth()
+            .then(if (compact) Modifier else Modifier.fillMaxWidth())
             .background(colors.tile, RoundedCornerShape(14.dp))
             .padding(4.dp)
             .selectableGroup(),
@@ -164,8 +187,8 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
             val on = option == selected
             Box(
                 Modifier
-                    .weight(1f)
-                    .height(40.dp)
+                    .then(if (compact) Modifier.widthIn(min = 64.dp) else Modifier.weight(1f))
+                    .height(if (compact) 32.dp else 40.dp)
                     .then(if (on) Modifier.shadow(1.dp, RoundedCornerShape(10.dp)) else Modifier)
                     .background(if (on) colors.card else colors.tile, RoundedCornerShape(10.dp))
                     .selectable(selected = on, enabled = enabled, role = Role.RadioButton, onClick = { onPick(option) }),
@@ -173,7 +196,8 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
             ) {
                 Text(
                     label(option),
-                    fontSize = 14.sp,
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    modifier = if (compact) Modifier.padding(horizontal = 12.dp) else Modifier,
                     fontWeight = FontWeight.SemiBold,
                     color = (if (on) colors.accent else colors.muted).let { if (enabled || on) it else it.copy(alpha = 0.5f) },
                 )
@@ -182,17 +206,17 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
     }
 }
 
-/** The main button of a sheet: the accent, a spinner on it while [busy]. */
+/** The main button of a sheet: the accent, a spinner on it while [busy]; [error] in the error colours (an answer that failed shown on it). */
 @Composable
-fun MainButton(text: String, busy: Boolean, onClick: () -> Unit, enabled: Boolean = true) {
+fun MainButton(text: String, busy: Boolean, onClick: () -> Unit, enabled: Boolean = true, error: Boolean = false) {
     val colors = AppTheme.colors
     Button(
         onClick = onClick,
         enabled = enabled && !busy,
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = colors.accent,
-            contentColor = colors.onAccent,
+            containerColor = if (error) colors.errorContainer else colors.accent,
+            contentColor = if (error) colors.onErrorContainer else colors.onAccent,
             disabledContainerColor = if (busy) colors.accent else colors.tile,
             disabledContentColor = if (busy) colors.onAccent else colors.muted,
         ),
@@ -203,7 +227,7 @@ fun MainButton(text: String, busy: Boolean, onClick: () -> Unit, enabled: Boolea
         if (busy) {
             CircularProgressIndicator(Modifier.size(22.dp), color = colors.onAccent, strokeWidth = 2.dp)
         } else {
-            Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
