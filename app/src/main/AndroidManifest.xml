@@ -76,7 +76,8 @@
                 android:value="true" />
         </service>
 
-        <!-- Gives the system installer the downloaded update APK, nothing else (res/xml/update_files.xml). -->
+        <!-- Gives the system installer the downloaded update APK, and other apps a device's file to
+             open or share, nothing else (res/xml/update_files.xml). -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

@@ -65,7 +65,7 @@ port, which stay keyed by (profile, device, port).
 - The device card lists the device's connections with their tunnel's state,
   local address, a Disconnect (power) button and the main action (Open,
   Terminal, Copy); "⋮" or a long press has Copy address, Open in browser /
-  external app, Change and Delete. "Connection" opens a sheet: kind, port (presets per
+  external app, Files (SSH, see [Files](#files)), Change and Delete. "Connection" opens a sheet: kind, port (presets per
   kind, any 1-65535), name (blank takes the preset's name, the SSH user or
   "Web 8080"), HTTPS or user, "Connect now". Names must differ per device
   and port, and SSH cannot share a port with web or TCP (the server knows a
@@ -436,6 +436,44 @@ config change. So a port connected or disconnected on the same device
 drops that device's other open sessions (seen on a WB controller: its frpc
 restarted 2 s after the phone connected port 80). Tunnels to other devices
 and phone-only changes (a moved local port) keep their connections.
+
+## Files
+
+"Files" in the "⋮" menu of a saved SSH connection (device card and
+Connections tab) asks for the login as Terminal does (the same dialog,
+remembered method, pinned host key) and opens the device's files over
+SFTP; the folder icon in the terminal's bar does the same for the session
+shown, with its login. A connection that is down is connected first; the
+screen waits for the tunnel. Files use an SSH connection of their own
+(`files/SftpBrowser.kt`), so a transfer and an open terminal do not touch
+each other; both log in through `ssh/SshConnector.kt`.
+
+- It opens in the user's home folder. The path bar on top: tap a part to
+  go there, tap the last part to type a path (absolute, relative, `~`).
+  Back goes up a folder and leaves at `/`; the arrow in the bar leaves at
+  once.
+- Folders first, then files, by name; size and modified time. Dot names
+  only with "⋮ › Show hidden files", remembered in `settings.json`.
+- Symlinks carry a link badge and their target (`→ /mnt/data/etc`); a link
+  to a folder opens as one, a broken link says so. Long press on a link:
+  "Go to the target" (the target folder, or the folder its target is in).
+- Tap a file: it is downloaded to the app's cache and handed to another app
+  ("Open with", through the FileProvider). Long press: Download, Share.
+  Download writes into a phone folder chosen once with the system folder
+  picker (kept with a persistable grant; "⋮" changes it); a name that is
+  there already becomes `name (1).ext`. Progress shows on the row, the
+  result as a toast.
+- "+" uploads files picked with the system picker into the folder shown,
+  one after another, each under a hidden `.name.frpjump-part` that is
+  renamed at the end, so a half upload never replaces a file; a name
+  that is taken becomes `name (1).ext`.
+- Pull to refresh. With the tunnel down, or SSH failing, each folder shows
+  as last listed (kept per profile, device, port and folder in the app's
+  cache, `files-listings/`, removed when the profile is forgotten), marked
+  "No connection", with Retry (which connects the tunnel when it is down);
+  nothing can be downloaded or uploaded then.
+- Transfers belong to the screen in this version: leaving it stops them.
+  Files handed to other apps stay in the cache (`files-open/`) for a day.
 
 ## Third-party libraries
 

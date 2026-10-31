@@ -38,13 +38,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
@@ -73,7 +71,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,7 +86,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.snippets.SnippetStore
-import ru.adsrv.frpjump.ssh.PinnedHostKey
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
@@ -97,6 +93,7 @@ import ru.adsrv.frpjump.ssh.TerminalScreenListener
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
 import ru.adsrv.frpjump.ui.FullscreenGlyph
+import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.rememberFullscreen
@@ -112,6 +109,8 @@ fun TerminalScreen(
     profileColors: Map<String, String>,
     initialId: Int,
     onBack: () -> Unit,
+    /** "Files" for the selected session's device, port and login. */
+    onOpenFiles: (SshSession) -> Unit,
 ) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
     val snippets by snippetStore.snippets.collectAsStateWithLifecycle()
@@ -225,6 +224,9 @@ fun TerminalScreen(
                     val larger = stringResource(R.string.terminal_text_larger)
                     val keyboard = stringResource(R.string.terminal_keyboard)
                     BarButton("\u2328", keyboard, onClick = input::showKeyboard)
+                    IconButton(onClick = { onOpenFiles(selected) }) {
+                        Icon(FolderGlyph, contentDescription = stringResource(R.string.files), modifier = Modifier.size(20.dp))
+                    }
                     IconButton(onClick = { setFullscreen(true) }) {
                         Icon(FullscreenGlyph, contentDescription = stringResource(R.string.fullscreen), modifier = Modifier.size(20.dp))
                     }
@@ -320,13 +322,13 @@ fun TerminalScreen(
     if (managing) SnippetsSheet(snippets, snippetActions, onDismiss = { managing = false })
 
     when (val s = state) {
-        is SshState.HostKeyUnknown -> TrustDialog(
-            selected, s.presented,
+        is SshState.HostKeyUnknown -> HostKeyTrustDialog(
+            "${selected.device}:${selected.port}", s.presented,
             onTrust = selected::trustHostKey,
             onCancel = { sessions.close(selected.id) },
         )
-        is SshState.HostKeyChanged -> ChangedKeyDialog(
-            selected, s.pinned, s.presented,
+        is SshState.HostKeyChanged -> HostKeyChangedDialog(
+            "${selected.device}:${selected.port}", s.pinned, s.presented,
             onForget = selected::forgetOldHostKey,
             onCancel = { sessions.close(selected.id) },
         )
@@ -408,60 +410,6 @@ private fun statusLine(session: SshSession, state: SshState): String = session.u
     is SshState.HostKeyChanged -> stringResource(R.string.terminal_status_host_key_changed)
     // The reason is in the line above the snippets, with Reconnect.
     is SshState.Ended -> stringResource(R.string.terminal_state_ended)
-}
-
-@Composable
-private fun TrustDialog(session: SshSession, presented: PinnedHostKey, onTrust: () -> Unit, onCancel: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = {},
-        title = { Text(stringResource(R.string.host_key_trust_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.host_key_first, "${session.device}:${session.port}"))
-                KeyText(presented)
-                Text(
-                    stringResource(R.string.host_key_check, "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = onTrust) { Text(stringResource(R.string.cert_trust)) } },
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
-    )
-}
-
-@Composable
-private fun ChangedKeyDialog(
-    session: SshSession,
-    pinned: PinnedHostKey,
-    presented: PinnedHostKey,
-    onForget: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = {},
-        title = { Text(stringResource(R.string.host_key_changed_title), color = MaterialTheme.colorScheme.error) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.host_key_changed_text, "${session.device}:${session.port}"))
-                Text(stringResource(R.string.host_key_trusted_before), style = MaterialTheme.typography.labelMedium)
-                KeyText(pinned)
-                Text(stringResource(R.string.host_key_shown_now), style = MaterialTheme.typography.labelMedium)
-                KeyText(presented)
-                Text(
-                    stringResource(R.string.host_key_forget_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = onForget) { Text(stringResource(R.string.host_key_forget)) } },
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
-    )
-}
-
-@Composable
-private fun KeyText(key: PinnedHostKey) {
-    Text("${key.type}\n${key.fingerprint}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
 }
 
 private fun spToPx(context: Context, sp: Int): Int =

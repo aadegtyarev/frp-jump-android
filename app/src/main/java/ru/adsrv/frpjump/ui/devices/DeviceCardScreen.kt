@@ -86,6 +86,7 @@ fun DeviceCardScreen(
     onBack: () -> Unit,
     onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
+    onOpenFiles: (targetId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val ui = remember { ConnectionUi() }
@@ -177,7 +178,7 @@ fun DeviceCardScreen(
             }
         }
     }
-    ConnectionDialogs(ui, vm.actions, existing = { vm.connections() }, rows = state.rows, onOpenTerminal = onOpenTerminal)
+    ConnectionDialogs(ui, vm.actions, existing = { vm.connections() }, rows = state.rows, onOpenTerminal = onOpenTerminal, onOpenFiles = onOpenFiles)
     if (adding) {
         ConnectionSheet(
             device = vm.device,

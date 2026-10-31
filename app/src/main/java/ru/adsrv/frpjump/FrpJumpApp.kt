@@ -15,6 +15,9 @@ import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.direct.DirectOfferedStore
 import ru.adsrv.frpjump.direct.DirectNotifier
 import ru.adsrv.frpjump.direct.NetworkWatcher
+import ru.adsrv.frpjump.files.FileTargets
+import ru.adsrv.frpjump.files.ListingCache
+import ru.adsrv.frpjump.files.PhoneFiles
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.ui.applyTheme
@@ -59,6 +62,17 @@ class FrpJumpApp : Application() {
     lateinit var sshPasswords: SshPasswords
         private set
     lateinit var ssh: SshSessions
+        private set
+
+    /** What every SSH login needs: the terminal's sessions and the file screens share it. */
+    lateinit var sshEnv: SshEnvironment
+        private set
+
+    /** File screens' logins, by the id in their route. */
+    val fileTargets = FileTargets()
+
+    /** Last folder listings for the file screens' offline view, in the cache. */
+    lateinit var listings: ListingCache
         private set
     lateinit var webSites: WebSiteMemory
         private set
@@ -173,9 +187,13 @@ class FrpJumpApp : Application() {
         sshKeys = SshKeyStore(AtomicTextFile(File(filesDir, "ssh_keys.json")), sshBox)
         sshPasswords = SshPasswords(AtomicTextFile(File(filesDir, "ssh_passwords.json")), sshBox)
         webSites = WebSiteMemory(AtomicTextFile(File(filesDir, "web_site.json")))
+        sshEnv = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment)
+        listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
+        // Files handed to other apps a day ago or more (Open with, Share).
+        appScope.launch(Dispatchers.IO) { PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS) }
         ssh = SshSessions(
             context = this,
-            env = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment),
+            env = sshEnv,
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
@@ -207,6 +225,8 @@ class FrpJumpApp : Application() {
             }
         }
         if (keepData) return
+        // The folders seen on its devices go with it.
+        withContext(Dispatchers.IO) { PhoneFiles.listingsDir(this@FrpJumpApp, id).deleteRecursively() }
         val noneLeft = profiles.state.value.index.profiles.isEmpty()
         // Interrupted before or after the memory is forgotten, it no longer matches any
         // site, so the next page opened clears the web data anyway.
@@ -219,6 +239,7 @@ class FrpJumpApp : Application() {
 
     private companion object {
         const val SSH_KEY_ALIAS = "frpjump-ssh"
+        const val OPEN_CACHE_AGE_MS = 24 * 60 * 60 * 1000L
         val LOAD_RETRIES_MS = listOf(10_000L, 30_000L, 60_000L, 60_000L, 60_000L)
     }
 }

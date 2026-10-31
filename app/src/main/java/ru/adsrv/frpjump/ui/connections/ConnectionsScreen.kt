@@ -69,6 +69,7 @@ fun ConnectionsScreen(
     vm: ConnectionsViewModel,
     onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
+    onOpenFiles: (targetId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val ui = remember { ConnectionUi() }
@@ -136,7 +137,7 @@ fun ConnectionsScreen(
             items(state.saved, key = { it.key }) { row -> Line(row, state.colors[row.profile], ui, actions) }
         }
     }
-    ConnectionDialogs(ui, vm.actions, existing = vm::connections, rows = state.active + state.saved, onOpenTerminal = onOpenTerminal)
+    ConnectionDialogs(ui, vm.actions, existing = vm::connections, rows = state.active + state.saved, onOpenTerminal = onOpenTerminal, onOpenFiles = onOpenFiles)
 }
 
 @Composable
