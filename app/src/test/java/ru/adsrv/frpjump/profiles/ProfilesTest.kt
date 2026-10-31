@@ -18,6 +18,7 @@ import org.junit.Test
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.settings.AppSettings
 import ru.adsrv.frpjump.ssh.MemoryStorage
 import ru.adsrv.frpjump.store.StoredEnrollment
@@ -42,6 +43,7 @@ class ProfilesTest {
         storageFor = files::storage,
         directKept = DirectKeptStore(MemoryStorage()),
         network = MutableStateFlow(null),
+        restoreRecord = RestoreRecord(MemoryStorage()).apply { load() },
     )
 
     private fun store() = ProfileStore(filesDir, keystore::box, files::storage, newId = { "id${++ids}" })

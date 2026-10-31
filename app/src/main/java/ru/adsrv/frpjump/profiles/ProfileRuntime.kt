@@ -20,6 +20,7 @@ import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceListCache
 import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.Poller
 import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.settings.AppSettings
@@ -56,6 +57,8 @@ class ProfileShared(
     val directKept: DirectKeptStore,
     /** The current network's identity ([ru.adsrv.frpjump.direct.networkIdentity]); null without one. */
     val network: StateFlow<String?>,
+    /** Which profiles had tunnels up, for a cold start; loaded before any runtime is made. */
+    val restoreRecord: RestoreRecord,
 )
 
 /**
@@ -106,6 +109,7 @@ class ProfileRuntime(
                 else -> DirectMode.ON
             }
         },
+        recordTunnels = { shared.restoreRecord.set(id, it) },
     )
 
     /** Whether the app shows this profile. */
@@ -137,6 +141,9 @@ class ProfileRuntime(
             tunnelsUp = tunnels.state.map { it.tunnels.isNotEmpty() },
             backgroundMs = shared.settings.map { it.backgroundPoll.ms },
             removed = session.removed,
+            restoring = combine(shared.restoreRecord.profiles, tunnels.state) { record, state ->
+                (record?.get(id) ?: 0) > 0 && state.tunnels.isEmpty()
+            },
         ) { shown ->
             val synced = tunnels.poll()
             val listed = if (shown && devices.wanted) devices.refresh() else true

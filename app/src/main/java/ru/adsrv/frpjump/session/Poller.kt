@@ -16,17 +16,32 @@ private const val TAG = "Poller"
 /** While the app is visible: heartbeat + desired state (and the device list when shown) this often. */
 const val FOREGROUND_POLL_MS = 2_000L
 
+/** While a profile's tunnels are being brought back after a cold start (failures back off as usual). */
+const val RESTORE_POLL_MS = 5_000L
+
 /**
  * How often one profile polls, or null for not at all. The [current] one
  * (the profile the app shows) while the app is [visible]: every 2 s.
- * Otherwise, the app closed or another profile shown, only while the
- * profile has tunnels up (the foreground service keeps the process alive)
- * and only if the owner chose an interval ([backgroundMs]); otherwise
- * nothing runs. Never once its server has removed the profile.
+ * A profile [restoring] its tunnels after a cold start (the process was
+ * killed or the phone rebooted with tunnels up, none running yet): every
+ * 5 s until they run, whichever profile is shown and whatever the
+ * setting, since nothing else would start them. Otherwise, the app closed
+ * or another profile shown, only while the profile has tunnels up (the
+ * foreground service keeps the process alive) and only if the owner chose
+ * an interval ([backgroundMs]); otherwise nothing runs. Never once its
+ * server has removed the profile.
  */
-fun pollIntervalMs(visible: Boolean, current: Boolean, tunnelsUp: Boolean, backgroundMs: Long?, removed: Boolean): Long? = when {
+fun pollIntervalMs(
+    visible: Boolean,
+    current: Boolean,
+    tunnelsUp: Boolean,
+    backgroundMs: Long?,
+    removed: Boolean,
+    restoring: Boolean = false,
+): Long? = when {
     removed -> null
     visible && current -> FOREGROUND_POLL_MS
+    restoring && !tunnelsUp -> RESTORE_POLL_MS
     tunnelsUp && backgroundMs != null -> backgroundMs
     else -> null
 }
@@ -47,12 +62,14 @@ class Poller(
     tunnelsUp: Flow<Boolean>,
     backgroundMs: Flow<Long?>,
     removed: StateFlow<Boolean>,
+    /** Tunnels to bring back after a cold start, none running yet. */
+    restoring: Flow<Boolean>,
     private val cycle: suspend (shown: Boolean) -> Boolean,
 ) {
     init {
         scope.launch {
-            combine(combine(visible, current, ::Pair), tunnelsUp, backgroundMs, removed) { (v, c), up, bg, gone ->
-                pollIntervalMs(v, c, up, bg, gone)
+            combine(combine(visible, current, ::Pair), tunnelsUp, backgroundMs, removed, restoring) { (v, c), up, bg, gone, back ->
+                pollIntervalMs(v, c, up, bg, gone, back)
             }
                 .distinctUntilChanged()
                 .collectLatest { interval -> if (interval != null) loop(interval) }

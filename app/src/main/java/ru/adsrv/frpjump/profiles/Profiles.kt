@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.restore.pendingRestore
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.tunnel.TunnelsState
@@ -45,6 +46,8 @@ data class ProfilesState(
 @OptIn(ExperimentalCoroutinesApi::class)
 class Profiles(
     private val store: ProfileStore,
+    /** Tunnels by profile as last applied ([ru.adsrv.frpjump.restore.RestoreRecord.profiles]); null until read. */
+    private val restoreRecord: StateFlow<Map<String, Int>?> = MutableStateFlow(emptyMap()),
     private val open: (profile: Profile, store: ProfileStore, currentId: StateFlow<String?>) -> ProfileRuntime,
 ) {
     private val _state = MutableStateFlow(ProfilesState())
@@ -69,6 +72,15 @@ class Profiles(
     /** [tunnelsByProfile] as it is now. */
     fun tunnelsByProfileNow(): Map<String, Int> =
         _state.value.runtimes.mapValues { it.value.tunnels.state.value.tunnels.size }.filterValues { it > 0 }
+
+    /**
+     * Tunnels still to bring back after a cold start (see [pendingRestore]);
+     * null while not known yet. 0 in normal running.
+     */
+    val restorePending: Flow<Int?> =
+        combine(restoreRecord, _state, tunnelsByProfile) { record, state, up ->
+            pendingRestore(record, state.loaded, state.failure != null, state.runtimes.keys, up)
+        }.distinctUntilChanged()
 
     /** Every tunnel up, as [profilePortKey]s. */
     val upTunnels: Flow<Set<String>> = allTunnels { states ->

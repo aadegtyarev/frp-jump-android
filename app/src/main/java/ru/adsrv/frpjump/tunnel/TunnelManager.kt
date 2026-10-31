@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.ApiException
+import ru.adsrv.frpjump.api.ConsumedGrant
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
@@ -102,6 +103,12 @@ class TunnelManager(
     private val startService: () -> Boolean,
     /** Per device: try direct, or not (setting off, or kept through the server on this network). Read on every apply. */
     private val directMode: (device: String) -> DirectMode = { DirectMode.ON },
+    /**
+     * How many tunnels run now, after every apply or stop, on the IO
+     * dispatcher: kept for a cold start to bring them back
+     * ([ru.adsrv.frpjump.restore.RestoreRecord]).
+     */
+    private val recordTunnels: (count: Int) -> Unit = {},
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
@@ -279,7 +286,10 @@ class TunnelManager(
 
     /** Stops frpc and the service; the caller holds [syncing]. */
     private suspend fun stopAllLocked() {
-        withContext(Dispatchers.IO) { runner.stop() }
+        withContext(Dispatchers.IO) {
+            runner.stop()
+            recordTunnels(0)
+        }
         lastDesired = null
         core.update { it.copy(planned = emptyList()) }
         stopService()
@@ -344,20 +354,36 @@ class TunnelManager(
      */
     suspend fun disconnectAll() {
         val credentials = credentials()
-        val tunnels = core.value.planned
         if (credentials != null) {
-            for (t in tunnels) {
+            for (t in grantsToDisconnect(credentials)) {
                 try {
-                    api.disconnect(credentials, t.grant.exposerDeviceName, t.grant.targetPort)
+                    api.disconnect(credentials, t.exposerDeviceName, t.targetPort)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.w(TAG, "disconnect ${t.grant} failed: ${e.userMessage()}")
+                    Log.w(TAG, "disconnect $t failed: ${e.userMessage()}")
                 }
             }
         }
         syncing.withLock { stopAllLocked() }
         sync()
+    }
+
+    /**
+     * The tunnels running; with none (still being brought back after a cold
+     * start) those the server lists, so they do not come back on the next poll.
+     */
+    private suspend fun grantsToDisconnect(credentials: Credentials): List<ConsumedGrant> {
+        val running = core.value.planned.map { it.grant }
+        if (running.isNotEmpty()) return running
+        return try {
+            api.desiredState(credentials).consumed
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "desired state for disconnect all failed: ${e.userMessage()}")
+            emptyList()
+        }
     }
 
     /**
@@ -369,6 +395,7 @@ class TunnelManager(
         withContext(Dispatchers.IO) {
             runner.wipe()
             localPorts.removeProfile(profile)
+            recordTunnels(0)
         }
         lastDesired = null
         core.value = Core()
@@ -400,6 +427,7 @@ class TunnelManager(
                 }
                 runner.apply(launchFor(credentials, visitors), plan.map { it.localPort }.toSet())
             }
+            recordTunnels(plan.size)
             plan to modes
         }
         core.update { it.copy(planned = planned, modes = modes) }

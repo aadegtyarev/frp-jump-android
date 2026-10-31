@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.FrpJumpApi
@@ -17,6 +19,7 @@ import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfileShared
 import ru.adsrv.frpjump.profiles.ProfileStore
 import ru.adsrv.frpjump.profiles.Profiles
+import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.ssh.SshEnvironment
@@ -56,6 +59,8 @@ class FrpJumpApp : Application() {
         private set
     lateinit var directNotifier: DirectNotifier
         private set
+    lateinit var restoreRecord: RestoreRecord
+        private set
 
     /** A device card to show, asked for by a notification; taken by the navigation. */
     val openDevice = MutableStateFlow<OpenDevice?>(null)
@@ -73,6 +78,7 @@ class FrpJumpApp : Application() {
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))
         network = NetworkWatcher(this)
+        restoreRecord = RestoreRecord(AtomicTextFile(File(filesDir, "restore.json")))
         val frpcRoot = File(noBackupFilesDir, "frpc")
         val shared = ProfileShared(
             api = api,
@@ -85,9 +91,10 @@ class FrpJumpApp : Application() {
             scope = appScope,
             directKept = directKept,
             network = network.id,
+            restoreRecord = restoreRecord,
         )
         val store = ProfileStore(filesDir, boxFor = ::KeystoreSecretBox, storageFor = ::AtomicTextFile)
-        profiles = Profiles(store) { profile, profileStore, currentId ->
+        profiles = Profiles(store, restoreRecord.profiles) { profile, profileStore, currentId ->
             ProfileRuntime(profile.id, profileStore.credentials(profile), profileStore.dir(profile.id), currentId, shared)
         }
         directChoices = DirectChoices(profiles, directKept, network.id)
@@ -96,6 +103,8 @@ class FrpJumpApp : Application() {
         appScope.launch(Dispatchers.IO) {
             // Before any profile applies its tunnels.
             directKept.load()
+            // Before any profile polls: which ones bring their tunnels back.
+            restoreRecord.load()
             network.start()
             // v1 kept one frpc's files right in here; each profile now has a directory of its own.
             frpcRoot.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
@@ -103,6 +112,16 @@ class FrpJumpApp : Application() {
                 // frpc directories of profiles no longer listed (forget interrupted).
                 val ids = profiles.state.value.runtimes.keys
                 frpcRoot.listFiles()?.filter { it.isDirectory && it.name !in ids }?.forEach { it.deleteRecursively() }
+                restoreRecord.retain(ids)
+            }
+        }
+        // Opened with tunnels up (or still to come back) while the service could not
+        // start from the background: start it now, the app being in the foreground.
+        appScope.launch {
+            combine(visible, profiles.tunnelCount, profiles.restorePending) { shown, up, pending ->
+                shown && (up > 0 || (pending ?: 0) > 0)
+            }.distinctUntilChanged().collect { wanted ->
+                if (wanted && !TunnelService.running) TunnelService.start(this@FrpJumpApp)
             }
         }
         installFullBouncyCastle()

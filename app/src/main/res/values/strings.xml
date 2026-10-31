@@ -102,6 +102,21 @@
         <item quantity="other">%2$s in %1$d profiles</item>
     </plurals>
     <string name="disconnect_all">Disconnect all</string>
+    <plurals name="tunnels_restoring">
+        <item quantity="one">Restoring %d tunnel…</item>
+        <item quantity="other">Restoring %d tunnels…</item>
+    </plurals>
+    <plurals name="restore_notice_title">
+        <item quantity="one">Tap to restore %d tunnel</item>
+        <item quantity="other">Tap to restore %d tunnels</item>
+    </plurals>
+    <string name="restore_notice_text">Android stopped the app while tunnels were up and did not let them start again in the background. Settings › Battery lets them come back by themselves.</string>
+
+    <!-- Settings: battery -->
+    <string name="battery">Battery</string>
+    <string name="battery_hint">Android may stop tunnels</string>
+    <string name="battery_fix">Fix</string>
+    <string name="battery_no_settings">This phone has no battery optimisation settings screen.</string>
 
     <!-- Direct or through the server -->
     <string name="setting_direct">Direct connection (P2P)</string>
