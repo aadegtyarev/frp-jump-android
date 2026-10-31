@@ -29,6 +29,8 @@ enum class EnrollLineProblem {
     BAD_URL,
     /** The token has characters a token never has. */
     BAD_TOKEN,
+    /** `--name` is not a device name the server takes: letters, digits, `_`, `-`, up to 63, starting with a letter or digit. */
+    BAD_NAME,
 }
 
 /**
@@ -56,6 +58,12 @@ object EnrollLineParser {
 
     private val WHITESPACE = Regex("\\s+")
     private val TOKEN = Regex("^[A-Za-z0-9_-]{$TOKEN_LENGTH}$")
+
+    /** The server's device name rule (frp-jump `registry._NAME_RE`), checked here so a bad one says so before any call. */
+    private val DEVICE_NAME = Regex("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$")
+
+    /** Longer than any control server's address; a line that long is not one. */
+    private const val MAX_URL = 2048
     private const val CLIENT = "frp-jump-client"
 
     fun parse(text: String): EnrollLineResult {
@@ -91,11 +99,14 @@ object EnrollLineParser {
         if (url.startsWith("http://", ignoreCase = true)) {
             return error(EnrollLineProblem.HTTP)
         }
+        if (url.length > MAX_URL) return error(EnrollLineProblem.BAD_URL)
         val controlUrl = validateControlUrl(url)
             ?: return error(EnrollLineProblem.BAD_URL)
         if (!TOKEN.matches(token)) return error(EnrollLineProblem.BAD_TOKEN)
+        val deviceName = name?.takeUnless(::isPlaceholder)
+        if (deviceName != null && !DEVICE_NAME.matches(deviceName)) return error(EnrollLineProblem.BAD_NAME)
 
-        return EnrollLineResult.Ok(EnrollLine(controlUrl, token, name?.takeUnless(::isPlaceholder)))
+        return EnrollLineResult.Ok(EnrollLine(controlUrl, token, deviceName))
     }
 
     /**
