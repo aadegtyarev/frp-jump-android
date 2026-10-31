@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.MqttSession
@@ -101,7 +103,12 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         val searches = combine(query.map { it.trim() }, s.branch, ticks.map { s.tree.topicCount }.distinctUntilChanged()) { needle, path, _ ->
             search(s, path, needle)
         }.distinctUntilChanged().flowOn(Dispatchers.Default)
-        combine(s.state, s.snapshot, s.branch, s.pins, s.refused, searches, card, ticks) { values ->
+        // A pin unpinned with Undo on screen is gone from the marks and the card until Undo brings it back.
+        val pins = combine(s.pins, app.pendingUndo.hidden) { all, hidden ->
+            val gone = PendingUndo.mqttPins(hidden, s.profile, s.connectionId)
+            if (gone.isEmpty()) all else all.filter { it !in gone }
+        }
+        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -194,6 +201,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
 
     fun closeCard() {
         card.value = null
+        focused.value = null
     }
 
     /**
@@ -208,10 +216,25 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     }
 
     /** Pins [path] with [mask]; returns the topic filter pinned. */
-    fun pin(path: MqttPath, mask: PinMask): String = pinFilter(path, mask).also { session?.pin(it) }
+    fun pin(path: MqttPath, mask: PinMask): String = pinFilter(path, mask).also { filter ->
+        session?.let { app.mqtt.pin(it.profile, it.connectionId, filter) }
+    }
 
-    /** Unpins [path]'s pin with [mask] at once; returns the topic filter unpinned. */
-    fun unpin(path: MqttPath, mask: PinMask): String = pinFilter(path, mask).also { session?.unpin(it) }
+    /**
+     * Unpins [path]'s pin with [mask] with Undo (UI rules): it is gone from
+     * the screen at once and unsubscribed when the notice goes; Undo puts it
+     * back where it was.
+     */
+    fun unpin(path: MqttPath, mask: PinMask) {
+        val s = session ?: return
+        val filter = pinFilter(path, mask)
+        val mqtt = app.mqtt
+        // Pinned again while the notice is up: the pin stays (it shows once the notice goes).
+        val mark = mqtt.pinMark(s.profile, s.connectionId, filter)
+        app.pendingUndo.enqueue(PendingUndo.mqttPinKey(s.profile, s.connectionId, filter), commit = {
+            withContext(Dispatchers.Main) { mqtt.unpin(s.profile, s.connectionId, filter, mark) }
+        })
+    }
 
     /**
      * A path typed in the path bar, taken as is (`/devices/x` and

@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -202,5 +203,6 @@ internal fun InfoLine(label: String, value: String, mono: Boolean = false, probl
 @Composable
 internal fun fullTime(at: Instant): String {
     val locale = LocalConfiguration.current.locales[0]
-    return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale).format(at.atZone(ZoneId.systemDefault()))
+    val format = remember(locale) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(locale) }
+    return format.format(at.atZone(ZoneId.systemDefault()))
 }

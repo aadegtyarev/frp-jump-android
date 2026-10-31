@@ -99,4 +99,25 @@ class PayloadViewTest {
         assertTrue(big.text.length <= MAX_COPY_CHARS)
         assertTrue(big.text.endsWith("00"))
     }
+
+    @Test
+    fun `deeply nested JSON opens as text without parsing it`() {
+        val deep = "[".repeat(100_000) + "]".repeat(100_000)
+        assertEquals(PayloadReading(PayloadView.TEXT, null), readPayload(bytes(deep)))
+        assertNull(jsonTree(bytes(deep)))
+        val limit = "[".repeat(MAX_JSON_DEPTH) + "]".repeat(MAX_JSON_DEPTH)
+        assertEquals(PayloadView.JSON, detectView(bytes(limit)))
+        assertEquals(PayloadView.TEXT, detectView(bytes("[$limit]")))
+        // Brackets inside strings do not count.
+        assertEquals(1, nestingDepth("""["[[[\\\"[[", "]"]"""))
+    }
+
+    @Test
+    fun `equal values read to equal lines, another shape to other lines`() {
+        // The card keeps its folds while the lines stay equal and starts unfolded when they change.
+        val a = readPayload(bytes("""{"a":{"b":1}}"""))
+        assertEquals(a, readPayload(bytes("""{"a":{"b":1}}""")))
+        assertTrue(a != readPayload(bytes("""{"a":[1,2]}""")))
+        assertEquals(PayloadReading(PayloadView.HEX, null), readPayload(byteArrayOf(0xff.toByte())))
+    }
 }

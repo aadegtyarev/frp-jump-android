@@ -728,7 +728,7 @@
     <string name="mqtt_mask_branch">Whole branch</string>
     <string name="mqtt_unpin">Unpin</string>
     <string name="mqtt_pinned_notice">Pinned: %s</string>
-    <string name="mqtt_unpinned_notice">Unpinned: %s</string>
+    <string name="mqtt_unpin_filter">Unpin %s</string>
     <string name="mqtt_fold">Fold</string>
     <string name="mqtt_pinned_mark">Pinned</string>
     <string name="mqtt_kind_branch">Branch</string>

@@ -770,7 +770,7 @@
     <string name="mqtt_mask_branch">Вся ветка</string>
     <string name="mqtt_unpin">Отписаться</string>
     <string name="mqtt_pinned_notice">Подписка: %s</string>
-    <string name="mqtt_unpinned_notice">Подписка снята: %s</string>
+    <string name="mqtt_unpin_filter">Отписаться от %s</string>
     <string name="mqtt_fold">Свернуть</string>
     <string name="mqtt_pinned_mark">Есть подписка</string>
     <string name="mqtt_kind_branch">Ветка</string>

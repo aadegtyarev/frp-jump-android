@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +31,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -43,6 +42,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +53,8 @@ import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.mqtt.CopiedValue
 import ru.adsrv.frpjump.mqtt.JsonLine
+import ru.adsrv.frpjump.mqtt.PayloadReading
+import ru.adsrv.frpjump.mqtt.readPayload
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.PayloadView
 import ru.adsrv.frpjump.mqtt.PinMask
@@ -58,10 +62,7 @@ import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.ValueLine
 import ru.adsrv.frpjump.mqtt.copiedValue
 import ru.adsrv.frpjump.mqtt.decodeUtf8
-import ru.adsrv.frpjump.mqtt.detectView
 import ru.adsrv.frpjump.mqtt.hexDump
-import ru.adsrv.frpjump.mqtt.jsonLines
-import ru.adsrv.frpjump.mqtt.jsonTree
 import ru.adsrv.frpjump.mqtt.levelLabel
 import ru.adsrv.frpjump.mqtt.multiLineText
 import ru.adsrv.frpjump.mqtt.pinFilter
@@ -77,6 +78,8 @@ import ru.adsrv.frpjump.ui.files.InfoLine
 import ru.adsrv.frpjump.ui.files.SecondaryButton
 import ru.adsrv.frpjump.ui.files.fullTime
 import ru.adsrv.frpjump.ui.notice
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -88,8 +91,11 @@ private const val TEXT_SHOWN = 16_000
 /** Bytes of the hex view the card draws at most. */
 private const val HEX_SHOWN = 4_096
 
-/** Lines of the JSON view drawn at most (folding brings the rest into reach). */
-private const val JSON_LINES_SHOWN = 2_000
+/** Lines of the JSON view drawn at most (folding brings the rest into reach); each is a composable in the sheet's column. */
+private const val JSON_LINES_SHOWN = 500
+
+/** Levels of JSON indented at most; deeper lines stay at this indent so they keep a usable width. */
+private const val JSON_INDENT_LEVELS = 8
 
 /** Characters of copied text the notice shows, as the terminal's. */
 private const val COPY_PREVIEW = 40
@@ -107,7 +113,7 @@ fun TopicCard(
     card: CardState,
     canPin: Boolean,
     onPin: (PinMask) -> String,
-    onUnpin: (PinMask) -> String,
+    onUnpin: (PinMask) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -118,9 +124,12 @@ fun TopicCard(
     // Chosen by hand for this card; null follows what each new value is detected as.
     var chosen by rememberSaveable(path.format(), path.levels.size) { mutableStateOf<PayloadView?>(null) }
     val payload = value?.payload?.takeIf { it.isNotEmpty() }
-    val detected = remember(value) { payload?.let(::detectView) }
-    val json = remember(value) { payload?.let(::jsonTree)?.let(::jsonLines) }
-    val view = chosen?.takeIf { it != PayloadView.JSON || json != null } ?: detected
+    // Read once per value, off the main thread: up to 64 KB of JSON is parsed and laid out in lines.
+    val reading by produceState<PayloadReading?>(null, payload) {
+        this.value = payload?.let { withContext(Dispatchers.Default) { readPayload(it) } }
+    }
+    val json = reading?.json
+    val view = chosen?.takeIf { it != PayloadView.JSON || json != null } ?: reading?.view
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -195,9 +204,8 @@ fun TopicCard(
 
 /** The pins made on this path, each with Unpin, done at once with a notice. */
 @Composable
-private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpin: (PinMask) -> String) {
+private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpin: (PinMask) -> Unit) {
     val colors = AppTheme.colors
-    val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(R.string.mqtt_card_pinned), fontSize = 12.sp, color = colors.muted)
         masks.forEach { mask ->
@@ -206,10 +214,13 @@ private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpi
                     Text(pinFilter(path, mask), fontSize = 14.sp, color = colors.ink, fontFamily = FontFamily.Monospace)
                     Text(maskLabel(mask), fontSize = 12.sp, color = colors.muted)
                 }
-                TextButton(enabled = canPin, onClick = {
-                    val filter = onUnpin(mask)
-                    context.notice(context.getString(R.string.mqtt_unpinned_notice, filter), NoticeKind.DONE)
-                }) { Text(stringResource(R.string.mqtt_unpin), color = if (canPin) colors.accent else colors.muted) }
+                // Gone at once with Undo on the shared notice (UI rules); unsubscribed when that goes.
+                val label = stringResource(R.string.mqtt_unpin_filter, pinFilter(path, mask))
+                TextButton(
+                    enabled = canPin,
+                    onClick = { onUnpin(mask) },
+                    modifier = Modifier.semantics { contentDescription = label },
+                ) { Text(stringResource(R.string.mqtt_unpin), color = if (canPin) colors.accent else colors.muted) }
             }
         }
     }
@@ -277,7 +288,8 @@ private fun HexView(payload: ByteArray) {
 @Composable
 private fun JsonView(lines: List<JsonLine>) {
     val colors = AppTheme.colors
-    var folded by remember { mutableStateOf(emptySet<Int>()) }
+    // Folds belong to these lines: a value with another shape starts unfolded (equal lines keep them).
+    var folded by remember(lines) { mutableStateOf(emptySet<Int>()) }
     val visible = visibleJsonLines(lines, folded)
     Column {
         visible.take(JSON_LINES_SHOWN).forEach { (index, isFolded) ->
@@ -298,7 +310,7 @@ private fun JsonView(lines: List<JsonLine>) {
                             Modifier
                         },
                     )
-                    .padding(start = (line.depth * 12).dp),
+                    .padding(start = (minOf(line.depth, JSON_INDENT_LEVELS) * 12).dp),
             ) {
                 // A fixed column for the fold mark, so marked and plain lines indent alike.
                 Box(Modifier.width(16.dp)) {
@@ -321,11 +333,12 @@ private fun CutNote() {
 @Composable
 private fun History(history: List<TopicValue>) {
     val colors = AppTheme.colors
+    val formats = rememberClockFormats()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(stringResource(R.string.mqtt_card_history), fontSize = 12.sp, color = colors.muted)
         history.forEach { value ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(clockTime(value.receivedAt), fontSize = 13.sp, color = colors.muted, maxLines = 1)
+                Text(clockTime(value.receivedAt, formats), fontSize = 13.sp, color = colors.muted, maxLines = 1)
                 val (text, plain) = when {
                     value.cleared -> stringResource(R.string.mqtt_cleared) to false
                     value.isEmptyValue -> stringResource(R.string.mqtt_empty_value) to false
@@ -353,19 +366,21 @@ private fun History(history: List<TopicValue>) {
 private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, onPick: (PinMask) -> Unit, onDismiss: () -> Unit) {
     val colors = AppTheme.colors
     AppSheet(title = stringResource(R.string.mqtt_pin_title), subtitle = stringResource(R.string.mqtt_pin_subtitle), onDismiss = onDismiss) {
-        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             PinMask.entries.forEach { mask ->
                 val done = mask in pinned
                 val suggested = mask == initial && !done
+                val pinnedState = stringResource(R.string.mqtt_pinned_mark)
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 56.dp)
                         .background(if (suggested) colors.accentContainer else colors.card, RoundedCornerShape(12.dp))
-                        .selectable(selected = done, enabled = !done, role = Role.RadioButton) {
+                        .clickable(enabled = !done, role = Role.Button) {
                             onPick(mask)
                             onDismiss()
                         }
+                        .semantics { if (done) stateDescription = pinnedState }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -426,13 +441,23 @@ private fun copy(context: Context, copied: CopiedValue) {
     context.notice(text, NoticeKind.DONE, key = "copied")
 }
 
-/** A value's time with seconds: the time today, else also the date. */
+/** Formatters of a value's time with seconds: today's (time only) and older ones (with the date); built once per locale. */
+private class ClockFormats(val today: DateTimeFormatter, val older: DateTimeFormatter)
+
 @Composable
-private fun clockTime(ms: Long): String {
+private fun rememberClockFormats(): ClockFormats {
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
+    val h24 = DateFormat.is24HourFormat(context)
+    return remember(locale, h24) {
+        val time = if (h24) "Hms" else "hms"
+        fun of(skeleton: String) = DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
+        ClockFormats(of(time), of("dMMM$time"))
+    }
+}
+
+/** A value's time with seconds: the time today, else also the date. */
+private fun clockTime(ms: Long, formats: ClockFormats): String {
     val local = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())
-    val time = if (DateFormat.is24HourFormat(context)) "Hms" else "hms"
-    val skeleton = if (local.toLocalDate() == LocalDate.now(local.zone)) time else "dMMM$time"
-    return DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale).format(local)
+    return (if (local.toLocalDate() == LocalDate.now(local.zone)) formats.today else formats.older).format(local)
 }

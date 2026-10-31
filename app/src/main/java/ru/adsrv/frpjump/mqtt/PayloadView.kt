@@ -10,24 +10,33 @@ import kotlinx.serialization.json.JsonPrimitive
 /** How a topic card shows a value (see the contract's "A topic"). */
 enum class PayloadView { TEXT, JSON, HEX }
 
+/** A value read once for the card: the view it opens in and, for JSON, its lines. */
+data class PayloadReading(val view: PayloadView, val json: List<JsonLine>?)
+
 /**
- * The view a value opens in: not UTF-8 → [PayloadView.HEX]; UTF-8 that
- * parses as a JSON object or array → [PayloadView.JSON]; else
- * [PayloadView.TEXT]. A payload over [MAX_JSON_BYTES] is not parsed and
- * opens as text.
+ * Reads [payload] once (off the main thread for a large one): not UTF-8 →
+ * [PayloadView.HEX]; UTF-8 that parses as a JSON object or array, at most
+ * [MAX_JSON_BYTES] and [MAX_JSON_DEPTH] deep → [PayloadView.JSON] with its
+ * lines; else [PayloadView.TEXT].
  */
-fun detectView(payload: ByteArray): PayloadView {
-    val text = decodeUtf8(payload) ?: return PayloadView.HEX
-    return if (parseJsonTree(payload.size, text) != null) PayloadView.JSON else PayloadView.TEXT
+fun readPayload(payload: ByteArray): PayloadReading {
+    val text = decodeUtf8(payload) ?: return PayloadReading(PayloadView.HEX, null)
+    val tree = parseJsonTree(payload.size, text) ?: return PayloadReading(PayloadView.TEXT, null)
+    return PayloadReading(PayloadView.JSON, jsonLines(tree))
 }
 
-/** [payload] as a JSON object or array, or null: not UTF-8, not JSON, a scalar, or over [MAX_JSON_BYTES]. */
+/** The view [payload] opens in; see [readPayload]. */
+fun detectView(payload: ByteArray): PayloadView = readPayload(payload).view
+
+/** [payload] as a JSON object or array, or null: not UTF-8, not JSON, a scalar, too large or too deep. */
 fun jsonTree(payload: ByteArray): JsonElement? = decodeUtf8(payload)?.let { parseJsonTree(payload.size, it) }
 
 private fun parseJsonTree(size: Int, text: String): JsonElement? {
     if (size > MAX_JSON_BYTES) return null
     val start = text.firstOrNull { !it.isWhitespace() }
     if (start != '{' && start != '[') return null
+    // Checked on the text, before any parsing: the lines are built recursively.
+    if (nestingDepth(text) > MAX_JSON_DEPTH) return null
     return try {
         Json.parseToJsonElement(text).takeIf { it is JsonObject || it is JsonArray }
     } catch (_: SerializationException) {
@@ -35,6 +44,27 @@ private fun parseJsonTree(size: Int, text: String): JsonElement? {
     } catch (_: IllegalArgumentException) {
         null
     }
+}
+
+/** How deep `{` and `[` nest in [text], outside strings; malformed text is counted as it comes. */
+internal fun nestingDepth(text: String): Int {
+    var depth = 0
+    var max = 0
+    var inString = false
+    var escaped = false
+    for (c in text) {
+        when {
+            inString -> when {
+                escaped -> escaped = false
+                c == '\\' -> escaped = true
+                c == '"' -> inString = false
+            }
+            c == '"' -> inString = true
+            c == '{' || c == '[' -> max = maxOf(max, ++depth)
+            c == '}' || c == ']' -> depth--
+        }
+    }
+    return max
 }
 
 /**
@@ -139,6 +169,9 @@ const val MAX_COPY_CHARS = 64 * 1024
 
 /** A payload larger than this is not parsed as JSON: shown as text. */
 const val MAX_JSON_BYTES = 64 * 1024
+
+/** JSON nested deeper than this is shown as text: the lines are built recursively. */
+const val MAX_JSON_DEPTH = 64
 
 /** Bytes per line of the hex view: fits a phone's width in a monospace font. */
 const val HEX_PER_LINE = 8
