@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -153,6 +154,38 @@ class MqttReconnectTest {
             scheduler.advanceBy(300)
         }
         assertEquals(SnapshotState.Done(SnapshotEnd.TIMED_OUT), session.snapshot.value)
+    }
+
+    @Test
+    fun `retained first values a subscribe re-sends are from before the session, later ones are live`() {
+        val connector = ScriptedConnector()
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env(connector))
+        connector.outcomes += { connector.opened() }
+        session.connect()
+        val events = connector.events!!
+        fun value(topic: String) = session.tree.node(MqttPath.parse(topic))!!.value!!
+        // The snapshot's retained values: set before, time unknown; a non-retained one is live.
+        events.message("a/x", "1".toByteArray(), retain = true, qos = 0)
+        events.message("a/n", "1".toByteArray(), retain = false, qos = 0)
+        assertTrue(value("a/x").beforeSession)
+        assertFalse(value("a/n").beforeSession)
+        scheduler.advanceBy(2_000)
+        assertEquals(SnapshotState.Done(SnapshotEnd.QUIET), session.snapshot.value)
+
+        // Long after any subscribe: a retained publish to a new topic (MQTT 5 keeps the flag) is live.
+        events.message("a/y", "2".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("a/y").beforeSession)
+        // A new value of a value from before is a change seen now.
+        events.message("a/x", "3".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("a/x").beforeSession)
+
+        // Opening a branch re-sends its retained values: right after its SUBACK they are from before, later not.
+        session.open(MqttPath.parse("b"))
+        events.message("b/z", "1".toByteArray(), retain = true, qos = 0)
+        assertTrue(value("b/z").beforeSession)
+        scheduler.advanceBy(1_500)
+        events.message("b/w", "1".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("b/w").beforeSession)
     }
 
     @Test

@@ -9,7 +9,11 @@ data class TopicNode(
     val value: TopicValue?,
     /** Seen topics below this node, itself not counted. */
     val topicsBelow: Int,
-    /** Milliseconds since the epoch: the newest change of this node or any below it. */
+    /**
+     * Milliseconds since the epoch: the newest change of this node or any
+     * below it seen in this session; 0 when every value there came from
+     * before it ([TopicValue.beforeSession]).
+     */
     val newestChangeAt: Long,
     val hasChildren: Boolean,
 ) {
@@ -79,8 +83,13 @@ class TopicTree(
      * a retained re-publish of the same value (also under MQTT 5), so
      * neither is a change. Under MQTT 5 a copy through a second matching
      * subscription must be dropped by the caller first (see [CopyFilter]).
+     *
+     * [onSubscribe]: the message came while a subscription re-delivers the
+     * broker's retained values (the snapshot, a branch or pin just
+     * subscribed). A topic's first value delivered so with the retain flag
+     * is [TopicValue.beforeSession] and is no change of its branches.
      */
-    fun receive(topic: MqttPath, payload: ByteArray, retain: Boolean, qos: Int, version: MqttVersion): Received {
+    fun receive(topic: MqttPath, payload: ByteArray, retain: Boolean, qos: Int, version: MqttVersion, onSubscribe: Boolean = false): Received {
         require(!topic.isRoot) { "a message has a topic" }
         val at = now()
         synchronized(lock) {
@@ -92,17 +101,18 @@ class TopicTree(
                     return Received.OVER_LIMIT
                 }
                 val node = known ?: create(topic)
-                node.history.addFirst(TopicValue.of(payload, retain, qos, at, version, previous = null))
+                val value = TopicValue.of(payload, retain, qos, at, version, previous = null, beforeSession = onSubscribe && retain)
+                node.history.addFirst(value)
                 topics++
                 forEachOnPath(topic) { it, isTopic ->
                     if (!isTopic) it.topicsBelow++
-                    it.newestChangeAt = maxOf(it.newestChangeAt, at)
+                    if (!value.beforeSession) it.newestChangeAt = maxOf(it.newestChangeAt, at)
                 }
                 return Received.NEW_TOPIC
             }
             if (retain && payload.contentEquals(current.payload)) {
-                // Re-sent on a subscribe: keep the value's time, refresh its marks.
-                known.history[0] = TopicValue.of(payload, retain, qos, current.receivedAt, version, previous = current)
+                // Re-sent on a subscribe: keep the value's time (known or not), refresh its marks.
+                known.history[0] = TopicValue.of(payload, retain, qos, current.receivedAt, version, previous = current, beforeSession = current.beforeSession)
                 return Received.UNCHANGED
             }
             known.history.addFirst(TopicValue.of(payload, retain, qos, at, version, previous = current))
