@@ -136,15 +136,14 @@ fun TerminalScreen(
     var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
-    // Leaving keeps the sessions: the first time, say where they are.
-    DisposableEffect(Unit) {
-        onDispose {
-            val live = sessions.sessions.value.count { it.state.value !is SshState.Ended }
-            if (live > 0 && !sessions.leftRunningHintShown) {
-                sessions.leftRunningHintShown = true
-                Toast.makeText(context, context.resources.getQuantityString(R.plurals.terminal_left_running, live, live), Toast.LENGTH_LONG).show()
-            }
+    // Leaving keeps the sessions: the first time, say where they are (not when Files covers the screen).
+    fun leave() {
+        val live = sessions.sessions.value.count { it.state.value !is SshState.Ended }
+        if (live > 0 && !sessions.leftRunningHintShown) {
+            sessions.leftRunningHintShown = true
+            Toast.makeText(context, context.resources.getQuantityString(R.plurals.terminal_left_running, live, live), Toast.LENGTH_LONG).show()
         }
+        onBack()
     }
     if (selected == null) return
     val gone = stringResource(R.string.terminal_session_gone)
@@ -222,6 +221,7 @@ fun TerminalScreen(
     val notOpen = stringResource(R.string.terminal_not_open)
     // Full screen: no bar, no system bars, the session tabs only for several; the snippets and extra keys stay, typing needs them.
     val (fullscreen, setFullscreen) = rememberFullscreen(FullscreenOf.TERMINAL)
+    BackHandler(enabled = !fullscreen) { leave() }
     BackHandler(enabled = fullscreen) { setFullscreen(false) }
     SystemBarsHidden(fullscreen)
     Scaffold(
@@ -255,7 +255,7 @@ fun TerminalScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = ::leave) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },

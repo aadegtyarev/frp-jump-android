@@ -125,8 +125,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
 
     /**
      * The session already open to [row]'s device and port in its profile:
-     * the newest live one, else the newest ended one (its output and
-     * Reconnect are still there); null when there is none. Main thread.
+     * the live one last among the tabs, else the last ended one (its
+     * output and Reconnect are still there); null when there is none. Main thread.
      */
     fun openSession(row: ConnectionRow): Int? {
         val c = row.connection

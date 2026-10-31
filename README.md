@@ -376,8 +376,8 @@ Give device web UIs a password, and disconnect tunnels you no longer use.
 ## SSH console
 
 "Terminal" on a connected SSH connection opens the session already open to
-that device and port (the newest live one, else the newest ended one, with
-Reconnect), so leaving the terminal and coming back loses nothing; a new
+that device and port (the last live one among the tabs, else the last ended one,
+with Reconnect), so leaving the terminal and coming back loses nothing; a new
 session is "+" on the tab row. With none open it asks for the user (the
 connection's, `root` by default; the method is remembered per device and
 port) and Key or Password, then opens a session to
