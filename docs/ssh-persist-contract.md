@@ -1,6 +1,6 @@
 # frp-jump for Android — SSH sessions that survive a dropped connection
 
-Status: Draft for the owner's approval, 2026-10-31. The UI rules of
+Status: Approved by the owner 2026-10-31. The UI rules of
 `docs/contract.md` apply unchanged.
 
 On mobile data the tunnel drops often, and today a drop ends the shell:
