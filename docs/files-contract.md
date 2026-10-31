@@ -128,11 +128,11 @@ transfers that resume and run in the background.
   near); a larger file says to use Share. A copy of a secret-looking file
   (`.env`, keys, `.nmconnection`) is marked sensitive, so Android 13 and
   later do not preview it.
+- A `.conf`, `.cfg` or `.cnf` whose text is a JSON object or array (as
+  `wb-mqtt-serial.conf`) is coloured as JSON; otherwise as INI.
 - Colours, from the theme's colours in light and dark, picked by the
   file's name and, without a known one, its first line (`#!` of a shell or
-  `node`, a leading `{` / `[`, `---`, a log timestamp); a `.conf` or
-  `.cfg` whose text is a JSON object or array (as `wb-mqtt-serial.conf`)
-  is JSON: Markdown (headings,
+  `node`, a leading `{` / `[`, `---`, a log timestamp): Markdown (headings,
   emphasis, inline and fenced code, links, list marks, quotes); logs
   (time stamps; ERROR/FATAL/CRIT in red, WARN in amber, INFO/DEBUG muted);
   JSON (keys, strings, numbers, `true` / `false` / `null`); YAML (keys,
