@@ -577,7 +577,7 @@
     <string name="files_hidden_only">Здесь только скрытые файлы; ⋮ › Показывать скрытые файлы.</string>
     <string name="files_list_failed">Не открыть %1$s: %2$s</string>
     <string name="files_broken">битая ссылка</string>
-    <string name="files_broken_toast">Цели ссылки нет; долгое нажатие — «Перейти к цели».</string>
+    <string name="files_broken_toast">Цели ссылки нет.</string>
     <string name="files_not_regular">%s — не обычный файл.</string>
     <string name="files_downloaded">Скачано: %s</string>
     <string name="files_uploaded">Загружено: %s</string>
@@ -596,6 +596,38 @@
     <string name="files_problem_connection">связь прервалась</string>
     <string name="files_problem_folder_access">нет доступа к папке для скачивания; выберите её снова в ⋮</string>
     <string name="files_problem_phone">телефон не смог записать или прочитать его (%s)</string>
+    <string name="files_details">Сведения о %s</string>
+    <string name="files_details_short">Сведения</string>
+    <string name="files_select">Выбрать</string>
+    <string name="files_select_all">Выбрать все</string>
+    <string name="files_clear_selection">Снять выбор</string>
+    <string name="files_card_link">Ссылка на</string>
+    <string name="files_card_size">Размер</string>
+    <string name="files_card_modified">Изменён</string>
+    <string name="files_card_permissions">Права</string>
+    <string name="files_card_owner">Владелец</string>
+    <string name="files_card_owner_ids">uid %1$d, gid %2$d</string>
+    <string name="files_card_offline">Нет связи с устройством — действия подождут её. Потяните список вниз, чтобы повторить.</string>
+    <string name="files_card_broken">Цели ссылки нет, открывать нечего.</string>
+    <string name="files_no_app_share">На телефоне нет приложения, которое примет эти файлы.</string>
+    <plurals name="files_selected">
+        <item quantity="one">Выбран %d</item>
+        <item quantity="few">Выбрано %d</item>
+        <item quantity="many">Выбрано %d</item>
+        <item quantity="other">Выбрано %d</item>
+    </plurals>
+    <plurals name="files_selection_skipped">
+        <item quantity="one">Пропущено папок и особых файлов: %d — пока скачиваются и отправляются только файлы.</item>
+        <item quantity="few">Пропущено папок и особых файлов: %d — пока скачиваются и отправляются только файлы.</item>
+        <item quantity="many">Пропущено папок и особых файлов: %d — пока скачиваются и отправляются только файлы.</item>
+        <item quantity="other">Пропущено папок и особых файлов: %d — пока скачиваются и отправляются только файлы.</item>
+    </plurals>
+    <plurals name="files_downloaded_many">
+        <item quantity="one">Скачан %d файл</item>
+        <item quantity="few">Скачано %d файла</item>
+        <item quantity="many">Скачано %d файлов</item>
+        <item quantity="other">Скачано %d файла</item>
+    </plurals>
     <string name="files_cancel_transfer">Отменить передачу</string>
     <plurals name="files_leave_title">
         <item quantity="one">Идёт %d передача</item>

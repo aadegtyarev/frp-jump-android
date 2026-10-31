@@ -78,24 +78,30 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val colors = AppTheme.colors
     var menu by remember { mutableStateOf(false) }
-    var rowMenu by remember { mutableStateOf<String?>(null) }
+    // The path of the entry whose card is open.
+    var card by rememberSaveable { mutableStateOf<String?>(null) }
     var typing by rememberSaveable { mutableStateOf(false) }
     var changingLogin by remember { mutableStateOf(false) }
-    // The file to download once a folder is picked.
-    var waiting by remember { mutableStateOf<RemoteEntry?>(null) }
+    // The files to download once a folder is picked.
+    var waiting by remember { mutableStateOf<List<RemoteEntry>>(emptyList()) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
-        val entry = waiting
-        waiting = null
-        if (tree != null) vm.setDownloadFolder(tree, entry)
+        val entries = waiting
+        waiting = emptyList()
+        if (tree != null) vm.setDownloadFolder(tree, entries)
     }
     val pickUploads = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { vm.upload(it) }
     LaunchedEffect(vm) {
         vm.events.collect { event ->
             when (event) {
                 is FilesEvent.Toast -> Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()
-                is FilesEvent.Handover -> handOver(context, event.file, event.mime, event.name, event.share)
+                is FilesEvent.Handover -> {
+                    // Handed to another app: the card has done its job.
+                    card = null
+                    handOver(context, event.file, event.mime, event.name, event.share)
+                }
+                is FilesEvent.ShareMany -> shareAll(context, event.files)
                 is FilesEvent.PickFolder -> {
-                    waiting = event.entry
+                    waiting = event.entries
                     pickFolder.launch(null)
                 }
             }
@@ -109,6 +115,8 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
         if (now.running == 0) onBack() else { leaving = now.failed }
     }
     BackHandler { if (!vm.up()) leave() }
+    // Declared later, so it comes first: Back ends a selection before it goes up a folder.
+    BackHandler(enabled = state.selection.active) { vm.clearSelection() }
 
     // Where each folder was scrolled to: going back up returns there, and an action keeps it.
     val list = rememberLazyListState()
@@ -128,7 +136,21 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
     Scaffold(
         containerColor = colors.ground,
         topBar = {
-            AppTopBar(
+            if (state.selection.active) {
+                SelectionBar(
+                    count = state.selection.count,
+                    available = selectionActions(state.selection.picked(state.entries)),
+                    online = state.online,
+                    onClear = vm::clearSelection,
+                    onSelectAll = vm::selectAll,
+                    onAction = { action ->
+                        when (action) {
+                            SelectionAction.DOWNLOAD -> vm.downloadSelected()
+                            SelectionAction.SHARE -> vm.shareSelected()
+                        }
+                    },
+                )
+            } else AppTopBar(
                 title = title,
                 subtitle = t?.let { state.user + " · " + statusWord(state.status) },
                 onBack = leave,
@@ -152,7 +174,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                                 },
                                 onClick = {
                                     menu = false
-                                    waiting = null
+                                    waiting = emptyList()
                                     pickFolder.launch(null)
                                 },
                             )
@@ -162,7 +184,8 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
             )
         },
         floatingActionButton = {
-            if (state.online) {
+            // While selecting, the bar has the actions; "+" would be one too many.
+            if (state.online && !state.selection.active) {
                 FloatingActionButton(
                     onClick = { pickUploads.launch(arrayOf("*/*")) },
                     containerColor = colors.strong,
@@ -205,26 +228,22 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                     }
                     if (state.entries.isEmpty()) item(key = "empty") { EmptyFolder(state) }
                     items(state.entries, key = { it.name }) { entry ->
+                        val selecting = state.selection.active
                         EntryRow(
                             entry = entry,
                             transfer = state.downloads[entry.path],
-                            online = state.online,
-                            menuOpen = rowMenu == entry.path,
-                            onMenu = { rowMenu = if (it) entry.path else null },
+                            selecting = selecting,
+                            selected = entry in state.selection,
                             onTap = {
                                 when {
+                                    selecting -> vm.toggleSelected(entry)
                                     entry.isDir -> vm.openFolder(entry)
-                                    entry.link?.broken == true -> Toast.makeText(context, context.getString(R.string.files_broken_toast), Toast.LENGTH_SHORT).show()
-                                    entry.transferable -> vm.openWith(entry)
-                                    else -> Toast.makeText(context, context.getString(R.string.files_not_regular, entry.name), Toast.LENGTH_SHORT).show()
+                                    // A file: its card first; nothing downloads until an action is picked.
+                                    else -> card = entry.path
                                 }
                             },
-                            actions = EntryActions(
-                                open = vm::openFolder,
-                                download = vm::download,
-                                share = vm::share,
-                                goToTarget = vm::goToTarget,
-                            ),
+                            onLongPress = { vm.toggleSelected(entry) },
+                            onDetails = { card = entry.path },
                             onRetry = { vm.retry(entry) },
                             onDismiss = { vm.dismissFailure(entry.path) },
                             onCancel = { vm.cancelDownload(entry.path) },
@@ -264,6 +283,26 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
                 dismissButton = { TextButton(onClick = { leaving = null }) { Text(stringResource(R.string.files_stay)) } },
             )
         }
+    }
+    val carded = card?.let { path -> state.entries.firstOrNull { it.path == path } }
+    // The folder changed under the card (or the entry went): it closes rather than show something stale.
+    LaunchedEffect(card, carded == null) { if (card != null && carded == null && state.path != null) card = null }
+    carded?.let { entry ->
+        FileCard(
+            entry = entry,
+            transfer = state.downloads[entry.path],
+            online = state.online,
+            actions = CardActions(
+                open = { if (it.isDir) vm.openFolder(it) else vm.openWith(it) },
+                download = vm::download,
+                share = vm::share,
+                goToTarget = vm::goToTarget,
+                retry = vm::retry,
+                dismissFailure = { vm.dismissFailure(it.path) },
+                cancel = { vm.cancelDownload(it.path) },
+            ),
+            onDismiss = { card = null },
+        )
     }
     if (typing) {
         GoToFolderDialog(

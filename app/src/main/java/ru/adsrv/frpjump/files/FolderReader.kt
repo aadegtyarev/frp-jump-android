@@ -23,7 +23,11 @@ suspend fun readFolder(fs: RemoteFs, path: String, parallel: Int = LINKS_AT_ONCE
     val entries = raw.filter { it.first != "." && it.first != ".." }.map { (name, attrs) ->
         async(Dispatchers.IO) {
             val at = childOf(dir, name)
-            if (attrs.kind == NodeKind.LINK) gate.withPermit { linkEntry(fs, dir, name, attrs) } else RemoteEntry(name, at, typeOf(attrs), attrs.size, attrs.modified)
+            if (attrs.kind == NodeKind.LINK) {
+                gate.withPermit { linkEntry(fs, dir, name, attrs) }
+            } else {
+                RemoteEntry(name, at, typeOf(attrs), attrs.size, attrs.modified, mode = attrs.mode, uid = attrs.uid, gid = attrs.gid)
+            }
         }
     }.awaitAll()
     Folder(dir, entries)
@@ -55,6 +59,9 @@ private fun linkEntry(fs: RemoteFs, dir: String, name: String, attrs: RemoteAttr
         size = target?.size ?: 0,
         modified = target?.modified ?: attrs.modified,
         link = if (raw.isEmpty()) LinkTarget("", at, broken) else linkTarget(at, raw, broken),
+        mode = target?.mode,
+        uid = target?.uid,
+        gid = target?.gid,
     )
 }
 

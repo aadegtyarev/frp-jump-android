@@ -7,6 +7,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.files.PhoneFiles
 import java.io.File
 
 /**
@@ -29,5 +30,23 @@ fun handOver(context: Context, file: File, mime: String, name: String, share: Bo
         context.startActivity(Intent.createChooser(intent, title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, context.getString(R.string.files_no_app, name), Toast.LENGTH_LONG).show()
+    }
+}
+
+/** Shares several files downloaded to the cache in one go (`ACTION_SEND_MULTIPLE`), read access to those only. */
+fun shareAll(context: Context, files: List<Pair<File, String>>) {
+    val uris = files.map { (file, _) -> FileProvider.getUriForFile(context, "${context.packageName}.updates", file) }
+    val types = files.map { (_, name) -> PhoneFiles.mimeType(name) }.distinct()
+    val intent = Intent(Intent.ACTION_SEND_MULTIPLE)
+        .setType(types.singleOrNull() ?: types.map { it.substringBefore('/') }.distinct().singleOrNull()?.let { "$it/*" } ?: "*/*")
+        .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+    val clip = ClipData.newRawUri(files.first().second, uris.first())
+    uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+    intent.clipData = clip
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.files_share)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, context.getString(R.string.files_no_app_share), Toast.LENGTH_LONG).show()
     }
 }

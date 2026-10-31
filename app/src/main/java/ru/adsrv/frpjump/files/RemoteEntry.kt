@@ -33,6 +33,10 @@ data class RemoteEntry(
     /** Seconds since the epoch, as SFTP gives it. */
     @SerialName("modified") val modified: Long = 0,
     @SerialName("link") val link: LinkTarget? = null,
+    /** Permission bits (`07777`), the owner's and group's ids, as SFTP gives them (a link's: its target's); null when not given. */
+    @SerialName("mode") val mode: Int? = null,
+    @SerialName("uid") val uid: Int? = null,
+    @SerialName("gid") val gid: Int? = null,
 ) {
     val hidden: Boolean get() = name.startsWith(".")
     val isDir: Boolean get() = type == EntryType.DIR
@@ -64,6 +68,32 @@ fun visibleListing(entries: List<RemoteEntry>, showHidden: Boolean): List<Remote
  */
 fun linkTarget(linkPath: String, raw: String, broken: Boolean): LinkTarget =
     LinkTarget(raw, resolvePath(parentOf(linkPath), raw), broken)
+
+/**
+ * [mode]'s permission bits as `ls -l` writes them, without the type:
+ * `rwxr-xr-x`; setuid, setgid and sticky as `s`/`S` and `t`/`T`.
+ */
+fun permissionString(mode: Int): String {
+    val out = StringBuilder()
+    for (who in 0..2) {
+        val bits = mode shr (6 - who * 3) and 7
+        out.append(if ((bits and 4) != 0) 'r' else '-')
+        out.append(if ((bits and 2) != 0) 'w' else '-')
+        val x = (bits and 1) != 0
+        val special = (mode and (0x800 shr who)) != 0
+        out.append(
+            when {
+                !special -> if (x) 'x' else '-'
+                who == 2 -> if (x) 't' else 'T'
+                else -> if (x) 's' else 'S'
+            },
+        )
+    }
+    return out.toString()
+}
+
+/** [mode] in octal as `chmod` takes it: `755`, `4755`. */
+fun octalMode(mode: Int): String = (mode and 0xFFF).toString(8).padStart(3, '0')
 
 /** "→ /mnt/data/etc", as a link's row shows its target. */
 fun linkLabel(target: LinkTarget): String = "→ ${target.path}"

@@ -550,7 +550,7 @@
     <string name="files_hidden_only">Only hidden files here; ⋮ › Show hidden files.</string>
     <string name="files_list_failed">Cannot open %1$s: %2$s</string>
     <string name="files_broken">broken link</string>
-    <string name="files_broken_toast">The link’s target does not exist; long press for “Go to the target”.</string>
+    <string name="files_broken_toast">The link’s target does not exist.</string>
     <string name="files_not_regular">%s is not a regular file.</string>
     <string name="files_downloaded">Downloaded %s</string>
     <string name="files_uploaded">Uploaded %s</string>
@@ -569,6 +569,32 @@
     <string name="files_problem_connection">the connection dropped</string>
     <string name="files_problem_folder_access">no access to the download folder; choose it again in ⋮</string>
     <string name="files_problem_phone">the phone could not write or read it (%s)</string>
+    <string name="files_details">Details of %s</string>
+    <string name="files_details_short">Details</string>
+    <string name="files_select">Select</string>
+    <string name="files_select_all">Select all</string>
+    <string name="files_clear_selection">Cancel selection</string>
+    <string name="files_card_link">Link to</string>
+    <string name="files_card_size">Size</string>
+    <string name="files_card_modified">Modified</string>
+    <string name="files_card_permissions">Permissions</string>
+    <string name="files_card_owner">Owner</string>
+    <string name="files_card_owner_ids">uid %1$d, gid %2$d</string>
+    <string name="files_card_offline">No connection: these wait for it. Pull down in the list to retry.</string>
+    <string name="files_card_broken">The link’s target does not exist, so there is nothing to open.</string>
+    <string name="files_no_app_share">No app on this phone takes these files.</string>
+    <plurals name="files_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <plurals name="files_selection_skipped">
+        <item quantity="one">Skipped %d folder or special file: only files are downloaded and shared for now.</item>
+        <item quantity="other">Skipped %d folders or special files: only files are downloaded and shared for now.</item>
+    </plurals>
+    <plurals name="files_downloaded_many">
+        <item quantity="one">Downloaded %d file</item>
+        <item quantity="other">Downloaded %d files</item>
+    </plurals>
     <string name="files_cancel_transfer">Cancel transfer</string>
     <plurals name="files_leave_title">
         <item quantity="one">%d transfer in progress</item>

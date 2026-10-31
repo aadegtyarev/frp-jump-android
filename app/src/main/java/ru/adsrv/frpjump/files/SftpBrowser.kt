@@ -140,10 +140,16 @@ private class SftpFs(private val client: () -> SFTPClient) : RemoteFs {
         },
         size = a.size,
         modified = a.mtime,
+        mode = a.mode?.takeIf { a.has(FileAttributes.Flag.MODE) }?.let { it.mask and PERMISSION_BITS },
+        uid = a.uid.takeIf { a.has(FileAttributes.Flag.UIDGID) },
+        gid = a.gid.takeIf { a.has(FileAttributes.Flag.UIDGID) },
     )
 
     private companion object {
         const val READ_AHEAD = 16
         const val WRITE_AHEAD = 16
+
+        /** rwx for all three, setuid, setgid and sticky. */
+        const val PERMISSION_BITS = 0xFFF
     }
 }
