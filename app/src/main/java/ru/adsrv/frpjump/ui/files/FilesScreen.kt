@@ -97,6 +97,8 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
         query = ""
         vm.clearSearch()
     }
+    // The text file open in the viewer, over the list.
+    var viewing by rememberSaveable(stateSaver = ViewedFileSaver) { mutableStateOf<ViewedFile?>(null) }
     // The files to download once a folder is picked.
     var waiting by remember { mutableStateOf<List<RemoteEntry>>(emptyList()) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
@@ -113,6 +115,11 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                     // Handed to another app: that file's card has done its job.
                     if (card == event.path) card = null
                     handOver(context, event.file, event.mime, event.name, event.share)
+                }
+                is FilesEvent.View -> {
+                    // In the viewer: that file's card has done its job.
+                    if (card == event.path) card = null
+                    viewing = ViewedFile(event.path, event.file.path, event.name)
                 }
                 is FilesEvent.ShareMany -> shareAll(context, event.files)
                 is FilesEvent.PickFolder -> {
@@ -155,6 +162,11 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
         list.scrollToItem(index, offset)
     }
 
+    viewing?.let { viewed ->
+        // Over the list, which keeps its folder and scroll position for the way back.
+        TextViewer(viewed, vm.textSize, onClose = { viewing = null })
+        return
+    }
     val t = vm.target
     val title = t?.let { it.device + if (it.port != 22) ":${it.port}" else "" } ?: stringResource(R.string.files)
     Scaffold(
@@ -358,7 +370,7 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
             transfer = state.downloads[entry.path],
             online = state.online,
             actions = CardActions(
-                open = { if (it.isDir) vm.openFolder(it) else vm.openWith(it) },
+                open = { if (it.isDir) vm.openFolder(it) else vm.openFile(it) },
                 download = vm::download,
                 share = vm::share,
                 goToTarget = vm::goToTarget,

@@ -856,4 +856,20 @@
     <string name="mqtt_publish_json_invalid_at">Не JSON: строка %1$d, столбец %2$d</string>
     <string name="mqtt_publish_recent">Отправляли раньше</string>
     <string name="mqtt_publish_recent_use">подставить в значение</string>
+    <string name="files_view_too_large">%s больше 2 МБ: открывается в другом приложении.</string>
+    <string name="viewer_search">Поиск в тексте</string>
+    <string name="viewer_search_hint">Что найти</string>
+    <string name="viewer_searching">Ищем…</string>
+    <string name="viewer_no_matches">Не найдено</string>
+    <string name="viewer_match_of">%1$d из %2$d</string>
+    <string name="viewer_match_of_many">%1$d из %2$d+</string>
+    <string name="viewer_previous">Предыдущее совпадение</string>
+    <string name="viewer_next">Следующее совпадение</string>
+    <string name="viewer_wrap">Переносить строки</string>
+    <string name="viewer_line_numbers">Номера строк</string>
+    <string name="viewer_copy_all">Копировать всё</string>
+    <string name="viewer_copy_too_large">Слишком много для буфера обмена: используйте «Поделиться».</string>
+    <string name="viewer_copy_failed">Телефон не принял текст в буфер обмена.</string>
+    <string name="viewer_read_failed">Не удалось прочитать скачанный файл: %s</string>
+    <string name="viewer_out_of_memory">не хватает памяти телефона</string>
 </resources>

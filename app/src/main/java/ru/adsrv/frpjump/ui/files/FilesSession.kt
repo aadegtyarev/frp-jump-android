@@ -52,6 +52,11 @@ import ru.adsrv.frpjump.files.SearchEnd
 import ru.adsrv.frpjump.files.runOneByOne
 import ru.adsrv.frpjump.files.searchNames
 import ru.adsrv.frpjump.files.targetFolder
+import ru.adsrv.frpjump.files.text.OpenRoute
+import ru.adsrv.frpjump.files.text.SNIFF_BYTES
+import ru.adsrv.frpjump.files.text.isTextName
+import ru.adsrv.frpjump.files.text.looksLikeText
+import ru.adsrv.frpjump.files.text.openRoute
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
@@ -213,6 +218,9 @@ sealed interface FilesEvent {
     /** Hand [file] (the device's [path]) to another app: view it ([share] false) or share it. */
     data class Handover(val path: String, val file: File, val mime: String, val name: String, val share: Boolean) : FilesEvent
 
+    /** Show [file] (the device's [path], named [name]) in the text viewer. */
+    data class View(val path: String, val file: File, val name: String) : FilesEvent
+
     /** Share several files at once, each with its name. */
     data class ShareMany(val files: List<Pair<File, String>>) : FilesEvent
 
@@ -235,6 +243,9 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     var target: FilesTarget? = app.fileTargets.get(targetId)
         private set
     private val runtime = target?.let { app.profiles.runtime(it.profile) }
+
+    /** The text size of the viewer: the terminal's, so A− / A+ in one sizes both. */
+    val textSize: MutableStateFlow<Int> get() = app.ssh.fontSize
 
     /** Lives until [close]; leaving the screen while kept does not end it. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -577,8 +588,34 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         }
     }
 
-    /** Tap on a file: to the cache, then "Open with". */
-    fun openWith(entry: RemoteEntry) {
+    /**
+     * Open on a file's card: text (by its name, or by its start once
+     * downloaded) to the cache, then the viewer; anything else, or text
+     * over 2 MB (saying so), to another app.
+     */
+    fun openFile(entry: RemoteEntry) {
+        when (val route = openRoute(entry.name, entry.size)) {
+            OpenRoute.OTHER_APP -> openWith(entry)
+            OpenRoute.TOO_LARGE -> {
+                // Only a name known as text is worth the note: for others, another app is the expected outcome.
+                if (isTextName(entry.name)) toast(Texts.get(R.string.files_view_too_large, entry.name))
+                openWith(entry)
+            }
+            OpenRoute.VIEW, OpenRoute.SNIFF -> transfer(entry, TransferKind.OPEN) { b, progress ->
+                val file = toCache(b, entry, progress)
+                val text = route == OpenRoute.VIEW || withContext(Dispatchers.IO) { sniffText(file) }
+                currentCoroutineContext().ensureActive()
+                if (text) {
+                    _events.send(FilesEvent.View(entry.path, file, entry.name))
+                } else {
+                    _events.send(FilesEvent.Handover(entry.path, file, PhoneFiles.mimeType(entry.name), entry.name, share = false))
+                }
+            }
+        }
+    }
+
+    /** Tap on a file that is not text: to the cache, then "Open with". */
+    private fun openWith(entry: RemoteEntry) {
         transfer(entry, TransferKind.OPEN) { b, progress -> handover(b, entry, progress, share = false) }
     }
 
@@ -592,7 +629,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         _state.update { it.copy(downloads = it.downloads - entry.path) }
         when (failed.kind) {
             TransferKind.DOWNLOAD -> download(entry)
-            TransferKind.OPEN -> openWith(entry)
+            TransferKind.OPEN -> openFile(entry)
             TransferKind.SHARE -> share(entry)
         }
     }
@@ -1054,6 +1091,21 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     }
 
     private companion object {
+        /** Whether [file]'s start reads as text. */
+        fun sniffText(file: File): Boolean {
+            val head = ByteArray(SNIFF_BYTES)
+            val read = file.inputStream().use { input ->
+                var n = 0
+                while (n < head.size) {
+                    val r = input.read(head, n, head.size - n)
+                    if (r < 0) break
+                    n += r
+                }
+                n
+            }
+            return looksLikeText(head, read)
+        }
+
         const val CLEANUP_WAIT_MS = 15_000L
         const val HANDED_OVER_KEEP_MS = 2 * 60 * 60 * 1000L
 

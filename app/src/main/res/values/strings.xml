@@ -812,4 +812,20 @@
     <string name="mqtt_publish_json_invalid_at">Not valid JSON: line %1$d, column %2$d</string>
     <string name="mqtt_publish_recent">Sent before</string>
     <string name="mqtt_publish_recent_use">put in the value</string>
+    <string name="files_view_too_large">%s is larger than 2 MB: it opens in another app.</string>
+    <string name="viewer_search">Search in the text</string>
+    <string name="viewer_search_hint">Text to find</string>
+    <string name="viewer_searching">Searching…</string>
+    <string name="viewer_no_matches">No matches</string>
+    <string name="viewer_match_of">%1$d of %2$d</string>
+    <string name="viewer_match_of_many">%1$d of %2$d+</string>
+    <string name="viewer_previous">Previous match</string>
+    <string name="viewer_next">Next match</string>
+    <string name="viewer_wrap">Wrap lines</string>
+    <string name="viewer_line_numbers">Line numbers</string>
+    <string name="viewer_copy_all">Copy all</string>
+    <string name="viewer_copy_too_large">Too large for the clipboard: use Share.</string>
+    <string name="viewer_copy_failed">The phone did not take the text on the clipboard.</string>
+    <string name="viewer_read_failed">Cannot read the downloaded file: %s</string>
+    <string name="viewer_out_of_memory">not enough memory on the phone</string>
 </resources>

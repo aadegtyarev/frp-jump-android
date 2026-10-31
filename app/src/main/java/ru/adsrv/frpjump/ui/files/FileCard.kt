@@ -51,7 +51,7 @@ import java.time.format.FormatStyle
 
 /** What a file card does with its entry. */
 class CardActions(
-    /** A folder: open it; a file: "Open with". */
+    /** A folder: open it; a file: the text viewer, or "Open with". */
     val open: (RemoteEntry) -> Unit,
     val download: (RemoteEntry) -> Unit,
     val share: (RemoteEntry) -> Unit,
