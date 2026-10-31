@@ -7,6 +7,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -60,6 +65,9 @@ import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.notices.TopNotice
 import kotlin.math.roundToInt
 
+/** How long a notice's place stays guarded after it ran out with a button on it. */
+private const val TAP_GUARD_MS = 1_000L
+
 /** The app's [Notices], from any screen's context. */
 val Context.notices: Notices get() = (applicationContext as FrpJumpApp).notices
 
@@ -93,8 +101,35 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
         delay(now.durationMs)
         notices.dismiss(now.id)
     }
+    // A notice with a button that runs out on its own leaves its place guarded for a moment: a tap
+    // meant for its button (Undo) lands on nothing rather than on the bar button under it.
+    var height by remember { mutableIntStateOf(0) }
+    var tappedAway by remember { mutableStateOf<Long?>(null) }
+    var guarded by remember { mutableStateOf(false) }
+    val leaving = last
+    LaunchedEffect(shown?.id) {
+        if (shown != null || leaving?.action == null || tappedAway == leaving.id) return@LaunchedEffect
+        guarded = true
+        delay(TAP_GUARD_MS)
+        guarded = false
+    }
     // Centred on a wide screen.
+    val underBars = if (edge) {
+        Modifier.windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+    } else {
+        Modifier
+    }
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        if (guarded && height > 0) {
+            Box(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .then(underBars)
+                    .height(with(LocalDensity.current) { height.toDp() })
+                    .pointerInput(Unit) { detectTapGestures { } },
+            )
+        }
         AnimatedVisibility(
             visible = shown != null,
             enter = slideInVertically { -it } + fadeIn(),
@@ -102,16 +137,16 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .then(
-                    if (edge) {
-                        Modifier.windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                    } else {
-                        Modifier
-                    },
-                )
+                .then(underBars)
+                .onSizeChanged { if (it.height > 0) height = it.height }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            last?.let { NoticeCard(it, onDismiss = { notices.dismiss(it.id) }) }
+            last?.let {
+                NoticeCard(it, onDismiss = {
+                    tappedAway = it.id
+                    notices.dismiss(it.id)
+                })
+            }
         }
     }
 }
