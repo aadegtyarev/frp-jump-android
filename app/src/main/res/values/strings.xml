@@ -393,7 +393,7 @@
     <string name="ssh_login_title">SSH to %s</string>
     <string name="ssh_method_key">Key</string>
     <string name="ssh_method_password">Password</string>
-    <string name="ssh_password_remembered">Password (remembered)</string>
+    <string name="ssh_password_saved">•••••••• saved</string>
     <string name="ssh_remember_password">Remember on this phone</string>
     <string name="ssh_login_key_hint">Uses this phone’s key (Settings › %s); the device must have it in ~/.ssh/authorized_keys.</string>
     <string name="secret_show">Show</string>

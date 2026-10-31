@@ -77,7 +77,7 @@ fun ConnectionsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val ui = remember { ConnectionUi() }
-    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal)
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles)
     val colors = AppTheme.colors
     // "Disconnect all" spins until every server was asked (the rows and the line below tell the rest).
     var disconnecting by remember { mutableStateOf(false) }

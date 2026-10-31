@@ -84,7 +84,8 @@ fun SshLoginDialog(
                     SecretField(
                         password,
                         { password = it },
-                        stringResource(if (remembered) R.string.ssh_password_remembered else R.string.ssh_method_password),
+                        stringResource(R.string.ssh_method_password),
+                        saved = stringResource(R.string.ssh_password_saved).takeIf { remembered },
                     )
                     if (!passwordOnly) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

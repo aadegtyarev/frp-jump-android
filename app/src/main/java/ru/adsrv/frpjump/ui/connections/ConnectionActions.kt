@@ -21,10 +21,13 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshState
+import ru.adsrv.frpjump.ssh.connectsDirectly
+import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
@@ -180,9 +183,35 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return last.copy(user = c.sshUser)
     }
 
-    /** Only whether one is kept: the password itself is unsealed by the session, off the main thread. */
-    fun hasRememberedPassword(row: ConnectionRow, user: String): Boolean =
-        app.sshPasswords.has(row.profile, row.connection.device, row.connection.port, user.trim())
+    /**
+     * Only whether one is kept and worth offering: the password itself is
+     * unsealed by the session, off the main thread. Not one just refused
+     * (or unreadable) for that user, see [offersSavedPassword].
+     */
+    fun hasRememberedPassword(row: ConnectionRow, user: String): Boolean {
+        val (refusal, refusedUser) = lastRefusal(row)
+        return offersSavedPassword(refusal, refusedUser, user) {
+            app.sshPasswords.has(row.profile, row.connection.device, row.connection.port, user.trim())
+        }
+    }
+
+    /** Why the last session to [row]'s device and port was refused, and as whom; nulls when it was not. Main thread. */
+    private fun lastRefusal(row: ConnectionRow): Pair<LoginRefusal?, String?> {
+        val c = row.connection
+        val last = app.ssh.sessions.value.lastOrNull { it.profile == row.profile && it.device == c.device && it.port == c.port }
+        return last?.refusal to last?.user
+    }
+
+    /**
+     * The remembered login of [row] when it can be used without the dialog
+     * (see [connectsDirectly]); null when the dialog must ask. Main thread.
+     */
+    fun loginAtOnce(row: ConnectionRow): SshLogin? {
+        val login = sshLogin(row)
+        val (refusal, refusedUser) = lastRefusal(row)
+        val saved = app.sshPasswords.has(row.profile, row.connection.device, row.connection.port, login.user)
+        return login.takeIf { connectsDirectly(it, saved, refusal, refusedUser) }
+    }
 
     /**
      * The session already open to [row]'s device and port in its profile:

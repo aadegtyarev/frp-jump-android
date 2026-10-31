@@ -94,7 +94,7 @@ fun DeviceCardScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val ui = remember { ConnectionUi() }
-    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal)
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles)
     val notificationsFirst = rememberNotificationsFirst()
     var adding by rememberSaveable { mutableStateOf(false) }
     val colors = AppTheme.colors

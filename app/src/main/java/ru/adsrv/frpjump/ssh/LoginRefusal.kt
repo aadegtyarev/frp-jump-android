@@ -53,3 +53,16 @@ fun offersSavedPassword(refusal: LoginRefusal?, refusedUser: String?, user: Stri
     val stale = refusal == LoginRefusal.PASSWORD_SAVED || refusal == LoginRefusal.PASSWORD_UNREADABLE
     return if (stale && user.trim() == refusedUser) false else kept()
 }
+
+/**
+ * Whether "Terminal" or "Files" logs in at once with the [login]
+ * remembered for a device and port, without the dialog: by key unless the
+ * key was just refused for that user; by password when one is saved for
+ * that user ([savedPassword]) and it was not just refused or unreadable
+ * ([lastRefusal] for [refusedUser], see [offersSavedPassword]).
+ */
+fun connectsDirectly(login: SshLogin, savedPassword: Boolean, lastRefusal: LoginRefusal?, refusedUser: String?): Boolean =
+    when (login.method) {
+        SshAuthMethod.KEY -> !(lastRefusal == LoginRefusal.KEY && refusedUser == login.user)
+        SshAuthMethod.PASSWORD -> offersSavedPassword(lastRefusal, refusedUser, login.user) { savedPassword }
+    }

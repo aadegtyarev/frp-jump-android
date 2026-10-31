@@ -358,6 +358,8 @@ class RowActions(
     val keyLogin: (ConnectionRow) -> Unit,
     /** Whether the menu offers "Use key login": the method remembered for its port is Password. */
     val offersKeyLogin: (ConnectionRow) -> Boolean,
+    /** "Change login": the login dialog, then a terminal with what it gave. */
+    val changeLogin: (ConnectionRow) -> Unit,
 )
 
 @Composable
@@ -366,6 +368,7 @@ fun rememberRowActions(
     actions: ConnectionActions,
     onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
+    onOpenFiles: (targetId: Int) -> Unit,
 ): RowActions {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -386,7 +389,12 @@ fun rememberRowActions(
                 !row.saved || row.connection.kind == PortKind.TCP -> copy(row)
                 row.connection.kind == PortKind.WEB -> onOpenWeb(row)
                 // Back to the session already open on this port; a new one is "+" on its tab row.
-                else -> actions.openSession(row)?.let(onOpenTerminal) ?: run { ui.login = row }
+                else -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
+                    // A usable remembered login connects at once; the dialog only when there is none.
+                    val login = actions.loginAtOnce(row)
+                    val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
+                    if (opened != null) onOpenTerminal(opened) else ui.login = row
+                }
             }
         },
         // Sessions and file screens on the tunnel close with it: ask first when there are any.
@@ -394,13 +402,23 @@ fun rememberRowActions(
         copy = copy,
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
-        files = { ui.filesLogin = it },
+        files = { row ->
+            val login = actions.loginAtOnce(row)
+            if (login == null) {
+                ui.filesLogin = row
+            } else {
+                // As the dialog's Connect: the tunnel first; the file screen waits for it.
+                if (row.tunnel == null && row.pending == null) notificationsFirst { actions.connect(row) }
+                actions.openFiles(row, login.user, login.method, password = "", remember = true)?.let(onOpenFiles)
+            }
+        },
         change = { ui.editing = it },
         delete = { ui.deleting = it },
         directChoice = { ui.direct = it },
         // Down, the tunnel is brought up for it, as Connect does.
         keyLogin = { row -> if (row.tunnel == null) notificationsFirst { actions.startKeyLogin(row) } else actions.startKeyLogin(row) },
         offersKeyLogin = { row -> actions.sshLogin(row).method == SshAuthMethod.PASSWORD },
+        changeLogin = { ui.login = it },
     )
 }
 
@@ -425,6 +443,8 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
         }
         // Down, the tunnel is brought up once the login is given.
         if (row.saved && kind == PortKind.SSH) item(R.string.files, actions.files)
+        // Terminal logs in at once with what is remembered: another user or method is chosen here.
+        if (row.saved && kind == PortKind.SSH && row.tunnel != null) item(R.string.terminal_change_login, actions.changeLogin)
         if (row.saved && kind == PortKind.SSH && actions.offersKeyLogin(row)) item(R.string.key_login, actions.keyLogin)
         if (row.saved) {
             item(R.string.change, actions.change)

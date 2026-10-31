@@ -418,7 +418,7 @@
     <string name="ssh_login_title">SSH на %s</string>
     <string name="ssh_method_key">Ключ</string>
     <string name="ssh_method_password">Пароль</string>
-    <string name="ssh_password_remembered">Пароль (запомнен)</string>
+    <string name="ssh_password_saved">•••••••• сохранён</string>
     <string name="ssh_remember_password">Запомнить на телефоне</string>
     <string name="ssh_login_key_hint">Вход ключом телефона (Настройки › %s); он должен быть в ~/.ssh/authorized_keys на устройстве.</string>
     <string name="secret_show">Показать</string>

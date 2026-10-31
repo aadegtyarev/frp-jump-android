@@ -21,14 +21,21 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
-/** A password-style field, hidden until the eye is tapped. */
+/**
+ * A password-style field, hidden until the eye is tapped. [saved]: a
+ * value is kept already; while the field is empty it shows that (masked
+ * dots and "saved") instead of looking empty, and typing replaces it.
+ */
 @Composable
-fun SecretField(value: String, onValueChange: (String) -> Unit, label: String) {
+fun SecretField(value: String, onValueChange: (String) -> Unit, label: String, saved: String? = null) {
     var shown by remember { mutableStateOf(false) }
+    // Material shows a placeholder under a resting label only without one: the saved hint takes the label's place until typing starts.
+    val showSaved = saved != null && value.isEmpty()
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
+        label = if (showSaved) null else ({ Text(label) }),
+        placeholder = if (showSaved) ({ Text(saved.orEmpty()) }) else null,
         singleLine = true,
         visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
