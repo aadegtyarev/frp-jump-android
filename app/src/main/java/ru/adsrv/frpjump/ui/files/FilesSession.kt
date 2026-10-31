@@ -120,19 +120,34 @@ data class Transfer(
 }
 
 /**
- * The search in subfolders of [root] for [query]: its hits so far, and once
- * it is over ([running] false) how it ended ([end] null: stopped by the
- * owner), with [skipped] folders it could not read and a failure's [message].
+ * The search in subfolders of [root] for [query] (run [id], hidden names
+ * when [hidden]): its hits so far, and once it is over ([running] false)
+ * how it ended ([end] null: stopped by the owner), with [skipped] folders
+ * it could not read and a failure's [message].
  */
 data class DeepSearch(
+    val id: Long,
     val query: String,
     val root: String,
+    val hidden: Boolean,
     val found: List<Found> = emptyList(),
     val running: Boolean = true,
     val end: SearchEnd? = null,
     val skipped: Int = 0,
     val message: String? = null,
 )
+
+/**
+ * [hits] of run [id] added, those already listed left out; null when this
+ * is not that run going (stopped, or a newer run of the same text): a late
+ * batch of an old run must not reach the list.
+ */
+fun DeepSearch.withHits(id: Long, hits: List<Found>): DeepSearch? {
+    if (this.id != id || !running) return null
+    val known = found.mapTo(HashSet()) { it.path }
+    val fresh = hits.filter { known.add(it.path) }
+    return if (fresh.isEmpty()) this else copy(found = found + fresh)
+}
 
 /** A file picked for upload, waiting, going, or failed ([transfer]'s failure) with Retry. */
 data class Upload(val id: Long, val uri: Uri, val dir: String, val transfer: Transfer)
@@ -269,6 +284,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** The search in subfolders going, if any. */
     private var searchJob: Job? = null
+    private val searchIds = AtomicLong(1)
 
     init {
         val t = target
@@ -280,6 +296,10 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
                     val label = folder?.let { uri -> withContext(Dispatchers.IO) { runCatching { PhoneFiles.folderName(app, Uri.parse(uri)) }.getOrNull() } }
                     _state.update { it.copy(showHidden = hidden, downloadFolder = label) }
                     show(_state.value.path, all)
+                    // Hidden files switched during a search: its hits are for the other setting.
+                    _state.value.deepSearch?.takeIf { it.hidden != hidden }?.let { search ->
+                        if (_state.value.online) searchSubfolders(search.query) else clearSearch()
+                    }
                 }
             }
             val key = localPortKey(t.device, t.port)
@@ -757,30 +777,35 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
     fun searchSubfolders(query: String) {
         val root = _state.value.path ?: return
         val text = query.trim()
-        if (text.isEmpty()) return
+        // Names hold no `/`: the screen says so in place of searching.
+        if (text.isEmpty() || '/' in text) return
         val port = localPort
         if (!_state.value.online || port == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
         searchJob?.cancel()
         val hidden = _state.value.showHidden
-        val search = DeepSearch(text, root)
-        _state.update { it.copy(deepSearch = search) }
+        val id = searchIds.getAndIncrement()
+        _state.update { it.copy(deepSearch = DeepSearch(id, text, root, hidden)) }
         searchJob = scope.launch {
-            // Only this search's state: a newer one, or none, is left alone.
-            val mine = { now: FilesUiState -> now.deepSearch?.let { it.query == text && it.root == root && it.running } == true }
+            // Only this run's state: a newer one, or none, is left alone.
+            val mine = { now: FilesUiState -> now.deepSearch?.let { it.id == id && it.running } == true }
             val end = { change: (DeepSearch) -> DeepSearch ->
                 _state.update { now -> if (mine(now)) now.copy(deepSearch = change(now.deepSearch!!).copy(running = false)) else now }
             }
             try {
                 val b = connected(port)
                 val outcome = searchNames(b::exec, root, text, hidden) { hits ->
-                    _state.update { now -> if (mine(now)) now.copy(deepSearch = now.deepSearch!!.let { it.copy(found = it.found + hits) }) else now }
+                    _state.update { now -> now.deepSearch?.withHits(id, hits)?.let { now.copy(deepSearch = it) } ?: now }
                 }
                 end { it.copy(end = outcome.end, skipped = outcome.skipped, message = outcome.message) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val message = if (e is CommandsRefused) Texts.get(R.string.files_search_no_commands) else connectionTrouble(e) ?: fileProblem(e)
-                end { it.copy(end = SearchEnd.FAILED, message = message) }
+                if (e is CommandsRefused) {
+                    end { it.copy(end = SearchEnd.NO_COMMANDS) }
+                } else {
+                    val message = connectionTrouble(e) ?: fileProblem(e)
+                    end { it.copy(end = SearchEnd.FAILED, message = message) }
+                }
             }
         }
     }

@@ -306,6 +306,7 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                     }
                     if (filtering && state.path != null && state.status != FilesStatus.Gone) {
                         subfolderSearch(
+                            query = text,
                             search = state.deepSearch?.takeIf { it.query == text && it.root == state.path },
                             online = state.online,
                             onStart = { vm.searchSubfolders(text) },

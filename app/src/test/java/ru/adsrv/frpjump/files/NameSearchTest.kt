@@ -33,14 +33,15 @@ class NameSearchTest {
     }
 
     @Test
-    fun findCommandRunsInShWithQuotedWords() {
-        val command = findCommand("/mnt/my data", "it's", hidden = true)
-        assertTrue(command, command.startsWith("sh -c '"))
-        // Inside the sh -c word, the root and the pattern are single-quoted words of their own.
-        assertTrue(command, command.contains("find '\\''/mnt/my data'\\''"))
-        assertTrue(command, command.contains("-iname '\\''*it'\\''\\'\\'''\\''s*'\\'' -print0"))
-        assertFalse(command, command.contains("-prune"))
-        assertTrue(findCommand("/x", "a", hidden = false).contains("-name '\\''.*'\\'' -prune -o"))
+    fun scriptQuotesForShOnlyAndTheLoginShellSeesNoUserText() {
+        // The login shell (fish too) parses only this; the script goes on the input.
+        assertEquals("sh -s", FIND_EXEC)
+        val script = findScript("/mnt/my data", "it's", hidden = true)
+        assertTrue(script, script.startsWith("printf '%s\\000' $SEARCH_SENTINEL; "))
+        assertTrue(script, script.contains("find '/mnt/my data' -xdev -iname '*it'\\''s*' -print0"))
+        assertFalse(script, script.contains("-prune"))
+        assertTrue(script, script.endsWith("\n") && script.count { it == '\n' } == 1)
+        assertTrue(findScript("/x", "a", hidden = false).contains("-xdev ! -path '/x' -name '.*' -prune -o -iname"))
     }
 
     @Test
@@ -67,24 +68,42 @@ class NameSearchTest {
     }
 
     @Test
+    fun hitsComeAfterTheSentinelOnly() {
+        val hits = Hits("/r", cap = 10)
+        val other = "This account is currently not available.\n/r/a/x\u0000".toByteArray()
+        assertEquals(emptyList<Found>(), hits.feed(other, other.size))
+        assertEquals(false, hits.started)
+        // What a login's rc file printed before the sentinel does not count against it.
+        val chatty = Hits("/r", cap = 10)
+        val bytes = "hello\n$SEARCH_SENTINEL\u0000/r/a/x\u0000".toByteArray()
+        assertEquals(listOf(Found("/r/a/x", "a/x")), chatty.feed(bytes, bytes.size))
+        assertEquals(true, chatty.started)
+    }
+
+    @Test
     fun hitsLeaveOutTheFolderItselfAndItsOwnEntriesAndStopAtTheCap() {
         val hits = Hits("/r", cap = 2)
-        val bytes = "/r\u0000/r/top\u0000/r/a/x\u0000/r/b/y\u0000/r/c/z\u0000".toByteArray()
+        val bytes = "$SEARCH_SENTINEL\u0000/r\u0000/r/top\u0000/r/a/x\u0000/r/b/y\u0000/r/c/z\u0000".toByteArray()
         assertEquals(listOf(Found("/r/a/x", "a/x"), Found("/r/b/y", "b/y")), hits.feed(bytes, bytes.size))
         assertTrue(hits.full)
     }
 
     @Test
-    fun outcomeTellsUnreadableFoldersFromFailures() {
-        assertEquals(SearchOutcome(SearchEnd.DONE), searchOutcome(0, emptyList(), 0, "/r"))
-        assertEquals(SearchOutcome(SearchEnd.NO_FIND), searchOutcome(127, listOf("sh: find: not found"), 1, "/r"))
-        val denied = listOf("find: ‘/r/a’: Permission denied", "find: '/r/b': Отказано в доступе")
-        assertEquals(SearchOutcome(SearchEnd.DONE, skipped = 7), searchOutcome(1, denied, 7, "/r"))
-        assertEquals(
-            SearchOutcome(SearchEnd.FAILED, message = "find: unknown predicate `-iname'"),
-            searchOutcome(1, listOf("find: unknown predicate `-iname'"), 1, "/r"),
-        )
-        assertEquals(SearchEnd.FAILED, searchOutcome(null, emptyList(), 0, "/r").end)
+    fun outcomeTellsUnreadablePlacesFromFailures() {
+        assertEquals(SearchOutcome(SearchEnd.DONE), searchOutcome(0, emptyList(), 0))
+        assertEquals(SearchOutcome(SearchEnd.NO_FIND), searchOutcome(127, listOf("sh: find: not found"), 1))
+        assertEquals(SearchOutcome(SearchEnd.NO_ROOT), searchOutcome(NO_ROOT_STATUS, emptyList(), 0))
+        // Places it could not read, whatever path they name.
+        val denied = listOf("find: '/elsewhere/a': Permission denied", "find: '/r/b': No such file or directory")
+        assertEquals(SearchOutcome(SearchEnd.DONE, skipped = 7), searchOutcome(1, denied, 7))
+        listOf(
+            "find: unknown predicate `-iname'",
+            "find: unrecognized: -xdev",
+            "find: paths must precede expression: `x'",
+            "BusyBox v1.36.1 multi-call binary. Usage: find [-HL] [PATH]...",
+        ).forEach { line -> assertEquals(line, SearchOutcome(SearchEnd.FAILED, message = line), searchOutcome(1, listOf(line), 1)) }
+        assertEquals(SearchEnd.FAILED, searchOutcome(1, emptyList(), 0).end)
+        assertEquals(SearchEnd.FAILED, searchOutcome(null, emptyList(), 0).end)
     }
 
     @Test
@@ -117,6 +136,23 @@ class NameSearchTest {
     }
 
     @Test
+    fun aGoneFolderSaysSo() {
+        val outcome = runBlocking { searchNames(::LocalCommand, File(dir, "gone").path, "x", hidden = false) {} }
+        assertEquals(SearchEnd.NO_ROOT, outcome.end)
+    }
+
+    @Test
+    fun aLoginThatRunsNoCommandsIsToldQuickly() {
+        // SFTP only: nothing ever comes back. Nologin: a message, no sentinel, exit 1.
+        listOf("exec sleep 30", "echo 'This account is currently not available.'; exit 1").forEach { shell ->
+            val started = System.nanoTime()
+            val outcome = runBlocking { searchNames({ LocalCommand(shell) }, dir.path, "x", hidden = false, startMs = 1_000) {} }
+            assertEquals(shell, SearchEnd.NO_COMMANDS, outcome.end)
+            assertTrue(shell, TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started) < 8)
+        }
+    }
+
+    @Test
     fun stopsAtTheCap() {
         repeat(30) { touch("sub/hit-$it") }
         val got = mutableListOf<Found>()
@@ -133,7 +169,14 @@ class NameSearchTest {
             writeText("#!/bin/sh\nexec sleep 30\n")
             setExecutable(true)
         }
-        val command = LocalCommand(findCommand(dir.path, "x", hidden = false), path = bin.path)
+        val command = LocalCommand(FIND_EXEC, path = bin.path)
+        command.input.write(findScript(dir.path, "x", hidden = false).toByteArray())
+        command.input.flush()
+        // The sentinel: the script runs, find is started next.
+        val sentinel = ByteArray(SEARCH_SENTINEL.length + 1)
+        var got = 0
+        while (got < sentinel.size) got += command.output.read(sentinel, got, sentinel.size - got).also { assertTrue(it > 0) }
+        Thread.sleep(300)
         val started = System.nanoTime()
         command.closeInput()
         assertNotNull(command.exitStatus(10_000))
@@ -159,6 +202,7 @@ class NameSearchTest {
         private val process = ProcessBuilder("sh", "-c", command).apply {
             if (path != null) environment()["PATH"] = path + File.pathSeparator + environment()["PATH"]
         }.start()
+        override val input = process.outputStream
         override val output = process.inputStream
         override val errors = process.errorStream
 

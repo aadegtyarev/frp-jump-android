@@ -53,17 +53,28 @@ fun NoNameMatch(query: String) {
  * the folder. [search] is the one for the text shown, null before it starts.
  */
 fun LazyListScope.subfolderSearch(
+    query: String,
     search: DeepSearch?,
     online: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onOpen: (Found) -> Unit,
 ) {
-    if (search == null) {
-        item(key = "/search-start") { StartRow(online, onStart) }
+    // A name holds no `/`: say so rather than find nothing.
+    if ('/' in query) {
+        item(key = "/search-slash") { Hint(stringResource(R.string.files_search_slash_hint)) }
         return
     }
-    item(key = "/search-status") { StatusRow(search, online, onStart, onStop) }
+    if (search == null) {
+        item(key = "/search-start") { StartRow(online, onStart) }
+    } else {
+        item(key = "/search-status") { StatusRow(search, online, onStart, onStop) }
+    }
+    // The device folds case as its locale does: Latin always, other letters maybe not.
+    if (query.any { it.isLetter() && it.code > 127 }) {
+        item(key = "/search-case") { Hint(stringResource(R.string.files_search_case_hint)) }
+    }
+    if (search == null) return
     items(search.found, key = { "/hit:${it.path}" }) { hit ->
         Text(
             hit.relative,
@@ -76,6 +87,11 @@ fun LazyListScope.subfolderSearch(
                 .padding(horizontal = 20.dp, vertical = 10.dp),
         )
     }
+}
+
+@Composable
+private fun Hint(text: String) {
+    Text(text, fontSize = 12.sp, color = AppTheme.colors.muted, modifier = Modifier.padding(start = 52.dp, end = 20.dp, bottom = 8.dp))
 }
 
 /** "Search subfolders"; offline it says why it cannot. */
@@ -111,6 +127,8 @@ private fun StatusRow(search: DeepSearch, online: Boolean, onStart: () -> Unit, 
         search.end == SearchEnd.CAPPED -> stringResource(R.string.files_search_capped, SEARCH_CAP) to false
         search.end == SearchEnd.TIMED_OUT -> stringResource(R.string.files_search_timed_out, n) to false
         search.end == SearchEnd.NO_FIND -> stringResource(R.string.files_search_no_find) to true
+        search.end == SearchEnd.NO_COMMANDS -> stringResource(R.string.files_search_no_commands) to true
+        search.end == SearchEnd.NO_ROOT -> stringResource(R.string.files_search_no_root) to true
         else -> (search.message?.let { stringResource(R.string.files_search_failed, it) } ?: stringResource(R.string.files_search_failed_plain)) to true
     }
     val again = !search.running && search.end in setOf(null, SearchEnd.TIMED_OUT, SearchEnd.FAILED)

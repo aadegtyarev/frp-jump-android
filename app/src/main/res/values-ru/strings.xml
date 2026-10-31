@@ -716,6 +716,9 @@
     <string name="files_search_failed_plain">Поиск прервался, устройство не сказало почему.</string>
     <string name="files_search_no_find">На устройстве нет команды find.</string>
     <string name="files_search_no_commands">Этому входу нельзя выполнять команды на устройстве, только передавать файлы.</string>
+    <string name="files_search_no_root">Этой папки на устройстве больше нет.</string>
+    <string name="files_search_case_hint">Регистр русских букв на устройстве может учитываться.</string>
+    <string name="files_search_slash_hint">Ищу только по имени, без /.</string>
     <plurals name="files_search_skipped">
         <item quantity="one">Не удалось прочитать %d папку</item>
         <item quantity="few">Не удалось прочитать %d папки</item>

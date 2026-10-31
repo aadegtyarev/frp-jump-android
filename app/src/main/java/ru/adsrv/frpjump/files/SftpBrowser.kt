@@ -73,11 +73,12 @@ class SftpBrowser(val connector: SshConnector) : Closeable {
             throw if (e is ConnectionException && client.isConnected) CommandsRefused(e) else e
         }
         return object : RemoteCommand {
+            override val input = running.outputStream
             override val output = running.inputStream
             override val errors = running.errorStream
 
             override fun closeInput() {
-                runCatching { running.outputStream.close() }
+                runCatching { input.close() }
             }
 
             override fun exitStatus(ms: Long): Int? {

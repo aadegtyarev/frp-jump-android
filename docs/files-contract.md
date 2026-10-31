@@ -145,14 +145,21 @@ Decided 2026-10-31: by name only; content is searched in the terminal.
   connection). Hits come in as they are found, each as its path relative
   to this folder, under "Searching… N found" with Stop. A tap on a folder
   opens it; on a file, its card, over the hits.
-- It does not follow symlinks, skips hidden names while hidden files are
-  off, and passes over folders it may not read, saying how many there
-  were. It ends by itself after 500 hits ("Showing the first 500") or two
+- It stays on the folder's file system (`find -xdev`: no `/proc`, `/sys`
+  or other mounts below), does not follow symlinks, skips hidden names
+  while hidden files are off (switching them runs it again), and passes
+  over folders it may not read, saying how many there were. It ends by itself after 500 hits ("Showing the first 500") or two
   minutes ("Stopped after 2 minutes"). Changing the text, closing the
   search, opening another folder or leaving the screen stops it, and the
   `find` on the device with it.
+- Ignoring case on the device is sure for Latin letters only: other
+  letters fold as the device's locale does, and a hint under the action
+  says so when the text has them. A `/` in the text: "Searching by name
+  only, without /" in place of the action.
 - Nothing found: "Nothing found in subfolders". `find` failed or is
-  missing: what it said, with Retry. Offline: the filter works on the
+  missing: what it said, with Retry. A login that may not run commands
+  (SFTP only, nologin) is told within 10 seconds; a folder gone
+  meanwhile says so. Offline: the filter works on the
   folder as last seen; the search in subfolders needs the connection.
 - It does not search file contents, use patterns or regular expressions
   (the text is taken literally), or remember past searches.
