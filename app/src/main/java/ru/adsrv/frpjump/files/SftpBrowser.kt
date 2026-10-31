@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.files
 
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.connection.ConnectionException
 import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
@@ -15,6 +16,7 @@ import java.io.FilterOutputStream
 import java.io.IOException
 import java.io.OutputStream
 import java.util.EnumSet
+import java.util.concurrent.TimeUnit
 
 /**
  * The file screen's own SSH connection with an SFTP channel, apart from
@@ -51,6 +53,43 @@ class SftpBrowser(val connector: SshConnector) : Closeable {
     val isOpen: Boolean get() = sftp != null && ssh?.isConnected == true && ssh?.isAuthenticated == true
 
     val fs: RemoteFs = SftpFs { sftp ?: throw IOException("not connected") }
+
+    /**
+     * [command] on an exec channel of this connection, next to SFTP.
+     * Throws [CommandsRefused] when the device allows no commands here.
+     * Blocking: an IO thread.
+     */
+    fun exec(command: String): RemoteCommand {
+        val client = ssh ?: throw IOException("not connected")
+        val session = try {
+            client.startSession()
+        } catch (e: ConnectionException) {
+            throw if (client.isConnected) CommandsRefused(e) else e
+        }
+        val running = try {
+            session.exec(command)
+        } catch (e: Exception) {
+            runCatching { session.close() }
+            throw if (e is ConnectionException && client.isConnected) CommandsRefused(e) else e
+        }
+        return object : RemoteCommand {
+            override val output = running.inputStream
+            override val errors = running.errorStream
+
+            override fun closeInput() {
+                runCatching { running.outputStream.close() }
+            }
+
+            override fun exitStatus(ms: Long): Int? {
+                runCatching { running.join(ms, TimeUnit.MILLISECONDS) }
+                return running.exitStatus
+            }
+
+            override fun close() {
+                runCatching { session.close() }
+            }
+        }
+    }
 
     override fun close() {
         runCatching { sftp?.close() }
