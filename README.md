@@ -359,6 +359,17 @@ DownloadManager with the page's cookies; files a page makes itself (`blob:`)
 cannot be handed over, use "Open in browser" for those. WebSockets to the
 same origin work, so homeui's MQTT over WS shows live values.
 
+Requests a page makes to another loopback port (another tunnel, another
+app's server) get a 403, but WebSockets cannot be filtered: WebView passes
+them to no hook. So a page whose device is compromised can open
+`ws://127.0.0.1:<port>` to other tunnels or other apps' servers that are up,
+and talk to any that serves HTTP or WebSocket.
+
+Every tunnel is a plain TCP port on `127.0.0.1`, and any app on the phone
+may connect to it while it is up, just as this app does. SSH still asks for
+its login; a device web UI without a password of its own is open to them.
+Give device web UIs a password, and disconnect tunnels you no longer use.
+
 ## SSH console
 
 "Terminal" on a connected SSH connection asks for the user (the

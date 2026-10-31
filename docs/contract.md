@@ -259,3 +259,7 @@ Screens touched by stages 1–5 get the new look in the same stage.
   covers it but adds a gap of seconds.
 - Mobile carriers' NAT usually blocks P2P, so on mobile data most connections
   will go through the server.
+- A tunnel is a TCP port on 127.0.0.1, open to every app on the phone while
+  it is up; device web UIs need a password of their own.
+- WebView cannot filter WebSockets: a compromised device's page can reach
+  the other tunnels that are up.
