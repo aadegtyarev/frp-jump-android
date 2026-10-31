@@ -15,6 +15,7 @@ fun kindWord(context: Context, kind: PortKind): String = context.getString(
         PortKind.WEB -> R.string.kind_web
         PortKind.SSH -> R.string.kind_ssh
         PortKind.TCP -> R.string.kind_tcp
+        PortKind.MQTT -> R.string.kind_mqtt
     },
 )
 

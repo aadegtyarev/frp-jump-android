@@ -35,7 +35,33 @@ class ConnectionTest {
     fun `presets are the contract's`() {
         assertEquals(listOf(80, 443, 8080, 1880, 3000), PORT_PRESETS.getValue(PortKind.WEB).map { it.port })
         assertEquals(listOf(22, 2222), PORT_PRESETS.getValue(PortKind.SSH).map { it.port })
-        assertEquals(listOf(1883, 502, 5432), PORT_PRESETS.getValue(PortKind.TCP).map { it.port })
+        assertEquals(listOf(502, 5432), PORT_PRESETS.getValue(PortKind.TCP).map { it.port })
+        // 1883 moved to MQTT; no preset name: the default one says "MQTT".
+        assertEquals(listOf(PortPreset(1883)), PORT_PRESETS.getValue(PortKind.MQTT))
+        PortKind.entries.forEach { assertTrue(it.name, PORT_PRESETS.getValue(it).isNotEmpty()) }
+    }
+
+    @Test
+    fun `an MQTT connection is called MQTT on 1883 and goes to the server as tcp`() {
+        assertEquals("MQTT", draftLabel(ConnectionDraft(PortKind.MQTT, "1883", ""), fallback))
+        assertEquals("MQTT 1884", draftLabel(ConnectionDraft(PortKind.MQTT, "1884", ""), fallback))
+        assertEquals("tcp", ru.adsrv.frpjump.ports.wireProtocolFor(PortKind.MQTT, 1883))
+        // As every kind on an SSH port, so both clients name the port the same way.
+        assertEquals("ssh", ru.adsrv.frpjump.ports.wireProtocolFor(PortKind.MQTT, 22))
+        assertEquals("\"mqtt\"", ru.adsrv.frpjump.api.WireJson.encodeToString(PortKind.serializer(), PortKind.MQTT))
+    }
+
+    @Test
+    fun `Open as MQTT keeps the connection and its wire protocol, changing only the kind`() {
+        val tcp = Connection("id-1", "wb", 1883, PortKind.TCP, "broker", localPort = 21883)
+        val mqtt = tcp.asMqtt()
+        assertEquals(tcp.copy(kind = PortKind.MQTT), mqtt)
+        assertEquals(ru.adsrv.frpjump.ports.wireProtocolFor(tcp.kind, tcp.port), ru.adsrv.frpjump.ports.wireProtocolFor(mqtt.kind, mqtt.port))
+        // An unnamed one now shows the MQTT default name.
+        assertEquals("MQTT", Connection("id-2", "wb", 1883, PortKind.TCP, null).asMqtt().label(fallback))
+        // Another connection on that port saved as TCP can still share the tunnel: same wire protocol.
+        val draft = draftOf(mqtt)
+        assertNull(draftProblems(draft, "wb", listOf(tcp.copy(id = "other", customName = "raw")), mqtt.id, fallback).protocolClash)
     }
 
     @Test
@@ -72,7 +98,7 @@ class ConnectionTest {
         assertEquals("", nameAfterPreset("", PortPreset(80)))
         assertEquals("", nameAfterPreset("Grafana", PortPreset(8080)))
         assertEquals("My UI", nameAfterPreset("My UI", grafana))
-        assertTrue(isPresetName(" MQTT "))
+        assertTrue(isPresetName(" Modbus TCP "))
         assertFalse(isPresetName("root"))
     }
 

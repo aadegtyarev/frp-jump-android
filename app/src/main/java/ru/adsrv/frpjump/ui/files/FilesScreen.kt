@@ -60,6 +60,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.AppTopBar
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.StatusBanner
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.ssh.HostKeyChangedDialog
@@ -211,7 +212,7 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
             Box(Modifier.fillMaxWidth().height(2.dp)) {
                 if (state.busy && state.entries.isNotEmpty()) LinearProgressIndicator(color = colors.accent, trackColor = colors.ground, modifier = Modifier.fillMaxWidth())
             }
-            StatusBanner(state.status, onRetry = vm::refresh, onChangeLogin = { changingLogin = true })
+            FilesBanner(state.status, onRetry = vm::refresh, onChangeLogin = { changingLogin = true })
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = vm::refresh,
@@ -354,8 +355,7 @@ private fun statusWord(status: FilesStatus): String = stringResource(
 
 /** Why the folder is not live, next to it, with what may fix it. */
 @Composable
-private fun StatusBanner(status: FilesStatus, onRetry: () -> Unit, onChangeLogin: () -> Unit) {
-    val colors = AppTheme.colors
+private fun FilesBanner(status: FilesStatus, onRetry: () -> Unit, onChangeLogin: () -> Unit) {
     val (text, detail, retry) = when (status) {
         is FilesStatus.Offline -> Triple(
             status.cachedAt?.let { stringResource(R.string.files_offline_cached, shortTime(Instant.ofEpochMilli(it))) }
@@ -371,26 +371,14 @@ private fun StatusBanner(status: FilesStatus, onRetry: () -> Unit, onChangeLogin
         FilesStatus.TunnelConnecting -> Triple(stringResource(R.string.files_tunnel_connecting), null, null)
         else -> return
     }
-    val error = status is FilesStatus.Failed
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .background(if (error) colors.errorContainer else colors.warningContainer, RoundedCornerShape(12.dp))
-            .padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        val ink = if (error) colors.onErrorContainer else colors.onWarningContainer
-        if (retry == null) CircularProgressIndicator(Modifier.size(16.dp), color = ink, strokeWidth = 2.dp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(text, fontSize = 14.sp, color = ink)
-            detail?.let { Text(it, fontSize = 12.sp, color = ink) }
-        }
-        retry?.let {
-            TextButton(onClick = if ((status as? FilesStatus.Failed)?.loginRefused == true) onChangeLogin else onRetry) { Text(it, color = ink) }
-        }
-    }
+    StatusBanner(
+        text = text,
+        detail = detail,
+        error = status is FilesStatus.Failed,
+        busy = retry == null,
+        action = retry,
+        onAction = if ((status as? FilesStatus.Failed)?.loginRefused == true) onChangeLogin else onRetry,
+    )
 }
 
 /** An empty list says why: still connecting, an empty folder, only hidden files, or nothing known offline. */

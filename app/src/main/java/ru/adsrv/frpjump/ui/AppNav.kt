@@ -59,6 +59,8 @@ import ru.adsrv.frpjump.ui.devices.DevicesViewModel
 import ru.adsrv.frpjump.ui.enroll.EnrollScreen
 import ru.adsrv.frpjump.ui.files.FilesScreen
 import ru.adsrv.frpjump.ui.files.FilesViewModel
+import ru.adsrv.frpjump.ui.mqtt.MqttScreen
+import ru.adsrv.frpjump.ui.mqtt.MqttViewModel
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.enroll.EnrollViewModel
@@ -88,6 +90,8 @@ private object Routes {
     const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
     const val TERMINAL = "terminal/{id}"
     const val FILES = "files/{id}"
+    const val MQTT = "mqtt/{id}"
+    fun mqtt(id: Int) = "mqtt/$id"
     fun files(id: Int) = "files/$id"
     fun terminal(id: Int) = "terminal/$id"
     fun profile(id: String) = "profile/$id"
@@ -228,6 +232,7 @@ fun AppNav() {
                     onOpenWeb = { nav.navigate(webRoute(it)) },
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenFiles = { nav.navigate(Routes.files(it)) },
+                    onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
                 )
             }
         }
@@ -246,6 +251,7 @@ fun AppNav() {
                 onOpenWeb = { nav.navigate(webRoute(it)) },
                 onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                 onOpenFiles = { nav.navigate(Routes.files(it)) },
+                onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
             )
         }
         composable(Routes.TERMINAL) { entry ->
@@ -290,6 +296,10 @@ fun AppNav() {
         composable(Routes.FILES) { entry ->
             val id = entry.arguments?.getString("id")?.toIntOrNull() ?: 0
             FilesScreen(vm = viewModel { FilesViewModel(app, id) }.session, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.MQTT) { entry ->
+            val id = entry.arguments?.getString("id")?.toIntOrNull() ?: 0
+            MqttScreen(vm = viewModel { MqttViewModel(app, id) }, onBack = { nav.popBackStack() })
         }
         composable(Routes.WEB) { entry ->
             WebScreen(

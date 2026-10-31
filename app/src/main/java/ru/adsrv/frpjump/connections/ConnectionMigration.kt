@@ -115,10 +115,10 @@ fun readConnections(text: String): List<Connection> {
         connection to legacyName?.takeUnless { CUSTOM_NAME in record }
     }
     // What each row reads as now, in English as the old names were made.
-    val shown = records.map { (c, legacy) -> legacy?.trim() ?: c.label(OLD_KIND_WORDS::getValue) }
+    val shown = records.map { (c, legacy) -> legacy?.trim() ?: c.label(::oldKindWord) }
     return records.mapIndexed { i, (c, legacy) ->
         if (legacy == null) return@mapIndexed c
-        val default = defaultConnectionName(c.kind, c.port, OLD_KIND_WORDS::getValue)
+        val default = defaultConnectionName(c.kind, c.port, ::oldKindWord)
         val taken = records.indices.any { j ->
             j != i && records[j].first.device == c.device && records[j].first.port == c.port && shown[j].equals(default, ignoreCase = true)
         }
@@ -130,13 +130,19 @@ fun readConnections(text: String): List<Connection> {
 private fun madeUpName(name: String, c: Connection): Boolean {
     val n = name.trim()
     return n.isEmpty() ||
-        n == "${OLD_KIND_WORDS.getValue(c.kind)} ${c.port}" ||
+        n == "${oldKindWord(c.kind)} ${c.port}" ||
         n == "Port ${c.port}" ||
         LEGACY_PRESETS[c.port]?.let { (presetName, kind) -> n == presetName && c.kind == kind } == true
 }
 
 /** The kinds as the English "Web 8080" said them. */
-private val OLD_KIND_WORDS = mapOf(PortKind.WEB to "Web", PortKind.SSH to "SSH", PortKind.TCP to "TCP")
+private fun oldKindWord(kind: PortKind): String = when (kind) {
+    PortKind.WEB -> "Web"
+    PortKind.SSH -> "SSH"
+    PortKind.TCP -> "TCP"
+    // Came after those names; no record of that time holds it.
+    PortKind.MQTT -> "MQTT"
+}
 private const val LEGACY_NAME = "name"
 private const val CUSTOM_NAME = "custom_name"
 

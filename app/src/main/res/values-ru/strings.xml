@@ -105,7 +105,7 @@
     <string name="devices_empty">Других устройств пока нет.</string>
     <string name="devices_search">Поиск устройств</string>
     <string name="devices_search_hint">Имя устройства</string>
-    <string name="devices_search_close">Закрыть поиск</string>
+    <string name="search_close">Закрыть поиск</string>
     <string name="devices_no_match">Нет устройств по запросу «%s».</string>
     <string name="offline_unreachable">Нет связи с сервером · обновлено в %s</string>
     <string name="offline_server_error">Сервер ответил ошибкой · обновлено в %s</string>
@@ -706,4 +706,56 @@
         <item quantity="many">Загружено %d файлов</item>
         <item quantity="other">Загружено %d файла</item>
     </plurals>
+
+    <!-- MQTT explorer -->
+    <string name="mqtt_open_as">Открыть как MQTT</string>
+    <string name="mqtt_search">Поиск топиков</string>
+    <string name="mqtt_search_hint">Часть пути топика</string>
+    <string name="mqtt_actions">Действия обозревателя</string>
+    <string name="mqtt_refresh_tree">Обновить дерево</string>
+    <string name="mqtt_empty_level">(пусто)</string>
+    <string name="mqtt_go_to_topic">Перейти к топику</string>
+    <string name="mqtt_topic">Топик</string>
+    <string name="mqtt_pin_branch">Подписаться на ветку…</string>
+    <string name="mqtt_pin">Подписаться</string>
+    <string name="mqtt_state_login">Нужен вход</string>
+    <string name="mqtt_connecting">Подключение к брокеру…</string>
+    <string name="mqtt_reconnecting">Переподключение…</string>
+    <string name="mqtt_state_closed">Закрыта</string>
+    <plurals name="mqtt_reading_tree">
+        <item quantity="one">Чтение дерева… %s топик</item>
+        <item quantity="few">Чтение дерева… %s топика</item>
+        <item quantity="many">Чтение дерева… %s топиков</item>
+        <item quantity="other">Чтение дерева… %s топика</item>
+    </plurals>
+    <string name="mqtt_login_needed">Брокер просит войти</string>
+    <string name="mqtt_log_in">Войти</string>
+    <string name="mqtt_no_broker">На порту %1$d устройства %2$s брокер не отвечает</string>
+    <string name="mqtt_no_common_version">Брокер отказал в MQTT 5 и 3.1.1</string>
+    <string name="mqtt_refused">Брокер отказал в подключении</string>
+    <string name="mqtt_closed_by_tunnel">Сессия закрылась вместе с туннелем</string>
+    <string name="mqtt_closed">Сессия закрыта</string>
+    <string name="mqtt_snapshot_refused">Брокер не разрешает читать всё дерево</string>
+    <string name="mqtt_limit_reached">Достигнут предел топиков: %1$s; новые топики не показываются</string>
+    <string name="mqtt_snapshot_timed_out">Дерево читалось 10 с, брокер всё ещё присылал: часть топиков может отсутствовать</string>
+    <string name="mqtt_branch_refused">Брокер не разрешает читать эту ветку</string>
+    <string name="mqtt_no_messages">Сообщений нет</string>
+    <string name="mqtt_show_value">Показать значение</string>
+    <string name="mqtt_fold">Свернуть</string>
+    <string name="mqtt_pinned_mark">Есть подписка</string>
+    <string name="mqtt_kind_branch">Ветка</string>
+    <string name="mqtt_kind_topic">Топик</string>
+    <string name="mqtt_cleared">(очищено)</string>
+    <string name="mqtt_empty_value">(пустое значение)</string>
+    <string name="mqtt_retained">retained</string>
+    <plurals name="mqtt_topics">
+        <item quantity="one">%s топик</item>
+        <item quantity="few">%s топика</item>
+        <item quantity="many">%s топиков</item>
+        <item quantity="other">%s топика</item>
+    </plurals>
+    <string name="mqtt_no_match">Нет топиков, в пути которых есть «%1$s»</string>
+    <string name="mqtt_hits_more">Первые %1$s из %2$s</string>
+    <string name="mqtt_login_title">Вход в брокер: %1$s</string>
+    <string name="mqtt_login_wrong">Неверный пользователь или пароль</string>
 </resources>

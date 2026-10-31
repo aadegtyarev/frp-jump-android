@@ -18,6 +18,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.connections.asMqtt
 import ru.adsrv.frpjump.connections.HeldPort
 import ru.adsrv.frpjump.connections.LocalPortContext
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
@@ -73,21 +74,22 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val runtime = runtime(row.profile) ?: return
         val c = row.connection
         val target = KeyInstallTarget(row.profile, runtime.hostKeys, c.device, c.port, sshLogin(row).user, runtime.sshLogins, localPort = {
-            tunnelPort(row.profile, c.device, c.port)
+            tunnelPort(row.profile, c.device, c.port, c.kind)
         })
         keyLogin.start(target)
     }
 
     /**
-     * The local port of the tunnel to [device]:[port], brought up when it is
-     * down; throws [IOException] with why when it does not come up.
+     * The local port of the tunnel to [device]:[port], brought up for a
+     * connection of [kind] (which names it to the server) when it is down;
+     * throws [IOException] with why when it does not come up.
      */
-    private suspend fun tunnelPort(profile: String, device: String, port: Int): Int {
+    private suspend fun tunnelPort(profile: String, device: String, port: Int, kind: PortKind): Int {
         val runtime = runtime(profile) ?: throw IOException(Texts.get(R.string.profile_gone))
         val key = localPortKey(device, port)
         fun up(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }?.localPort
         up(runtime.tunnels.state.value)?.let { return it }
-        if (runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, PortKind.SSH)
+        if (runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, kind)
         return withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
             ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
     }
@@ -337,7 +339,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         row.tunnel?.localPort?.let { port -> openSshAt(row, port, user, method, password, remember)?.let(onOpened); return }
         scope.launch {
             val port = try {
-                tunnelPort(row.profile, row.connection.device, row.connection.port)
+                tunnelPort(row.profile, row.connection.device, row.connection.port, row.connection.kind)
             } catch (e: IOException) {
                 app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
                 return@launch
@@ -356,6 +358,55 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
         }
         return app.ssh.open(row.profile, runtime.hostKeys, c.device, c.port, localPort, login.user, auth).id
+    }
+
+    /**
+     * The explorer session of [row]'s connection: the one open ("MQTT"
+     * returns to it), else a new one through its tunnel, which must be up;
+     * null when it is not, or the profile is gone. Main thread.
+     */
+    fun openMqtt(row: ConnectionRow): Int? {
+        val c = row.connection
+        app.mqtt.find(row.profile, c.id)?.let { return it.id }
+        val localPort = row.tunnel?.localPort ?: return null
+        if (runtime(row.profile) == null) return null
+        return app.mqtt.open(row.profile, c.id, c.device, c.port, localPort).id
+    }
+
+    /**
+     * As [openMqtt], also with the tunnel down: it is brought up first, then
+     * [onOpened] gets the session; a tunnel that does not come up says why.
+     * Main thread.
+     */
+    fun openMqttWhenUp(row: ConnectionRow, onOpened: (Int) -> Unit) {
+        openMqtt(row)?.let { return onOpened(it) }
+        scope.launch {
+            val localPort = try {
+                tunnelPort(row.profile, row.connection.device, row.connection.port, row.connection.kind)
+            } catch (e: IOException) {
+                app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+                return@launch
+            }
+            val c = row.connection
+            onOpened(app.mqtt.find(row.profile, c.id)?.id ?: app.mqtt.open(row.profile, c.id, c.device, c.port, localPort).id)
+        }
+    }
+
+    /**
+     * "Open as MQTT" of a TCP connection: saved as the MQTT kind under the
+     * same id (allowed with the tunnel up: the wire protocol stays `tcp`),
+     * then its explorer opens as [openMqttWhenUp] does. A save that fails
+     * says why and opens nothing. Main thread.
+     */
+    fun openAsMqtt(row: ConnectionRow, onOpened: (Int) -> Unit) {
+        val mqtt = row.connection.asMqtt()
+        save(row.profile, mqtt, previous = row.connection, connectNow = false) { failure ->
+            if (failure != null) {
+                app.notices.show(failure, NoticeKind.WARN)
+            } else {
+                openMqttWhenUp(row.copy(connection = mqtt), onOpened)
+            }
+        }
     }
 
     /** The file session kept on [row]'s tunnel (its screen left while a terminal is open there), for the route; null when none. Main thread. */
