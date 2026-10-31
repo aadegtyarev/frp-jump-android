@@ -38,6 +38,11 @@ class Notices(
         synchronized(_queue) { _queue.value = _queue.value.post(notice) }
     }
 
+    /** Like [show], but only while a screen of the app is started: news not worth a toast in the background. */
+    fun showInApp(text: String, kind: NoticeKind = NoticeKind.INFO, key: String? = null) {
+        if (foreground()) show(text, kind, key = key)
+    }
+
     fun dismiss(id: Long) {
         synchronized(_queue) { _queue.value = _queue.value.dismiss(id) }
     }

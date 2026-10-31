@@ -111,7 +111,7 @@ class SshSessions(
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(profile, device, port, user)
         val target = SshTarget(user, device, port)
         val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
-        val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number)
+        val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number, onReattached = ::sayReattached)
         _sessions.update { it + session }
         session.connect()
         return session
@@ -128,7 +128,11 @@ class SshSessions(
         val others = _sessions.value.filter { it.id != id }.map { SshTarget(it.user, it.device, it.port) to it.number }
         val number = replacementNumber(others, SshTarget(old.user, old.device, old.port), old.number, SshTarget(login, old.device, old.port))
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(old.profile, old.device, old.port, login)
-        val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number)
+        // The same tab, so the same tmux session: it is attached to again when it still runs.
+        val fresh = SshSession(
+            nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
+            tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
+        )
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         // After the tries of a drop ran out, the same login tries again the same way.
         fresh.connect(retrying = old.gaveUp && user == null && auth == null)
@@ -154,9 +158,14 @@ class SshSessions(
             .filter { it.profile == profile && it.device == device && it.port == port && it.user == user }
             .firstNotNullOfOrNull { it.openClient() }
 
-    fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed)) {
+    /**
+     * Closes session [id]. [endTmux]: the owner's Close, committed (Undo
+     * gone), which also ends the tab's tmux session on the device; a tunnel
+     * closing, Forget profile and the like keep it.
+     */
+    fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed), endTmux: Boolean = false) {
         val session = _sessions.value.firstOrNull { it.id == id } ?: return
-        session.close(reason)
+        session.close(reason, endTmux)
         _sessions.update { list -> list.filter { it.id != id } }
     }
 
@@ -169,6 +178,11 @@ class SshSessions(
     fun closedByTunnel(id: Int): Boolean = id in closedByTunnel
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
+
+    /** One notice for any number of tabs back on their tmux sessions at once; none in the background. */
+    private fun sayReattached() {
+        notices.showInApp(Texts.get(R.string.ssh_session_restored), NoticeKind.DONE, key = REATTACHED_KEY)
+    }
 
     /** Callbacks from one session's emulator, forwarded to the screen when it shows that session. */
     private inner class ClientForScreen : TerminalSessionClient {
@@ -203,8 +217,9 @@ class SshSessions(
             val text = (0 until clip.itemCount).joinToString("") { clip.getItemAt(it).coerceToText(context) }
             if (text.isEmpty()) return
             _sessions.value.firstOrNull { it.terminal.session === session }?.let {
-                it.terminal.paste(text)
+                // Typed first: the paste must not land in tmux's copy mode (see CopyModeGuard).
                 it.typed()
+                it.terminal.paste(text)
             }
         }
 
@@ -251,6 +266,9 @@ class SshSessions(
 
         /** A newer "copied" takes the place of the one shown. */
         private const val COPIED_KEY = "copied"
+
+        /** A newer "session restored" takes the place of the one shown. */
+        private const val REATTACHED_KEY = "ssh-reattached"
 
         /** The most a terminal puts on the clipboard: an OSC 52 of megabytes would not fit through Binder. */
         private const val MAX_COPY = 64 * 1024

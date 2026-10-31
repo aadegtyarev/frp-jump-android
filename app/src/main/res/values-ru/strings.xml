@@ -455,6 +455,8 @@
     <string name="ssh_logged_out">Сеанс завершён (код %d).</string>
     <string name="ssh_connection_closed">Соединение закрыто.</string>
     <string name="ssh_new_shell">Новая оболочка: прежняя завершилась вместе со связью</string>
+    <string name="ssh_session_restored">Сессия восстановлена</string>
+    <string name="ssh_tmux_failed">tmux не запустился (код %d): вместо него обычная оболочка</string>
     <string name="terminal_reconnecting">Связь потеряна · переподключение (попытка %d)…</string>
     <string name="terminal_reconnect_now">Сейчас</string>
 

@@ -45,6 +45,13 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     @Volatile
     private var output: OutputStream? = null
 
+    /**
+     * Called on the writer thread with each chunk of keys before it goes to
+     * [output]; it may block. Set once, before the first [pump].
+     */
+    @Volatile
+    var beforeWrite: ((ByteArray, Int) -> Unit)? = null
+
     /** Copies typed keys to [output]; one thread for the terminal's life, so a reconnect does not race an old one. */
     private val writer by lazy {
         thread(name = "terminal-to-ssh", isDaemon = true) {
@@ -52,6 +59,9 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
             while (true) {
                 val count = session.mTerminalToProcessIOQueue.read(buffer, true)
                 if (count < 0) break
+                if (output == null) continue
+                // May hold the bytes for a round trip to the device (tmux copy mode); keys typed meanwhile wait in the queue.
+                beforeWrite?.invoke(buffer, count)
                 val out = output ?: continue
                 try {
                     out.write(buffer, 0, count)
