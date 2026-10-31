@@ -352,6 +352,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return app.ssh.open(row.profile, runtime.hostKeys, c.device, c.port, localPort, login.user, auth).id
     }
 
+    /** The file session kept on [row]'s tunnel (its screen left while a terminal is open there), for the route; null when none. Main thread. */
+    fun keptFiles(row: ConnectionRow): Int? = app.files.kept(TunnelRef(row.profile, row.connection.device, row.connection.port))
+
     /**
      * Remembers the method for this port and makes a file screen's login
      * for [row]; returns its id for the route, or null when the profile is

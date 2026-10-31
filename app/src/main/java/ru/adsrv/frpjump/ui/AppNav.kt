@@ -60,6 +60,7 @@ import ru.adsrv.frpjump.ui.enroll.EnrollScreen
 import ru.adsrv.frpjump.ui.files.FilesScreen
 import ru.adsrv.frpjump.ui.files.FilesViewModel
 import ru.adsrv.frpjump.files.FilesTarget
+import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.enroll.EnrollViewModel
 import ru.adsrv.frpjump.ui.profiles.ProfileEditScreen
 import ru.adsrv.frpjump.ui.profiles.ProfileEditViewModel
@@ -256,7 +257,10 @@ fun AppNav() {
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 onBack = { nav.popBackStack() },
                 onOpenFiles = { s ->
-                    nav.navigate(Routes.files(app.fileTargets.put(FilesTarget(s.profile, s.device, s.port, s.user, s.auth))))
+                    // The file session kept on this tunnel for this login, else a new one.
+                    val id = app.files.kept(TunnelRef(s.profile, s.device, s.port), s.user)
+                        ?: app.fileTargets.put(FilesTarget(s.profile, s.device, s.port, s.user, s.auth))
+                    nav.navigate(Routes.files(id))
                 },
                 rememberLogin = { s, login ->
                     // Only the dialog's next start: a write that fails changes nothing else.
@@ -285,7 +289,7 @@ fun AppNav() {
         }
         composable(Routes.FILES) { entry ->
             val id = entry.arguments?.getString("id")?.toIntOrNull() ?: 0
-            FilesScreen(vm = viewModel { FilesViewModel(app, id) }, onBack = { nav.popBackStack() })
+            FilesScreen(vm = viewModel { FilesViewModel(app, id) }.session, onBack = { nav.popBackStack() })
         }
         composable(Routes.WEB) { entry ->
             WebScreen(
