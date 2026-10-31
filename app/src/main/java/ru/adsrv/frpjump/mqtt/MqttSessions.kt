@@ -94,6 +94,36 @@ class MqttSessions(
         _sessions.update { list -> list.filter { it.id != id } }
     }
 
+    /** How many times each pin was made, so a late unpin can tell it was pinned again meanwhile. */
+    private val pinsMade = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    private fun pinKey(profile: String, connectionId: String, filter: String) = "$profile/$connectionId\u0000$filter"
+
+    /** A mark of [filter]'s pinning now; [unpin] given it does nothing once the filter was pinned again. */
+    fun pinMark(profile: String, connectionId: String, filter: String): Int = pinsMade[pinKey(profile, connectionId, filter)] ?: 0
+
+    /** Pins [filter] through the connection's open session. Main thread. */
+    fun pin(profile: String, connectionId: String, filter: String) {
+        val session = find(profile, connectionId) ?: return
+        pinsMade.merge(pinKey(profile, connectionId, filter), 1, Int::plus)
+        session.pin(filter)
+    }
+
+    /**
+     * Unpins [filter] of a connection: through its session when one is open
+     * (it unsubscribes), else in the store only; not when [mark] is given
+     * and the filter was pinned again since it was taken. Main thread.
+     */
+    fun unpin(profile: String, connectionId: String, filter: String, mark: Int? = null) {
+        if (mark != null && mark != pinMark(profile, connectionId, filter)) return
+        val session = find(profile, connectionId)
+        if (session != null) {
+            session.unpin(filter)
+        } else {
+            env.scheduler.post { env.pins.set(profile, connectionId, env.pins.get(profile, connectionId) - filter) }
+        }
+    }
+
     fun closeAll() = _sessions.value.forEach { close(it.id) }
 
     /** Closes the sessions of [profile] ("Forget profile"). */

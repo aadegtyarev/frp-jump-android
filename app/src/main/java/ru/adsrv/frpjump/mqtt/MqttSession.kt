@@ -182,7 +182,18 @@ class MqttSession(
     /** Pins [filter] (kept for the connection) and subscribes it. */
     fun pin(filter: String) = changePins { if (filter in it) it else it + filter }
 
-    fun unpin(filter: String) = changePins { it - filter }
+    /**
+     * Unpins [filter]. Also after the session has ended: the pin is still
+     * taken from the store (an Undo that ran out after the session closed);
+     * removing never brings back pins of a forgotten connection.
+     */
+    fun unpin(filter: String) = scheduler.post {
+        val now = env.pins.get(profile, connectionId) - filter
+        env.pins.set(profile, connectionId, now)
+        if (ended) return@post
+        _pins.value = now
+        reconcile()
+    }
 
     /** "Refresh tree": forgets every topic and takes a new snapshot. */
     fun refreshTree() = scheduler.post {

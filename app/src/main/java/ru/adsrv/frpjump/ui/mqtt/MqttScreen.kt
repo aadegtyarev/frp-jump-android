@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
@@ -42,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -68,10 +66,7 @@ import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.ValueLine
-import ru.adsrv.frpjump.mqtt.decodeUtf8
-import ru.adsrv.frpjump.mqtt.hexPreview
 import ru.adsrv.frpjump.mqtt.levelLabel
-import ru.adsrv.frpjump.mqtt.multiLineText
 import ru.adsrv.frpjump.mqtt.pathAtPart
 import ru.adsrv.frpjump.mqtt.pathBarLabels
 import ru.adsrv.frpjump.mqtt.valueLine
@@ -86,16 +81,11 @@ import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.StatusBanner
 import ru.adsrv.frpjump.ui.ageText
 import ru.adsrv.frpjump.ui.files.PathBar
-import ru.adsrv.frpjump.ui.shortTime
 import java.text.NumberFormat
 import java.time.Duration
-import java.time.Instant
 
 /** A value changed this recently (after the level was shown) has its age in the accent colour; branches never do. */
 private const val HIGHLIGHT_MS = 2_000L
-
-/** What an expanded topic shows of its value at most. */
-private const val EXPANDED_CHARS = 4_000
 
 /**
  * The MQTT explorer of one session: the path bar, the open level's
@@ -192,12 +182,10 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             SnapshotLine(state)
             Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
             if (searching && query.isNotBlank()) {
-                SearchHits(state, query.trim(), padding, onOpen = { hit ->
-                    closeSearch()
-                    vm.reveal(MqttPath(state.path.levels + hit.relative.levels))
-                })
+                // The card opens over the hits, so closing it returns to them.
+                SearchHits(state, query.trim(), padding, onOpen = { hit -> vm.openCard(MqttPath(state.path.levels + hit.relative.levels)) })
             } else {
-                Level(state, focused, padding, onOpen = vm::open, onToggle = vm::toggle)
+                Level(state, focused, padding, onOpen = vm::open, onCard = vm::openCard)
             }
         }
     }
@@ -214,6 +202,15 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 vm.login(user, password, remember)
             },
             onDismiss = { loginDone = s },
+        )
+    }
+    state.card?.let { card ->
+        TopicCard(
+            card = card,
+            canPin = state.state != MqttState.Ended,
+            onPin = { vm.pin(card.path, it) },
+            onUnpin = { vm.unpin(card.path, it) },
+            onDismiss = vm::closeCard,
         )
     }
     if (typing) {
@@ -302,7 +299,7 @@ private fun Level(
     focused: MqttPath?,
     padding: PaddingValues,
     onOpen: (MqttPath) -> Unit,
-    onToggle: (MqttPath) -> Unit,
+    onCard: (MqttPath) -> Unit,
 ) {
     val colors = AppTheme.colors
     val list = rememberLazyListState()
@@ -318,13 +315,12 @@ private fun Level(
         // `$SYS` is always offered at the root, so only a live session there is never empty.
         if (state.rows.isEmpty()) item(key = "empty") { EmptyLevel(state) }
         items(state.rows, key = { rowKey(it.node.path) }) { row ->
-            val expanded = !row.isBranch && row.node.path == focused
             TopicRowView(
                 row = row,
                 now = state.now,
                 shownSince = state.shownSince,
-                expanded = expanded,
-                onClick = { if (row.isBranch) onOpen(row.node.path) else onToggle(row.node.path) },
+                onClick = { if (row.isBranch) onOpen(row.node.path) else onCard(row.node.path) },
+                onCard = { onCard(row.node.path) },
             )
             HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 70.dp))
         }
@@ -344,13 +340,13 @@ private fun EmptyLevel(state: MqttUiState) {
 }
 
 /**
- * A branch (folder tile: opens) or a topic (value tile: shows its full
- * value in place): name, the value in one line, the newest change's age in
- * the accent colour for a moment after it changed, the retained mark and
- * the count of topics below.
+ * A branch (folder tile: opens; "⋮" opens its card) or a topic (value
+ * tile: opens its card): name, the pin mark, the value in one line, the
+ * newest change's age in the accent colour for a moment after it changed,
+ * the retained mark and the count of topics below.
  */
 @Composable
-private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, expanded: Boolean, onClick: () -> Unit) {
+private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, onClick: () -> Unit, onCard: () -> Unit) {
     val colors = AppTheme.colors
     val node = row.node
     val value = node.value
@@ -358,13 +354,12 @@ private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, expanded: B
     Column(
         Modifier
             .fillMaxWidth()
-            .background(if (expanded) colors.accentContainer.copy(alpha = 0.35f) else Color.Transparent)
             .clickable(
                 role = Role.Button,
-                onClickLabel = stringResource(if (row.isBranch) R.string.files_open else if (expanded) R.string.mqtt_fold else R.string.mqtt_show_value),
+                onClickLabel = stringResource(if (row.isBranch) R.string.files_open else R.string.mqtt_open_card),
                 onClick = onClick,
             )
-            .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 16.dp, end = if (row.isBranch) 0.dp else 12.dp, top = 10.dp, bottom = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             KindTile(row.isBranch)
@@ -380,16 +375,20 @@ private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, expanded: B
                     )
                     if (row.pinned) Icon(PinGlyph, contentDescription = stringResource(R.string.mqtt_pinned_mark), tint = colors.muted, modifier = Modifier.size(14.dp))
                 }
-                value?.let { if (!expanded) ValueText(it) }
+                value?.let { ValueText(it) }
                 Meta(node, value, changedAt, now, highlight = value != null && value.receivedAt > shownSince && now - value.receivedAt < HIGHLIGHT_MS)
             }
+            if (row.isBranch) {
+                IconButton(onClick = onCard) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.mqtt_branch_card), tint = colors.muted)
+                }
+            }
         }
-        if (expanded && value != null) Expanded(node, value)
     }
 }
 
 @Composable
-private fun KindTile(branch: Boolean) {
+internal fun KindTile(branch: Boolean) {
     val colors = AppTheme.colors
     Box(
         Modifier
@@ -452,45 +451,6 @@ private fun Meta(node: TopicNode, value: TopicValue?, changedAt: Long, now: Long
     }
 }
 
-/** A topic's full path and value in place, until the topic card comes. */
-@Composable
-private fun Expanded(node: TopicNode, value: TopicValue) {
-    val colors = AppTheme.colors
-    val text = remember(value) {
-        when {
-            value.payload.isEmpty() -> null
-            else -> decodeUtf8(value.payload)?.let { multiLineText(it, EXPANDED_CHARS) } ?: hexPreview(value.payload, EXPANDED_CHARS / 3)
-        }
-    }
-    SelectionContainer {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 54.dp, top = 8.dp)
-                .background(colors.card, RoundedCornerShape(12.dp))
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(node.path.format(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.muted)
-            Text(
-                text ?: stringResource(if (value.cleared) R.string.mqtt_cleared else R.string.mqtt_empty_value),
-                fontSize = 13.sp,
-                fontFamily = if (text != null) FontFamily.Monospace else FontFamily.Default,
-                color = if (text != null) colors.ink else colors.muted,
-            )
-            Text(
-                listOfNotNull(
-                    shortTime(Instant.ofEpochMilli(value.receivedAt)),
-                    stringResource(R.string.mqtt_qos, value.qos),
-                    stringResource(R.string.mqtt_retained).takeIf { value.retained },
-                ).joinToString(" · "),
-                fontSize = 12.sp,
-                color = colors.muted,
-            )
-        }
-    }
-}
-
 /** The topics under the level whose path holds the query, as paths relative to it; a tap shows the topic in its level. */
 @Composable
 private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues, onOpen: (SearchHit) -> Unit) {
@@ -523,7 +483,7 @@ private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(role = Role.Button, onClickLabel = stringResource(R.string.mqtt_show_value)) { onOpen(hit) }
+                    .clickable(role = Role.Button, onClickLabel = stringResource(R.string.mqtt_open_card)) { onOpen(hit) }
                     .padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -587,4 +547,4 @@ private fun topicProblemText(problem: TopicProblem): String = when (problem) {
     TopicProblem.TOO_LONG -> stringResource(R.string.mqtt_topic_too_long, MAX_TOPIC_BYTES)
 }
 
-private fun count(n: Int): String = NumberFormat.getIntegerInstance().format(n)
+internal fun count(n: Int): String = NumberFormat.getIntegerInstance().format(n)

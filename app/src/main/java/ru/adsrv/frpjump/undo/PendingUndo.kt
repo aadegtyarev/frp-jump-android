@@ -129,6 +129,15 @@ class PendingUndo(
             return hidden.filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
         }
 
+        /** The key of pin [filter] of [profile]'s connection [connectionId]. */
+        fun mqttPinKey(profile: String, connectionId: String, filter: String) = "mqttpin:$profile/$connectionId\u0000$filter"
+
+        /** The pins of [profile]'s connection [connectionId] among [hidden], as topic filters. */
+        fun mqttPins(hidden: Set<String>, profile: String, connectionId: String): Set<String> {
+            val prefix = "mqttpin:$profile/$connectionId\u0000"
+            return hidden.filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
+        }
+
         /** The key of snippet [id]. */
         fun snippetKey(id: String) = "snippet:$id"
     }
