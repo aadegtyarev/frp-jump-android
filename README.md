@@ -352,8 +352,11 @@ per (profile, device, target port) in `web_certs.json`. A different
 certificate later asks again, showing both fingerprints. Files of an HTTPS
 connection are not handed to the system downloader, which would not trust
 the pinned certificate; the app says so. The web view: JavaScript and DOM storage on, cookies kept, Back walks the
-page history, the top bar has the title, the URL, Reload and "Open in
-browser". Only loopback pages stay in the app; links to other hosts (and
+page history. The top bar is a thin one (44 dp) with the page's title,
+"Full screen" and "⋮" (the address, which a tap copies; Reload; "Open in
+browser"). Full screen hides the bar and the system bars; a small round
+button, which can be dragged aside, and Back leave it. The choice is kept
+for the next page. Only loopback pages stay in the app; links to other hosts (and
 `mailto:`, `tel:`, …) go to other apps. Downloads go to the system
 DownloadManager with the page's cookies; files a page makes itself (`blob:`)
 cannot be handed over, use "Open in browser" for those. WebSockets to the

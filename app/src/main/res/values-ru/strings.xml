@@ -200,6 +200,8 @@
     <string name="copy_address">Скопировать адрес</string>
     <string name="terminal_copied">В буфере обмена: %s</string>
     <string name="address_copied">Скопировано: %s</string>
+    <string name="fullscreen">На весь экран</string>
+    <string name="fullscreen_exit">Свернуть</string>
     <string name="open_in_browser">Открыть в браузере</string>
     <string name="open_in_ssh_app">Открыть в другом приложении</string>
     <string name="no_ssh_app">Нет приложения, которое открывает ссылки ssh://.</string>

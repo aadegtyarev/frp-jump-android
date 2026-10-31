@@ -74,6 +74,22 @@ val PowerGlyph: ImageVector = glyph("Power") {
     arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = false, x1 = 17.1f, y1 = 6.9f)
 }
 
+/** Four corners pointing out: "Full screen". */
+val FullscreenGlyph: ImageVector = glyph("Fullscreen") {
+    moveTo(4f, 9f); verticalLineTo(4f); horizontalLineTo(9f)
+    moveTo(15f, 4f); horizontalLineTo(20f); verticalLineTo(9f)
+    moveTo(20f, 15f); verticalLineTo(20f); horizontalLineTo(15f)
+    moveTo(9f, 20f); horizontalLineTo(4f); verticalLineTo(15f)
+}
+
+/** Four corners pointing in: "Exit full screen". */
+val FullscreenExitGlyph: ImageVector = glyph("FullscreenExit") {
+    moveTo(4f, 9f); horizontalLineTo(9f); verticalLineTo(4f)
+    moveTo(15f, 4f); verticalLineTo(9f); horizontalLineTo(20f)
+    moveTo(20f, 15f); horizontalLineTo(15f); verticalLineTo(20f)
+    moveTo(9f, 20f); verticalLineTo(15f); horizontalLineTo(4f)
+}
+
 /** A plus, for "add" buttons. */
 val PlusGlyph: ImageVector = glyph("Plus", 2.4f) {
     moveTo(12f, 5f)
