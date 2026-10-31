@@ -7,7 +7,6 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -76,6 +75,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
@@ -92,6 +92,7 @@ import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.FullscreenGlyph
 import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.ui.userMessage
 
@@ -124,7 +125,7 @@ fun TerminalScreen(
         scope.launch {
             val failure = withContext(Dispatchers.IO) { runCatching { snippetStore.change() }.exceptionOrNull() }
             if (failure != null) {
-                Toast.makeText(context, context.getString(R.string.snippet_save_failed, failure.userMessage()), Toast.LENGTH_LONG).show()
+                context.notice(context.getString(R.string.snippet_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
             }
         }
     }
@@ -153,7 +154,7 @@ fun TerminalScreen(
         val before = shownId
         shownId = selected?.id
         if (saysTunnelClosed(before, shownId, { sessions.find(it) != null }, sessions::closedByTunnel)) {
-            Toast.makeText(context, context.getString(R.string.ssh_tunnel_closed), Toast.LENGTH_SHORT).show()
+            context.notice(context.getString(R.string.ssh_tunnel_closed), NoticeKind.INFO)
         }
     }
     LaunchedEffect(list.isEmpty()) { if (list.isEmpty()) onBack() }
@@ -162,7 +163,7 @@ fun TerminalScreen(
         val live = sessions.sessions.value.count { it.state.value !is SshState.Ended }
         if (live > 0 && !sessions.leftRunningHintShown) {
             sessions.leftRunningHintShown = true
-            Toast.makeText(context, context.resources.getQuantityString(R.plurals.terminal_left_running, live, live), Toast.LENGTH_LONG).show()
+            context.notice(context.resources.getQuantityString(R.plurals.terminal_left_running, live, live), NoticeKind.INFO, long = true)
         }
         onBack()
     }
@@ -170,7 +171,7 @@ fun TerminalScreen(
     val gone = stringResource(R.string.terminal_session_gone)
     // A new tab is selected; when the session to copy closed meanwhile, a toast says so.
     fun openedOrGone(opened: SshSession?) {
-        if (opened != null) selectedId = opened.id else Toast.makeText(context, gone, Toast.LENGTH_SHORT).show()
+        if (opened != null) selectedId = opened.id else context.notice(gone, NoticeKind.WARN)
     }
     // Closing the tab shown shows its neighbour, not the first tab.
     fun closeTab(id: Int) {
@@ -370,7 +371,7 @@ fun TerminalScreen(
                     snippets = snippets,
                     onSend = { text, run ->
                         if (state != SshState.Open) {
-                            Toast.makeText(context, notOpen, Toast.LENGTH_SHORT).show()
+                            context.notice(notOpen, NoticeKind.WARN)
                         } else {
                             // The Enter key sends CR; so do line breaks inside a command.
                             val line = text.replace("\r\n", "\r").replace('\n', '\r')
@@ -396,7 +397,7 @@ fun TerminalScreen(
     LaunchedEffect(loginLikeId, loginFrom == null) {
         if (loginLikeId != null && loginFrom == null) {
             loginLikeId = null
-            Toast.makeText(context, gone, Toast.LENGTH_SHORT).show()
+            context.notice(gone, NoticeKind.WARN)
         }
     }
     loginFrom?.let { from ->

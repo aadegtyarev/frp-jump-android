@@ -32,6 +32,7 @@ import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.snippets.SnippetStore
+import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
@@ -117,6 +118,9 @@ class FrpJumpApp : Application() {
     /** Set by the activity while it is started: the current profile then polls every 2 s. */
     val visible = MutableStateFlow(false)
 
+    /** Messages at the top of the app; toasts while no screen of it is started. */
+    val notices by lazy { Notices(this) { visible.value } }
+
     /** Work that must finish even when the screen that started it goes away. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -201,6 +205,7 @@ class FrpJumpApp : Application() {
         appScope.launch(Dispatchers.IO) { PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS) }
         ssh = SshSessions(
             context = this,
+            notices = notices,
             env = sshEnv,
             tunnelsUp = profiles.upTunnels,
             scope = appScope,

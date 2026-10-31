@@ -2,7 +2,6 @@ package ru.adsrv.frpjump.ui.settings
 
 import android.content.Context
 import android.text.format.Formatter
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,9 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.MainButton
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.update.ApkInstaller
 import ru.adsrv.frpjump.update.Release
 import ru.adsrv.frpjump.update.UpdateDownload
@@ -164,4 +165,4 @@ private fun DownloadProgress(context: Context, download: UpdateDownload.Running)
     }
 }
 
-private fun toast(context: Context, text: Int) = Toast.makeText(context, context.getString(text), Toast.LENGTH_LONG).show()
+private fun toast(context: Context, text: Int) = context.notice(context.getString(text), NoticeKind.WARN, long = true)

@@ -26,7 +26,6 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -86,12 +85,14 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.BuildConfig
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
 import ru.adsrv.frpjump.ui.CompactTopBar
 import ru.adsrv.frpjump.ui.FullscreenGlyph
 import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.GoodPages
@@ -217,7 +218,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                         pickFiles.launch(intent)
                     } catch (_: ActivityNotFoundException) {
                         files.deliver(Activity.RESULT_CANCELED, null)
-                        Toast.makeText(context, context.getString(R.string.web_no_file_picker), Toast.LENGTH_SHORT).show()
+                        context.notice(context.getString(R.string.web_no_file_picker), NoticeKind.WARN)
                     }
                 }
             },
@@ -315,7 +316,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 onClick = {
                                     menu = false
                                     clipboard.setText(AnnotatedString(url))
-                                    Toast.makeText(context, context.getString(R.string.address_copied, url), Toast.LENGTH_SHORT).show()
+                                    context.notice(context.getString(R.string.address_copied, url), NoticeKind.DONE, key = "copied")
                                 },
                             )
                             DropdownMenuItem(
@@ -361,7 +362,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                     runCatching { withContext(Dispatchers.IO) { useHttp(context, profile, device, targetPort) } }.getOrDefault(false)
                                 if (!saved) {
                                     val note = if (targetPort == 443) R.string.web_http_on_443 else R.string.web_not_tls_unsaved
-                                    Toast.makeText(context, context.getString(note), Toast.LENGTH_LONG).show()
+                                    context.notice(context.getString(note), NoticeKind.WARN, long = true)
                                 }
                                 webView.loadUrl("http://127.0.0.1:$localPort/")
                             }
@@ -477,7 +478,7 @@ private fun configure(
             when (webNavigationFor(target, tunnelPort)) {
                 WebNavigation.IN_APP -> return false
                 WebNavigation.EXTERNAL -> openExternally(context, target)
-                WebNavigation.BLOCKED -> Toast.makeText(context, context.getString(R.string.web_blocked, target), Toast.LENGTH_SHORT).show()
+                WebNavigation.BLOCKED -> context.notice(context.getString(R.string.web_blocked, target), NoticeKind.WARN)
             }
             return true
         }
@@ -566,15 +567,15 @@ private fun download(
     if (!isTunnelUrl(url, tunnelPort)) {
         when {
             url.startsWith("blob:") || url.startsWith("data:") ->
-                Toast.makeText(context, context.getString(R.string.web_download_page_made), Toast.LENGTH_LONG).show()
-            isLoopbackHttpUrl(url) -> Toast.makeText(context, context.getString(R.string.web_blocked, url), Toast.LENGTH_SHORT).show()
+                context.notice(context.getString(R.string.web_download_page_made), NoticeKind.INFO, long = true)
+            isLoopbackHttpUrl(url) -> context.notice(context.getString(R.string.web_blocked, url), NoticeKind.WARN)
             else -> openExternally(context, url)
         }
         return
     }
     if (url.trim().startsWith("https:", ignoreCase = true)) {
         // DownloadManager checks certificates itself and knows nothing of the one pinned here.
-        Toast.makeText(context, context.getString(R.string.download_https), Toast.LENGTH_LONG).show()
+        context.notice(context.getString(R.string.download_https), NoticeKind.WARN, long = true)
         return
     }
     val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -587,7 +588,7 @@ private fun download(
         CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
         userAgent?.let { request.addRequestHeader("User-Agent", it) }
         context.getSystemService(DownloadManager::class.java).enqueue(request)
-        Toast.makeText(context, context.getString(R.string.web_downloading, name), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.web_downloading, name), NoticeKind.DONE)
     } catch (e: Exception) {
         openExternally(context, url)
     }
@@ -597,7 +598,7 @@ private fun openExternally(context: Context, url: String) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, context.getString(R.string.web_no_app, url), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.web_no_app, url), NoticeKind.WARN)
     }
 }
 

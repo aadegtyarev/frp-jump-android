@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump.ui.connections
 
-import android.widget.Toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +15,7 @@ import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
 import ru.adsrv.frpjump.files.FilesTarget
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
@@ -100,7 +100,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun keepThroughServer(row: ConnectionRow) {
         app.appScope.launch {
             if (!app.directChoices.keepThroughServer(row.profile, row.connection.device)) {
-                Toast.makeText(app, Texts.get(R.string.keep_no_network), Toast.LENGTH_LONG).show()
+                app.notices.show(Texts.get(R.string.keep_no_network), NoticeKind.WARN, long = true)
             }
         }
     }

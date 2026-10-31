@@ -9,7 +9,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -75,6 +74,7 @@ import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.lock.AuthResult
 import ru.adsrv.frpjump.locale.AppLanguage
 import ru.adsrv.frpjump.locale.currentAppLanguage
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.settings.BackgroundPoll
 import ru.adsrv.frpjump.settings.MAX_LOCAL_PORT
 import ru.adsrv.frpjump.settings.MIN_LOCAL_PORT
@@ -94,6 +94,7 @@ import ru.adsrv.frpjump.ui.ThemeGlyph
 import androidx.compose.ui.graphics.vector.ImageVector
 import ru.adsrv.frpjump.ui.MainButton
 import ru.adsrv.frpjump.ui.SecretField
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.profiles.ForgetProfileDialog
 import ru.adsrv.frpjump.ui.profiles.ForgetState
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
@@ -153,7 +154,7 @@ fun SettingsScreen(
                         AuthResult.Cancelled -> context.getString(R.string.lock_not_turned_on)
                         is AuthResult.Failed -> context.getString(R.string.lock_failed, result.message)
                     }
-                    text?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+                    text?.let { context.notice(it, NoticeKind.WARN, long = true) }
                 }
             }
         }
@@ -590,7 +591,7 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
     var pickedKey by remember { mutableStateOf<String?>(null) }
     val pickKey = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) pickedKey = readSmallText(context, uri)
-        if (uri != null && pickedKey == null) Toast.makeText(context, context.getString(R.string.key_file_unreadable), Toast.LENGTH_SHORT).show()
+        if (uri != null && pickedKey == null) context.notice(context.getString(R.string.key_file_unreadable), NoticeKind.WARN)
     }
     AppSheet(title = stringResource(R.string.ssh_public_key), subtitle = state.sshKeySummary, onDismiss = onDismiss) {
         Text(stringResource(R.string.ssh_public_key_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
@@ -612,7 +613,7 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
                     clipboard.setText(AnnotatedString(key))
                     // Android 13+ shows its own confirmation of a copy.
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                        Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
+                        context.notice(context.getString(R.string.copied), NoticeKind.DONE, key = "copied")
                     }
                 }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.copy)) }
                 OutlinedButton(onClick = { shareText(context, key) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.share)) }
@@ -695,14 +696,14 @@ private fun askBatteryExemption(context: Context) {
     val ask = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
     val list = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
     if (!startFirst(context, ask, list)) {
-        Toast.makeText(context, context.getString(R.string.battery_no_settings), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.battery_no_settings), NoticeKind.WARN)
     }
 }
 
 /** Where a screen lock is set; the system settings as a fallback. */
 private fun openSecuritySettings(context: Context) {
     if (!startFirst(context, Intent(Settings.ACTION_SECURITY_SETTINGS), Intent(Settings.ACTION_SETTINGS))) {
-        Toast.makeText(context, context.getString(R.string.lock_no_settings), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.lock_no_settings), NoticeKind.WARN)
     }
 }
 

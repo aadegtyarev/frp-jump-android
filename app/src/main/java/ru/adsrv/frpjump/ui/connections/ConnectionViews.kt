@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -62,6 +61,7 @@ import androidx.core.content.ContextCompat
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
@@ -70,6 +70,7 @@ import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PowerGlyph
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.ssh.KeyLoginDialogs
 import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 
@@ -341,7 +342,7 @@ fun rememberRowActions(
         row.tunnel?.let {
             val address = localAddress(it.localPort)
             clipboard.setText(AnnotatedString(address))
-            Toast.makeText(context, context.getString(R.string.address_copied, address), Toast.LENGTH_SHORT).show()
+            context.notice(context.getString(R.string.address_copied, address), NoticeKind.DONE, key = "copied")
         }
         Unit
     }
@@ -546,7 +547,7 @@ private fun openInBrowser(context: Context, connection: Connection, localPort: I
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$scheme://127.0.0.1:$localPort/")))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, context.getString(R.string.no_browser), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.no_browser), NoticeKind.WARN)
     }
 }
 
@@ -555,7 +556,7 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, context.getString(R.string.no_ssh_app), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.no_ssh_app), NoticeKind.WARN)
     }
 }
 

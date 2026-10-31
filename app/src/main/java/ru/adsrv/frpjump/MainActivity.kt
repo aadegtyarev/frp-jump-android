@@ -9,13 +9,13 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,7 +28,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.lock.AuthResult
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.NoticeHost
 import ru.adsrv.frpjump.ui.LockScreen
 import ru.adsrv.frpjump.ui.isDark
 import androidx.compose.ui.platform.LocalConfiguration
@@ -121,6 +123,9 @@ class MainActivity : AppCompatActivity() {
                                 onUnlock = ::promptUnlock,
                                 onLeave = { moveTaskToBack(true) },
                             )
+                        } else {
+                            // Over every screen and its bars; not over the lock screen, which shows nothing of the app.
+                            Box(Modifier.fillMaxSize()) { NoticeHost(app.notices, Modifier.align(Alignment.TopCenter)) }
                         }
                     }
                 }
@@ -171,7 +176,7 @@ class MainActivity : AppCompatActivity() {
             app.lock.unlock()
             // Unlocked either way; a failed write only means the next start asks again.
             app.appScope.launch(Dispatchers.IO) { runCatching { app.settings.update { it.copy(appLock = false) } } }
-            Toast.makeText(this, getString(R.string.lock_no_screen_lock_off), Toast.LENGTH_LONG).show()
+            app.notices.show(getString(R.string.lock_no_screen_lock_off), NoticeKind.WARN, long = true)
             return
         }
         promptedForLock = true

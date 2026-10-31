@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -46,6 +45,7 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.settings.AppSettings
 
 /** Which screen's full-screen choice: each is remembered on its own. */
@@ -70,7 +70,7 @@ fun rememberFullscreen(of: FullscreenOf): Pair<Boolean, (Boolean) -> Unit> {
             val failure = withContext(Dispatchers.IO) {
                 runCatching { app.settings.update { it.withFullscreen(of, value) } }.exceptionOrNull()
             }
-            if (failure != null) Toast.makeText(app, Texts.get(R.string.settings_save_failed, failure.userMessage()), Toast.LENGTH_LONG).show()
+            if (failure != null) app.notices.show(Texts.get(R.string.settings_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
         }
         Unit
     }

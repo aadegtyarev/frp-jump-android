@@ -288,6 +288,20 @@ side sends its first bytes (QUIC opens the stream lazily): fine for HTTP
 and SSH clients, which speak first or at once; a protocol where the
 server must speak first to an idle client would wait.
 
+## Messages
+
+Short messages ("Address copied", "Downloaded …", what went wrong) appear
+at the top of the app, under the status bar and over the screen's bar, not
+as system toasts at the bottom, which covered cards and buttons. A rounded
+card in the app's colours with a glyph of its kind (done, mind this, for
+information) slides in, goes after about 2.5 s (4 s for longer ones, 6 s
+with a button such as "Open"), and a tap or a swipe up hides it at once;
+TalkBack reads it out. One shows at a time and up to three wait; a newer one
+about the same thing ("copied") takes the place of the older one
+(`notices/NoticeQueue.kt`). While no screen of the app is open (an action
+on a notification), a message is a system toast, as nothing would show it.
+They are not shown over the lock screen.
+
 ## Settings
 
 Grouped as the mockup: the current profile (name and colour, forget),
@@ -569,7 +583,7 @@ each other; both log in through `ssh/SshConnector.kt`.
 - Long press starts selecting: rows get a checkbox, taps add and remove,
   the bar shows the count, "Select all", and Download and Share while a
   file is among the picked (folders and special files are left out, and a
-  toast says how many). Back or ✕ ends it, as does going to another
+  notice says how many). Back or ✕ ends it, as does going to another
   folder. The actions come from `ui/files/FileSelection.kt`, where stage 2
   adds Copy, Move, Rename, Delete. Several files shared at once are
   downloaded to the cache, then shared together.
