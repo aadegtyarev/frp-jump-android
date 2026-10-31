@@ -305,7 +305,7 @@
     <string name="local_port_pinned_elsewhere">Already pinned by the connection to %s.</string>
     <string name="local_port_other_pin">Another connection to this port pins %s; they share one tunnel, so use the same one or Auto.</string>
     <string name="local_port_in_use">The tunnel to %s uses it now. Disconnect it or choose another port.</string>
-    <string name="local_port_taken_pinned">Port %d is taken by another app. The tunnel stays on it: free it, or change the connection’s local port.</string>
+    <string name="local_port_taken_pinned">Port %d is taken by another app. The tunnel stays on it and tries again every 30 s; or free it, or change the connection’s local port.</string>
 
     <!-- Failures in plain words -->
     <string name="error_not_https">Not an https:// server URL: %s</string>

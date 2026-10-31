@@ -17,12 +17,15 @@ import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.HeldPort
 import ru.adsrv.frpjump.connections.LocalPortContext
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
+import ru.adsrv.frpjump.connections.pinToRelease
 import ru.adsrv.frpjump.connections.portPins
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.ports.profilePortPrefix
+import ru.adsrv.frpjump.ports.releasePin
 import ru.adsrv.frpjump.ports.reservePins
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
@@ -138,9 +141,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             val failure = try {
                 withContext(Dispatchers.IO) {
                     runtime.connections.save(connection)
-                    // Reserved at once in the map all profiles share, so no other tunnel gets it, even while this one is off.
-                    connection.localPort?.let { pin ->
-                        runtime.localPorts.update { ports -> reservePins(ports, mapOf(profilePortKey(profile, connection.device, connection.port) to pin)) }
+                    runtime.localPorts.update { ports ->
+                        // A pin given up (back to Auto, or another port) is free for others again...
+                        pinToRelease(previous, runtime.connections.connections.value)?.let { (key, pin) ->
+                            releasePin(ports, profilePortPrefix(profile) + key, pin)
+                        }
+                        // ...and a new one is reserved at once in the map all profiles share, so no other tunnel gets it, even while this one is off.
+                        connection.localPort?.let { pin -> reservePins(ports, mapOf(profilePortKey(profile, connection.device, connection.port) to pin)) }
                     }
                 }
                 null
@@ -171,7 +178,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         scope.launch {
             val all = runtime.connections.connections.value
             val failure = try {
-                withContext(Dispatchers.IO) { runtime.connections.remove(row.connection.id) }
+                withContext(Dispatchers.IO) {
+                    runtime.connections.remove(row.connection.id)
+                    // Its pin, unless another connection to that device and port still has it, is free again.
+                    pinToRelease(row.connection, runtime.connections.connections.value)?.let { (key, pin) ->
+                        runtime.localPorts.update { ports -> releasePin(ports, profilePortPrefix(row.profile) + key, pin) }
+                    }
+                }
                 null
             } catch (e: CancellationException) {
                 throw e

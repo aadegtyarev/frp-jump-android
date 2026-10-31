@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.api.ConsumedGrant
 import ru.adsrv.frpjump.ports.LocalPortAllocator
+import ru.adsrv.frpjump.ports.releasePin
 import ru.adsrv.frpjump.ports.reservePins
 
 /** Pinned local ports in the plan: used as they are, never handed to another tunnel of any profile. */
@@ -53,5 +54,14 @@ class PinnedPlanTest {
     fun `auto tunnels are not pinned`() {
         val plan = planTunnels("p1", listOf(grant("g1", "wb", 80)), mutableMapOf(), allocator, emptySet())
         assertEquals(false, plan.single().pinned)
+    }
+
+    @Test
+    fun `a released pin is free for others, a key holding another port keeps it`() {
+        val ports = mutableMapOf("p1/llm:8080" to 18080, "p1/wb:80" to 40000)
+        releasePin(ports, "p1/wb:80", 18080)
+        assertEquals(40000, ports["p1/wb:80"])
+        releasePin(ports, "p1/llm:8080", 18080)
+        assertEquals(mapOf("p1/wb:80" to 40000), ports)
     }
 }

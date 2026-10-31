@@ -94,7 +94,10 @@ port, which stay keyed by (profile, device, port).
   auto tunnel that is not up is taken, and that tunnel gets another one
   when it next connects. The field is locked while the tunnel is up, as
   the port is. Restore after a reboot and Copy address use the pin
-  (`connections/PinnedPorts.kt`, `reservePins`, `planTunnels`).
+  (`connections/PinnedPorts.kt`, `reservePins`, `planTunnels`). Deleting
+  the connection, or changing it to Auto or another port, releases the
+  old pin from the shared map unless another connection to the same
+  device and port still pins it (`pinToRelease`, `releasePin`).
 - The Connections tab lists every profile's connections, marked with the
   profile's colour: active ones first with state, local address,
   Disconnect and the main action, the rest with a connect button, "⋮" on
@@ -138,8 +141,10 @@ not parse is left in place and nothing is migrated from it; a
   a port. When another app holds a tunnel's port and frpc reports "address
   already in use", the tunnel moves to a free port and frpc reloads (up to
   three times in a row per tunnel). A pinned port (below) never moves: the
-  card says "Port N is taken by another app" and the tunnel stays failed
-  until the port is free or the pin changes.
+  card says "Port N is taken by another app" and the tunnel stays on it,
+  trying it again every 30 s (frpc drops that visitor for one reload and
+  takes it back, the other tunnels untouched; alone, frpc restarts) until
+  it is up, disconnected or no longer pinned.
 - frpc runs from `nativeLibraryDir` as a child process, one per profile with
   tunnels; its config, cert, key and CA are written 0600 into
   `no_backup/frpc/<profile id>/`. The key and the config are

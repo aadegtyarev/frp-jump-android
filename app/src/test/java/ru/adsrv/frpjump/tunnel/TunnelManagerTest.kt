@@ -120,6 +120,7 @@ class TunnelManagerTest {
         directMode = { mode },
         recordTunnels = { record.set("p1", it) },
         pins = { pins },
+        pinnedRetryMs = 200,
     ).apply { portRange = 47100..47199 }
 
     /** The profile's pinned local ports, as its connections give them. */
@@ -346,13 +347,43 @@ class TunnelManagerTest {
         manager.sync()
         assertEquals(18080, frpc.last!!.visitors.single().localPort)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "listen tcp 127.0.0.1:18080: bind: address already in use"))
-        delay(300)
+        delay(100)
+        // Not moved (a rebind would apply at once, on another port).
         assertEquals(1, frpc.applies)
         val tunnel = manager.state.value.tunnels.single()
         assertTrue(tunnel.pinned)
         assertEquals(18080, tunnel.localPort)
         // Said plainly, not frpc's words.
         assertFalse(tunnel.state.detail!!.contains("address already in use"))
+    }
+
+    @Test
+    fun `a pinned tunnel whose port is taken tries the same port again until it is up`() = runBlocking {
+        pins = mapOf("wb:80" to 18080)
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use"))
+        // Alone in frpc: it restarts on the same port after the wait.
+        withTimeout(5_000) { while (frpc.applies < 2) delay(20) }
+        assertEquals(18080, frpc.last!!.visitors.single().localPort)
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
+        val applies = frpc.applies
+        delay(500)
+        assertEquals(applies, frpc.applies)
+    }
+
+    @Test
+    fun `retrying a pinned port leaves the other tunnels in place and takes it back`() = runBlocking {
+        pins = mapOf("wb:80" to 18080)
+        api.consumed = listOf(grant, ConsumedGrant("g2", "secret2", "svc2", "tcp", "wb", 22))
+        manager.sync()
+        frpc.states.value = mapOf(
+            "g1" to VisitorState(TunnelStatus.FAILED, "bind: address already in use"),
+            "g2" to VisitorState(TunnelStatus.RELAYED),
+        )
+        withTimeout(5_000) { while (frpc.applies < 3) delay(20) }
+        // Dropped for one reload, then back on its pin; the other tunnel never left.
+        assertEquals(setOf(18080), frpc.last!!.visitors.filter { it.grantId == "g1" }.map { it.localPort }.toSet())
+        assertTrue(frpc.last!!.visitors.any { it.grantId == "g2" })
     }
 
     @Test

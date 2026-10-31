@@ -87,3 +87,16 @@ data class LocalPortContext(val profile: String, val pins: List<PortPin> = empty
     fun problem(text: String, device: String, port: Int?, editingId: String?): LocalPortProblem? =
         localPortProblem(text, profile, device, port, editingId, pins, held)
 }
+
+/**
+ * The pin [before] held that nothing pins any more once the profile's
+ * connections are [after] ([before] deleted, or changed to "Auto" or to
+ * another port): its tunnel's [localPortKey] and the port, to release from
+ * the shared map. Null when [before] pinned nothing or another connection
+ * to the same device and port still pins that port.
+ */
+fun pinToRelease(before: Connection?, after: List<Connection>): Pair<String, Int>? {
+    val pin = before?.localPort ?: return null
+    val key = localPortKey(before.device, before.port)
+    return if (tunnelPins(after)[key] == pin) null else key to pin
+}

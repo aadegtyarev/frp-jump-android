@@ -120,7 +120,9 @@ re-enroll.
   constant `127.0.0.1:N` (an assistant reaching its backend over a TCP
   tunnel). A pinned port is never given to another tunnel, even while the
   connection is off, and never moved: when another app holds it, the card
-  says so and the tunnel stays failed until it is free or the pin changes.
+  says so and the tunnel stays on it, trying again every 30 s, until it is
+  free or the pin changes. Deleting the connection or setting it back to
+  Auto releases the port.
   Two connections cannot pin the same port; connections to the same device
   and port share their tunnel and its pin; a port another tunnel uses now
   is refused. It cannot be changed while the tunnel is up.

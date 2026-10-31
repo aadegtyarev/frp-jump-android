@@ -318,7 +318,7 @@
     <string name="local_port_pinned_elsewhere">Уже закреплён за подключением к %s.</string>
     <string name="local_port_other_pin">Другое подключение к этому порту закрепило %s; у них один туннель, поэтому укажите тот же порт или «Авто».</string>
     <string name="local_port_in_use">Сейчас его занимает туннель к %s. Отключите его или выберите другой порт.</string>
-    <string name="local_port_taken_pinned">Порт %d занят другим приложением. Туннель остаётся на нём: освободите порт или смените локальный порт подключения.</string>
+    <string name="local_port_taken_pinned">Порт %d занят другим приложением. Туннель остаётся на нём и пробует снова каждые 30 с; освободите порт или смените локальный порт подключения.</string>
 
     <!-- Failures in plain words -->
     <string name="error_not_https">Это не https://-адрес сервера: %s</string>

@@ -86,4 +86,19 @@ class PinnedPortsTest {
         assertEquals(18080, connectionOf(draft, "a", "llm").localPort)
         assertNull(connectionOf(draft.copy(localPortText = ""), "a", "llm").localPort)
     }
+
+    @Test
+    fun `a pin given up is released unless another connection to the tunnel keeps it`() {
+        val pinned = Connection("a", "llm", 8080, PortKind.TCP, localPort = 18080)
+        // Deleted, or back to Auto.
+        assertEquals("llm:8080" to 18080, pinToRelease(pinned, emptyList()))
+        assertEquals("llm:8080" to 18080, pinToRelease(pinned, listOf(pinned.copy(localPort = null))))
+        // Moved to another pin: the old one goes.
+        assertEquals("llm:8080" to 18080, pinToRelease(pinned, listOf(pinned.copy(localPort = 19000))))
+        // Another connection to llm:8080 still pins it.
+        assertNull(pinToRelease(pinned, listOf(Connection("b", "llm", 8080, PortKind.TCP, localPort = 18080))))
+        // Nothing pinned before.
+        assertNull(pinToRelease(pinned.copy(localPort = null), emptyList()))
+        assertNull(pinToRelease(null, emptyList()))
+    }
 }

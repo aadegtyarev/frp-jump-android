@@ -74,3 +74,8 @@ fun reservePins(ports: MutableMap<String, Int>, pinned: Map<String, Int>) {
         ports[key] = port
     }
 }
+
+/** Gives up [port] pinned for [key] in the shared map, so it is free for others again; a key holding another port stays. */
+fun releasePin(ports: MutableMap<String, Int>, key: String, port: Int) {
+    if (ports[key] == port) ports.remove(key)
+}
