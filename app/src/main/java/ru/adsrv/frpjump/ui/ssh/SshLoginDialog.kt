@@ -10,6 +10,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,9 @@ fun SshLoginDialog(
     var remember by rememberSaveable { mutableStateOf(true) }
     val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
     val autofill = LocalAutofillManager.current
+    // Removed by its screen (the tunnel went, the session closed): the fill session ends with it.
+    // After commit() this is a no-op.
+    DisposableEffect(autofill) { onDispose { autofill?.cancel() } }
     // A password typed (or filled in) and sent: the password manager may offer to save it.
     // The dialog closes on Connect, before the login is tried; nothing else to offer then.
     val connect = {
