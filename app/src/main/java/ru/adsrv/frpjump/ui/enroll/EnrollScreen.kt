@@ -12,39 +12,39 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
@@ -119,7 +119,8 @@ private fun InviteCard() {
 private fun LineCard(state: EnrollUiState, vm: EnrollViewModel, onScan: () -> Unit) {
     val colors = AppTheme.colors
     FormCard(title = stringResource(R.string.enroll_step_paste)) {
-        ScanButton(enabled = !state.busy, onScan = onScan, onScanned = vm::onScanned)
+        ScanButton(enabled = !state.busy, onScan = onScan)
+        GalleryButton(enabled = !state.busy, line = state.text, onScanned = vm::onScanned)
         OutlinedTextField(
             value = state.text,
             onValueChange = vm::onText,
@@ -157,17 +158,13 @@ private enum class CameraRefused { ONCE, FOR_GOOD }
 /**
  * "Scan QR code": opens the scanner, asking for the camera at this tap
  * when needed. Refused, a line says why it is wanted (tapping again asks
- * again); refused for good, a line with "Open settings". Either way
- * "From gallery" reads a picture of the code instead, and pasting works.
- * On a phone without a camera only "From gallery" is offered.
+ * again); refused for good, a line with "Open settings". "From gallery"
+ * and pasting work either way. Hidden on a phone without a camera.
  */
 @Composable
-private fun ScanButton(enabled: Boolean, onScan: () -> Unit, onScanned: (String) -> Boolean) {
+private fun ScanButton(enabled: Boolean, onScan: () -> Unit) {
     val context = LocalContext.current
-    if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
-        GalleryFallback(enabled, onScanned)
-        return
-    }
+    if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) return
     val colors = AppTheme.colors
     var refused by rememberSaveable { mutableStateOf<CameraRefused?>(null) }
     // Back from the settings: allowed there, the line goes.
@@ -208,24 +205,28 @@ private fun ScanButton(enabled: Boolean, onScan: () -> Unit, onScanned: (String)
         }
         null -> Unit
     }
-    if (refused != null) GalleryFallback(enabled, onScanned)
 }
 
 /**
- * "From gallery" without the scanner: a code that is an enroll line fills
- * the line as a scan does ([onScanned] takes it); anything else gets the
- * scanner's line about it under the button.
+ * "From gallery", always under "Scan QR code": the main case is a code on
+ * this same phone (sent as a picture, or a screenshot), which its camera
+ * cannot scan. A code that is an enroll line fills the line as a scan does
+ * ([onScanned] takes it); anything else gets the scanner's line about it
+ * under the button, shown until the [line] changes (pasted or scanned).
  */
 @Composable
-private fun GalleryFallback(enabled: Boolean, onScanned: (String) -> Boolean) {
+private fun GalleryButton(enabled: Boolean, line: String, onScanned: (String) -> Boolean) {
     val colors = AppTheme.colors
     var message by rememberSaveable { mutableStateOf<Int?>(null) }
+    /** The line the message was about: another line makes it stale. */
+    var messageLine by rememberSaveable { mutableStateOf(line) }
     val gallery = rememberPicturePicker { result ->
         message = when (result) {
             is PictureQr.Code -> if (onScanned(result.text)) null else R.string.scan_not_enroll
             PictureQr.NoCode -> R.string.scan_no_code
             PictureQr.Unreadable -> R.string.scan_picture_failed
         }
+        messageLine = line
     }
     OutlinedButton(
         onClick = {
@@ -245,7 +246,7 @@ private fun GalleryFallback(enabled: Boolean, onScanned: (String) -> Boolean) {
         }
         Text(stringResource(R.string.scan_from_gallery), fontSize = 15.sp, color = colors.accent, modifier = Modifier.padding(start = 10.dp))
     }
-    message?.let { Text(stringResource(it), fontSize = 13.sp, color = colors.error) }
+    message?.takeIf { messageLine == line }?.let { Text(stringResource(it), fontSize = 13.sp, color = colors.error) }
 }
 
 private fun cameraAllowed(context: Context): Boolean =

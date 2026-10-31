@@ -129,6 +129,24 @@ class QrPictureTest {
     }
 
     @Test
+    fun overLongOrControlCharacterPayloadIsRefused() {
+        val url = "https://way.example.com"
+        val payloads = mapOf(
+            // An over-long token: the parser takes its last characters, so the URL no longer ends where a word does.
+            "frp-jump-client enroll $url $token${"x".repeat(1200)}" to EnrollLineProblem.TOKEN_LENGTH,
+            // Control characters a terminal or a crafted code could carry.
+            "frp-jump-client enroll https://way.exa\u001B[31mmple.com $token" to EnrollLineProblem.BAD_URL,
+            "frp-jump-client enroll $url\u0000 $token" to EnrollLineProblem.BAD_URL,
+            "frp-jump-client enroll $url ${token.dropLast(1)}\u0007" to EnrollLineProblem.BAD_TOKEN,
+        )
+        for ((payload, problem) in payloads) {
+            val text = decode(picture(payload, scale = 4, width = 760, height = 760, left = 40, top = 40))
+            assertEquals("the code reads as it was written", payload, text)
+            assertEquals(EnrollLineResult.Error(problem), EnrollLineParser.parse(text!!))
+        }
+    }
+
+    @Test
     fun scaledSizeKeepsSmallPictures() {
         assertEquals(1080 to 2000, QrPicture.scaledSize(1080, 2000))
         assertEquals(300 to 200, QrPicture.scaledSize(300, 200))

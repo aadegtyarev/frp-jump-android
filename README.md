@@ -722,13 +722,13 @@ with block characters. In the app, "Add profile" (or the first screen):
   on a light terminal the code comes out inverted; the scanner reads both.
   Refused once, a line says what the camera is for; refused for good, a
   line offers "Open settings". Pasting works either way.
-- "From gallery" (on the scanner, and under "Scan QR code" when the camera
-  is refused or missing) reads a picture of the code instead: a screenshot,
-  or the code sent as an image to this same phone, which cannot scan its
-  own screen. It opens the system photo picker, images only, with no
+- "From gallery" (under "Scan QR code", and on the scanner beside the
+  torch) reads a picture of the code instead: a screenshot, or the code
+  sent as an image to this same phone, which cannot scan its own screen. It opens the system photo picker, images only, with no
   storage permission. An enroll line fills the field as a scan does; a
   picture without a code says "No QR code found in this picture", another
-  code says it is not an enroll line, and the scanner stays.
+  code says it is not an enroll line, and the scanner stays. On the form
+  that line goes once the enroll line changes.
 - Or paste the printed `frp-jump-client enroll https://… <token> --name phone`
   line as is; line breaks from a narrow terminal are fine. A bare
   `<url> <token>` works too. Without `--name` on the laptop the line ends in

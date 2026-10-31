@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -231,21 +232,20 @@ fun QrScannerScreen(onScanned: (String) -> Boolean, onClose: () -> Unit) {
             IconButton(onClick = onClose, colors = overlayButton(false)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
             }
-            IconButton(onClick = ::switchTorch, enabled = camera != null, colors = overlayButton(torch)) {
-                Icon(TorchGlyph, contentDescription = stringResource(if (torch) R.string.scan_torch_off else R.string.scan_torch_on))
+            // Up here with the torch, clear of the hint and message under the viewfinder on any screen.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                GalleryButton(
+                    busy = gallery.busy,
+                    onClick = {
+                        message = null
+                        gallery.pick()
+                    },
+                )
+                IconButton(onClick = ::switchTorch, enabled = camera != null, colors = overlayButton(torch)) {
+                    Icon(TorchGlyph, contentDescription = stringResource(if (torch) R.string.scan_torch_off else R.string.scan_torch_on))
+                }
             }
         }
-        GalleryButton(
-            busy = gallery.busy,
-            onClick = {
-                message = null
-                gallery.pick()
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .safeDrawingPadding()
-                .padding(bottom = 24.dp),
-        )
     }
 }
 
@@ -258,9 +258,9 @@ private fun overlayButton(on: Boolean) = IconButtonDefaults.iconButtonColors(
     disabledContentColor = Color.White.copy(alpha = 0.4f),
 )
 
-/** "From gallery" at the bottom, light on the camera as the top buttons; a spinner in place of its icon while the picture is read. */
+/** "From gallery" beside the torch, light on the camera as the other buttons; a spinner in place of its icon while the picture is read. */
 @Composable
-private fun GalleryButton(busy: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun GalleryButton(busy: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = !busy,
@@ -271,15 +271,16 @@ private fun GalleryButton(busy: Boolean, onClick: () -> Unit, modifier: Modifier
             disabledContainerColor = Color.Black.copy(alpha = 0.45f),
             disabledContentColor = Color.White.copy(alpha = 0.7f),
         ),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        modifier = modifier,
+        contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+        // As tall as the icon buttons beside it.
+        modifier = Modifier.height(40.dp),
     ) {
         if (busy) {
-            CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
+            CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
         } else {
-            Icon(PictureGlyph, contentDescription = null, modifier = Modifier.size(22.dp))
+            Icon(PictureGlyph, contentDescription = null, modifier = Modifier.size(20.dp))
         }
-        Text(stringResource(R.string.scan_from_gallery), fontSize = 15.sp, modifier = Modifier.padding(start = 10.dp))
+        Text(stringResource(R.string.scan_from_gallery), fontSize = 14.sp, modifier = Modifier.padding(start = 8.dp))
     }
 }
 
