@@ -21,7 +21,7 @@ mkdir -p "$WORK"
 if [ ! -d "$WORK/frp-$FRP_VERSION" ]; then
   git clone -q --depth 1 --branch "v$FRP_VERSION" https://github.com/fatedier/frp.git "$WORK/frp-$FRP_VERSION"
 fi
-HEAD_COMMIT=$(git -C "$WORK/frp-$FRP_VERSION" rev-parse HEAD)
+HEAD_COMMIT=$(git -C "$WORK/frp-$FRP_VERSION" rev-parse HEAD 2>/dev/null) || HEAD_COMMIT=none
 if [ "$HEAD_COMMIT" != "$FRP_COMMIT" ]; then
   echo "frp v$FRP_VERSION is $HEAD_COMMIT, not the pinned $FRP_COMMIT; remove $WORK/frp-$FRP_VERSION if the tag moved on purpose" >&2
   exit 1
