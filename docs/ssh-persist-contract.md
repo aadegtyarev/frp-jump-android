@@ -81,15 +81,17 @@ today, still with auto-reconnect.
 - The command:
 
   ```
-  exec tmux -u new-session -A -s 'frpjump-<install>-<n>' ';' set-option -t '=frpjump-<install>-<n>:' status off ';' set-option -t '=frpjump-<install>-<n>:' mouse on
+  exec tmux -u new-session -A -D -s 'frpjump-<install>-<n>' ';' set-option -t '=frpjump-<install>-<n>:' status off ';' set-option -t '=frpjump-<install>-<n>:' mouse on
   ```
 
   `-A` attaches when the session exists and creates it otherwise, so the
   first open, a reconnect and the pick-up after a kill are the same command.
+  `-D` detaches other clients of the session, such as the one left from the
+  dropped connection that sshd has not noticed yet.
   `-u`: UTF-8 even when the non-login exec has no `LANG`. Targets are exact
   (`=name` for a session, `=name:` for a pane), so `-1` never matches
   `-10`. Every argument is single-quoted and the separator is `';'`, which
-  reads the same in sh, bash, zsh and fish. `tmux` is found on the exec's
+  reads the same in sh, bash, zsh and fish (checked with each). `tmux` is found on the exec's
   PATH, the same one the probe used. The probe is
   `command -v tmux >/dev/null && echo frpjump-tmux && tmux has-session -t '=<name>' && echo frpjump-attach`:
   only its own markers count, and it also tells whether the session still
@@ -267,6 +269,16 @@ On a Wiren Board reached over the tunnel, from the owner's phone:
 - **The owner's tmux config can disagree** (another prefix, `mouse off` in a
   hook, a `destroy-unattached` setting); per-session options win only for
   what they set.
+- **Writer stall on a hung copy-mode exit.** The owner's first key after a
+  scroll waits for that exec; if the device does not answer, keys wait up to
+  10 s, then go anyway.
+- **tmux 2.4 or later needed** (`=` exact targets need 2.1, `send-keys -X`
+  2.4). An older or broken tmux that exits with an error within 5 s makes
+  the tab fall back to a plain shell at once, with a line saying so, and the
+  tab keeps to plain shells.
+- **`mouse on` overrides the owner's mouse setting** for the app's sessions
+  only; a laptop attached to one of them gets the mouse on too, and is
+  detached when the phone re-attaches (`-D`).
 - **A tmux session alive but its tab gone** (Close while the connection was
   down) lingers until "Close all sessions of this phone".
 - **Long drops** past 10 minutes need one tap on Reconnect; the commands

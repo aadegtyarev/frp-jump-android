@@ -1,13 +1,16 @@
 package ru.adsrv.frpjump.ssh
 
+import java.io.InputStream
+
 /*
  * The commands a terminal tab runs on the device for tmux, each one string
  * for an SSH exec channel: the device's sshd hands it to the login user's
  * shell as `<shell> -c '<command>'`, non-login and non-interactive.
  *
  * - Every argument the app chooses is single-quoted ([shellQuote]); that
- *   reads the same in sh, bash, zsh, fish and csh. The tmux command
- *   separator is a quoted `';'`, not `\;`.
+ *   reads the same in sh, bash, zsh and fish (checked against tmux 3.1c
+ *   with each as the login shell). The tmux command separator is a quoted
+ *   `';'`, not `\;`.
  * - `tmux` is called by name. The probe and the launch run in the same exec
  *   environment (sshd's default PATH, e.g. /usr/local/bin:/usr/bin:/bin), so
  *   when the probe finds it the launch does too; a tmux only on a
@@ -19,6 +22,7 @@ package ru.adsrv.frpjump.ssh
  *   kill-session must never end another tab's session.
  * - Nothing global: only `set-option -t <session>`; ~/.tmux.conf is never
  *   read or written by the app.
+ * - Needs tmux 2.4 or later (`=` targets, `send-keys -X`); Debian 11 has 3.1.
  */
 
 /** A name of the app's tmux sessions: `frpjump-<install>-<n>`, lower-case hex and digits only. */
@@ -68,7 +72,10 @@ fun parseTmuxProbe(output: String): TmuxProbe {
 
 /**
  * The tab's channel, run with the PTY instead of a login shell: attach to
- * session [name] or create it (`-A`), then its own options. `exec` replaces
+ * session [name] or create it (`-A`), then its own options. `-D` detaches
+ * other clients of the session: the one left from a dropped connection
+ * (sshd may not have noticed the drop yet) no longer holds the window to
+ * its size; a laptop attached to the same session is detached too. `exec` replaces
  * the user's shell, so tmux's exit status is the channel's. `-u`: UTF-8
  * even when the non-login exec has no LANG. TERM is the PTY's
  * (`xterm-256color`), set by sshd from the pty request.
@@ -76,7 +83,7 @@ fun parseTmuxProbe(output: String): TmuxProbe {
 fun tmuxAttachCommand(name: String): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     val target = shellQuote("=$name:")
-    return "exec tmux -u new-session -A -s ${shellQuote(name)}" +
+    return "exec tmux -u new-session -A -D -s ${shellQuote(name)}" +
         " ';' set-option -t $target status off" +
         " ';' set-option -t $target mouse on"
 }
@@ -95,6 +102,33 @@ fun tmuxKillCommand(name: String): String {
 fun tmuxLeaveModeCommand(name: String): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     return "tmux if-shell -F -t ${shellQuote("=$name:")} '#{pane_in_mode}' ${shellQuote("send-keys -t =$name: -X cancel")}"
+}
+
+/** How long a tmux channel may run and still count as "tmux did not start" when it ends with an error. */
+const val TMUX_START_WINDOW_MS = 5_000L
+
+/**
+ * Whether the tab's channel that just ended means tmux cannot run there
+ * (a missing terminfo, a broken config, an old tmux): it ran tmux
+ * ([inUse]), ended with a non-zero [exitStatus] within
+ * [TMUX_START_WINDOW_MS] ([ranMs]). The tab then opens a plain shell at
+ * once and keeps to it, so the owner is never locked out of the device.
+ * A drop (no status), a normal exit or detach (0) and a late failure are
+ * not this.
+ */
+fun tmuxFailedToStart(inUse: Boolean, exitStatus: Int?, ranMs: Long): Boolean =
+    inUse && exitStatus != null && exitStatus != 0 && ranMs in 0 until TMUX_START_WINDOW_MS
+
+/** At most [max] bytes of [input] up to its end, as UTF-8: the probe's few lines, never more than that. */
+fun readUpTo(input: InputStream, max: Int): String {
+    val buffer = ByteArray(max)
+    var total = 0
+    while (total < max) {
+        val n = input.read(buffer, total, max - total)
+        if (n < 0) break
+        total += n
+    }
+    return String(buffer, 0, total, Charsets.UTF_8)
 }
 
 /** How a tab's connection came up, for what the owner is told. */

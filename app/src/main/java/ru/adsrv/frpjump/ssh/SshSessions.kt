@@ -131,7 +131,7 @@ class SshSessions(
         // The same tab, so the same tmux session: it is attached to again when it still runs.
         val fresh = SshSession(
             nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
-            tmuxName = old.tmux.assigned, onReattached = ::sayReattached,
+            tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
         )
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         // After the tries of a drop ran out, the same login tries again the same way.

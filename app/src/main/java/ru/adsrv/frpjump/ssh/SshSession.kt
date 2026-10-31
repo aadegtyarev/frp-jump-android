@@ -85,13 +85,19 @@ class SshSession(
     val number: Int = 1,
     /** The tmux session of the tab it replaces (Reconnect), to attach to again; null for a new tab. */
     tmuxName: String? = null,
+    /** The tab it replaces had tmux fail to start: plain shells only. */
+    noTmux: Boolean = false,
     /** Back on the tab's tmux session after a drop or Reconnect: a short notice says so. */
     private val onReattached: () -> Unit = {},
 ) {
     val terminal = RemoteTerminal(terminalClient)
 
     /** The tab's tmux session; see [TabTmux]. */
-    val tmux = TabTmux(env.tmuxNames, tmuxName)
+    val tmux = TabTmux(env.tmuxNames, tmuxName, noTmux)
+
+    /** When the current tmux channel started ([System.nanoTime]), for [tmuxFailedToStart]. */
+    @Volatile
+    private var channelStartedAt = 0L
 
     private val copyMode = CopyModeGuard()
 
@@ -293,7 +299,9 @@ class SshSession(
             ssh.startSession().use { s ->
                 val command = s.exec(tmuxProbeCommand(name))
                 command.join(TMUX_EXEC_TIMEOUT_S, TimeUnit.SECONDS)
-                parseTmuxProbe(command.inputStream.bufferedReader().readText())
+                // join() may come back with the channel still open: no answer is no answer.
+                if (command.isOpen) throw IOException("tmux probe did not finish")
+                parseTmuxProbe(readUpTo(command.inputStream, PROBE_MAX_BYTES))
             }
         } catch (e: IOException) {
             if (!ssh.isConnected) throw e
@@ -352,7 +360,7 @@ class SshSession(
             connector.authenticate(ssh)
             // One short exec first: with tmux the tab's channel attaches to (or creates) its session.
             val name = tmux.name()
-            val probe = probeTmux(ssh, name)
+            val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name)
             val channel = ssh.startSession() as SessionChannel
             val columns = terminal.columns
             val rows = terminal.rows
@@ -363,6 +371,7 @@ class SshSession(
                 return
             }
             tmux.inUse = probe != TmuxProbe.ABSENT
+            channelStartedAt = System.nanoTime()
             copyMode.active = tmux.inUse
             shell = channel
             when (resumed(dropped, probe)) {
@@ -406,12 +415,29 @@ class SshSession(
         val signal = channel.exitSignal != null
         runCatching { ssh.disconnect() }
         if (closedByUser) return
+        val ranMs = (System.nanoTime() - channelStartedAt) / 1_000_000
+        if (tmuxFailedToStart(tmux.inUse && !tmux.disabled, status, ranMs) && status != null) {
+            fallBackToPlainShell(status)
+            return
+        }
         val reason = when {
             error != null -> Texts.get(R.string.ssh_connection_lost, error.message ?: error.javaClass.simpleName)
             status != null -> Texts.get(R.string.ssh_logged_out, status)
             else -> Texts.get(R.string.ssh_connection_closed)
         }
         if (shellDropped(status, signal)) drop(reason) else end(reason)
+    }
+
+    /** tmux could not start here: say so, and open a plain shell in the tab at once, for good. */
+    private fun fallBackToPlainShell(status: Int) {
+        if (!_state.compareAndSet(SshState.Open, SshState.Connecting)) return
+        tmux.disabled = true
+        tmux.inUse = false
+        copyMode.active = false
+        shell = null
+        terminal.pause()
+        terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_tmux_failed, status) + "]\r\n")
+        scope.launch(Dispatchers.IO) { run(retrying = false) }
     }
 
     /** The connection went under the shell: keep the tab and its text, take no keys, and try again. */
@@ -453,5 +479,8 @@ class SshSession(
 
         /** The most a tmux probe, kill or copy-mode exec may take. */
         const val TMUX_EXEC_TIMEOUT_S = 10L
+
+        /** The probe prints two short lines; anything past this is not read. */
+        const val PROBE_MAX_BYTES = 4096
     }
 }

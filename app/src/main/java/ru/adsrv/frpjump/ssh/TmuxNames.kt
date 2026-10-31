@@ -67,7 +67,7 @@ class TmuxNames(private val storage: TextStorage, private val random: Random = S
  * runs tmux. In memory only: the tab keeps it while it lives, and a tab
  * that replaces it in place (Reconnect) is handed [initial].
  */
-class TabTmux(private val names: TmuxNames, initial: String? = null) {
+class TabTmux(private val names: TmuxNames, initial: String? = null, disabled: Boolean = false) {
     /** The name once made (or handed over), else null. */
     @Volatile
     var assigned: String? = initial
@@ -76,6 +76,10 @@ class TabTmux(private val names: TmuxNames, initial: String? = null) {
     /** The tab's name, made on first call. */
     @Synchronized
     fun name(): String = assigned ?: names.next().also { assigned = it }
+
+    /** tmux failed to start in this tab ([tmuxFailedToStart]): it opens plain shells from now on. */
+    @Volatile
+    var disabled: Boolean = disabled
 
     /** The connection now open runs tmux ([TmuxProbe.FRESH] or [TmuxProbe.EXISTING]). */
     @Volatile

@@ -19,7 +19,7 @@ class TmuxCommandsTest {
     @Test
     fun `the commands as sent to the device`() {
         assertEquals(
-            "exec tmux -u new-session -A -s 'frpjump-0a1b2c-7' ';' set-option -t '=frpjump-0a1b2c-7:' status off ';' set-option -t '=frpjump-0a1b2c-7:' mouse on",
+            "exec tmux -u new-session -A -D -s 'frpjump-0a1b2c-7' ';' set-option -t '=frpjump-0a1b2c-7:' status off ';' set-option -t '=frpjump-0a1b2c-7:' mouse on",
             tmuxAttachCommand(name),
         )
         assertEquals("tmux kill-session -t '=frpjump-0a1b2c-7'", tmuxKillCommand(name))
@@ -54,7 +54,7 @@ class TmuxCommandsTest {
     @Test
     fun `sh hands tmux exactly the intended arguments`() {
         assertEquals(
-            listOf("-u", "new-session", "-A", "-s", name, ";", "set-option", "-t", "=$name:", "status", "off", ";", "set-option", "-t", "=$name:", "mouse", "on"),
+            listOf("-u", "new-session", "-A", "-D", "-s", name, ";", "set-option", "-t", "=$name:", "status", "off", ";", "set-option", "-t", "=$name:", "mouse", "on"),
             argsVia(tmuxAttachCommand(name)),
         )
         assertEquals(listOf("kill-session", "-t", "=$name"), argsVia(tmuxKillCommand(name)))
@@ -97,6 +97,27 @@ class TmuxCommandsTest {
         // A plain shell: nothing of tmux to end.
         assertNull(tmuxToKill(endTmux = true, wasOpen = true, inUse = false, name = name))
         assertNull(tmuxToKill(endTmux = true, wasOpen = true, inUse = true, name = null))
+    }
+
+    @Test
+    fun `tmux failing at once falls back to a plain shell, nothing else does`() {
+        assertTrue(tmuxFailedToStart(inUse = true, exitStatus = 1, ranMs = 200))
+        assertTrue(tmuxFailedToStart(inUse = true, exitStatus = 127, ranMs = TMUX_START_WINDOW_MS - 1))
+        // Ran a while: the session's own end, told as usual.
+        assertFalse(tmuxFailedToStart(inUse = true, exitStatus = 1, ranMs = TMUX_START_WINDOW_MS))
+        // Detached or the session ended: a normal end.
+        assertFalse(tmuxFailedToStart(inUse = true, exitStatus = 0, ranMs = 200))
+        // A drop: reconnect, not fall back.
+        assertFalse(tmuxFailedToStart(inUse = true, exitStatus = null, ranMs = 200))
+        // A plain shell (or tmux already given up in this tab).
+        assertFalse(tmuxFailedToStart(inUse = false, exitStatus = 1, ranMs = 200))
+    }
+
+    @Test
+    fun `the probe output is read up to a bound`() {
+        assertEquals("frpjump-tmux\n", readUpTo("frpjump-tmux\n".byteInputStream(), 4096))
+        assertEquals("abcd", readUpTo("abcdefgh".byteInputStream(), 4))
+        assertEquals("", readUpTo(ByteArray(0).inputStream(), 4096))
     }
 
     /** The arguments a fake `tmux` gets when [command] runs under `sh -c`. */
