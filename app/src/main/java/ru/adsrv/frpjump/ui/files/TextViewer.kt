@@ -4,8 +4,6 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.os.Build
 import android.os.PersistableBundle
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -126,23 +124,14 @@ private sealed interface Loaded {
  * scrolled sideways, coloured by its format as the colours are worked out
  * off the main thread; search with next / previous; "⋮" for wrapping, line
  * numbers, text size ([fontSize], the terminal's), Copy all, Share, Open with.
- * As it goes, [onGone] gets its file and whether it was handed to another
- * app (then it is kept a while for that app; else it is deleted).
+ Share and Open with go through [onHandOver] (share or not), which hands
+ * on a copy of the file; [onClose] is the one way out, and deletes it.
  */
 @Composable
-fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () -> Unit, onGone: (File, Boolean) -> Unit) {
+fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () -> Unit, onHandOver: (Boolean) -> Unit) {
     val colors = AppTheme.colors
     val context = LocalContext.current
     val file = remember(viewed) { File(viewed.local) }
-    // Share or Open with from here: the other app may read the file after the viewer closes.
-    var handedOver by rememberSaveable(viewed) { mutableStateOf(false) }
-    val currentHandedOver by rememberUpdatedState(handedOver)
-    val currentOnGone by rememberUpdatedState(onGone)
-    DisposableEffect(viewed) { onDispose { currentOnGone(file, currentHandedOver) } }
-    val handOverFile = { share: Boolean ->
-        handedOver = true
-        handOver(context, file, viewerType(viewed.name), viewed.name, share = share)
-    }
     var attempt by remember { mutableIntStateOf(0) }
     var loaded by remember(viewed) { mutableStateOf<Loaded>(Loaded.Reading) }
     LaunchedEffect(viewed, attempt) {
@@ -301,8 +290,8 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                                 onNumbers = { numbers = !numbers },
                                 onFont = { fontSize.value = it.coerceIn(MIN_FONT_SP, MAX_FONT_SP) },
                                 onCopy = { ready?.let { copyAll(context, viewed.name, it.doc.text) } },
-                                onShare = { handOverFile(true) },
-                                onOpenWith = { handOverFile(false) },
+                                onShare = { onHandOver(true) },
+                                onOpenWith = { onHandOver(false) },
                             )
                         }
                     },
@@ -320,7 +309,7 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                 is Loaded.Failed -> ReadFailed(
                     message = l.message,
                     onRetry = { attempt++ },
-                    onOpenWith = { handOverFile(false) },
+                    onOpenWith = { onHandOver(false) },
                 )
                 is Loaded.Ready -> {
                     val doc = l.doc
@@ -565,7 +554,7 @@ private fun copyAll(context: Context, name: String, text: String) {
 }
 
 /** The type other apps get the file as: its own, or plain text when its name gives none (it was shown as text). */
-private fun viewerType(name: String): String = PhoneFiles.mimeType(name).takeIf { it != "application/octet-stream" } ?: "text/plain"
+internal fun viewerType(name: String): String = PhoneFiles.mimeType(name).takeIf { it != "application/octet-stream" } ?: "text/plain"
 
 private val ROW_PADDING = 12.dp
 

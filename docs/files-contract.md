@@ -110,11 +110,12 @@ transfers that resume and run in the background.
   `.json`, `.yaml`, `.conf`, `.ini`, `.sh`, `.js`, systemd units, `.env`,
   dotfiles such as `.bashrc`, …) picks the colours; it is looked at all
   the same, as a name can lie.
-- The viewer's copy is deleted as it closes, unless Share or Open with
-  handed it to another app from there (then it is kept as files opened
-  with other apps are). Copies left by a viewer the process lost go at the
-  next start, once a few minutes old. A copy gone from under a viewer (the
-  cache cleared) closes it with a note.
+- The viewer's copy is deleted as it closes. Share and Open with from the
+  viewer hand on a copy of their own, kept as files opened with other apps
+  are. Copies left by a viewer that did not close (the screen or the
+  process went) go once a few minutes old: when a file screen goes, and at
+  the next start. A copy gone from under a viewer (the cache cleared)
+  closes it with a note.
 - It shows the text as UTF-8 (a bad byte shows as �), monospace, line
   numbers off, lines wrapped; "⋮" has Wrap lines, Line numbers, the text
   size (A− / A+, shared with the terminal), Copy all, Share and Open with.

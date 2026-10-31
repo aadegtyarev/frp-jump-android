@@ -223,18 +223,52 @@ class HighlighterTest {
         assertEquals(listOf(long.trimEnd() to Token.MARKER), run(MarkdownHighlighter, long.trimEnd()).single())
     }
 
+    /** [h] over [line]: no exception, pieces in order, not overlapping, within the line; the best time of three after a warm-up, in ms. */
+    private fun checkedBestMs(h: Highlighter, line: String, state: Int = 0): Long {
+        val out = Spans()
+        h.line(line, state, out)
+        val pieces = out.toArray()
+        var last = 0
+        for (k in pieces.indices step 3) {
+            assertTrue("$h: piece in order", pieces[k] >= last && pieces[k] < pieces[k + 1] && pieces[k + 1] <= line.length)
+            last = pieces[k + 1]
+        }
+        return (1..3).minOf {
+            val started = System.nanoTime()
+            h.line(line, state, Spans())
+            (System.nanoTime() - started) / 1_000_000
+        }
+    }
+
+    private fun fill(unit: String, length: Int) = unit.repeat(length / unit.length + 1).take(length)
+
     @Test
-    fun `adversarial lines just under the cap stay fast and never throw`() {
-        val n = MAX_PATTERN_LINE - 1
-        fun fill(unit: String) = unit.repeat(n / unit.length + 1).take(n)
-        val lines = listOf("`", "``a", "[", "[a](", "![a](", "*a", "**a", "_a ", "<http", "http://", "a*", "- ", "> ", "#", ":", "a: ", "- a: ", "&", "\"", "'", "=", "[x", "1.", " ")
-            .map(::fill)
+    fun `adversarial lines just under the cap never throw and stay in budget`() {
+        val units = listOf(
+            "`", "``a", "[", "[a](", "![a](", "*a", "**a", "_a ", "<http", "http://", "a*", "- ", "> ", "#", ":", "a: ", "- a: ",
+            "&", "\"", "'", "=", "[x", "1.", " ", "(/[", "=/", "<<", "\$((", "\${", "/*", "`\${",
+        )
         for (h in listOf(MarkdownHighlighter, LogHighlighter, YamlHighlighter, IniHighlighter, ShellHighlighter, JsHighlighter, JsonHighlighter)) {
-            for (line in lines) {
-                val started = System.nanoTime()
-                h.line(line, 0, Spans())
-                val ms = (System.nanoTime() - started) / 1_000_000
-                assertTrue("$h on ${line.take(8)}…: $ms ms", ms < 250)
+            for (unit in units) {
+                val ms = checkedBestMs(h, fill(unit, MAX_PATTERN_LINE - 1))
+                // Coarse: a slow runner passes; a quadratic blow-up does not.
+                assertTrue("$h on '$unit': $ms ms", ms < 2_000)
+            }
+        }
+    }
+
+    @Test
+    fun `scanners without a length cap stay linear on huge lines`() {
+        val length = 500_000
+        val cases = mapOf(
+            JsonHighlighter to listOf("[", "\"", "\"a\":", "{\"k\":1}", "-", "tru", "\\\""),
+            JsHighlighter to listOf("(/[", "=/", "/*", "'", "`", "\\`", "a.b", "1e", "x /"),
+            ShellHighlighter to listOf("\${", "\"\$", "'", "<<", "((", "\$((", "a=", "# ", "\\"),
+        )
+        for ((h, units) in cases) {
+            for (unit in units) {
+                val ms = checkedBestMs(h, fill(unit, length))
+                assertTrue("$h on '$unit' x ${length / unit.length}: $ms ms", ms < 5_000)
             }
         }
     }
@@ -246,5 +280,14 @@ class HighlighterTest {
         var asked = 0
         assertTrue(colours.advance(10) { ++asked <= 1 })
         assertEquals(1, colours.done)
+    }
+
+    @Test
+    fun `shell shifts in arithmetic and backslash-quoted here-documents`() {
+        assertEquals(listOf("x" to Token.VARIABLE), run(ShellHighlighter, "(( y = 1 << n ))", "x=1")[1])
+        assertEquals(listOf("x" to Token.VARIABLE), run(ShellHighlighter, "echo \$(( a <<EOF ))", "x=1")[1])
+        val lines = run(ShellHighlighter, "cat <<\\EOF", "x='y", "EOF", "x=1")
+        assertEquals(emptyList<Pair<String, Token>>(), lines[1])
+        assertEquals(listOf("x" to Token.VARIABLE), lines[3])
     }
 }

@@ -617,15 +617,26 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         }
     }
 
+    /** The viewer was closed on [viewed]: its copy goes (anything handed on from it was a copy of its own). */
+    fun closeViewed(viewed: ViewedFile) {
+        app.appScope.launch(Dispatchers.IO) { File(viewed.local).parentFile?.deleteRecursively() }
+    }
+
     /**
-     * The viewer closed on [file]: it goes, unless the viewer handed it to
-     * another app ([handedOver]), which may still read it; then it stays as
-     * files opened with other apps do.
+     * Share or Open with from the viewer: a copy of its file into the
+     * cache other apps are served from, handed on from there; the viewer's
+     * own copy stays its own and goes as it closes.
      */
-    fun closeViewed(file: File, handedOver: Boolean) {
+    fun handOverViewed(viewed: ViewedFile, share: Boolean) {
         val profile = target?.profile ?: return
-        app.appScope.launch(Dispatchers.IO) {
-            if (handedOver) PhoneFiles.moveToOpenCache(app, profile, file) else file.parentFile?.deleteRecursively()
+        scope.launch {
+            val copy = try {
+                withContext(Dispatchers.IO) { PhoneFiles.copyToOpenCache(app, profile, File(viewed.local)) }
+            } catch (e: IOException) {
+                toast(Texts.get(R.string.viewer_hand_over_failed, fileProblem(PhoneSideException(e))), NoticeKind.WARN)
+                return@launch
+            }
+            _events.send(FilesEvent.Handover(viewed.path, copy, viewerType(viewed.name), viewed.name, share))
         }
     }
 
@@ -1071,6 +1082,8 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      */
     override fun leave() {
         clearSearch()
+        // A viewer left open as the screen went: its copy is not deleted by a close.
+        app.appScope.launch(Dispatchers.IO) { PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS) }
         _state.update { it.copy(downloads = emptyMap(), uploads = emptyList(), selection = FileSelection()) }
         app.appScope.launch(Dispatchers.IO) { withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() } }
     }
@@ -1100,6 +1113,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
             withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() }
             b?.close()
             PhoneFiles.pruneOpenCache(app, HANDED_OVER_KEEP_MS)
+            PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS)
         }
         scope.cancel()
         app.fileTargets.remove(targetId)
@@ -1123,6 +1137,9 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
         const val CLEANUP_WAIT_MS = 15_000L
         const val HANDED_OVER_KEEP_MS = 2 * 60 * 60 * 1000L
+
+        /** Viewer copies older than this, when a screen goes: a viewer still open elsewhere has read its text by then. */
+        const val VIEW_LEFT_MS = 5 * 60 * 1000L
 
         /** A row's bar moves in steps of a percent at most: a big file must not redraw the list thousands of times. */
         fun throttled(report: (Long, Long) -> Unit): (Long, Long) -> Unit {

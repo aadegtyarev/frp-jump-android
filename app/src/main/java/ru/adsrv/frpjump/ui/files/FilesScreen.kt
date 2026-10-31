@@ -164,7 +164,16 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
 
     viewing?.let { viewed ->
         // Over the list, which keeps its folder and scroll position for the way back.
-        TextViewer(viewed, vm.textSize, onClose = { viewing = null }, onGone = vm::closeViewed)
+        TextViewer(
+            viewed,
+            vm.textSize,
+            onClose = {
+                // The one way out of the viewer: its copy goes with it (not on a recreated activity).
+                vm.closeViewed(viewed)
+                viewing = null
+            },
+            onHandOver = { share -> vm.handOverViewed(viewed, share) },
+        )
         return
     }
     val t = vm.target

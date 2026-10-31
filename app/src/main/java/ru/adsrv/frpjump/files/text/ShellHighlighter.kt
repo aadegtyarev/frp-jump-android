@@ -47,6 +47,8 @@ object ShellHighlighter : Highlighter {
                 if (i < 0) return IN_DOUBLE
             }
         }
+        // Inside `((…))` / `$((…))`, `<<` shifts bits.
+        var arithmetic = 0
         while (i < n) {
             val c = text[i]
             when {
@@ -55,7 +57,15 @@ object ShellHighlighter : Highlighter {
                     out.add(i, n, Token.COMMENT)
                     return 0
                 }
-                c == '<' && text.startsWith("<<", i) -> i = hereDocument(text, i, heredoc)
+                c == '(' && text.startsWith("((", i) -> {
+                    arithmetic++
+                    i += 2
+                }
+                c == ')' && arithmetic > 0 && text.startsWith("))", i) -> {
+                    arithmetic--
+                    i += 2
+                }
+                c == '<' && text.startsWith("<<", i) -> i = if (arithmetic > 0) i + 2 else hereDocument(text, i, heredoc)
                 c == '\'' -> {
                     val close = text.indexOf('\'', i + 1)
                     if (close < 0) return IN_SINGLE.also { out.add(i, n, Token.STRING) }
@@ -87,7 +97,7 @@ object ShellHighlighter : Highlighter {
     }
 
     /**
-     * `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"` at [at]: the state of its
+     * `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`, `<<\WORD` at [at]: the state of its
      * body into [heredoc] (the first one on a line counts); `<<<` (a here
      * string) is passed over. Returns where the scan goes on.
      */
@@ -97,7 +107,7 @@ object ShellHighlighter : Highlighter {
         val tabs = j < text.length && text[j] == '-'
         if (tabs) j++
         while (j < text.length && (text[j] == ' ' || text[j] == '\t')) j++
-        val quote = text.getOrNull(j)?.takeIf { it == '\'' || it == '"' }
+        val quote = text.getOrNull(j)?.takeIf { it == '\'' || it == '"' || it == '\\' }
         if (quote != null) j++
         val start = j
         while (j < text.length && (isWordChar(text[j]) || text[j] == '-' || text[j] == '.')) j++

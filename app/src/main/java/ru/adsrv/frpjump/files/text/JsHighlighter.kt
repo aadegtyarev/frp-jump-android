@@ -25,6 +25,7 @@ object JsHighlighter : Highlighter {
     override fun line(text: String, state: Int, out: Spans): Int {
         val n = text.length
         var i = 0
+        var regexes = true
         when (state) {
             BLOCK_COMMENT -> {
                 val close = text.indexOf("*/")
@@ -53,9 +54,11 @@ object JsHighlighter : Highlighter {
                     out.add(i, close + 2, Token.COMMENT)
                     i = close + 2
                 }
-                c == '/' && regexAllowed(text, i) -> {
+                c == '/' && regexes && regexAllowed(text, i) -> {
                     val end = regexEnd(text, i)
                     if (end < 0) {
+                        // One that runs off the line: no more tries on it, or `(/[` over and over costs its square.
+                        regexes = false
                         i++
                     } else {
                         out.add(i, end, Token.STRING)

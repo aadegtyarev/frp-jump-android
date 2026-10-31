@@ -873,4 +873,6 @@
     <string name="viewer_read_failed">Не удалось прочитать скачанный файл: %s</string>
     <string name="viewer_out_of_memory">не хватает памяти телефона</string>
     <string name="viewer_file_gone">Скачанной копии %s больше нет; откройте файл снова.</string>
+    <string name="viewer_hand_over_failed">Не удалось подготовить файл для другого приложения: %s</string>
+    <string name="files_hand_over_failed">Не удалось передать %s другому приложению.</string>
 </resources>

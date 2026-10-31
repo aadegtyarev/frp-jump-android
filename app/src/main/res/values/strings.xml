@@ -829,4 +829,6 @@
     <string name="viewer_read_failed">Cannot read the downloaded file: %s</string>
     <string name="viewer_out_of_memory">not enough memory on the phone</string>
     <string name="viewer_file_gone">The downloaded copy of %s is gone; open it again.</string>
+    <string name="viewer_hand_over_failed">Could not prepare the file for another app: %s</string>
+    <string name="files_hand_over_failed">Cannot pass %s to another app.</string>
 </resources>

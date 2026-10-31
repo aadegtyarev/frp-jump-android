@@ -100,6 +100,23 @@ object PhoneFiles {
         }
     }
 
+    /**
+     * A copy of [file] (the viewer's) in a fresh folder of the cache for
+     * other apps, the only cache the app's FileProvider serves: the
+     * viewer's own copy goes as it closes, the handed one stays for the
+     * other app as files opened with other apps do.
+     */
+    fun copyToOpenCache(context: Context, profile: String, file: File): File {
+        val target = openCacheFile(context, profile, file.name)
+        try {
+            file.copyTo(target, overwrite = true)
+        } catch (e: IOException) {
+            target.parentFile?.deleteRecursively()
+            throw e
+        }
+        return target
+    }
+
     /** Files handed to other apps more than [maxAgeMs] ago, of every profile: those apps have long read them. */
     fun pruneOpenCache(context: Context, maxAgeMs: Long, now: Long = System.currentTimeMillis()) = prune(File(context.cacheDir, OPEN_DIR), maxAgeMs, now)
 
