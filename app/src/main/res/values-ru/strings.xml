@@ -198,6 +198,7 @@
     <string name="open">Открыть</string>
     <string name="terminal">Терминал</string>
     <string name="copy_address">Скопировать адрес</string>
+    <string name="terminal_copied">В буфере обмена: %s</string>
     <string name="address_copied">Скопировано: %s</string>
     <string name="open_in_browser">Открыть в браузере</string>
     <string name="open_in_ssh_app">Открыть в другом приложении</string>
