@@ -124,7 +124,10 @@ class TmuxCommandsTest {
     private fun argsVia(command: String? = null, sh: String? = null): List<String> =
         run(sh ?: command!!, tmux = "printf '%s\\n' \"\$@\"").lines().dropLast(1)
 
-    /** Runs [command] with `sh -c` and a PATH holding only a `tmux` script with body [tmux] (none when null); its stdout. */
+    /**
+     * Runs [command] with `sh -c` and a PATH holding only a `tmux` script with body [tmux] (none when null); its stdout.
+     * Only that folder: a machine with a real tmux (CI runners) must not answer for "no tmux".
+     */
     private fun run(command: String, tmux: String?): String {
         val bin = tmp.newFolder()
         if (tmux != null) {
@@ -133,7 +136,7 @@ class TmuxCommandsTest {
                 setExecutable(true)
             }
         }
-        val process = ProcessBuilder("/bin/sh", "-c", command).apply { environment()["PATH"] = bin.path + ":/usr/bin:/bin" }.start()
+        val process = ProcessBuilder("/bin/sh", "-c", command).apply { environment()["PATH"] = bin.path }.start()
         val out = process.inputStream.bufferedReader().readText()
         process.waitFor()
         return out
