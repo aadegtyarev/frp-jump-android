@@ -333,6 +333,8 @@
 
     <!-- Web view -->
     <string name="web_reload">Reload</string>
+    <string name="web_tunnel_closed">This tunnel is no longer here. Go back and open it again.</string>
+    <string name="web_start_page">Start page</string>
     <string name="web_renderer_gone">The page stopped: its renderer crashed or Android closed it to free memory.</string>
     <string name="web_no_file_picker">No app to pick files with.</string>
     <string name="web_blocked">Blocked: %s is not this tunnel.</string>

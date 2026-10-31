@@ -379,6 +379,20 @@ DownloadManager with the page's cookies; files a page makes itself (`blob:`)
 cannot be handed over, use "Open in browser" for those. WebSockets to the
 same origin work, so homeui's MQTT over WS shows live values.
 
+Leaving the web view (Back) closes it, but the app remembers, in memory
+for as long as it runs, the last page of each tunnel (profile, device,
+target port and local port; `web/WebPageMemory.kt`): "Open" on the same
+tunnel again reloads that page instead of `/`, as a browser restores a
+tab, when it is a page of that tunnel with the same scheme. Only pages
+that loaded without an error are kept, and the in-page routes after them
+(homeui's `#!/…`); "⋮ › Start page" goes to `/`. Forgetting a profile drops
+its pages, with or without its data. Cookies are kept as above. When the
+tunnel goes away while the page is shown (Disconnect here or elsewhere,
+the server, a rebind to another local port), the page is hidden and the
+screen says the tunnel is no longer there, with Back, instead of
+WebView's error page; Back then leaves the screen. If the tunnel comes
+back meanwhile, the page loads again.
+
 Requests a page makes to another loopback port (another tunnel, another
 app's server) get a 403, but WebSockets cannot be filtered: WebView passes
 them to no hook. So a page whose device is compromised can open

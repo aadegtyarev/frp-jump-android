@@ -48,6 +48,7 @@ import ru.adsrv.frpjump.update.apkProblem
 import ru.adsrv.frpjump.update.archiveFacts
 import ru.adsrv.frpjump.update.installedFacts
 import ru.adsrv.frpjump.update.updateDownloads
+import ru.adsrv.frpjump.web.WebPageMemory
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
@@ -80,6 +81,9 @@ class FrpJumpApp : Application() {
         private set
     lateinit var webSites: WebSiteMemory
         private set
+
+    /** The page each tunnel's web view showed last, for this run: opening it again continues there. */
+    val webPages = WebPageMemory()
 
     /** The terminal's saved commands, one list per phone; read off the main thread at start. */
     lateinit var snippets: SnippetStore
@@ -230,6 +234,7 @@ class FrpJumpApp : Application() {
         }
         // Its files handed to other apps go in any case; the folders seen on its devices with its data.
         withContext(Dispatchers.IO) { PhoneFiles.openCacheDir(this@FrpJumpApp, id).deleteRecursively() }
+        webPages.forgetProfile(id)
         if (keepData) return
         withContext(Dispatchers.IO) { PhoneFiles.listingsDir(this@FrpJumpApp, id).deleteRecursively() }
         val noneLeft = profiles.state.value.index.profiles.isEmpty()
