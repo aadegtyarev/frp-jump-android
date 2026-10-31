@@ -274,6 +274,7 @@
     <string name="terminal_state_open">Open</string>
     <string name="terminal_state_asks">Waiting for you</string>
     <string name="terminal_state_ended">Ended</string>
+    <string name="terminal_state_reconnecting">Reconnecting…</string>
 
     <!-- HTTPS certificates -->
     <string name="cert_unknown_title">Trust this certificate?</string>
@@ -428,6 +429,9 @@
     <string name="ssh_connection_lost">Connection lost: %s</string>
     <string name="ssh_logged_out">Logged out (exit %d).</string>
     <string name="ssh_connection_closed">Connection closed.</string>
+    <string name="ssh_new_shell">New shell: the previous one ended with the connection</string>
+    <string name="terminal_reconnecting">Connection lost · reconnecting (try %d)…</string>
+    <string name="terminal_reconnect_now">Now</string>
 
     <!-- Settings -->
     <string name="settings_tunnels">Tunnels</string>

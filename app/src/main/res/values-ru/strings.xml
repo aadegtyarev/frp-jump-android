@@ -285,6 +285,7 @@
     <string name="terminal_state_open">Открыт</string>
     <string name="terminal_state_asks">Ждёт вас</string>
     <string name="terminal_state_ended">Завершён</string>
+    <string name="terminal_state_reconnecting">Переподключение…</string>
 
     <!-- HTTPS certificates -->
     <string name="cert_unknown_title">Доверять сертификату?</string>
@@ -453,6 +454,9 @@
     <string name="ssh_connection_lost">Связь потеряна: %s</string>
     <string name="ssh_logged_out">Сеанс завершён (код %d).</string>
     <string name="ssh_connection_closed">Соединение закрыто.</string>
+    <string name="ssh_new_shell">Новая оболочка: прежняя завершилась вместе со связью</string>
+    <string name="terminal_reconnecting">Связь потеряна · переподключение (попытка %d)…</string>
+    <string name="terminal_reconnect_now">Сейчас</string>
 
     <!-- Settings -->
     <string name="settings_tunnels">Туннели</string>

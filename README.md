@@ -513,6 +513,23 @@ on Connect, so before the login is known to work); Cancel saves nothing. A
 field showing a saved password takes a fill only once it is tapped, so
 filling in the user name leaves the saved password alone.
 
+- A dropped connection reconnects by itself (`ssh/SshReconnect.kt`): a
+  shell gone without an exit status or signal (a read error, the
+  connection closing, or the connection failing mid-login) keeps the
+  tab and its text, and the bar above the snippets reads "Connection lost
+  · reconnecting (try N)…" with Now and Close (Close as closing the tab,
+  with Undo; while that Undo is on screen, or the tunnel's, it does not
+  try, and Undo resumes the tries); keys and snippets are not sent
+  meanwhile. It tries at once,
+  then after 2, 4, 8 and 15 s and every 30 s on, and at once whenever the
+  default network comes back or changes; after 10 minutes it ends as
+  before, with Reconnect, which starts the tries again. The same login is
+  reused without a dialog; a refused login or a host key to decide stops
+  the tries and shows the usual flows. `exit`, a closed tab and a
+  disconnected tunnel are not retried. Back, the shell is a new one (no
+  tmux yet): the terminal leaves any full-screen program's screen, writes
+  "[New shell: the previous one ended with the connection]" under the old
+  text, and the bar says the same until the owner types.
 - Key: the app makes one ed25519 key on first use; Settings shows its
   `authorized_keys` line with Copy / Share. "Import private key" takes an
   OpenSSH (or PEM) private key file and its passphrase; it is tried before

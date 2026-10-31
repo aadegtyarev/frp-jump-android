@@ -118,6 +118,7 @@ private fun TerminalLine(session: SshSession, profileColor: String?, onClose: ()
     val (text, color) = when (state) {
         SshState.Connecting -> stringResource(R.string.terminal_state_connecting) to colors.muted
         SshState.Open -> stringResource(R.string.terminal_state_open) to colors.accent
+        is SshState.Reconnecting -> stringResource(R.string.terminal_state_reconnecting) to colors.muted
         is SshState.Ended -> stringResource(R.string.terminal_state_ended) to colors.muted
         else -> stringResource(R.string.terminal_state_asks) to colors.warning
     }
