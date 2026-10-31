@@ -98,6 +98,8 @@ class SshSessions(
 
     /** Opens a new session to [device]:[port] of [profile] and starts connecting. Main thread. */
     fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth): SshSession {
+        // A new password typed: the refusal of the old one says nothing about it.
+        if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(profile, device, port, user)
         val target = SshTarget(user, device, port)
         val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
         val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number)
@@ -116,6 +118,7 @@ class SshSessions(
         val login = user ?: old.user
         val others = _sessions.value.filter { it.id != id }.map { SshTarget(it.user, it.device, it.port) to it.number }
         val number = replacementNumber(others, SshTarget(old.user, old.device, old.port), old.number, SshTarget(login, old.device, old.port))
+        if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(old.profile, old.device, old.port, login)
         val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number)
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         fresh.connect()
@@ -133,7 +136,7 @@ class SshSessions(
 
     /** Whether a password is kept for [user] on [session]'s device and port; cheap, nothing is unsealed. */
     fun hasRememberedPassword(session: SshSession, user: String): Boolean =
-        offersSavedPassword(session.refusal, session.user, user) { env.passwords.has(session.profile, session.device, session.port, user.trim()) }
+        offersSavedPassword(env.refusals.get(session.profile, session.device, session.port, user.trim()), user.trim(), user) { env.passwords.has(session.profile, session.device, session.port, user.trim()) }
 
     /** An open, logged-in connection of a session as [user] to [device]:[port] of [profile]; any thread. */
     fun liveClient(profile: String, device: String, port: Int, user: String): SSHClient? =

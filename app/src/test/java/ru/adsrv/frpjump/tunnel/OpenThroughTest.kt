@@ -60,4 +60,12 @@ class OpenThroughTest {
         assertEquals(SessionCount.NONE, sessionsThrough(open, TunnelRef("p3", "dev-a", 22)))
         assertEquals(SessionCount.NONE, sessionsThrough(emptyList(), ssh))
     }
+
+    @Test
+    fun `the pill shows one session or an ended one, from two the button counts`() {
+        assertFalse(SessionCount.NONE.showsPill)
+        assertTrue(SessionCount(1, 0).showsPill)
+        assertFalse(SessionCount(2, 0).showsPill)
+        assertTrue(SessionCount(3, 1).showsPill)
+    }
 }

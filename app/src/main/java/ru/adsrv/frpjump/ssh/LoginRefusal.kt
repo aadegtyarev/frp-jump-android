@@ -56,13 +56,46 @@ fun offersSavedPassword(refusal: LoginRefusal?, refusedUser: String?, user: Stri
 
 /**
  * Whether "Terminal" or "Files" logs in at once with the [login]
- * remembered for a device and port, without the dialog: by key unless the
+ * remembered for a device and port (null: none yet), without the dialog: by key unless the
  * key was just refused for that user; by password when one is saved for
  * that user ([savedPassword]) and it was not just refused or unreadable
  * ([lastRefusal] for [refusedUser], see [offersSavedPassword]).
  */
-fun connectsDirectly(login: SshLogin, savedPassword: Boolean, lastRefusal: LoginRefusal?, refusedUser: String?): Boolean =
-    when (login.method) {
+fun connectsDirectly(login: SshLogin?, savedPassword: Boolean, lastRefusal: LoginRefusal?, refusedUser: String?): Boolean =
+    when (login?.method) {
+        // Nothing chosen on this device and port yet: the dialog asks the first time.
+        null -> false
         SshAuthMethod.KEY -> !(lastRefusal == LoginRefusal.KEY && refusedUser == login.user)
         SshAuthMethod.PASSWORD -> offersSavedPassword(lastRefusal, refusedUser, login.user) { savedPassword }
     }
+
+/**
+ * The last refusal of each login (profile, device, port, user), shared by
+ * the terminal, the file screens and "Use key login", and kept when the
+ * tab that met it closes: written when a login is refused, cleared when
+ * one succeeds or "Change login" gives a new password. In memory only.
+ */
+class LoginRefusals {
+    private val last = HashMap<List<Any>, LoginRefusal>()
+
+    @Synchronized
+    fun record(profile: String, device: String, port: Int, user: String, refusal: LoginRefusal) {
+        last[key(profile, device, port, user)] = refusal
+    }
+
+    @Synchronized
+    fun clear(profile: String, device: String, port: Int, user: String) {
+        last.remove(key(profile, device, port, user))
+    }
+
+    @Synchronized
+    fun get(profile: String, device: String, port: Int, user: String): LoginRefusal? = last[key(profile, device, port, user)]
+
+    /** "Forget profile": its refusals go with it. */
+    @Synchronized
+    fun forgetProfile(profile: String) {
+        last.keys.removeAll { it.first() == profile }
+    }
+
+    private fun key(profile: String, device: String, port: Int, user: String): List<Any> = listOf(profile, device, port, user.trim())
+}

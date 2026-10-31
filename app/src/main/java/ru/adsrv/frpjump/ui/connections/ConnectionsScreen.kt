@@ -234,7 +234,8 @@ private fun Line(row: ConnectionRow, profileColor: String?, sessions: SessionCou
                                 )
                             }
                             if (row.tunnel != null) {
-                                LocalAddress(row.tunnel.localPort, size = 12)
+                                // Gives way to the sessions pill: the address shortens to ":port" first.
+                                LocalAddress(row.tunnel.localPort, size = 12, modifier = Modifier.weight(1f, fill = false))
                             } else if (state == null) {
                                 Text(stringResource(R.string.connection_sub_short, kindLabel(c.kind), c.port), fontSize = 12.sp, color = colors.muted)
                             }

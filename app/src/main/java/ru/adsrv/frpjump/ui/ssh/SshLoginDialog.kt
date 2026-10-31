@@ -86,6 +86,7 @@ fun SshLoginDialog(
                         { password = it },
                         stringResource(R.string.ssh_method_password),
                         saved = stringResource(R.string.ssh_password_saved).takeIf { remembered },
+                        savedSpoken = stringResource(R.string.ssh_password_saved_spoken, stringResource(R.string.ssh_method_password)),
                     )
                     if (!passwordOnly) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

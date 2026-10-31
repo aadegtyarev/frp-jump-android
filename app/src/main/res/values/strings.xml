@@ -209,6 +209,12 @@
     <string name="open">Open</string>
     <string name="terminal">Terminal</string>
     <string name="terminal_count">Terminal · %d</string>
+    <plurals name="terminal_sessions_ended">
+        <item quantity="one">%d ended</item>
+        <item quantity="other">%d ended</item>
+    </plurals>
+    <string name="notice_dismiss">Hide</string>
+    <string name="ssh_password_saved_spoken">%s, saved</string>
     <plurals name="terminal_sessions_count">
         <item quantity="one">%d session</item>
         <item quantity="other">%d sessions</item>

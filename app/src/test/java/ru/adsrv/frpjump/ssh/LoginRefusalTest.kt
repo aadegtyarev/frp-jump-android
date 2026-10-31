@@ -69,4 +69,26 @@ class LoginRefusalTest {
         // A typed password refused last time says nothing about the saved one.
         assertTrue(connectsDirectly(byPassword, savedPassword = true, lastRefusal = LoginRefusal.PASSWORD_TYPED, refusedUser = "root"))
     }
+
+    @Test
+    fun `nothing remembered for the device and port asks first`() {
+        assertFalse(connectsDirectly(null, savedPassword = true, lastRefusal = null, refusedUser = null))
+    }
+
+    @Test
+    fun `refusals are kept per login until cleared, and go with their profile`() {
+        val r = LoginRefusals()
+        r.record("p1", "wb", 22, "root", LoginRefusal.PASSWORD_SAVED)
+        assertEquals(LoginRefusal.PASSWORD_SAVED, r.get("p1", "wb", 22, "root"))
+        assertEquals(null, r.get("p1", "wb", 22, "admin"))
+        assertEquals(null, r.get("p1", "wb", 2222, "root"))
+        assertEquals(null, r.get("p2", "wb", 22, "root"))
+        r.clear("p1", "wb", 22, " root ")
+        assertEquals(null, r.get("p1", "wb", 22, "root"))
+        r.record("p1", "wb", 22, "root", LoginRefusal.KEY)
+        r.record("p2", "wb", 22, "root", LoginRefusal.KEY)
+        r.forgetProfile("p1")
+        assertEquals(null, r.get("p1", "wb", 22, "root"))
+        assertEquals(LoginRefusal.KEY, r.get("p2", "wb", 22, "root"))
+    }
 }

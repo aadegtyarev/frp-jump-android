@@ -1,6 +1,9 @@
 package ru.adsrv.frpjump
 
 import android.app.Application
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -119,7 +122,15 @@ class FrpJumpApp : Application() {
     val visible = MutableStateFlow(false)
 
     /** Messages at the top of the app; toasts while no screen of it is started. */
-    val notices by lazy { Notices(this) { visible.value } }
+    val notices by lazy {
+        Notices(
+            foreground = { visible.value },
+            locked = { lock.locked.value },
+            fallback = { text, long ->
+                Handler(Looper.getMainLooper()).post { Toast.makeText(this, text, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show() }
+            },
+        )
+    }
 
     /** Work that must finish even when the screen that started it goes away. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -203,6 +214,9 @@ class FrpJumpApp : Application() {
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
         // Files handed to other apps a day ago or more (Open with, Share).
         appScope.launch(Dispatchers.IO) { PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS) }
+        // A message posted just before the app went away is a toast, not lost; none waits over the lock screen.
+        appScope.launch { visible.collect { if (!it) notices.toBackground() } }
+        appScope.launch { lock.locked.collect { if (it) notices.clear() } }
         ssh = SshSessions(
             context = this,
             notices = notices,
@@ -230,6 +244,7 @@ class FrpJumpApp : Application() {
         ssh.closeProfile(id)
         profiles.forget(id, keepData) { last ->
             sshPasswords.forgetProfile(id)
+            sshEnv.refusals.forgetProfile(id)
             directKept.removeProfile(id)
             if (last) {
                 sshKeys.wipe()

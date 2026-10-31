@@ -48,6 +48,8 @@ class SshEnvironment(
     val passwords: SshPasswords,
     /** The comment of the app's own key, e.g. `frp-jump@<phone>`. */
     val keyComment: () -> String,
+    /** The last refusal of each login, shared by every screen that logs in. */
+    val refusals: LoginRefusals = LoginRefusals(),
 )
 
 /**
@@ -89,11 +91,6 @@ class SshSession(
     /** The device refused [auth]: another session with it would only be refused again. */
     @Volatile
     var authRefused = false
-        private set
-
-    /** Why it was refused, when it was: "Change login" then does not offer a refused saved password. */
-    @Volatile
-    var refusal: LoginRefusal? = null
         private set
 
     /** How it logs in; Reconnect uses it too. */
@@ -208,7 +205,6 @@ class SshSession(
             throw e
         } catch (e: UserAuthException) {
             authRefused = true
-            refusal = connector.refusal()
             runCatching { ssh.disconnect() }
             fail(connector.authFailure())
         } catch (e: Exception) {

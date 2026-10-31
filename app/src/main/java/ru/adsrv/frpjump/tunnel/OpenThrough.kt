@@ -24,6 +24,13 @@ fun openThrough(sessions: List<SessionOn>, files: List<TunnelRef>, tunnel: Tunne
 
 /** The terminal sessions through one tunnel: how many, and how many of them have ended. */
 data class SessionCount(val total: Int, val ended: Int) {
+    /**
+     * Whether the row shows them as a pill: one open (the button says
+     * "Terminal" alone then), or any ended; from two the button says
+     * "Terminal · N" already.
+     */
+    val showsPill: Boolean get() = total == 1 || ended > 0
+
     companion object {
         val NONE = SessionCount(0, 0)
     }

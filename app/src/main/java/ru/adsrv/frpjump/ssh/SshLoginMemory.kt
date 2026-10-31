@@ -33,7 +33,11 @@ class SshLoginMemory(private val storage: TextStorage) {
     val changes: StateFlow<Int> = _changes
 
     @Synchronized
-    fun get(device: String, port: Int): SshLogin = logins[device]?.get(port.toString()) ?: SshLogin()
+    fun get(device: String, port: Int): SshLogin = stored(device, port) ?: SshLogin()
+
+    /** The login kept for [device]:[port]; null when none was ever chosen there (the dialog asks then). */
+    @Synchronized
+    fun stored(device: String, port: Int): SshLogin? = logins[device]?.get(port.toString())
 
     @Synchronized
     fun remember(device: String, port: Int, login: SshLogin) {

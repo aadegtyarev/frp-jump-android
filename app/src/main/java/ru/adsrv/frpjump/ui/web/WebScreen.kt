@@ -588,7 +588,7 @@ private fun download(
         CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
         userAgent?.let { request.addRequestHeader("User-Agent", it) }
         context.getSystemService(DownloadManager::class.java).enqueue(request)
-        context.notice(context.getString(R.string.web_downloading, name), NoticeKind.DONE)
+        context.notice(context.getString(R.string.web_downloading, name), NoticeKind.INFO)
     } catch (e: Exception) {
         openExternally(context, url)
     }

@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -210,22 +211,25 @@ fun ConnectionRow.sessionsIn(open: List<SessionOn>): SessionCount =
     if (connection.kind != PortKind.SSH || !saved) SessionCount.NONE else sessionsThrough(open, TunnelRef(profile, connection.device, connection.port))
 
 /**
- * "2 sessions" by an SSH row's address: the terminal sessions open on it,
+ * "1 session" / "2 sessions" by an SSH row's address, when [SessionCount.showsPill]:
  * a red dot first when any of them has ended (its tab offers Reconnect).
  */
 @Composable
 fun SessionsPill(count: SessionCount) {
-    if (count.total == 0) return
+    if (!count.showsPill) return
     val c = AppTheme.colors
+    val total = pluralStringResource(R.plurals.terminal_sessions_count, count.total, count.total)
+    val spoken = if (count.ended > 0) total + ", " + pluralStringResource(R.plurals.terminal_sessions_ended, count.ended, count.ended) else total
     Row(
         Modifier
+            .clearAndSetSemantics { contentDescription = spoken }
             .background(c.tile, CircleShape)
             .padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         if (count.ended > 0) Box(Modifier.size(6.dp).background(c.error, CircleShape))
-        Text(pluralStringResource(R.plurals.terminal_sessions_count, count.total, count.total), fontSize = 12.sp, color = c.muted, maxLines = 1)
+        Text(total, fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
     }
 }
 
@@ -444,7 +448,7 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
         // Down, the tunnel is brought up once the login is given.
         if (row.saved && kind == PortKind.SSH) item(R.string.files, actions.files)
         // Terminal logs in at once with what is remembered: another user or method is chosen here.
-        if (row.saved && kind == PortKind.SSH && row.tunnel != null) item(R.string.terminal_change_login, actions.changeLogin)
+        if (row.saved && kind == PortKind.SSH) item(R.string.terminal_change_login, actions.changeLogin)
         if (row.saved && kind == PortKind.SSH && actions.offersKeyLogin(row)) item(R.string.key_login, actions.keyLogin)
         if (row.saved) {
             item(R.string.change, actions.change)
@@ -492,7 +496,9 @@ fun ConnectionDialogs(
             hasRememberedPassword = { actions.hasRememberedPassword(row, it) },
             onConnect = { user, method: SshAuthMethod, password, remember ->
                 ui.login = null
-                actions.openSsh(row, user, method, password, remember)?.let(onOpenTerminal)
+                // "Change login" from "⋮" may come with the tunnel down: it is brought up first.
+                val open = { actions.openSshWhenUp(row, user, method, password, remember, onOpenTerminal) }
+                if (row.tunnel == null && row.pending == null) notificationsFirst(open) else open()
             },
             onDismiss = { ui.login = null },
         )

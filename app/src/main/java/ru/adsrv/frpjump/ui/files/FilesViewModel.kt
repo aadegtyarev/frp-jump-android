@@ -53,7 +53,6 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
-import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.ssh.PinnedHostKey
 import ru.adsrv.frpjump.ssh.SshAuth
@@ -338,21 +337,15 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
 
     fun hasRememberedPassword(user: String): Boolean {
         val t = target ?: return false
-        return offersSavedPassword(refusal, refusedUser, user) { app.sshPasswords.has(t.profile, t.device, t.port, user.trim()) }
+        val refusal = app.sshEnv.refusals.get(t.profile, t.device, t.port, user.trim())
+        return offersSavedPassword(refusal, user.trim(), user) { app.sshPasswords.has(t.profile, t.device, t.port, user.trim()) }
     }
-
-    /** Why the last login was refused, and for whom: a refused saved password is not offered again by "Change login". */
-    @Volatile
-    private var refusal: LoginRefusal? = null
-
-    @Volatile
-    private var refusedUser: String? = null
 
     /** "Change login" after a refused one: log in again with what the dialog gave. */
     fun changeLogin(user: String, method: SshAuthMethod, password: String, remember: Boolean) {
         val t = target ?: return
-        refusal = null
-        refusedUser = null
+        // A new password typed: the refusal of the old one says nothing about it.
+        if (method == SshAuthMethod.PASSWORD && password.isNotEmpty()) app.sshEnv.refusals.clear(t.profile, t.device, t.port, user.trim())
         val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
         viewModelScope.launch(Dispatchers.IO) { runtime?.sshLogins?.remember(t.device, t.port, login) }
         val auth = when (method) {
@@ -769,10 +762,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             Texts.get(if (e.check is HostKeyCheck.Changed) R.string.terminal_status_host_key_changed else R.string.terminal_status_host_key_unknown)
         }
         e is UserAuthException -> {
-            val c = connector
-            refusal = c?.let { withContext(Dispatchers.IO) { it.refusal() } }
-            refusedUser = target?.user
-            val message = withContext(Dispatchers.IO) { c?.authFailure() } ?: fileProblem(e)
+            val message = withContext(Dispatchers.IO) { connector?.authFailure() } ?: fileProblem(e)
             dropBrowser()
             _state.update { it.copy(status = FilesStatus.Failed(message, loginRefused = true)) }
             message

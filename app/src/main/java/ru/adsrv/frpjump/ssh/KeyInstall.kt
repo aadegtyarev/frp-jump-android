@@ -252,7 +252,9 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
                 try {
                     // Not through the connector: it would remember the password.
                     ssh.authPassword(t.user, password)
+                    env.refusals.clear(t.profile, t.device, t.port, t.user)
                 } catch (e: UserAuthException) {
+                    env.refusals.record(t.profile, t.device, t.port, t.user, if (remembered != null) LoginRefusal.PASSWORD_SAVED else LoginRefusal.PASSWORD_TYPED)
                     // A remembered one is kept, as the terminal keeps it: the dialog asks, and success forgets it anyway.
                     return KeyInstallResult.PasswordNeeded(if (remembered != null) LoginRefusal.PASSWORD_SAVED else LoginRefusal.PASSWORD_TYPED)
                 }

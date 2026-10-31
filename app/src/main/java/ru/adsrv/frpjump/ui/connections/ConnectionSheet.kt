@@ -57,6 +57,7 @@ import ru.adsrv.frpjump.connections.isPresetName
 import ru.adsrv.frpjump.connections.nameAfterPreset
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.Segmented
 import java.util.UUID
@@ -114,140 +115,143 @@ fun ConnectionSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
     ) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
-                .navigationBarsPadding()
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    stringResource(if (editing == null) R.string.new_connection else R.string.change_connection),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(stringResource(R.string.connection_to, device), fontSize = 13.sp, color = colors.muted)
-            }
-            KindSwitch(kind, enabled = !portLocked) { picked ->
-                if (picked != kind) {
-                    // A preset of the old kind (or nothing) gives way to the new kind's first preset.
-                    val wasPreset = portText.isBlank() || PORT_PRESETS[kind].orEmpty().any { it.port.toString() == portText }
-                    if (!portLocked && wasPreset) {
-                        portText = PORT_PRESETS.getValue(picked).first().port.toString()
-                        https = false
-                    }
-                    // A preset's name belongs to the old kind's port; the default name says the new one.
-                    if (isPresetName(name)) name = ""
-                    kind = picked
+        // A message posted while the sheet is open shows on it, not under its scrim.
+        NoticeLayer {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
+                    .navigationBarsPadding()
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        stringResource(if (editing == null) R.string.new_connection else R.string.change_connection),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(stringResource(R.string.connection_to, device), fontSize = 13.sp, color = colors.muted)
                 }
-            }
-            problems.protocolClash?.let {
-                Text(
-                    stringResource(if (it == "ssh") R.string.protocol_clash_ssh else R.string.protocol_clash_other),
-                    color = colors.error,
-                    fontSize = 13.sp,
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val portProblem = problems.port?.takeIf { tried || it == PortProblem.OUT_OF_RANGE }
-                Field(
-                    label = stringResource(R.string.port_on_device),
-                    value = portText,
-                    onValueChange = { typed ->
-                        portText = typed.filter(Char::isDigit).take(5)
-                        // 80 and 443 set the scheme, so a port typed after them starts from it.
-                        parsePort(portText)?.takeIf { !asksForHttps(it) }?.let { https = schemeIsHttps(it, https) }
-                    },
-                    enabled = !portLocked,
-                    mono = true,
-                    keyboard = KeyboardType.Number,
-                    problem = when (portProblem) {
-                        PortProblem.MISSING -> stringResource(R.string.port_missing)
-                        PortProblem.OUT_OF_RANGE -> stringResource(R.string.port_out_of_range)
-                        null -> null
-                    },
-                    note = stringResource(R.string.kind_locked).takeIf { portLocked },
-                )
-                if (!portLocked) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        PORT_PRESETS.getValue(kind).forEach { preset ->
-                            val label = preset.name?.let { stringResource(R.string.preset_named, it, preset.port) }
-                                ?: webSchemeLabel(kind, preset.port)?.let { stringResource(R.string.preset_named, it, preset.port) }
-                                ?: preset.port.toString()
-                            PresetChip(label, selected = parsePort(portText) == preset.port) {
-                                portText = preset.port.toString()
-                                name = nameAfterPreset(name, preset)
-                                if (kind == PortKind.WEB) https = preset.port == 443
+                KindSwitch(kind, enabled = !portLocked) { picked ->
+                    if (picked != kind) {
+                        // A preset of the old kind (or nothing) gives way to the new kind's first preset.
+                        val wasPreset = portText.isBlank() || PORT_PRESETS[kind].orEmpty().any { it.port.toString() == portText }
+                        if (!portLocked && wasPreset) {
+                            portText = PORT_PRESETS.getValue(picked).first().port.toString()
+                            https = false
+                        }
+                        // A preset's name belongs to the old kind's port; the default name says the new one.
+                        if (isPresetName(name)) name = ""
+                        kind = picked
+                    }
+                }
+                problems.protocolClash?.let {
+                    Text(
+                        stringResource(if (it == "ssh") R.string.protocol_clash_ssh else R.string.protocol_clash_other),
+                        color = colors.error,
+                        fontSize = 13.sp,
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val portProblem = problems.port?.takeIf { tried || it == PortProblem.OUT_OF_RANGE }
+                    Field(
+                        label = stringResource(R.string.port_on_device),
+                        value = portText,
+                        onValueChange = { typed ->
+                            portText = typed.filter(Char::isDigit).take(5)
+                            // 80 and 443 set the scheme, so a port typed after them starts from it.
+                            parsePort(portText)?.takeIf { !asksForHttps(it) }?.let { https = schemeIsHttps(it, https) }
+                        },
+                        enabled = !portLocked,
+                        mono = true,
+                        keyboard = KeyboardType.Number,
+                        problem = when (portProblem) {
+                            PortProblem.MISSING -> stringResource(R.string.port_missing)
+                            PortProblem.OUT_OF_RANGE -> stringResource(R.string.port_out_of_range)
+                            null -> null
+                        },
+                        note = stringResource(R.string.kind_locked).takeIf { portLocked },
+                    )
+                    if (!portLocked) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            PORT_PRESETS.getValue(kind).forEach { preset ->
+                                val label = preset.name?.let { stringResource(R.string.preset_named, it, preset.port) }
+                                    ?: webSchemeLabel(kind, preset.port)?.let { stringResource(R.string.preset_named, it, preset.port) }
+                                    ?: preset.port.toString()
+                                PresetChip(label, selected = parsePort(portText) == preset.port) {
+                                    portText = preset.port.toString()
+                                    name = nameAfterPreset(name, preset)
+                                    if (kind == PortKind.WEB) https = preset.port == 443
+                                }
                             }
                         }
                     }
                 }
-            }
-            Field(
-                label = stringResource(R.string.connection_name),
-                value = name,
-                onValueChange = { name = it.take(40) },
-                placeholder = stringResource(R.string.connection_name_hint, shownName.ifEmpty { kindWord(kind) }),
-                problem = stringResource(R.string.connection_name_taken).takeIf { problems.nameTaken },
-            )
-            // 80 and 443 say their scheme themselves; other ports may be either.
-            if (kind == PortKind.WEB && asksForHttps(parsePort(portText))) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .toggleable(value = https, role = Role.Switch, onValueChange = { https = it }),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(stringResource(R.string.https), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text(stringResource(R.string.https_hint), fontSize = 13.sp, color = colors.muted)
-                    }
-                    Switch(checked = https, onCheckedChange = null)
-                }
-            }
-            if (kind == PortKind.SSH) {
                 Field(
-                    label = stringResource(R.string.ssh_user),
-                    value = user,
-                    onValueChange = { user = it.trim().take(64) },
-                    keyboard = KeyboardType.Ascii,
-                    problem = stringResource(R.string.ssh_user_missing).takeIf { problems.userMissing },
+                    label = stringResource(R.string.connection_name),
+                    value = name,
+                    onValueChange = { name = it.take(40) },
+                    placeholder = stringResource(R.string.connection_name_hint, shownName.ifEmpty { kindWord(kind) }),
+                    problem = stringResource(R.string.connection_name_taken).takeIf { problems.nameTaken },
                 )
-            }
-            if (editing == null) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .toggleable(value = connectNow, role = Role.Checkbox, onValueChange = { connectNow = it }),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Checkbox(checked = connectNow, onCheckedChange = null)
-                    Text(stringResource(R.string.connect_now), fontSize = 15.sp)
+                // 80 and 443 say their scheme themselves; other ports may be either.
+                if (kind == PortKind.WEB && asksForHttps(parsePort(portText))) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = https, role = Role.Switch, onValueChange = { https = it }),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(stringResource(R.string.https), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.https_hint), fontSize = 13.sp, color = colors.muted)
+                        }
+                        Switch(checked = https, onCheckedChange = null)
+                    }
                 }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                error?.let { Text(it, color = colors.error, fontSize = 14.sp) }
-                Button(
-                    onClick = save,
-                    enabled = !busy && (!tried || problems.ok),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = colors.accent,
-                        disabledContainerColor = if (busy) colors.accent else colors.tile,
-                        disabledContentColor = if (busy) AppTheme.colors.card else colors.muted,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                ) {
-                    if (busy) {
-                        CircularProgressIndicator(Modifier.size(22.dp), color = colors.card, strokeWidth = 2.dp)
-                    } else {
-                        Text(stringResource(R.string.save), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                if (kind == PortKind.SSH) {
+                    Field(
+                        label = stringResource(R.string.ssh_user),
+                        value = user,
+                        onValueChange = { user = it.trim().take(64) },
+                        keyboard = KeyboardType.Ascii,
+                        problem = stringResource(R.string.ssh_user_missing).takeIf { problems.userMissing },
+                    )
+                }
+                if (editing == null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = connectNow, role = Role.Checkbox, onValueChange = { connectNow = it }),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Checkbox(checked = connectNow, onCheckedChange = null)
+                        Text(stringResource(R.string.connect_now), fontSize = 15.sp)
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    error?.let { Text(it, color = colors.error, fontSize = 14.sp) }
+                    Button(
+                        onClick = save,
+                        enabled = !busy && (!tried || problems.ok),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.accent,
+                            disabledContainerColor = if (busy) colors.accent else colors.tile,
+                            disabledContentColor = if (busy) AppTheme.colors.card else colors.muted,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                    ) {
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(22.dp), color = colors.card, strokeWidth = 2.dp)
+                        } else {
+                            Text(stringResource(R.string.save), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }

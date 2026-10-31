@@ -221,6 +221,14 @@
     <string name="open">Открыть</string>
     <string name="terminal">Терминал</string>
     <string name="terminal_count">Терминал · %d</string>
+    <plurals name="terminal_sessions_ended">
+        <item quantity="one">%d завершилась</item>
+        <item quantity="few">%d завершились</item>
+        <item quantity="many">%d завершились</item>
+        <item quantity="other">%d завершились</item>
+    </plurals>
+    <string name="notice_dismiss">Скрыть</string>
+    <string name="ssh_password_saved_spoken">%s, сохранён</string>
     <plurals name="terminal_sessions_count">
         <item quantity="one">%d сессия</item>
         <item quantity="few">%d сессии</item>

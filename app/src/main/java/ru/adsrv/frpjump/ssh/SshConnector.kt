@@ -63,6 +63,17 @@ class SshConnector(
      * forgotten as the owner ticked. Throws [UserAuthException] when refused.
      */
     fun authenticate(ssh: SSHClient) {
+        try {
+            logIn(ssh)
+        } catch (e: UserAuthException) {
+            // Kept beyond this tab: Terminal and Files then do not offer a saved password just refused.
+            env.refusals.record(profile, device, port, user, refusal())
+            throw e
+        }
+        env.refusals.clear(profile, device, port, user)
+    }
+
+    private fun logIn(ssh: SSHClient) {
         when (auth) {
             SshAuth.Key -> {
                 val providers = env.keys.identities(env.keyComment()).mapNotNull { identity ->
