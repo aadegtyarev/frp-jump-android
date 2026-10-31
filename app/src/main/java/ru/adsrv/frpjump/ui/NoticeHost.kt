@@ -96,22 +96,25 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
     // Kept while it slides out.
     var last by remember { mutableStateOf<TopNotice?>(null) }
     if (shown != null) last = shown
+    // A notice with a button (Undo) that runs out leaves its place guarded for a moment: a tap meant
+    // for its button lands on nothing rather than on the bar button under it.
+    var height by remember { mutableIntStateOf(0) }
+    var ranOut by remember { mutableStateOf<Long?>(null) }
+    var guarded by remember { mutableStateOf(false) }
     LaunchedEffect(shown?.id) {
         val now = shown ?: return@LaunchedEffect
         delay(now.durationMs)
+        if (now.action != null) ranOut = now.id
         notices.dismiss(now.id)
     }
-    // A notice with a button that runs out on its own leaves its place guarded for a moment: a tap
-    // meant for its button (Undo) lands on nothing rather than on the bar button under it.
-    var height by remember { mutableIntStateOf(0) }
-    var tappedAway by remember { mutableStateOf<Long?>(null) }
-    var guarded by remember { mutableStateOf(false) }
-    val leaving = last
-    LaunchedEffect(shown?.id) {
-        if (shown != null || leaving?.action == null || tappedAway == leaving.id) return@LaunchedEffect
-        guarded = true
-        delay(TAP_GUARD_MS)
-        guarded = false
+    LaunchedEffect(ranOut) {
+        if (ranOut == null) return@LaunchedEffect
+        try {
+            guarded = true
+            delay(TAP_GUARD_MS)
+        } finally {
+            guarded = false
+        }
     }
     // Centred on a wide screen.
     val underBars = if (edge) {
@@ -120,7 +123,7 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
         Modifier
     }
     Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-        if (guarded && height > 0) {
+        if (guarded && shown == null && height > 0) {
             Box(
                 Modifier
                     .widthIn(max = 560.dp)
@@ -141,12 +144,7 @@ fun NoticeHost(notices: Notices, modifier: Modifier = Modifier, edge: Boolean = 
                 .onSizeChanged { if (it.height > 0) height = it.height }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            last?.let {
-                NoticeCard(it, onDismiss = {
-                    tappedAway = it.id
-                    notices.dismiss(it.id)
-                })
-            }
+            last?.let { NoticeCard(it, onDismiss = { notices.dismiss(it.id) }) }
         }
     }
 }
