@@ -47,6 +47,13 @@ interface MqttLink {
 
     fun unsubscribe(filter: String)
 
+    /**
+     * Publishes [payload] to [topic]; [done] gets the broker's answer
+     * ([ackAnswer] under MQTT 5 with QoS 1 or 2, else
+     * [PublishAnswer.Unconfirmed]) or what failed, once, on any thread.
+     */
+    fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit)
+
     /** Disconnects; no [LinkEvents.lost] follows. */
     fun close()
 }

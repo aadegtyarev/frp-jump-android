@@ -30,6 +30,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +65,8 @@ fun Field(
     problem: String? = null,
     note: String? = null,
     singleLine: Boolean = true,
+    /** Lines shown at least when not [singleLine]. */
+    minLines: Int = 1,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingIcon: (@Composable () -> Unit)? = null,
     /** To focus the field when it shows. */
@@ -78,27 +82,70 @@ fun Field(
             onValueChange = onValueChange,
             enabled = enabled,
             singleLine = singleLine,
+            minLines = if (singleLine) 1 else minLines,
             isError = problem != null,
             placeholder = placeholder?.let { { Text(it, color = colors.muted) } },
             supportingText = (problem ?: note)?.let { { Text(it) } },
-            textStyle = if (mono) TextStyle(fontFamily = FontFamily.Monospace, fontSize = 18.sp) else TextStyle(fontSize = 16.sp),
+            textStyle = fieldTextStyle(mono),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false),
             visualTransformation = visualTransformation,
             trailingIcon = trailingIcon,
             shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = colors.outline,
-                focusedBorderColor = colors.accent,
-                unfocusedContainerColor = colors.card,
-                focusedContainerColor = colors.card,
-                disabledContainerColor = colors.tile,
-            ),
+            colors = fieldColors(),
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .then(if (contentType != null) Modifier.semantics { this.contentType = contentType } else Modifier),
         )
     }
+}
+
+/** [Field] holding a [TextFieldValue], for a field that sets where the cursor starts (a prefilled path, cursor at its end). */
+@Composable
+fun Field(
+    label: String,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    mono: Boolean = false,
+    keyboard: KeyboardType = KeyboardType.Text,
+    problem: String? = null,
+    note: String? = null,
+    focusRequester: FocusRequester? = null,
+) {
+    val colors = AppTheme.colors
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            isError = problem != null,
+            supportingText = (problem ?: note)?.let { { Text(it) } },
+            textStyle = fieldTextStyle(mono),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false),
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+        )
+    }
+}
+
+private fun fieldTextStyle(mono: Boolean): TextStyle =
+    if (mono) TextStyle(fontFamily = FontFamily.Monospace, fontSize = 18.sp) else TextStyle(fontSize = 16.sp)
+
+@Composable
+private fun fieldColors(): TextFieldColors {
+    val colors = AppTheme.colors
+    return OutlinedTextFieldDefaults.colors(
+        unfocusedBorderColor = colors.outline,
+        focusedBorderColor = colors.accent,
+        unfocusedContainerColor = colors.card,
+        focusedContainerColor = colors.card,
+        disabledContainerColor = colors.tile,
+    )
 }
 
 /** Two or three choices side by side, as the mockup's Web / SSH / TCP switch. */

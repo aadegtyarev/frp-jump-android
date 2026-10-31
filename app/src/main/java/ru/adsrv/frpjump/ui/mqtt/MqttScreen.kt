@@ -219,8 +219,10 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
         TopicCard(
             card = card,
             canPin = state.state != MqttState.Ended,
+            state = state.state,
             onPin = { vm.pin(card.path, it) },
             onUnpin = { vm.unpin(card.path, it) },
+            onPublish = vm::publish,
             onDismiss = vm::closeCard,
         )
     }
@@ -551,7 +553,7 @@ private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (
 private fun rowKey(path: MqttPath): String = "${path.levels.size}:" + path.levels.joinToString("\u0000")
 
 @Composable
-private fun topicProblemText(problem: TopicProblem): String = when (problem) {
+internal fun topicProblemText(problem: TopicProblem): String = when (problem) {
     TopicProblem.EMPTY -> stringResource(R.string.mqtt_topic_empty)
     TopicProblem.WILDCARD -> stringResource(R.string.mqtt_topic_wildcard)
     TopicProblem.NUL -> stringResource(R.string.mqtt_topic_nul)

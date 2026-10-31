@@ -751,4 +751,18 @@
     <string name="mqtt_topic_wildcard">A topic cannot hold + or #.</string>
     <string name="mqtt_topic_nul">A topic cannot hold the NUL character.</string>
     <string name="mqtt_topic_too_long">A topic holds at most %1$d bytes.</string>
+    <string name="mqtt_publish_ellipsis">Publish…</string>
+    <string name="mqtt_publish_title">Publish to a topic</string>
+    <string name="mqtt_publish_retain">Retain</string>
+    <string name="mqtt_publish_retain_hint">The broker keeps the value and gives it to every new subscriber</string>
+    <string name="mqtt_publish_qos" translatable="false">QoS</string>
+    <string name="mqtt_publish_send">Send</string>
+    <string name="mqtt_topic_reserved">Topics starting with $ are reserved by brokers; this one may be refused.</string>
+    <string name="mqtt_publish_accepted">Accepted by the broker</string>
+    <string name="mqtt_publish_refused">Refused: %1$s</string>
+    <string name="mqtt_publish_unconfirmed">Sent, not confirmed</string>
+    <string name="mqtt_publish_not_connected">Not sent: no connection to the broker</string>
+    <string name="mqtt_publish_lost">The connection dropped before the broker answered</string>
+    <string name="mqtt_publish_timeout">No answer from the broker in %1$d s</string>
+    <string name="mqtt_publish_failed">Not sent: %1$s</string>
 </resources>

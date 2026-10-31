@@ -195,6 +195,33 @@ class MqttSession(
         reconcile()
     }
 
+    /**
+     * Publishes [payload] to [topic] (checked by the caller) through the
+     * open connection; [done] gets the answer once, on the session's
+     * thread: [PublishFailure.NOT_CONNECTED] when the session is not open
+     * (connecting, reconnecting, closed), [PublishFailure.TIMEOUT] after
+     * [PUBLISH_TIMEOUT_MS] without one.
+     */
+    fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = scheduler.post {
+        val open = link
+        if (ended || open == null || _state.value !is MqttState.Open) return@post done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
+        var answered = false
+        var cancelTimeout: (() -> Unit)? = null
+        fun answer(a: PublishAnswer) {
+            if (answered) return
+            answered = true
+            cancelTimeout?.invoke()
+            done(a)
+        }
+        cancelTimeout = scheduler.schedule(PUBLISH_TIMEOUT_MS) { answer(PublishAnswer.Failed(PublishFailure.TIMEOUT)) }
+        try {
+            open.publish(topic, payload, qos, retain) { a -> scheduler.post { answer(a) } }
+        } catch (e: Exception) {
+            // The client refused to build it (a topic it finds malformed).
+            answer(PublishAnswer.Failed(PublishFailure.OTHER, e.javaClass.simpleName))
+        }
+    }
+
     /** "Refresh tree": forgets every topic and takes a new snapshot. */
     fun refreshTree() = scheduler.post {
         if (ended) return@post

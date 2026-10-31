@@ -76,6 +76,8 @@ class MqttReconnectTest {
 
             override fun unsubscribe(filter: String) = Unit
 
+            override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = Unit
+
             override fun close() = Unit
         })
     }
@@ -170,6 +172,8 @@ class MqttReconnectTest {
 
                 override fun unsubscribe(filter: String) = Unit
 
+                override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = Unit
+
                 override fun close() = Unit
             })
         }
@@ -198,6 +202,8 @@ class MqttReconnectTest {
                 override fun subscribe(filter: String, done: (granted: Boolean) -> Unit) = Unit
 
                 override fun unsubscribe(filter: String) = Unit
+
+                override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = Unit
 
                 override fun close() {
                     linkClosed = true

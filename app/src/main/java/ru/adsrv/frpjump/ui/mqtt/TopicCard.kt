@@ -57,7 +57,9 @@ import ru.adsrv.frpjump.mqtt.PayloadReading
 import ru.adsrv.frpjump.mqtt.readPayload
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.PayloadView
+import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.PinMask
+import ru.adsrv.frpjump.mqtt.PublishAnswer
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.ValueLine
 import ru.adsrv.frpjump.mqtt.copiedValue
@@ -106,15 +108,18 @@ private const val COPY_PREVIEW = 40
  * full path; a value in full with its view (Text / JSON / Hex, detected,
  * switchable for this card), size, retained, QoS and time; a branch's
  * count of topics and its newest change; the last values; Copy path, Copy
- * value, Pin… and Unpin. [canPin] is false once the session has ended.
+ * value, Publish…, Pin… and Unpin. [canPin] is false once the session has
+ * ended; Publish… is then off too. [state] is the session's, for Send.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopicCard(
     card: CardState,
     canPin: Boolean,
+    state: MqttState,
     onPin: (PinMask) -> String,
     onUnpin: (PinMask) -> Unit,
+    onPublish: (topic: String, payload: String, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -122,6 +127,7 @@ fun TopicCard(
     val value = card.node?.value
     val path = card.path
     var picking by rememberSaveable { mutableStateOf(false) }
+    var publishing by rememberSaveable { mutableStateOf(false) }
     // Chosen by hand for this card; null follows what each new value is detected as.
     var chosen by rememberSaveable(path.format(), path.levels.size) { mutableStateOf<PayloadView?>(null) }
     val payload = value?.payload?.takeIf { it.isNotEmpty() }
@@ -182,12 +188,17 @@ fun TopicCard(
                             }
                         }
                     }
+                    // Full width, one per row: the labels stay whole at any phone width and font size.
+                    SecondaryButton(stringResource(R.string.mqtt_publish_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { publishing = true }
                     if (card.pinned.size < PinMask.entries.size) {
                         SecondaryButton(stringResource(R.string.mqtt_pin_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { picking = true }
                     }
                 }
             }
         }
+    }
+    if (publishing) {
+        PublishSheet(path = path.format(), state = state, onPublish = onPublish, onDismiss = { publishing = false })
     }
     if (picking) {
         PinSheet(
