@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.tunnel
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -97,11 +98,17 @@ class TunnelService : Service() {
 
     override fun onDestroy() {
         running = false
+        // Stopped by Android while not in the foreground: its notification is no longer backed.
+        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         scope.cancel()
         super.onDestroy()
     }
 
-    /** False when Android does not allow it now (12+, started again from the background). */
+    /**
+     * False when Android does not allow it now: 12+ throws when the service
+     * was started again from the background; for an app the owner restricted
+     * in the background it only logs and leaves the service in the background.
+     */
     private fun startInForeground(summary: TunnelSummary): Boolean {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
@@ -110,13 +117,19 @@ class TunnelService : Service() {
         }
         return try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(summary), type)
-            true
+            isInForeground()
         } catch (e: IllegalStateException) {
             // ForegroundServiceStartNotAllowedException (an IllegalStateException) on 12+.
             Log.w(TAG, "cannot come to the foreground now: ${e.message}")
             false
         }
     }
+
+    /** Whether Android took this service into the foreground (it reports its own services). */
+    @Suppress("DEPRECATION")
+    private fun isInForeground(): Boolean =
+        getSystemService(ActivityManager::class.java).getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == TunnelService::class.java.name && it.foreground }
 
     /**
      * "N tunnels", or "N tunnels in M profiles" when more than one profile
