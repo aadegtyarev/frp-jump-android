@@ -56,10 +56,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.files.ListingCache
 import ru.adsrv.frpjump.files.RemoteEntry
+import ru.adsrv.frpjump.files.nameMatches
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.AppTopBar
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.SearchBar
+import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.StatusBanner
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.shortTime
@@ -84,6 +87,16 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
     var card by rememberSaveable { mutableStateOf<String?>(null) }
     var typing by rememberSaveable { mutableStateOf(false) }
     var changingLogin by remember { mutableStateOf(false) }
+    // The search field over the top bar, as on Devices and in the MQTT explorer.
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var focusSearch by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val closeSearch = {
+        searching = false
+        focusSearch = false
+        query = ""
+        vm.clearSearch()
+    }
     // The files to download once a folder is picked.
     var waiting by remember { mutableStateOf<List<RemoteEntry>>(emptyList()) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
@@ -106,6 +119,7 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                     waiting = event.entries
                     pickFolder.launch(null)
                 }
+                is FilesEvent.ShowCard -> card = event.path
             }
         }
     }
@@ -117,6 +131,8 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
         if (now.running == 0) onBack() else { leaving = now.failed }
     }
     BackHandler { if (!vm.up()) leave() }
+    // Declared later, so it comes first: Back closes the search before it goes up a folder.
+    BackHandler(enabled = searching) { closeSearch() }
     // Declared later, so it comes first: Back ends a selection before it goes up a folder.
     BackHandler(enabled = state.selection.active) { vm.clearSelection() }
 
@@ -131,6 +147,8 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
     LaunchedEffect(state.path) {
         val path = state.path ?: return@LaunchedEffect
         if (path == shownPath) return@LaunchedEffect
+        // Another folder opened (from the matches, a hit, the path bar): the search was for the one before.
+        if (shownPath != null && searching) closeSearch()
         shownPath?.let { positions[it] = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
         shownPath = path
         val (index, offset) = positions[path] ?: (0 to 0)
@@ -156,11 +174,33 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                         }
                     },
                 )
+            } else if (searching) {
+                SearchBar(
+                    query,
+                    onQuery = { typed ->
+                        // Other text: the search in subfolders was for the old one.
+                        if (typed.trim() != query.trim()) vm.clearSearch()
+                        query = typed
+                    },
+                    onClose = closeSearch,
+                    focus = focusSearch,
+                    onFocused = { focusSearch = false },
+                    label = stringResource(R.string.files_search),
+                    hint = stringResource(R.string.files_search_hint),
+                )
             } else AppTopBar(
                 title = title,
                 subtitle = t?.let { state.user + " · " + statusWord(state.status) },
                 onBack = leave,
                 actions = {
+                    if (state.status != FilesStatus.Gone) {
+                        IconButton(onClick = {
+                            searching = true
+                            focusSearch = true
+                        }) {
+                            Icon(SearchGlyph, contentDescription = stringResource(R.string.files_search), tint = colors.ink, modifier = Modifier.size(22.dp))
+                        }
+                    }
                     Box {
                         IconButton(onClick = { menu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.files_actions))
@@ -232,8 +272,15 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                             onCancel = { vm.cancelUpload(upload.id) },
                         )
                     }
-                    if (state.entries.isEmpty()) item(key = "empty") { EmptyFolder(state) }
-                    items(state.entries, key = { it.name }) { entry ->
+                    val text = query.trim()
+                    val filtering = searching && text.isNotEmpty()
+                    val shown = if (filtering) state.entries.filter { nameMatches(it.name, text) } else state.entries
+                    if (state.entries.isEmpty()) {
+                        item(key = "empty") { EmptyFolder(state) }
+                    } else if (shown.isEmpty()) {
+                        item(key = "/no-match") { NoNameMatch(text) }
+                    }
+                    items(shown, key = { it.name }) { entry ->
                         val selecting = state.selection.active
                         EntryRow(
                             entry = entry,
@@ -248,13 +295,23 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                                     else -> card = entry.path
                                 }
                             },
-                            onLongPress = { vm.toggleSelected(entry) },
+                            // "Select all" takes the whole folder: no selection from a filtered list.
+                            onLongPress = { if (!searching) vm.toggleSelected(entry) },
                             onDetails = { card = entry.path },
                             onRetry = { vm.retry(entry) },
                             onDismiss = { vm.dismissFailure(entry.path) },
                             onCancel = { vm.cancelDownload(entry.path) },
                         )
                         HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 70.dp))
+                    }
+                    if (filtering && state.path != null && state.status != FilesStatus.Gone) {
+                        subfolderSearch(
+                            search = state.deepSearch?.takeIf { it.query == text && it.root == state.path },
+                            online = state.online,
+                            onStart = { vm.searchSubfolders(text) },
+                            onStop = vm::stopSearch,
+                            onOpen = vm::openFound,
+                        )
                     }
                 }
             }
@@ -290,7 +347,8 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
             )
         }
     }
-    val carded = card?.let { path -> state.entries.firstOrNull { it.path == path } }
+    // A hit in a subfolder has its card too, over the hits.
+    val carded = card?.let { path -> state.entries.firstOrNull { it.path == path } ?: state.foundEntry?.takeIf { it.path == path } }
     // The folder changed under the card (or the entry went): it closes rather than show something stale.
     LaunchedEffect(card, carded == null) { if (card != null && carded == null && state.path != null) card = null }
     carded?.let { entry ->

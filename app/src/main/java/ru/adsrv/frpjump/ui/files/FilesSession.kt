@@ -30,7 +30,9 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.files.DownloadSink
 import ru.adsrv.frpjump.files.FilesKeeper
+import ru.adsrv.frpjump.files.CommandsRefused
 import ru.adsrv.frpjump.files.FilesTarget
+import ru.adsrv.frpjump.files.Found
 import ru.adsrv.frpjump.files.PhoneFiles
 import ru.adsrv.frpjump.files.PhoneSideException
 import ru.adsrv.frpjump.files.RemoteEntry
@@ -43,9 +45,12 @@ import ru.adsrv.frpjump.files.fileProblem
 import ru.adsrv.frpjump.files.isDeviceRefusal
 import ru.adsrv.frpjump.files.isFolderAccess
 import ru.adsrv.frpjump.files.parentOf
+import ru.adsrv.frpjump.files.readEntry
 import ru.adsrv.frpjump.files.readFolder
 import ru.adsrv.frpjump.files.resolvePath
+import ru.adsrv.frpjump.files.SearchEnd
 import ru.adsrv.frpjump.files.runOneByOne
+import ru.adsrv.frpjump.files.searchNames
 import ru.adsrv.frpjump.files.targetFolder
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
@@ -114,6 +119,21 @@ data class Transfer(
     val fraction: Float? get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
 }
 
+/**
+ * The search in subfolders of [root] for [query]: its hits so far, and once
+ * it is over ([running] false) how it ended ([end] null: stopped by the
+ * owner), with [skipped] folders it could not read and a failure's [message].
+ */
+data class DeepSearch(
+    val query: String,
+    val root: String,
+    val found: List<Found> = emptyList(),
+    val running: Boolean = true,
+    val end: SearchEnd? = null,
+    val skipped: Int = 0,
+    val message: String? = null,
+)
+
 /** A file picked for upload, waiting, going, or failed ([transfer]'s failure) with Retry. */
 data class Upload(val id: Long, val uri: Uri, val dir: String, val transfer: Transfer)
 
@@ -139,6 +159,10 @@ data class FilesUiState(
     val downloadFolder: String? = null,
     /** The entries picked by a long press and taps; empty while not selecting. */
     val selection: FileSelection = FileSelection(),
+    /** The search in subfolders for the search field's text; null when none was started. */
+    val deepSearch: DeepSearch? = null,
+    /** A hit in a subfolder whose card is open over the hits. */
+    val foundEntry: RemoteEntry? = null,
 ) {
     val online: Boolean get() = status == FilesStatus.Ready
 
@@ -179,6 +203,9 @@ sealed interface FilesEvent {
 
     /** No usable download folder: ask for one, then download [entries]. */
     data class PickFolder(val entries: List<RemoteEntry>) : FilesEvent
+
+    /** Open the card of [path], a hit of the search in subfolders ([FilesUiState.foundEntry]). */
+    data class ShowCard(val path: String) : FilesEvent
 }
 
 /**
@@ -239,6 +266,9 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** The job of the upload being written now, by its id. */
     private val uploadJobs = RowJobs<Long>()
+
+    /** The search in subfolders going, if any. */
+    private var searchJob: Job? = null
 
     init {
         val t = target
@@ -720,6 +750,81 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         }
     }
 
+    /**
+     * "Search subfolders": [query] in the names below the folder shown, on
+     * the device; hits come into [FilesUiState.deepSearch] as they are found.
+     */
+    fun searchSubfolders(query: String) {
+        val root = _state.value.path ?: return
+        val text = query.trim()
+        if (text.isEmpty()) return
+        val port = localPort
+        if (!_state.value.online || port == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
+        searchJob?.cancel()
+        val hidden = _state.value.showHidden
+        val search = DeepSearch(text, root)
+        _state.update { it.copy(deepSearch = search) }
+        searchJob = scope.launch {
+            // Only this search's state: a newer one, or none, is left alone.
+            val mine = { now: FilesUiState -> now.deepSearch?.let { it.query == text && it.root == root && it.running } == true }
+            val end = { change: (DeepSearch) -> DeepSearch ->
+                _state.update { now -> if (mine(now)) now.copy(deepSearch = change(now.deepSearch!!).copy(running = false)) else now }
+            }
+            try {
+                val b = connected(port)
+                val outcome = searchNames(b::exec, root, text, hidden) { hits ->
+                    _state.update { now -> if (mine(now)) now.copy(deepSearch = now.deepSearch!!.let { it.copy(found = it.found + hits) }) else now }
+                }
+                end { it.copy(end = outcome.end, skipped = outcome.skipped, message = outcome.message) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val message = if (e is CommandsRefused) Texts.get(R.string.files_search_no_commands) else connectionTrouble(e) ?: fileProblem(e)
+                end { it.copy(end = SearchEnd.FAILED, message = message) }
+            }
+        }
+    }
+
+    /** Stop: the `find` ends, the hits so far stay. */
+    fun stopSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        _state.update { now -> now.deepSearch?.takeIf { it.running }?.let { now.copy(deepSearch = it.copy(running = false, end = null)) } ?: now }
+    }
+
+    /** The text changed or the search closed: the search in subfolders ends and its hits go. */
+    fun clearSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        _state.update { it.copy(deepSearch = null, foundEntry = null) }
+    }
+
+    /** A tap on a hit: a folder opens; a file's card opens over the hits. */
+    fun openFound(found: Found) {
+        val port = localPort
+        if (!_state.value.online || port == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
+        _state.update { it.copy(busy = true) }
+        scope.launch {
+            try {
+                val b = connected(port)
+                val entry = withContext(Dispatchers.IO) { readEntry(b.fs, parentOf(found.path), found.path.substringAfterLast('/')) }
+                if (entry.isDir) {
+                    open(entry.folderPath)
+                } else {
+                    _state.update { it.copy(foundEntry = entry) }
+                    _events.send(FilesEvent.ShowCard(entry.path))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toast(Texts.get(R.string.files_list_failed, found.relative, connectionTrouble(e) ?: fileProblem(e)), NoticeKind.WARN)
+            } finally {
+                // A folder opened from the hit shows its own bar until it is read.
+                if (loadJob?.isActive != true) _state.update { it.copy(busy = false) }
+            }
+        }
+    }
+
     private fun load(path: String?, refresh: Boolean) {
         val t = target ?: return
         loadJob?.cancel()
@@ -834,6 +939,8 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     private fun show(path: String?, entries: List<RemoteEntry>) {
         all = entries
+        // Another folder: the search was for the one before.
+        if (path != _state.value.path) clearSearch()
         _state.update {
             val visible = visibleListing(entries, it.showHidden)
             it.copy(
@@ -885,6 +992,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      * connection, folder and listing stay for the screen's return.
      */
     override fun leave() {
+        clearSearch()
         _state.update { it.copy(downloads = emptyMap(), uploads = emptyList(), selection = FileSelection()) }
         app.appScope.launch(Dispatchers.IO) { withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() } }
     }

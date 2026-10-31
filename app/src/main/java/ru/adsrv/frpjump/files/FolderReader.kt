@@ -33,6 +33,16 @@ suspend fun readFolder(fs: RemoteFs, path: String, parallel: Int = LINKS_AT_ONCE
     Folder(dir, entries)
 }
 
+/** The row of [name] in folder [dir] (a physical path), as [readFolder] would give it. */
+fun readEntry(fs: RemoteFs, dir: String, name: String): RemoteEntry {
+    val attrs = fs.lstat(childOf(dir, name))
+    return if (attrs.kind == NodeKind.LINK) {
+        linkEntry(fs, dir, name, attrs)
+    } else {
+        RemoteEntry(name, childOf(dir, name), typeOf(attrs), attrs.size, attrs.modified, mode = attrs.mode, uid = attrs.uid, gid = attrs.gid)
+    }
+}
+
 /**
  * A symlink's row: its target's type, size and time. Broken only when
  * nothing is at the end of the chain; a target it may not look at, or a
