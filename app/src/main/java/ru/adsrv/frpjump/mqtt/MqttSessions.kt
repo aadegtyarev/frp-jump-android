@@ -54,7 +54,7 @@ class MqttSessions(
     /** [through] as it is now. Any thread. */
     fun throughNow(): List<SessionOn> = _sessions.value.map { it.on(it.state.value) }
 
-    private fun MqttSession.on(state: MqttState) = SessionOn(TunnelRef(profile, device, port), state != MqttState.Ended, SessionKind.MQTT)
+    private fun MqttSession.on(state: MqttState) = SessionOn(TunnelRef(profile, device, port), state != MqttState.Ended, SessionKind.MQTT, id)
 
     init {
         scope.launch(main) {

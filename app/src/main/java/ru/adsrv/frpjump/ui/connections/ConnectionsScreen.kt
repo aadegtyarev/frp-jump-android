@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -34,7 +33,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,14 +78,13 @@ fun ConnectionsScreen(
     val ui = remember { ConnectionUi() }
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val colors = AppTheme.colors
-    // "Disconnect all" spins until every server was asked (the rows and the line below tell the rest).
+    // "Disconnect all": the tunnels show down at once, with Undo. Only one still being restored is told
+    // to its server now: then it spins until every server was asked (the line below tells the rest).
     var disconnecting by remember { mutableStateOf(false) }
     val disconnectAll = {
         disconnecting = true
         vm.actions.disconnectAll { disconnecting = false }
     }
-    // Every session and file screen closes with the tunnels: asked first when any is open.
-    var confirmAll by remember { mutableStateOf(false) }
     val restoring = state.restoring?.takeIf { it > 0 }
     LazyColumn(
         Modifier
@@ -102,7 +99,7 @@ fun ConnectionsScreen(
                     Text(stringResource(R.string.tab_connections), fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     if (state.active.isNotEmpty() || restoring != null || disconnecting) {
                         OutlinedButton(
-                            onClick = { if (vm.actions.openThrough(null).any) confirmAll = true else disconnectAll() },
+                            onClick = { disconnectAll() },
                             enabled = !disconnecting,
                             shape = CircleShape,
                             border = BorderStroke(1.dp, colors.outline),
@@ -144,21 +141,6 @@ fun ConnectionsScreen(
             item(key = "saved") { SectionTitle(stringResource(R.string.connections_saved), top = if (state.active.isEmpty()) 4 else 12) }
             items(state.saved, key = { it.key }) { row -> Line(row, state.colors[row.profile], row.sessionsIn(sessions), ui, actions) }
         }
-    }
-    if (confirmAll) {
-        val open = vm.actions.openThrough(null)
-        AlertDialog(
-            onDismissRequest = { confirmAll = false },
-            title = { Text(stringResource(R.string.disconnect_all_confirm_title)) },
-            text = if (open.any) ({ OpenThroughText(open) }) else null,
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmAll = false
-                    disconnectAll()
-                }) { Text(stringResource(R.string.disconnect_all), color = colors.error) }
-            },
-            dismissButton = { TextButton(onClick = { confirmAll = false }) { Text(stringResource(R.string.cancel)) } },
-        )
     }
     ConnectionDialogs(ui, vm.actions, existing = vm::connections, rows = state.active + state.saved, onOpenTerminal = onOpenTerminal, onOpenFiles = onOpenFiles)
 }

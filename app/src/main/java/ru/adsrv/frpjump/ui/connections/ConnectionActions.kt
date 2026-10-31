@@ -46,14 +46,12 @@ import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.connectsDirectly
 import ru.adsrv.frpjump.ssh.offersSavedPassword
-import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelsState
-import ru.adsrv.frpjump.tunnel.openOnProfile
-import ru.adsrv.frpjump.tunnel.openThrough
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.undo.PendingUndo
+import ru.adsrv.frpjump.undo.TunnelDisconnects
 import ru.adsrv.frpjump.ui.userMessage
 import java.io.IOException
 
@@ -90,6 +88,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val runtime = runtime(profile) ?: throw IOException(Texts.get(R.string.profile_gone))
         val key = localPortKey(device, port)
         fun up(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }?.localPort
+        // Used again while its disconnect waits for Undo: it stays up.
+        revive(profile, device, port)
         up(runtime.tunnels.state.value)?.let { return it }
         if (runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, kind)
         return withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
@@ -99,27 +99,22 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     /** The sessions of every tunnel, for the SSH rows' counts of terminals. */
     val sessions: Flow<List<SessionOn>> = app.sessions.through
 
+    /** Connect; a tunnel whose disconnect waits for Undo is still up, and only stays so. */
     fun connect(row: ConnectionRow) {
         val c = row.connection
+        if (revive(row.profile, c.device, c.port)) return
         runtime(row.profile)?.tunnels?.connectAsync(c.device, c.port, c.kind)
     }
 
-    fun disconnect(row: ConnectionRow) {
-        runtime(row.profile)?.tunnels?.disconnectAsync(row.connection.device, row.connection.port)
-    }
+    /** A tunnel whose disconnect waits for Undo, used again from its row: it stays up ([TunnelDisconnects.revive]). Main thread. */
+    private fun revive(profile: String, device: String, port: Int): Boolean = app.disconnects.revive(TunnelRef(profile, device, port))
 
-    /**
-     * The live terminal and MQTT sessions and open file screens that go when
-     * [row]'s tunnel disconnects, or every tunnel when [row] is null: the
-     * owner is asked before they are lost. Main thread.
-     */
-    fun openThrough(row: ConnectionRow?): OpenThrough =
-        openThrough(app.sessions.now(), openFiles(), row?.let { TunnelRef(it.profile, it.connection.device, it.connection.port) })
+    /** Disconnect, with Undo ([TunnelDisconnects]): [row]'s tunnel shows down at once. Main thread. */
+    fun disconnect(row: ConnectionRow) = app.disconnects.disconnect(listOf(TunnelRef(row.profile, row.connection.device, row.connection.port)))
 
-    /** [openThrough] for every tunnel of [profile]. Main thread. */
-    fun openOnProfile(profile: String): OpenThrough = openOnProfile(app.sessions.now(), openFiles(), profile)
-
-    private fun openFiles() = app.fileTargets.all().map { TunnelRef(it.profile, it.device, it.port) }
+    /** The tunnels of [profiles] up as the owner sees them: not those whose disconnect waits already. Main thread. */
+    private fun shownTunnels(profiles: Collection<ProfileRuntime>): List<TunnelRef> =
+        app.disconnects.shown(profiles.flatMap { r -> r.tunnels.state.value.tunnels.map { TunnelRef(r.id, it.device, it.port) } })
 
     /** "Retry direct" for [row]'s device: all its tunnels through the server try again, kept no more on this network. */
     fun retryDirect(row: ConnectionRow) {
@@ -135,35 +130,28 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         }
     }
 
-    /** Every tunnel of every profile; [onDone] once every server was asked (main thread). */
+    /**
+     * "Disconnect all": every tunnel of every profile up now, with Undo
+     * ([TunnelDisconnects]); [onDone] at once. With none up yet (still being
+     * restored after a restart) there is nothing to show going: every server
+     * is told now, and [onDone] once it was asked (main thread).
+     */
     fun disconnectAll(onDone: () -> Unit = {}) {
+        val shown = shownTunnels(app.profiles.state.value.runtimes.values)
+        if (shown.isNotEmpty()) {
+            app.disconnects.disconnect(shown)
+            return onDone()
+        }
         app.appScope.launch {
             app.profiles.disconnectAll()
             onDone()
         }
     }
 
-    /**
-     * Every tunnel of [profile] (the power button on the Devices tab's bar);
-     * a notice says how many went, or that the server was not told and they
-     * may come back. [onDone] once the server was asked (main thread).
-     */
-    fun disconnectProfile(profile: String, onDone: () -> Unit = {}) {
-        val tunnels = runtime(profile)?.tunnels ?: run {
-            app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
-            return onDone()
-        }
-        app.appScope.launch {
-            // As the bar's chip counts them; none up yet (e.g. still being restored): no "0".
-            val count = app.profiles.tunnelsByProfileNow()[profile] ?: 0
-            if (tunnels.disconnectAll()) {
-                val text = if (count > 0) Texts.get(R.string.tunnels_disconnected, count) else Texts.get(R.string.tunnels_disconnected_unknown)
-                app.notices.show(text, NoticeKind.DONE)
-            } else {
-                app.notices.show(Texts.get(R.string.disconnect_all_failed), NoticeKind.WARN, long = true)
-            }
-            onDone()
-        }
+    /** Every tunnel of [profile] up now (the power button on the Devices tab's bar), with Undo. Main thread. */
+    fun disconnectProfile(profile: String) {
+        val runtime = runtime(profile) ?: return app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
+        app.disconnects.disconnect(shownTunnels(listOf(runtime)))
     }
 
     /**
@@ -258,7 +246,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         // As the list and the tunnel are now: of several deletes on one tunnel, the last one disconnects it.
         val key = localPortKey(row.connection.device, row.connection.port)
         val up = runtime.tunnels.state.value.tunnels.any { it.key == key }
-        if (disconnectsAfterDelete(row.connection, runtime.connections.connections.value, up)) disconnect(row)
+        // Its Undo is gone already: at once, not with another one.
+        if (disconnectsAfterDelete(row.connection, runtime.connections.connections.value, up)) runtime.tunnels.disconnectAsync(row.connection.device, row.connection.port)
     }
 
     /**
@@ -377,6 +366,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      */
     fun openMqtt(row: ConnectionRow): Int? {
         val c = row.connection
+        revive(row.profile, c.device, c.port)
         app.mqtt.find(row.profile, c.id)?.let { return it.id }
         val localPort = row.tunnel?.localPort ?: return null
         if (runtime(row.profile) == null) return null
@@ -430,6 +420,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun openFiles(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int? {
         val runtime = runtime(row.profile) ?: return null
         val c = row.connection
+        revive(row.profile, c.device, c.port)
         val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
         scope.launch(Dispatchers.IO) { runtime.sshLogins.remember(c.device, c.port, login) }
         val auth = when (method) {

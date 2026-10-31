@@ -52,7 +52,8 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
   snippet or an MQTT pin; forgetting a saved password or login;
   disconnecting a tunnel or all tunnels (it goes dark at once; its terminal
   and Files sessions close only when Undo is gone); closing a terminal tab
-  (its shell ends when Undo is gone); deleting files; deleting retained MQTT
+  or a session on the Sessions tab (its shell ends when Undo is gone);
+  deleting files; deleting retained MQTT
   topics. The one confirm left is "Forget profile": it wipes the phone's
   keys and only a new enroll brings them back.
 - Consistency: controls that do the same action look the same everywhere —

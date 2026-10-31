@@ -5,6 +5,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.ports.profilePortPrefix
+import ru.adsrv.frpjump.tunnel.SessionKind
+
+/** What an action waiting for Undo does, as its notice counts it: "Deleted: 2 · Disconnected: 1". */
+enum class UndoKind { DELETED, DISCONNECTED, CLOSED }
+
+/** The notice's words for [counts] (actions waiting, by kind), in [UndoKind] order, joined by " · "; [word] says one kind's count. */
+fun undoText(counts: Map<UndoKind, Int>, word: (UndoKind, Int) -> String): String =
+    UndoKind.entries.mapNotNull { kind -> counts[kind]?.takeIf { it > 0 }?.let { word(kind, it) } }.joinToString(" · ")
 
 /**
  * "Undo instead of confirm" (docs/contract.md, UI rules): a destructive
@@ -26,12 +36,12 @@ class PendingUndo(
     private val timer: (delayMs: Long, block: () -> Unit) -> () -> Unit,
     /** Runs a batch's commits, one after another (in the app's scope); each key leaves [hidden] once its commit ends. */
     private val run: (suspend () -> Unit) -> Unit,
-    /** Shows the shared notice for [count] actions with Undo calling the function given; null count hides it. */
-    private val announce: (count: Int?, undo: () -> Unit) -> Unit,
+    /** Shows the shared notice for the actions waiting, counted by kind, with Undo calling the function given; null hides it. */
+    private val announce: (counts: Map<UndoKind, Int>?, undo: () -> Unit) -> Unit,
     private val delayMs: Long = DELAY_MS,
     private val capMs: Long = CAP_MS,
 ) {
-    private class Pending(val key: String, val commit: suspend () -> Unit, val undo: () -> Unit)
+    private class Pending(val key: String, val kind: UndoKind, val commit: suspend () -> Unit, val undo: () -> Unit)
 
     private val waiting = mutableListOf<Pending>()
     private var cancelTimer: (() -> Unit)? = null
@@ -48,15 +58,39 @@ class PendingUndo(
      * Hides [key] now and does [commit] when the notice goes; [undo]
      * restores anything the screen changed besides hiding it. A key already
      * hidden is ignored (it is gone from the screen; a second tap cannot reach it).
+     * [kind] is what the notice calls it.
      */
     @Synchronized
-    fun enqueue(key: String, commit: suspend () -> Unit, undo: () -> Unit = {}) {
+    fun enqueue(key: String, commit: suspend () -> Unit, undo: () -> Unit = {}, kind: UndoKind = UndoKind.DELETED) {
         if (key in _hidden.value) return
-        waiting += Pending(key, commit, undo)
+        waiting += Pending(key, kind, commit, undo)
         _hidden.update { it + key }
         // Until the notice for it shows, only the cap runs; then its full time.
         restartTimer(capMs)
-        announce(waiting.size, ::undoAll)
+        announceWaiting()
+    }
+
+    private fun announceWaiting() = announce(waiting.groupingBy { it.kind }.eachCount(), ::undoAll)
+
+    /**
+     * Takes back the action of [key] alone, as Undo would, while it still
+     * waits: the notice counts the rest, or goes with none left. False when
+     * it does not wait (never enqueued, already done or being done).
+     */
+    @Synchronized
+    fun withdraw(key: String): Boolean {
+        val pending = waiting.firstOrNull { it.key == key } ?: return false
+        waiting.remove(pending)
+        _hidden.update { it - key }
+        pending.undo()
+        if (waiting.isEmpty()) {
+            cancelTimer?.invoke()
+            cancelTimer = null
+            announce(null) {}
+        } else {
+            announceWaiting()
+        }
+        return true
     }
 
     /** The notice for what waits now is on screen: it stays its full time from here. */
@@ -140,5 +174,21 @@ class PendingUndo(
 
         /** The key of snippet [id]. */
         fun snippetKey(id: String) = "snippet:$id"
+
+        /** The key of [profile]'s tunnel to [device]:[port], whose disconnect waits. */
+        fun tunnelKey(profile: String, device: String, port: Int) = "tunnel:" + profilePortKey(profile, device, port)
+
+        /** The tunnels of every profile among [hidden], as [profilePortKey]s: dark, their disconnect waiting. */
+        fun darkTunnels(hidden: Set<String>): Set<String> =
+            hidden.filter { it.startsWith("tunnel:") }.map { it.removePrefix("tunnel:") }.toSet()
+
+        /** [darkTunnels] of [profile], as its tunnels' own keys ([ru.adsrv.frpjump.ports.localPortKey]). */
+        fun darkTunnels(hidden: Set<String>, profile: String): Set<String> {
+            val prefix = profilePortPrefix(profile)
+            return darkTunnels(hidden).filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
+        }
+
+        /** The key of the session [id] of [kind] (ids are per kind), whose close waits. */
+        fun sessionKey(kind: SessionKind, id: Int) = "session:${kind.name.lowercase()}/$id"
     }
 }

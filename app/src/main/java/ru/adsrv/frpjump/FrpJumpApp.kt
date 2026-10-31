@@ -10,7 +10,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.FrpJumpApi
@@ -42,12 +45,16 @@ import ru.adsrv.frpjump.profiles.Profiles
 import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.AppSession
 import ru.adsrv.frpjump.sessions.OpenSessions
+import ru.adsrv.frpjump.sessions.SessionCloser
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.notices.NoticeAction
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.undo.PendingUndo
+import ru.adsrv.frpjump.undo.TunnelDisconnects
+import ru.adsrv.frpjump.undo.UndoKind
+import ru.adsrv.frpjump.undo.undoText
 import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
@@ -97,6 +104,10 @@ class FrpJumpApp : Application() {
 
     /** The terminal and MQTT sessions together, as they are counted. */
     lateinit var sessions: OpenSessions
+        private set
+
+    /** Closing a terminal or MQTT session with Undo. */
+    lateinit var closeSessions: SessionCloser
         private set
 
     /** What every SSH login needs: the terminal's sessions and the file screens share it. */
@@ -168,8 +179,8 @@ class FrpJumpApp : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /**
-     * Deletes waiting for their Undo to run out, with the notice they share
-     * ("Deleted: 3 · Undo"). Commits run in [appScope]; all of them are done
+     * Deletes, disconnects and closes waiting for their Undo to run out, with
+     * the notice they share ("Deleted: 3 · Undo", "Disconnected: 2 · Undo"). Commits run in [appScope]; all of them are done
      * at once when the screens stop or the app locks, see [onCreate].
      */
     val pendingUndo by lazy {
@@ -183,14 +194,32 @@ class FrpJumpApp : Application() {
                 cancel
             },
             run = { commit -> appScope.launch { commit() } },
-            announce = { count, undo ->
-                if (count == null) {
+            announce = { counts, undo ->
+                if (counts == null) {
                     notices.dismissKey(UNDO_NOTICE)
                 } else {
-                    notices.show(Texts.get(R.string.undo_deleted, count), NoticeKind.DONE, key = UNDO_NOTICE, action = NoticeAction(Texts.get(R.string.undo), undo), first = true)
+                    val text = undoText(counts) { kind, n ->
+                        Texts.get(
+                            when (kind) {
+                                UndoKind.DELETED -> R.string.undo_deleted
+                                UndoKind.DISCONNECTED -> R.string.undo_disconnected
+                                UndoKind.CLOSED -> R.string.undo_closed
+                            },
+                            n,
+                        )
+                    }
+                    notices.show(text, NoticeKind.DONE, key = UNDO_NOTICE, action = NoticeAction(Texts.get(R.string.undo), undo), first = true)
                 }
             },
         )
+    }
+
+    /** Disconnecting tunnels with Undo: dark at once, stopped when the notice goes. Main thread. */
+    val disconnects by lazy {
+        TunnelDisconnects(pendingUndo) { t ->
+            // In the tunnel manager's own scope, as a disconnect always ran; a failure shows on its row.
+            profiles.runtime(t.profile)?.tunnels?.disconnectAsync(t.device, t.port)?.join()
+        }
     }
 
     override fun onCreate() {
@@ -219,7 +248,9 @@ class FrpJumpApp : Application() {
             restoreRecord = restoreRecord,
         )
         val store = ProfileStore(filesDir, boxFor = ::KeystoreSecretBox, storageFor = ::AtomicTextFile)
-        profiles = Profiles(store, restoreRecord.profiles) { profile, profileStore, currentId ->
+        // Tunnels whose disconnect waits for Undo are counted as down, but run on.
+        val dark = pendingUndo.hidden.map(PendingUndo::darkTunnels).stateIn(appScope, SharingStarted.Eagerly, emptySet())
+        profiles = Profiles(store, restoreRecord.profiles, dark) { profile, profileStore, currentId ->
             ProfileRuntime(profile.id, profileStore.credentials(profile), profileStore.dir(profile.id), currentId, shared)
         }
         directNotifier = DirectNotifier(this, profiles, directOffered, network.id, restoreRecord.profiles).also { it.start(appScope) }
@@ -311,7 +342,8 @@ class FrpJumpApp : Application() {
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
-        sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow)
+        sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow, pendingUndo.hidden)
+        closeSessions = SessionCloser(pendingUndo, closeTerminal = { ssh.close(it) }, closeMqtt = mqtt::close)
         // A kept file session closes with the last terminal session on its tunnel.
         appScope.launch { ssh.through.collect(files::onTerminals) }
     }

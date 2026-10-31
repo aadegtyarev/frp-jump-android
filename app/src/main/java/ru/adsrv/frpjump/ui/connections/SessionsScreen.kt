@@ -39,23 +39,43 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.flow.StateFlow
+import ru.adsrv.frpjump.sessions.SessionCloser
+import ru.adsrv.frpjump.sessions.sessionHidden
+import ru.adsrv.frpjump.tunnel.SessionKind
+import ru.adsrv.frpjump.tunnel.TunnelRef
 
 /**
  * The Sessions tab: the open terminal sessions, then the MQTT explorer
- * sessions; tap one to return to it. They close where they are shown (a
- * terminal's tab, the explorer's "⋮"), not here.
+ * sessions; tap one to return to it, ✕ closes it with Undo (as a
+ * terminal's tab and the explorer's "⋮" do). One closed, or whose tunnel
+ * was disconnected, while the Undo is on screen is not listed.
  */
 @Composable
 fun SessionsScreen(
     terminals: SshSessions,
     mqtt: MqttSessions,
+    /** [ru.adsrv.frpjump.undo.PendingUndo.hidden]. */
+    hidden: StateFlow<Set<String>>,
+    close: SessionCloser,
     /** Profile id to its colour's name, for the marks. */
     profileColors: Map<String, String>,
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
 ) {
-    val list by terminals.sessions.collectAsStateWithLifecycle()
-    val explorers by mqtt.sessions.collectAsStateWithLifecycle()
+    val allTerminals by terminals.sessions.collectAsStateWithLifecycle()
+    val allExplorers by mqtt.sessions.collectAsStateWithLifecycle()
+    val gone by hidden.collectAsStateWithLifecycle()
+    val list = remember(allTerminals, gone) {
+        allTerminals.filterNot { sessionHidden(gone, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) }
+    }
+    val explorers = remember(allExplorers, gone) {
+        allExplorers.filterNot { sessionHidden(gone, SessionKind.MQTT, it.id, TunnelRef(it.profile, it.device, it.port)) }
+    }
     val colors = AppTheme.colors
     LazyColumn(
         Modifier
@@ -82,13 +102,17 @@ fun SessionsScreen(
                 }
             }
         }
-        items(list, key = { "t${it.id}" }) { session -> TerminalLine(session, profileColors[session.profile]) { onOpenTerminal(session.id) } }
-        items(explorers, key = { "m${it.id}" }) { session -> MqttLine(session, profileColors[session.profile]) { onOpenMqtt(session.id) } }
+        items(list, key = { "t${it.id}" }) { session ->
+            TerminalLine(session, profileColors[session.profile], onClose = { close.terminal(session.id) }) { onOpenTerminal(session.id) }
+        }
+        items(explorers, key = { "m${it.id}" }) { session ->
+            MqttLine(session, profileColors[session.profile], onClose = { close.mqtt(session.id) }) { onOpenMqtt(session.id) }
+        }
     }
 }
 
 @Composable
-private fun TerminalLine(session: SshSession, profileColor: String?, onClick: () -> Unit) {
+private fun TerminalLine(session: SshSession, profileColor: String?, onClose: () -> Unit, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = when (state) {
@@ -97,12 +121,12 @@ private fun TerminalLine(session: SshSession, profileColor: String?, onClick: ()
         is SshState.Ended -> stringResource(R.string.terminal_state_ended) to colors.muted
         else -> stringResource(R.string.terminal_state_asks) to colors.warning
     }
-    SessionLine(session.title, text, color, profileColor, onClick) { TerminalIcon() }
+    SessionLine(session.title, text, color, profileColor, onClose, onClick) { TerminalIcon() }
 }
 
 /** An explorer session: its device and port, as the explorer's bar names it. */
 @Composable
-private fun MqttLine(session: MqttSession, profileColor: String?, onClick: () -> Unit) {
+private fun MqttLine(session: MqttSession, profileColor: String?, onClose: () -> Unit, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val state by session.state.collectAsStateWithLifecycle()
     val (text, color) = when (state) {
@@ -113,13 +137,13 @@ private fun MqttLine(session: MqttSession, profileColor: String?, onClick: () ->
         is MqttState.Failed -> stringResource(R.string.mqtt_session_not_connected) to colors.error
         MqttState.Ended -> stringResource(R.string.mqtt_session_ended) to colors.muted
     }
-    SessionLine("${session.device}:${session.port}", text, color, profileColor, onClick) {
+    SessionLine("${session.device}:${session.port}", text, color, profileColor, onClose, onClick) {
         Text(stringResource(R.string.kind_mqtt_tile), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.ink)
     }
 }
 
 @Composable
-private fun SessionLine(title: String, state: String, stateColor: Color, profileColor: String?, onClick: () -> Unit, glyph: @Composable () -> Unit) {
+private fun SessionLine(title: String, state: String, stateColor: Color, profileColor: String?, onClose: () -> Unit, onClick: () -> Unit, glyph: @Composable () -> Unit) {
     val colors = AppTheme.colors
     Surface(onClick = onClick, color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -131,6 +155,10 @@ private fun SessionLine(title: String, state: String, stateColor: Color, profile
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(state, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = stateColor)
+            }
+            // At the row's end, as Disconnect on a connection row: ✕ as the other closes (search, a transfer).
+            IconButton(onClick = onClose, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.session_close_named, title), tint = colors.muted, modifier = Modifier.size(20.dp))
             }
         }
     }

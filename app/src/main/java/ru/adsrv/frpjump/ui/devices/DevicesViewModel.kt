@@ -18,6 +18,7 @@ import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.tunnelPorts
+import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.devices.tunnelsFirst
 import ru.adsrv.frpjump.session.Notice
 import ru.adsrv.frpjump.ui.connections.ConnectionActions
@@ -70,7 +71,12 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     /** The current profile's list with its own tunnels' ports, so a switch never mixes two profiles. */
     private fun listAndTunnels() = app.profiles.state.map { it.current }.distinctUntilChanged().flatMapLatest { runtime ->
-        runtime?.let { r -> combine(r.devices.state, r.tunnels.state) { list, tunnels -> list to tunnelPorts(tunnels.tunnels) } }
+        runtime?.let { r ->
+            // A tunnel whose disconnect waits for Undo is not listed on its device.
+            combine(r.devices.state, r.tunnels.state, app.pendingUndo.hidden) { list, tunnels, hidden ->
+                list to tunnelPorts(tunnels.withoutDark(PendingUndo.darkTunnels(hidden, r.id)).tunnels)
+            }
+        }
             ?: flowOf(DeviceList() to emptyMap())
     }
 

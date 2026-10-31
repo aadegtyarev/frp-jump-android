@@ -44,9 +44,9 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
         } else {
             combine(
                 runtimes.map { r ->
-                    // A connection deleted while its Undo is on screen is not listed.
+                    // A connection deleted while its Undo is on screen is not listed; a tunnel disconnected so shows down.
                     combine(r.connections.connections, r.tunnels.state, app.pendingUndo.hidden) { c, t, hidden ->
-                        connectionRows(r.id, c, t, hidden = PendingUndo.connectionIds(hidden, r.id))
+                        connectionRows(r.id, c, t.withoutDark(PendingUndo.darkTunnels(hidden, r.id)), hidden = PendingUndo.connectionIds(hidden, r.id))
                     }
                 },
             ) { lists ->

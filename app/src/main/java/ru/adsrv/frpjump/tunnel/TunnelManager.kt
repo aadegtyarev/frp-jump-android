@@ -75,7 +75,13 @@ data class TunnelsState(
     val mismatch: String? = null,
     /** Set while polls fail for want of a network or of the Keystore (locked); cleared by a success. */
     val waiting: Waiting? = null,
-)
+) {
+    /**
+     * As the screens show it: the tunnels in [dark] (by [localPortKey]; their
+     * disconnect waits for Undo) left out, as if down. They still run.
+     */
+    fun withoutDark(dark: Set<String>): TunnelsState = if (dark.isEmpty()) this else copy(tunnels = tunnels.filter { it.key !in dark })
+}
 
 private data class Core(
     val planned: List<PlannedTunnel> = emptyList(),

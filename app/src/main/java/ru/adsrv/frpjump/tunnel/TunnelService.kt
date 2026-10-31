@@ -73,7 +73,7 @@ class TunnelService : Service() {
         // startForegroundService() that stops before this crashes the app. Just after a
         // restart the record may not be read yet: "Restoring tunnels…" without a count.
         val recorded = app.restoreRecord.profiles.value?.values?.sum()
-        if (!startInForeground(View(TunnelSummary.of(profiles.tunnelsByProfileNow(), recorded)))) {
+        if (!startInForeground(View(TunnelSummary.of(profiles.shownTunnelsByProfileNow(), recorded)))) {
             // Restarted by Android after the process was killed, and not allowed to come to
             // the foreground from the background: let the owner bring the tunnels back.
             app.appScope.launch {
@@ -99,14 +99,15 @@ class TunnelService : Service() {
             // back; nobody calls stopService().
             watcher = scope.launch {
                 combine(
-                    profiles.tunnelsByProfile,
+                    // Running, and as the owner sees them: one whose disconnect waits for Undo runs on, uncounted.
+                    combine(profiles.tunnelsByProfile, profiles.shownTunnelsByProfile, ::Pair),
                     profiles.restorePending,
                     app.restoreRecord.profiles,
                     profiles.restoreWaiting,
                     profiles.disconnectAllFailed,
-                ) { up, pending, record, waiting, failed ->
-                    val summary = TunnelSummary.of(up, pending ?: record?.values?.sum())
-                    if (serviceNeeded(summary.tunnels, pending)) View(summary, waiting, failed) else null
+                ) { (up, shown), pending, record, waiting, failed ->
+                    val summary = TunnelSummary.of(shown, pending ?: record?.values?.sum())
+                    if (serviceNeeded(up.values.sum(), pending)) View(summary, waiting, failed) else null
                 }
                     // "Disconnect all" here cannot ask: the title says what it would close.
                     .combine(app.sessions.liveCount) { view, sessions -> view?.copy(sessions = sessions) }

@@ -110,19 +110,32 @@ port, which stay keyed by (profile, device, port).
   each saved one; "Disconnect all" stops every tunnel. Tunnels up without a
   saved connection are listed too, as "Port N", so they can be
   disconnected.
-- Disconnect and "Disconnect all" ask first when something open goes with
-  the tunnel: live terminal and MQTT sessions on it (same profile, device
-  and port; for "all", any) — "2 terminals and 1 MQTT session will close"
-  — and open Files screens.
-  With nothing open they disconnect at once.
+- Disconnect (a row, a device card), "Disconnect all" (Connections tab,
+  every profile) and the power button on the Devices bar (the profile
+  shown) do not ask. The tunnel goes dark at once: its rows show it down,
+  its port leaves the device row, the chip and the notification count it no
+  more, and its terminal and MQTT sessions leave the tabs and the Sessions
+  tab. A top notice "Disconnected: N · Undo" stays about 6 s. Only when it
+  goes is the server told and frpc stops that tunnel; its terminal, MQTT
+  and Files sessions close with it then. Until then the tunnel keeps
+  running on its local port, so Undo brings it back with every session as
+  it was (`undo/TunnelDisconnects.kt`; the counts that keep the service
+  running still see it). Connect, Terminal, Files or MQTT on a dark row
+  takes back that tunnel's disconnect alone. "Disconnect all" with nothing
+  up yet (tunnels still being restored after a restart) tells the servers
+  at once, as below.
 - Delete does not ask: the row goes at once and a top notice "Deleted: N ·
-  Undo" stays about 6 s (several deletes in a row share it). Only when it
+  Undo" stays about 6 s (several deletes in a row share it; with
+  disconnects or closes among them it counts each kind: "Deleted: 1 ·
+  Disconnected: 2"). Only when it
   goes is the connection removed — with its tunnel when it was the last
   connection of that port, and its MQTT session, login and pins
   (`undo/PendingUndo.kt`; it also completes when the app goes to the
   background or locks).
 - The bottom navigation: Devices, Connections, Sessions (the open terminal
-  and MQTT explorer sessions; a tap returns to one), Settings.
+  and MQTT explorer sessions; a tap returns to one, ✕ at the row's end
+  closes it with Undo: "Closed: N · Undo", the session ending only when
+  the notice goes), Settings.
 
 Upgrading from 0.2.0-beta1 (or 0.1.x) turns each profile's ports into
 connections on its first start: every port the owner added keeps its
@@ -168,7 +181,9 @@ not parse is left in place and nothing is migrated from it; a
 - While at least one tunnel of any profile is up a foreground service (type
   `specialUse`) keeps the process alive and shows "N tunnels" (all profiles),
   "· M sessions" (terminal and MQTT) when any is open, with "Disconnect all" (all
-  profiles), which cannot ask first: the title is the warning.
+  profiles), which disconnects at once (there is no Undo in a notification):
+  the title is the warning. Tunnels and sessions waiting for an Undo are
+  not counted.
 
 ## Restore after kill and reboot
 
@@ -580,7 +595,9 @@ filling in the user name leaves the saved password alone.
   profile's once it ended or failed. Tap switches (no swipes: the terminal
   uses them to select text); the row scrolls and brings the selected tab
   into view. Long press: Close session, and Reconnect once it has ended
-  (never on a live shell). Closing the tab shown
+  (never on a live shell). Close does not ask: the tab goes at once with
+  "Closed: 1 · Undo"; the shell ends when the notice goes, and Undo brings
+  the tab back with the same live session, selected. Closing the tab shown
   shows its left neighbour. "+" at the end opens another session to the
   selected one's device and port with the same login, at once, and selects
   it. A login the device refused, or a remembered password forgotten since,
