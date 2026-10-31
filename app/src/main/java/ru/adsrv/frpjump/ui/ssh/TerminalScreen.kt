@@ -84,6 +84,7 @@ import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
+import ru.adsrv.frpjump.ssh.saysTunnelClosed
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
 import ru.adsrv.frpjump.ui.FolderGlyph
@@ -140,7 +141,7 @@ fun TerminalScreen(
     LaunchedEffect(selected?.id) {
         val before = shownId
         shownId = selected?.id
-        if (before != null && sessions.find(before) == null && sessions.closedByTunnel(before)) {
+        if (saysTunnelClosed(before, shownId, { sessions.find(it) != null }, sessions::closedByTunnel)) {
             Toast.makeText(context, context.getString(R.string.ssh_tunnel_closed), Toast.LENGTH_SHORT).show()
         }
     }

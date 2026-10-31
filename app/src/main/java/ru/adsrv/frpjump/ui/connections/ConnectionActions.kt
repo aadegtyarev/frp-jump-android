@@ -93,6 +93,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
                 e.userMessage()
             }
             if (failure == null && connectNow) runtime.tunnels.connectAsync(connection.device, connection.port, connection.kind)
+            // No question about sessions on the old tunnel: the sheet locks kind and port while
+            // that tunnel is up or changing (portLocked), and the device cannot be changed, so a
+            // move only ever leaves a tunnel that is down.
             val moved = previous != null && (previous.device != connection.device || previous.port != connection.port)
             if (failure == null && moved && previous != null && lastOnItsTunnel(previous, before)) {
                 val key = localPortKey(previous.device, previous.port)

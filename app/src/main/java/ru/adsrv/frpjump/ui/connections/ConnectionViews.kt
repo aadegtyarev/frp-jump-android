@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
@@ -59,12 +60,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
+import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
@@ -440,7 +441,7 @@ fun ConnectionDialogs(
             onDismissRequest = { ui.direct = null },
             title = { Text(stringResource(if (kept) R.string.state_kept_through_server else R.string.state_through_server)) },
             text = {
-                androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(if (kept) R.string.direct_kept_text else R.string.direct_failed_text, device))
                     androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
                     Button(
@@ -472,7 +473,8 @@ fun ConnectionDialogs(
         AlertDialog(
             onDismissRequest = { ui.disconnecting = null },
             title = { Text(stringResource(R.string.disconnect_confirm_title, rowName(row))) },
-            text = { OpenThroughText(open) },
+            // Counted when asked; nothing open by now: no empty body.
+            text = if (open.any) ({ OpenThroughText(open) }) else null,
             confirmButton = {
                 TextButton(onClick = {
                     ui.disconnecting = null
@@ -489,7 +491,7 @@ fun ConnectionDialogs(
             onDismissRequest = { if (!busy) ui.deleting = null },
             title = { Text(stringResource(R.string.delete_title, rowName(row))) },
             text = {
-                androidx.compose.foundation.layout.Column {
+                Column {
                     val disconnects = actions.deleteDisconnects(row)
                     Text(stringResource(if (disconnects) R.string.delete_text_tunnel else R.string.delete_text))
                     // What closes with the tunnel, as Disconnect says it.
@@ -553,7 +555,7 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
  */
 @Composable
 fun OpenThroughText(open: OpenThrough, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (open.sessions > 0) Text(pluralStringResource(R.plurals.disconnect_closes_sessions, open.sessions, open.sessions))
         if (open.files > 0) Text(stringResource(R.string.disconnect_closes_files))
     }

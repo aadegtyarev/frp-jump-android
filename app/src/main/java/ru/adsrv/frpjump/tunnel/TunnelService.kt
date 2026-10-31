@@ -185,11 +185,10 @@ class TunnelService : Service() {
      * has tunnels, then " · M terminal sessions" when any is open;
      * "Restoring (N) tunnels…" while none runs yet after a restart.
      */
-    private fun title(res: Resources, view: View): String {
-        val tunnels = tunnelsLine(res, view.summary)
-        if (view.sessions == 0 || tunnelsTitle(view.summary) !is TunnelsTitle.Up) return tunnels
-        return tunnels + " · " + res.getQuantityString(R.plurals.notification_terminal_sessions, view.sessions, view.sessions)
-    }
+    private fun title(res: Resources, view: View): String =
+        notificationTitle(tunnelsLine(res, view.summary), tunnelsTitle(view.summary), view.sessions) {
+            res.getQuantityString(R.plurals.notification_terminal_sessions, it, it)
+        }
 
     private fun tunnelsLine(res: Resources, summary: TunnelSummary): String = when (val title = tunnelsTitle(summary)) {
         TunnelsTitle.RestoringUnknown -> res.getString(R.string.tunnels_restoring_unknown)

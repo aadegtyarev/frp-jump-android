@@ -38,3 +38,11 @@ fun tunnelsTitle(summary: TunnelSummary): TunnelsTitle = when {
     summary.restoring > 0 -> TunnelsTitle.Restoring(summary.restoring)
     else -> TunnelsTitle.Up(summary)
 }
+
+/**
+ * The notification's title: [tunnels] ("N tunnels…"), then
+ * " · M terminal sessions" while tunnels are up and [sessions] are open
+ * ([sessionsText] words the count), since its "Disconnect all" cannot ask.
+ */
+fun notificationTitle(tunnels: String, title: TunnelsTitle, sessions: Int, sessionsText: (Int) -> String): String =
+    if (sessions > 0 && title is TunnelsTitle.Up) "$tunnels · ${sessionsText(sessions)}" else tunnels

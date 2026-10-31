@@ -147,7 +147,7 @@ fun ConnectionsScreen(
         AlertDialog(
             onDismissRequest = { confirmAll = false },
             title = { Text(stringResource(R.string.disconnect_all_confirm_title)) },
-            text = { OpenThroughText(open) },
+            text = if (open.any) ({ OpenThroughText(open) }) else null,
             confirmButton = {
                 TextButton(onClick = {
                     confirmAll = false

@@ -213,6 +213,15 @@ class SshSessions(
     }
 }
 
+/**
+ * Whether the terminal says "The tunnel was closed." when the session it
+ * showed ([before]) is no longer the one shown: only when that session is
+ * gone ([exists] false) and it went with its tunnel ([closedByTunnel]);
+ * not when the owner closed it, reconnected it or picked another tab.
+ */
+fun saysTunnelClosed(before: Int?, now: Int?, exists: (Int) -> Boolean, closedByTunnel: (Int) -> Boolean): Boolean =
+    before != null && before != now && !exists(before) && closedByTunnel(before)
+
 /** Who a session logs in as and where. */
 data class SshTarget(val user: String, val device: String, val port: Int)
 
