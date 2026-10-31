@@ -8,7 +8,8 @@ import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.tunnel.VisitorState
 
 class DirectOffersTest {
-    private val offers = DirectOffers(delayMs = 3_000)
+    private val memory = ProcessOfferMemory()
+    private val offers = DirectOffers(delayMs = 3_000, memory = memory)
     private var now = 0L
 
     private fun tunnel(state: VisitorState, direct: DirectMode = DirectMode.ON, port: Int = 80, device: String = "wb") =
@@ -72,6 +73,7 @@ class DirectOffersTest {
         offers.dismiss("work/wb")
         assertEquals(emptyList<DirectOffer>(), settled(tunnel(failed), tunnel(failed, port = 22)))
         // Retried: a new episode.
+        offers.retried("work", "wb")
         offered(tunnel(VisitorState(TunnelStatus.TRYING)))
         assertEquals(1, settled(tunnel(failed)).size)
     }
@@ -80,5 +82,48 @@ class DirectOffersTest {
     fun `dismissing one device leaves the other offered`() {
         offers.dismiss("work/wb")
         assertEquals(listOf("beelink"), settled(tunnel(failed), tunnel(failed, device = "beelink")).map { it.device })
+    }
+
+    // Offers made before a restart (the memory survives, the rest is new).
+
+    private fun restarted() = DirectOffers(delayMs = 3_000, memory = memory)
+
+    private fun offeredOn(o: DirectOffers, network: String, restoring: Set<String> = emptySet(), tunnels: Map<String, List<Tunnel>>) =
+        o.offers(tunnels, now, network, restoring) { _, _ -> "Web" }.offers
+
+    private fun settledOn(o: DirectOffers, network: String, restoring: Set<String> = emptySet(), tunnels: List<Tunnel>): List<DirectOffer> {
+        offeredOn(o, network, restoring, mapOf("work" to tunnels))
+        now += 3_000
+        return offeredOn(o, network, restoring, mapOf("work" to tunnels))
+    }
+
+    @Test
+    fun `tunnels brought back after a restart that fail again are not offered again on that network`() {
+        assertEquals(1, settledOn(offers, "wifi:a", tunnels = listOf(tunnel(failed))).size)
+        // Still shown in this process while the failure lasts.
+        assertEquals(1, settledOn(offers, "wifi:a", tunnels = listOf(tunnel(failed))).size)
+        val after = restarted()
+        // Cold start: the profile's tunnels are still to come back.
+        offeredOn(after, "wifi:a", setOf("work"), mapOf("work" to emptyList()))
+        offeredOn(after, "wifi:a", setOf("work"), mapOf("work" to listOf(tunnel(VisitorState(TunnelStatus.TRYING)))))
+        assertEquals(emptyList<DirectOffer>(), settledOn(after, "wifi:a", tunnels = listOf(tunnel(failed))))
+        assertEquals("another network is news", 1, settledOn(restarted(), "mobile", tunnels = listOf(tunnel(failed))).size)
+    }
+
+    @Test
+    fun `going direct or the tunnels going away lets the device be offered again`() {
+        settledOn(offers, "wifi:a", tunnels = listOf(tunnel(failed)))
+        offeredOn(offers, "wifi:a", tunnels = mapOf("work" to listOf(tunnel(VisitorState(TunnelStatus.DIRECT)))))
+        assertEquals("went direct", 1, settledOn(restarted(), "wifi:a", tunnels = listOf(tunnel(failed))).size)
+
+        offeredOn(offers, "wifi:a", tunnels = mapOf("work" to emptyList()))
+        assertEquals("disconnected", 1, settledOn(restarted(), "wifi:a", tunnels = listOf(tunnel(failed))).size)
+    }
+
+    @Test
+    fun `retry direct makes a failure news again`() {
+        settledOn(offers, "wifi:a", tunnels = listOf(tunnel(failed)))
+        offers.retried("work", "wb")
+        assertEquals(1, settledOn(restarted(), "wifi:a", tunnels = listOf(tunnel(failed))).size)
     }
 }

@@ -30,7 +30,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 // Storage: off the main thread. Read once, shared with the app's start.
                 val record = withContext(Dispatchers.IO) { app.restoreRecord.load() }
-                if (tunnelsToRestoreOnBoot(record) > 0) TunnelService.start(app)
+                if (tunnelsToRestoreOnBoot(record) > 0) TunnelService.start(app, restarting = true)
             } finally {
                 result.finish()
             }

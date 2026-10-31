@@ -48,8 +48,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         }
     }
 
-    /** Every tunnel of every profile. */
-    fun disconnectAll() = app.profiles.disconnectAllAsync()
+    /** Every tunnel of every profile; [onDone] once every server was asked (main thread). */
+    fun disconnectAll(onDone: () -> Unit = {}) {
+        app.appScope.launch {
+            app.profiles.disconnectAll()
+            onDone()
+        }
+    }
 
     /**
      * Saves [connection] in [profile] (new, or [previous] changed in place)

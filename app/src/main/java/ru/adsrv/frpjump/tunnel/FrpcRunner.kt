@@ -57,6 +57,8 @@ class FrpcLaunch(
  */
 class FrpcRunner(private val binary: File, private val workDir: File) : FrpcControl {
     private val configFile = File(workDir, "frpc.toml")
+    /** The running frpc's pid ([staleFrpcPid]); only while it runs. */
+    private val pidFile = File(workDir, "frpc.pid")
     private val tls = TlsFiles(
         certFile = File(workDir, "tls.crt").path,
         keyFile = File(workDir, "tls.key").path,
@@ -98,8 +100,31 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     enum class Change { NONE, STARTED, RELOADED }
 
     init {
+        reapStale()
         deleteSecrets()
     }
+
+    /** Kills a frpc of this profile that a killed app process left running. */
+    private fun reapStale() {
+        val pid = staleFrpcPid(pidFile.takeIf { it.exists() }?.readText(), binary.path, configFile.path, ::readCmdline) ?: return
+        log.add("stopping frpc $pid left by the previous process")
+        Log.w(TAG, "killing stale frpc $pid")
+        android.os.Process.killProcess(pid)
+        // Its ports are free once it is gone.
+        repeat(REAP_WAIT_STEPS) {
+            if (!File("/proc/$pid").exists()) return
+            Thread.sleep(REAP_WAIT_STEP_MS)
+        }
+    }
+
+    /** Notes the frpc just started in the pidfile, found by its command line. */
+    private fun writePid() {
+        val pids = File("/proc").list()?.mapNotNull { it.toIntOrNull() }.orEmpty()
+        val pid = frpcPidAmong(pids, binary.path, configFile.path, ::readCmdline) ?: return
+        runCatching { writePrivateFile(pidFile, pid.toString()) }
+    }
+
+    private fun readCmdline(pid: Int): String? = runCatching { File("/proc/$pid/cmdline").readText() }.getOrNull()
 
     val isRunning: Boolean
         @Synchronized get() = run?.process?.isAlive == true
@@ -154,6 +179,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
             .redirectErrorStream(true)
             .start()
         run = Run(started, admin, parser, launch, config)
+        writePid()
         heldPorts = ports
         val myGeneration = ++generation
         thread(name = "frpc-log", isDaemon = true) { pump(started, parser, myGeneration) }
@@ -170,6 +196,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     private fun deleteSecrets() {
         File(tls.keyFile).delete()
         configFile.delete()
+        pidFile.delete()
     }
 
     @Synchronized
@@ -234,5 +261,7 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
     private companion object {
         const val TAG = "frpc"
         const val TERM_GRACE_SECONDS = 5L
+        const val REAP_WAIT_STEPS = 20
+        const val REAP_WAIT_STEP_MS = 100L
     }
 }

@@ -11,23 +11,23 @@ class RestorePlanTest {
 
     @Test
     fun `unknown until the record and the profiles are read`() {
-        assertNull(pendingRestore(null, profilesLoaded = true, profilesFailed = false, listed, emptyMap()))
-        assertNull(pendingRestore(mapOf("work" to 2), profilesLoaded = false, profilesFailed = false, emptySet(), emptyMap()))
-        assertEquals("an empty record needs no profiles", 0, pendingRestore(emptyMap(), profilesLoaded = false, profilesFailed = false, emptySet(), emptyMap()))
+        assertNull(pendingRestore(null, listed, emptyMap()))
+        assertNull("profiles not read yet, or tried again", pendingRestore(mapOf("work" to 2), null, emptyMap()))
+        assertEquals("an empty record needs no profiles", 0, pendingRestore(emptyMap(), null, emptyMap()))
     }
 
     @Test
     fun `recorded profiles without tunnels yet are pending, in every profile`() {
         val record = mapOf("work" to 2, "home" to 1)
-        assertEquals(3, pendingRestore(record, profilesLoaded = true, profilesFailed = false, listed, emptyMap()))
-        assertEquals("work is back", 1, pendingRestore(record, profilesLoaded = true, profilesFailed = false, listed, mapOf("work" to 2)))
-        assertEquals(0, pendingRestore(record, profilesLoaded = true, profilesFailed = false, listed, mapOf("work" to 2, "home" to 1)))
+        assertEquals(3, pendingRestore(record, listed, emptyMap()))
+        assertEquals("work is back", 1, pendingRestore(record, listed, mapOf("work" to 2)))
+        assertEquals(0, pendingRestore(record, listed, mapOf("work" to 2, "home" to 1)))
     }
 
     @Test
-    fun `profiles no longer listed or unreadable bring nothing back`() {
-        assertEquals(0, pendingRestore(mapOf("gone" to 2), profilesLoaded = true, profilesFailed = false, listed, emptyMap()))
-        assertEquals(0, pendingRestore(mapOf("work" to 2), profilesLoaded = false, profilesFailed = true, emptySet(), emptyMap()))
+    fun `profiles no longer listed, or not readable at all, bring nothing back`() {
+        assertEquals(0, pendingRestore(mapOf("gone" to 2), listed, emptyMap()))
+        assertEquals(0, pendingRestore(mapOf("work" to 2), emptySet(), emptyMap()))
     }
 
     @Test

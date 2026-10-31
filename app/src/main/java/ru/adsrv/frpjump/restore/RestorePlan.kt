@@ -3,19 +3,14 @@ package ru.adsrv.frpjump.restore
 /**
  * Tunnels still to bring back after a cold start: those [record]ed for a
  * [listed] profile that has none [up] yet. Null while that is not known
- * yet ([record] or the profiles not read). Profiles that could not be read
- * bring nothing back; profiles no longer listed are ignored.
+ * yet: [record] not read, or [listed] null (the profiles not read yet, or
+ * not readable just now and tried again). Profiles no longer listed, or
+ * that could not be read at all (listed empty), bring nothing back.
  */
-fun pendingRestore(
-    record: Map<String, Int>?,
-    profilesLoaded: Boolean,
-    profilesFailed: Boolean,
-    listed: Set<String>,
-    up: Map<String, Int>,
-): Int? = when {
+fun pendingRestore(record: Map<String, Int>?, listed: Set<String>?, up: Map<String, Int>): Int? = when {
     record == null -> null
-    profilesFailed -> 0
-    !profilesLoaded -> if (record.isEmpty()) 0 else null
+    record.isEmpty() -> 0
+    listed == null -> null
     else -> record.filterKeys { it in listed && (up[it] ?: 0) == 0 }.values.sum()
 }
 

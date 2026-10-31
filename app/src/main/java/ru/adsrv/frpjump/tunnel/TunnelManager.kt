@@ -19,7 +19,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.ApiException
-import ru.adsrv.frpjump.api.ConsumedGrant
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
@@ -32,6 +31,7 @@ import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.ui.userMessage
+import java.io.IOException
 
 /**
  * Whether a tunnel tries a direct path: [OFF] by the setting, [KEPT] through
@@ -53,6 +53,9 @@ data class Tunnel(
 
 enum class PendingOp { CONNECTING, DISCONNECTING }
 
+/** Why the last poll could not reach the server: what a restore waits for (in this order when several). */
+enum class Waiting { UNLOCK, NETWORK }
+
 data class TunnelsState(
     val tunnels: List<Tunnel> = emptyList(),
     /** Connect/disconnect in flight, by [localPortKey]. */
@@ -63,6 +66,8 @@ data class TunnelsState(
     val syncError: String? = null,
     /** Set while the server speaks another wire version: nothing is applied. */
     val mismatch: String? = null,
+    /** Set while polls fail for want of a network or of the Keystore (locked); cleared by a success. */
+    val waiting: Waiting? = null,
 )
 
 private data class Core(
@@ -73,6 +78,7 @@ private data class Core(
     val errors: Map<String, String> = emptyMap(),
     val syncError: String? = null,
     val mismatch: String? = null,
+    val waiting: Waiting? = null,
 )
 
 /**
@@ -143,6 +149,7 @@ class TunnelManager(
             errors = c.errors,
             syncError = c.syncError,
             mismatch = c.mismatch,
+            waiting = c.waiting,
         )
     }.stateIn(scope, SharingStarted.Eagerly, TunnelsState())
 
@@ -195,8 +202,11 @@ class TunnelManager(
                 stopAllLocked()
                 return SyncResult(null, ok = true)
             }
-            // Unreadable just now (Keystore busy): leave what runs alone, try again later.
-            is StoredEnrollment.Unavailable -> return SyncResult(null, ok = false)
+            // Unreadable just now (Keystore busy, locked): leave what runs alone, try again later.
+            is StoredEnrollment.Unavailable -> {
+                core.update { it.copy(waiting = Waiting.UNLOCK) }
+                return SyncResult(null, ok = false)
+            }
         }
         if (session.removed.value) {
             stopAllLocked()
@@ -206,7 +216,7 @@ class TunnelManager(
             api.heartbeat(credentials)
             val desired = api.desiredState(credentials)
             apply(credentials, desired)
-            core.update { it.copy(syncError = null, mismatch = null) }
+            core.update { it.copy(syncError = null, mismatch = null, waiting = null) }
             SyncResult(desired, ok = true)
         } catch (e: CancellationException) {
             throw e
@@ -215,7 +225,7 @@ class TunnelManager(
             SyncResult(null, ok = false)
         } catch (e: Exception) {
             if (noteRemoval(e, credentials)) stopAllLocked()
-            core.update { it.copy(syncError = e.userMessage()) }
+            core.update { it.copy(syncError = e.userMessage(), waiting = if (e is IOException) Waiting.NETWORK else null) }
             SyncResult(null, ok = false)
         }
     }
@@ -284,11 +294,15 @@ class TunnelManager(
         }
     }
 
-    /** Stops frpc and the service; the caller holds [syncing]. */
-    private suspend fun stopAllLocked() {
+    /**
+     * Stops frpc and the service; the caller holds [syncing]. [forget]
+     * false keeps the restore record: the server may still list the
+     * tunnels, so they are still to come back.
+     */
+    private suspend fun stopAllLocked(forget: Boolean = true) {
         withContext(Dispatchers.IO) {
             runner.stop()
-            recordTunnels(0)
+            if (forget) recordTunnels(0)
         }
         lastDesired = null
         core.update { it.copy(planned = emptyList()) }
@@ -299,7 +313,6 @@ class TunnelManager(
 
     fun disconnectAsync(device: String, port: Int) = scope.launch { disconnect(device, port) }
 
-    fun disconnectAllAsync() = scope.launch { disconnectAll() }
 
     fun syncAsync() = scope.launch { sync() }
 
@@ -349,41 +362,52 @@ class TunnelManager(
 
     /**
      * Disconnect every tunnel on the server, then stop frpc and the service
-     * whatever the server said; the next successful poll brings back
-     * anything the server still lists.
+     * whatever the server said. False when the server could not be told
+     * (no network, credentials unreadable just now): then the restore
+     * record stays, since the server still lists the tunnels and the next
+     * successful poll brings them back.
      */
-    suspend fun disconnectAll() {
-        val credentials = credentials()
-        if (credentials != null) {
-            for (t in grantsToDisconnect(credentials)) {
-                try {
-                    api.disconnect(credentials, t.exposerDeviceName, t.targetPort)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w(TAG, "disconnect $t failed: ${e.userMessage()}")
-                }
-            }
+    suspend fun disconnectAll(): Boolean {
+        val told = when (val stored = enrollment()) {
+            is StoredEnrollment.Enrolled -> tellServer(stored.credentials)
+            // Nothing of a forgotten enrollment can come back.
+            StoredEnrollment.NotEnrolled -> true
+            is StoredEnrollment.Unavailable -> false
         }
-        syncing.withLock { stopAllLocked() }
+        syncing.withLock { stopAllLocked(forget = told) }
         sync()
+        return told
     }
 
     /**
-     * The tunnels running; with none (still being brought back after a cold
-     * start) those the server lists, so they do not come back on the next poll.
+     * Disconnects the tunnels running; with none (still being brought back
+     * after a cold start) those the server lists, so they do not come back
+     * on the next poll. False when any of it failed.
      */
-    private suspend fun grantsToDisconnect(credentials: Credentials): List<ConsumedGrant> {
+    private suspend fun tellServer(credentials: Credentials): Boolean {
         val running = core.value.planned.map { it.grant }
-        if (running.isNotEmpty()) return running
-        return try {
-            api.desiredState(credentials).consumed
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "desired state for disconnect all failed: ${e.userMessage()}")
-            emptyList()
+        val grants = running.ifEmpty {
+            try {
+                api.desiredState(credentials).consumed
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "desired state for disconnect all failed: ${e.userMessage()}")
+                return false
+            }
         }
+        var told = true
+        for (t in grants) {
+            try {
+                api.disconnect(credentials, t.exposerDeviceName, t.targetPort)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "disconnect $t failed: ${e.userMessage()}")
+                told = false
+            }
+        }
+        return told
     }
 
     /**

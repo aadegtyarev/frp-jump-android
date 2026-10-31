@@ -11,17 +11,25 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.tunnel.TunnelService
 
 /**
- * "Tap to restore N tunnels": Android did not let the tunnels service start
- * from the background (12+, the app not exempt from battery optimisation),
- * so it cannot keep the tunnels up. Tapping opens the app, which starts the
- * service and brings them back. On the tunnels' channel, taken back once
- * the service runs.
+ * Android did not let the tunnels service start from the background (12+,
+ * the app not exempt from battery optimisation, or restricted in the
+ * background), so nothing keeps the tunnels up. Tapping opens the app,
+ * which starts the service. On the tunnels' channel, taken back once the
+ * service runs.
  */
 object RestoreNotice {
     private const val NOTIFICATION_ID = 3
 
-    fun show(context: Context, tunnels: Int) {
-        if (tunnels <= 0) return
+    enum class Kind {
+        /** After a restart (process killed, reboot): "Tap to restore N tunnels". */
+        RESTORE,
+
+        /** An ordinary start with the app closed: "Tap to keep N tunnels running". */
+        KEEP,
+    }
+
+    /** [tunnels] 0: no count is known, the notice says "tunnels". */
+    fun show(context: Context, tunnels: Int, kind: Kind) {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(TunnelService.CHANNEL) == null) {
             manager.createNotificationChannel(
@@ -34,10 +42,22 @@ object RestoreNotice {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        val text = context.getString(R.string.restore_notice_text)
+        val title = when (kind) {
+            Kind.RESTORE -> if (tunnels > 0) {
+                context.resources.getQuantityString(R.plurals.restore_notice_title, tunnels, tunnels)
+            } else {
+                context.getString(R.string.restore_notice_title_unknown)
+            }
+            Kind.KEEP -> if (tunnels > 0) {
+                context.resources.getQuantityString(R.plurals.keep_notice_title, tunnels, tunnels)
+            } else {
+                context.getString(R.string.keep_notice_title_unknown)
+            }
+        }
+        val text = context.getString(if (kind == Kind.RESTORE) R.string.restore_notice_text else R.string.keep_notice_text)
         val notification = NotificationCompat.Builder(context, TunnelService.CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(context.resources.getQuantityString(R.plurals.restore_notice_title, tunnels, tunnels))
+            .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open)

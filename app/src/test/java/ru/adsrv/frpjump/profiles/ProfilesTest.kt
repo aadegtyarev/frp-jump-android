@@ -7,6 +7,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -31,6 +32,8 @@ class ProfilesTest {
     private val keystore = FakeKeystore()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var ids = 0
+    private val record = RestoreRecord(MemoryStorage()).apply { load() }
+
     private val shared = ProfileShared(
         api = FrpJumpApi(),
         localPorts = LocalPortStore(files.storage(File(filesDir, "local_ports.json"))),
@@ -43,12 +46,12 @@ class ProfilesTest {
         storageFor = files::storage,
         directKept = DirectKeptStore(MemoryStorage()),
         network = MutableStateFlow(null),
-        restoreRecord = RestoreRecord(MemoryStorage()).apply { load() },
+        restoreRecord = record,
     )
 
     private fun store() = ProfileStore(filesDir, keystore::box, files::storage, newId = { "id${++ids}" })
 
-    private fun profiles(store: ProfileStore = store()) = Profiles(store) { profile, s, currentId ->
+    private fun profiles(store: ProfileStore = store()) = Profiles(store, record.profiles) { profile, s, currentId ->
         ProfileRuntime(profile.id, s.credentials(profile), s.dir(profile.id), currentId, shared)
     }
 
@@ -141,5 +144,29 @@ class ProfilesTest {
         assertEquals(1, profiles.state.value.enrollments[work.id])
         profiles.enroll(credentials("work.example", "phone-again"))
         assertEquals(2, profiles.state.value.enrollments[work.id])
+    }
+
+    @Test
+    fun `profiles unreadable at first are tried again, the restore waiting meanwhile`() = runBlocking {
+        // Tunnels of a profile no longer listed: known once the profiles are read.
+        record.set("gone", 1)
+        val index = File(filesDir, ProfileFiles.INDEX)
+        index.writeText("{not json")
+        val profiles = profiles()
+        val loading = async { profiles.loadRetrying(listOf(200L, 200L, 200L)) }
+        withTimeout(5_000) { profiles.state.first { it.retrying } }
+        assertNull("not known yet", profiles.restorePending.first())
+        index.delete()
+        assertTrue(loading.await())
+        assertEquals(0, profiles.restorePending.first())
+    }
+
+    @Test
+    fun `profiles that stay unreadable bring nothing back`() = runBlocking {
+        record.set("gone", 1)
+        File(filesDir, ProfileFiles.INDEX).writeText("{not json")
+        val profiles = profiles()
+        assertFalse(profiles.loadRetrying(listOf(10L)))
+        assertEquals(0, profiles.restorePending.first())
     }
 }

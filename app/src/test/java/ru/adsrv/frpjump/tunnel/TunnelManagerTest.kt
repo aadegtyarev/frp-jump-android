@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -71,7 +72,12 @@ class TunnelManagerTest {
             failure?.let { throw it }
         }
 
-        override suspend fun desiredState(c: Credentials) = DesiredStateResponse("id", "relay", 7000, consumed)
+        @Volatile var desiredFailure: Exception? = null
+
+        override suspend fun desiredState(c: Credentials): DesiredStateResponse {
+            desiredFailure?.let { throw it }
+            return DesiredStateResponse("id", "relay", 7000, consumed)
+        }
 
         override suspend fun connect(c: Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse {
             connectGate?.await()
@@ -321,22 +327,63 @@ class TunnelManagerTest {
     }
 
     @Test
-    fun `disconnect all clears the record, even when the server cannot be told`() = runBlocking {
+    fun `disconnect all clears the record once the server was told`() = runBlocking {
         manager.sync()
-        api.failure = IllegalStateException("offline")
-        manager.disconnectAll()
+        assertTrue(manager.disconnectAll())
         assertEquals(null, recorded())
         assertFalse(frpc.running)
+    }
+
+    @Test
+    fun `disconnect all the server could not hear stops frpc but keeps the record`() = runBlocking {
+        manager.sync()
+        api.failure = IOException("offline")
+        assertFalse(manager.disconnectAll())
+        assertFalse(frpc.running)
+        assertEquals("they may come back", 1, recorded())
     }
 
     @Test
     fun `disconnect all while tunnels are still being restored disconnects them on the server`() = runBlocking {
         // A cold start: recorded, nothing applied yet.
         record.set("p1", 1)
-        manager.disconnectAll()
+        assertTrue(manager.disconnectAll())
         assertEquals(listOf("wb:80"), api.disconnected)
         assertEquals(null, recorded())
         assertFalse("the next poll brings nothing back", frpc.running)
+    }
+
+    @Test
+    fun `disconnect all while restoring keeps the record when the server's list cannot be read`() = runBlocking {
+        record.set("p1", 1)
+        api.desiredFailure = IOException("offline")
+        assertFalse(manager.disconnectAll())
+        assertEquals(1, recorded())
+    }
+
+    @Test
+    fun `disconnect all with the Keystore locked keeps the record`() = runBlocking {
+        record.set("p1", 1)
+        stored = StoredEnrollment.Unavailable("KeyStoreException")
+        assertFalse(manager.disconnectAll())
+        assertEquals(1, recorded())
+    }
+
+    @Test
+    fun `polls say what a restore waits for`() = runBlocking {
+        api.failure = IOException("offline")
+        manager.poll()
+        eventually("waiting for network") { manager.state.value.waiting == Waiting.NETWORK }
+        api.failure = null
+        stored = StoredEnrollment.Unavailable("KeyStoreException")
+        manager.poll()
+        eventually("waiting for unlock") { manager.state.value.waiting == Waiting.UNLOCK }
+        stored = StoredEnrollment.Enrolled(credentials("t1"))
+        manager.poll()
+        eventually("nothing to wait for") { manager.state.value.waiting == null }
+        api.failure = ApiException(500, "boom")
+        manager.poll()
+        assertEquals("a server error is not the network", null, manager.state.value.waiting)
     }
 
     @Test

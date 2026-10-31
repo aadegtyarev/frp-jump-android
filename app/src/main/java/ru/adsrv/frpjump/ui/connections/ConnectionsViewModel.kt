@@ -15,6 +15,7 @@ import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.activeFirst
 import ru.adsrv.frpjump.connections.connectionRows
 import ru.adsrv.frpjump.profiles.ProfilesState
+import ru.adsrv.frpjump.tunnel.Waiting
 
 data class ConnectionsUiState(
     val active: List<ConnectionRow> = emptyList(),
@@ -23,6 +24,11 @@ data class ConnectionsUiState(
     val colors: Map<String, String> = emptyMap(),
     /** False until the profiles' lists are read: no "nothing saved" before that. */
     val loaded: Boolean = false,
+    /** Tunnels still to come back after a restart; null while not known. */
+    val restoring: Int? = 0,
+    val restoreWaiting: Waiting? = null,
+    /** The last "Disconnect all" could not tell a server: tunnels may come back. */
+    val disconnectAllFailed: Boolean = false,
 )
 
 /** Every profile's connections, active ones first, each group in profile order. */
@@ -38,6 +44,10 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
             combine(runtimes.map { r -> combine(r.connections.connections, r.tunnels.state) { c, t -> connectionRows(r.id, c, t) } }) { lists ->
                 uiState(profiles, lists.flatMap { it })
             }
+        }
+    }.let { rows ->
+        combine(rows, app.profiles.restorePending, app.profiles.restoreWaiting, app.profiles.disconnectAllFailed) { s, pending, waiting, failed ->
+            s.copy(restoring = pending, restoreWaiting = waiting, disconnectAllFailed = failed)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
 
