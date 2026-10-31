@@ -141,8 +141,9 @@ private class SftpFs(private val client: () -> SFTPClient) : RemoteFs {
         size = a.size,
         modified = a.mtime,
         mode = a.mode?.takeIf { a.has(FileAttributes.Flag.MODE) }?.let { it.mask and PERMISSION_BITS },
-        uid = a.uid.takeIf { a.has(FileAttributes.Flag.UIDGID) },
-        gid = a.gid.takeIf { a.has(FileAttributes.Flag.UIDGID) },
+        // SFTP sends them as unsigned 32-bit numbers: nobody (4294967294) must not show as -2.
+        uid = if (a.has(FileAttributes.Flag.UIDGID)) a.uid.toLong() and UNSIGNED else null,
+        gid = if (a.has(FileAttributes.Flag.UIDGID)) a.gid.toLong() and UNSIGNED else null,
     )
 
     private companion object {
@@ -151,5 +152,6 @@ private class SftpFs(private val client: () -> SFTPClient) : RemoteFs {
 
         /** rwx for all three, setuid, setgid and sticky. */
         const val PERMISSION_BITS = 0xFFF
+        const val UNSIGNED = 0xFFFFFFFFL
     }
 }

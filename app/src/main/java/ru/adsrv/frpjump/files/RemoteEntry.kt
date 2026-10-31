@@ -35,8 +35,8 @@ data class RemoteEntry(
     @SerialName("link") val link: LinkTarget? = null,
     /** Permission bits (`07777`), the owner's and group's ids, as SFTP gives them (a link's: its target's); null when not given. */
     @SerialName("mode") val mode: Int? = null,
-    @SerialName("uid") val uid: Int? = null,
-    @SerialName("gid") val gid: Int? = null,
+    @SerialName("uid") val uid: Long? = null,
+    @SerialName("gid") val gid: Long? = null,
 ) {
     val hidden: Boolean get() = name.startsWith(".")
     val isDir: Boolean get() = type == EntryType.DIR

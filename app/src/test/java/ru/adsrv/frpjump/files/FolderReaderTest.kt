@@ -53,4 +53,26 @@ class FolderReaderTest {
         assertEquals(30, folder.entries.count { it.isDir })
         assertTrue("at most 8: ${fs.mostStatsAtOnce.get()}", fs.mostStatsAtOnce.get() in 2..8)
     }
+
+    @Test
+    fun `mode and owner come through, a link's from its target`() = runBlocking {
+        val fs = FakeFs()
+            .file("/root/run.sh", "#!/bin/sh")
+            .file("/srv/data.bin", "x")
+            .link("/root/data", "/srv/data.bin")
+        fs.owners["/root/run.sh"] = Triple(0x1ED, 0L, 0L)
+        fs.owners["/srv/data.bin"] = Triple(0x1A4, 1000L, 4294967294L)
+        fs.owners["/root/data"] = Triple(0x1FF, 5L, 5L)
+        val byName = readFolder(fs, "/root").entries.associateBy { it.name }
+        val run = byName.getValue("run.sh")
+        assertEquals(Triple(0x1ED, 0L, 0L), Triple(run.mode, run.uid, run.gid))
+        val data = byName.getValue("data")
+        assertEquals(Triple(0x1A4, 1000L, 4294967294L), Triple(data.mode, data.uid, data.gid))
+    }
+
+    @Test
+    fun `no mode or owner from the server stays unknown`() = runBlocking {
+        val entry = readFolder(FakeFs().file("/root/a", "a"), "/root").entries.single()
+        assertEquals(Triple(null, null, null), Triple(entry.mode, entry.uid, entry.gid))
+    }
 }

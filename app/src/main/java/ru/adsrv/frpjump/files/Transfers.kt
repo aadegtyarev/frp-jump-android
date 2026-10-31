@@ -8,6 +8,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import java.io.IOException
 import java.io.InputStream
@@ -263,4 +265,22 @@ suspend fun <T, K : Any, R : Any> runOneByOne(
         }
     }
     done
+}
+
+/**
+ * At most [size] transfers of a screen at a time; the rest wait, cancelable
+ * while they do. [onStart] runs once one gets its turn (the row stops
+ * saying "waiting").
+ */
+class TransferSlots(size: Int = TRANSFERS_AT_ONCE) {
+    private val gate = Semaphore(size)
+
+    suspend fun <T> run(onStart: () -> Unit, block: suspend () -> T): T = gate.withPermit {
+        onStart()
+        block()
+    }
+
+    companion object {
+        const val TRANSFERS_AT_ONCE = 2
+    }
 }

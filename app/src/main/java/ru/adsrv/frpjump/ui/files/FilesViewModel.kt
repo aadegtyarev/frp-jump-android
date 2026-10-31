@@ -35,6 +35,7 @@ import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.files.RowJobs
 import ru.adsrv.frpjump.files.SftpBrowser
 import ru.adsrv.frpjump.files.TransferJobs
+import ru.adsrv.frpjump.files.TransferSlots
 import ru.adsrv.frpjump.files.downloadInto
 import ru.adsrv.frpjump.files.fileProblem
 import ru.adsrv.frpjump.files.isDeviceRefusal
@@ -96,7 +97,15 @@ sealed interface FilesStatus {
 enum class TransferKind { DOWNLOAD, OPEN, SHARE }
 
 /** One file going to or from the phone; [total] 0 when the size is unknown. [failure] keeps a failed one on screen with Retry. */
-data class Transfer(val name: String, val done: Long, val total: Long, val kind: TransferKind = TransferKind.DOWNLOAD, val failure: String? = null) {
+data class Transfer(
+    val name: String,
+    val done: Long,
+    val total: Long,
+    val kind: TransferKind = TransferKind.DOWNLOAD,
+    val failure: String? = null,
+    /** Queued behind the transfers going ([TransferSlots]); Cancel works meanwhile. */
+    val waiting: Boolean = false,
+) {
     val fraction: Float? get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else null
 }
 
@@ -156,8 +165,8 @@ fun leaveAnswer(running: Int, failedAtAsk: Int, failedNow: Int): LeaveAnswer = w
 sealed interface FilesEvent {
     data class Toast(val text: String) : FilesEvent
 
-    /** Hand [file] to another app: view it ([share] false) or share it. */
-    data class Handover(val file: File, val mime: String, val name: String, val share: Boolean) : FilesEvent
+    /** Hand [file] (the device's [path]) to another app: view it ([share] false) or share it. */
+    data class Handover(val path: String, val file: File, val mime: String, val name: String, val share: Boolean) : FilesEvent
 
     /** Share several files at once, each with its name. */
     data class ShareMany(val files: List<Pair<File, String>>) : FilesEvent
@@ -196,6 +205,9 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     private var browser: SftpBrowser? = null
     private var connector: SshConnector? = null
     private var loadJob: Job? = null
+
+    /** Downloads, Open with and Share run two at a time; the rest wait on their rows. */
+    private val slots = TransferSlots()
 
     /** Transfers in flight: the connection closes only after they have cleaned up. */
     private val transfers = TransferJobs()
@@ -352,6 +364,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                 PhoneFiles.keep(app, tree) && runCatching { app.settings.update { it.copy(filesDownloadFolder = tree.toString()) } }.isSuccess
             }
             if (!kept) return@launch toast(Texts.get(R.string.files_folder_not_kept))
+            // The selection asked for the folder: it ends now that its files go.
+            if (then.isNotEmpty()) clearSelection()
             downloadAll(then)
         }
     }
@@ -361,13 +375,17 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         download(entry, onDone = null)
     }
 
-    /** [onDone] gets the name it was saved as, in place of the "downloaded" toast; null when nothing started. */
-    private fun download(entry: RemoteEntry, onDone: ((String) -> Unit)?): Job? {
+    /**
+     * [onDone] gets the name it was saved as, in place of the "downloaded"
+     * toast; [onFolderLost] the entry when the folder's access was lost, in
+     * place of asking for it. Null when nothing started.
+     */
+    private fun download(entry: RemoteEntry, onDone: ((String) -> Unit)?, onFolderLost: ((RemoteEntry) -> Unit)? = null): Job? {
         val tree = downloadFolder() ?: run {
             _events.trySend(FilesEvent.PickFolder(listOf(entry)))
             return null
         }
-        return transfer(entry, TransferKind.DOWNLOAD) { b, progress ->
+        return transfer(entry, TransferKind.DOWNLOAD, onFolderLost) { b, progress ->
             val name = withContext(Dispatchers.IO) {
                 val (doc, name) = try {
                     PhoneFiles.createInTree(app, tree, entry.name)
@@ -388,7 +406,25 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         }
     }
 
-    /** Several files, each on its row; one toast for those that arrived. */
+    /**
+     * Of [entries], those that can start now: none while offline, and not
+     * those being transferred already; one toast says what was left out.
+     */
+    private fun startable(entries: List<RemoteEntry>): List<RemoteEntry> {
+        if (!_state.value.online || localPort == null) return emptyList<RemoteEntry>().also { toast(Texts.get(R.string.files_needs_connection)) }
+        val busy = entries.filter { e -> _state.value.downloads[e.path]?.let { it.failure == null } == true }
+        when (busy.size) {
+            0 -> Unit
+            1 -> toast(Texts.get(R.string.files_busy, busy.single().name))
+            else -> toast(Texts.plural(R.plurals.files_busy_many, busy.size, busy.size))
+        }
+        return entries - busy.toSet()
+    }
+
+    /**
+     * Several files, each on its row, two at a time; one toast for those
+     * that arrived, and one folder picker for those that lost the folder.
+     */
     private fun downloadAll(entries: List<RemoteEntry>) {
         if (entries.isEmpty()) return
         if (entries.size == 1) return download(entries.single())
@@ -397,7 +433,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             return
         }
         val names = Collections.synchronizedList(mutableListOf<String>())
-        val jobs = entries.mapNotNull { e -> download(e) { names += it } }
+        val lost = Collections.synchronizedList(mutableListOf<RemoteEntry>())
+        val jobs = startable(entries).mapNotNull { e -> download(e, onDone = { names += it }, onFolderLost = { lost += it }) }
         if (jobs.isEmpty()) return
         viewModelScope.launch {
             jobs.joinAll()
@@ -406,6 +443,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                 1 -> toast(Texts.get(R.string.files_downloaded, names.single()))
                 else -> toast(Texts.plural(R.plurals.files_downloaded_many, names.size, names.size))
             }
+            // Asked once for the batch; each of them is downloaded again into the folder picked.
+            if (lost.isNotEmpty()) _events.send(FilesEvent.PickFolder(entries.filter { it in lost }))
         }
     }
 
@@ -422,31 +461,47 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         _state.update { it.copy(selection = FileSelection()) }
     }
 
-    /** The selection's files, the selection ended; says when folders or others were left out. */
-    private fun takeSelectedFiles(): List<RemoteEntry> {
+    /** The selection's files; says when folders or others were left out. */
+    private fun selectedFiles(): List<RemoteEntry> {
         val now = _state.value
         val (files, left) = transferablePart(now.selection.picked(now.entries))
-        if (files.isEmpty()) return emptyList()
-        clearSelection()
-        if (left > 0) toast(Texts.plural(R.plurals.files_selection_skipped, left, left))
+        if (files.isNotEmpty() && left > 0) toast(Texts.plural(R.plurals.files_selection_skipped, left, left))
         return files
     }
 
-    /** "Download" in the selection bar: its files into the download folder. */
-    fun downloadSelected() = downloadAll(takeSelectedFiles())
+    /**
+     * "Download" in the selection bar: its files into the download folder.
+     * With none chosen yet the selection stays until one is (a cancelled
+     * picker loses nothing).
+     */
+    fun downloadSelected() {
+        val files = selectedFiles()
+        if (files.isEmpty()) return
+        if (downloadFolder() == null) {
+            _events.trySend(FilesEvent.PickFolder(files))
+            return
+        }
+        clearSelection()
+        downloadAll(files)
+    }
 
-    /** "Share" in the selection bar: its files to the cache, then one share of them all. */
+    /** "Share" in the selection bar: its files to the cache, two at a time, then one share of them all. */
     fun shareSelected() {
-        val files = takeSelectedFiles()
-        if (files.size <= 1) return files.forEach(::share)
+        val files = selectedFiles()
+        if (files.isEmpty()) return
+        clearSelection()
+        if (files.size == 1) return share(files.single())
         val got = Collections.synchronizedMap(LinkedHashMap<String, Pair<File, String>>())
-        val jobs = files.mapNotNull { e -> transfer(e, TransferKind.SHARE) { b, progress -> got[e.path] = toCache(b, e, progress) to e.name } }
+        val started = startable(files)
+        val jobs = started.mapNotNull { e -> transfer(e, TransferKind.SHARE) { b, progress -> got[e.path] = toCache(b, e, progress) to e.name } }
         if (jobs.isEmpty()) return
         viewModelScope.launch {
             jobs.joinAll()
             // What arrived, in the list's order; a failed one stays on its row with Retry.
-            val ready = files.mapNotNull { got[it.path] }
-            if (ready.isNotEmpty()) _events.send(FilesEvent.ShareMany(ready))
+            val ready = started.mapNotNull { got[it.path] }
+            if (ready.isEmpty()) return@launch
+            if (ready.size < started.size) toast(Texts.get(R.string.files_shared_some, ready.size, started.size))
+            _events.send(FilesEvent.ShareMany(ready))
         }
     }
 
@@ -478,7 +533,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         val file = toCache(b, entry, progress)
         // Cancelled just as it finished: the file is not opened or shared.
         currentCoroutineContext().ensureActive()
-        _events.send(FilesEvent.Handover(file, PhoneFiles.mimeType(entry.name), entry.name, share))
+        _events.send(FilesEvent.Handover(entry.path, file, PhoneFiles.mimeType(entry.name), entry.name, share))
     }
 
     /** [entry] downloaded into the app's cache, for another app. */
@@ -509,7 +564,13 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
      * there with Retry. Returns its job, or null when it did not start (and
      * a toast says why).
      */
-    private fun transfer(entry: RemoteEntry, kind: TransferKind, block: suspend (SftpBrowser, (Long, Long) -> Unit) -> Unit): Job? {
+    private fun transfer(
+        entry: RemoteEntry,
+        kind: TransferKind,
+        /** A lost download folder: in place of asking for it at once (a batch asks once). */
+        onFolderLost: ((RemoteEntry) -> Unit)? = null,
+        block: suspend (SftpBrowser, (Long, Long) -> Unit) -> Unit,
+    ): Job? {
         val now = _state.value.downloads[entry.path]
         if (now != null && now.failure == null) return null.also { toast(Texts.get(R.string.files_busy, entry.name)) }
         val port = localPort
@@ -517,14 +578,16 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         if (!entry.transferable) {
             return null.also { toast(Texts.get(if (entry.link?.broken == true) R.string.files_broken_toast else R.string.files_not_regular, entry.name)) }
         }
-        setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind))
+        setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, waiting = true))
         val job = viewModelScope.launch(start = TransferJobs.START) {
             val me = currentCoroutineContext().job
             // A cancelled one leaves the row alone: it may show a new transfer of the same file by now.
             val mine = { downloadJobs.owns(entry.path, me) }
             try {
-                val b = connected(port)
-                block(b, throttled { done, total -> if (mine()) setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
+                slots.run(onStart = { if (mine()) setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind)) }) {
+                    val b = connected(port)
+                    block(b, throttled { done, total -> if (mine()) setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
+                }
                 if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
             } catch (e: CancellationException) {
                 if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
@@ -533,7 +596,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                 if (!mine()) return@launch
                 val message = connectionTrouble(e) ?: fileProblem(e)
                 setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, failure = message))
-                if (isFolderAccess(e)) _events.trySend(FilesEvent.PickFolder(listOf(entry)))
+                if (isFolderAccess(e)) onFolderLost?.invoke(entry) ?: _events.trySend(FilesEvent.PickFolder(listOf(entry)))
             } finally {
                 downloadJobs.release(entry.path, me)
             }

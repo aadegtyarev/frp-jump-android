@@ -628,6 +628,14 @@
         <item quantity="many">Скачано %d файлов</item>
         <item quantity="other">Скачано %d файла</item>
     </plurals>
+    <string name="files_waiting">В очереди…</string>
+    <string name="files_shared_some">Отправляю %1$d из %2$d файлов: остальные не скачались.</string>
+    <plurals name="files_busy_many">
+        <item quantity="one">%d файл уже передаётся.</item>
+        <item quantity="few">%d файла уже передаются.</item>
+        <item quantity="many">%d файлов уже передаются.</item>
+        <item quantity="other">%d файла уже передаются.</item>
+    </plurals>
     <string name="files_cancel_transfer">Отменить передачу</string>
     <plurals name="files_leave_title">
         <item quantity="one">Идёт %d передача</item>

@@ -43,17 +43,22 @@ transfers that resume and run in the background.
   by name; hidden files (`.name`) behind a toggle in "⋮", remembered.
 - Symlinks are marked with a link badge and show their target
   (`→ /mnt/data/etc`); a link to a folder opens the folder, a broken link is
-  marked broken. Long press on a symlink offers "Go to the target".
+  marked broken. A symlink's card has "Go to the target".
 - Pull to refresh; the list keeps its position after an operation.
 - Offline (no tunnel): the last listing of that folder is shown, marked
   "No connection", operations disabled.
 
-### 2. Select
+### 2. Card and select
 
+- Tap a folder: it opens. Tap a file, or the small "⋮" at the end of any
+  row: its card (a bottom sheet) with name, path, a link's target, size,
+  modified, permissions and owner, and its actions; nothing is transferred
+  until one is tapped, and a transfer of it shows there with Cancel.
 - Long press starts selection; taps then add and remove; "Select all" in
-  the top bar. The top bar shows the count and the actions for the
-  selection: Download, Copy, Move, Pack, Delete, and "⋮" for Rename (one
-  item), Properties.
+  the top bar; Back ends it. The top bar shows the count and the actions
+  for the selection: Download, Copy, Move, Pack, Delete, and "⋮" for
+  Rename (one item), Properties. Stage 1 offers Download and Share; they
+  take the selected files, and a note says how many folders were skipped.
 
 ### 3. Copy between phone and device
 
@@ -80,9 +85,10 @@ transfers that resume and run in the background.
 
 ### 5. View and edit
 
-- Tap a file: text files (by extension and content sniffing, up to 2 MB)
-  open in the app's editor; others are downloaded to the cache and handed to
-  another app (Open with…), as web downloads are.
+- Tap a file: its card opens. Open there: text files (by extension and
+  content sniffing, up to 2 MB) open in the app's editor (stage 4); others
+  are downloaded to the cache and handed to another app (Open with…), as
+  web downloads are.
 - Editor: monospace, line numbers off, search, undo; "Save" uploads it back.
 - Saving through a symlink writes the file it points to, never replaces the
   link with a regular file: the app resolves the real path, writes a

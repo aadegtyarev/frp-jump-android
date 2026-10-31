@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,6 +131,8 @@ fun EntryRow(
         Modifier
             .fillMaxWidth()
             .background(if (selected) colors.accentContainer.copy(alpha = 0.55f) else Color.Transparent)
+            // Read out as picked while selecting.
+            .then(if (selecting) Modifier.semantics { this.selected = selected } else Modifier)
             .combinedClickable(
                 onClickLabel = if (selecting) null else stringResource(if (entry.isDir) R.string.files_open else R.string.files_details_short),
                 onLongClickLabel = stringResource(R.string.files_select),
@@ -227,7 +230,10 @@ fun TransferLine(transfer: Transfer, onRetry: () -> Unit, onDismiss: () -> Unit,
     val fraction = transfer.fraction
     Row(verticalAlignment = Alignment.CenterVertically) {
         val bar = Modifier.weight(1f)
-        if (fraction != null) {
+        if (transfer.waiting) {
+            // Behind the two going: it starts by itself; ✕ drops it.
+            Text(stringResource(R.string.files_waiting), fontSize = 12.sp, color = colors.muted, modifier = bar)
+        } else if (fraction != null) {
             LinearProgressIndicator(progress = { fraction }, color = colors.accent, trackColor = colors.tile, modifier = bar)
         } else {
             LinearProgressIndicator(color = colors.accent, trackColor = colors.tile, modifier = bar)

@@ -95,8 +95,8 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
             when (event) {
                 is FilesEvent.Toast -> Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()
                 is FilesEvent.Handover -> {
-                    // Handed to another app: the card has done its job.
-                    card = null
+                    // Handed to another app: that file's card has done its job.
+                    if (card == event.path) card = null
                     handOver(context, event.file, event.mime, event.name, event.share)
                 }
                 is FilesEvent.ShareMany -> shareAll(context, event.files)

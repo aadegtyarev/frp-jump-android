@@ -13,8 +13,8 @@ data class RemoteAttrs(
     val size: Long = 0,
     val modified: Long = 0,
     val mode: Int? = null,
-    val uid: Int? = null,
-    val gid: Int? = null,
+    val uid: Long? = null,
+    val gid: Long? = null,
 )
 
 /** Why the device refused one operation; the connection is still usable after it. */

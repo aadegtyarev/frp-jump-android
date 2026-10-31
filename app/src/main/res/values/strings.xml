@@ -595,6 +595,12 @@
         <item quantity="one">Downloaded %d file</item>
         <item quantity="other">Downloaded %d files</item>
     </plurals>
+    <string name="files_waiting">Waiting…</string>
+    <string name="files_shared_some">Sharing %1$d of %2$d files: the others did not download.</string>
+    <plurals name="files_busy_many">
+        <item quantity="one">%d file is being transferred already.</item>
+        <item quantity="other">%d files are being transferred already.</item>
+    </plurals>
     <string name="files_cancel_transfer">Cancel transfer</string>
     <plurals name="files_leave_title">
         <item quantity="one">%d transfer in progress</item>
