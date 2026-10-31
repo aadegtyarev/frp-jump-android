@@ -46,7 +46,8 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
 - Keep screens light. Each screen shows the main action and the state; a
   clear icon replaces a caption where the meaning is obvious. Rare actions
   (rename, delete, copy address, open in another app, forget profile) live in
-  a "⋮" menu or a long press, not as extra buttons.
+  a "⋮" menu or a long press, not as extra buttons. Disconnect is not rare:
+  it sits on the row of an active connection, next to its main action.
 - Light and dark themes, each designed on its own rather than inverted: dark
   is a warm graphite, not black, with a toned-down accent and its own status
   and profile colours; text contrast at least WCAG AA in both. Follows the

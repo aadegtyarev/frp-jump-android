@@ -47,6 +47,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -148,6 +150,7 @@ fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: 
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .clip(CircleShape)
             .background(container, CircleShape)
@@ -178,14 +181,14 @@ fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier) {
 
 fun localAddress(port: Int) = "127.0.0.1:$port"
 
-/** The main action of an active connection: Open, Terminal, or Copy address. */
+/** The main action of an active connection: Open, Terminal, or Copy (the address; short, it shares the row with Disconnect). */
 @Composable
 fun mainActionLabel(row: ConnectionRow): String = stringResource(
     when {
-        !row.saved -> R.string.copy_address
+        !row.saved -> R.string.copy
         row.connection.kind == PortKind.WEB -> R.string.open
         row.connection.kind == PortKind.SSH -> R.string.terminal
-        else -> R.string.copy_address
+        else -> R.string.copy
     },
 )
 
@@ -236,19 +239,21 @@ fun ConnectButton(row: ConnectionRow, onClick: () -> Unit) {
 fun DisconnectIcon(row: ConnectionRow, size: Dp, onClick: () -> Unit) {
     val c = AppTheme.colors
     val busy = row.pending != null
+    val label = stringResource(R.string.disconnect_named, rowName(row))
     Surface(
         onClick = onClick,
         enabled = !busy,
         shape = RoundedCornerShape(12.dp),
         color = c.card,
         border = BorderStroke(1.dp, c.outline),
-        modifier = Modifier.size(size),
+        // On the button, so the spinner keeps the name too.
+        modifier = Modifier.size(size).semantics { contentDescription = label },
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (busy) {
                 CircularProgressIndicator(Modifier.size(18.dp), color = c.error, strokeWidth = 2.dp)
             } else {
-                Icon(PowerGlyph, contentDescription = stringResource(R.string.disconnect_named, rowName(row)), tint = c.error, modifier = Modifier.size(20.dp))
+                Icon(PowerGlyph, contentDescription = null, tint = c.error, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -342,6 +347,9 @@ fun rememberRowActions(
         directChoice = { ui.direct = it },
     )
 }
+
+/** Whether [row] has a "⋮" menu: an unsaved tunnel has nothing in it but Disconnect, which is on the row. */
+fun hasMenu(row: ConnectionRow): Boolean = row.saved
 
 /** The rare actions of a row, in a "⋮" menu (or on a long press). */
 @Composable
