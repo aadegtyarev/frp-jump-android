@@ -50,9 +50,23 @@ Anything that does not serve one of these is out.
   (remembered per profile/device/port only with "Remember", sealed like
   SSH passwords). TLS (8883 or a switch) with the certificate pinned on
   first use, as for web pages.
-- Subscriptions: `#` by default; the owner can replace it with one or more
-  filters (`/devices/wb-mr6c_1/#`, `zigbee2mqtt/+/availability`), kept per
-  connection. A broker that refuses `#` says so with "Set filters".
+- Subscriptions are kept small so the phone and the link stay light:
+  - **Tree snapshot.** On connect the app subscribes to `#` for a few
+    seconds, records the topic structure (above all the retained topics,
+    which on a Wiren Board are nearly the whole tree) and unsubscribes.
+    "Refresh tree" takes a new snapshot.
+  - **The open branch.** Live values come only for the branch being
+    viewed: the app is subscribed to `<current path>/#`, moving the
+    subscription as the owner navigates.
+  - **Subscriptions tab.** Topics the owner pinned, each with a chosen mask:
+    the topic only, `+` one level below, or `#` the whole branch. They stay
+    subscribed for the whole session and are kept per connection, also
+    after the tunnel is closed. Pinned from a topic's or a branch's card
+    ("Subscribe…", choose the mask) or typed as a filter.
+  - Each subscription has a limit on topics and history; beyond it the
+    screen says "showing the first N".
+  - A broker that refuses `#` for the snapshot says so; the tree is then
+    built from the pinned subscriptions and the open branch.
 
 ## The tree
 
@@ -95,6 +109,12 @@ One sheet, opened from a topic, from a branch, or from the "+" of the tree:
   validated and can be formatted); the last payloads sent to this topic
   are one tap away.
 - **Retain** and **QoS** (0/1/2), remembered per topic.
+- **Status or command topic.** A connection may set, in its settings, where
+  a value goes by default: to the topic itself, or to a command topic next
+  to it given by a rule (a suffix such as `/on`, as Wiren Board uses). The
+  sheet then has a switch "Status topic / Command topic" set by the rule
+  and changeable for this send. A payload view (plugin) may define the
+  status/command pair itself and then overrides the rule.
 - Send gives feedback where it was tapped (sent, or the broker's refusal);
   if the topic is in the tree its new value shows up there.
 
@@ -143,18 +163,20 @@ explorer changes for it.
 
 | What | Where |
 | --- | --- |
-| Subscriptions per connection, retain/QoS per topic, last payloads sent | app-private storage |
+| Pinned subscriptions with their masks, the command-topic rule, retain/QoS per topic, last payloads sent (per connection) | app-private storage |
 | Broker passwords (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
 | The tree and history | memory only, for the session |
 
 ## Delivery
 
-1. Connect, the tree with values, path bar, search, topic card, copy.
+1. Connect, tree snapshot, the open branch live, path bar, search, topic
+   card, copy.
 2. Publish (here / under / any path), Text/JSON, retain, QoS, recent
    payloads.
 3. Feed with pause, filter and watched topics.
 4. Retained delete for a topic and a branch.
-5. Login and TLS, subscriptions other than `#`.
+5. Login and TLS; the Subscriptions tab with masks; the command-topic
+   rule.
 6. Payload views as plugins (declarative), first plugin when wanted.
 7. Later: charts of chosen numeric topics, overlaid.
 
