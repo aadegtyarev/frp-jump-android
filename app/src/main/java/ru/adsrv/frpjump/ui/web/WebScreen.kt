@@ -94,6 +94,7 @@ import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.web.CertCheck
+import ru.adsrv.frpjump.web.GoodPages
 import ru.adsrv.frpjump.web.WebNavigation
 import ru.adsrv.frpjump.web.answersInPlainHttp
 import ru.adsrv.frpjump.web.certFingerprint
@@ -124,10 +125,10 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     val app = context.applicationContext as FrpJumpApp
     val root = remember(localPort, https) { (if (https) "https" else "http") + "://127.0.0.1:$localPort/" }
     // Opened again in this run: where the owner was, not the root.
-    val start = remember(profile, device, localPort, root) { app.webPages.startFor(profile, device, localPort, root) }
-    /** The tunnel went away under the page: a banner with Back instead of WebView's error page. */
+    val start = remember(profile, device, targetPort, localPort, root) { app.webPages.startFor(profile, device, targetPort, localPort, root) }
+    // The tunnel went away under the page (or moved to another local port): a banner with Back instead of WebView's error page.
     var tunnelGone by remember { mutableStateOf(false) }
-    val certs = remember(profile) { (context.applicationContext as FrpJumpApp).profiles.runtime(profile)?.webCerts }
+    val certs = remember(profile) { app.profiles.runtime(profile)?.webCerts }
     var question by remember { mutableStateOf<CertQuestion?>(null) }
     var certRefused by remember { mutableStateOf(false) }
     /** An HTTPS connection whose device answers this port in plain HTTP (ERR_SSL_PROTOCOL_ERROR). */
@@ -155,22 +156,34 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         }
     }
 
+    // Only pages that loaded well (and the routes in them) are remembered for the next Open.
+    val goodPages = remember(webView) { GoodPages() }
+    // This web view's first page was asked for (after clearing another site's data, maybe later).
+    var loadIssued by remember(webView) { mutableStateOf(false) }
+    val keep = { page: String? -> page?.let { app.webPages.remember(profile, device, targetPort, localPort, it) } }
+
     DisposableEffect(webView) {
         configure(
             webView, context, localPort,
-            onPage = { pageUrl ->
-                if (pageUrl != url) {
-                    sslErrorSeen = false
-                    notTls = false
+            onPage = { pageUrl, event ->
+                when (event) {
+                    PageEvent.FINISHED -> keep(goodPages.finished(pageUrl))
+                    PageEvent.STARTED, PageEvent.HISTORY -> {
+                        if (event == PageEvent.STARTED) goodPages.started() else keep(goodPages.history(pageUrl))
+                        if (pageUrl != url) {
+                            sslErrorSeen = false
+                            notTls = false
+                        }
+                        url = pageUrl
+                        canGoBack = webView.canGoBack()
+                    }
                 }
-                url = pageUrl
-                app.webPages.remember(profile, device, localPort, pageUrl)
-                canGoBack = webView.canGoBack()
             },
             onTitle = { title = it.ifBlank { device } },
             onProgress = { progress = it },
             onRendererGone = { rendererGone = true },
             onMainFrameError = { code, description, failed ->
+                goodPages.failed()
                 if (answersInPlainHttp(code, description, failed, localPort, sslErrorSeen || certRefused || question != null)) notTls = true
             },
             onSslError = { handler, error ->
@@ -219,9 +232,13 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             // Another device (or port) than last time: its cookies must not reach this one.
             clearWebData(webView) {
                 sites.remember(profile, device, localPort)
-                if (alive) webView.loadUrl(first)
+                if (alive) {
+                    loadIssued = true
+                    webView.loadUrl(first)
+                }
             }
         } else {
+            loadIssued = true
             webView.loadUrl(first)
         }
         onDispose {
@@ -235,24 +252,25 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         }
     }
     // Follows the tunnel: gone, the page stops and the banner says so; back (connected again elsewhere), the page carries on.
-    LaunchedEffect(profile, device, localPort, webView) {
-        val tunnels = app.profiles.runtime(profile)?.tunnels?.state
-        if (tunnels == null) {
+    LaunchedEffect(profile, device, targetPort, localPort, webView) {
+        fun gone() {
             tunnelGone = true
-            return@LaunchedEffect
+            if (!rendererGone) webView.stopLoading()
+            // Not WebView's error page for what fails next: the banner says why.
+            webView.visibility = View.INVISIBLE
         }
-        tunnels.map { s -> s.tunnels.any { it.device == device && it.localPort == localPort } }
+        // The profile was forgotten meanwhile: its tunnels are gone with it.
+        val tunnels = app.profiles.runtime(profile)?.tunnels?.state ?: return@LaunchedEffect gone()
+        tunnels.map { s -> s.tunnels.any { it.device == device && it.port == targetPort && it.localPort == localPort } }
             .distinctUntilChanged()
             .collect { up ->
                 if (!up) {
-                    tunnelGone = true
-                    if (!rendererGone) webView.stopLoading()
-                    // Not WebView's error page for what fails next: the banner says why.
-                    webView.visibility = View.INVISIBLE
+                    gone()
                 } else if (tunnelGone) {
                     tunnelGone = false
                     webView.visibility = View.VISIBLE
-                    if (!rendererGone) webView.loadUrl(app.webPages.startFor(profile, device, localPort, root))
+                    // Before the first load was asked for, that load is still to come and goes where it should.
+                    if (!rendererGone && loadIssued) webView.loadUrl(app.webPages.startFor(profile, device, targetPort, localPort, root))
                 }
             }
     }
@@ -272,7 +290,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     }
     val (fullscreen, setFullscreen) = rememberFullscreen(FullscreenOf.WEB)
     val clipboard = LocalClipboardManager.current
-    BackHandler(enabled = canGoBack && !rendererGone) { webView.goBack() }
+    // With the tunnel gone the page is hidden: Back leaves rather than walking it.
+    BackHandler(enabled = canGoBack && !rendererGone && !tunnelGone) { webView.goBack() }
     // Declared after the page's: Back leaves full screen first, then walks the history.
     BackHandler(enabled = fullscreen) { setFullscreen(false) }
     SystemBarsHidden(fullscreen)
@@ -304,6 +323,14 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 onClick = {
                                     menu = false
                                     reload()
+                                },
+                            )
+                            // Opening comes back to the last page; this goes to the device's own start.
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.web_start_page)) },
+                                onClick = {
+                                    menu = false
+                                    webView.loadUrl(root)
                                 },
                             )
                             DropdownMenuItem(
@@ -388,6 +415,9 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     }
 }
 
+/** What the web view tells of its pages: a main-frame load began or finished, or a history entry (also an in-page route). */
+private enum class PageEvent { STARTED, FINISHED, HISTORY }
+
 /** The page's pending `<input type=file>`: at most one, answered exactly once. */
 private class FileChooser {
     private var pending: ValueCallback<Array<Uri>>? = null
@@ -419,7 +449,7 @@ private fun configure(
     webView: WebView,
     context: Context,
     tunnelPort: Int,
-    onPage: (String) -> Unit,
+    onPage: (String, PageEvent) -> Unit,
     onTitle: (String) -> Unit,
     onProgress: (Int) -> Unit,
     onRendererGone: () -> Unit,
@@ -462,9 +492,11 @@ private fun configure(
             return WebResourceResponse("text/plain", "utf-8", 403, "Forbidden", emptyMap(), ByteArrayInputStream(ByteArray(0)))
         }
 
-        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPage(url)
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) = onPage(url, PageEvent.STARTED)
 
-        override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) = onPage(url)
+        override fun onPageFinished(view: WebView, url: String) = onPage(url, PageEvent.FINISHED)
+
+        override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) = onPage(url, PageEvent.HISTORY)
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
             if (request.isForMainFrame) onMainFrameError(error.errorCode, error.description?.toString().orEmpty(), request.url.toString())
