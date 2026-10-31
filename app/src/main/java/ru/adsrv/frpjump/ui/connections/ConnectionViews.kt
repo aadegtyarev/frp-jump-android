@@ -418,13 +418,17 @@ fun rememberRowActions(
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
         files = { row ->
-            val login = actions.loginAtOnce(row)
-            if (login == null) {
-                ui.filesLogin = row
-            } else {
-                // As the dialog's Connect: the tunnel first; the file screen waits for it.
-                if (row.tunnel == null && row.pending == null) notificationsFirst { actions.connect(row) }
-                actions.openFiles(row, login.user, login.method, password = "", remember = true)?.let(onOpenFiles)
+            // Back to the file session kept on this tunnel, in its folder.
+            val kept = actions.keptFiles(row)
+            val login = if (kept == null) actions.loginAtOnce(row) else null
+            when {
+                kept != null -> onOpenFiles(kept)
+                login == null -> ui.filesLogin = row
+                else -> {
+                    // As the dialog's Connect: the tunnel first; the file screen waits for it.
+                    if (row.tunnel == null && row.pending == null) notificationsFirst { actions.connect(row) }
+                    actions.openFiles(row, login.user, login.method, password = "", remember = true)?.let(onOpenFiles)
+                }
             }
         },
         change = { ui.editing = it },

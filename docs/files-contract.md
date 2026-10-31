@@ -32,6 +32,16 @@ transfers that resume and run in the background.
   dialog remembers them per device and port), the same pinned host key.
   Files use an SSH connection of their own, so a long transfer or a drop
   does not touch an open terminal, and the other way round.
+- Kept with the terminal: leaving the file screen (top arrow, or Back at
+  `/`) while a terminal session is live on the same connection keeps its
+  file session (SFTP connection, folder, listing, scroll positions; the
+  selection ends). "Files" on that connection, from its row or the
+  terminal's top bar (same login), returns to it at once in that folder,
+  read again, reconnecting into it if the link dropped meanwhile. It closes
+  when the last terminal session on the connection ends or goes (the
+  tunnel with it). With no terminal open, leaving closes it. Transfers do
+  not outlive the screen: leaving with transfers going asks first and
+  cancels them, as without a terminal.
 
 ## Scenarios
 

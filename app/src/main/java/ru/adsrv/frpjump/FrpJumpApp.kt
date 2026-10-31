@@ -19,6 +19,7 @@ import ru.adsrv.frpjump.direct.DirectOfferedStore
 import ru.adsrv.frpjump.direct.DirectNotifier
 import ru.adsrv.frpjump.direct.NetworkWatcher
 import ru.adsrv.frpjump.files.FileTargets
+import ru.adsrv.frpjump.files.FilesKeeper
 import ru.adsrv.frpjump.files.ListingCache
 import ru.adsrv.frpjump.files.PhoneFiles
 import ru.adsrv.frpjump.files.UploadNames
@@ -51,6 +52,7 @@ import ru.adsrv.frpjump.store.AtomicTextFile
 import ru.adsrv.frpjump.store.KeystoreSecretBox
 import ru.adsrv.frpjump.tunnel.TunnelService
 import ru.adsrv.frpjump.ui.web.clearWebData
+import ru.adsrv.frpjump.ui.files.FilesSession
 import ru.adsrv.frpjump.update.ReleaseSource
 import ru.adsrv.frpjump.update.UpdateRecordStore
 import ru.adsrv.frpjump.update.Updater
@@ -94,6 +96,9 @@ class FrpJumpApp : Application() {
 
     /** File screens' logins, by the id in their route. */
     val fileTargets = FileTargets()
+
+    /** File sessions, by the id in their route: kept past their screen while a terminal is open on the tunnel. Main thread. */
+    val files = FilesKeeper { id -> FilesSession(this, id) }
 
     /** Names uploads are writing to on any device, so two screens never write one part file. */
     val uploadNames = UploadNames()
@@ -249,6 +254,8 @@ class FrpJumpApp : Application() {
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
+        // A kept file session closes with the last terminal session on its tunnel.
+        appScope.launch { ssh.through.collect(files::onTerminals) }
     }
 
     /** The comment on the app's SSH public key: names the phone in `authorized_keys`. Keystore: off the main thread. */

@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,7 +74,7 @@ import java.time.Instant
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
+fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val colors = AppTheme.colors
@@ -118,10 +119,14 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
     // Declared later, so it comes first: Back ends a selection before it goes up a folder.
     BackHandler(enabled = state.selection.active) { vm.clearSelection() }
 
-    // Where each folder was scrolled to: going back up returns there, and an action keeps it.
+    // Where each folder was scrolled to: going back up returns there, and an action keeps it;
+    // kept in the session, so a kept one opens again where it was.
     val list = rememberLazyListState()
-    val positions = remember { mutableMapOf<String, Pair<Int, Int>>() }
+    val positions = vm.positions
     var shownPath by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(vm) {
+        onDispose { shownPath?.let { positions[it] = list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset } }
+    }
     LaunchedEffect(state.path) {
         val path = state.path ?: return@LaunchedEffect
         if (path == shownPath) return@LaunchedEffect
