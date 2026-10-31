@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -61,6 +60,7 @@ import ru.adsrv.frpjump.ui.connections.ConnectionDialogs
 import ru.adsrv.frpjump.ui.connections.ConnectionMenu
 import ru.adsrv.frpjump.ui.connections.ConnectionSheet
 import ru.adsrv.frpjump.ui.connections.ConnectionUi
+import ru.adsrv.frpjump.ui.connections.DisconnectIcon
 import ru.adsrv.frpjump.ui.connections.LocalAddress
 import ru.adsrv.frpjump.ui.connections.MainButton
 import ru.adsrv.frpjump.ui.connections.RowActions
@@ -243,7 +243,7 @@ private fun Problem(text: String) {
 
 /**
  * One connection as the mockup's card: kind tile, name and what it is, "⋮";
- * below, the state, local address and main action when up, or "Not
+ * below, the state, Disconnect and the main action when up, or "Not
  * connected" and Connect. Long press opens the same menu as "⋮".
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -285,17 +285,23 @@ private fun ConnectionCard(
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val state = stateOf(row)
-                if (state != null) {
-                    StatePill(
-                        state.first,
-                        state.second,
-                        onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) },
-                        chevron = row.tunnel?.direct != DirectMode.KEPT,
-                    )
-                } else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
-                // The address gives way (ellipsis) before the main action does.
-                Spacer(Modifier.weight(1f))
-                if (up) MainButton(mainActionLabel(row)) { actions.main(row) } else ConnectButton(row) { actions.connect(row) }
+                // The state gives way (ellipsis) before the buttons do.
+                Box(Modifier.weight(1f)) {
+                    if (state != null) {
+                        StatePill(
+                            state.first,
+                            state.second,
+                            onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) },
+                            chevron = row.tunnel?.direct != DirectMode.KEPT,
+                        )
+                    } else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
+                }
+                if (up) {
+                    DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
+                    MainButton(mainActionLabel(row)) { actions.main(row) }
+                } else {
+                    ConnectButton(row) { actions.connect(row) }
+                }
             }
             problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
         }

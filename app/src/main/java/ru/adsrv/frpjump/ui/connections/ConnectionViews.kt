@@ -28,7 +28,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,10 +47,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -61,6 +66,7 @@ import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.TunnelStatus
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 
 @Composable
@@ -144,6 +150,7 @@ fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: 
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .clip(CircleShape)
             .background(container, CircleShape)
@@ -174,14 +181,14 @@ fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier) {
 
 fun localAddress(port: Int) = "127.0.0.1:$port"
 
-/** The main action of an active connection: Open, Terminal, or Copy address. */
+/** The main action of an active connection: Open, Terminal, or Copy (the address; short, it shares the row with Disconnect). */
 @Composable
 fun mainActionLabel(row: ConnectionRow): String = stringResource(
     when {
-        !row.saved -> R.string.copy_address
+        !row.saved -> R.string.copy
         row.connection.kind == PortKind.WEB -> R.string.open
         row.connection.kind == PortKind.SSH -> R.string.terminal
-        else -> R.string.copy_address
+        else -> R.string.copy
     },
 )
 
@@ -220,6 +227,34 @@ fun ConnectButton(row: ConnectionRow, onClick: () -> Unit) {
             val label = stringResource(if (row.error != null) R.string.retry else R.string.connect)
             Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (busy) Color.Transparent else c.accent)
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = c.accent, strokeWidth = 2.dp)
+        }
+    }
+}
+
+/**
+ * "Disconnect" of an active row, next to its main action: done with a
+ * connection, the owner drops it where they were. A spinner while it goes.
+ */
+@Composable
+fun DisconnectIcon(row: ConnectionRow, size: Dp, onClick: () -> Unit) {
+    val c = AppTheme.colors
+    val busy = row.pending != null
+    val label = stringResource(R.string.disconnect_named, rowName(row))
+    Surface(
+        onClick = onClick,
+        enabled = !busy,
+        shape = RoundedCornerShape(12.dp),
+        color = c.card,
+        border = BorderStroke(1.dp, c.outline),
+        // On the button, so the spinner keeps the name too.
+        modifier = Modifier.size(size).semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (busy) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = c.error, strokeWidth = 2.dp)
+            } else {
+                Icon(PowerGlyph, contentDescription = null, tint = c.error, modifier = Modifier.size(20.dp))
+            }
         }
     }
 }
@@ -313,6 +348,9 @@ fun rememberRowActions(
     )
 }
 
+/** Whether [row] has a "⋮" menu: an unsaved tunnel has nothing in it but Disconnect, which is on the row. */
+fun hasMenu(row: ConnectionRow): Boolean = row.saved
+
 /** The rare actions of a row, in a "⋮" menu (or on a long press). */
 @Composable
 fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, onDismiss: () -> Unit) {
@@ -325,7 +363,6 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
             })
         }
         if (row.tunnel != null) {
-            item(R.string.disconnect, actions.disconnect)
             if (row.saved && kind != PortKind.TCP) item(R.string.copy_address, actions.copy)
             if (row.saved && kind == PortKind.WEB) item(R.string.open_in_browser, actions.browser)
             if (row.saved && kind == PortKind.SSH) item(R.string.open_in_ssh_app, actions.sshApp)

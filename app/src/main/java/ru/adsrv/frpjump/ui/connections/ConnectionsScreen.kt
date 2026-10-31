@@ -166,7 +166,7 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .combinedClickable(onClick = {}, onLongClick = { ui.menu = row.key }),
+                .combinedClickable(onClick = {}, onLongClick = { if (hasMenu(row)) ui.menu = row.key }),
         ) {
             Column(Modifier.padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
@@ -218,15 +218,21 @@ private fun Line(row: ConnectionRow, profileColor: String?, ui: ConnectionUi, ac
                         }
                     }
                     if (row.tunnel != null) {
+                        DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
                         MainButton(mainActionLabel(row)) { actions.main(row) }
                     } else {
                         ConnectIcon(row) { actions.connect(row) }
                     }
-                    Box {
-                        IconButton(onClick = { ui.menu = row.key }, modifier = Modifier.size(width = 28.dp, height = 44.dp)) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions, rowName(row)), tint = colors.muted)
+                    if (hasMenu(row)) {
+                        Box {
+                            IconButton(onClick = { ui.menu = row.key }, modifier = Modifier.size(width = 28.dp, height = 44.dp)) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions, rowName(row)), tint = colors.muted)
+                            }
+                            ConnectionMenu(ui.menu == row.key, row, actions, onDismiss = { ui.menu = null })
                         }
-                        ConnectionMenu(ui.menu == row.key, row, actions, onDismiss = { ui.menu = null })
+                    } else {
+                        // Keeps the buttons of an unsaved row where a saved row's are.
+                        Box(Modifier.width(28.dp))
                     }
                 }
                 problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
