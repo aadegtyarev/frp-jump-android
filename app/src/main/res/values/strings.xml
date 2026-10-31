@@ -415,6 +415,8 @@
     <string name="background_poll_row_hint">While tunnels are open</string>
     <string name="setting_app_lock">Unlock with fingerprint</string>
     <string name="setting_app_lock_hint">Fingerprint or screen lock when the app opens. Tunnels keep running.</string>
+    <string name="setting_hide_in_recents">Hide in Recents</string>
+    <string name="setting_hide_in_recents_hint">No picture in Recents. May block screenshots.</string>
     <string name="setting_app_lock_needs_screen_lock">Needs a screen lock on the phone</string>
     <string name="lock_needs_screen_lock_text">This phone has no screen lock. Set a PIN, pattern or password in the system settings, then turn this on.</string>
     <string name="lock_open_settings">Open settings</string>

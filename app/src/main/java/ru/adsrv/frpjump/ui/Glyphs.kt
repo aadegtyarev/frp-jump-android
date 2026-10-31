@@ -173,6 +173,20 @@ val FingerprintGlyph: ImageVector = glyph("Fingerprint", 1.8f) {
     verticalLineTo(10f)
 }
 
+/** A crossed-out eye: hidden from view. */
+val EyeOffGlyph: ImageVector = glyph("EyeOff") {
+    moveTo(3f, 12f)
+    curveTo(5.5f, 7.5f, 8.5f, 5.5f, 12f, 5.5f)
+    curveTo(15.5f, 5.5f, 18.5f, 7.5f, 21f, 12f)
+    curveTo(18.5f, 16.5f, 15.5f, 18.5f, 12f, 18.5f)
+    curveTo(8.5f, 18.5f, 5.5f, 16.5f, 3f, 12f)
+    close()
+    moveTo(15f, 12f)
+    arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 15f, y1 = 11.99f)
+    moveTo(4f, 4f)
+    lineTo(20f, 20f)
+}
+
 /** A circle half filled: light or dark. */
 val ThemeGlyph: ImageVector = ImageVector.Builder("Theme", 24.dp, 24.dp, 24f, 24f)
     .path(fill = SolidColor(Color.Black)) {

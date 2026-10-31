@@ -63,19 +63,21 @@ class SettingsStoreTest {
     }
 
     @Test
-    fun `theme follows the system and the lock is off by default`() {
+    fun `theme follows the system, the lock and hiding in Recents are off by default`() {
         val settings = SettingsStore(MemoryStorage()).settings.value
         assertEquals(ThemeMode.SYSTEM, settings.theme)
         assertEquals(false, settings.appLock)
+        assertEquals(false, settings.hideInRecents)
     }
 
     @Test
     fun `theme and lock persist`() {
         val storage = MemoryStorage()
-        SettingsStore(storage).update { it.copy(theme = ThemeMode.DARK, appLock = true) }
+        SettingsStore(storage).update { it.copy(theme = ThemeMode.DARK, appLock = true, hideInRecents = true) }
         val reread = SettingsStore(storage).settings.value
         assertEquals(ThemeMode.DARK, reread.theme)
         assertEquals(true, reread.appLock)
+        assertEquals(true, reread.hideInRecents)
         SettingsStore(storage).update { it.copy(theme = ThemeMode.LIGHT) }
         assertEquals(ThemeMode.LIGHT, SettingsStore(storage).settings.value.theme)
     }
