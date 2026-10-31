@@ -1,0 +1,97 @@
+# Signed release APK. A pushed tag v<versionName> publishes the GitHub
+# release the app's update check reads (README › Release); a manual run
+# builds and checks the same APK without publishing it.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      NDK_VERSION: 26.3.11579264
+      # The release key's certificate: an APK signed with anything else is not published.
+      RELEASE_CERT_SHA256: 1ae85a21696641cf9cb167abab8846b9b2705d5e2e36f79c61e6b921f3352336
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # release.sh compares versionCode with every earlier v* tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          # Release builds only: never write a cache another run could pick up.
+          cache-read-only: true
+
+      - name: Version
+        id: version
+        run: |
+          version=$(sed -n 's/^[[:space:]]*versionName = "\(.*\)"$/\1/p' app/build.gradle.kts | head -1)
+          [ -n "$version" ] || { echo "no versionName in app/build.gradle.kts" >&2; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match versionName $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: frpc
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" scripts/build-frpc.sh
+
+      - name: Unit tests
+        run: ./gradlew -q testDebugUnitTest
+
+      - name: Release key
+        env:
+          KEYSTORE_B64: ${{ secrets.FRPJUMP_RELEASE_KEYSTORE_B64 }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || { echo "secret FRPJUMP_RELEASE_KEYSTORE_B64 is not set" >&2; exit 1; }
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+
+      - name: Build, and publish on a tag
+        env:
+          FRPJUMP_RELEASE_STORE_FILE: ${{ runner.temp }}/release.p12
+          FRPJUMP_RELEASE_STORE_PASSWORD: ${{ secrets.FRPJUMP_RELEASE_STORE_PASSWORD }}
+          FRPJUMP_RELEASE_KEY_PASSWORD: ${{ secrets.FRPJUMP_RELEASE_STORE_PASSWORD }}
+          FRPJUMP_RELEASE_KEY_ALIAS: frpjump
+          FRPJUMP_RELEASE_CERT_SHA256: ${{ env.RELEASE_CERT_SHA256 }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            scripts/release.sh --publish --notes-file "docs/releases/$VERSION.md"
+          else
+            scripts/release.sh
+          fi
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.p12"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # The mapping is not published with the release; keep it here for stack traces.
+          name: frp-jump-android-${{ steps.version.outputs.version }}
+          path: dist/
+          retention-days: 90

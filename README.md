@@ -473,18 +473,42 @@ key: Android installs an update only over an app with the same signature,
 so a phone that has a debug build (or one signed with another key) has to
 uninstall it once before the first release goes on.
 
-To publish a version: raise `versionName` and `versionCode` in
-`app/build.gradle.kts`, commit, then
+Releases are built and published by GitHub Actions
+(`.github/workflows/release.yml`), which holds the key in the repository
+secrets `FRPJUMP_RELEASE_KEYSTORE_B64` (the PKCS#12 file, base64) and
+`FRPJUMP_RELEASE_STORE_PASSWORD` (store and key password, alias `frpjump`).
+To publish a version:
+
+1. Raise `versionName` and `versionCode` in `app/build.gradle.kts` and add
+   the release notes as `docs/releases/<versionName>.md`; merge to `main`.
+2. Tag that commit and push the tag:
+
+   ```sh
+   git tag v0.2.0 && git push origin v0.2.0
+   ```
+
+The workflow builds frpc and the APK, runs the unit tests, then
+`scripts/release.sh --publish`. Running the workflow by hand (Actions ›
+Release › Run workflow) builds and checks the same APK without publishing.
+Either way the APK, its `.sha256` and the R8 mapping are kept as the run's
+artifact for 90 days; download and keep the mapping of each published
+release.
+
+`scripts/release.sh` does the same on this machine:
 
 ```sh
 scripts/release.sh                                   # dist/frp-jump-android-<version>.apk, .apk.sha256, -mapping.txt
 scripts/release.sh --publish --notes-file notes.md   # also GitHub release v<version> with the APK and .sha256
 ```
 
-`--publish` refuses unless the tree is clean and pushed, `v<version>` does
-not exist, versionCode is above the latest `v*` tag's, and apksigner and
-aapt2 are there; the built APK must say the versionName and versionCode of
-`app/build.gradle.kts`. Keep the mapping file of each published release.
+`--publish` refuses unless the tree is clean and pushed, there is no
+`v<version>` release yet and no `v<version>` tag other than on this commit,
+versionCode is above that of every other `v*` tag, and apksigner and aapt2
+are there; the built APK must say the versionName and versionCode of
+`app/build.gradle.kts`. With `FRPJUMP_RELEASE_CERT_SHA256` set (CI sets it
+to the release certificate,
+`1ae85a21696641cf9cb167abab8846b9b2705d5e2e36f79c61e6b921f3352336`), an APK
+signed with any other key is refused.
 
 The release is published as a normal one, not a pre-release, even for a
 version such as `0.2.0-beta2`: the app asks GitHub for the latest release,

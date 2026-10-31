@@ -8,12 +8,15 @@
 #   scripts/release.sh                                # build and checksum only
 #   scripts/release.sh --publish --notes-file NOTES.md
 #
-# --publish also checks: a clean tree pushed to origin, no v<version> yet,
+# --publish also checks: a clean tree pushed to origin, no v<version> release
+# yet (a v<version> tag only on HEAD, as when CI runs from it),
 # versionCode above the latest v* tag's, apksigner and aapt2 at hand. The
 # R8 mapping goes to dist/ as well, to keep (not published).
 #
 # The signing key comes from FRPJUMP_RELEASE_STORE_FILE, _STORE_PASSWORD,
-# _KEY_ALIAS, _KEY_PASSWORD in ~/.gradle/gradle.properties or the environment.
+# _KEY_ALIAS, _KEY_PASSWORD in ~/.gradle/gradle.properties or the environment;
+# FRPJUMP_RELEASE_CERT_SHA256 (environment), when set, is the certificate the
+# APK must be signed with.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
@@ -47,15 +50,20 @@ if [ "$PUBLISH" = 1 ]; then
   [ -n "$NOTES" ] && [ -s "$NOTES" ] || { echo "--publish needs --notes-file with the release notes (the app shows them)" >&2; exit 1; }
   [ -z "$(git status --porcelain)" ] || { echo "the working tree has changes; publish from a clean checkout" >&2; exit 1; }
   [ -n "$APKSIGNER" ] && [ -n "$AAPT2" ] || { echo "--publish needs apksigner and aapt2 (Android SDK build-tools)" >&2; exit 1; }
-  if gh release view "v$VERSION" >/dev/null 2>&1 || git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+  git fetch -q --tags origin
+  if gh release view "v$VERSION" >/dev/null 2>&1; then
     echo "v$VERSION exists already; raise versionName and versionCode" >&2
     exit 1
   fi
+  # The tag may exist only on this commit: CI publishes from a pushed tag.
+  if TAG_COMMIT=$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}"); then
+    [ "$TAG_COMMIT" = "$(git rev-parse HEAD)" ] || { echo "tag v$VERSION is on another commit; raise versionName and versionCode" >&2; exit 1; }
+  fi
   # Android installs an update only with a higher versionCode.
-  git fetch -q --tags origin
   # The highest versionCode over all release tags: tag order alone ranks 0.2.0-beta1 above 0.2.0.
   LAST_CODE=0
   for tag in $(git tag --list 'v*'); do
+    [ "$tag" = "v$VERSION" ] && continue
     tag_code=$(gradle_value versionCode "$tag")
     [ "${tag_code:-0}" -gt "$LAST_CODE" ] && LAST_CODE=$tag_code && LAST_TAG=$tag
   done
@@ -75,7 +83,8 @@ fi
 
 # The APK must say the version it is published as (the app checks that too).
 if [ -n "$AAPT2" ]; then
-  BADGING=$("$AAPT2" dump badging "$APK" | head -1)
+  # sed reads to the end: head would close the pipe early, and pipefail ends the script.
+  BADGING=$("$AAPT2" dump badging "$APK" | sed -n 1p)
   case "$BADGING" in
     *"versionCode='$CODE'"*"versionName='$VERSION'"*) ;;
     *) echo "the APK says $BADGING, not versionCode $CODE / versionName $VERSION" >&2; exit 1 ;;
@@ -92,7 +101,14 @@ cat "dist/$NAME.sha256"
 
 # The certificate, to check it is the release key and not another one.
 if [ -n "$APKSIGNER" ]; then
-  "$APKSIGNER" verify --print-certs "dist/$NAME" | grep -E 'certificate (DN|SHA-256)'
+  CERTS=$("$APKSIGNER" verify --print-certs "dist/$NAME")
+  printf '%s\n' "$CERTS" | grep -E 'certificate (DN|SHA-256)'
+fi
+# Set (as CI does) to refuse an APK signed with any other key than this certificate's.
+if [ -n "${FRPJUMP_RELEASE_CERT_SHA256:-}" ]; then
+  [ -n "$APKSIGNER" ] || { echo "FRPJUMP_RELEASE_CERT_SHA256 needs apksigner" >&2; exit 1; }
+  SIGNERS=$(printf '%s\n' "$CERTS" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p')
+  [ "$SIGNERS" = "$FRPJUMP_RELEASE_CERT_SHA256" ] || { echo "signed by $SIGNERS, not the release key $FRPJUMP_RELEASE_CERT_SHA256" >&2; exit 1; }
 fi
 
 if [ "$PUBLISH" = 1 ]; then
