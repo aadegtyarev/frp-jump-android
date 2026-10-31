@@ -249,8 +249,23 @@ fun TerminalScreen(
                     .consumeWindowInsets(padding)
                     .imePadding(),
             ) {
-                if (list.size > 1 && !fullscreen) {
+                // Kept in full screen too: thin, and the only way to see and switch the sessions there.
+                if (list.size > 1) {
                     SessionTabs(list, selected.id, profileColors) { selectedId = it }
+                }
+                // Full screen has no bar: say what the session is doing until it is open.
+                if (fullscreen && state != SshState.Open && state !is SshState.Ended) {
+                    Text(
+                        selected.device + " · " + statusLine(selected, state),
+                        fontSize = 12.sp,
+                        color = colors.termMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.termBar)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
                 }
                 AndroidView(
                     factory = { input },

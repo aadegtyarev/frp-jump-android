@@ -397,10 +397,13 @@ port) and Key or Password, then opens a session to
   `| ~ / -`). Ctrl and Alt stay held, lit, until the next key.
   Long-press selects text (Copy / Paste), pinch or A− / A+ changes the font
   size, ⌨ brings the keyboard back.
-- Full screen (the corners icon in the bar) hides the bar, the session
-  tabs and the system bars; the terminal, the snippets and the keys stay.
-  The small round button (drag it aside) or Back leaves it; the choice is
-  kept, apart from the web pages'.
+- Full screen (the corners icon in the bar) hides the bar and the system
+  bars; the terminal, the session tabs (when there are several), the
+  snippets and the keys stay, and a thin line says what a session that is
+  not open yet is doing. The small round button (drag it aside) or Back
+  leaves it, a second Back leaves the terminal. The terminal remembers it
+  separately from the web pages. Landscape with the keyboard up hides the
+  bar anyway; hide the keyboard to reach the icon.
 - Snippets: a row of saved commands above the keys. Tap types a command
   without Enter (to finish it first), long press types it and presses
   Enter; the manager says so. The last chip ("+ Add command" while there
