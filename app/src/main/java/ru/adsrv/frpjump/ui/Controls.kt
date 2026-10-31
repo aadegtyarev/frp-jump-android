@@ -165,19 +165,22 @@ fun AppSheet(title: String, subtitle: String? = null, onDismiss: () -> Unit, con
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
     ) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
-                .navigationBarsPadding()
-                .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                subtitle?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) }
+        // A message posted while the sheet is open shows on it, not under its scrim.
+        NoticeLayer {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
+                    .navigationBarsPadding()
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    subtitle?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) }
+                }
+                content()
             }
-            content()
         }
     }
 }

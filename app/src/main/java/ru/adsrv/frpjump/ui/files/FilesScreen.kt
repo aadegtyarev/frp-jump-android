@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump.ui.files
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +59,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.AppTopBar
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.ssh.HostKeyChangedDialog
 import ru.adsrv.frpjump.ui.ssh.HostKeyTrustDialog
@@ -93,7 +93,7 @@ fun FilesScreen(vm: FilesViewModel, onBack: () -> Unit) {
     LaunchedEffect(vm) {
         vm.events.collect { event ->
             when (event) {
-                is FilesEvent.Toast -> Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()
+                is FilesEvent.Notice -> context.notice(event.text, event.kind)
                 is FilesEvent.Handover -> {
                     // Handed to another app: that file's card has done its job.
                     if (card == event.path) card = null

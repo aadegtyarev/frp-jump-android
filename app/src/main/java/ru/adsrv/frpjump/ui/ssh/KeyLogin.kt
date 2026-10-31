@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump.ui.ssh
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -26,6 +25,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.KeyInstallResult
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
@@ -37,6 +37,7 @@ import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.keyInstallText
 import ru.adsrv.frpjump.ssh.loginRefusalText
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.notice
 
 /** Where "Use key login" is: the dialog it shows, if any. */
 sealed interface KeyLoginStep {
@@ -178,7 +179,7 @@ fun KeyLoginDialogs(flow: KeyLoginFlow) {
             if (text.ok) {
                 // Success needs no answer: a toast, and the menu no longer offers it.
                 LaunchedEffect(step) {
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    context.notice(message, NoticeKind.DONE, long = true)
                     flow.dismiss()
                 }
             } else {

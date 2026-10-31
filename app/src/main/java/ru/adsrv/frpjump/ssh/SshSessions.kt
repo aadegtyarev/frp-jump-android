@@ -6,7 +6,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.util.Log
-import android.widget.Toast
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
@@ -19,10 +18,15 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.schmizz.sshj.SSHClient
+import ru.adsrv.frpjump.notices.NoticeKind
+import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.tunnel.TunnelRef
 
 /** What the terminal screen hears about the sessions it shows. */
 interface TerminalScreenListener {
@@ -38,6 +42,7 @@ interface TerminalScreenListener {
  */
 class SshSessions(
     private val context: Context,
+    private val notices: Notices,
     private val env: SshEnvironment,
     /** Every tunnel up, in all profiles, as [profilePortKey]s. */
     tunnelsUp: Flow<Set<String>>,
@@ -55,6 +60,18 @@ class SshSessions(
     val liveCount: Flow<Int> = _sessions
         .flatMapLatest { list ->
             if (list.isEmpty()) flowOf(0) else combine(list.map { it.state }) { states -> states.count { it !is SshState.Ended } }
+        }
+        .distinctUntilChanged()
+
+    /** Every session as the connection rows count them: its tunnel, and whether it is still live; as it changes. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val through: Flow<List<SessionOn>> = _sessions
+        .flatMapLatest { list ->
+            if (list.isEmpty()) {
+                flowOf(emptyList())
+            } else {
+                combine(list.map { s -> s.state.map { SessionOn(TunnelRef(s.profile, s.device, s.port), it !is SshState.Ended) } }) { it.toList() }
+            }
         }
         .distinctUntilChanged()
 
@@ -81,6 +98,8 @@ class SshSessions(
 
     /** Opens a new session to [device]:[port] of [profile] and starts connecting. Main thread. */
     fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth): SshSession {
+        // A new password typed: the refusal of the old one says nothing about it.
+        if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(profile, device, port, user)
         val target = SshTarget(user, device, port)
         val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
         val session = SshSession(nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number)
@@ -99,6 +118,7 @@ class SshSessions(
         val login = user ?: old.user
         val others = _sessions.value.filter { it.id != id }.map { SshTarget(it.user, it.device, it.port) to it.number }
         val number = replacementNumber(others, SshTarget(old.user, old.device, old.port), old.number, SshTarget(login, old.device, old.port))
+        if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(old.profile, old.device, old.port, login)
         val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number)
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         fresh.connect()
@@ -116,7 +136,7 @@ class SshSessions(
 
     /** Whether a password is kept for [user] on [session]'s device and port; cheap, nothing is unsealed. */
     fun hasRememberedPassword(session: SshSession, user: String): Boolean =
-        offersSavedPassword(session.refusal, session.user, user) { env.passwords.has(session.profile, session.device, session.port, user.trim()) }
+        offersSavedPassword(env.refusals.get(session.profile, session.device, session.port, user.trim()), user.trim(), user) { env.passwords.has(session.profile, session.device, session.port, user.trim()) }
 
     /** An open, logged-in connection of a session as [user] to [device]:[port] of [profile]; any thread. */
     fun liveClient(profile: String, device: String, port: Int, user: String): SSHClient? =
@@ -140,9 +160,6 @@ class SshSessions(
 
     fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
 
-    /** The last "copied" toast, cancelled by the next: a host repeating OSC 52 must not queue them up. */
-    private var copyToast: Toast? = null
-
     /** Callbacks from one session's emulator, forwarded to the screen when it shows that session. */
     private inner class ClientForScreen : TerminalSessionClient {
         override fun onTextChanged(changedSession: TerminalSession) {
@@ -155,7 +172,7 @@ class SshSessions(
 
         /**
          * The owner's own copy of a selection, and also a remote program's
-         * OSC 52, which writes the clipboard unasked: either way a toast
+         * OSC 52, which writes the clipboard unasked: either way a notice
          * shows what went there.
          */
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
@@ -167,9 +184,8 @@ class SshSessions(
                 Log.w(TAG, "clipboard not set: ${e.javaClass.simpleName}")
                 return
             }
-            // Called on the main thread (the emulator parses there); one toast, not a queue of them.
-            copyToast?.cancel()
-            copyToast = Toast.makeText(context, Texts.get(R.string.terminal_copied, copyPreview(copied, COPY_PREVIEW)), Toast.LENGTH_SHORT).also { it.show() }
+            // One notice, replaced by the next: a host repeating OSC 52 must not queue them up.
+            notices.show(Texts.get(R.string.terminal_copied, copyPreview(copied, COPY_PREVIEW)), NoticeKind.DONE, key = COPIED_KEY)
         }
 
         override fun onPasteTextFromClipboard(session: TerminalSession?) {
@@ -217,8 +233,11 @@ class SshSessions(
     companion object {
         private const val TAG = "SshSessions"
 
-        /** Characters of copied text the toast shows. */
+        /** Characters of copied text the notice shows. */
         private const val COPY_PREVIEW = 40
+
+        /** A newer "copied" takes the place of the one shown. */
+        private const val COPIED_KEY = "copied"
 
         /** The most a terminal puts on the clipboard: an OSC 52 of megabytes would not fit through Binder. */
         private const val MAX_COPY = 64 * 1024
@@ -255,7 +274,7 @@ fun replacementNumber(others: List<Pair<SshTarget, Int>>, old: SshTarget, oldNum
     if (now == old) oldNumber else nextSessionNumber(others, now)
 
 /**
- * What a toast shows of [text] put on the clipboard: its first non-blank
+ * What a notice shows of [text] put on the clipboard: its first non-blank
  * line without control or bidi-override characters (a remote host chooses
  * the text), cut to [max] code points, "…" when anything was left out.
  */

@@ -48,11 +48,11 @@ import ru.adsrv.frpjump.files.targetFolder
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
-import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.ssh.PinnedHostKey
 import ru.adsrv.frpjump.ssh.SshAuth
@@ -165,7 +165,8 @@ fun leaveAnswer(running: Int, failedAtAsk: Int, failedNow: Int): LeaveAnswer = w
 
 /** What the screen does once, outside its state. */
 sealed interface FilesEvent {
-    data class Toast(val text: String) : FilesEvent
+    /** A message at the top of the app ([ru.adsrv.frpjump.notices.Notices]). */
+    data class Notice(val text: String, val kind: NoticeKind) : FilesEvent
 
     /** Hand [file] (the device's [path]) to another app: view it ([share] false) or share it. */
     data class Handover(val path: String, val file: File, val mime: String, val name: String, val share: Boolean) : FilesEvent
@@ -336,21 +337,15 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
 
     fun hasRememberedPassword(user: String): Boolean {
         val t = target ?: return false
-        return offersSavedPassword(refusal, refusedUser, user) { app.sshPasswords.has(t.profile, t.device, t.port, user.trim()) }
+        val refusal = app.sshEnv.refusals.get(t.profile, t.device, t.port, user.trim())
+        return offersSavedPassword(refusal, user.trim(), user) { app.sshPasswords.has(t.profile, t.device, t.port, user.trim()) }
     }
-
-    /** Why the last login was refused, and for whom: a refused saved password is not offered again by "Change login". */
-    @Volatile
-    private var refusal: LoginRefusal? = null
-
-    @Volatile
-    private var refusedUser: String? = null
 
     /** "Change login" after a refused one: log in again with what the dialog gave. */
     fun changeLogin(user: String, method: SshAuthMethod, password: String, remember: Boolean) {
         val t = target ?: return
-        refusal = null
-        refusedUser = null
+        // A new password typed: the refusal of the old one says nothing about it.
+        if (method == SshAuthMethod.PASSWORD && password.isNotEmpty()) app.sshEnv.refusals.clear(t.profile, t.device, t.port, user.trim())
         val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
         viewModelScope.launch(Dispatchers.IO) { runtime?.sshLogins?.remember(t.device, t.port, login) }
         val auth = when (method) {
@@ -374,7 +369,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             val kept = withContext(Dispatchers.IO) {
                 PhoneFiles.keep(app, tree) && runCatching { app.settings.update { it.copy(filesDownloadFolder = tree.toString()) } }.isSuccess
             }
-            if (!kept) return@launch toast(Texts.get(R.string.files_folder_not_kept))
+            if (!kept) return@launch toast(Texts.get(R.string.files_folder_not_kept), NoticeKind.WARN)
             // The selection asked for the folder: it ends now that its files go.
             if (then.isNotEmpty()) clearSelection()
             downloadAll(then)
@@ -413,7 +408,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             }
             // Cancelled just as it finished: no "downloaded" for a row the owner cancelled.
             currentCoroutineContext().ensureActive()
-            if (onDone != null) onDone(name) else toast(Texts.get(R.string.files_downloaded, name))
+            if (onDone != null) onDone(name) else toast(Texts.get(R.string.files_downloaded, name), NoticeKind.DONE)
         }
     }
 
@@ -422,7 +417,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
      * those being transferred already; one toast says what was left out.
      */
     private fun startable(entries: List<RemoteEntry>): List<RemoteEntry> {
-        if (!_state.value.online || localPort == null) return emptyList<RemoteEntry>().also { toast(Texts.get(R.string.files_needs_connection)) }
+        if (!_state.value.online || localPort == null) return emptyList<RemoteEntry>().also { toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN) }
         val busy = entries.filter { e -> _state.value.downloads[e.path]?.let { it.failure == null } == true }
         when (busy.size) {
             0 -> Unit
@@ -451,8 +446,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             jobs.joinAll()
             when (names.size) {
                 0 -> Unit
-                1 -> toast(Texts.get(R.string.files_downloaded, names.single()))
-                else -> toast(Texts.plural(R.plurals.files_downloaded_many, names.size, names.size))
+                1 -> toast(Texts.get(R.string.files_downloaded, names.single()), NoticeKind.DONE)
+                else -> toast(Texts.plural(R.plurals.files_downloaded_many, names.size, names.size), NoticeKind.DONE)
             }
             // Asked once for the batch; each of them is downloaded again into the folder picked.
             if (lost.isNotEmpty()) _events.send(FilesEvent.PickFolder(entries.filter { it in lost }))
@@ -585,9 +580,9 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         val now = _state.value.downloads[entry.path]
         if (now != null && now.failure == null) return null.also { toast(Texts.get(R.string.files_busy, entry.name)) }
         val port = localPort
-        if (!_state.value.online || port == null) return null.also { toast(Texts.get(R.string.files_needs_connection)) }
+        if (!_state.value.online || port == null) return null.also { toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN) }
         if (!entry.transferable) {
-            return null.also { toast(Texts.get(if (entry.link?.broken == true) R.string.files_broken_toast else R.string.files_not_regular, entry.name)) }
+            return null.also { toast(Texts.get(if (entry.link?.broken == true) R.string.files_broken_toast else R.string.files_not_regular, entry.name), NoticeKind.WARN) }
         }
         setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind, waiting = true))
         val job = viewModelScope.launch(start = TransferJobs.START) {
@@ -630,7 +625,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     fun upload(uris: List<Uri>) {
         if (uris.isEmpty()) return
         val dir = _state.value.path
-        if (!_state.value.online || dir == null || localPort == null) return toast(Texts.get(R.string.files_needs_connection))
+        if (!_state.value.online || dir == null || localPort == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
         viewModelScope.launch {
             val picked = withContext(Dispatchers.IO) { uris.map { PhoneFiles.picked(app, it) } }
             val queued = picked.map { Upload(uploadIds.getAndIncrement(), it.uri, dir, Transfer(it.name, 0, it.size)) }
@@ -642,7 +637,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
     /** Retry of a failed upload, into the folder it was for. */
     fun retryUpload(id: Long) {
         val failed = _state.value.uploads.firstOrNull { it.id == id && it.transfer.failure != null } ?: return
-        if (!_state.value.online || localPort == null) return toast(Texts.get(R.string.files_needs_connection))
+        if (!_state.value.online || localPort == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
         val again = failed.copy(transfer = failed.transfer.copy(done = 0, failure = null))
         _state.update { s -> s.copy(uploads = s.uploads.map { if (it.id == id) again else it }) }
         runUploads(listOf(again))
@@ -673,8 +668,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                 ) { item -> uploadLock.withLock { uploadOne(t, item) } }
                 when (uploaded.size) {
                     0 -> Unit
-                    1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()))
-                    else -> toast(Texts.plural(R.plurals.files_uploaded_many, uploaded.size, uploaded.size))
+                    1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()), NoticeKind.DONE)
+                    else -> toast(Texts.plural(R.plurals.files_uploaded_many, uploaded.size, uploaded.size), NoticeKind.DONE)
                 }
             },
         )
@@ -734,7 +729,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
                     val problem = Texts.get(R.string.files_list_failed, at, fileProblem(e))
                     if (_state.value.status == FilesStatus.Ready && _state.value.path != null && path != _state.value.path) {
                         // A folder that cannot be opened from one that is shown: say so and stay.
-                        toast(problem)
+                        toast(problem, NoticeKind.WARN)
                     } else {
                         _state.update { it.copy(path = path ?: it.path, status = FilesStatus.Failed(problem)) }
                         show(path ?: _state.value.path, emptyList())
@@ -767,10 +762,7 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
             Texts.get(if (e.check is HostKeyCheck.Changed) R.string.terminal_status_host_key_changed else R.string.terminal_status_host_key_unknown)
         }
         e is UserAuthException -> {
-            val c = connector
-            refusal = c?.let { withContext(Dispatchers.IO) { it.refusal() } }
-            refusedUser = target?.user
-            val message = withContext(Dispatchers.IO) { c?.authFailure() } ?: fileProblem(e)
+            val message = withContext(Dispatchers.IO) { connector?.authFailure() } ?: fileProblem(e)
             dropBrowser()
             _state.update { it.copy(status = FilesStatus.Failed(message, loginRefused = true)) }
             message
@@ -868,8 +860,8 @@ class FilesViewModel(private val app: FrpJumpApp, private val targetId: Int) : V
         _state.update { it.copy(downloads = it.downloads + (path to transfer)) }
     }
 
-    private fun toast(text: String) {
-        _events.trySend(FilesEvent.Toast(text))
+    private fun toast(text: String, kind: NoticeKind = NoticeKind.INFO) {
+        _events.trySend(FilesEvent.Notice(text, kind))
     }
 
     /**

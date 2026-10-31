@@ -1,9 +1,9 @@
 package ru.adsrv.frpjump.ui.connections
 
-import android.widget.Toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
@@ -16,14 +16,18 @@ import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.lastOnItsTunnel
 import ru.adsrv.frpjump.files.FilesTarget
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshState
+import ru.adsrv.frpjump.ssh.connectsDirectly
+import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
@@ -71,6 +75,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
     }
 
+    /** The terminal sessions of every tunnel, for the SSH rows' counts. */
+    val sessions: Flow<List<SessionOn>> = app.ssh.through
+
     fun connect(row: ConnectionRow) {
         val c = row.connection
         runtime(row.profile)?.tunnels?.connectAsync(c.device, c.port, c.kind)
@@ -100,7 +107,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun keepThroughServer(row: ConnectionRow) {
         app.appScope.launch {
             if (!app.directChoices.keepThroughServer(row.profile, row.connection.device)) {
-                Toast.makeText(app, Texts.get(R.string.keep_no_network), Toast.LENGTH_LONG).show()
+                app.notices.show(Texts.get(R.string.keep_no_network), NoticeKind.WARN, long = true)
             }
         }
     }
@@ -176,9 +183,32 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return last.copy(user = c.sshUser)
     }
 
-    /** Only whether one is kept: the password itself is unsealed by the session, off the main thread. */
-    fun hasRememberedPassword(row: ConnectionRow, user: String): Boolean =
-        app.sshPasswords.has(row.profile, row.connection.device, row.connection.port, user.trim())
+    /**
+     * Only whether one is kept and worth offering: the password itself is
+     * unsealed by the session, off the main thread. Not one just refused
+     * (or unreadable) for that user, see [offersSavedPassword].
+     */
+    fun hasRememberedPassword(row: ConnectionRow, user: String): Boolean {
+        return offersSavedPassword(refusalOf(row, user), user.trim(), user) {
+            app.sshPasswords.has(row.profile, row.connection.device, row.connection.port, user.trim())
+        }
+    }
+
+    /** Why the last login as [user] to [row]'s device and port was refused, if it was (terminal or files). */
+    private fun refusalOf(row: ConnectionRow, user: String): LoginRefusal? =
+        app.sshEnv.refusals.get(row.profile, row.connection.device, row.connection.port, user.trim())
+
+    /**
+     * The remembered login of [row] when it can be used without the dialog
+     * (see [connectsDirectly]); null when the dialog must ask. Main thread.
+     */
+    fun loginAtOnce(row: ConnectionRow): SshLogin? {
+        val c = row.connection
+        // Only what was chosen here before: the first time, the dialog asks.
+        val login = runtime(row.profile)?.sshLogins?.stored(c.device, c.port)?.copy(user = c.sshUser) ?: return null
+        val saved = app.sshPasswords.has(row.profile, c.device, c.port, login.user)
+        return login.takeIf { connectsDirectly(it, saved, refusalOf(row, login.user), login.user) }
+    }
 
     /**
      * The session already open to [row]'s device and port in its profile:
@@ -196,9 +226,29 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      * tunnel; returns its id, or null when the profile is gone. An empty
      * password means "the remembered one". Main thread.
      */
-    fun openSsh(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int? {
+    fun openSsh(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int? =
+        row.tunnel?.localPort?.let { openSshAt(row, it, user, method, password, remember) }
+
+    /**
+     * As [openSsh], also with the tunnel down ("Change login" from "⋮"): it
+     * is brought up first, then [onOpened] gets the session; a tunnel that
+     * does not come up says why. Main thread.
+     */
+    fun openSshWhenUp(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean, onOpened: (Int) -> Unit) {
+        row.tunnel?.localPort?.let { port -> openSshAt(row, port, user, method, password, remember)?.let(onOpened); return }
+        scope.launch {
+            val port = try {
+                tunnelPort(row.profile, row.connection.device, row.connection.port)
+            } catch (e: IOException) {
+                app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+                return@launch
+            }
+            openSshAt(row, port, user, method, password, remember)?.let(onOpened)
+        }
+    }
+
+    private fun openSshAt(row: ConnectionRow, localPort: Int, user: String, method: SshAuthMethod, password: String, remember: Boolean): Int? {
         val runtime = runtime(row.profile) ?: return null
-        val localPort = row.tunnel?.localPort ?: return null
         val c = row.connection
         val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
         scope.launch(Dispatchers.IO) { runtime.sshLogins.remember(c.device, c.port, login) }
@@ -223,6 +273,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
             SshAuthMethod.KEY -> SshAuth.Key
             SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
         }
+        // A new password typed: the refusal of the old one says nothing about it.
+        if (method == SshAuthMethod.PASSWORD && password.isNotEmpty()) app.sshEnv.refusals.clear(row.profile, c.device, c.port, login.user)
         return app.fileTargets.put(FilesTarget(row.profile, c.device, c.port, login.user, auth))
     }
 }

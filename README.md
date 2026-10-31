@@ -288,6 +288,23 @@ side sends its first bytes (QUIC opens the stream lazily): fine for HTTP
 and SSH clients, which speak first or at once; a protocol where the
 server must speak first to an idle client would wait.
 
+## Messages
+
+Short messages ("Address copied", "Downloaded …", what went wrong) appear
+at the top of the app, under the status bar and any cutout and over the
+screen's bar, not as system toasts at the bottom, which covered cards and
+buttons. A rounded card in the app's colours with a glyph of its kind
+(done, mind this, for information) slides in, goes after about 2.5 s (4 s
+for longer ones, 6 s with a button such as "Open"), and a tap on its text
+or a swipe up hides it at once; its button is a target of its own, and
+TalkBack reads it out. One shows at a time and up to three wait; a newer
+one about the same thing ("copied") takes the place of the older one
+(`notices/NoticeQueue.kt`). While a bottom sheet is open the message shows
+on the sheet, not under its scrim. While no screen of the app is open (an
+action on a notification) a message is a system toast, and one not seen
+yet when the app goes to the background becomes a toast too. While the app
+is locked messages are dropped, and locking clears those waiting.
+
 ## Settings
 
 Grouped as the mockup: the current profile (name and colour, forget),
@@ -414,12 +431,26 @@ Give device web UIs a password, and disconnect tunnels you no longer use.
 ## SSH console
 
 "Terminal" on a connected SSH connection opens the session already open to
-that device and port (the last live one among the tabs, else the last ended one,
-with Reconnect), so leaving the terminal and coming back loses nothing; a new
-session is "+" on the tab row. With none open it asks for the user (the
-connection's, `root` by default; the method is remembered per device and
-port) and Key or Password, then opens a session to
-`127.0.0.1:<local port>`.
+that device and port (the last live one among the tabs, else the last
+ended one, with Reconnect), so leaving the terminal and coming back loses
+nothing; a new session is "+" on the tab row. With none open it asks for
+the user (the connection's, `root` by default; the method is remembered
+per device and port) and Key or Password, then opens a session to
+`127.0.0.1:<local port>`. With none open, a usable login remembered for
+that device and port (the first time nothing is, and the dialog asks)
+connects at once, without the dialog: a key (unless it was just refused
+for that user) or a saved password of the remembered user (unless it was
+just refused or cannot be read); "Files" does the same (`connectsDirectly`
+in `ssh/LoginRefusal.kt`). The dialog shows when nothing usable is saved,
+after a refusal, or from "Change login" in the connection's "⋮" menu (with
+the tunnel down it is brought up first); refusals are kept per login while
+the app runs, shared by the terminal and the file screens, and cleared by
+a login that works or a new password; a saved password shows there as
+"•••••••• saved", and typing replaces it. The SSH row shows the sessions
+open on its device and port: "1 session" by the address, or with a red dot
+when one of them has ended (TalkBack: "2 sessions, 1 ended"), and the main
+button reads "Terminal · 2" from two on (`sessionsThrough` in
+`tunnel/OpenThrough.kt`).
 
 - Key: the app makes one ed25519 key on first use; Settings shows its
   `authorized_keys` line with Copy / Share. "Import private key" takes an
@@ -569,7 +600,7 @@ each other; both log in through `ssh/SshConnector.kt`.
 - Long press starts selecting: rows get a checkbox, taps add and remove,
   the bar shows the count, "Select all", and Download and Share while a
   file is among the picked (folders and special files are left out, and a
-  toast says how many). Back or ✕ ends it, as does going to another
+  notice says how many). Back or ✕ ends it, as does going to another
   folder. The actions come from `ui/files/FileSelection.kt`, where stage 2
   adds Copy, Move, Rename, Delete. Several files shared at once are
   downloaded to the cache, then shared together.

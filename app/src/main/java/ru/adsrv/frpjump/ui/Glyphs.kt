@@ -331,3 +331,34 @@ private fun PathBuilder.circle(x: Float, y: Float, r: Float) {
     arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x - r, y1 = y)
     close()
 }
+
+/** A tick: done. */
+val DoneGlyph: ImageVector = glyph("Done", 2.2f) {
+    moveTo(5f, 12.5f)
+    lineTo(10f, 17.5f)
+    lineTo(19f, 7f)
+}
+
+/** A triangle with "!": mind this. */
+val WarnGlyph: ImageVector = glyph("Warn", 1.8f) {
+    moveTo(12f, 4f)
+    lineTo(21f, 19.5f)
+    horizontalLineTo(3f)
+    close()
+    moveTo(12f, 10f)
+    verticalLineTo(13.5f)
+    moveTo(12f, 16.5f)
+    verticalLineTo(16.51f)
+}
+
+/** A circle with "i": for your information. */
+val InfoGlyph: ImageVector = glyph("Info", 1.8f) {
+    moveTo(3.5f, 12f)
+    arcTo(8.5f, 8.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20.5f, y1 = 12f)
+    arcTo(8.5f, 8.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 3.5f, y1 = 12f)
+    close()
+    moveTo(12f, 11f)
+    verticalLineTo(16f)
+    moveTo(12f, 8f)
+    verticalLineTo(8.01f)
+}

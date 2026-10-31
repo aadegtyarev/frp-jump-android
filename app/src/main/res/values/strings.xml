@@ -208,6 +208,17 @@
     <string name="retry">Retry</string>
     <string name="open">Open</string>
     <string name="terminal">Terminal</string>
+    <string name="terminal_count">Terminal · %d</string>
+    <plurals name="terminal_sessions_ended">
+        <item quantity="one">%d ended</item>
+        <item quantity="other">%d ended</item>
+    </plurals>
+    <string name="notice_dismiss">Hide</string>
+    <string name="ssh_password_saved_spoken">%s, saved</string>
+    <plurals name="terminal_sessions_count">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
     <string name="copy_address">Copy address</string>
     <string name="terminal_copied">Copied to the clipboard: %s</string>
     <string name="address_copied">Copied %s</string>
@@ -388,7 +399,7 @@
     <string name="ssh_login_title">SSH to %s</string>
     <string name="ssh_method_key">Key</string>
     <string name="ssh_method_password">Password</string>
-    <string name="ssh_password_remembered">Password (remembered)</string>
+    <string name="ssh_password_saved">•••••••• saved</string>
     <string name="ssh_remember_password">Remember on this phone</string>
     <string name="ssh_login_key_hint">Uses this phone’s key (Settings › %s); the device must have it in ~/.ssh/authorized_keys.</string>
     <string name="secret_show">Show</string>

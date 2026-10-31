@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -18,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -62,14 +63,20 @@ import androidx.core.content.ContextCompat
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.OpenThrough
 import ru.adsrv.frpjump.tunnel.PendingOp
+import ru.adsrv.frpjump.tunnel.SessionCount
+import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelStatus
+import ru.adsrv.frpjump.tunnel.sessionsThrough
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PowerGlyph
+import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.ssh.KeyLoginDialogs
 import ru.adsrv.frpjump.ui.ssh.SshLoginDialog
 
@@ -185,16 +192,46 @@ fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier) {
 
 fun localAddress(port: Int) = "127.0.0.1:$port"
 
-/** The main action of an active connection: Open, Terminal, or Copy (the address; short, it shares the row with Disconnect). */
+/**
+ * The main action of an active connection: Open, Terminal ("Terminal · 2"
+ * with [sessions] of 2 or more open), or Copy (the address; short, it
+ * shares the row with Disconnect).
+ */
 @Composable
-fun mainActionLabel(row: ConnectionRow): String = stringResource(
-    when {
-        !row.saved -> R.string.copy
-        row.connection.kind == PortKind.WEB -> R.string.open
-        row.connection.kind == PortKind.SSH -> R.string.terminal
-        else -> R.string.copy
-    },
-)
+fun mainActionLabel(row: ConnectionRow, sessions: SessionCount = SessionCount.NONE): String = when {
+    !row.saved -> stringResource(R.string.copy)
+    row.connection.kind == PortKind.WEB -> stringResource(R.string.open)
+    row.connection.kind == PortKind.SSH && sessions.total >= 2 -> stringResource(R.string.terminal_count, sessions.total)
+    row.connection.kind == PortKind.SSH -> stringResource(R.string.terminal)
+    else -> stringResource(R.string.copy)
+}
+
+/** The terminal sessions of an SSH row as [count] has them; nothing for none. */
+fun ConnectionRow.sessionsIn(open: List<SessionOn>): SessionCount =
+    if (connection.kind != PortKind.SSH || !saved) SessionCount.NONE else sessionsThrough(open, TunnelRef(profile, connection.device, connection.port))
+
+/**
+ * "1 session" / "2 sessions" by an SSH row's address, when [SessionCount.showsPill]:
+ * a red dot first when any of them has ended (its tab offers Reconnect).
+ */
+@Composable
+fun SessionsPill(count: SessionCount) {
+    if (!count.showsPill) return
+    val c = AppTheme.colors
+    val total = pluralStringResource(R.plurals.terminal_sessions_count, count.total, count.total)
+    val spoken = if (count.ended > 0) total + ", " + pluralStringResource(R.plurals.terminal_sessions_ended, count.ended, count.ended) else total
+    Row(
+        Modifier
+            .clearAndSetSemantics { contentDescription = spoken }
+            .background(c.tile, CircleShape)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        if (count.ended > 0) Box(Modifier.size(6.dp).background(c.error, CircleShape))
+        Text(total, fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
+    }
+}
 
 /** A filled accent button of the mockups' rows (40 dp high). */
 @Composable
@@ -325,6 +362,8 @@ class RowActions(
     val keyLogin: (ConnectionRow) -> Unit,
     /** Whether the menu offers "Use key login": the method remembered for its port is Password. */
     val offersKeyLogin: (ConnectionRow) -> Boolean,
+    /** "Change login": the login dialog, then a terminal with what it gave. */
+    val changeLogin: (ConnectionRow) -> Unit,
 )
 
 @Composable
@@ -333,6 +372,7 @@ fun rememberRowActions(
     actions: ConnectionActions,
     onOpenWeb: (ConnectionRow) -> Unit,
     onOpenTerminal: (sessionId: Int) -> Unit,
+    onOpenFiles: (targetId: Int) -> Unit,
 ): RowActions {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -341,7 +381,7 @@ fun rememberRowActions(
         row.tunnel?.let {
             val address = localAddress(it.localPort)
             clipboard.setText(AnnotatedString(address))
-            Toast.makeText(context, context.getString(R.string.address_copied, address), Toast.LENGTH_SHORT).show()
+            context.notice(context.getString(R.string.address_copied, address), NoticeKind.DONE, key = "copied")
         }
         Unit
     }
@@ -353,7 +393,12 @@ fun rememberRowActions(
                 !row.saved || row.connection.kind == PortKind.TCP -> copy(row)
                 row.connection.kind == PortKind.WEB -> onOpenWeb(row)
                 // Back to the session already open on this port; a new one is "+" on its tab row.
-                else -> actions.openSession(row)?.let(onOpenTerminal) ?: run { ui.login = row }
+                else -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
+                    // A usable remembered login connects at once; the dialog only when there is none.
+                    val login = actions.loginAtOnce(row)
+                    val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
+                    if (opened != null) onOpenTerminal(opened) else ui.login = row
+                }
             }
         },
         // Sessions and file screens on the tunnel close with it: ask first when there are any.
@@ -361,13 +406,23 @@ fun rememberRowActions(
         copy = copy,
         browser = { row -> row.tunnel?.let { openInBrowser(context, row.connection, it.localPort) } },
         sshApp = { row -> row.tunnel?.let { openSshExternally(context, row.connection.sshUser, it.localPort) } },
-        files = { ui.filesLogin = it },
+        files = { row ->
+            val login = actions.loginAtOnce(row)
+            if (login == null) {
+                ui.filesLogin = row
+            } else {
+                // As the dialog's Connect: the tunnel first; the file screen waits for it.
+                if (row.tunnel == null && row.pending == null) notificationsFirst { actions.connect(row) }
+                actions.openFiles(row, login.user, login.method, password = "", remember = true)?.let(onOpenFiles)
+            }
+        },
         change = { ui.editing = it },
         delete = { ui.deleting = it },
         directChoice = { ui.direct = it },
         // Down, the tunnel is brought up for it, as Connect does.
         keyLogin = { row -> if (row.tunnel == null) notificationsFirst { actions.startKeyLogin(row) } else actions.startKeyLogin(row) },
         offersKeyLogin = { row -> actions.sshLogin(row).method == SshAuthMethod.PASSWORD },
+        changeLogin = { ui.login = it },
     )
 }
 
@@ -392,6 +447,8 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
         }
         // Down, the tunnel is brought up once the login is given.
         if (row.saved && kind == PortKind.SSH) item(R.string.files, actions.files)
+        // Terminal logs in at once with what is remembered: another user or method is chosen here.
+        if (row.saved && kind == PortKind.SSH) item(R.string.terminal_change_login, actions.changeLogin)
         if (row.saved && kind == PortKind.SSH && actions.offersKeyLogin(row)) item(R.string.key_login, actions.keyLogin)
         if (row.saved) {
             item(R.string.change, actions.change)
@@ -439,7 +496,9 @@ fun ConnectionDialogs(
             hasRememberedPassword = { actions.hasRememberedPassword(row, it) },
             onConnect = { user, method: SshAuthMethod, password, remember ->
                 ui.login = null
-                actions.openSsh(row, user, method, password, remember)?.let(onOpenTerminal)
+                // "Change login" from "⋮" may come with the tunnel down: it is brought up first.
+                val open = { actions.openSshWhenUp(row, user, method, password, remember, onOpenTerminal) }
+                if (row.tunnel == null && row.pending == null) notificationsFirst(open) else open()
             },
             onDismiss = { ui.login = null },
         )
@@ -546,7 +605,7 @@ private fun openInBrowser(context: Context, connection: Connection, localPort: I
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$scheme://127.0.0.1:$localPort/")))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, context.getString(R.string.no_browser), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.no_browser), NoticeKind.WARN)
     }
 }
 
@@ -555,7 +614,7 @@ private fun openSshExternally(context: Context, user: String, localPort: Int) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("ssh://${Uri.encode(user)}@127.0.0.1:$localPort")))
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, context.getString(R.string.no_ssh_app), Toast.LENGTH_SHORT).show()
+        context.notice(context.getString(R.string.no_ssh_app), NoticeKind.WARN)
     }
 }
 

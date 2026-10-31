@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.NoticeLayer
 
 /**
  * The profile list as a bottom sheet: tap a profile to show it, "⋮" for
@@ -73,38 +74,41 @@ fun ProfilesSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
     ) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Column(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(stringResource(R.string.profiles), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.profiles_hint), fontSize = 13.sp, color = colors.muted)
+        // A message posted while the sheet is open shows on it, not under its scrim.
+        NoticeLayer {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.profiles), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.profiles_hint), fontSize = 13.sp, color = colors.muted)
+                }
+                items.forEach { item ->
+                    ProfileRow(
+                        item = item,
+                        forgetting = forget?.busy == true && forget?.id == item.id,
+                        // One forget at a time, and only once it is known what it would remove.
+                        canForget = forget?.busy != true && item.serverLoaded,
+                        onClick = {
+                            onDismiss()
+                            if (!item.current) vm.switchTo(item.id, onSwitched)
+                        },
+                        onEdit = {
+                            onDismiss()
+                            onEdit(item.id)
+                        },
+                        onForget = { confirm = item.id },
+                    )
+                }
+                AddProfileRow(onClick = {
+                    onDismiss()
+                    onAdd()
+                })
             }
-            items.forEach { item ->
-                ProfileRow(
-                    item = item,
-                    forgetting = forget?.busy == true && forget?.id == item.id,
-                    // One forget at a time, and only once it is known what it would remove.
-                    canForget = forget?.busy != true && item.serverLoaded,
-                    onClick = {
-                        onDismiss()
-                        if (!item.current) vm.switchTo(item.id, onSwitched)
-                    },
-                    onEdit = {
-                        onDismiss()
-                        onEdit(item.id)
-                    },
-                    onForget = { confirm = item.id },
-                )
-            }
-            AddProfileRow(onClick = {
-                onDismiss()
-                onAdd()
-            })
         }
     }
     confirm?.let { id ->

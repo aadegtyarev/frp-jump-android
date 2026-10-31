@@ -64,15 +64,18 @@ import ru.adsrv.frpjump.ui.connections.DisconnectIcon
 import ru.adsrv.frpjump.ui.connections.LocalAddress
 import ru.adsrv.frpjump.ui.connections.MainButton
 import ru.adsrv.frpjump.ui.connections.RowActions
+import ru.adsrv.frpjump.ui.connections.SessionsPill
 import ru.adsrv.frpjump.ui.connections.StatePill
 import ru.adsrv.frpjump.ui.connections.offersDirectChoice
 import ru.adsrv.frpjump.tunnel.DirectMode
+import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.ui.connections.kindLabel
 import ru.adsrv.frpjump.ui.connections.mainActionLabel
 import ru.adsrv.frpjump.ui.connections.problemOf
 import ru.adsrv.frpjump.ui.connections.rememberNotificationsFirst
 import ru.adsrv.frpjump.ui.connections.rememberRowActions
 import ru.adsrv.frpjump.ui.connections.rowName
+import ru.adsrv.frpjump.ui.connections.sessionsIn
 import ru.adsrv.frpjump.ui.connections.stateOf
 
 /**
@@ -89,8 +92,9 @@ fun DeviceCardScreen(
     onOpenFiles: (targetId: Int) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val ui = remember { ConnectionUi() }
-    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal)
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles)
     val notificationsFirst = rememberNotificationsFirst()
     var adding by rememberSaveable { mutableStateOf(false) }
     val colors = AppTheme.colors
@@ -171,6 +175,7 @@ fun DeviceCardScreen(
                 ConnectionCard(
                     row = row,
                     sshMethod = if (row.connection.kind == PortKind.SSH) state.sshMethods[row.connection.port] else null,
+                    sessions = row.sessionsIn(sessions),
                     menuOpen = ui.menu == row.key,
                     onMenu = { ui.menu = if (it) row.key else null },
                     actions = actions,
@@ -252,6 +257,7 @@ private fun Problem(text: String) {
 private fun ConnectionCard(
     row: ConnectionRow,
     sshMethod: SshAuthMethod?,
+    sessions: SessionCount,
     menuOpen: Boolean,
     onMenu: (Boolean) -> Unit,
     actions: RowActions,
@@ -275,7 +281,12 @@ private fun ConnectionCard(
                     Text(rowName(row), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(subtitle(row, sshMethod), fontSize = 13.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // On a line of its own: next to a long state and the main action it would be cut.
-                    row.tunnel?.let { LocalAddress(it.localPort) }
+                    if (row.tunnel != null || sessions.total > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f, fill = false)) }
+                            SessionsPill(sessions)
+                        }
+                    }
                 }
                 Box {
                     IconButton(onClick = { onMenu(true) }, modifier = Modifier.width(36.dp)) {
@@ -299,7 +310,7 @@ private fun ConnectionCard(
                 }
                 if (up) {
                     DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
-                    MainButton(mainActionLabel(row)) { actions.main(row) }
+                    MainButton(mainActionLabel(row, sessions)) { actions.main(row) }
                 } else {
                     ConnectButton(row) { actions.connect(row) }
                 }

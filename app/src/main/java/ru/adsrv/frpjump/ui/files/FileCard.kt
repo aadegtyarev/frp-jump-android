@@ -40,6 +40,7 @@ import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.files.octalMode
 import ru.adsrv.frpjump.files.permissionString
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.DownloadGlyph
 import ru.adsrv.frpjump.ui.ShareGlyph
 import java.time.Instant
@@ -75,42 +76,45 @@ fun FileCard(entry: RemoteEntry, transfer: Transfer?, online: Boolean, actions: 
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = colors.card,
     ) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
-                .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                EntryIcon(entry)
-                Text(entry.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 3, modifier = Modifier.weight(1f))
+        // A message posted while the sheet is open shows on it, not under its scrim.
+        NoticeLayer {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 20.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    EntryIcon(entry)
+                    Text(entry.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 3, modifier = Modifier.weight(1f))
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    InfoLine(stringResource(R.string.files_path), entry.path, mono = true)
+                    entry.link?.let { link ->
+                        InfoLine(
+                            stringResource(R.string.files_card_link),
+                            link.path,
+                            mono = true,
+                            problem = stringResource(R.string.files_broken).takeIf { link.broken },
+                        )
+                    }
+                    if (entry.type == EntryType.FILE) {
+                        InfoLine(stringResource(R.string.files_card_size), Formatter.formatFileSize(context, entry.size))
+                    }
+                    if (entry.modified > 0 && entry.link?.broken != true) {
+                        InfoLine(stringResource(R.string.files_card_modified), fullTime(Instant.ofEpochSecond(entry.modified)))
+                    }
+                    entry.mode?.let { InfoLine(stringResource(R.string.files_card_permissions), "${permissionString(it)}  ${octalMode(it)}", mono = true) }
+                    if (entry.uid != null && entry.gid != null) {
+                        InfoLine(stringResource(R.string.files_card_owner), stringResource(R.string.files_card_owner_ids, entry.uid, entry.gid))
+                    }
+                }
+                transfer?.let {
+                    TransferLine(it, onRetry = { actions.retry(entry) }, onDismiss = { actions.dismissFailure(entry) }, onCancel = { actions.cancel(entry) })
+                }
+                CardButtons(entry, transfer, online, actions, onDismiss)
             }
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoLine(stringResource(R.string.files_path), entry.path, mono = true)
-                entry.link?.let { link ->
-                    InfoLine(
-                        stringResource(R.string.files_card_link),
-                        link.path,
-                        mono = true,
-                        problem = stringResource(R.string.files_broken).takeIf { link.broken },
-                    )
-                }
-                if (entry.type == EntryType.FILE) {
-                    InfoLine(stringResource(R.string.files_card_size), Formatter.formatFileSize(context, entry.size))
-                }
-                if (entry.modified > 0 && entry.link?.broken != true) {
-                    InfoLine(stringResource(R.string.files_card_modified), fullTime(Instant.ofEpochSecond(entry.modified)))
-                }
-                entry.mode?.let { InfoLine(stringResource(R.string.files_card_permissions), "${permissionString(it)}  ${octalMode(it)}", mono = true) }
-                if (entry.uid != null && entry.gid != null) {
-                    InfoLine(stringResource(R.string.files_card_owner), stringResource(R.string.files_card_owner_ids, entry.uid, entry.gid))
-                }
-            }
-            transfer?.let {
-                TransferLine(it, onRetry = { actions.retry(entry) }, onDismiss = { actions.dismissFailure(entry) }, onCancel = { actions.cancel(entry) })
-            }
-            CardButtons(entry, transfer, online, actions, onDismiss)
         }
     }
 }

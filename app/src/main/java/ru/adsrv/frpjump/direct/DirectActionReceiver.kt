@@ -4,13 +4,13 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.widget.Toast
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.notices.NoticeKind
 
 /**
  * The "Direct didn't work" notification's actions: "Retry direct", "Keep
@@ -42,7 +42,7 @@ class DirectActionReceiver : BroadcastReceiver() {
                         ACTION_KEEP -> if (app.directChoices.keepThroughServer(profile, device)) {
                             app.directNotifier.dismiss(profile, device, cancel = true)
                         } else {
-                            Toast.makeText(app, Texts.get(R.string.keep_no_network), Toast.LENGTH_LONG).show()
+                            app.notices.show(Texts.get(R.string.keep_no_network), NoticeKind.WARN, long = true)
                         }
                     }
                 }

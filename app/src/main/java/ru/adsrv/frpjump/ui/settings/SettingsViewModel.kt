@@ -1,7 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
 import android.os.Build
-import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.settings.AppSettings
 import ru.adsrv.frpjump.settings.BackgroundPoll
 import ru.adsrv.frpjump.settings.PortRangeProblem
@@ -106,7 +106,7 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         viewModelScope.launch {
             val failure = withContext(Dispatchers.IO) { runCatching { app.settings.update(change) }.exceptionOrNull() }
             if (failure != null) {
-                Toast.makeText(app, Texts.get(R.string.settings_save_failed, failure.userMessage()), Toast.LENGTH_LONG).show()
+                app.notices.show(Texts.get(R.string.settings_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
             }
         }
     }

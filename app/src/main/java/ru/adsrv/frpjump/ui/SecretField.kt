@@ -12,23 +12,36 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
-/** A password-style field, hidden until the eye is tapped. */
+/**
+ * A password-style field, hidden until the eye is tapped. [saved]: a
+ * value is kept already; while the field is empty it shows that (masked
+ * dots and "saved") instead of looking empty, and typing replaces it.
+ */
 @Composable
-fun SecretField(value: String, onValueChange: (String) -> Unit, label: String) {
+fun SecretField(value: String, onValueChange: (String) -> Unit, label: String, saved: String? = null, savedSpoken: String? = null) {
     var shown by remember { mutableStateOf(false) }
+    // Material shows a placeholder under a resting label only without one: the saved hint takes the label's place until typing starts.
+    val showSaved = saved != null && value.isEmpty()
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
+        label = if (showSaved) null else ({ Text(label) }),
+        // The dots are for the eye: TalkBack hears "Password, saved".
+        placeholder = if (showSaved) ({ Text(saved.orEmpty(), modifier = Modifier.clearAndSetSemantics {}) }) else null,
+        modifier = if (showSaved) Modifier.semantics { contentDescription = savedSpoken ?: label } else Modifier,
         singleLine = true,
         visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),

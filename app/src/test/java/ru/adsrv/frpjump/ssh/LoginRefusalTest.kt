@@ -48,4 +48,47 @@ class LoginRefusalTest {
         assertTrue(offersSavedPassword(null, null, "root") { true })
         assertFalse(offersSavedPassword(null, null, "root") { false })
     }
+
+    private val byKey = SshLogin("root", SshAuthMethod.KEY)
+    private val byPassword = SshLogin("root", SshAuthMethod.PASSWORD)
+
+    @Test
+    fun `a remembered key connects at once unless it was just refused for that user`() {
+        assertTrue(connectsDirectly(byKey, savedPassword = false, lastRefusal = null, refusedUser = null))
+        assertFalse(connectsDirectly(byKey, savedPassword = false, lastRefusal = LoginRefusal.KEY, refusedUser = "root"))
+        assertTrue(connectsDirectly(byKey, savedPassword = false, lastRefusal = LoginRefusal.KEY, refusedUser = "admin"))
+    }
+
+    @Test
+    fun `a password connects at once only when one is saved and was not just refused or unreadable`() {
+        assertTrue(connectsDirectly(byPassword, savedPassword = true, lastRefusal = null, refusedUser = null))
+        assertFalse(connectsDirectly(byPassword, savedPassword = false, lastRefusal = null, refusedUser = null))
+        assertFalse(connectsDirectly(byPassword, savedPassword = true, lastRefusal = LoginRefusal.PASSWORD_SAVED, refusedUser = "root"))
+        assertFalse(connectsDirectly(byPassword, savedPassword = true, lastRefusal = LoginRefusal.PASSWORD_UNREADABLE, refusedUser = "root"))
+        assertTrue(connectsDirectly(byPassword, savedPassword = true, lastRefusal = LoginRefusal.PASSWORD_SAVED, refusedUser = "admin"))
+        // A typed password refused last time says nothing about the saved one.
+        assertTrue(connectsDirectly(byPassword, savedPassword = true, lastRefusal = LoginRefusal.PASSWORD_TYPED, refusedUser = "root"))
+    }
+
+    @Test
+    fun `nothing remembered for the device and port asks first`() {
+        assertFalse(connectsDirectly(null, savedPassword = true, lastRefusal = null, refusedUser = null))
+    }
+
+    @Test
+    fun `refusals are kept per login until cleared, and go with their profile`() {
+        val r = LoginRefusals()
+        r.record("p1", "wb", 22, "root", LoginRefusal.PASSWORD_SAVED)
+        assertEquals(LoginRefusal.PASSWORD_SAVED, r.get("p1", "wb", 22, "root"))
+        assertEquals(null, r.get("p1", "wb", 22, "admin"))
+        assertEquals(null, r.get("p1", "wb", 2222, "root"))
+        assertEquals(null, r.get("p2", "wb", 22, "root"))
+        r.clear("p1", "wb", 22, " root ")
+        assertEquals(null, r.get("p1", "wb", 22, "root"))
+        r.record("p1", "wb", 22, "root", LoginRefusal.KEY)
+        r.record("p2", "wb", 22, "root", LoginRefusal.KEY)
+        r.forgetProfile("p1")
+        assertEquals(null, r.get("p1", "wb", 22, "root"))
+        assertEquals(LoginRefusal.KEY, r.get("p2", "wb", 22, "root"))
+    }
 }
