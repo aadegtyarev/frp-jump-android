@@ -150,7 +150,10 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         configure(
             webView, context, localPort,
             onPage = { pageUrl ->
-                if (pageUrl != url) sslErrorSeen = false
+                if (pageUrl != url) {
+                    sslErrorSeen = false
+                    notTls = false
+                }
                 url = pageUrl
                 canGoBack = webView.canGoBack()
             },
