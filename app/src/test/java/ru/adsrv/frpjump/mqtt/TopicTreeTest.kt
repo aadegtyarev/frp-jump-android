@@ -60,16 +60,21 @@ class TopicTreeTest {
     fun `at the limit known topics update and new ones are dropped`() {
         val tree = tree(limit = 2)
         assertEquals(Received.NEW_TOPIC, tree.send("a", "1"))
-        assertFalse(tree.limitReached)
         tree.send("b/c", "1")
-        assertTrue(tree.limitReached)
+        // Exactly at the limit, nothing dropped yet.
+        assertFalse(tree.limitReached)
         assertEquals(Received.OVER_LIMIT, tree.send("b/d", "1"))
+        assertTrue(tree.limitReached)
         assertNull(tree.node(p("b/d")))
+        // A branch-only level is not a topic yet.
+        assertEquals(Received.OVER_LIMIT, tree.send("b", "1"))
+        assertNull(tree.node(p("b"))!!.value)
         assertEquals(Received.CHANGED, tree.send("a", "2"))
         assertEquals("2", String(tree.value("a").payload))
         assertEquals(2, tree.topicCount)
         tree.clear()
         assertEquals(0, tree.topicCount)
+        assertFalse(tree.limitReached)
         assertNull(tree.node(p("a")))
     }
 
@@ -86,6 +91,8 @@ class TopicTreeTest {
         tree.send("t", "")
         assertFalse(tree.value("t").cleared)
         assertTrue(tree.value("t").isEmptyValue)
+        tree.send("u", "", retain = true)
+        assertTrue(tree.value("u").cleared)
     }
 
     @Test
@@ -102,6 +109,8 @@ class TopicTreeTest {
         assertTrue(tree.value("t").isEmptyValue)
         tree.send("u", "z", version = v3)
         assertFalse(tree.value("u").retained)
+        tree.send("w", "", retain = true, version = v3)
+        assertTrue(tree.value("w").cleared)
     }
 
     @Test

@@ -29,6 +29,9 @@ class MqttPathTest {
         assertEquals(MqttPath.ROOT, MqttPath.ROOT.parent)
         assertEquals(MqttPath.ROOT, MqttPath.parse("a").parent)
         assertEquals(MqttPath.parse("/"), MqttPath.parse("/").parent.child(""))
+        // One empty level formats like the root; no broker sends that topic.
+        assertEquals("", MqttPath(listOf("")).format())
+        assertEquals(MqttPath.ROOT, MqttPath.parse(MqttPath(listOf("")).format()))
     }
 
     @Test

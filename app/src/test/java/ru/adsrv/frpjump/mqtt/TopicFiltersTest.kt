@@ -65,4 +65,22 @@ class TopicFiltersTest {
         assertFalse(filter.isCopy(MqttPath.parse("K2"), "1".toByteArray(), retain = false, qos = 1, matching = 1))
         assertFalse(filter.isCopy(MqttPath.parse("K2"), "1".toByteArray(), retain = false, qos = 1, matching = 1))
     }
+
+    @Test
+    fun `an expected copy that never comes is forgotten, and the expectations are capped`() {
+        var clock = 0L
+        val filter = CopyFilter { clock }
+        val one = "1".toByteArray()
+        assertFalse(filter.isCopy(MqttPath.parse("a"), one, retain = false, qos = 0, matching = 2))
+        assertEquals(1, filter.size)
+        clock = CopyFilter.WINDOW_MS + 1
+        // Too late to be a copy: a new value, and the old expectation is gone.
+        assertFalse(filter.isCopy(MqttPath.parse("b"), one, retain = false, qos = 0, matching = 1))
+        assertEquals(0, filter.size)
+        repeat(CopyFilter.MAX_EXPECTED + 10) {
+            filter.isCopy(MqttPath.parse("t$it"), one, retain = false, qos = 0, matching = 2)
+        }
+        assertEquals(CopyFilter.MAX_EXPECTED, filter.size)
+        assertFalse(filter.isCopy(MqttPath.parse("t0"), one, retain = false, qos = 0, matching = 2))
+    }
 }

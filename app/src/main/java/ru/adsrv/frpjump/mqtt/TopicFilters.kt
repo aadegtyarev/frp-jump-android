@@ -35,24 +35,51 @@ fun matchingFilters(filters: List<String>, topic: MqttPath): Int = filters.count
  * session's subscriptions match its topic (3.1.1): a copy is a message
  * identical to the one just taken for that topic (payload, retain, QoS),
  * arriving before any other message for the topic, at most one fewer than
- * the number of matching subscriptions. Only topics still expecting a copy
- * are remembered. Called from the network thread only; not thread-safe.
+ * the number of matching subscriptions.
+ *
+ * Memory is bounded: only topics still expecting a copy are remembered,
+ * each by the payload's size and hash (not its bytes); an expectation
+ * older than [WINDOW_MS] is forgotten (the broker sends the copies of one
+ * publish back to back), and past [MAX_EXPECTED] topics the oldest goes
+ * first. A forgotten expectation lets a late copy through as a value; a
+ * hash collision could drop a different message of the same size and
+ * flags right after its predecessor, which is accepted as negligible.
+ * Called from the network thread only; not thread-safe.
  */
-class CopyFilter {
-    private class Expected(val payload: ByteArray, val retain: Boolean, val qos: Int, var left: Int)
+class CopyFilter(private val now: () -> Long = System::currentTimeMillis) {
+    private class Expected(val size: Int, val hash: Int, val retain: Boolean, val qos: Int, val at: Long, var left: Int)
 
-    private val expected = HashMap<MqttPath, Expected>()
+    /** In the order the expectations were made, oldest first. */
+    private val expected = object : LinkedHashMap<MqttPath, Expected>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<MqttPath, Expected>) = size > MAX_EXPECTED
+    }
+
+    /** Topics still expecting a copy. */
+    val size: Int get() = expected.size
 
     /** True for a copy, which must not be shown, counted or kept; [matching] is from [matchingFilters]. */
     fun isCopy(topic: MqttPath, payload: ByteArray, retain: Boolean, qos: Int, matching: Int): Boolean {
-        val pending = expected[topic]
-        if (pending != null && pending.retain == retain && pending.qos == qos && pending.payload.contentEquals(payload)) {
-            if (--pending.left <= 0) expected.remove(topic)
+        val at = now()
+        forgetOlderThan(at - WINDOW_MS)
+        val hash = payload.contentHashCode()
+        val pending = expected.remove(topic)
+        if (pending != null && pending.at >= at - WINDOW_MS && pending.retain == retain && pending.qos == qos && pending.size == payload.size && pending.hash == hash) {
+            if (--pending.left > 0) expected[topic] = pending
             return true
         }
-        if (matching > 1) expected[topic] = Expected(payload.copyOf(), retain, qos, matching - 1) else expected.remove(topic)
+        if (matching > 1) expected[topic] = Expected(payload.size, hash, retain, qos, at, matching - 1)
         return false
     }
 
     fun clear() = expected.clear()
+
+    private fun forgetOlderThan(time: Long) {
+        val oldest = expected.values.iterator()
+        while (oldest.hasNext() && oldest.next().at < time) oldest.remove()
+    }
+
+    companion object {
+        const val WINDOW_MS = 2_000L
+        const val MAX_EXPECTED = 1_000
+    }
 }

@@ -62,12 +62,24 @@ class TopicTree(
     private val lock = Any()
     private var root = Node()
     private var topics = 0
+    private var dropped = false
 
     val topicCount: Int get() = synchronized(lock) { topics }
 
-    /** The tree holds [limit] topics; new ones are not shown. */
-    val limitReached: Boolean get() = synchronized(lock) { topics >= limit }
+    /**
+     * A new topic has been dropped at the limit since the last [clear]: the
+     * tree is missing topics. Exactly [limit] topics with none dropped is
+     * not "limit reached".
+     */
+    val limitReached: Boolean get() = synchronized(lock) { dropped }
 
+    /**
+     * Takes one message. A retained message equal to the known value is
+     * [Received.UNCHANGED]: a re-delivery on subscribe cannot be told from
+     * a retained re-publish of the same value (also under MQTT 5), so
+     * neither is a change. Under MQTT 5 a copy through a second matching
+     * subscription must be dropped by the caller first (see [CopyFilter]).
+     */
     fun receive(topic: MqttPath, payload: ByteArray, retain: Boolean, qos: Int, version: MqttVersion): Received {
         require(!topic.isRoot) { "a message has a topic" }
         val at = now()
@@ -75,7 +87,10 @@ class TopicTree(
             val known = find(topic)
             val current = known?.history?.firstOrNull()
             if (known == null || current == null) {
-                if (topics >= limit) return Received.OVER_LIMIT
+                if (topics >= limit) {
+                    dropped = true
+                    return Received.OVER_LIMIT
+                }
                 val node = known ?: create(topic)
                 node.history.addFirst(TopicValue.of(payload, retain, qos, at, version, previous = null))
                 topics++
@@ -122,7 +137,7 @@ class TopicTree(
         val found = mutableListOf<MqttPath>()
         synchronized(lock) {
             val start = find(at) ?: return emptyList()
-            collect(start, emptyList(), needle, found)
+            collect(start, ArrayList(), StringBuilder(), needle, found)
         }
         return found.sortedWith(NaturalOrder.paths)
     }
@@ -131,15 +146,23 @@ class TopicTree(
     fun clear() = synchronized(lock) {
         root = Node()
         topics = 0
+        dropped = false
     }
 
-    private fun collect(node: Node, levels: List<String>, needle: String, found: MutableList<MqttPath>) {
+    /**
+     * Depth first with one level list and one lowercased path text, both
+     * grown and cut back on the way; a path is copied only when it matches.
+     */
+    private fun collect(node: Node, levels: ArrayList<String>, text: StringBuilder, needle: String, found: MutableList<MqttPath>) {
         node.children.forEach { (level, child) ->
-            val path = levels + level
-            if (child.history.isNotEmpty() && path.joinToString("/").lowercase(Locale.ROOT).contains(needle)) {
-                found += MqttPath(path)
-            }
-            collect(child, path, needle, found)
+            val mark = text.length
+            if (levels.isNotEmpty()) text.append('/')
+            text.append(level.lowercase(Locale.ROOT))
+            levels.add(level)
+            if (child.history.isNotEmpty() && text.indexOf(needle) >= 0) found += MqttPath(levels.toList())
+            collect(child, levels, text, needle, found)
+            levels.removeAt(levels.lastIndex)
+            text.setLength(mark)
         }
     }
 

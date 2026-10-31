@@ -8,7 +8,7 @@ enum class SnapshotEnd {
     /** [SnapshotRule.MAX_MS] after the SUBACK, the broker still sending: some topics may be missing. */
     TIMED_OUT,
 
-    /** The session's topic limit. */
+    /** The session's topic limit: a new topic was dropped ([TopicTree.limitReached]). */
     LIMIT,
 }
 
@@ -21,7 +21,10 @@ object SnapshotRule {
     const val QUIET_MS = 1_000L
     const val MAX_MS = 10_000L
 
-    /** Why it has ended by [now], or null while it goes on. [lastMessageAt] is null before any message. */
+    /**
+     * Why it has ended by [now], or null while it goes on. [lastMessageAt]
+     * is null before any message; [limitReached] is [TopicTree.limitReached].
+     */
     fun end(subackAt: Long, lastMessageAt: Long?, now: Long, limitReached: Boolean): SnapshotEnd? {
         if (limitReached) return SnapshotEnd.LIMIT
         val quietAt = quietAt(subackAt, lastMessageAt)

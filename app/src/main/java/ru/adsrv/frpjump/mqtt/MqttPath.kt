@@ -27,7 +27,12 @@ data class MqttPath(val levels: List<String>) {
         return MqttPath(levels.drop(base.levels.size))
     }
 
-    /** The topic text: levels joined by `/`. */
+    /**
+     * The topic text: levels joined by `/`. A path of one empty level
+     * formats as `""`, the same as [ROOT], and parses back as the root. No
+     * broker sends it (an MQTT topic is at least one character), so the
+     * tree never holds it; do not build it by hand.
+     */
     fun format(): String = levels.joinToString("/")
 
     override fun toString(): String = format()
