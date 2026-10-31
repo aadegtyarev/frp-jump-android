@@ -337,6 +337,8 @@ class FrpJumpApp : Application() {
             env = sshEnv,
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
+            network = network.id,
+            hidden = pendingUndo.hidden,
         )
         mqttLogins = MqttLogins(AtomicTextFile(File(filesDir, "mqtt_logins.json")), sshBox)
         mqttPins = PinStore(AtomicTextFile(File(filesDir, "mqtt_pins.json")))

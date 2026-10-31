@@ -41,12 +41,43 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     val columns: Int get() = session.mEmulator.mColumns
     val rows: Int get() = session.mEmulator.mRows
 
+    /** Where typed keys go: the open shell's stream, or null while there is none (keys are dropped). */
+    @Volatile
+    private var output: OutputStream? = null
+
+    /** Called (on the writer thread) each time typed keys or a snippet go to the shell. */
+    @Volatile
+    var onKeys: (() -> Unit)? = null
+
+    /** Copies typed keys to [output]; one thread for the terminal's life, so a reconnect does not race an old one. */
+    private val writer by lazy {
+        thread(name = "terminal-to-ssh", isDaemon = true) {
+            val buffer = ByteArray(BUFFER)
+            while (true) {
+                val count = session.mTerminalToProcessIOQueue.read(buffer, true)
+                if (count < 0) break
+                val out = output ?: continue
+                try {
+                    out.write(buffer, 0, count)
+                    out.flush()
+                    onKeys?.invoke()
+                } catch (_: IOException) {
+                    // The reader sees the same failure and reports it.
+                }
+            }
+        }
+    }
+
     /**
      * Pumps [input] into the emulator and typed keys into [output] until
      * either side ends; then calls [onEnd] once, on a background thread,
-     * with the read error if there was one.
+     * with the read error if there was one. Called again after [pause]
+     * with a new connection's streams.
      */
     fun pump(input: InputStream, output: OutputStream, onEnd: (IOException?) -> Unit) {
+        this.output = output
+        synchronized(session) { if (!closed) session.mShellPid = Int.MAX_VALUE }
+        writer
         thread(name = "ssh-to-terminal", isDaemon = true) {
             val buffer = ByteArray(BUFFER)
             var error: IOException? = null
@@ -61,19 +92,27 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
             }
             onEnd(error)
         }
-        thread(name = "terminal-to-ssh", isDaemon = true) {
-            val buffer = ByteArray(BUFFER)
-            try {
-                while (true) {
-                    val count = session.mTerminalToProcessIOQueue.read(buffer, true)
-                    if (count < 0) break
-                    output.write(buffer, 0, count)
-                    output.flush()
-                }
-            } catch (_: IOException) {
-                // The reader sees the same failure and reports it.
-            }
-        }
+    }
+
+    /**
+     * Between connections (reconnecting): typed keys are dropped, not kept
+     * for the next shell; the screen stays. [pump] takes keys again.
+     */
+    fun pause() {
+        output = null
+        synchronized(session) { session.mShellPid = -1 }
+    }
+
+    /**
+     * Back to the normal screen for a fresh shell: leaves the alternate
+     * screen (an old `vim` or `htop`), resets colours, scroll region,
+     * cursor and keypad modes and turns mouse reporting and bracketed paste
+     * off; then prints [line]. The text above stays in the scrollback.
+     * Waits until it is queued, so the new shell's first output comes after.
+     */
+    fun resetForNewShell(line: String) {
+        val bytes = (FRESH_SCREEN + line).toByteArray(Charsets.UTF_8)
+        localWriter.submit { show(bytes, bytes.size) }.get()
     }
 
     /** Prints a local note (connecting, closed, …) into the terminal; safe from any thread. */
@@ -84,9 +123,16 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
 
     /** Stops taking keys; the screen and its scrollback stay readable. */
     fun finish() {
-        synchronized(session) { session.mShellPid = -1 }
+        output = null
+        synchronized(session) {
+            closed = true
+            session.mShellPid = -1
+        }
         session.mTerminalToProcessIOQueue.close()
     }
+
+    /** [finish]ed: no shell will come again. */
+    private var closed = false
 
     /** Pastes [text] as typed input (bracketed if the remote side asked for it). */
     fun paste(text: String) {
@@ -112,6 +158,10 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
 
         /** The session's handler reads at most 4 KiB per message. */
         const val QUEUE_CHUNK = 4096
+
+        /** See [resetForNewShell]. */
+        const val FRESH_SCREEN = "\u001b[?1049l\u001b[0m\u001b[r\u001b[?25h\u001b[?7h\u001b[?1l\u001b>" +
+            "\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l\u001b[?2004l"
 
         /** TerminalSession.MSG_NEW_INPUT. */
         const val MSG_NEW_INPUT = 1

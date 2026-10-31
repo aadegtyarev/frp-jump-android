@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -25,6 +26,7 @@ import net.schmizz.sshj.SSHClient
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.notices.Notices
 import ru.adsrv.frpjump.ports.profilePortKey
+import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
@@ -48,6 +50,10 @@ class SshSessions(
     /** Every tunnel up, in all profiles, as [profilePortKey]s. */
     tunnelsUp: Flow<Set<String>>,
     private val scope: CoroutineScope,
+    /** The default network's identity, null while there is none: each new one makes reconnecting sessions try at once. */
+    network: Flow<String?> = flowOf(null),
+    /** [ru.adsrv.frpjump.undo.PendingUndo.hidden]: a tab closed, or its tunnel disconnected, with Undo on screen does not reconnect. */
+    hidden: Flow<Set<String>> = flowOf(emptySet()),
 ) {
     private val _sessions = MutableStateFlow<List<SshSession>>(emptyList())
     val sessions: StateFlow<List<SshSession>> = _sessions
@@ -89,6 +95,14 @@ class SshSessions(
                     }
             }
         }
+        scope.launch {
+            network.distinctUntilChanged().filterNotNull().collect { _ -> _sessions.value.forEach { it.networkReturned() } }
+        }
+        // A session that comes or goes while one is pending is held or let go as well.
+        scope.launch(Dispatchers.Main) {
+            combine(_sessions, hidden) { list, h -> list.map { it to sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) } }
+                .collect { pairs -> pairs.forEach { (session, held) -> session.hold(held) } }
+        }
     }
 
     /** Opens a new session to [device]:[port] of [profile] and starts connecting. Main thread. */
@@ -116,7 +130,8 @@ class SshSessions(
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(old.profile, old.device, old.port, login)
         val fresh = SshSession(nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number)
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
-        fresh.connect()
+        // After the tries of a drop ran out, the same login tries again the same way.
+        fresh.connect(retrying = old.gaveUp && user == null && auth == null)
         return fresh
     }
 

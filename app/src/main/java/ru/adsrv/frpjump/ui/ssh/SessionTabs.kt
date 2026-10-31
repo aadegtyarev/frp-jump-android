@@ -121,13 +121,14 @@ fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<Stri
 private fun SessionTab(s: SshSession, label: String, on: Boolean, dot: Color, actions: SessionTabActions) {
     val colors = AppTheme.colors
     val state by s.state.collectAsStateWithLifecycle()
-    val connecting = state == SshState.Connecting
+    val connecting = state == SshState.Connecting || state is SshState.Reconnecting
     val ended = state is SshState.Ended
     var menu by remember { mutableStateOf(false) }
     val stateWord = stringResource(
         when (state) {
             SshState.Connecting -> R.string.terminal_state_connecting
             SshState.Open -> R.string.terminal_state_open
+            is SshState.Reconnecting -> R.string.terminal_state_reconnecting
             is SshState.HostKeyUnknown, is SshState.HostKeyChanged -> R.string.terminal_state_asks
             is SshState.Ended -> R.string.terminal_state_ended
         },

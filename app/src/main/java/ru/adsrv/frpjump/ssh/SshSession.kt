@@ -38,6 +38,13 @@ sealed interface SshState {
 
     data object Open : SshState
 
+    /**
+     * The connection dropped; [attempt] is the try under way ([trying]) or
+     * the last one, waiting for the next. The terminal keeps its text and
+     * takes no keys.
+     */
+    data class Reconnecting(val attempt: Int, val trying: Boolean) : SshState
+
     /** Closed, by either side or by a failure; the terminal keeps its text. */
     data class Ended(val message: String) : SshState
 }
@@ -50,6 +57,8 @@ class SshEnvironment(
     val keyComment: () -> String,
     /** The last refusal of each login, shared by every screen that logs in. */
     val refusals: LoginRefusals = LoginRefusals(),
+    /** The timers of auto-reconnect. */
+    val reconnectClock: ReconnectClock = ExecutorReconnectClock(),
 )
 
 /**
@@ -79,6 +88,17 @@ class SshSession(
 
     val title get() = "$user@$device"
 
+    /**
+     * Back after a drop with a fresh shell (no tmux yet: what ran before
+     * ended with the connection): the bar says so until the owner types.
+     */
+    private val _newShell = MutableStateFlow(false)
+    val newShell: StateFlow<Boolean> = _newShell
+
+    init {
+        terminal.onKeys = { if (_newShell.value) _newShell.value = false }
+    }
+
     @Volatile
     private var client: SSHClient? = null
 
@@ -98,15 +118,65 @@ class SshSession(
     var auth: SshAuth = auth
         private set
 
+    /** Tries again after a drop; see [SshReconnect]. */
+    private val reconnect = SshReconnect(env.reconnectClock, attempt = ::retry, giveUp = ::onGiveUp)
+
+    /** Why the connection went last, for the bar and for Ended when the tries run out. */
+    @Volatile
+    private var dropReason: String = ""
+
+    /** The shell went with the connection: the next one to open is a new shell, and says so. */
+    @Volatile
+    private var dropped = false
+
     /** "Use key login" worked for this login: Reconnect uses the key from now on. */
     fun useKey() {
         auth = SshAuth.Key
     }
 
-    fun connect() {
-        _state.value = SshState.Connecting
+    /**
+     * Starts connecting. [retrying]: Reconnect after the tries of a dropped
+     * session ran out, so a failure to connect keeps trying as after a drop.
+     */
+    fun connect(retrying: Boolean = false) {
         terminal.note(Texts.get(R.string.ssh_note_connecting, "$user@$device:$port", "127.0.0.1:$localPort") + "\r\n")
-        scope.launch(Dispatchers.IO) { run() }
+        if (retrying) {
+            dropReason = Texts.get(R.string.ssh_connection_closed)
+            _state.value = SshState.Reconnecting(1, trying = false)
+            reconnect.start()
+            return
+        }
+        _state.value = SshState.Connecting
+        scope.launch(Dispatchers.IO) { run(retrying = false) }
+    }
+
+    /** The tries after a drop ran out ([RECONNECT_GIVE_UP_MS]): Reconnect starts them again. */
+    @Volatile
+    var gaveUp = false
+        private set
+
+    /** "Now" on the reconnecting bar: try at once. */
+    fun reconnectNow() = reconnect.now()
+
+    /**
+     * [on]: the tab is closed (or its tunnel disconnected) with Undo on
+     * screen: no tries meanwhile. Off: back by Undo, still dropped, it tries
+     * again at once.
+     */
+    fun hold(on: Boolean) = reconnect.hold(on)
+
+    /** The default network came back or changed: a reconnecting session tries at once. */
+    fun networkReturned() = reconnect.networkReturned()
+
+    private fun retry(attempt: Int) {
+        if (closedByUser) return
+        _state.value = SshState.Reconnecting(attempt, trying = true)
+        scope.launch(Dispatchers.IO) { run(retrying = true) }
+    }
+
+    private fun onGiveUp() {
+        gaveUp = true
+        end(dropReason)
     }
 
     /** "Trust": pin the key shown at first use and connect again. */
@@ -150,14 +220,20 @@ class SshSession(
 
     fun close(reason: String = Texts.get(R.string.ssh_closed)) {
         closedByUser = true
+        reconnect.stop()
         end(reason)
         val c = client ?: return
         scope.launch(Dispatchers.IO) { runCatching { c.disconnect() } }
     }
 
-    private val connector = SshConnector(profile, hostKeys, device, port, localPort, user, auth, env)
-
-    private suspend fun run() {
+    /**
+     * One connection: connect, log in, open the shell. [retrying]: a try of
+     * the reconnect loop, which a failure answers instead of ending the tab;
+     * a refused login or a host key to decide still stops it.
+     */
+    private suspend fun run(retrying: Boolean) {
+        // The login as it is now: "Use key login" may have switched it to the key.
+        val connector = SshConnector(profile, hostKeys, device, port, localPort, user, auth, env)
         val ssh = connector.newClient()
         client = ssh
         try {
@@ -165,6 +241,7 @@ class SshSession(
         } catch (e: CancellationException) {
             throw e
         } catch (e: HostKeyRejected) {
+            if (retrying && e.check != HostKeyCheck.Trusted) reconnect.stop()
             when (val check = e.check) {
                 HostKeyCheck.Unknown -> {
                     _state.value = SshState.HostKeyUnknown(e.presented)
@@ -174,11 +251,11 @@ class SshSession(
                     _state.value = SshState.HostKeyChanged(check.pinned, e.presented)
                     terminal.note("\r\n" + Texts.get(R.string.ssh_note_host_key_changed, "$device:$port") + "\r\n")
                 }
-                HostKeyCheck.Trusted -> fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName))
+                HostKeyCheck.Trusted -> fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName), retrying)
             }
             return
         } catch (e: Exception) {
-            fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName))
+            fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName), retrying)
             return
         }
         if (closedByUser) {
@@ -197,6 +274,13 @@ class SshSession(
                 return
             }
             shell = started
+            if (dropped) {
+                dropped = false
+                // Nothing pretends to continue: back to the normal screen, a line under the old text.
+                terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_new_shell) + "]\r\n")
+                _newShell.value = true
+            }
+            reconnect.succeeded()
             _state.value = SshState.Open
             // The screen may have resized the terminal while the PTY was being set up.
             if (terminal.columns != columns || terminal.rows != rows) resize(terminal.columns, terminal.rows)
@@ -205,32 +289,58 @@ class SshSession(
             throw e
         } catch (e: UserAuthException) {
             authRefused = true
+            // Refused now: another try would only be refused again; Change login, as on a first connect.
+            reconnect.stop()
             runCatching { ssh.disconnect() }
             fail(connector.authFailure())
         } catch (e: Exception) {
             runCatching { ssh.disconnect() }
-            fail(Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName))
+            fail(Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName), retrying)
         }
     }
 
     private fun onShellEnded(ssh: SSHClient, started: Session.Shell, error: IOException?) {
-        val status = (started as? SessionChannel)?.exitStatus
+        val channel = started as? SessionChannel
+        val status = channel?.exitStatus
+        val signal = channel?.exitSignal != null
         runCatching { ssh.disconnect() }
         if (closedByUser) return
-        end(
-            when {
-                error != null -> Texts.get(R.string.ssh_connection_lost, error.message ?: error.javaClass.simpleName)
-                status != null -> Texts.get(R.string.ssh_logged_out, status)
-                else -> Texts.get(R.string.ssh_connection_closed)
-            },
-        )
+        val reason = when {
+            error != null -> Texts.get(R.string.ssh_connection_lost, error.message ?: error.javaClass.simpleName)
+            status != null -> Texts.get(R.string.ssh_logged_out, status)
+            else -> Texts.get(R.string.ssh_connection_closed)
+        }
+        if (shellDropped(error != null, status, signal)) drop(reason) else end(reason)
     }
 
-    private fun fail(message: String) = end(message)
+    /** The connection went under the shell: keep the tab and its text, take no keys, and try again. */
+    private fun drop(reason: String) {
+        if (_state.value is SshState.Ended || reconnect.running) return
+        shell = null
+        _newShell.value = false
+        dropReason = reason
+        dropped = true
+        terminal.pause()
+        terminal.note("\r\n[$reason]\r\n")
+        _state.value = SshState.Reconnecting(1, trying = false)
+        reconnect.start()
+    }
+
+    /** A failure to connect or log in: during a reconnect, one more failed try; otherwise the end. */
+    private fun fail(message: String, retrying: Boolean = false) {
+        if (retrying && reconnect.running && !closedByUser) {
+            dropReason = message
+            (_state.value as? SshState.Reconnecting)?.let { _state.value = it.copy(trying = false) }
+            reconnect.failed()
+        } else {
+            end(message)
+        }
+    }
 
     private fun end(message: String) {
         if (_state.value is SshState.Ended) return
         _state.value = SshState.Ended(message)
+        _newShell.value = false
         shell = null
         terminal.finish()
         terminal.note("\r\n[$message]\r\n")

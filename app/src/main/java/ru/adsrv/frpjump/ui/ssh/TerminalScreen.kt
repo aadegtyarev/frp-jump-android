@@ -240,6 +240,7 @@ fun TerminalScreen(
         offersKeyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget) != null },
     )
     val state by selected.state.collectAsStateWithLifecycle()
+    val newShell by selected.newShell.collectAsStateWithLifecycle()
     val modifiers = remember { Modifiers() }
     val current = rememberUpdatedState(selected)
     val input = remember {
@@ -355,7 +356,7 @@ fun TerminalScreen(
                     SessionTabs(list, selected.id, profileColors, tabActions)
                 }
                 // Full screen has no bar: say what the session is doing until it is open.
-                if (fullscreen && state != SshState.Open && state !is SshState.Ended) {
+                if (fullscreen && state != SshState.Open && state !is SshState.Ended && state !is SshState.Reconnecting) {
                     Text(
                         selected.device + " · " + statusLine(selected, state),
                         fontSize = 12.sp,
@@ -378,6 +379,51 @@ fun TerminalScreen(
                         .clipToBounds()
                         .background(Color.Black),
                 )
+                // Back after a drop in a fresh shell: said plainly until the owner types.
+                if (newShell && state == SshState.Open) {
+                    Text(
+                        stringResource(R.string.ssh_new_shell),
+                        fontSize = 13.sp,
+                        color = colors.onTerm,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.termBar)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+                (state as? SshState.Reconnecting)?.let { reconnecting ->
+                    // The same bar as Ended: what happens, and what the owner can do meanwhile.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.termBar)
+                            .padding(start = 12.dp, end = 4.dp, top = 8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.terminal_reconnecting, reconnecting.attempt),
+                            fontSize = 13.sp,
+                            color = colors.onTerm,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Row(modifier = Modifier.align(Alignment.End)) {
+                            // Off while a try is under way: a tap shows at once that one started.
+                            TextButton(
+                                onClick = selected::reconnectNow,
+                                enabled = !reconnecting.trying,
+                                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                            ) { Text(stringResource(R.string.terminal_reconnect_now)) }
+                            // As closing the tab: it goes at once, with Undo on the notice.
+                            TextButton(
+                                onClick = { closeTab(selected.id) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                            ) { Text(stringResource(R.string.close)) }
+                        }
+                    }
+                }
                 (state as? SshState.Ended)?.let { ended ->
                     // The reason on its own line, the buttons under it: side by side with two
                     // buttons a long reason got squeezed into a column of word fragments.
@@ -504,6 +550,7 @@ private fun statusLine(session: SshSession, state: SshState): String = session.u
     SshState.Open -> stringResource(R.string.terminal_state_open)
     is SshState.HostKeyUnknown -> stringResource(R.string.terminal_status_host_key_unknown)
     is SshState.HostKeyChanged -> stringResource(R.string.terminal_status_host_key_changed)
+    is SshState.Reconnecting -> stringResource(R.string.terminal_state_reconnecting)
     // The reason is in the line above the snippets, with Reconnect.
     is SshState.Ended -> stringResource(R.string.terminal_state_ended)
 }
