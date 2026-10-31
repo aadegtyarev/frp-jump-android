@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui
 
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -15,6 +16,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.profiles.profileColor
+import ru.adsrv.frpjump.settings.ThemeMode
 
 /** The app's colours beyond Material's roles: status and profile colours, cards and tiles. */
 @Immutable
@@ -44,6 +46,14 @@ class AppColors(private val palette: Palette) {
     val errorContainer = Color(palette.errorContainer)
     val onErrorContainer = Color(palette.onErrorContainer)
     val onProfile = Color(palette.onProfile)
+    val termBar = Color(palette.termBar)
+    val termKey = Color(palette.termKey)
+    val termLine = Color(palette.termLine)
+    val onTerm = Color(palette.onTerm)
+    val termMuted = Color(palette.termMuted)
+
+    /** A profile's colour on the terminal's dark bars, in either theme. */
+    fun termProfile(name: String): Color = Color(DarkPalette.profiles.getValue(profileColor(name)))
 
     /** A profile's colour in this theme, by its stored name. */
     fun profile(name: String): Color = Color(palette.profiles.getValue(profileColor(name)))
@@ -67,10 +77,34 @@ private val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp),
 )
 
-/** The app's own colours, light or dark as the system is (a theme setting comes later). */
+/** Whether [mode] is dark now; [ThemeMode.SYSTEM] reads the configuration. */
 @Composable
-fun FrpJumpTheme(content: @Composable () -> Unit) {
-    val palette = if (isSystemInDarkTheme()) DarkPalette else LightPalette
+fun isDark(mode: ThemeMode): Boolean = when (mode) {
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+}
+
+/**
+ * Settings › Theme for what Compose does not draw: the window behind it,
+ * the system's dialogs (the fingerprint prompt) and the terminal's and web
+ * view's resources. AppCompat keeps it for the process only, so the app sets
+ * it again on every start. The activity handles uiMode itself: not recreated.
+ */
+fun applyTheme(mode: ThemeMode) {
+    AppCompatDelegate.setDefaultNightMode(
+        when (mode) {
+            ThemeMode.SYSTEM -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            ThemeMode.LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
+            ThemeMode.DARK -> AppCompatDelegate.MODE_NIGHT_YES
+        },
+    )
+}
+
+/** The app's own colours, light or dark as Settings › Theme says (the system's by default). */
+@Composable
+fun FrpJumpTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+    val palette = if (isDark(mode)) DarkPalette else LightPalette
     CompositionLocalProvider(LocalAppColors provides AppColors(palette)) {
         MaterialTheme(colorScheme = colorScheme(palette, dark = palette === DarkPalette), shapes = AppShapes, content = content)
     }

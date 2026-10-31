@@ -48,6 +48,7 @@ import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.NotificationsOffLine
 import ru.adsrv.frpjump.ui.DeviceGlyph
 import ru.adsrv.frpjump.ui.ageText
@@ -205,7 +206,7 @@ private fun DeviceItem(device: DeviceRow, onClick: () -> Unit) {
                 Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     when {
-                        device.online && device.stale -> stringResource(R.string.device_was_online)
+                        device.online && device.stale -> wasOnline(device)
                         device.online -> stringResource(R.string.device_online)
                         device.lastSeen == null -> stringResource(R.string.device_never_seen)
                         else -> stringResource(R.string.device_last_seen, ageText(device.lastSeen))

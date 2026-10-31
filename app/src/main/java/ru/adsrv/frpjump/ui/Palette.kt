@@ -48,6 +48,15 @@ data class Palette(
     val onError: Long,
     val errorContainer: Long,
     val onErrorContainer: Long,
+    /** The terminal's bars (title, tabs, snippets, extra keys): dark in both themes, around a black terminal. */
+    val termBar: Long,
+    /** A key, a selected tab on [termBar]. */
+    val termKey: Long,
+    /** Lines and chip borders on [termBar]. */
+    val termLine: Long,
+    val onTerm: Long,
+    /** Secondary text on [termBar] and [termKey]. */
+    val termMuted: Long,
     /** By [PROFILE_COLORS] name. */
     val profiles: Map<String, Long>,
     /** The letter on a profile's tile. */
@@ -82,6 +91,11 @@ val LightPalette = Palette(
     onError = 0xFFFFFFFF,
     errorContainer = 0xFFFDECEA,
     onErrorContainer = 0xFFB42318,
+    termBar = 0xFF17211E,
+    termKey = 0xFF26302D,
+    termLine = 0xFF33403C,
+    onTerm = 0xFFD7E4DF,
+    termMuted = 0xFFA9B8B3,
     profiles = mapOf(
         "green" to 0xFF0B6E5F,
         // The mockup's #C2570C is a hair under 4.5:1 with white.
@@ -121,6 +135,11 @@ val DarkPalette = Palette(
     onError = 0xFF2A0E0B,
     errorContainer = 0xFF4A2622,
     onErrorContainer = 0xFFF7B9B0,
+    termBar = 0xFF1A1917,
+    termKey = 0xFF302E2B,
+    termLine = 0xFF3F3C38,
+    onTerm = 0xFFE6E1D9,
+    termMuted = 0xFFADA79E,
     profiles = mapOf(
         "green" to 0xFF5DB3A2,
         "orange" to 0xFFE39058,

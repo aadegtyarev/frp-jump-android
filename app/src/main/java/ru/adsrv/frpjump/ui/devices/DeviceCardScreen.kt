@@ -54,6 +54,7 @@ import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.PlusGlyph
 import ru.adsrv.frpjump.ui.connections.ConnectButton
 import ru.adsrv.frpjump.ui.connections.ConnectionDialogs
@@ -203,7 +204,7 @@ private fun Header(name: String, device: DeviceRow?, profileName: String) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (device != null) {
                     val (dot, text) = when {
-                        device.online && device.stale -> colors.online.copy(alpha = 0.4f) to stringResource(R.string.device_was_online)
+                        device.online && device.stale -> colors.online.copy(alpha = 0.4f) to wasOnline(device)
                         device.online -> colors.online to stringResource(R.string.device_online)
                         else -> colors.offline to stringResource(R.string.device_offline)
                     }

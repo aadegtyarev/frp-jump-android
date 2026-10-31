@@ -21,11 +21,19 @@ import ru.adsrv.frpjump.locale.applyAppLanguage
 import ru.adsrv.frpjump.tunnel.TunnelService
 import ru.adsrv.frpjump.ssh.publicLineOfPrivateKey
 import ru.adsrv.frpjump.ui.userMessage
+import androidx.fragment.app.FragmentActivity
+import ru.adsrv.frpjump.lock.AuthResult
+import ru.adsrv.frpjump.settings.ThemeMode
+import ru.adsrv.frpjump.ssh.blobOfPublicKeyLine
+import ru.adsrv.frpjump.ssh.sshFingerprint
+import ru.adsrv.frpjump.ui.applyTheme
 
 data class SettingsUiState(
     /** This phone's SSH public key line; null until it is read (or made) off the main thread. */
     val sshPublicKey: String? = null,
     val sshPublicKeyError: String? = null,
+    /** "ed25519 · SHA256:Fymb…7U8": the key as `ssh-keygen -l` would name it, shortened. */
+    val sshKeySummary: String? = null,
     /** The imported private key's public line, when there is one. */
     val importedKey: String? = null,
     val importError: String? = null,
@@ -58,6 +66,28 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         save { it.copy(language = language) }
     }
 
+    /** Applies [theme] at once (the window and system dialogs too) and keeps it. Main thread. */
+    fun setTheme(theme: ThemeMode) {
+        applyTheme(theme)
+        save { it.copy(theme = theme) }
+    }
+
+    /**
+     * Turns the lock on once the owner has passed the prompt; [onResult]
+     * says how it ended. Off needs no prompt.
+     */
+    fun turnOnAppLock(activity: FragmentActivity, title: String, subtitle: String, onResult: (AuthResult) -> Unit) {
+        app.lock.authenticate(activity, title, subtitle) { result ->
+            if (result == AuthResult.Success) save { it.copy(appLock = true) }
+            onResult(result)
+        }
+    }
+
+    fun turnOffAppLock() {
+        app.lock.unlock()
+        save { it.copy(appLock = false) }
+    }
+
     private fun save(change: (AppSettings) -> AppSettings) {
         viewModelScope.launch(Dispatchers.IO) { app.settings.update(change) }
     }
@@ -68,7 +98,7 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
                 val (line, imported) = withContext(Dispatchers.IO) {
                     app.sshKeys.publicLine(app.sshKeyComment()) to app.sshKeys.importedPublicLine()
                 }
-                _state.update { it.copy(sshPublicKey = line, importedKey = imported) }
+                _state.update { it.copy(sshPublicKey = line, sshKeySummary = keySummary(line), importedKey = imported) }
             } catch (e: Exception) {
                 _state.update { it.copy(sshPublicKeyError = Texts.get(R.string.ssh_key_failed, e.userMessage())) }
             }
@@ -102,4 +132,13 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     fun clearImportError() = _state.update { it.copy(importError = null) }
+}
+
+/** "ed25519 · SHA256:Fymb…7U8" of an OpenSSH public key line; null when it is not one. */
+internal fun keySummary(line: String): String? {
+    val blob = blobOfPublicKeyLine(line) ?: return null
+    val type = line.substringBefore(' ').removePrefix("ssh-")
+    val print = sshFingerprint(blob)
+    val short = if (print.length > 18) print.take(11) + "…" + print.takeLast(3) else print
+    return "$type · $short"
 }

@@ -11,40 +11,32 @@ import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,7 +54,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.termux.terminal.KeyHandler
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
@@ -71,23 +62,62 @@ import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
-
-/** Sticky Ctrl / Alt from the extra-keys row: apply to the next key, then release. */
-@Stable
-private class Modifiers {
-    var ctrl by mutableStateOf(false)
-    var alt by mutableStateOf(false)
-
-    fun takeCtrl() = ctrl.also { ctrl = false }
-
-    fun takeAlt() = alt.also { alt = false }
-}
+import android.widget.Toast
+import android.app.Activity
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import ru.adsrv.frpjump.snippets.SnippetStore
+import ru.adsrv.frpjump.ui.AppTheme
 
 /** The SSH sessions as tabs, the selected one in a Termux terminal view. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
+fun TerminalScreen(
+    sessions: SshSessions,
+    snippetStore: SnippetStore,
+    /** Profile id to its colour's name, for the tabs' dots. */
+    profileColors: Map<String, String>,
+    initialId: Int,
+    onBack: () -> Unit,
+) {
     val list by sessions.sessions.collectAsStateWithLifecycle()
+    val snippets by snippetStore.snippets.collectAsStateWithLifecycle()
+    var managing by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun write(change: SnippetStore.() -> Unit) {
+        scope.launch(Dispatchers.IO) { snippetStore.change() }
+    }
+    val snippetActions = remember {
+        SnippetActions(
+            add = { text -> write { add(text) } },
+            update = { id, text -> write { update(id, text) } },
+            remove = { id -> write { remove(id) } },
+            move = { id, by -> write { move(id, by) } },
+        )
+    }
     val fontSp by sessions.fontSize.collectAsStateWithLifecycle()
     var selectedId by rememberSaveable { mutableStateOf(initialId) }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
@@ -113,6 +143,15 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
         }
         onDispose { sessions.listener = null }
     }
+    // The bars are dark in both themes: light status bar icons while the terminal shows.
+    val root = LocalView.current
+    DisposableEffect(root) {
+        val window = (root.context as? Activity)?.window
+        val bars = window?.let { WindowCompat.getInsetsController(it, root) }
+        val before = bars?.isAppearanceLightStatusBars
+        bars?.isAppearanceLightStatusBars = false
+        onDispose { if (bars != null && before != null) bars.isAppearanceLightStatusBars = before }
+    }
     // A new font size re-measures the grid; onEmulatorSet then sends window-change.
     LaunchedEffect(fontSp) { view.setTextSize(spToPx(context, fontSp)) }
     LaunchedEffect(selected.id) {
@@ -124,15 +163,31 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
     // Landscape with the keyboard up leaves a sliver: give it all to the terminal.
     val compact = WindowInsets.isImeVisible &&
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val colors = AppTheme.colors
+    val notOpen = stringResource(R.string.terminal_not_open)
     Scaffold(
+        containerColor = colors.termBar,
         topBar = {
             if (!compact) TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = colors.termBar,
+                    titleContentColor = colors.onTerm,
+                    navigationIconContentColor = colors.onTerm,
+                    actionIconContentColor = colors.onTerm,
+                ),
                 title = {
                     Column {
-                        Text(selected.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            selected.device + if (selected.port != 22) ":${selected.port}" else "",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Text(
                             statusLine(selected, state),
-                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 12.sp,
+                            color = colors.termMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -146,14 +201,14 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
                 actions = {
                     val smaller = stringResource(R.string.terminal_text_smaller)
                     val larger = stringResource(R.string.terminal_text_larger)
-                    TextButton(
-                        onClick = { sessions.fontSize.value = (fontSp - 1).coerceAtLeast(MIN_FONT_SP) },
-                        modifier = Modifier.semantics { contentDescription = smaller },
-                    ) { Text("A\u2212") }
-                    TextButton(
-                        onClick = { sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP) },
-                        modifier = Modifier.semantics { contentDescription = larger },
-                    ) { Text("A+") }
+                    val keyboard = stringResource(R.string.terminal_keyboard)
+                    BarButton("\u2328", keyboard, onClick = input::showKeyboard)
+                    BarButton("A\u2212", smaller, enabled = fontSp > MIN_FONT_SP) {
+                        sessions.fontSize.value = (fontSp - 1).coerceAtLeast(MIN_FONT_SP)
+                    }
+                    BarButton("A+", larger, enabled = fontSp < MAX_FONT_SP) {
+                        sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
+                    }
                     IconButton(onClick = { sessions.close(selected.id) }) {
                         Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.terminal_close_session))
                     }
@@ -169,16 +224,7 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
                 .imePadding(),
         ) {
             if (list.size > 1) {
-                ScrollableTabRow(selectedTabIndex = list.indexOf(selected).coerceAtLeast(0), edgePadding = 8.dp) {
-                    list.forEachIndexed { index, s ->
-                        Tab(
-                            selected = s.id == selected.id,
-                            onClick = { selectedId = s.id },
-                            // Numbered: two shells to the same device look alike otherwise.
-                            text = { Text("${index + 1}. ${s.device}:${s.port}", maxLines = 1) },
-                        )
-                    }
-                }
+                SessionTabs(list, selected.id, profileColors) { selectedId = it }
             }
             AndroidView(
                 factory = { input },
@@ -192,20 +238,38 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
             )
             (state as? SshState.Ended)?.let { ended ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.termBar)
+                        .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(ended.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { sessions.reconnect(selected.id)?.let { selectedId = it.id } }) { Text(stringResource(R.string.terminal_reconnect)) }
+                    Text(ended.message, fontSize = 13.sp, color = colors.onTerm, modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = { sessions.reconnect(selected.id)?.let { selectedId = it.id } },
+                        colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
+                    ) { Text(stringResource(R.string.terminal_reconnect)) }
                 }
             }
+            HorizontalDivider(color = colors.termLine)
+            SnippetsRow(
+                snippets = snippets,
+                onSend = { text, run ->
+                    if (state != SshState.Open) {
+                        Toast.makeText(context, notOpen, Toast.LENGTH_SHORT).show()
+                    } else {
+                        selected.terminal.session.write(if (run) text + "\r" else text)
+                    }
+                },
+                onManage = { managing = true },
+            )
             ExtraKeys(
                 modifiers = modifiers,
                 onKey = { key -> sendExtraKey(view, key, modifiers) },
-                onKeyboard = input::showKeyboard,
             )
         }
     }
+    if (managing) SnippetsSheet(snippets, snippetActions, onDismiss = { managing = false })
 
     when (val s = state) {
         is SshState.HostKeyUnknown -> TrustDialog(
@@ -222,13 +286,80 @@ fun TerminalScreen(sessions: SshSessions, initialId: Int, onBack: () -> Unit) {
     }
 }
 
+/** A narrow text button of the terminal's bar, so the device's name keeps its room. */
 @Composable
-private fun statusLine(session: SshSession, state: SshState): String = when (state) {
+private fun BarButton(text: String, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    Box(
+        Modifier
+            .size(width = 44.dp, height = 48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) colors.onTerm else colors.termMuted)
+    }
+}
+
+/** The open sessions as the mockup's tabs: the profile's colour, then user and device. */
+@Composable
+private fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<String, String>, onSelect: (Int) -> Unit) {
+    val colors = AppTheme.colors
+    val labels = list.map { s -> "${s.user} \u00B7 ${s.device}" + if (s.port != 22) ":${s.port}" else "" }
+    val row = rememberLazyListState()
+    val at = list.indexOfFirst { it.id == selectedId }
+    // A tab picked or opened off screen comes into view.
+    LaunchedEffect(at) { if (at >= 0) row.animateScrollToItem(at) }
+    LazyRow(
+        state = row,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.termBar)
+            .selectableGroup(),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        itemsIndexed(list, key = { _, s -> s.id }) { index, s ->
+            val on = s.id == selectedId
+            // Two shells as the same user to the same device look alike otherwise.
+            val label = if (labels.count { it == labels[index] } > 1) "${index + 1}. ${labels[index]}" else labels[index]
+            Row(
+                Modifier
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (on) colors.termKey else Color.Transparent)
+                    .selectable(selected = on, role = Role.Tab) { onSelect(s.id) }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(colors.termProfile(profileColors[s.profile] ?: "grey"), CircleShape),
+                )
+                Text(
+                    label,
+                    fontSize = 13.sp,
+                    color = if (on) colors.onTerm else colors.termMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 200.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun statusLine(session: SshSession, state: SshState): String = session.user + " \u00B7 " + when (state) {
     SshState.Connecting -> stringResource(R.string.terminal_state_connecting)
-    SshState.Open -> stringResource(R.string.terminal_status_open, "${session.device}:${session.port}", "127.0.0.1:${session.localPort}")
+    SshState.Open -> stringResource(R.string.terminal_state_open)
     is SshState.HostKeyUnknown -> stringResource(R.string.terminal_status_host_key_unknown)
     is SshState.HostKeyChanged -> stringResource(R.string.terminal_status_host_key_changed)
-    is SshState.Ended -> state.message
+    // The reason is in the line above the snippets, with Reconnect.
+    is SshState.Ended -> stringResource(R.string.terminal_state_ended)
 }
 
 @Composable
@@ -283,59 +414,6 @@ private fun ChangedKeyDialog(
 @Composable
 private fun KeyText(key: PinnedHostKey) {
     Text("${key.type}\n${key.fingerprint}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-}
-
-private enum class ExtraKey(val label: String) {
-    ESC("Esc"), TAB("Tab"), CTRL("Ctrl"), ALT("Alt"),
-    LEFT("\u2190"), UP("\u2191"), DOWN("\u2193"), RIGHT("\u2192"),
-    PIPE("|"), DASH("-"), SLASH("/"), TILDE("~"),
-}
-
-@Composable
-private fun ExtraKeys(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, onKeyboard: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val keyboard = stringResource(R.string.terminal_keyboard)
-        TextButton(onClick = onKeyboard, modifier = Modifier.semantics { contentDescription = keyboard }) { Text("\u2328") }
-        ExtraKey.entries.forEach { key ->
-            when (key) {
-                ExtraKey.CTRL -> FilterChip(selected = modifiers.ctrl, onClick = { modifiers.ctrl = !modifiers.ctrl }, label = { Text(key.label) })
-                ExtraKey.ALT -> FilterChip(selected = modifiers.alt, onClick = { modifiers.alt = !modifiers.alt }, label = { Text(key.label) })
-                else -> OutlinedButton(
-                    onClick = { onKey(key) },
-                    contentPadding = PaddingValues(horizontal = 10.dp),
-                ) { Text(key.label) }
-            }
-        }
-    }
-}
-
-private fun sendExtraKey(view: TerminalView, key: ExtraKey, modifiers: Modifiers) {
-    if (view.currentSession == null) return
-    val keyCode = when (key) {
-        ExtraKey.ESC -> KeyEvent.KEYCODE_ESCAPE
-        ExtraKey.TAB -> KeyEvent.KEYCODE_TAB
-        ExtraKey.LEFT -> KeyEvent.KEYCODE_DPAD_LEFT
-        ExtraKey.UP -> KeyEvent.KEYCODE_DPAD_UP
-        ExtraKey.DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
-        ExtraKey.RIGHT -> KeyEvent.KEYCODE_DPAD_RIGHT
-        else -> null
-    }
-    if (keyCode != null) {
-        var mod = 0
-        if (modifiers.takeCtrl()) mod = mod or KeyHandler.KEYMOD_CTRL
-        if (modifiers.takeAlt()) mod = mod or KeyHandler.KEYMOD_ALT
-        view.handleKeyCode(keyCode, mod)
-    } else {
-        // inputCodePoint reads (and releases) the sticky Ctrl / Alt itself.
-        view.inputCodePoint(key.label.codePointAt(0), false, false)
-    }
 }
 
 private fun spToPx(context: Context, sp: Int): Int =

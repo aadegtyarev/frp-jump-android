@@ -1,9 +1,7 @@
 package ru.adsrv.frpjump.ui.connections
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -15,11 +13,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -27,8 +22,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -41,12 +34,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -65,6 +55,8 @@ import ru.adsrv.frpjump.connections.isPresetName
 import ru.adsrv.frpjump.connections.nameAfterPreset
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.Field
+import ru.adsrv.frpjump.ui.Segmented
 import java.util.UUID
 
 /**
@@ -257,37 +249,8 @@ fun ConnectionSheet(
 
 /** Web / SSH / TCP as the mockup's segmented control. */
 @Composable
-private fun KindSwitch(kind: PortKind, enabled: Boolean, onPick: (PortKind) -> Unit) {
-    val colors = AppTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.tile, RoundedCornerShape(14.dp))
-            .padding(4.dp)
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        PortKind.entries.forEach { k ->
-            val on = k == kind
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .then(if (on) Modifier.shadow(1.dp, RoundedCornerShape(10.dp)) else Modifier)
-                    .background(if (on) colors.card else colors.tile, RoundedCornerShape(10.dp))
-                    .selectable(selected = on, enabled = enabled, role = Role.RadioButton, onClick = { onPick(k) }),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    kindLabel(k),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = (if (on) colors.accent else colors.muted).let { if (enabled || on) it else it.copy(alpha = 0.5f) },
-                )
-            }
-        }
-    }
-}
+private fun KindSwitch(kind: PortKind, enabled: Boolean, onPick: (PortKind) -> Unit) =
+    Segmented(PortKind.entries, kind, label = { kindLabel(it) }, enabled = enabled, onPick = onPick)
 
 @Composable
 private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
@@ -303,45 +266,6 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
             fontSize = 13.sp,
             color = if (selected) colors.onAccentContainer else colors.ink,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
-    }
-}
-
-/** A labelled field as the mockups draw them: the label above, the problem below. */
-@Composable
-private fun Field(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    enabled: Boolean = true,
-    mono: Boolean = false,
-    keyboard: KeyboardType = KeyboardType.Text,
-    placeholder: String? = null,
-    problem: String? = null,
-    note: String? = null,
-) {
-    val colors = AppTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, fontSize = 13.sp, color = colors.muted)
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            enabled = enabled,
-            singleLine = true,
-            isError = problem != null,
-            placeholder = placeholder?.let { { Text(it, color = colors.muted) } },
-            supportingText = (problem ?: note)?.let { { Text(it) } },
-            textStyle = if (mono) TextStyle(fontFamily = FontFamily.Monospace, fontSize = 18.sp) else TextStyle(fontSize = 16.sp),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false),
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = colors.outline,
-                focusedBorderColor = colors.accent,
-                unfocusedContainerColor = colors.card,
-                focusedContainerColor = colors.card,
-                disabledContainerColor = colors.tile,
-            ),
-            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
