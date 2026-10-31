@@ -101,6 +101,10 @@
     <string name="device_last_seen">Был в сети %s</string>
     <string name="device_disabled">Отключено</string>
     <string name="devices_empty">Других устройств пока нет.</string>
+    <string name="devices_search">Поиск устройств</string>
+    <string name="devices_search_hint">Имя устройства</string>
+    <string name="devices_search_close">Закрыть поиск</string>
+    <string name="devices_no_match">Нет устройств по запросу «%s».</string>
     <string name="offline_unreachable">Нет связи с сервером · обновлено в %s</string>
     <string name="offline_server_error">Сервер ответил ошибкой · обновлено в %s</string>
     <string name="tap_to_retry">Нажмите, чтобы повторить</string>
