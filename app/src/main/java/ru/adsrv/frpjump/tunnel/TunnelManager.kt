@@ -312,23 +312,27 @@ class TunnelManager(
      * then it waits while it is ([deviceWaitMs] at most). Null when it can be
      * used (or is gone, or does not listen: the opener finds out), otherwise
      * why not.
+     *
+     * Read from the plan and frpc's states themselves, not from [state],
+     * which follows them a moment later: right after a sync it may not show
+     * the tunnel yet, or show it listening before a refusal came in.
      */
     suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String? {
         val key = localPortKey(device, port)
-        fun tunnelIn(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }
+        // Null once it is no longer planned: gone.
+        val tunnel = combine(core, runner.states) { c, states ->
+            c.planned.firstOrNull { it.key == key }?.let { it to (states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING)) }
+        }
         val listening = withTimeoutOrNull(listenWaitMs) {
-            state.map(::tunnelIn).first { it == null || it.state.status != TunnelStatus.CONNECTING }
+            tunnel.first { it == null || it.second.status != TunnelStatus.CONNECTING }
         } ?: return null
+        val (planned, s) = listening
         val outcome = withTimeoutOrNull(deviceWaitMs + 2 * deviceProbeMs) {
-            val s = listening.state
-            if (fresh || s.waitingForDevice || s.deviceMissing) touchDevice(listening.grantId, listening.localPort)
-            state.map(::tunnelIn).first { it == null || !it.state.waitingForDevice }
+            if (fresh || s.waitingForDevice || s.deviceMissing) touchDevice(planned.grant.grantId, planned.localPort)
+            tunnel.first { it == null || !it.second.waitingForDevice }
         }
-        return when {
-            outcome?.state?.deviceMissing == true -> outcome.state.detail
-            outcome == null && tunnelIn(state.value)?.state?.waitingForDevice == true -> Texts.get(R.string.device_port_not_open, port)
-            else -> null
-        }
+        val waiting = outcome == null && runner.states.value[planned.grant.grantId]?.waitingForDevice == true
+        return if (outcome?.second?.deviceMissing == true || waiting) Texts.get(R.string.device_port_not_open, port) else null
     }
 
     /** frpc's recent output, for diagnostics. */
