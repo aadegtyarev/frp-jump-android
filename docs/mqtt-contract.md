@@ -211,7 +211,8 @@ the app's segmented switch; the Wiren Board plugin adds a third, **WB**
 across rotation; Back on Subscriptions returns to Tree; the search (a mode
 of the tree) hides the tabs and opens on Tree. Opening a level from
 anywhere (a card's Open branch, a typed path) shows Tree. The connection
-banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
+banners (log in, a failure with Retry, closed with the tunnel, refused
+`#`) show on both tabs.
 
 - **Rows**: every pin of the connection in the order made, without those
   waiting for Undo. Each row: the filter in monospace, then
@@ -481,7 +482,13 @@ the tree is the "what is there" view.
 
 ## A session's life
 
-- **Tunnel drop.** The explorer shows a "Reconnecting…" banner, keeps the
+- **Connection state.** The top bar's subtitle says it: "Port N ·
+  <state>", with a small spinner while connecting or reconnecting. A
+  banner under the tabs repeats a state only when it adds what one line
+  cannot hold: the broker asking to log in (Log in), a failure's reason
+  (Retry), a session closed with its tunnel. With the search bar up (no
+  subtitle) the banner also says connecting, reconnecting and closed.
+- **Tunnel drop.** The subtitle says "Reconnecting…", the explorer keeps the
   tree and disables Send. The tunnel comes back on the same local port
   (as all tunnels do); the client reconnects after 1, 2 and 5 s, then every
   10 s, subscribes the open branch and the pins again and re-takes the
