@@ -131,8 +131,13 @@ re-enroll.
   cut with an ellipsis first, so the state and the tunnel ports always stay
   visible. A device without a label shows the line as before.
 - A magnifier in the title opens search. It matches the device name or its
-  label, ignoring case and the spaces around the query; the hint says «Имя
-  или подпись». Nothing found says so.
+  label, ignoring the spaces around the query. Both sides are normalised to
+  NFC and compared without case, whatever the phone's language (Locale.ROOT
+  folding). The hint says «Имя или подпись». When nothing matches, the list
+  says so.
+- TalkBack reads a row as its name, the label, the state, and the icon's
+  name («wb01, Щиток, гараж, Онлайн, Wiren Board»). The generic glyph is not
+  read out.
 - The last answer is kept on the phone per profile. On start the app shows it
   at once, then refreshes; until the server answers, devices online in it
   say "Checking…" rather than an age that is really the app's absence.
@@ -242,7 +247,7 @@ Quick access to the saved connections of every device, active ones first.
   again on the next visit or after a pull.
 - From 6 connections, a magnifier in the title opens search, as on Devices:
   it matches the device name or its label (all its connections) or a
-  connection's name; nothing found says so.
+  connection's name, compared as in Devices search; nothing found says so.
 - While any tunnel is up (or being restored), the title has the Devices
   bar's power button: it disconnects every profile's tunnels, with Undo.
 - Nothing saved: "No saved connections yet. Open a device on Devices and tap
@@ -375,52 +380,74 @@ version and update).
 
 ### 11. Device label and icon
 
-A label is free text such as «Щиток, гараж» that tells the owner what a device
-is and where it stands. An icon is one of a fixed set. Both live on the
-frp-jump server, so every phone and the CLI show the same values
-(frp-jump `docs/device-labels-icons_plan.md`). The device name does not change.
+A label is free text, such as «Щиток, гараж», that says what a device is and
+where it stands. An icon is one of a fixed set. Both are stored on the
+frp-jump server, so every phone and the CLI show the same values (see
+frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
 
-- Icons, all drawn as stroked glyphs in the app's style: Linux (Tux), Wiren
-  Board, server, computer, laptop, router, single-board computer, camera,
-  home. The device's agent reports a detected one; the owner's choice wins
-  over it. With neither, or with a value this app version does not know, the
-  row shows the generic device glyph used today.
-- The device card's "⋮" has «Подпись…» and «Значок…». Both open the same
-  bottom sheet, «Подпись и значок», with the ✕ in its header. «Подпись…»
-  opens it with the keyboard up in the text field; «Значок…» opens it with
-  the keyboard down.
-- The sheet has:
-  - a single-line text field «Подпись», with the current label, the
-    placeholder «Например, Щиток, гараж» and a counter up to 64. Line breaks
-    in pasted text become spaces; nothing can be typed past 64;
-  - a grid of icon tiles, three per row, each with its caption. The first
-    tile is «Авто», showing the detected glyph and captioned with its name
-    («Авто: Wiren Board»), or the generic glyph when the device reports
-    none. The current choice has the accent border. TalkBack reads each tile
-    as its caption plus "selected";
-  - «Сохранить», enabled once something differs from what was saved.
-- «Сохранить» saves both in one call (`POST /api/agent/devices/{name}/display`)
-  and shows progress on the button. On success the sheet closes, and the
-  card, the row and the Connections header show the new values at once (from
-  the server's answer, not a guess). On failure the sheet stays open with the
-  reason under the button (the server's own reason for a bad label, under the
-  field) and the button offers to try again. The typed text is kept.
-- An empty field clears the label. Picking «Авто» drops the owner's choice.
-  Neither has an Undo: the sheet shows the old value until «Сохранить», and
-  the next edit restores it if needed. This matches renaming a connection.
-  The Undo rule covers actions that remove something at once, and here
-  nothing goes before an explicit save.
-- Without a connection to the server, the sheet opens with the last known
-  values. «Сохранить» fails with «Нет связи с сервером — не сохранено» and the
-  retry, as above. Edits are not queued for later: another phone may change
-  the same device in the meantime.
-- Against a server without labels (its device list has no `label` key), the
-  "⋮" items are not shown, and rows show no label. Nothing tells the owner
-  about it: there is nothing they can do from the phone.
-- Labels and icons are kept in the cached device list. Offline, the list, the
-  card and the Connections tab show them as last known.
-- A label is plain text everywhere: no links, no markup, one line in the list
-  row, wrapped on the card and the Connections header.
+- **Icons.** All are drawn as stroked glyphs in the app's style: Linux
+  (Tux), Wiren Board, server, computer, laptop, router, single-board
+  computer, camera, home, phone. Each device reports a detected icon, and
+  the owner's choice wins over it. This app reports "phone" for itself in
+  every heartbeat. Where neither is set, or the value is one this app
+  version does not know, the generic device glyph used today is shown.
+- **Is the feature there?** The app asks the server's
+  `GET /api/agent/version` for its `features` list once per profile at
+  start and on pull to refresh, and keeps the answer per profile.
+  "device-display" in the list turns the feature on. An old server has no
+  such list, and the app treats that as "not supported". The feature is
+  never guessed from the shape of the device list or from a 404.
+- **Where to edit.** The device card's "⋮" has «Подпись…» and «Значок…».
+  Both open the same bottom sheet, «Подпись и значок», with the ✕ in its
+  header. «Подпись…» opens it with the keyboard up in the text field;
+  «Значок…» opens it with the keyboard down. The phone itself is not in its
+  own list, so in this version its label can only be set from another phone
+  or the CLI; its icon is the automatic "phone".
+- **The sheet has:**
+  - A single-line field «Подпись» holding the current label, with the
+    placeholder «Например, Щиток, гараж» and a counter up to 64. The counter
+    counts code points after NFC, as the server does. Pasted line breaks and
+    tabs become spaces. Nothing can be typed past 64. Any other character
+    the server refuses is reported under the field in the server's words.
+  - A grid of icon tiles, three per row, each with a caption. The first tile
+    is «Авто». It shows the detected glyph and its name («Авто: Wiren
+    Board»), or the generic glyph when the device reports nothing or a value
+    this app does not know. The current choice has the accent border.
+    TalkBack reads each tile as its caption plus "selected".
+  - If the owner's choice on the server is a value this app does not know,
+    an extra tile «Другой» with the generic glyph is shown selected. It
+    stays as it is unless the owner picks another tile.
+  - «Сохранить», enabled once something differs from what was loaded.
+- **Saving.** «Сохранить» sends one call,
+  `POST /api/agent/devices/{name}/display`, carrying only the fields the
+  owner changed, so an edit made meanwhile on another phone to the other
+  field survives. Progress shows on the button. On success the sheet
+  closes, and the card, the row and the Connections header show the new
+  values at once, taken from the server's answer rather than guessed. On
+  failure the sheet stays open with the typed text kept, and the button
+  offers to try again. The reason appears where it belongs:
+  - a refused label: the server's reason, under the field;
+  - this profile's phone disabled on the server (403): «Этот телефон
+    отключён на сервере — изменить нельзя», under the button;
+  - anything else: the reason, under the button.
+- **Clearing.** An empty field clears the label, and «Авто» drops the
+  owner's choice. Neither has Undo: the sheet keeps showing the old value
+  until «Сохранить», and the next edit brings it back if needed, as with
+  renaming a connection. The Undo rule covers actions that remove something
+  at once; here nothing goes before an explicit save.
+- **No connection to the server.** The sheet opens with the last known
+  values. «Сохранить» fails with «Нет связи с сервером — не сохранено» and
+  the retry described above. Edits are not queued for later, because
+  another phone may change the same device in the meantime.
+- **Old server.** If the cached features lack "device-display", the "⋮"
+  items are not shown and rows show no label. The owner is not told, since
+  nothing can be done about it from the phone.
+- **Offline display.** Labels and icons are kept in the cached device list,
+  so offline the list, the card and the Connections tab show them as last
+  known.
+- **Plain text.** A label is plain text everywhere: no links, no markup. It
+  takes one line in the list row and wraps on the card and the Connections
+  header.
 
 ## Wire behaviour the app must match
 
@@ -434,14 +461,16 @@ frp-jump server, so every phone and the CLI show the same values
   visitor with `fallbackTo` the stcp one; both `useEncryption`, bound on
   127.0.0.1 only. Config changes are applied by hot reload.
 - frpc is the upstream 0.70.0 built for android/arm64 and shipped inside the APK.
+- `GET /api/agent/version` may carry `features`. "device-display" in it is
+  the only sign that labels and icons are supported. The list is cached per
+  profile.
 - `GET /api/agent/devices` items may carry `label`, `icon` (the owner's
-  choice) and `kind` (the agent's detection), each possibly null. The shown
-  icon is `icon`, then `kind`, then the generic glyph. The `label` key being
-  present at all marks a server that supports editing.
-- `POST /api/agent/devices/{name}/display` with `{"label": …}`, `{"icon": …}`
-  or both. A missing field is left as it is, null clears it (`icon: null` is
-  "automatic"), and the answer is the updated device. The phone sends no
-  `kind` in its heartbeat (see Open decisions).
+  choice) and `kind` (what the device reports). Each may be null or absent.
+  The shown icon is `icon`, then `kind`, then the generic glyph.
+- `POST /api/agent/devices/{name}/display` takes `{"label": …}`,
+  `{"icon": …}` or both. A missing field is left as it is. Null clears it
+  (`icon: null` means "automatic"). The answer is the updated device.
+- The heartbeat carries `"kind": "phone"`. An old server ignores the field.
 
 ## Stored on the phone
 
@@ -491,6 +520,8 @@ Screens touched by stages 1–5 get the new look in the same stage.
   search for «гараж» finds wb01. A second phone and `frp-jump-client devices
   list` show the same label after their next refresh. Pick "router", then
   «Авто»: the detected Wiren Board icon is back.
+- This phone shows with the phone icon in another phone's list and in
+  `frp-jump-client devices list` (`phone (auto)`).
 - Against a server without labels: no «Подпись…»/«Значок…», no labels, and no
   errors. In airplane mode the sheet's «Сохранить» says it was not saved and
   keeps the text.
@@ -499,16 +530,15 @@ Screens touched by stages 1–5 get the new look in the same stage.
 
 - Where release APKs live: GitHub Releases of this repository, now public;
   no token in the app.
+- Device labels and icons (2026-11-01): a label is at most 64 characters. The
+  icon set has `phone`, which the app reports for itself. Support is detected
+  through the server's `features` list.
 
 ## Open decisions
 
 - frp-jump release tag: the hot-reload change for exposing devices is in
   master but not released; until devices update, their tunnels still restart
   when a grant changes.
-
-- Device icon for phones: each phone profile is a device in the owner's
-  list, and the icon set has no phone. Either the server adds a `phone` value
-  that the app reports in its heartbeat, or phones keep the generic glyph.
 
 ## Open risks
 
