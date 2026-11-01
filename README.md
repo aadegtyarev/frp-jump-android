@@ -380,7 +380,7 @@ is locked messages are dropped, and locking clears those waiting.
 Grouped as the mockup: the current profile (name and colour, forget),
 tunnels (direct connection, local ports), background (server checks,
 battery), security (the phone's SSH key, unlock with fingerprint, hide in Recents) and the
-app (language, theme, version). Rows show their value; local ports, the
+app (language, theme, version, components and licenses). Rows show their value; local ports, the
 check interval, the SSH key, language and theme open a sheet.
 
 - Direct connection (P2P): see above; off is one `stcp` visitor per tunnel
@@ -441,6 +441,18 @@ check interval, the SSH key, language and theme open a sheet.
   and `FLAG_SECURE` before that. `FLAG_SECURE` blocks screenshots, and so
   does the Android 13+ call on some phones; with it off, screenshots work.
 - Version: the app's and frpc's, and updates (see [Updates](#updates)).
+- Components and licenses: every component in the APK (the libraries,
+  frpc, the viewer's grammars), with its version and licenses; a tap shows
+  the full license text, with a switch when there are several, and the
+  link to the sources (in a browser). The list is made at build time by the
+  [AboutLibraries](https://github.com/mikepenz/AboutLibraries) Gradle
+  plugin (Apache-2.0, 11.6.3, only the plugin: the app reads its
+  `res/raw/aboutlibraries.json` itself) from the dependencies' POMs, no
+  network; `app/aboutlibraries/` adds what Gradle cannot see (frpc, tm4e
+  inside Sora, the grammars), names Termux's and Sora's modules and points
+  them at the sources of the versions used. The license texts are in
+  `app/src/main/assets/licenses/`; `ComponentsTest` fails when a release
+  component has a license without a text there.
 - Settings are kept in `settings.json`; "Forget this phone" keeps them.
 
 ## Web ports
@@ -745,6 +757,9 @@ each other; both log in through `ssh/SshConnector.kt`.
 
 ## Third-party libraries
 
+The app lists them too, with the full license texts: Settings ›
+Components and licenses.
+
 | Library | Version | License |
 | --- | --- | --- |
 | [frp](https://github.com/fatedier/frp) `frpc`, built into the APK | 0.70.0 | Apache-2.0; the Go standard library and golang.org/x packages in it (Go 1.25.3): BSD-3-Clause |
@@ -754,6 +769,7 @@ each other; both log in through `ssh/SshConnector.kt`.
 | slf4j-api, asn-one (via sshj) | 2.0.17, 0.6.0 | MIT, Apache-2.0 |
 | [CameraX](https://developer.android.com/jetpack/androidx/releases/camera) camera-camera2 / camera-lifecycle / camera-view | 1.4.1 | Apache-2.0 |
 | [ZXing](https://github.com/zxing/zxing) core | 3.5.3 | Apache-2.0 |
+| [AboutLibraries](https://github.com/mikepenz/AboutLibraries) Gradle plugin (build time only) | 11.6.3 | Apache-2.0 |
 | [Sora Editor](https://github.com/Rosemoe/sora-editor) editor / language-textmate ([sources of 0.23.7](https://github.com/Rosemoe/sora-editor/tree/0.23.7)) | 0.23.7 | LGPL-2.1 |
 | [Eclipse tm4e](https://github.com/eclipse/tm4e) core and language configuration, a copy inside language-textmate ([its sources in the Sora 0.23.7 tree](https://github.com/Rosemoe/sora-editor/tree/0.23.7/language-textmate/src/main/java/org/eclipse/tm4e)) | Sora's copy | EPL-2.0 |
 | [joni](https://github.com/jruby/joni), [jcodings](https://github.com/jruby/jcodings) (via language-textmate) | 2.2.6, 1.0.63 | MIT |

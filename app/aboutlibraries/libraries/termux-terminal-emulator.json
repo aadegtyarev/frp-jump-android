@@ -1,0 +1,8 @@
+{
+  "uniqueId": "com.github.termux.termux-app:terminal-emulator",
+  "name": "Termux terminal-emulator",
+  "licenses": [
+    "Apache-2.0"
+  ],
+  "website": "https://github.com/termux/termux-app/tree/v0.118.3/terminal-emulator"
+}

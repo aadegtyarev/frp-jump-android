@@ -1,0 +1,10 @@
+{
+  "uniqueId": "fatedier:frp",
+  "name": "frp (frpc, built into the APK, a static Go binary)",
+  "artifactVersion": "0.70.0",
+  "website": "https://github.com/fatedier/frp/tree/v0.70.0",
+  "licenses": [
+    "Apache-2.0",
+    "BSD-3-Clause-Go"
+  ]
+}
