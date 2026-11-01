@@ -54,7 +54,6 @@ import ru.adsrv.frpjump.connections.CONNECTIONS_SEARCH_FROM
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.DeviceGroup
 import ru.adsrv.frpjump.connections.filterGroups
-import ru.adsrv.frpjump.connections.keepOrder
 import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.tunnel.Waiting
 import ru.adsrv.frpjump.ui.AppTheme
@@ -84,14 +83,10 @@ fun ConnectionsScreen(
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val colors = AppTheme.colors
     val context = LocalContext.current
-    // The order of the devices, fixed for a visit (and after a pull): a device that connects or comes
-    // online does not jump under the finger; its dot and its buttons follow at once.
-    var order by remember { mutableStateOf<List<String>?>(null) }
     // While the tab shows, the device lists are kept fresh, as on Devices.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            order = null
             vm.shown(true)
             try {
                 awaitCancellation()
@@ -99,13 +94,6 @@ fun ConnectionsScreen(
                 vm.shown(false)
             }
         }
-    }
-    LaunchedEffect(state.groups, state.listsRead, state.refreshing) {
-        if (order == null && state.listsRead && !state.refreshing && state.groups.isNotEmpty()) order = state.groups.map { it.key }
-    }
-    val pull = {
-        order = null
-        vm.pull()
     }
     // "Disconnect all": the tunnels show down at once, with Undo. Only one still being restored is told
     // to its server now: then it spins until every server was asked (the line below tells the rest).
@@ -126,7 +114,7 @@ fun ConnectionsScreen(
     }
     BackHandler(enabled = searching) { closeSearch() }
     val all = state.rows
-    val shown = filterGroups(keepOrder(state.groups, order), query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
+    val shown = filterGroups(state.groups, query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
     Column(Modifier.fillMaxSize()) {
         if (searching) {
             SearchBar(
@@ -141,7 +129,7 @@ fun ConnectionsScreen(
         }
         PullToRefreshBox(
             isRefreshing = state.refreshing,
-            onRefresh = pull,
+            onRefresh = vm::pull,
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (searching) Modifier else Modifier.statusBarsPadding()),

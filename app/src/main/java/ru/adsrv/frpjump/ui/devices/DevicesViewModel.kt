@@ -112,6 +112,11 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
         viewModelScope.launch { devices.refresh() }
     }
 
+    /** Gone with its screen: the list is no longer wanted for it. */
+    override fun onCleared() {
+        directory.value?.want(this, false)
+    }
+
     /** Pull to refresh: waits for a fetch already in flight rather than skipping. */
     fun pull() {
         val devices = directory.value ?: return

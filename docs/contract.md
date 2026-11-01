@@ -207,12 +207,13 @@ Quick access to the saved connections of every device, active ones first.
   press still work. An active one stays as it is, so it can be disconnected.
   An old list (the server not answering, or not checked yet since the start)
   blocks nothing: the device may be back. The device card does the same.
-- While the tab shows, every profile's device list is kept fresh as on
-  Devices (asked when the tab shows; the shown profile's polled), and pull
-  to refresh asks them all again. Dots and buttons follow at once; the
-  order of the devices is fixed for the visit, so a device that connects
-  or comes online does not jump under the finger. It is sorted again on
-  the next visit or a pull.
+- While the tab shows, every profile's device list is kept fresh: each is
+  asked when the tab shows, the shown profile's is polled as on Devices,
+  the others are asked again every 10 s; pull to refresh asks them all.
+  Dots and buttons follow at once. The order of the devices is fixed for
+  the visit once the lists were asked (answered or not), so a device that
+  connects or comes online does not jump under the finger; it is sorted
+  again on the next visit or after a pull.
 - From 6 connections, a magnifier in the title opens search, as on Devices:
   it matches the device name (all its connections) or a connection's name;
   nothing found says so.
