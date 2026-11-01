@@ -55,18 +55,17 @@ import ru.adsrv.frpjump.mqtt.plugins.Rule
 import ru.adsrv.frpjump.mqtt.plugins.STATUS_COMMAND_PLUGIN
 import ru.adsrv.frpjump.mqtt.plugins.rulesInForce
 import ru.adsrv.frpjump.mqtt.plugins.ConnectionPlugins
-import ru.adsrv.frpjump.mqtt.plugins.wbTabAbsent
-import ru.adsrv.frpjump.mqtt.plugins.wbTabAppeared
+import ru.adsrv.frpjump.mqtt.plugins.PluginsFile
+import ru.adsrv.frpjump.mqtt.plugins.pluginKey
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WB_CONTROL_META_PATTERN
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WB_DEVICE_META_PATTERN
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WB_META_FILTERS
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbDevice
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbDeviceView
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbDevice
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbDevicePath
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbDevicePattern
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbDevices
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbSeen
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbSeenIn
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbTexts
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbControl
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWidget
@@ -203,11 +202,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     /** The device open in the WB devices tab, by id; null on its list. */
     val wbDeviceId = MutableStateFlow<String?>(null)
 
-    /** The connection's plugin settings; null until read. */
+    /** The connection's plugins in force; null until read. */
     private val plugins = MutableStateFlow<ConnectionPlugins?>(null)
 
-    /** Wiren Board meta was seen in this session: the WB devices tab shows (with the plugin on). */
-    private val wbSeenNow = MutableStateFlow(false)
+    /** Wiren Board meta was seen in this session: the WB devices tab shows (with the plugin on). Kept with the session. */
+    private val wbSeenNow = session?.let { app.mqttPluginObserver.wbSeen(it.id) } ?: MutableStateFlow(false)
 
     /** The explorer opened on the WB devices tab (the last session showed it): it waits for the snapshot. */
     private val openedOnWb = MutableStateFlow(false)
@@ -236,7 +235,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             val gone = PendingUndo.mqttPins(hidden, s.profile, s.connectionId)
             if (gone.isEmpty()) all else all.filter { it !in gone }
         }
-        val wb = combine(plugins, language, wbDeviceId, openedOnWb, wbWrites) { p, lang, device, opened, _ -> WbAsk(p?.wirenBoard?.on == true, lang, device, opened) }
+        val wb = combine(plugins, language, wbDeviceId, openedOnWb, wbWrites) { p, lang, device, opened, _ -> WbAsk(p?.wirenBoardOn == true, lang, device, opened) }
         combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
@@ -348,7 +347,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     }
 
     /** A control's meta is in the tree now. */
-    private fun seenInTree(s: MqttSession): Boolean = wbSeen(wbTexts(s.tree.values(WB_CONTROL_META_PATTERN)))
+    private fun seenInTree(s: MqttSession): Boolean = wbSeenIn(s.tree)
 
     /** The meta texts and language the devices list was last read from, and that list. */
     private var listTexts: Map<MqttPath, String>? = null
@@ -570,15 +569,16 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     }
 
     /**
-     * The Wiren Board plugin's side of the session: its settings read
-     * again on every change; a connection whose last session showed the
-     * tab opens on it; while the tab shows, the meta filters are held;
-     * the tab appearing is remembered (and turns the first plugin's preset
-     * on, once), a snapshot without meta forgets it; an open device is the
-     * session's live branch.
+     * The Wiren Board plugin's side of the screen: the settings read again
+     * on every change; a connection whose last session showed the tab
+     * opens on it; the tab appearing is remembered (and may turn the Wiren
+     * Board preset on, once for the app), a snapshot without meta forgets
+     * it; an open device is the session's live branch. The plugin's
+     * filters are the app's plugin observer's, with or without a screen.
      */
     private fun watchWirenBoard(s: MqttSession) {
         val store = app.mqttPlugins
+        val key = pluginKey(s.profile, s.connectionId)
         viewModelScope.launch(Dispatchers.IO) {
             var first = true
             store.changes.collect {
@@ -587,7 +587,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 if (first) {
                     first = false
                     // Opens on the tab only before the owner picked one.
-                    if (p.wirenBoard.on && p.wirenBoard.tabShown && tab.value == ExplorerTab.TREE) {
+                    if (p.wirenBoardOn && p.wbTabShown && tab.value == ExplorerTab.TREE) {
                         openedOnWb.value = true
                         tab.value = ExplorerTab.WB_DEVICES
                     }
@@ -597,35 +597,24 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         viewModelScope.launch(Dispatchers.IO) {
             combine(plugins, wbSeenNow, s.snapshot) { p, seen, snapshot -> Triple(p, seen, snapshot) }.collect { (p, known, snapshot) ->
                 p ?: return@collect
-                val on = p.wirenBoard.on
-                if (!on) {
-                    // Off: no filters, and turned on again later the tab does not take the screen by itself.
-                    s.setPluginFilters(emptyList())
+                if (!p.wirenBoardOn) {
+                    // Off: turned on again later, the tab does not take the screen by itself.
                     tab.compareAndSet(ExplorerTab.WB_DEVICES, ExplorerTab.TREE)
                     return@collect
                 }
-                // The tree may hold meta the screen has not read yet (a session entered again, a snapshot just ended):
-                // looked up first, so the filters a session already holds are never dropped and taken again.
                 val seen = known || seenInTree(s)
                 if (seen && !known) wbSeenNow.value = true
                 val complete = snapshot == SnapshotState.Done(SnapshotEnd.QUIET)
-                when {
-                    // Only a whole tree without meta drops them.
-                    complete && !seen -> s.setPluginFilters(emptyList())
-                    // A snapshot cut short (time, topic limit) or `#` refused may have missed the meta: asked for,
-                    // so the tab can still appear from them.
-                    seen || snapshot is SnapshotState.Done || snapshot == SnapshotState.Refused -> s.setPluginFilters(WB_META_FILTERS)
-                    // Meanwhile (a snapshot or a refresh still reading) they are left as held.
-                }
                 // Read whole without meta: the tab is gone, and appearing later it does not take the screen.
                 if (!seen && snapshot is SnapshotState.Done) tab.compareAndSet(ExplorerTab.WB_DEVICES, ExplorerTab.TREE)
-                val change: ((ConnectionPlugins) -> ConnectionPlugins)? = when {
-                    seen && wbTabAppeared(p) != p -> ::wbTabAppeared
+                val change: ((PluginsFile) -> PluginsFile)? = when {
+                    // Unchanged (shown before, the preset done or not due) writes nothing.
+                    seen -> { f -> f.wbTabAppeared(key) }
                     // Only a snapshot that read the whole tree says there is no meta; a cut one may have missed it.
-                    !seen && p.wirenBoard.tabShown && complete -> ::wbTabAbsent
+                    !seen && p.wbTabShown && complete -> { f -> f.wbTabAbsent(key) }
                     else -> null
                 }
-                change?.let { c -> runCatching { store.update(s.profile, s.connectionId, c) }.onFailure { Log.w(TAG, "plugin settings not saved: ${it.message}") } }
+                change?.let { c -> runCatching { store.updateByApp(c) }.onFailure { Log.w(TAG, "plugin settings not saved: ${it.message}") } }
             }
         }
         viewModelScope.launch {
@@ -638,11 +627,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         }
     }
 
-    /**
-     * The plugin's meta filters stay with the session after the screen goes
-     * (they are few and change rarely; the next screen finds them held);
-     * turning the plugin off drops them, also from the connection's settings.
-     */
+    /** The plugin's meta filters stay with the session after the screen goes: the app's plugin observer holds them. */
     override fun onCleared() {
         // The tree's level is live again for whoever comes back to the session.
         session?.openView(null)
@@ -657,7 +642,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     val commandRules: StateFlow<List<Rule>> = session?.let { s ->
         combine(app.mqttPlugins.changes, app.pendingUndo.hidden) { _, hidden ->
             val settings = app.mqttPlugins.get(s.profile, s.connectionId).statusCommand
-            rulesInForce(settings, STATUS_COMMAND_PLUGIN.presets, PendingUndo.mqttRules(hidden, s.profile, s.connectionId))
+            rulesInForce(settings, STATUS_COMMAND_PLUGIN.presets, PendingUndo.mqttRules(hidden))
         }.flowOn(Dispatchers.IO)
     }.let { it ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

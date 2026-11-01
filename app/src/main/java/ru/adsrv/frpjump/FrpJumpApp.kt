@@ -38,6 +38,7 @@ import ru.adsrv.frpjump.mqtt.MqttLogins
 import ru.adsrv.frpjump.mqtt.MqttSessions
 import ru.adsrv.frpjump.mqtt.PinStore
 import ru.adsrv.frpjump.mqtt.PublishMemory
+import ru.adsrv.frpjump.mqtt.plugins.PluginObserver
 import ru.adsrv.frpjump.mqtt.plugins.PluginStore
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.profiles.ProfileRuntime
@@ -105,8 +106,12 @@ class FrpJumpApp : Application() {
     lateinit var mqttPublished: PublishMemory
         private set
 
-    /** The MQTT plugins' settings per connection. */
+    /** The MQTT plugins' settings: app level and each connection's own on or off. */
     lateinit var mqttPlugins: PluginStore
+        private set
+
+    /** Applies the plugin settings to the MQTT sessions, with or without a screen. */
+    lateinit var mqttPluginObserver: PluginObserver
         private set
 
     /** The MQTT explorer's sessions, one per connection. */
@@ -360,12 +365,18 @@ class FrpJumpApp : Application() {
         mqttLogins = MqttLogins(AtomicTextFile(File(filesDir, "mqtt_logins.json")), sshBox)
         mqttPins = PinStore(AtomicTextFile(File(filesDir, "mqtt_pins.json")))
         mqttPublished = PublishMemory(AtomicTextFile(File(filesDir, "mqtt_published.json")))
-        mqttPlugins = PluginStore(AtomicTextFile(File(filesDir, "mqtt_plugins.json")))
+        mqttPlugins = PluginStore(
+            file = AtomicTextFile(File(filesDir, "mqtt_plugins_v2.json")),
+            legacy = AtomicTextFile(File(filesDir, "mqtt_plugins.json")),
+            corruptCopy = AtomicTextFile(File(filesDir, "mqtt_plugins_v2.corrupt.json")),
+            legacyCorruptCopy = AtomicTextFile(File(filesDir, "mqtt_plugins.corrupt.json")),
+        )
         mqtt = MqttSessions(
             env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler()),
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )
+        mqttPluginObserver = PluginObserver(mqttPlugins, mqtt.sessions, appScope)
         sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow, pendingUndo.hidden)
         closeSessions = SessionCloser(pendingUndo, closeTerminal = { ssh.close(it, endTmux = true) }, closeMqtt = mqtt::close)
         // A kept file session closes with the last terminal session on its tunnel.

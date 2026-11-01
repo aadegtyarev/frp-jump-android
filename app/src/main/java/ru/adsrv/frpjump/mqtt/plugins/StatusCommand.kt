@@ -95,25 +95,26 @@ fun commandFor(topic: String, rules: List<Rule>): CommandTarget? {
     return null
 }
 
-/** The plugin's settings for one connection. */
+/** The plugin's settings, for the whole app (docs/contract.md scenario 12). */
 @Serializable
 data class StatusCommandSettings(
-    /** The plugin is on for every MQTT connection until turned off. */
+    /** On at app level until turned off; a connection may have its own on or off. */
     val on: Boolean = true,
-    /** Ids of the presets turned on; all off for a new connection. */
+    /** Ids of the presets turned on (preset ids, not plugin ids); all off at first. */
     val presets: Set<String> = emptySet(),
     /** The owner's own rules, in order; tried before the presets. */
     val rules: List<RuleSpec> = emptyList(),
     /**
-     * The Wiren Board tab has appeared once for this connection: the Wiren
-     * Board preset was turned on then if this plugin was on, and is never
-     * turned on by itself again (turned off by hand, it stays off).
+     * The Wiren Board preset has turned on by itself once (a connection
+     * showed the WB tab with this plugin on there); it never does again,
+     * so turned off by hand it stays off.
      */
-    val wirenBoardTabSeen: Boolean = false,
+    val wirenBoardPresetAutoDone: Boolean = false,
 )
 
 /**
- * The rules in force for [settings]: none with the plugin off; else the
+ * The rules in force for [settings] (its `on` the state resolved for the
+ * connection): none with the plugin off; else the
  * own rules not in [hidden] (ids deleted, waiting for Undo) that pass
  * their check, then the enabled presets' rules in the shipped order of [presets].
  */

@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.mqtt.plugins.wirenboard
 import ru.adsrv.frpjump.mqtt.LevelPattern
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.NaturalOrder
+import ru.adsrv.frpjump.mqtt.TopicTree
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.decodeUtf8
 import java.math.BigDecimal
@@ -127,6 +128,9 @@ fun wbDevices(texts: Map<MqttPath, String>, language: String): List<WbDevice> =
 
 /** Whether [texts] (control meta) hold any control with meta: the tab shows. */
 fun wbSeen(texts: Map<MqttPath, String>): Boolean = gather(texts).values.any { d -> d.controls.values.any { parseControlMeta(it.json, it.fields) != null } }
+
+/** [tree] holds a control's meta: the WB tab shows (with the plugin on). */
+fun wbSeenIn(tree: TopicTree): Boolean = wbSeen(wbTexts(tree.values(WB_CONTROL_META_PATTERN)))
 
 /** One control of a device as its row shows it. */
 data class WbControl(

@@ -55,6 +55,7 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.mqtt.plugins.ConnectionPlugins
+import ru.adsrv.frpjump.mqtt.plugins.PluginIds
 import ru.adsrv.frpjump.mqtt.plugins.Preset
 import ru.adsrv.frpjump.mqtt.plugins.RuleCheck
 import ru.adsrv.frpjump.mqtt.plugins.RuleField
@@ -79,10 +80,13 @@ import kotlin.math.roundToInt
 
 /**
  * The MQTT plugins of one connection (its settings, also reached from the
- * explorer's "⋮"): each plugin with its switch and, when on, its settings.
- * "Wiren Board" is a switch only; "Status and command topics" has the
+ * explorer's "⋮"): each plugin with its switch, showing the state in
+ * force here; moving it stores the connection's own setting when it
+ * differs from the app level (docs/contract.md scenario 12). "Status and
+ * command topics", when on here, shows its app-level settings: the
  * presets as switches, the own rules as a list with + (add), drag
- * (reorder), a tap (change) and delete with Undo. Every change is saved at once.
+ * (reorder), a tap (change) and delete with Undo. Every change is saved at
+ * once; the app's plugin observer applies it to the session.
  */
 @Composable
 fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDismiss: () -> Unit) {
@@ -94,29 +98,28 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
         value = withContext(Dispatchers.IO) { store.get(profile, connectionId) }
     }
     // A change written in the app's scope: closing the sheet right after the tap must not lose it.
-    val changeAll = { edit: (ConnectionPlugins) -> ConnectionPlugins ->
+    val save = { edit: () -> Unit ->
         app.appScope.launch {
-            val failure = withContext(Dispatchers.IO) {
-                runCatching { store.update(profile, connectionId, edit) }.exceptionOrNull()
-            }
+            val failure = withContext(Dispatchers.IO) { runCatching { edit() }.exceptionOrNull() }
             if (failure != null) app.notices.show(Texts.get(R.string.settings_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
         }
         Unit
     }
-    val change = { edit: (StatusCommandSettings) -> StatusCommandSettings -> changeAll { it.copy(statusCommand = edit(it.statusCommand)) } }
+    val switch = { id: String, on: Boolean -> save { store.switch(profile, connectionId, id, on) } }
+    val change = { edit: (StatusCommandSettings) -> StatusCommandSettings ->
+        save { store.update { f -> f.withApp { it.copy(statusCommand = edit(it.statusCommand)) } } }
+    }
     // The rule being changed (its id), or "" for a new one.
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     AppSheet(title = stringResource(R.string.plugins_title), subtitle = subtitle, onDismiss = onDismiss) {
         val plugins = all ?: return@AppSheet
         val s = plugins.statusCommand
-        // A device view of the Wiren Board convention: on or off, nothing more to set.
-        SwitchRow(stringResource(R.string.plugin_wirenboard), stringResource(R.string.plugin_wirenboard_hint), plugins.wirenBoard.on, bold = true) { on ->
-            changeAll { it.copy(wirenBoard = it.wirenBoard.copy(on = on)) }
-            // Off: its session drops the plugin's filters at once, also when no explorer screen is open.
-            if (!on) app.mqtt.find(profile, connectionId)?.setPluginFilters(emptyList())
+        // A device view of the Wiren Board convention: on or off, nothing more to set here.
+        SwitchRow(stringResource(R.string.plugin_wirenboard), stringResource(R.string.plugin_wirenboard_hint), plugins.wirenBoardOn, bold = true) { on ->
+            switch(PluginIds.WIREN_BOARD, on)
         }
         SwitchRow(stringResource(R.string.plugin_status_command), stringResource(R.string.plugin_status_command_hint), s.on, bold = true) { on ->
-            change { it.copy(on = on) }
+            switch(PluginIds.STATUS_COMMAND, on)
         }
         if (!s.on) return@AppSheet
         SectionLabel(stringResource(R.string.plugin_presets))
@@ -129,7 +132,7 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
             SectionLabel(stringResource(R.string.plugin_own_rules))
             Text(stringResource(R.string.plugin_own_rules_hint), fontSize = 13.sp, lineHeight = 18.sp, color = AppTheme.colors.muted)
         }
-        val gone = PendingUndo.mqttRules(hidden, profile, connectionId)
+        val gone = PendingUndo.mqttRules(hidden)
         val shown = s.rules.filter { it.id !in gone }
         if (shown.isEmpty()) {
             Text(stringResource(R.string.plugin_own_rules_none), fontSize = 14.sp, color = AppTheme.colors.muted)
@@ -139,9 +142,9 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
                 onMove = { id, by -> change { it.copy(rules = moveRule(it.rules, shown.map(RuleSpec::id), id, by)) } },
                 onEdit = { editing = it.id },
                 onDelete = { rule ->
-                    app.pendingUndo.enqueue(PendingUndo.mqttRuleKey(profile, connectionId, rule.id), commit = {
+                    app.pendingUndo.enqueue(PendingUndo.mqttRuleKey(rule.id), commit = {
                         withContext(Dispatchers.IO) {
-                            store.update(profile, connectionId) { p -> p.copy(statusCommand = p.statusCommand.copy(rules = p.statusCommand.rules.filter { it.id != rule.id })) }
+                            store.update { f -> f.withApp { p -> p.copy(statusCommand = p.statusCommand.copy(rules = p.statusCommand.rules.filter { it.id != rule.id })) } }
                         }
                     })
                 },
