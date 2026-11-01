@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -47,15 +49,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.locale.Texts
-import ru.adsrv.frpjump.mqtt.plugins.ConnectionPlugins
 import ru.adsrv.frpjump.mqtt.plugins.PluginIds
+import ru.adsrv.frpjump.mqtt.plugins.PluginSource
+import ru.adsrv.frpjump.mqtt.plugins.PluginsFile
 import ru.adsrv.frpjump.mqtt.plugins.Preset
 import ru.adsrv.frpjump.mqtt.plugins.RuleCheck
 import ru.adsrv.frpjump.mqtt.plugins.RuleField
@@ -66,27 +70,35 @@ import ru.adsrv.frpjump.mqtt.plugins.StatusCommandSettings
 import ru.adsrv.frpjump.mqtt.plugins.TemplateProblem
 import ru.adsrv.frpjump.mqtt.plugins.checkRule
 import ru.adsrv.frpjump.mqtt.plugins.moveRule
-import ru.adsrv.frpjump.notices.NoticeKind
+import ru.adsrv.frpjump.mqtt.plugins.pluginKey
+import ru.adsrv.frpjump.mqtt.plugins.sourceOf
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.MainButton
+import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.PlusGlyph
 import ru.adsrv.frpjump.ui.files.SecondaryButton
+import ru.adsrv.frpjump.ui.plugins.PluginRow
+import ru.adsrv.frpjump.ui.plugins.PluginRowAction
+import ru.adsrv.frpjump.ui.plugins.PluginScreen
+import ru.adsrv.frpjump.ui.plugins.savePluginChange
 import ru.adsrv.frpjump.undo.PendingUndo
-import ru.adsrv.frpjump.ui.userMessage
 import java.util.UUID
 import kotlin.math.roundToInt
 
 /**
  * The MQTT plugins of one connection (its settings, also reached from the
- * explorer's "⋮"): each plugin with its switch, showing the state in
- * force here; moving it stores the connection's own setting when it
- * differs from the app level (docs/contract.md scenario 12). "Status and
- * command topics", when on here, shows its app-level settings: the
- * presets as switches, the own rules as a list with + (add), drag
- * (reorder), a tap (change) and delete with Undo. Every change is saved at
- * once; the app's plugin observer applies it to the session.
+ * explorer's "⋮"): each plugin as its [PluginRow], the switch showing the
+ * state in force here and the line under it where that comes from: «Как в
+ * настройках», or «Только для этого подключения» with a «Как в
+ * настройках» button. Moving the switch stores the connection's own
+ * setting only when it differs from the app level (docs/contract.md
+ * scenario 12). A tap on a row opens the plugin's screen over the sheet;
+ * Back returns here. "Status and command topics", when on here, still
+ * shows its app-level presets and own rules (they move to its screen in
+ * 10b2). Every change is saved at once; the plugin observer applies it to
+ * the session.
  */
 @Composable
 fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDismiss: () -> Unit) {
@@ -94,32 +106,33 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
     val store = app.mqttPlugins
     val changes by store.changes.collectAsStateWithLifecycle()
     val hidden by app.pendingUndo.hidden.collectAsStateWithLifecycle()
-    val all by produceState<ConnectionPlugins?>(null, changes) {
-        value = withContext(Dispatchers.IO) { store.get(profile, connectionId) }
+    val key = pluginKey(profile, connectionId)
+    val file by produceState<PluginsFile?>(null, changes) {
+        value = withContext(Dispatchers.IO) { store.get() }
     }
-    // A change written in the app's scope: closing the sheet right after the tap must not lose it.
-    val save = { edit: () -> Unit ->
-        app.appScope.launch {
-            val failure = withContext(Dispatchers.IO) { runCatching { edit() }.exceptionOrNull() }
-            if (failure != null) app.notices.show(Texts.get(R.string.settings_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
-        }
-        Unit
-    }
-    val switch = { id: String, on: Boolean -> save { store.switch(profile, connectionId, id, on) } }
     val change = { edit: (StatusCommandSettings) -> StatusCommandSettings ->
-        save { store.update { f -> f.withApp { it.copy(statusCommand = edit(it.statusCommand)) } } }
+        savePluginChange(app) { update { f -> f.withApp { it.copy(statusCommand = edit(it.statusCommand)) } } }
     }
     // The rule being changed (its id), or "" for a new one.
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
+    // A plugin's screen, opened over the sheet from its row; Back returns here.
+    var opened by rememberSaveable { mutableStateOf<String?>(null) }
+    val follow = stringResource(R.string.plugin_follow_app)
     AppSheet(title = stringResource(R.string.plugins_title), subtitle = subtitle, onDismiss = onDismiss) {
-        val plugins = all ?: return@AppSheet
+        val stored = file ?: return@AppSheet
+        val plugins = stored.forConnection(key)
         val s = plugins.statusCommand
-        // A device view of the Wiren Board convention: on or off, nothing more to set here.
-        SwitchRow(stringResource(R.string.plugin_wirenboard), stringResource(R.string.plugin_wirenboard_hint), plugins.wirenBoardOn, bold = true) { on ->
-            switch(PluginIds.WIREN_BOARD, on)
-        }
-        SwitchRow(stringResource(R.string.plugin_status_command), stringResource(R.string.plugin_status_command_hint), s.on, bold = true) { on ->
-            switch(PluginIds.STATUS_COMMAND, on)
+        PluginIds.ALL.forEach { id ->
+            val own = sourceOf(stored, key, id) == PluginSource.OWN
+            PluginRow(
+                id = id,
+                on = stored.isOn(key, id),
+                onSwitch = { on -> savePluginChange(app) { switch(profile, connectionId, id, on) } },
+                onOpen = { opened = id },
+                notes = listOf(stringResource(if (own) R.string.plugin_source_own else R.string.plugin_source_app)),
+                action = if (own) PluginRowAction(follow) { savePluginChange(app) { update { it.followingApp(key, id) } } } else null,
+                horizontalPadding = 0.dp,
+            )
         }
         if (!s.on) return@AppSheet
         SectionLabel(stringResource(R.string.plugin_presets))
@@ -164,6 +177,14 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
             )
         }
     }
+    opened?.let { id ->
+        Dialog(onDismissRequest = { opened = null }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            // A full screen, not a dialog over the sheet: nothing dimmed around it.
+            val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect { window?.setDimAmount(0f) }
+            NoticeLayer { PluginScreen(id, onBack = { opened = null }) }
+        }
+    }
 }
 
 /** A preset's rules in short: the first one's templates, "+N" for the rest. */
@@ -179,7 +200,7 @@ private fun SectionLabel(text: String) =
 
 /** A title, a line under it and a switch; the whole row toggles, as the publish sheet's Retain. */
 @Composable
-private fun SwitchRow(title: String, hint: String, on: Boolean, bold: Boolean = false, mono: Boolean = false, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(title: String, hint: String, on: Boolean, mono: Boolean = false, onChange: (Boolean) -> Unit) {
     val colors = AppTheme.colors
     Row(
         Modifier
@@ -189,7 +210,7 @@ private fun SwitchRow(title: String, hint: String, on: Boolean, bold: Boolean = 
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, fontSize = if (bold) 16.sp else 15.sp, fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Medium)
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             Text(hint, fontSize = if (mono) 12.sp else 13.sp, color = colors.muted, fontFamily = if (mono) FontFamily.Monospace else null)
         }
         Switch(checked = on, onCheckedChange = null)

@@ -1012,6 +1012,32 @@
     <string name="plugin_rule_except_line">Исключение %1$d: %2$s</string>
     <string name="plugin_wirenboard">Wiren Board</string>
     <string name="plugin_wirenboard_hint">Вкладка «WB»: устройства, значения с единицами, переключатели</string>
+    <string name="plugins_row_hint">Для MQTT · включено: %1$d из %2$d</string>
+    <string name="plugins_row_hint_exceptions">· есть исключения</string>
+    <string name="plugins_subtitle">Для MQTT-подключений</string>
+    <string name="plugins_footer">Отдельное подключение можно настроить иначе: «⋮» → «Плагины…» в его обзоре</string>
+    <plurals name="plugin_exceptions_off">
+        <item quantity="one">Выключен для %d подключения</item>
+        <item quantity="few">Выключен для %d подключений</item>
+        <item quantity="many">Выключен для %d подключений</item>
+        <item quantity="other">Выключен для %d подключения</item>
+    </plurals>
+    <plurals name="plugin_exceptions_on">
+        <item quantity="one">Включён для %d подключения</item>
+        <item quantity="few">Включён для %d подключений</item>
+        <item quantity="many">Включён для %d подключений</item>
+        <item quantity="other">Включён для %d подключения</item>
+    </plurals>
+    <string name="plugin_on">Включён</string>
+    <string name="plugin_on_hint">Для всех MQTT-подключений, кроме исключений ниже</string>
+    <string name="plugin_exceptions_group">Свои настройки подключений</string>
+    <string name="plugin_off_here">Выключен здесь</string>
+    <string name="plugin_on_here">Включён здесь</string>
+    <string name="plugin_source_app">Как в настройках</string>
+    <string name="plugin_source_own">Только для этого подключения</string>
+    <string name="plugin_follow_app">Как в настройках</string>
+    <string name="plugins_unreadable">Настройки плагинов не прочитались — действуют исходные</string>
+    <string name="plugin_settings_action">Настройки %1$s</string>
     <string name="wb_reading_devices">Читаю устройства…</string>
     <string name="wb_no_devices">Устройств Wiren Board не видно</string>
     <string name="wb_has_errors">есть ошибки</string>

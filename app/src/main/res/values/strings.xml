@@ -968,6 +968,28 @@
     <string name="plugin_wirenboard">Wiren Board</string>
     <string name="plugin_wirenboard_hint">The WB tab: devices, values with units, switches</string>
     <string name="wb_tab_devices" translatable="false">WB</string>
+    <string name="plugins_row_hint">For MQTT · on: %1$d of %2$d</string>
+    <string name="plugins_row_hint_exceptions">· with exceptions</string>
+    <string name="plugins_subtitle">For MQTT connections</string>
+    <string name="plugins_footer">One connection can differ: \"⋮\" → \"Plugins…\" in its explorer</string>
+    <plurals name="plugin_exceptions_off">
+        <item quantity="one">Off for %d connection</item>
+        <item quantity="other">Off for %d connections</item>
+    </plurals>
+    <plurals name="plugin_exceptions_on">
+        <item quantity="one">On for %d connection</item>
+        <item quantity="other">On for %d connections</item>
+    </plurals>
+    <string name="plugin_on">On</string>
+    <string name="plugin_on_hint">For every MQTT connection except those below</string>
+    <string name="plugin_exceptions_group">Connections set on their own</string>
+    <string name="plugin_off_here">Off here</string>
+    <string name="plugin_on_here">On here</string>
+    <string name="plugin_source_app">As in Settings</string>
+    <string name="plugin_source_own">Only for this connection</string>
+    <string name="plugin_follow_app">As in Settings</string>
+    <string name="plugins_unreadable">Plugin settings could not be read; the defaults apply</string>
+    <string name="plugin_settings_action">%1$s settings</string>
     <string name="wb_reading_devices">Reading devices…</string>
     <string name="wb_no_devices">No Wiren Board devices seen</string>
     <string name="wb_has_errors">has errors</string>
