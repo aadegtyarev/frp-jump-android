@@ -28,6 +28,15 @@ data class VisitorState(
      * in [SESSION_GRACE_MS].
      */
     val confirming: Boolean = false,
+    /**
+     * The relay has no proxy of the device for this tunnel yet (its agent
+     * restarts frpc for a new grant): connections are refused for now, the
+     * tunnel waits for the device for up to [DEVICE_WAIT_MS], whatever its
+     * [status] says.
+     */
+    val waitingForDevice: Boolean = false,
+    /** [TunnelStatus.FAILED]: the device did not register its proxy in [DEVICE_WAIT_MS]. */
+    val deviceMissing: Boolean = false,
 )
 
 /** quic-go gives up a dial after 5 s of silence (its handshake idle timeout); a little more. */
@@ -35,6 +44,9 @@ const val SESSION_GRACE_MS = 6_000L
 
 /** How long "Trying direct…" lasts before the tunnel is shown as through the server. */
 const val TRY_DIRECT_MS = 10_000L
+
+/** How long a tunnel waits for its device's proxy, from the first refused connection on. */
+const val DEVICE_WAIT_MS = 30_000L
 
 /**
  * Best-effort tunnel state from frpc 0.70's own log lines (`info` level).
@@ -56,6 +68,15 @@ const val TRY_DIRECT_MS = 10_000L
  *   `transfer connection to visitor ... error`: the relay could not carry a
  *   connection (e.g. the device is offline): failed until the next success
  *   line.
+ * - `[<name>] dialRawVisitorConn error: start new visitor connection error:
+ *   custom listener for [<proxy>] doesn't exist` (frps
+ *   `server/visitor/visitor.go`, the only error that names a missing proxy):
+ *   the device has not registered this tunnel's proxy yet, as on every new
+ *   connection while its agent restarts frpc. The tunnel waits for the
+ *   device ([VisitorState.waitingForDevice]) until a connection gets
+ *   through ([deviceReady]); refused for [DEVICE_WAIT_MS] since the first
+ *   refusal, it fails ([VisitorState.deviceMissing]). frpc logs nothing for
+ *   a connection that gets through, so [TunnelManager] tries one now and then.
  *
  * Direct tunnels (the xtcp visitor keeps its tunnel open, so it punches as
  * soon as it starts, see [visitorEntries]):
@@ -100,6 +121,10 @@ class FrpcLogParser(
     /** Windows of TRYING tunnels restarted by a reload, until they try again. */
     private val carried = mutableMapOf<String, Long>()
     private val startOrder = ArrayDeque<String>()
+    /** When the device first refused, per grant, until a connection gets through or the visitor starts afresh. */
+    private val refusedSince = mutableMapOf<String, Long>()
+    /** Refused connections per grant, ever: [deviceReady] tells a probe that got through from one that did not. */
+    private val refusals = mutableMapOf<String, Int>()
 
     @Synchronized
     fun snapshot(): Map<String, VisitorState> = states.toMap()
@@ -117,10 +142,14 @@ class FrpcLogParser(
         tryingSince.keys.retainAll(order.toSet())
         punchedAt.keys.retainAll(order.toSet())
         carried.keys.retainAll(order.toSet())
+        refusedSince.keys.retainAll(order.toSet())
         for (grant in order) {
             val listenerRestarted = listeningName(specs.getValue(grant)) in restarted
             if (listenerRestarted && specs.getValue(grant).direct) tryingSince[grant]?.let { carried[grant] = it }
-            if (listenerRestarted || grant !in states) set(grant, VisitorState(TunnelStatus.CONNECTING))
+            if (listenerRestarted || grant !in states) {
+                refusedSince.remove(grant)
+                set(grant, VisitorState(TunnelStatus.CONNECTING))
+            }
         }
         startOrder.clear()
         startOrder.addAll(restarted)
@@ -151,6 +180,7 @@ class FrpcLogParser(
             "login to server success" in line -> {
                 startOrder.clear()
                 startOrder.addAll(allNames())
+                refusedSince.clear()
                 order.forEach { set(it, VisitorState(TunnelStatus.CONNECTING)) }
             }
             "login to the server failed" in line || "connect to server error" in line ->
@@ -177,7 +207,28 @@ class FrpcLogParser(
             now - since >= TRY_DIRECT_MS && states[grant]?.status == TunnelStatus.TRYING && grant !in punchedAt
         }.keys
         due.forEach { set(it, failedDirect(null)) }
-        return confirmed.isNotEmpty() || due.isNotEmpty()
+        val missing = refusedSince.filter { (grant, since) -> now - since >= DEVICE_WAIT_MS && states[grant]?.waitingForDevice == true }.keys
+        missing.forEach { set(it, deviceMissing()) }
+        return confirmed.isNotEmpty() || due.isNotEmpty() || missing.isNotEmpty()
+    }
+
+    /** Connections the device refused for [grant] so far; [deviceReady] compares with it. */
+    @Synchronized
+    fun refusalsOf(grant: String): Int = refusals[grant] ?: 0
+
+    /**
+     * A connection was made to [grant]'s local port after [refusalsBefore]
+     * refusals: when the device refused none since, it got through, and a
+     * tunnel waiting for (or given up on) the device works again. Returns
+     * true when a state changed.
+     */
+    @Synchronized
+    fun deviceReady(grant: String, refusalsBefore: Int): Boolean {
+        val state = states[grant] ?: return false
+        if (refusalsOf(grant) != refusalsBefore || !(state.waitingForDevice || state.deviceMissing)) return false
+        refusedSince.remove(grant)
+        set(grant, if (state.deviceMissing) VisitorState(TunnelStatus.RELAYED) else state.copy(waitingForDevice = false))
+        return true
     }
 
     /** frpc exited: nothing listens any more. */
@@ -186,7 +237,13 @@ class FrpcLogParser(
         order.forEach { set(it, VisitorState(TunnelStatus.FAILED, Texts.get(R.string.frpc_stopped, code))) }
     }
 
-    private fun set(grant: String, state: VisitorState) {
+    private fun set(grant: String, given: VisitorState) {
+        // Still waiting for the device whatever else changes, until it gets through or the visitor starts afresh.
+        val state = if (grant in refusedSince && states[grant]?.waitingForDevice == true && given.status != TunnelStatus.FAILED) {
+            given.copy(waitingForDevice = true)
+        } else {
+            given
+        }
         if (state.status == TunnelStatus.TRYING) {
             if (states[grant]?.status != TunnelStatus.TRYING) tryingSince[grant] = carried.remove(grant) ?: clock()
         } else {
@@ -200,10 +257,27 @@ class FrpcLogParser(
 
     private fun failedDirect(reason: String?) = VisitorState(TunnelStatus.RELAYED, reason, directFailed = true)
 
+    /** The detail is the profile's to word: it knows the device's port ([TunnelManager]). */
+    private fun deviceMissing() = VisitorState(TunnelStatus.FAILED, deviceMissing = true)
+
+    /** The device refused a connection on [grant]: no proxy of it at the relay yet. */
+    private fun refused(grant: String, line: String) {
+        refusals[grant] = refusalsOf(grant) + 1
+        val since = refusedSince.getOrPut(grant) { clock() }
+        val current = states.getValue(grant)
+        when {
+            clock() - since >= DEVICE_WAIT_MS -> set(grant, deviceMissing())
+            // Connections reach the relay: the visitor listens, whatever failed before.
+            current.status == TunnelStatus.FAILED -> set(grant, VisitorState(TunnelStatus.RELAYED, tail(line, "error"), waitingForDevice = true))
+            else -> set(grant, current.copy(waitingForDevice = true))
+        }
+    }
+
     private fun started(name: String) {
         val grant = grantOf(name) ?: return
         val spec = specs.getValue(grant)
         if (name == listeningName(spec) && states[grant]?.status != TunnelStatus.FAILED) {
+            refusedSince.remove(grant)
             set(grant, VisitorState(if (spec.direct) TunnelStatus.TRYING else TunnelStatus.RELAYED))
         }
     }
@@ -234,6 +308,7 @@ class FrpcLogParser(
             xtcp && DROPPED.any { it in line } -> {
                 if (status == TunnelStatus.DIRECT) set(grant, VisitorState(TunnelStatus.TRYING))
             }
+            "dialRawVisitorConn error" in line && NO_PROXY.containsMatchIn(line) -> refused(grant, line)
             "transfer connection to visitor" in line && "error" in line ||
                 "dialRawVisitorConn error" in line || "wrapVisitorConn error" in line ->
                 set(grant, VisitorState(TunnelStatus.FAILED, tail(line, "error")))
@@ -263,5 +338,7 @@ class FrpcLogParser(
             "init tunnel session error",
         )
         val DROPPED = listOf("get tunnel connection error", "open tunnel error")
+        /** frps: `custom listener for [<proxy>] doesn't exist`. */
+        val NO_PROXY = Regex("custom listener for \\[[^\\]]*] doesn't exist")
     }
 }

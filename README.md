@@ -289,6 +289,16 @@ connection never waits for the outcome.
   no success in 10 s: "Through the server". `nathole precheck error` comes
   on every new connection, while the device's frpc restarts for the new
   grant: the app tries again 2 s later within the same 10 s.
+- The stcp visitor's `dialRawVisitorConn error: start new visitor
+  connection error: custom listener for [<proxy>] doesn't exist` (frps has
+  no proxy of the device for this grant yet: its agent is still reloading
+  frpc) is "Waiting for the device…", not "Failed". frpc logs nothing for
+  a connection that gets through, so while it waits the app connects to
+  the tunnel's local port every 2 s and closes at once
+  (`tunnel/DevicePort.kt`): no new refusal in the log, the wait is over.
+  An opener (terminal, MQTT explorer, files) of a tunnel it brought up
+  checks the same way once before its first connection. Refused for 30 s
+  since the first refusal: "Failed", naming the port and the agent.
 - A direct tunnel that dies (its periodic check or a connection logs `get
   tunnel connection error` / `open tunnel error`) is "Trying direct…"
   again while frpc punches anew, with the same outcomes.

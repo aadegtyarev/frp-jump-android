@@ -47,6 +47,7 @@ import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.connectsDirectly
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.tunnel.TunnelManager
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
@@ -82,7 +83,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
 
     /**
      * The local port of the tunnel to [device]:[port], brought up for a
-     * connection of [kind] (which names it to the server) when it is down;
+     * connection of [kind] (which names it to the server) when it is down,
+     * once the device takes connections on it ([TunnelManager.awaitDevice]);
      * throws [IOException] with why when it does not come up.
      */
     private suspend fun tunnelPort(profile: String, device: String, port: Int, kind: PortKind): Int {
@@ -91,10 +93,13 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         fun up(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }?.localPort
         // Used again while its disconnect waits for Undo: it stays up. Being disconnected: connect afresh after.
         if (!revive(profile, device, port)) app.disconnects.awaitDisconnected(TunnelRef(profile, device, port))
-        up(runtime.tunnels.state.value)?.let { return it }
-        if (runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, kind)
-        return withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
+        val already = up(runtime.tunnels.state.value)
+        if (already == null && runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, kind)
+        val localPort = already ?: withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
             ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
+        // A tunnel brought up just now may not be open on the device yet: wait for it rather than fail the first connection.
+        runtime.tunnels.awaitDevice(device, port, fresh = already == null)?.let { throw IOException(it) }
+        return localPort
     }
 
     /** The sessions of every tunnel, for the SSH rows' counts of terminals. */

@@ -14,12 +14,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.DesiredStateResponse
@@ -132,6 +135,10 @@ class TunnelManager(
     private val pins: () -> Map<String, Int> = { emptyMap() },
     /** How long a pinned tunnel whose port another app holds waits before it tries the port again. */
     private val pinnedRetryMs: Long = PINNED_RETRY_MS,
+    /** Opens a connection to a local port and closes it ([touchLocalPort]); blocking. */
+    private val touchPort: (localPort: Int) -> Unit = ::touchLocalPort,
+    /** How often a tunnel waiting for its device tries a connection. */
+    private val deviceProbeMs: Long = DEVICE_PROBE_MS,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
@@ -177,10 +184,11 @@ class TunnelManager(
                     state = (states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING)).let { state ->
                         val shown = retryShown[it.grant.grantId]?.takeIf { _ -> it.pinned && state.status == TunnelStatus.CONNECTING } ?: state
                         // A pinned port stays: say plainly who is in the way.
-                        if (it.pinned && portTaken(shown)) {
-                            shown.copy(detail = Texts.get(R.string.local_port_taken_pinned, it.localPort, PINNED_RETRY_MS / 1000))
-                        } else {
-                            shown
+                        when {
+                            it.pinned && portTaken(shown) ->
+                                shown.copy(detail = Texts.get(R.string.local_port_taken_pinned, it.localPort, PINNED_RETRY_MS / 1000))
+                            shown.deviceMissing -> shown.copy(detail = Texts.get(R.string.device_port_not_open, it.grant.targetPort))
+                            else -> shown
                         }
                     },
                     direct = c.modes[it.grant.grantId] ?: DirectMode.ON,
@@ -236,11 +244,60 @@ class TunnelManager(
                     // Not in this block: the reload's new states cancel it.
                     scope.launch { retryGrants(waiting) }
                 }
-                while (states.values.any { it.status == TunnelStatus.TRYING || it.confirming }) {
+                while (states.values.any { it.status == TunnelStatus.TRYING || it.confirming || it.waitingForDevice }) {
                     delay(EXPIRY_TICK_MS)
                     withContext(Dispatchers.IO) { runner.expireTrying() }
                 }
             }
+        }
+    }
+
+    init {
+        // A tunnel waiting for its device tries a connection every deviceProbeMs: frpc says
+        // when the device refuses one, never when one gets through, so this is how the wait ends.
+        scope.launch {
+            runner.states.map { states -> states.filterValues { it.waitingForDevice }.keys }.distinctUntilChanged().collectLatest { waiting ->
+                while (waiting.isNotEmpty()) {
+                    delay(deviceProbeMs)
+                    for (grant in waiting) {
+                        val localPort = core.value.planned.firstOrNull { it.grant.grantId == grant }?.localPort ?: continue
+                        touchDevice(grant, localPort)
+                    }
+                }
+            }
+        }
+    }
+
+    /** One connection to [grant]'s [localPort]; when the device did not refuse it, the tunnel works ([FrpcLogParser.deviceReady]). */
+    private suspend fun touchDevice(grant: String, localPort: Int) {
+        val before = withContext(Dispatchers.IO) { runner.refusalsOf(grant) }
+        withContext(Dispatchers.IO) { touchPort(localPort) }
+        // frpc logs a refusal as it closes the connection: let its line be read.
+        delay(REFUSAL_SETTLE_MS)
+        withContext(Dispatchers.IO) { runner.deviceReady(grant, before) }
+    }
+
+    /**
+     * For an opener (terminal, explorer, files) about to use [device]:[port]'s
+     * tunnel: once it listens, one connection checks that the device takes
+     * it when [fresh] (brought up just now: the device may still be
+     * registering it) or when it is waiting for the device; then it waits
+     * while it is ([DEVICE_WAIT_MS] at most). Null when it can be used (or is
+     * gone: the opener finds out), otherwise why not.
+     */
+    suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String? {
+        val key = localPortKey(device, port)
+        fun tunnelIn(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }
+        val outcome = withTimeoutOrNull(DEVICE_WAIT_MS + 2 * deviceProbeMs) {
+            val listening = state.map(::tunnelIn).first { it == null || it.state.status != TunnelStatus.CONNECTING } ?: return@withTimeoutOrNull null
+            val s = listening.state
+            if (fresh || s.waitingForDevice || s.deviceMissing) touchDevice(listening.grantId, listening.localPort)
+            state.map(::tunnelIn).first { it == null || !it.state.waitingForDevice }
+        }
+        return when {
+            outcome?.state?.deviceMissing == true -> outcome.state.detail
+            outcome == null && tunnelIn(state.value)?.state?.waitingForDevice == true -> Texts.get(R.string.device_port_not_open, port)
+            else -> null
         }
     }
 
@@ -643,6 +700,8 @@ class TunnelManager(
         private const val CONNECT_WAIT_SECONDS = 15
         private const val EXPIRY_TICK_MS = 1_000L
         private const val PEER_RETRY_MS = 2_000L
+        private const val DEVICE_PROBE_MS = 2_000L
+        private const val REFUSAL_SETTLE_MS = 300L
         private const val MAX_REBINDS = 3
 
         /** In frpc's "start error" when a visitor cannot listen on its port. */

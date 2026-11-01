@@ -13,7 +13,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.api.AgentApi
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.ConnectResponse
@@ -63,7 +65,29 @@ class TunnelManagerTest {
         }
 
         override fun recentLog() = emptyList<String>()
+
+        /** Refusals per grant, as the parser counts them. */
+        val refusals = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+        override fun refusalsOf(grant: String) = refusals[grant] ?: 0
+
+        /** As the parser: a connection with no refusal since ends a wait for the device. */
+        override fun deviceReady(grant: String, refusalsBefore: Int) {
+            val state = states.value[grant] ?: return
+            if (refusalsOf(grant) != refusalsBefore || !(state.waitingForDevice || state.deviceMissing)) return
+            states.value = states.value + (grant to VisitorState(TunnelStatus.RELAYED))
+        }
+
+        /** The device refuses a connection on [grant]: frpc logs it and the tunnel waits. */
+        fun refuse(grant: String) {
+            refusals.merge(grant, 1, Int::plus)
+            states.value = states.value + (grant to VisitorState(TunnelStatus.RELAYED, waitingForDevice = true))
+        }
     }
+
+    /** Local ports connected to by the manager's checks; [onTouch] plays the device. */
+    private val touched = java.util.Collections.synchronizedList(mutableListOf<Int>())
+    @Volatile private var onTouch: () -> Unit = {}
 
     private inner class FakeApi : AgentApi {
         /** When set, heartbeat waits for it: a poll caught in flight. */
@@ -123,6 +147,8 @@ class TunnelManagerTest {
         recordTunnels = { record.set("p1", it) },
         pins = { pins },
         pinnedRetryMs = 200,
+        touchPort = { touched += it; onTouch() },
+        deviceProbeMs = 50,
     ).apply { portRange = 47100..47199 }
 
     /** The profile's pinned local ports, as its connections give them. */
@@ -549,5 +575,58 @@ class TunnelManagerTest {
         assertTrue(manager.poll())
         assertTrue("brought back", frpc.running)
         assertEquals(1, recorded())
+    }
+
+    @Test
+    fun `a tunnel waiting for its device tries a connection until one gets through`() = runBlocking {
+        manager.sync()
+        val localPort = frpc.last!!.visitors.single().localPort
+        // Refused twice more, then the device has its proxy.
+        var refusalsLeft = 2
+        onTouch = { if (refusalsLeft-- > 0) frpc.refuse("g1") }
+        frpc.refuse("g1")
+        eventually("the wait ends") { frpc.states.value["g1"] == VisitorState(TunnelStatus.RELAYED) }
+        assertEquals(listOf(localPort, localPort, localPort), touched.toList())
+        delay(200)
+        assertEquals("no more connections once it works", 3, touched.size)
+    }
+
+    @Test
+    fun `a tunnel given up on names the device's port`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
+        eventually("worded") { manager.state.value.tunnels.single().state.detail == Texts.get(R.string.device_port_not_open, 80) }
+    }
+
+    @Test
+    fun `an opener of a tunnel brought up just now checks the device once`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
+        assertEquals(null, manager.awaitDevice("wb", 80, fresh = true))
+        assertEquals(1, touched.size)
+        assertEquals("an older tunnel is used as it is", null, manager.awaitDevice("wb", 80, fresh = false))
+        assertEquals(1, touched.size)
+    }
+
+    @Test
+    fun `an opener waits while the device refuses, and is told when it gives up`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
+        onTouch = { frpc.refuse("g1") }
+        val opened = async { manager.awaitDevice("wb", 80, fresh = true) }
+        eventually("waiting") { touched.size >= 2 }
+        assertFalse(opened.isCompleted)
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
+        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(2_000) { opened.await() })
+    }
+
+    @Test
+    fun `an opener waits until the device takes connections`() = runBlocking {
+        manager.sync()
+        frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
+        var refusalsLeft = 3
+        onTouch = { if (refusalsLeft-- > 0) frpc.refuse("g1") }
+        assertEquals(null, withTimeout(3_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(VisitorState(TunnelStatus.RELAYED), frpc.states.value["g1"])
     }
 }

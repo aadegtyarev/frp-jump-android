@@ -179,6 +179,7 @@
     <string name="state_connecting">Connecting…</string>
     <string name="state_disconnecting">Disconnecting…</string>
     <string name="state_trying_direct">Trying direct…</string>
+    <string name="state_waiting_device">Waiting for the device…</string>
     <string name="state_direct">Direct</string>
     <string name="state_through_server">Through the server</string>
     <string name="state_kept_through_server">Kept through the server</string>
@@ -498,6 +499,7 @@
     <string name="key_passphrase_label">Passphrase (empty if none)</string>
     <string name="frpc_login_failed">Cannot log in to the relay: %s</string>
     <string name="frpc_stopped">frpc stopped (exit code %d)</string>
+    <string name="device_port_not_open">The device did not open port %1$d: its agent did not answer. Check that frp-jump-client runs on the device.</string>
 
     <!-- Stage 7: settings, lock, theme, terminal -->
     <string name="settings_security">Security</string>

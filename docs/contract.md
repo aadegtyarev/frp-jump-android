@@ -162,6 +162,11 @@ re-enroll.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
   told as such, with "Open over HTTP". SSH → built-in terminal. TCP → shows and copies the local address.
+- A connection the device has not opened yet (its agent is still setting up
+  a new tunnel) is "Waiting for the device…", not an error; a terminal,
+  explorer or file screen opened with it waits too. Still not open 30 s
+  after the first refusal: "The device did not open port N: its agent did
+  not answer. Check that frp-jump-client runs on the device."
 
 ### 5. Connections tab
 

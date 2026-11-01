@@ -213,6 +213,15 @@ class FrpcRunner(private val binary: File, private val workDir: File) : FrpcCont
         if (current.parser.expire()) _states.value = current.parser.snapshot()
     }
 
+    @Synchronized
+    override fun refusalsOf(grant: String): Int = run?.parser?.refusalsOf(grant) ?: 0
+
+    @Synchronized
+    override fun deviceReady(grant: String, refusalsBefore: Int) {
+        val current = run ?: return
+        if (current.parser.deviceReady(grant, refusalsBefore)) _states.value = current.parser.snapshot()
+    }
+
     private fun stopProcess() {
         generation++
         val p = run?.process ?: return
