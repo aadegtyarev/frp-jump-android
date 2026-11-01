@@ -152,6 +152,19 @@ class MqttSession(
     private var lastSnapshotMessageAt: Long? = null
     private var cancelSnapshotCheck: (() -> Unit)? = null
 
+    /** Subscribes sent on this connection and not yet answered: the broker may be re-sending retained values. */
+    private var awaitingSuback = 0
+
+    /** When the last subscribe went out: a SUBACK that never comes holds the window open [SnapshotRule.MAX_MS] at most. */
+    private var subscribeSentAt = 0L
+
+    /**
+     * Until when (scheduler time) messages count as re-delivered on a
+     * subscribe: [SnapshotRule.QUIET_MS] after the last SUBACK or the last
+     * retained first value, as the snapshot's quiet rule (see [onMessage]).
+     */
+    private var redeliveryUntil = 0L
+
     /** Starts connecting: the remembered login, else anonymous. */
     fun connect() = scheduler.post { if (!ended) begin() }
 
@@ -262,6 +275,7 @@ class MqttSession(
 
     private fun attempt(v: MqttVersion) {
         val gen = ++generation
+        awaitingSuback = 0
         link?.close()
         link = null
         val events = object : LinkEvents {
@@ -368,7 +382,12 @@ class MqttSession(
         if (topic.isEmpty()) return
         val path = MqttPath.parse(topic)
         if (copies.isCopy(path, payload, retain, qos, matchingFilters(active, path))) return
-        val received = tree.receive(path, payload, retain, qos, v)
+        // Retained values a subscribe re-sends were set before they were seen: their time is not known.
+        val now = scheduler.now()
+        val awaiting = awaitingSuback > 0 && now <= subscribeSentAt + SnapshotRule.MAX_MS
+        val onSubscribe = snapshotOn || awaiting || now <= redeliveryUntil
+        val received = tree.receive(path, payload, retain, qos, v, onSubscribe)
+        if (onSubscribe && retain && received == Received.NEW_TOPIC) redeliveryUntil = now + SnapshotRule.QUIET_MS
         if (snapshotOn) {
             // Only what fills the tree keeps the snapshot going (see SnapshotRule), not live values of known topics.
             if (received == Received.NEW_TOPIC || received == Received.UNCHANGED) lastSnapshotMessageAt = scheduler.now()
@@ -402,6 +421,8 @@ class MqttSession(
             val gen = generation
             val run = snapshotRun
             subscribed += filter
+            awaitingSuback++
+            subscribeSentAt = scheduler.now()
             try {
                 open.subscribe(filter) { granted -> scheduler.post { if (gen == generation) subscribed(filter, granted, run) } }
             } catch (e: Exception) {
@@ -414,6 +435,8 @@ class MqttSession(
     }
 
     private fun subscribed(filter: String, granted: Boolean, run: Int) {
+        awaitingSuback = maxOf(0, awaitingSuback - 1)
+        redeliveryUntil = maxOf(redeliveryUntil, scheduler.now() + SnapshotRule.QUIET_MS)
         _refused.value = if (granted) _refused.value - filter else _refused.value + filter
         if (filter != SNAPSHOT_FILTER || !snapshotOn || run != snapshotRun) return
         if (!granted) {

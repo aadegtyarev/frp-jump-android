@@ -68,7 +68,15 @@ import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.ValueLine
-import ru.adsrv.frpjump.mqtt.levelLabel
+import ru.adsrv.frpjump.mqtt.LastChange
+import ru.adsrv.frpjump.mqtt.hitLabel
+import ru.adsrv.frpjump.mqtt.lastChange
+import ru.adsrv.frpjump.mqtt.nodeLabel
+import ru.adsrv.frpjump.mqtt.pathBarSeparator
+import ru.adsrv.frpjump.mqtt.publishAtLevel
+import ru.adsrv.frpjump.mqtt.shownPath
+import ru.adsrv.frpjump.mqtt.middleEllipsis
+import ru.adsrv.frpjump.ui.HomeGlyph
 import ru.adsrv.frpjump.mqtt.pathAtPart
 import ru.adsrv.frpjump.mqtt.pathBarLabels
 import ru.adsrv.frpjump.mqtt.valueLine
@@ -84,8 +92,14 @@ import ru.adsrv.frpjump.ui.StatusBanner
 import ru.adsrv.frpjump.ui.ageText
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.files.PathBar
+import ru.adsrv.frpjump.ui.files.SecondaryButton
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import java.text.NumberFormat
 import java.time.Duration
+
+/** Characters of a path the search hint shows at most; a longer one is cut in the middle. */
+private const val HINT_PATH_CHARS = 28
 
 /** A value changed this recently (after the level was shown) has its age in the accent colour; branches never do. */
 private const val HIGHLIGHT_MS = 2_000L
@@ -108,6 +122,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     var pinning by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var focusSearch by rememberSaveable { mutableStateOf(false) }
+    // "Publish here…": the levels of the place it was asked at (a Bundle holds no MqttPath).
+    var writingAt by rememberSaveable { mutableStateOf<List<String>?>(null) }
     // The refusal the dialog was answered or dismissed for (compared by identity: each refusal is a new
     // state object, also when it reads the same); dismissed, the banner offers it again.
     var loginDone by remember { mutableStateOf<MqttState?>(null) }
@@ -115,6 +131,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
         searching = false
         focusSearch = false
         vm.query.value = ""
+        vm.searchWhole.value = false
     }
     val context = LocalContext.current
     // Leaving keeps the session: the first time, say where it is.
@@ -140,7 +157,9 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     focus = focusSearch,
                     onFocused = { focusSearch = false },
                     label = stringResource(R.string.mqtt_search),
-                    hint = stringResource(R.string.mqtt_search_hint),
+                    // Says where it looks: the open branch and below, or the whole tree.
+                    hint = shownPath(state.searchAt)?.let { stringResource(R.string.mqtt_search_in, middleEllipsis(it, HINT_PATH_CHARS)) }
+                        ?: stringResource(R.string.mqtt_search_whole),
                 )
             } else {
                 AppTopBar(
@@ -159,6 +178,14 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.mqtt_actions))
                             }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.mqtt_publish_here)) },
+                                    enabled = state.state != MqttState.Ended,
+                                    onClick = {
+                                        menu = false
+                                        writingAt = ArrayList(state.path.levels)
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.mqtt_refresh_tree)) },
                                     enabled = state.state is MqttState.Open,
@@ -189,15 +216,30 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 .padding(top = padding.calculateTopPadding()),
         ) {
             val empty = stringResource(R.string.mqtt_empty_level)
-            val labels = pathBarLabels(state.path, "/", empty)
-            PathBar(labels, onOpen = { vm.open(pathAtPart(state.path, it)) }, onType = { typing = true }, typeLabel = stringResource(R.string.mqtt_go_to_topic))
+            val labels = pathBarLabels(state.path, "", empty)
+            val leadingSlash = stringResource(R.string.mqtt_leading_slash_spoken)
+            PathBar(
+                labels,
+                onOpen = { vm.open(pathAtPart(state.path, it)) },
+                onType = { typing = true },
+                typeLabel = stringResource(R.string.mqtt_go_to_topic),
+                separatorBefore = { pathBarSeparator(state.path, it) },
+                rootIcon = HomeGlyph,
+                spoken = { i -> leadingSlash.takeIf { i == 1 && state.path.levels.firstOrNull() == "" } },
+            )
             SnapshotLine(state)
             Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
             if (searching && query.isNotBlank()) {
                 // The card opens over the hits, so closing it returns to them.
-                SearchHits(state, query.trim(), padding, onOpen = { hit -> vm.openCard(MqttPath(state.path.levels + hit.relative.levels)) })
+                SearchHits(
+                    state,
+                    query.trim(),
+                    padding,
+                    onOpen = { hit -> vm.openCard(MqttPath(state.searchAt.levels + hit.relative.levels)) },
+                    onSearchWhole = { vm.searchWhole.value = true },
+                )
             } else {
-                Level(state, focused, padding, onOpen = vm::open, onCard = vm::openCard)
+                Level(state, focused, padding, onOpen = vm::open, onCard = vm::openCard, onWriteHere = { writingAt = ArrayList(state.path.levels) })
             }
         }
     }
@@ -225,7 +267,22 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             onUnpin = { vm.unpin(card.path, it) },
             published = published,
             onPublish = vm::publish,
+            onOpenBranch = {
+                // Going somewhere ends the search it was found by (as a typed path does).
+                closeSearch()
+                vm.closeCard()
+                vm.open(card.path)
+            },
             onDismiss = vm::closeCard,
+        )
+    }
+    writingAt?.let { levels ->
+        PublishSheet(
+            start = publishAtLevel(MqttPath(levels)),
+            state = state.state,
+            published = published,
+            onPublish = vm::publish,
+            onDismiss = { writingAt = null },
         )
     }
     if (typing) {
@@ -233,7 +290,14 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             title = stringResource(R.string.mqtt_go_to_topic),
             initial = state.path.format(),
             confirm = stringResource(R.string.files_go),
-            onGo = { text -> vm.openTyped(text).also { if (it == null) typing = false } },
+            onGo = { text ->
+                vm.openTyped(text).also {
+                    if (it == null) {
+                        typing = false
+                        closeSearch()
+                    }
+                }
+            },
             onDismiss = { typing = false },
         )
     }
@@ -315,6 +379,7 @@ private fun Level(
     padding: PaddingValues,
     onOpen: (MqttPath) -> Unit,
     onCard: (MqttPath) -> Unit,
+    onWriteHere: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val list = rememberLazyListState()
@@ -328,13 +393,14 @@ private fun Level(
         contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp),
     ) {
         // `$SYS` is always offered at the root, so only a live session there is never empty.
-        if (state.rows.isEmpty()) item(key = "empty") { EmptyLevel(state) }
+        if (state.rows.isEmpty()) item(key = "empty") { EmptyLevel(state, onWriteHere) }
         items(state.rows, key = { rowKey(it.node.path) }) { row ->
             TopicRowView(
                 row = row,
                 now = state.now,
                 shownSince = state.shownSince,
-                onClick = { if (row.isBranch) onOpen(row.node.path) else onCard(row.node.path) },
+                // A node with a value opens its card (which opens its branch); a branch only, its level.
+                onClick = { if (row.opensLevel) onOpen(row.node.path) else onCard(row.node.path) },
                 onCard = { onCard(row.node.path) },
             )
             HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 70.dp))
@@ -343,13 +409,25 @@ private fun Level(
 }
 
 @Composable
-private fun EmptyLevel(state: MqttUiState) {
+private fun EmptyLevel(state: MqttUiState, onWriteHere: () -> Unit) {
     val colors = AppTheme.colors
-    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-        when {
-            state.state == MqttState.Connecting || state.snapshot == SnapshotState.Reading -> CircularProgressIndicator(color = colors.accent)
-            state.branchRefused -> Text(stringResource(R.string.mqtt_branch_refused), color = colors.muted, fontSize = 14.sp)
-            else -> Text(stringResource(R.string.mqtt_no_messages), color = colors.muted, fontSize = 14.sp)
+    Column(
+        Modifier.fillMaxWidth().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (state.state == MqttState.Connecting || state.snapshot == SnapshotState.Reading) {
+            CircularProgressIndicator(color = colors.accent)
+            return@Column
+        }
+        Text(
+            stringResource(if (state.branchRefused) R.string.mqtt_branch_refused else R.string.mqtt_no_messages),
+            color = colors.muted,
+            fontSize = 14.sp,
+        )
+        // Nothing here yet: a topic of this level can still be written, which is also how one is created.
+        if (!state.path.isRoot && state.state != MqttState.Ended) {
+            SecondaryButton(stringResource(R.string.mqtt_publish_here), null, enabled = true, Modifier, onClick = onWriteHere)
         }
     }
 }
@@ -365,13 +443,13 @@ private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, onClick: ()
     val colors = AppTheme.colors
     val node = row.node
     val value = node.value
-    val changedAt = value?.receivedAt?.let { maxOf(it, node.newestChangeAt) } ?: node.newestChangeAt
+    val change = lastChange(node)
     Column(
         Modifier
             .fillMaxWidth()
             .clickable(
                 role = Role.Button,
-                onClickLabel = stringResource(if (row.isBranch) R.string.files_open else R.string.mqtt_open_card),
+                onClickLabel = stringResource(if (row.opensLevel) R.string.files_open else R.string.mqtt_open_card),
                 onClick = onClick,
             )
             .padding(start = 16.dp, end = if (row.isBranch) 0.dp else 12.dp, top = 10.dp, bottom = 10.dp),
@@ -381,7 +459,7 @@ private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, onClick: ()
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        levelLabel(node.name, stringResource(R.string.mqtt_empty_level)),
+                        nodeLabel(node.path, stringResource(R.string.mqtt_empty_level), stringResource(R.string.mqtt_leading_slash)),
                         fontSize = 15.sp,
                         color = if (node.name.isEmpty()) colors.muted else colors.ink,
                         maxLines = 1,
@@ -391,7 +469,9 @@ private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, onClick: ()
                     if (row.pinned) Icon(PinGlyph, contentDescription = stringResource(R.string.mqtt_pinned_mark), tint = colors.muted, modifier = Modifier.size(14.dp))
                 }
                 value?.let { ValueText(it) }
-                Meta(node, value, changedAt, now, highlight = value != null && value.receivedAt > shownSince && now - value.receivedAt < HIGHLIGHT_MS)
+                // A value from before the session is no change, also when it arrives while the level is shown.
+                val changedAt = value?.changedAt
+                Meta(node, value, change, now, highlight = changedAt != null && changedAt > shownSince && now - changedAt < HIGHLIGHT_MS)
             }
             if (row.isBranch) {
                 IconButton(onClick = onCard) {
@@ -442,12 +522,16 @@ private fun ValueText(value: TopicValue) {
     )
 }
 
-/** "12 s ago · retained · 34 topics". */
+/** "12 s ago · retained · 34 topics"; "before connecting" when nothing changed since the session saw it. */
 @Composable
-private fun Meta(node: TopicNode, value: TopicValue?, changedAt: Long, now: Long, highlight: Boolean) {
+private fun Meta(node: TopicNode, value: TopicValue?, change: LastChange?, now: Long, highlight: Boolean) {
     val colors = AppTheme.colors
     val parts = buildList {
-        if (changedAt > 0) add(ageText(relativeAge(Duration.ofMillis(maxOf(0, now - changedAt)))))
+        when (change) {
+            is LastChange.At -> add(ageText(relativeAge(Duration.ofMillis(maxOf(0, now - change.ms)))))
+            LastChange.BeforeSession -> add(stringResource(R.string.mqtt_before_session))
+            null -> Unit
+        }
         if (value?.retained == true) add(stringResource(R.string.mqtt_retained))
         if (node.topicsBelow > 0) add(pluralStringResource(R.plurals.mqtt_topics, node.topicsBelow, count(node.topicsBelow)))
     }
@@ -459,7 +543,7 @@ private fun Meta(node: TopicNode, value: TopicValue?, changedAt: Long, now: Long
                 if (i == 0) part else " · $part",
                 fontSize = 12.sp,
                 // Only the age shows a change.
-                color = if (i == 0 && changedAt > 0) ageColor else colors.muted,
+                color = if (i == 0 && change is LastChange.At) ageColor else colors.muted,
                 maxLines = 1,
             )
         }
@@ -468,7 +552,7 @@ private fun Meta(node: TopicNode, value: TopicValue?, changedAt: Long, now: Long
 
 /** The topics under the level whose path holds the query, as paths relative to it; a tap shows the topic in its level. */
 @Composable
-private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues, onOpen: (SearchHit) -> Unit) {
+private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues, onOpen: (SearchHit) -> Unit, onSearchWhole: () -> Unit) {
     val colors = AppTheme.colors
     val empty = stringResource(R.string.mqtt_empty_level)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp)) {
@@ -482,6 +566,18 @@ private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                         .semantics { liveRegion = LiveRegionMode.Polite },
                 )
+            }
+            // Nothing in this branch: one tap widens the search, so an empty result is no dead end.
+            if (!state.searchAt.isRoot) {
+                item(key = "whole") {
+                    SecondaryButton(
+                        stringResource(R.string.mqtt_search_whole),
+                        SearchGlyph,
+                        enabled = true,
+                        Modifier.padding(horizontal = 20.dp),
+                        onClick = onSearchWhole,
+                    )
+                }
             }
         }
         if (state.hitsTotal > state.hits.size) {
@@ -503,7 +599,7 @@ private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    hit.relative.levels.joinToString("/") { levelLabel(it, empty) },
+                    hitLabel(hit.relative, empty),
                     fontSize = 14.sp,
                     fontFamily = FontFamily.Monospace,
                     color = colors.ink,
@@ -525,28 +621,33 @@ private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues
  */
 @Composable
 private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (String) -> TopicProblem?, onDismiss: () -> Unit) {
-    var text by rememberSaveable { mutableStateOf(initial) }
+    // The prefilled path selected whole: a paste or the first key replaces it, an arrow keeps it.
+    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
+    val text = field.text
     var problem by remember { mutableStateOf<TopicProblem?>(null) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    val go = { if (text.isNotEmpty()) problem = onGo(text) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Field(
                 label = stringResource(R.string.mqtt_topic),
-                value = text,
+                value = field,
                 onValueChange = {
-                    text = it
-                    problem = null
+                    if (it.text != field.text) problem = null
+                    field = it
                 },
                 mono = true,
                 keyboard = KeyboardType.Uri,
                 focusRequester = focus,
                 problem = problem?.let { topicProblemText(it) },
+                // The keyboard's action key is the dialog's own button.
+                onDone = go,
             )
         },
-        confirmButton = { TextButton(enabled = text.isNotEmpty(), onClick = { problem = onGo(text) }) { Text(confirm) } },
+        confirmButton = { TextButton(enabled = text.isNotEmpty(), onClick = go) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

@@ -10,18 +10,54 @@ class TopicTextsTest {
     private val empty = "(empty)"
 
     @Test
-    fun `the path bar names empty levels and each part opens its own place`() {
+    fun `the path bar shows the empty first level as a slash and each part opens its own place`() {
         val path = MqttPath.parse("/devices/wb-mr6c_1")
-        assertEquals(listOf("/", empty, "devices", "wb-mr6c_1"), pathBarLabels(path, "/", empty))
+        assertEquals(listOf("#", "/", "devices", "wb-mr6c_1"), pathBarLabels(path, "#", empty))
         assertEquals(MqttPath.ROOT, pathAtPart(path, 0))
         // The empty first level is a place of its own, not the root.
         assertEquals(MqttPath(listOf("")), pathAtPart(path, 1))
         assertEquals(MqttPath.parse("/devices"), pathAtPart(path, 2))
         assertEquals(path, pathAtPart(path, 3))
-        // Empty levels in the middle and at the end; `devices/x` has none.
-        assertEquals(listOf("/", "a", empty, "b", empty), pathBarLabels(MqttPath.parse("a//b/"), "/", empty))
-        assertEquals(listOf("/", "devices", "x"), pathBarLabels(MqttPath.parse("devices/x"), "/", empty))
-        assertEquals(listOf("/"), pathBarLabels(MqttPath.ROOT, "/", empty))
+        // No `/` after the root nor after the leading `/`: it reads `# /devices / wb-mr6c_1`.
+        assertEquals(listOf(false, false, false, true), (0..3).map { pathBarSeparator(path, it) })
+        // Empty levels in the middle and at the end keep their name; `devices/x` has none.
+        assertEquals(listOf("#", "a", empty, "b", empty), pathBarLabels(MqttPath.parse("a//b/"), "#", empty))
+        assertEquals(listOf(false, false, true, true, true), (0..4).map { pathBarSeparator(MqttPath.parse("a//b/"), it) })
+        assertEquals(listOf("#", "devices", "x"), pathBarLabels(MqttPath.parse("devices/x"), "#", empty))
+        assertEquals(listOf("#"), pathBarLabels(MqttPath.ROOT, "#", empty))
+    }
+
+    @Test
+    fun `the empty first level reads as a slash in rows, paths and search hits`() {
+        val leading = "/ (leading slash)"
+        assertEquals(leading, nodeLabel(MqttPath(listOf("")), empty, leading))
+        assertEquals(empty, nodeLabel(MqttPath.parse("a/"), empty, leading))
+        assertEquals("K1", nodeLabel(MqttPath.parse("/devices/x/K1"), empty, leading))
+        assertEquals("/", shownPath(MqttPath(listOf(""))))
+        assertEquals("/devices/x", shownPath(MqttPath.parse("/devices/x")))
+        assertNull(shownPath(MqttPath.ROOT))
+        // Hits at the root show the real topic, not `(empty)/devices/…`; the topic `<level>/` alone reads as empty.
+        assertEquals("/devices/x/controls/K1", hitLabel(MqttPath.parse("/devices/x/controls/K1"), empty))
+        assertEquals("a//b", hitLabel(MqttPath.parse("a//b"), empty))
+        assertEquals(empty, hitLabel(MqttPath(listOf("")), empty))
+    }
+
+    @Test
+    fun `a long path in the search hint is cut in the middle`() {
+        assertEquals("/devices/x", middleEllipsis("/devices/x", 12))
+        assertEquals("/devic…ols/K1", middleEllipsis("/devices/wb-mr6c_1/controls/K1", 13))
+        assertEquals(13, middleEllipsis("/devices/wb-mr6c_1/controls/K1", 13).length)
+        // A surrogate pair is never split: the cut moves off it.
+        val cut = middleEllipsis("ab😀cdefgh😀ij", 7)
+        assertTrue(cut.codePoints().noneMatch { it in 0xD800..0xDFFF })
+    }
+
+    @Test
+    fun `search looks in the open level, or the whole tree once widened`() {
+        val level = MqttPath.parse("/devices/x")
+        assertEquals(level, searchScope(level, whole = false))
+        assertEquals(MqttPath.ROOT, searchScope(level, whole = true))
+        assertEquals(MqttPath.ROOT, searchScope(MqttPath.ROOT, whole = false))
     }
 
     @Test

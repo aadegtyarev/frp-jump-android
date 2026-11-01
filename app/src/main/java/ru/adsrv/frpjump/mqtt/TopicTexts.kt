@@ -10,16 +10,50 @@ import java.nio.charset.CodingErrorAction
  */
 fun levelLabel(level: String, emptyLabel: String): String = level.ifEmpty { emptyLabel }
 
+/** The path bar's part for the empty first level, the branch of the topics that start with `/`. */
+const val LEADING_SLASH = "/"
+
 /**
- * The path bar's parts for [path]: [rootLabel] (`/`) for the root, then
- * one per level, an empty level as [emptyLabel]. Part `i` opens the path of
- * the first `i` levels ([pathAtPart]).
+ * How a node's name reads in a row and on its card: the empty first level
+ * (topics starting with `/`) as [leadingLabel] (`/ (leading slash)`), any
+ * other level as [levelLabel] does.
+ */
+fun nodeLabel(path: MqttPath, emptyLabel: String, leadingLabel: String): String =
+    if (path.levels.size == 1 && path.name.isEmpty()) leadingLabel else levelLabel(path.name, emptyLabel)
+
+/**
+ * The path bar's parts for [path]: [rootLabel] for the root (the whole
+ * tree, drawn as a house), then one per level: the empty first level as
+ * `/` (so `/devices/x` reads `⌂ /devices / x`), another empty level as
+ * [emptyLabel]. Part `i` opens the path of the first `i` levels
+ * ([pathAtPart]); [pathBarSeparator] says where a `/` goes between parts.
  */
 fun pathBarLabels(path: MqttPath, rootLabel: String, emptyLabel: String): List<String> =
-    listOf(rootLabel) + path.levels.map { levelLabel(it, emptyLabel) }
+    listOf(rootLabel) + path.levels.mapIndexed { i, level -> if (i == 0 && level.isEmpty()) LEADING_SLASH else levelLabel(level, emptyLabel) }
+
+/** Whether a `/` is drawn before part [index] of [pathBarLabels]: between levels, not after the root or the leading `/`. */
+fun pathBarSeparator(path: MqttPath, index: Int): Boolean = index > 1 && !(index == 2 && path.levels.firstOrNull() == "")
 
 /** The place part [index] of [pathBarLabels] stands for: the root for 0, else the first [index] levels. */
 fun pathAtPart(path: MqttPath, index: Int): MqttPath = MqttPath(path.levels.take(index))
+
+/**
+ * A place as a topic text to read: the topic as is (`/devices/x`), the
+ * empty first level alone (the branch of the topics starting with `/`) as
+ * `/`; the root, the whole tree, has none and gives null.
+ */
+fun shownPath(path: MqttPath): String? = when {
+    path.isRoot -> null
+    path.levels == listOf("") -> LEADING_SLASH
+    else -> path.format()
+}
+
+/**
+ * A search hit's path relative to the level searched, as its real text
+ * (`/devices/x/controls/K1` at the root); a single empty level (the topic
+ * `<level>/`) as [emptyLabel].
+ */
+fun hitLabel(relative: MqttPath, emptyLabel: String): String = relative.format().ifEmpty { emptyLabel }
 
 /** How a payload reads in one line of a row. */
 sealed interface ValueLine {
@@ -158,4 +192,22 @@ fun topicProblem(text: String, suffix: String = ""): TopicProblem? = when {
     text.contains('\u0000') -> TopicProblem.NUL
     (text + suffix).toByteArray(Charsets.UTF_8).size > MAX_TOPIC_BYTES -> TopicProblem.TOO_LONG
     else -> null
+}
+
+/** Where search looks: the open [level] and below, or the whole tree (the root) once widened ([whole]). */
+fun searchScope(level: MqttPath, whole: Boolean): MqttPath = if (whole) MqttPath.ROOT else level
+
+/**
+ * [text] in at most [maxChars] characters: cut in the middle with "…", so
+ * both the start and the end of a long path stay readable.
+ */
+fun middleEllipsis(text: String, maxChars: Int): String {
+    if (text.length <= maxChars) return text
+    val keep = maxChars - 1
+    var head = (keep + 1) / 2
+    var tailStart = text.length - (keep - head)
+    // Never split a surrogate pair.
+    if (head > 0 && Character.isHighSurrogate(text[head - 1])) head--
+    if (tailStart < text.length && Character.isLowSurrogate(text[tailStart])) tailStart++
+    return text.substring(0, head) + "…" + text.substring(tailStart)
 }

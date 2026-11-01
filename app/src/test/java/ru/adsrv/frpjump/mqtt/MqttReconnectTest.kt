@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,6 +63,9 @@ class MqttReconnectTest {
         var events: LinkEvents? = null
         val subscribes = mutableListOf<String>()
 
+        /** Filters the broker never answers (no SUBACK). */
+        val silent = mutableSetOf<String>()
+
         override fun connect(request: ConnectRequest, events: LinkEvents, done: (ConnectOutcome) -> Unit) {
             attemptsAt += scheduler.now()
             this.events = events
@@ -71,7 +75,7 @@ class MqttReconnectTest {
         fun opened() = ConnectOutcome.Opened(object : MqttLink {
             override fun subscribe(filter: String, done: (granted: Boolean) -> Unit) {
                 subscribes += filter
-                done(true)
+                if (filter !in silent) done(true)
             }
 
             override fun unsubscribe(filter: String) = Unit
@@ -153,6 +157,82 @@ class MqttReconnectTest {
             scheduler.advanceBy(300)
         }
         assertEquals(SnapshotState.Done(SnapshotEnd.TIMED_OUT), session.snapshot.value)
+    }
+
+    @Test
+    fun `retained first values a subscribe re-sends are from before the session, later ones are live`() {
+        val connector = ScriptedConnector()
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env(connector))
+        connector.outcomes += { connector.opened() }
+        session.connect()
+        val events = connector.events!!
+        fun value(topic: String) = session.tree.node(MqttPath.parse(topic))!!.value!!
+        // The snapshot's retained values: set before, time unknown; a non-retained one is live.
+        events.message("a/x", "1".toByteArray(), retain = true, qos = 0)
+        events.message("a/n", "1".toByteArray(), retain = false, qos = 0)
+        assertTrue(value("a/x").beforeSession)
+        assertFalse(value("a/n").beforeSession)
+        scheduler.advanceBy(2_000)
+        assertEquals(SnapshotState.Done(SnapshotEnd.QUIET), session.snapshot.value)
+
+        // Long after any subscribe: a retained publish to a new topic (MQTT 5 keeps the flag) is live.
+        events.message("a/y", "2".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("a/y").beforeSession)
+        // A new value of a value from before is a change seen now.
+        events.message("a/x", "3".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("a/x").beforeSession)
+
+        // Opening a branch re-sends its retained values: right after its SUBACK they are from before, later not.
+        session.open(MqttPath.parse("b"))
+        events.message("b/z", "1".toByteArray(), retain = true, qos = 0)
+        assertTrue(value("b/z").beforeSession)
+        scheduler.advanceBy(1_500)
+        events.message("b/w", "1".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("b/w").beforeSession)
+    }
+
+    @Test
+    fun `a reconnect keeps values from before unless they changed meanwhile`() {
+        val connector = ScriptedConnector()
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env(connector))
+        connector.outcomes += { connector.opened() }
+        session.connect()
+        fun value(topic: String) = session.tree.node(MqttPath.parse(topic))!!.value!!
+        connector.events!!.message("a/same", "1".toByteArray(), retain = true, qos = 0)
+        connector.events!!.message("a/moved", "1".toByteArray(), retain = true, qos = 0)
+        scheduler.advanceBy(2_000)
+
+        connector.events!!.lost()
+        connector.outcomes += { connector.opened() }
+        scheduler.advanceBy(1_000)
+        assertTrue(session.state.value is MqttState.Open)
+        // The snapshot again: an equal value re-sent keeps its unknown time; one that changed while away is seen now.
+        connector.events!!.message("a/same", "1".toByteArray(), retain = true, qos = 0)
+        connector.events!!.message("a/moved", "2".toByteArray(), retain = true, qos = 0)
+        assertTrue(value("a/same").beforeSession)
+        assertFalse(value("a/moved").beforeSession)
+    }
+
+    @Test
+    fun `a SUBACK that never comes holds the re-delivery window open for the snapshot's cap only`() {
+        val connector = ScriptedConnector()
+        val session = MqttSession(1, "p", "c", "wb", 1883, 20000, env(connector))
+        connector.outcomes += { connector.opened() }
+        session.connect()
+        scheduler.advanceBy(2_000)
+        assertEquals(SnapshotState.Done(SnapshotEnd.QUIET), session.snapshot.value)
+
+        connector.silent += "b/#"
+        session.open(MqttPath.parse("b"))
+        fun value(topic: String) = session.tree.node(MqttPath.parse(topic))!!.value!!
+        // Waiting for the SUBACK: retained values may be re-sent.
+        scheduler.advanceBy(5_000)
+        connector.events!!.message("b/early", "1".toByteArray(), retain = true, qos = 0)
+        assertTrue(value("b/early").beforeSession)
+        // Past the cap with no SUBACK: live again (the last re-sent value held it 1 s more).
+        scheduler.advanceBy(SnapshotRule.MAX_MS)
+        connector.events!!.message("b/late", "1".toByteArray(), retain = true, qos = 0)
+        assertFalse(value("b/late").beforeSession)
     }
 
     @Test

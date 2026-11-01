@@ -59,6 +59,7 @@ import ru.adsrv.frpjump.connections.draftLabel
 import ru.adsrv.frpjump.connections.isPresetName
 import ru.adsrv.frpjump.connections.nameAfterPreset
 import ru.adsrv.frpjump.ports.PortKind
+import ru.adsrv.frpjump.ui.SheetHeader
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.Field
@@ -118,9 +119,10 @@ fun ConnectionSheet(
         }
     }
 
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = { if (!busy) onDismiss() },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
         containerColor = colors.card,
     ) {
         // A message posted while the sheet is open shows on it, not under its scrim.
@@ -133,13 +135,16 @@ fun ConnectionSheet(
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        stringResource(if (editing == null) R.string.new_connection else R.string.change_connection),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(stringResource(R.string.connection_to, device), fontSize = 13.sp, color = colors.muted)
+                // Off while saving, as a swipe or a tap outside is.
+                SheetHeader(sheet, onDismiss, enabled = !busy) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            stringResource(if (editing == null) R.string.new_connection else R.string.change_connection),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(stringResource(R.string.connection_to, device), fontSize = 13.sp, color = colors.muted)
+                    }
                 }
                 KindSwitch(kind, enabled = !portLocked) { picked ->
                     if (picked != kind) {

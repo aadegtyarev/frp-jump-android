@@ -40,6 +40,7 @@ import ru.adsrv.frpjump.files.EntryType
 import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.files.octalMode
 import ru.adsrv.frpjump.files.permissionString
+import ru.adsrv.frpjump.ui.SheetHeader
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.DownloadGlyph
@@ -72,9 +73,10 @@ class CardActions(
 fun FileCard(entry: RemoteEntry, transfer: Transfer?, online: Boolean, actions: CardActions, onDismiss: () -> Unit) {
     val colors = AppTheme.colors
     val context = LocalContext.current
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
         containerColor = colors.card,
     ) {
         // A message posted while the sheet is open shows on it, not under its scrim.
@@ -86,7 +88,7 @@ fun FileCard(entry: RemoteEntry, transfer: Transfer?, online: Boolean, actions: 
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                SheetHeader(sheet, onDismiss, verticalAlignment = Alignment.CenterVertically) {
                     EntryIcon(entry)
                     Text(entry.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 3, modifier = Modifier.weight(1f))
                 }

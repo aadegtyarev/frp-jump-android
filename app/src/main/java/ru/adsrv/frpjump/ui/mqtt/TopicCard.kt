@@ -67,7 +67,12 @@ import ru.adsrv.frpjump.mqtt.ValueLine
 import ru.adsrv.frpjump.mqtt.copiedValue
 import ru.adsrv.frpjump.mqtt.decodeUtf8
 import ru.adsrv.frpjump.mqtt.hexDump
-import ru.adsrv.frpjump.mqtt.levelLabel
+import ru.adsrv.frpjump.mqtt.LastChange
+import ru.adsrv.frpjump.mqtt.branchChangeLine
+import ru.adsrv.frpjump.mqtt.nodeLabel
+import ru.adsrv.frpjump.mqtt.publishFromCard
+import ru.adsrv.frpjump.mqtt.pinMasksFor
+import ru.adsrv.frpjump.mqtt.shownPath
 import ru.adsrv.frpjump.mqtt.multiLineText
 import ru.adsrv.frpjump.mqtt.pinFilter
 import ru.adsrv.frpjump.mqtt.valueLine
@@ -77,6 +82,11 @@ import ru.adsrv.frpjump.ssh.copyPreview
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CopyGlyph
+import ru.adsrv.frpjump.ui.FolderGlyph
+import ru.adsrv.frpjump.ui.MainButton
+import ru.adsrv.frpjump.ui.SheetHeader
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.size
 import ru.adsrv.frpjump.ui.NoticeLayer
 import ru.adsrv.frpjump.ui.Segmented
 import ru.adsrv.frpjump.ui.files.InfoLine
@@ -102,16 +112,20 @@ private const val JSON_LINES_SHOWN = 500
 /** Levels of JSON indented at most; deeper lines stay at this indent so they keep a usable width. */
 private const val JSON_INDENT_LEVELS = 8
 
+/** Characters of a one-line text value drawn large: they fit one line at 360 dp with the font at 1.3×. */
+private const val LARGE_VALUE_CHARS = 12
+
 /** Characters of copied text the notice shows, as the terminal's. */
 private const val COPY_PREVIEW = 40
 
 /**
  * The card of a topic or a branch, a bottom sheet as the file card: the
- * full path; a value in full with its view (Text / JSON / Hex, detected,
- * switchable for this card), size, retained, QoS and time; a branch's
- * count of topics and its newest change; the last values; Copy path, Copy
- * value, Publish…, Pin… and Unpin. [canPin] is false once the session has
- * ended; Publish… is then off too. [state] is the session's, for Send.
+ * value in full right under the name, with copy, its view (Text / JSON /
+ * Hex, detected, switchable for this card), size, retained, QoS and time;
+ * the full path with copy; a branch's newest change when it is not the
+ * value's; the last values; Publish… (the main action), Open branch (N),
+ * Pin… and Unpin. [canPin] is false once the session has ended; Publish…
+ * is then off too. [state] is the session's, for Send.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,6 +138,8 @@ fun TopicCard(
     /** What the publish sheet remembers of the connection's topics; null until read. */
     published: List<SentTopic>?,
     onPublish: (PublishRequest, done: (PublishAnswer) -> Unit) -> Unit,
+    /** "Open branch": closes the card and opens the node's level. */
+    onOpenBranch: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -141,9 +157,10 @@ fun TopicCard(
     }
     val json = reading?.json
     val view = chosen?.takeIf { it != PayloadView.JSON || json != null } ?: reading?.view
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
         containerColor = colors.card,
     ) {
         NoticeLayer {
@@ -154,47 +171,62 @@ fun TopicCard(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                SheetHeader(sheet, onDismiss, verticalAlignment = Alignment.CenterVertically) {
                     KindTile(card.isBranch)
                     Text(
-                        levelLabel(path.name, stringResource(R.string.mqtt_empty_level)),
+                        nodeLabel(path, stringResource(R.string.mqtt_empty_level), stringResource(R.string.mqtt_leading_slash)),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 3,
                         modifier = Modifier.weight(1f),
                     )
                 }
+                // The value first, right under the name: it is what the card is opened for.
+                value?.let {
+                    ValueBlock(
+                        it,
+                        view,
+                        json,
+                        onView = { v -> chosen = v },
+                        detectedJson = json != null,
+                        onCopy = if (payload != null && view != null) ({ copy(context, copiedValue(payload, view)) }) else null,
+                    )
+                }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SelectionContainer { InfoLine(stringResource(R.string.mqtt_card_path), path.format(), mono = true) }
+                    // The empty first level reads (and copies) as `/`, where its topics start.
+                    val shown = shownPath(path).orEmpty()
+                    PathLine(shown) { copy(context, CopiedValue(shown, cut = false)) }
                     val node = card.node
                     if (card.isBranch) {
-                        InfoLine(
-                            stringResource(R.string.mqtt_card_below),
-                            pluralStringResource(R.plurals.mqtt_topics, node?.topicsBelow ?: 0, count(node?.topicsBelow ?: 0)),
-                        )
-                        node?.newestChangeAt?.takeIf { it > 0 }?.let {
-                            InfoLine(stringResource(R.string.mqtt_card_newest), fullTime(Instant.ofEpochMilli(it)))
+                        // Only when it says more than the value's own time.
+                        node?.let { branchChangeLine(it) }?.let { change ->
+                            InfoLine(
+                                stringResource(R.string.mqtt_card_newest),
+                                when (change) {
+                                    is LastChange.At -> fullTime(Instant.ofEpochMilli(change.ms))
+                                    LastChange.BeforeSession -> stringResource(R.string.mqtt_before_session)
+                                },
+                            )
                         }
                     }
                     if (node == null && !card.isBranch) InfoLine(stringResource(R.string.mqtt_card_value), stringResource(R.string.mqtt_no_messages))
                     if (card.pinned.isNotEmpty()) Pinned(path, card.pinned, canPin, onUnpin)
                 }
-                value?.let { ValueBlock(it, view, json, onView = { v -> chosen = v }, detectedJson = json != null) }
                 if (card.history.isNotEmpty()) History(card.history)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SecondaryButton(stringResource(R.string.mqtt_copy_path), CopyGlyph, enabled = true, Modifier.weight(1f)) {
-                            copy(context, path.format().let { CopiedValue(it, cut = false) })
-                        }
-                        if (value != null) {
-                            SecondaryButton(stringResource(R.string.mqtt_copy_value), CopyGlyph, enabled = payload != null && view != null, Modifier.weight(1f)) {
-                                if (payload != null && view != null) copy(context, copiedValue(payload, view))
-                            }
-                        }
-                    }
+                    MainButton(stringResource(R.string.mqtt_publish_ellipsis), busy = false, enabled = canPin, onClick = { publishing = true })
                     // Full width, one per row: the labels stay whole at any phone width and font size.
-                    SecondaryButton(stringResource(R.string.mqtt_publish_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { publishing = true }
-                    if (card.pinned.size < PinMask.entries.size) {
+                    if (card.isBranch) {
+                        val below = card.node?.topicsBelow ?: 0
+                        SecondaryButton(
+                            if (below > 0) stringResource(R.string.mqtt_open_branch_count, count(below)) else stringResource(R.string.mqtt_open_branch),
+                            FolderGlyph,
+                            enabled = true,
+                            Modifier.fillMaxWidth(),
+                            onClick = onOpenBranch,
+                        )
+                    }
+                    if (card.pinned.size < pinMasksFor(path).size) {
                         SecondaryButton(stringResource(R.string.mqtt_pin_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { picking = true }
                     }
                 }
@@ -202,7 +234,7 @@ fun TopicCard(
         }
     }
     if (publishing) {
-        PublishSheet(path = path.format(), state = state, published = published, onPublish = onPublish, onDismiss = { publishing = false })
+        PublishSheet(start = publishFromCard(path, value), state = state, published = published, onPublish = onPublish, onDismiss = { publishing = false })
     }
     if (picking) {
         PinSheet(
@@ -242,40 +274,65 @@ private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpi
     }
 }
 
-/** The value in its view, with the view switch and size · retained · QoS · time. */
+/** The full path in monospace, selectable, with a copy button. */
 @Composable
-private fun ValueBlock(value: TopicValue, view: PayloadView?, json: List<JsonLine>?, onView: (PayloadView) -> Unit, detectedJson: Boolean) {
+private fun PathLine(path: String, onCopy: () -> Unit) {
+    val colors = AppTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.mqtt_card_path), fontSize = 12.sp, color = colors.muted)
+            SelectionContainer { Text(path, fontSize = 14.sp, color = colors.ink, fontFamily = FontFamily.Monospace) }
+        }
+        CopyButton(stringResource(R.string.mqtt_copy_path), onCopy)
+    }
+}
+
+@Composable
+private fun CopyButton(label: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick) {
+        Icon(CopyGlyph, contentDescription = label, tint = AppTheme.colors.accent, modifier = Modifier.size(20.dp))
+    }
+}
+
+/**
+ * The value large in its view with a copy button ([onCopy] null: nothing to
+ * copy), then size · retained · QoS · time and a small view switch.
+ */
+@Composable
+private fun ValueBlock(value: TopicValue, view: PayloadView?, json: List<JsonLine>?, onView: (PayloadView) -> Unit, detectedJson: Boolean, onCopy: (() -> Unit)?) {
     val colors = AppTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.mqtt_card_value), fontSize = 12.sp, color = colors.muted)
-        if (view != null) {
-            val options = if (detectedJson) PayloadView.entries.toList() else listOf(PayloadView.TEXT, PayloadView.HEX)
-            Segmented(options, view, label = { viewLabel(it) }, onPick = onView)
-        }
-        Column(
+        Row(
             Modifier
                 .fillMaxWidth()
                 .background(colors.tile, RoundedCornerShape(12.dp))
-                .padding(12.dp),
+                .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (onCopy != null) 0.dp else 12.dp),
         ) {
-            when {
-                value.cleared -> Text(stringResource(R.string.mqtt_cleared), fontSize = 14.sp, color = colors.muted)
-                value.isEmptyValue -> Text(stringResource(R.string.mqtt_empty_value), fontSize = 14.sp, color = colors.muted)
-                view == PayloadView.JSON && json != null -> JsonView(json)
-                view == PayloadView.HEX -> HexView(value.payload)
-                else -> TextView(value.payload)
+            Column(Modifier.weight(1f)) {
+                when {
+                    value.cleared -> Text(stringResource(R.string.mqtt_cleared), fontSize = 16.sp, color = colors.muted)
+                    value.isEmptyValue -> Text(stringResource(R.string.mqtt_empty_value), fontSize = 16.sp, color = colors.muted)
+                    view == PayloadView.JSON && json != null -> JsonView(json)
+                    view == PayloadView.HEX -> HexView(value.payload)
+                    else -> TextView(value.payload)
+                }
             }
+            onCopy?.let { CopyButton(stringResource(R.string.mqtt_copy_value), it) }
         }
         Text(
             listOfNotNull(
                 pluralStringResource(R.plurals.mqtt_bytes, value.payload.size, count(value.payload.size)),
                 stringResource(R.string.mqtt_retained).takeIf { value.retained },
                 stringResource(R.string.mqtt_qos, value.qos),
-                fullTime(Instant.ofEpochMilli(value.receivedAt)),
+                value.changedAt?.let { fullTime(Instant.ofEpochMilli(it)) } ?: stringResource(R.string.mqtt_before_session),
             ).joinToString(" · "),
             fontSize = 12.sp,
             color = colors.muted,
         )
+        if (view != null) {
+            val options = if (detectedJson) PayloadView.entries.toList() else listOf(PayloadView.TEXT, PayloadView.HEX)
+            Segmented(options, view, label = { viewLabel(it) }, compact = true, onPick = onView)
+        }
     }
 }
 
@@ -286,7 +343,11 @@ private fun TextView(payload: ByteArray) {
         val decoded = decodeUtf8(payload) ?: String(payload, Charsets.UTF_8)
         multiLineText(decoded, TEXT_SHOWN) to (decoded.length > TEXT_SHOWN)
     }
-    SelectionContainer { Text(text.first, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.ink) }
+    // A short one-line value (a reading, a state) large; anything longer at reading size.
+    val large = text.first.length <= LARGE_VALUE_CHARS && '\n' !in text.first
+    SelectionContainer {
+        Text(text.first, fontSize = if (large) 24.sp else 14.sp, fontFamily = FontFamily.Monospace, color = colors.ink)
+    }
     if (text.second) CutNote()
 }
 
@@ -354,7 +415,13 @@ private fun History(history: List<TopicValue>) {
         Text(stringResource(R.string.mqtt_card_history), fontSize = 12.sp, color = colors.muted)
         history.forEach { value ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(clockTime(value.receivedAt, formats), fontSize = 13.sp, color = colors.muted, maxLines = 1)
+                val at = value.changedAt
+                Text(
+                    if (at != null) clockTime(at, formats) else stringResource(R.string.mqtt_before_session),
+                    fontSize = 13.sp,
+                    color = colors.muted,
+                    maxLines = 1,
+                )
                 val (text, plain) = when {
                     value.cleared -> stringResource(R.string.mqtt_cleared) to false
                     value.isEmptyValue -> stringResource(R.string.mqtt_empty_value) to false
@@ -381,9 +448,10 @@ private fun History(history: List<TopicValue>) {
 @Composable
 private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, onPick: (PinMask) -> Unit, onDismiss: () -> Unit) {
     val colors = AppTheme.colors
+    // What a pin gives, said once on top; each mask says what it covers.
     AppSheet(title = stringResource(R.string.mqtt_pin_title), subtitle = stringResource(R.string.mqtt_pin_subtitle), onDismiss = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            PinMask.entries.forEach { mask ->
+            pinMasksFor(path).forEach { mask ->
                 val done = mask in pinned
                 val suggested = mask == initial && !done
                 val pinnedState = stringResource(R.string.mqtt_pinned_mark)
@@ -411,6 +479,7 @@ private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, on
                                 else -> colors.ink
                             },
                         )
+                        Text(maskHint(mask), fontSize = 13.sp, color = colors.muted)
                         Text(
                             pinFilter(path, mask),
                             fontSize = 13.sp,
@@ -435,6 +504,13 @@ private fun maskLabel(mask: PinMask): String = when (mask) {
     PinMask.TOPIC -> stringResource(R.string.mqtt_mask_topic)
     PinMask.ONE_LEVEL_BELOW -> stringResource(R.string.mqtt_mask_level)
     PinMask.WHOLE_BRANCH -> stringResource(R.string.mqtt_mask_branch)
+}
+
+@Composable
+private fun maskHint(mask: PinMask): String = when (mask) {
+    PinMask.TOPIC -> stringResource(R.string.mqtt_mask_topic_hint)
+    PinMask.ONE_LEVEL_BELOW -> stringResource(R.string.mqtt_mask_level_hint)
+    PinMask.WHOLE_BRANCH -> stringResource(R.string.mqtt_mask_branch_hint)
 }
 
 @Composable

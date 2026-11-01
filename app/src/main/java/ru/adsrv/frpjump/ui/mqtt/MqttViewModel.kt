@@ -36,11 +36,15 @@ import ru.adsrv.frpjump.mqtt.pinFilter
 import ru.adsrv.frpjump.mqtt.pinnedMasks
 import ru.adsrv.frpjump.mqtt.topicProblem
 import ru.adsrv.frpjump.mqtt.pinnedAt
+import ru.adsrv.frpjump.mqtt.searchScope
 
 /** One row of a level: a node of the tree, or the root's `$SYS` before anything was seen there. */
 data class TopicRow(val node: TopicNode, val pinned: Boolean) {
-    /** Opened by a tap, as a folder: it has children, or it is the root's `$SYS` (always a branch). */
+    /** Drawn as a folder with "⋮" for its card: it has children, or it is the root's `$SYS` (always a branch). */
     val isBranch: Boolean get() = node.hasChildren || (node.path.levels.size == 1 && node.name == SYS)
+
+    /** A tap opens its level: a branch without a value of its own. One with a value opens its card, which opens the branch. */
+    val opensLevel: Boolean get() = isBranch && node.value == null
 }
 
 /** A topic search found: its path relative to the level searched, and the node. */
@@ -68,7 +72,9 @@ data class MqttUiState(
     val limitReached: Boolean = false,
     /** The open branch's filter was refused by the broker (an ACL). */
     val branchRefused: Boolean = false,
-    /** Search hits for the query, at most [MAX_HITS]; [hitsTotal] counts them all. */
+    /** Where the search looks: the open level and below, or the root when widened to the whole tree. */
+    val searchAt: MqttPath = MqttPath.ROOT,
+    /** Search hits for the query under [searchAt], at most [MAX_HITS]; [hitsTotal] counts them all. */
     val hits: List<SearchHit> = emptyList(),
     val hitsTotal: Int = 0,
     /** When the rows were read, for their ages. */
@@ -93,6 +99,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     /** What the search field holds. */
     val query = MutableStateFlow("")
 
+    /** The search was widened to the whole tree ("Search the whole tree"); off again when the search closes. */
+    val searchWhole = MutableStateFlow(false)
+
     /** The topic scrolled to in its level, e.g. a typed one. */
     val focused = MutableStateFlow<MqttPath?>(null)
 
@@ -107,7 +116,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             }
         }
         // Searching walks the whole level: again only when the query, the level or the number of topics changes, not every tick.
-        val searches = combine(query.map { it.trim() }, s.branch, ticks.map { s.tree.topicCount }.distinctUntilChanged()) { needle, path, _ ->
+        val scope = combine(s.branch, searchWhole) { path, whole -> searchScope(path, whole) }
+        val searches = combine(query.map { it.trim() }, scope, ticks.map { s.tree.topicCount }.distinctUntilChanged()) { needle, path, _ ->
             search(s, path, needle)
         }.distinctUntilChanged().flowOn(Dispatchers.Default)
         // A pin unpinned with Undo on screen is gone from the marks and the card until Undo brings it back.
@@ -115,7 +125,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             val gone = PendingUndo.mqttPins(hidden, s.profile, s.connectionId)
             if (gone.isEmpty()) all else all.filter { it !in gone }
         }
-        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks) { values ->
+        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -127,6 +137,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[5] as Search,
                 values[6] as MqttPath?,
                 values[7] as Long,
+                values[8] as Boolean,
             )
         }.flowOn(Dispatchers.Default)
     }.let { it ?: flowOf(MqttUiState(state = MqttState.Ended, closedByTunnel = app.mqtt.closedByTunnel(sessionId))) }
@@ -146,6 +157,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         search: Search,
         card: MqttPath?,
         now: Long,
+        whole: Boolean,
     ): MqttUiState {
         if (path != shownPath) {
             shownPath = path
@@ -158,8 +170,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             val sys = MqttPath.ROOT.child(SYS)
             if (path.isRoot && children.none { it.path == sys }) add(TopicRow(TopicNode(sys, null, 0, 0, false), pinnedAt(sys, pins)))
         }
-        // Hits of another level (the search not yet run again after a move) are not shown.
-        val hits = if (search.path == path) search else Search(path, emptyList(), 0)
+        // Hits of another place (the search not yet run again after a move) are not shown.
+        val searchAt = searchScope(path, whole)
+        val hits = if (search.path == searchAt) search else Search(searchAt, emptyList(), 0)
         return MqttUiState(
             state = state,
             snapshot = snapshot,
@@ -168,6 +181,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             topicCount = s.tree.topicCount,
             limitReached = s.tree.limitReached,
             branchRefused = !path.isRoot && (path.format() + "/#") in refused,
+            searchAt = searchAt,
             hits = hits.hits,
             hitsTotal = hits.total,
             now = now,

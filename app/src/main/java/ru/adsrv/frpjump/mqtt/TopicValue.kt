@@ -16,9 +16,19 @@ class TopicValue(
     val retained: Boolean,
     /** An empty message that removed the retained value: shown as "(cleared)", without the mark. */
     val cleared: Boolean,
+    /**
+     * Delivered as retained on a subscribe, as a topic's first value: the
+     * broker kept it from before the session saw it, so when it was set is
+     * not known ([receivedAt] is only when it arrived). Shown as "before
+     * connecting" rather than an age, until a new value comes.
+     */
+    val beforeSession: Boolean = false,
 ) {
     /** An empty message that is an ordinary value: shown as `(empty value)`. */
     val isEmptyValue: Boolean get() = payload.isEmpty() && !cleared
+
+    /** When it changed as far as the session knows; null for a value from [beforeSession]. */
+    val changedAt: Long? get() = if (beforeSession) null else receivedAt
 
     companion object {
         /**
@@ -29,7 +39,7 @@ class TopicValue(
          * [previous]; an empty message drops it and counts as a clear when
          * it carried the flag or the topic was marked.
          */
-        fun of(payload: ByteArray, retain: Boolean, qos: Int, at: Long, version: MqttVersion, previous: TopicValue?): TopicValue {
+        fun of(payload: ByteArray, retain: Boolean, qos: Int, at: Long, version: MqttVersion, previous: TopicValue?, beforeSession: Boolean = false): TopicValue {
             val empty = payload.isEmpty()
             val wasMarked = previous?.retained == true
             val retained: Boolean
@@ -44,7 +54,7 @@ class TopicValue(
                     cleared = empty && (retain || wasMarked)
                 }
             }
-            return TopicValue(payload.copyOf(), qos, at, retained, cleared)
+            return TopicValue(payload.copyOf(), qos, at, retained, cleared, beforeSession && retained)
         }
     }
 }
