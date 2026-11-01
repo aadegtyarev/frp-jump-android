@@ -205,7 +205,7 @@ private fun WbDeviceControls(
                     answer = state.wbAnswers[control.id],
                     sent = state.wbSent[control.path],
                     off = off,
-                    onTitle = { onCard(control) },
+                    onCard = { onCard(control) },
                     onWrite = { onWrite(control, it) },
                 )
                 HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 16.dp))

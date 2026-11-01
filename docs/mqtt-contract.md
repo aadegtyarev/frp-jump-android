@@ -699,11 +699,51 @@ live controller; where they differ, both are read.
   the device's "!". This changes earlier behaviour, where hidden
   controls never showed and their errors never counted. The setting is
   off by default, which keeps the earlier behaviour. A row:
-  - the title; a tap on the title opens the ordinary topic card of the
-    control's topic (history, copy, pin, publish);
+  - the title;
   - the value, with units and digits (below), or its enum title;
   - the control by type, on the right;
   - an error: a red mark with plain words under the title (below).
+- **Copy on tap.** In every device (the «Система» device too: serial
+  number, release name…) a row copies:
+  - a tap on the title: the control in Wiren Board's short form,
+    `<device>/<control>` (`wb-map6s_34/Irms 1`), as wb-rules and the web
+    UI name it;
+  - a tap on a value that is only shown (read-only, alarm): the value as
+    published on the status topic, not rounded, without units, the enum
+    key rather than its title (`0.50` shown as `0.5`). A read error («—»)
+    copies nothing and says "Nothing copied: the value cannot be read
+    (read error)"; no value yet and an empty value say so the same way;
+  - a long press on the title or on such a value: the full topic
+    (`/devices/wb-map6s_34/controls/Irms 1`).
+  Each copy is confirmed by the app's copy notice naming what was copied
+  ("Copied to the clipboard: wb-map6s_34/Irms 1" / «В буфере обмена: …»),
+  with **Card** («Карточка») on it, which opens the ordinary topic card of
+  the control (history, copy, pin, publish): the title no longer opens it.
+  A notice with a button stays the longest (6 s, against 2.5 s plain and
+  4 s long), so there is time to tap Card. Widgets
+  (switch, slider, button, colour, enum, input) keep their own tap; the
+  title's tap and long press still copy on their rows. A copyable value
+  is wider to the left only; rows keep their height.
+
+  Writable controls have no value copy at all: switch, `wo-switch`,
+  range, `pushbutton`, `rgb`, enum and the editable number and text
+  fields alike; a tap on the widget is its own action (toggle, slide,
+  press, picker, list, input), and no other path copies their value
+  there (it is on the topic card). The title's tap and long press copy on
+  every row.
+
+  TalkBack, the same as on screen. On the title: the tap is "Copy
+  control" («Копировать контрол», `wb_copy_control`), the long press
+  "Copy topic" («Копировать топик», `wb_copy_topic`), each announced
+  once, and a custom action "Open the card" («Открыть карточку»,
+  `mqtt_open_card`). On a shown value (read-only, alarm): the tap is
+  "Copy value" («Копировать значение», `wb_copy_value`), the long press
+  "Copy topic".
+
+  Decided (2026-11-01, the operator): the copy notice carries Card in place
+  of the title opening the card; the value copied is the raw published
+  payload, not the shown text; writable widgets keep tap = their own
+  action, identically for all of them, with no value copy.
 - **Value display.**
   - Digits: with `precision`, the value rounded to the nearest multiple
     of it (half away from zero), computed in decimal arithmetic, never
@@ -972,7 +1012,10 @@ On a Wiren Board on the tunnel unless said otherwise.
      the error topic clears both and the value shows again.
    - A device publishing only the older one-field meta topics, and one
      publishing only the JSON meta, show alike.
-   - Tapping a control's title opens its topic card.
+   - Tapping a control's title copies `fake-wb/Irms 1`, a long press
+     `/devices/fake-wb/controls/Irms 1`; tapping `PF 1` (published `0.50`,
+     shown `0.5`) copies `0.50`; tapping a «—» copies nothing and says why;
+     **Card** on the copy notice opens the topic card.
    - A control with `hidden` true is not listed. With «Показывать
      скрытые» on, it is listed with «скрытый», and its error marks the
      device "!".

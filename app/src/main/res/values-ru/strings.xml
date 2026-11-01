@@ -1027,6 +1027,13 @@
     <string name="wb_alarm_off">Тревоги нет</string>
     <string name="wb_pick_colour">Выбрать цвет</string>
     <string name="wb_change_value">Изменить</string>
+    <string name="wb_copy_value">Копировать значение</string>
+    <string name="wb_copy_control">Копировать контрол</string>
+    <string name="wb_copy_topic">Копировать топик</string>
+    <string name="wb_copy_unreadable">Не скопировано: значение не прочитано (ошибка чтения)</string>
+    <string name="wb_copy_no_value">Не скопировано: значения ещё нет</string>
+    <string name="wb_copy_empty">Не скопировано: значение пустое</string>
+    <string name="wb_card">Карточка</string>
     <string name="wb_value">Значение</string>
     <string name="wb_number_not_number">Это не число</string>
     <string name="wb_number_min">Не меньше %1$s</string>

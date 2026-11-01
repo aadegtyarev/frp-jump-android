@@ -983,6 +983,13 @@
     <string name="wb_alarm_off">No alarm</string>
     <string name="wb_pick_colour">Pick a colour</string>
     <string name="wb_change_value">Change</string>
+    <string name="wb_copy_value">Copy value</string>
+    <string name="wb_copy_control">Copy control</string>
+    <string name="wb_copy_topic">Copy topic</string>
+    <string name="wb_copy_unreadable">Nothing copied: the value cannot be read (read error)</string>
+    <string name="wb_copy_no_value">Nothing copied: no value yet</string>
+    <string name="wb_copy_empty">Nothing copied: the value is empty</string>
+    <string name="wb_card">Card</string>
     <string name="wb_value">Value</string>
     <string name="wb_number_not_number">Not a number</string>
     <string name="wb_number_min">At least %1$s</string>
