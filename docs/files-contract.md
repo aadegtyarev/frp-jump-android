@@ -117,7 +117,7 @@ transfers that resume and run in the background.
   the next start. A copy gone from under a viewer (the cache cleared)
   closes it with a note.
 - The viewer is [Sora Editor](https://github.com/Rosemoe/sora-editor)
-  0.23.7 (LGPL-2.1) with its TextMate support (tm4e and the joni regex
+  0.24.6 (LGPL-2.1) with its TextMate support (tm4e and the joni regex
   engine), in the Compose screen as a view, read only; the editor of
   stage 4 is the same view with editing turned on.
 - It shows the text as UTF-8 (a bad byte shows as �), monospace, line
@@ -152,11 +152,11 @@ transfers that resume and run in the background.
   text. The scopes take the theme's own colours in light and dark
   (`ui/files/ViewerTheme.kt`, each at least 4.5:1 on the card; checked by
   `PaletteContrastTest`). A grammar is read when a file first needs it;
-  the text shows at once, plain, and the colours come when Sora has
-  coloured the whole text: a 2 MB, 50 000-line log about 20 s later on the
-  emulator (Sora 0.24 colours as it goes, but needs a newer Kotlin and
-  compile SDK than the app's). A line takes at most 2 s to colour, then
-  stays plain.
+  the text shows at once, plain, and the colours come as Sora goes, every
+  1000 lines from the top: a 2 MB, 50 000-line log shows coloured about
+  1 s after its text, the whole of it about 20 s later on the emulator
+  (with Sora 0.23.7 nothing was coloured until the whole was). A line
+  takes at most 2 s to colour, then stays plain.
 - Search: the magnifier opens the search field over the top bar, as in
   the file list; matches of the text, ignoring case, are marked (Sora's
   search, run off the main thread), the current one as the selection,
@@ -287,6 +287,6 @@ device, then a build for the owner's phone.
 - Decided 2026-11-01: one component for viewing and editing, Sora Editor
   with standard TextMate grammars (many languages), in place of the
   app's own tokenizers; LGPL-2.1 accepted.
-- Open: Sora 0.24 (colours a large file as it goes, every 1000 lines)
-  needs Kotlin 2.2+ and compile SDK 36; the app is on Kotlin 2.0.21 and
-  SDK 35, so the viewer stays on 0.23.7 until the toolchain moves.
+- Decided 2026-11-01: Sora 0.24.6 (colours a large file as it goes,
+  every 1000 lines), with the toolchain it needs: Kotlin 2.3 and compile
+  SDK 36 (target SDK stays 35).
