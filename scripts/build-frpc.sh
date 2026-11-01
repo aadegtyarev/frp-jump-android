@@ -7,7 +7,16 @@
 # /etc/resolv.conf, which Android does not have. The web admin UI is not
 # needed (stub dist), and -checklinkname=0 is what frp's own wlynxg/anet
 # dependency needs on Go >= 1.23.
+#
+# Then it lists the Go modules built into frpc, with their licenses, into
+# app/src/main/assets/licenses/frpc/ (modules.json and the texts; see
+# scripts/frpc-licenses/main.go), for Settings › Components and licenses;
+# commit that directory with the binary's version bump. --licenses-only
+# skips the build and lists the binaries already in jniLibs (after the
+# same `go mod download` of the pinned frp tree).
 set -euo pipefail
+LICENSES_ONLY=false
+[ "${1:-}" = --licenses-only ] && LICENSES_ONLY=true
 # The binary goes into the signed APK: the source and the toolchain are
 # pinned by commit and digest, not by tags that can be moved. Raising
 # FRP_VERSION means setting FRP_COMMIT to its tag's commit as well.
@@ -29,6 +38,7 @@ fi
 mkdir -p "$WORK/frp-$FRP_VERSION/web/frpc/dist"
 echo '<!doctype html>' > "$WORK/frp-$FRP_VERSION/web/frpc/dist/index.html"
 mkdir -p "$WORK/out" "$WORK/gocache"
+if ! $LICENSES_ONLY; then
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/gocache/build -e GOMODCACHE=/gocache/mod \
   -v "$WORK/frp-$FRP_VERSION:/src" -v "$NDK:/ndk:ro" -v "$WORK/out:/out" -v "$WORK/gocache:/gocache" \
   -w /src "$GO_IMAGE" bash -c '
@@ -42,3 +52,21 @@ done'
 install -D -m 755 "$WORK/out/frpc-arm64" "$ROOT/app/src/main/jniLibs/arm64-v8a/libfrpc.so"
 install -D -m 755 "$WORK/out/frpc-amd64" "$ROOT/app/src/main/jniLibs/x86_64/libfrpc.so"
 echo "frpc $FRP_VERSION -> app/src/main/jniLibs/{arm64-v8a,x86_64}/libfrpc.so"
+fi
+
+# The modules come from the binaries' build info, their license files from
+# the module cache the build filled: `go mod download` fetches nothing new
+# after a build, and the generator runs with GOPROXY=off.
+LICENSES=$ROOT/app/src/main/assets/licenses/frpc
+mkdir -p "$LICENSES"
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/gocache/build -e GOMODCACHE=/gocache/mod \
+  -e FRP_VERSION="$FRP_VERSION" \
+  -v "$WORK/frp-$FRP_VERSION:/src:ro" -v "$ROOT/app/src/main/jniLibs:/jni:ro" -v "$ROOT/scripts/frpc-licenses:/tool:ro" \
+  -v "$LICENSES:/outlic" -v "$WORK/gocache:/gocache" \
+  -w /src "$GO_IMAGE" bash -c '
+set -e
+go mod download
+cd /tmp
+GOPROXY=off GOFLAGS=-mod=mod go run /tool/main.go -frp-version "$FRP_VERSION" -frp-src /src -out /outlic \
+  /jni/arm64-v8a/libfrpc.so /jni/x86_64/libfrpc.so'
+echo "frpc's modules and licenses -> app/src/main/assets/licenses/frpc/"

@@ -74,6 +74,45 @@ class ComponentsTest {
         assertTrue(grammars.licenses.any { it.asset == "textmate/NOTICE.md" })
     }
 
+    private val frpc = frpcModulesFrom(File(assets, FRPC_MODULES_ASSET).readText())
+
+    @Test
+    fun `frpc's module list is the one of the frpc version built in`() {
+        assertEquals(BuildConfig.FRPC_VERSION, frpc.frp)
+        assertTrue(frpc.modules.size > 40)
+        assertEquals(GO_STD, frpc.modules.first().id)
+        assertEquals(frpc.modules.size, frpc.modules.map { it.id }.toSet().size)
+    }
+
+    @Test
+    fun `every frpc module has a license the app knows, with its text in the assets`() {
+        val bare = frpc.modules.filter { it.licenses.isEmpty() }.map { it.id }
+        assertTrue("modules without a license: $bare", bare.isEmpty())
+        val unknown = frpc.modules.flatMap { it.licenses }.flatMap { it.ids.ifEmpty { listOf("(none)") } }.filter { goLicenseTitle(it) == null }
+        assertTrue("license ids without a title: $unknown", unknown.isEmpty())
+        val missing = frpc.modules.flatMap { it.licenses }.map { it.asset }.toSet().filterNot { File(assets, it).isFile }
+        assertTrue("license texts missing: $missing", missing.isEmpty())
+        val sourceless = frpc.modules.filter { it.source == null }.map { it.id }
+        assertTrue("modules without sources: $sourceless", sourceless.isEmpty())
+    }
+
+    @Test
+    fun `every text in assets-licenses-frpc is one a module uses`() {
+        // frp's own entry (not shown under itself) counts too: every text the list names.
+        val used = Regex("licenses/frpc/[^\"]+").findAll(File(assets, FRPC_MODULES_ASSET).readText()).map { it.value }.toSet()
+        val files = File(assets, "licenses/frpc").list()!!.filter { it != "modules.json" }.map { "licenses/frpc/$it" }
+        assertEquals(emptyList<String>(), files.filterNot { it in used })
+    }
+
+    @Test
+    fun `yamux, under MPL-2-0, links to the source of the fork built in, at its commit`() {
+        val mpl = frpc.modules.filter { m -> m.licenses.any { MPL in it.ids } }
+        assertEquals(listOf("github.com/hashicorp/yamux"), mpl.map { it.id })
+        val yamux = mpl.single()
+        assertEquals("v0.0.0-20250825093530-d0154be01cd6", yamux.version)
+        assertEquals("https://github.com/fatedier/yamux/tree/d0154be01cd6", yamux.source)
+    }
+
     @Test
     fun `reflow joins wrapped lines into paragraphs, keeping headings, items and blank lines`() {
         val text = """

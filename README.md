@@ -762,7 +762,7 @@ Components and licenses.
 
 | Library | Version | License |
 | --- | --- | --- |
-| [frp](https://github.com/fatedier/frp) `frpc`, built into the APK | 0.70.0 | Apache-2.0; the Go standard library and golang.org/x packages in it (Go 1.25.3): BSD-3-Clause |
+| [frp](https://github.com/fatedier/frp) `frpc`, built into the APK | 0.70.0 | Apache-2.0; the Go standard library (Go 1.25.3) and the Go modules in it: see below |
 | [sshj](https://github.com/hierynomus/sshj) | 0.41.2 | Apache-2.0 |
 | [BouncyCastle](https://www.bouncycastle.org/) bcprov / bcpkix (via sshj) | 1.84 | MIT (Bouncy Castle licence) |
 | [Termux](https://github.com/termux/termux-app) terminal-emulator / terminal-view (JitPack) | v0.118.3 | Apache-2.0 |
@@ -785,10 +785,23 @@ through package-private members (`com.termux.terminal.RemoteTerminal`);
 re-check that class when bumping the Termux version.
 
 `frpc` is a static Go binary: besides frp it holds the Go standard library
-and golang.org/x packages (BSD-3-Clause, Copyright 2009 The Go Authors; the
-text is in `app/src/main/assets/licenses/BSD-3-Clause-Go.txt`) and the other
-Go modules frp uses, which `go version -m libfrpc.so` lists (among them
-hashicorp/yamux, MPL-2.0); those are not listed here yet.
+and the 44 Go modules frp uses (golang.org/x, quic-go, kcp-go, pion,
+wireguard-go, k8s.io and others: MIT, BSD-2/3-Clause, Apache-2.0, and
+hashicorp/yamux under MPL-2.0). The app lists them under frpc in Settings ›
+Components and licenses, each with its license files (and NOTICE files,
+where a module has them) and the address of its source at the version built
+in. yamux is built in unmodified, from frp's pinned fork
+[fatedier/yamux@d0154be01cd6](https://github.com/fatedier/yamux/tree/d0154be01cd6).
+
+The list is made from the binary itself: `scripts/build-frpc.sh` reads the
+modules from frpc's build info (what `go version -m` prints) and their
+license files from the module cache the build fills, into
+`app/src/main/assets/licenses/frpc/` (`modules.json` and one file per
+distinct license text, so each copyright line stays). That directory is
+committed with the binary, so the app build needs no Go; `ComponentsTest`
+checks that its frp version is `FRPC_VERSION` and that every module's
+license has its text. `scripts/build-frpc.sh --licenses-only` remakes it
+for the binaries already in `jniLibs` without rebuilding them.
 
 Copyright of the viewer's components: Sora Editor (C) 2020-2025 Rosemoe;
 tm4e (c) 2015-2017 Angelo ZERR, (c) 2022 Sebastian Thomschke, (c) 2023
