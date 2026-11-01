@@ -1,0 +1,163 @@
+package ru.adsrv.frpjump.enroll
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class EnrollLineParserTest {
+    /** `secrets.token_urlsafe(32)` is 43 characters; this one even starts with `--`. */
+    private val token = "--CdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde"
+
+    private fun ok(text: String): EnrollLine {
+        val result = EnrollLineParser.parse(text)
+        assertTrue("expected Ok, got $result", result is EnrollLineResult.Ok)
+        return (result as EnrollLineResult.Ok).line
+    }
+
+    private fun error(text: String): EnrollLineProblem {
+        val result = EnrollLineParser.parse(text)
+        assertTrue("expected Error, got $result", result is EnrollLineResult.Error)
+        return (result as EnrollLineResult.Error).problem
+    }
+
+    @Test
+    fun fullCliLine() {
+        val line = ok("frp-jump-client enroll https://way.example.com $token --name phone")
+        assertEquals(EnrollLine("https://way.example.com", token, "phone"), line)
+    }
+
+    @Test
+    fun lineWrappedBetweenWords() {
+        val line = ok("  frp-jump-client enroll\nhttps://way.example.com\r\n$token\n  --name\nphone\n")
+        assertEquals(EnrollLine("https://way.example.com", token, "phone"), line)
+    }
+
+    @Test
+    fun lineWrappedInsideTheToken() {
+        val line = ok("frp-jump-client enroll https://way.example.com ${token.take(20)}\n${token.drop(20)}")
+        assertEquals(token, line.token)
+    }
+
+    @Test
+    fun lineWrappedInsideTheUrl() {
+        val line = ok("frp-jump-client enroll https://way.exam\nple.com/prefix $token")
+        assertEquals("https://way.example.com/prefix", line.controlUrl)
+        assertEquals(token, line.token)
+    }
+
+    @Test
+    fun sudoPrefix() {
+        val line = ok("sudo frp-jump-client enroll https://way.example.com $token")
+        assertEquals(EnrollLine("https://way.example.com", token, null), line)
+    }
+
+    @Test
+    fun sudoWithFullPath() {
+        val line = ok("sudo /usr/local/bin/frp-jump-client enroll https://way.example.com $token")
+        assertEquals(token, line.token)
+    }
+
+    @Test
+    fun nameWithEquals() {
+        assertEquals("phone-2", ok("frp-jump-client enroll https://way.example.com $token --name=phone-2").requestedName)
+    }
+
+    @Test
+    fun wrappedAfterTheLastDotOfTheHost() {
+        assertEquals(EnrollLine("https://way.example.com", token, "phone"), ok("frp-jump-client enroll https://way.example.\ncom $token --name phone"))
+    }
+
+    @Test
+    fun wrappedInsideAHostLabel() {
+        assertEquals("https://way.example.com", ok("frp-jump-client enroll https://wa\ny.example.com $token").controlUrl)
+    }
+
+    @Test
+    fun wrappedInsideTheTokenRightAfterTheUrl() {
+        // rich glues the URL and the token's first piece when the space falls at the wrap.
+        val line = ok("frp-jump-client enroll https://way.example.com ${token.take(5)}\n${token.drop(5)}")
+        assertEquals(EnrollLine("https://way.example.com", token, null), line)
+    }
+
+    @Test
+    fun wrappedInsideTheName() {
+        assertEquals("kitchen-phone", ok("frp-jump-client enroll https://way.example.com $token --name kitchen-\nphone").requestedName)
+        assertEquals("kitchen-phone", ok("frp-jump-client enroll https://way.example.com $token --name=kitch\nen-phone").requestedName)
+    }
+
+    @Test
+    fun wrappedInsideTheCommand() {
+        val line = ok("sudo frp-jump-cli\nent enr\noll https://way.example.com $token")
+        assertEquals(EnrollLine("https://way.example.com", token, null), line)
+    }
+
+    @Test
+    fun tokenStartingWithDashesIsNotAnOption() {
+        assertEquals(token, ok("https://way.example.com $token").token)
+    }
+
+    @Test
+    fun badTokenIsNamedWithoutQuotingIt() {
+        assertEquals(EnrollLineProblem.BAD_TOKEN, error("https://way.example.com ${token.dropLast(1)}!"))
+    }
+
+    @Test
+    fun namePlaceholderMeansNoName() {
+        assertNull(ok("frp-jump-client enroll https://way.example.com $token --name <pick-a-name>").requestedName)
+    }
+
+    @Test
+    fun namePlaceholderInAnyShapeMeansNoName() {
+        // As rich may wrap it, and spelled with `=`.
+        for (tail in listOf("--name <pick-a-\nname>", "--name\n<pick-a-name>", "--name=<pick-a-name>", "--name <pick-a-name>\n")) {
+            val line = ok("frp-jump-client enroll https://way.example.com $token $tail")
+            assertEquals(EnrollLine("https://way.example.com", token, null), line)
+        }
+    }
+
+    @Test
+    fun bareUrlAndToken() {
+        assertEquals(EnrollLine("https://way.example.com:8443", token, null), ok("https://way.example.com:8443/ $token"))
+    }
+
+    @Test
+    fun httpRejected() {
+        assertEquals(EnrollLineProblem.HTTP, error("frp-jump-client enroll http://way.example.com $token"))
+    }
+
+    @Test
+    fun garbageRejected() {
+        assertEquals(EnrollLineProblem.EMPTY, error(""))
+        assertEquals(EnrollLineProblem.EMPTY, error("   \n "))
+        error("hello world")
+        assertEquals(EnrollLineProblem.NOTHING_AFTER_COMMAND, error("frp-jump-client enroll"))
+        assertEquals(EnrollLineProblem.TOO_SHORT, error("frp-jump-client enroll https://way.example.com"))
+        assertEquals(EnrollLineProblem.NAME_WITHOUT_VALUE, error("https://way.example.com $token --name"))
+        assertEquals(EnrollLineProblem.TOKEN_LENGTH, error("https://way.example.com ${token.drop(1)}"))
+        error("https://way.example.com tok\$en!")
+        error("ftp://way.example.com $token")
+    }
+
+    @Test
+    fun unsafeUrlsRejected() {
+        error("https://user:pass@way.example.com $token")
+        error("https://way.example.com/?x=1 $token")
+        error("https://way.example.com/#frag $token")
+        error("https://way.example.com:0 $token")
+        error("https:///path $token")
+    }
+
+    @Test
+    fun nameTheServerWouldRefuseIsRefusedHere() {
+        assertEquals(EnrollLineProblem.BAD_NAME, error("frp-jump-client enroll https://way.example.com $token --name ph\u0007one"))
+        assertEquals(EnrollLineProblem.BAD_NAME, error("frp-jump-client enroll https://way.example.com $token --name ${"a".repeat(64)}"))
+        assertEquals(EnrollLineProblem.BAD_NAME, error("frp-jump-client enroll https://way.example.com $token --name -phone"))
+        assertEquals("phone_2", ok("frp-jump-client enroll https://way.example.com $token --name phone_2").requestedName)
+    }
+
+    @Test
+    fun overLongUrlIsRefused() {
+        assertEquals(EnrollLineProblem.BAD_URL, error("frp-jump-client enroll https://way.example.com/${"x".repeat(3000)} $token"))
+    }
+}

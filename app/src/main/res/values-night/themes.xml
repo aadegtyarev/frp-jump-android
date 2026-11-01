@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme.FrpJump (values/themes.xml) is DayNight: in dark, by the system or by
+         Settings › Theme (setDefaultNightMode), the window shows this ground until Compose draws. -->
+    <color name="ground">#1C1B19</color>
+</resources>

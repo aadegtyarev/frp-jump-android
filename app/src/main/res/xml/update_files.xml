@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the app hands to other apps: the downloaded update APK, to the system installer
+     (update/ApkInstaller.kt), and a device's file to open or share (files/PhoneFiles.kt). -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+    <cache-path name="files" path="files-open/" />
+</paths>

@@ -1,0 +1,9 @@
+{
+  "uniqueId": "org.eclipse:tm4e",
+  "name": "Eclipse tm4e (a copy inside Sora's language-textmate)",
+  "artifactVersion": "Sora 0.24.6",
+  "website": "https://github.com/Rosemoe/sora-editor/tree/0.24.6/language-textmate/src/main/java/org/eclipse/tm4e",
+  "licenses": [
+    "EPL-2.0"
+  ]
+}

@@ -1,0 +1,125 @@
+package ru.adsrv.frpjump.ui.ssh
+
+import ru.adsrv.frpjump.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.platform.LocalAutofillManager
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.SshLogin
+import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.Field
+import ru.adsrv.frpjump.ui.SecretField
+import ru.adsrv.frpjump.ui.Segmented
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+/**
+ * User name (remembered per device and port), then this phone's key or a
+ * password. A password is kept only if "Remember" is ticked; an empty
+ * field with a remembered password uses that one. [passwordOnly] asks for
+ * a password just once ("Use key login"): no method, nothing to remember,
+ * [note] says what for, [problem] what went wrong the last time.
+ */
+@Composable
+fun SshLoginDialog(
+    target: String,
+    initial: SshLogin,
+    hasRememberedPassword: (user: String) -> Boolean,
+    onConnect: (user: String, method: SshAuthMethod, password: String, remember: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+    title: String? = null,
+    passwordOnly: Boolean = false,
+    note: String? = null,
+    problem: String? = null,
+    confirmLabel: String? = null,
+) {
+    var user by rememberSaveable { mutableStateOf(initial.user) }
+    var method by rememberSaveable { mutableStateOf(if (passwordOnly) SshAuthMethod.PASSWORD else initial.method) }
+    var password by remember { mutableStateOf("") }
+    val remembered = method == SshAuthMethod.PASSWORD && hasRememberedPassword(user)
+    // Ticked unless the owner unticks it: the password is sealed on the phone, and typing it every time is what was asked not to be.
+    var remember by rememberSaveable { mutableStateOf(true) }
+    val ready = user.isNotBlank() && (method == SshAuthMethod.KEY || password.isNotEmpty() || remembered)
+    val autofill = LocalAutofillManager.current
+    // Removed by its screen (the tunnel went, the session closed): the fill session ends with it.
+    // After commit() this is a no-op.
+    DisposableEffect(autofill) { onDispose { autofill?.cancel() } }
+    // A password typed (or filled in) and sent: the password manager may offer to save it.
+    // The dialog closes on Connect, before the login is tried; nothing else to offer then.
+    val connect = {
+        if (method == SshAuthMethod.PASSWORD && password.isNotEmpty()) autofill?.commit() else autofill?.cancel()
+        onConnect(user, method, password, remember)
+    }
+    val dismiss = {
+        autofill?.cancel()
+        onDismiss()
+    }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text(title ?: stringResource(R.string.ssh_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Field(
+                    label = stringResource(R.string.ssh_user),
+                    value = user,
+                    onValueChange = { user = it.trim() },
+                    keyboard = KeyboardType.Ascii,
+                    contentType = ContentType.Username,
+                )
+                if (!passwordOnly) {
+                    Segmented(
+                        options = listOf(SshAuthMethod.KEY, SshAuthMethod.PASSWORD),
+                        selected = method,
+                        label = { stringResource(if (it == SshAuthMethod.KEY) R.string.ssh_method_key else R.string.ssh_method_password) },
+                        onPick = { method = it },
+                    )
+                }
+                note?.let { Text(it, fontSize = 13.sp, color = AppTheme.colors.muted) }
+                if (method == SshAuthMethod.KEY) {
+                    Text(
+                        stringResource(R.string.ssh_login_key_hint, stringResource(R.string.ssh_public_key)),
+                        fontSize = 13.sp,
+                        color = AppTheme.colors.muted,
+                    )
+                } else {
+                    SecretField(
+                        password,
+                        { password = it },
+                        stringResource(R.string.ssh_method_password),
+                        saved = stringResource(R.string.ssh_password_saved).takeIf { remembered },
+                        savedSpoken = stringResource(R.string.ssh_password_saved_spoken, stringResource(R.string.ssh_method_password)),
+                        contentType = ContentType.Password,
+                    )
+                    if (!passwordOnly) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = remember, onCheckedChange = { remember = it })
+                            Text(stringResource(R.string.ssh_remember_password))
+                        }
+                    }
+                }
+                problem?.let { Text(it, fontSize = 13.sp, color = AppTheme.colors.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = ready, onClick = connect) { Text(confirmLabel ?: stringResource(R.string.connect)) }
+        },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}

@@ -1,0 +1,481 @@
+package ru.adsrv.frpjump.ui
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
+
+/** A stroked 24×24 glyph as the mockups draw their icons; tinted where it is used. */
+private fun glyph(name: String, width: Float = 2f, block: PathBuilder.() -> Unit): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).path(
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = width,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+        pathBuilder = block,
+    ).build()
+
+/** As [glyph], drawn from SVG path data [d]. */
+internal fun pathGlyph(name: String, d: String, width: Float = 1.8f): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).addPath(
+        pathData = addPathNodes(d),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = width,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    ).build()
+
+/** A rounded rectangle from ([x], [y]) of [w]×[h] with corner [r]. */
+private fun PathBuilder.roundRect(x: Float, y: Float, w: Float, h: Float, r: Float) {
+    moveTo(x + r, y)
+    horizontalLineTo(x + w - r)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x + w, y1 = y + r)
+    verticalLineTo(y + h - r)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x + w - r, y1 = y + h)
+    horizontalLineTo(x + r)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x, y1 = y + h - r)
+    verticalLineTo(y + r)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x + r, y1 = y)
+    close()
+}
+
+/** A screen on a stand, as the mockups draw a device. */
+val DeviceGlyph: ImageVector = glyph("Device", 1.8f) {
+    roundRect(4f, 5f, 16f, 11f, 2f)
+    moveTo(8f, 20f)
+    horizontalLineTo(16f)
+    moveTo(12f, 16f)
+    verticalLineTo(20f)
+}
+
+/** Two chain links: connections, and "connect". */
+val LinkGlyph: ImageVector = glyph("Link") {
+    moveTo(10f, 14f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 15.7f, y1 = 14f)
+    lineTo(18.7f, 11f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 13f, y1 = 5.3f)
+    lineTo(12f, 6.3f)
+    moveTo(14f, 10f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 8.3f, y1 = 10f)
+    lineTo(5.3f, 13f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 11f, y1 = 18.7f)
+    lineTo(12f, 17.7f)
+}
+
+/** A terminal window with a prompt. */
+val TerminalGlyph: ImageVector = glyph("Terminal") {
+    roundRect(3f, 4f, 18f, 16f, 2f)
+    moveTo(7f, 9f)
+    lineTo(10f, 12f)
+    lineTo(7f, 15f)
+    moveTo(12f, 15f)
+    horizontalLineTo(17f)
+}
+
+/** A power symbol: "disconnect". */
+val PowerGlyph: ImageVector = glyph("Power") {
+    moveTo(12f, 3f)
+    verticalLineTo(12f)
+    moveTo(6.9f, 6.9f)
+    arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = false, x1 = 17.1f, y1 = 6.9f)
+}
+
+/** Four corners pointing out: "Full screen". */
+val FullscreenGlyph: ImageVector = glyph("Fullscreen") {
+    moveTo(4f, 9f); verticalLineTo(4f); horizontalLineTo(9f)
+    moveTo(15f, 4f); horizontalLineTo(20f); verticalLineTo(9f)
+    moveTo(20f, 15f); verticalLineTo(20f); horizontalLineTo(15f)
+    moveTo(9f, 20f); horizontalLineTo(4f); verticalLineTo(15f)
+}
+
+/** Four corners pointing in: "Exit full screen". */
+val FullscreenExitGlyph: ImageVector = glyph("FullscreenExit") {
+    moveTo(4f, 9f); horizontalLineTo(9f); verticalLineTo(4f)
+    moveTo(15f, 4f); verticalLineTo(9f); horizontalLineTo(20f)
+    moveTo(20f, 15f); horizontalLineTo(15f); verticalLineTo(20f)
+    moveTo(9f, 20f); verticalLineTo(15f); horizontalLineTo(4f)
+}
+
+/** Two overlapping sheets: "Copy". */
+val CopyGlyph: ImageVector = glyph("Copy") {
+    roundRect(9f, 9f, 11f, 11f, 2f)
+    moveTo(5f, 15f); verticalLineTo(6f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 7f, y1 = 4f)
+    horizontalLineTo(15f)
+}
+
+/** A clipboard with its clip: "Paste". */
+val PasteGlyph: ImageVector = glyph("Paste") {
+    roundRect(8f, 2f, 8f, 4f, 1f)
+    moveTo(16f, 4f); horizontalLineTo(18f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20f, y1 = 6f)
+    verticalLineTo(20f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 18f, y1 = 22f)
+    horizontalLineTo(6f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 20f)
+    verticalLineTo(6f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 6f, y1 = 4f)
+    horizontalLineTo(8f)
+}
+
+/** A plus, for "add" buttons. */
+val PlusGlyph: ImageVector = glyph("Plus", 2.4f) {
+    moveTo(12f, 5f)
+    verticalLineTo(19f)
+    moveTo(5f, 12f)
+    horizontalLineTo(19f)
+}
+
+/** A viewfinder's corners with a scan line: "Scan QR code". */
+val ScanGlyph: ImageVector = glyph("Scan") {
+    moveTo(4f, 8f)
+    verticalLineTo(5f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 4f)
+    horizontalLineTo(8f)
+    moveTo(16f, 4f)
+    horizontalLineTo(19f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20f, y1 = 5f)
+    verticalLineTo(8f)
+    moveTo(20f, 16f)
+    verticalLineTo(19f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 20f)
+    horizontalLineTo(16f)
+    moveTo(8f, 20f)
+    horizontalLineTo(5f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 19f)
+    verticalLineTo(16f)
+    moveTo(7f, 12f)
+    horizontalLineTo(17f)
+}
+
+/** A flashlight: the scanner's torch. */
+val TorchGlyph: ImageVector = glyph("Torch") {
+    moveTo(7f, 3f)
+    horizontalLineTo(17f)
+    verticalLineTo(7f)
+    lineTo(15f, 10f)
+    verticalLineTo(20f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 14f, y1 = 21f)
+    horizontalLineTo(10f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 9f, y1 = 20f)
+    verticalLineTo(10f)
+    lineTo(7f, 7f)
+    close()
+    moveTo(12f, 13f)
+    verticalLineTo(15f)
+}
+
+/** A framed landscape with a sun: a picture "From gallery". */
+val PictureGlyph: ImageVector = glyph("Picture") {
+    roundRect(3f, 4f, 18f, 16f, 2f)
+    moveTo(10f, 9f)
+    arcTo(1.5f, 1.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 7f, y1 = 9f)
+    arcTo(1.5f, 1.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 10f, y1 = 9f)
+    moveTo(3f, 17f)
+    lineTo(8.5f, 12f)
+    lineTo(12f, 15f)
+    lineTo(15f, 12.5f)
+    lineTo(21f, 17f)
+}
+
+/** Two opposite arrows: direct connection. */
+val SwapGlyph: ImageVector = glyph("Swap") {
+    moveTo(4f, 8f)
+    horizontalLineTo(19f)
+    moveTo(16f, 5f)
+    lineTo(19f, 8f)
+    lineTo(16f, 11f)
+    moveTo(20f, 16f)
+    horizontalLineTo(5f)
+    moveTo(8f, 13f)
+    lineTo(5f, 16f)
+    lineTo(8f, 19f)
+}
+
+/** A circular arrow: checking again. */
+val RepeatGlyph: ImageVector = glyph("Repeat") {
+    moveTo(19f, 12f)
+    arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 16.9f, y1 = 7f)
+    moveTo(17f, 3f)
+    verticalLineTo(7f)
+    horizontalLineTo(13f)
+}
+
+/** A key: the phone's SSH key. */
+val KeyGlyph: ImageVector = glyph("Key") {
+    moveTo(11f, 12f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11f, y1 = 11.99f)
+    moveTo(11f, 12f)
+    horizontalLineTo(21f)
+    moveTo(18f, 12f)
+    verticalLineTo(15f)
+    moveTo(21f, 12f)
+    verticalLineTo(14f)
+}
+
+/** A fingerprint's ridges: unlock with fingerprint. */
+val FingerprintGlyph: ImageVector = glyph("Fingerprint", 1.8f) {
+    moveTo(6f, 10f)
+    arcTo(6f, 6f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 18f, y1 = 10f)
+    verticalLineTo(13f)
+    moveTo(9f, 19f)
+    curveTo(9.6f, 17.5f, 9f, 14f, 9f, 11f)
+    arcTo(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 15f, y1 = 11f)
+    verticalLineTo(13f)
+    curveTo(15f, 16f, 14f, 18f, 13f, 20f)
+    moveTo(12f, 11f)
+    verticalLineTo(14f)
+    curveTo(12f, 16f, 11.5f, 18f, 10.8f, 20f)
+    moveTo(6f, 14f)
+    verticalLineTo(10f)
+}
+
+/** A crossed-out eye: hidden from view. */
+val EyeOffGlyph: ImageVector = glyph("EyeOff") {
+    moveTo(3f, 12f)
+    curveTo(5.5f, 7.5f, 8.5f, 5.5f, 12f, 5.5f)
+    curveTo(15.5f, 5.5f, 18.5f, 7.5f, 21f, 12f)
+    curveTo(18.5f, 16.5f, 15.5f, 18.5f, 12f, 18.5f)
+    curveTo(8.5f, 18.5f, 5.5f, 16.5f, 3f, 12f)
+    close()
+    moveTo(15f, 12f)
+    arcTo(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 15f, y1 = 11.99f)
+    moveTo(4f, 4f)
+    lineTo(20f, 20f)
+}
+
+/** A circle half filled: light or dark. */
+val ThemeGlyph: ImageVector = ImageVector.Builder("Theme", 24.dp, 24.dp, 24f, 24f)
+    .path(fill = SolidColor(Color.Black)) {
+        moveTo(12f, 4f)
+        arcTo(8f, 8f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 12f, y1 = 20f)
+        close()
+    }
+    .path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f) {
+        moveTo(12f, 4f)
+        arcTo(8f, 8f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11.99f, y1 = 4f)
+        close()
+    }
+    .build()
+
+/** A house: the root of a tree (the MQTT explorer's path bar). */
+val HomeGlyph: ImageVector = glyph("Home", 1.8f) {
+    moveTo(4f, 11f)
+    lineTo(12f, 4f)
+    lineTo(20f, 11f)
+    moveTo(6f, 9.5f)
+    verticalLineTo(19f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 20f)
+    horizontalLineTo(17f)
+    arcTo(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 18f, y1 = 19f)
+    verticalLineTo(9.5f)
+}
+
+/** A folder: the file screen, and folders in it. */
+val FolderGlyph: ImageVector = glyph("Folder", 1.8f) {
+    moveTo(3f, 7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 5f)
+    horizontalLineTo(9.5f)
+    lineTo(11.5f, 7f)
+    horizontalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 21f, y1 = 9f)
+    verticalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 19f)
+    horizontalLineTo(5f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 3f, y1 = 17f)
+    close()
+}
+
+/** A sheet with a folded corner: a file. */
+val FileGlyph: ImageVector = glyph("File", 1.8f) {
+    moveTo(14f, 3f)
+    horizontalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 5f, y1 = 5f)
+    verticalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 21f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 19f, y1 = 19f)
+    verticalLineTo(8f)
+    close()
+    moveTo(14f, 3f)
+    verticalLineTo(8f)
+    horizontalLineTo(19f)
+}
+
+/** A sheet with a question in it: a device, socket or a broken link's missing target. */
+val OtherFileGlyph: ImageVector = glyph("OtherFile", 1.8f) {
+    moveTo(7f, 3f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 5f)
+    verticalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17f, y1 = 21f)
+    horizontalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 19f)
+    verticalLineTo(5f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 7f, y1 = 3f)
+    close()
+    moveTo(10f, 10f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 12f, y1 = 12f)
+    verticalLineTo(13.5f)
+    moveTo(12f, 17f)
+    verticalLineTo(17.01f)
+}
+
+/** A box with a lid and a handle: an archive. */
+val ArchiveGlyph: ImageVector = glyph("Archive", 1.8f) {
+    roundRect(3f, 4f, 18f, 5f, 1f)
+    moveTo(5f, 9f)
+    verticalLineTo(18f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 20f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 19f, y1 = 18f)
+    verticalLineTo(9f)
+    moveTo(10f, 13f)
+    horizontalLineTo(14f)
+}
+
+/** A sheet with a folded corner and a prompt: an executable file. */
+val ExecutableGlyph: ImageVector = glyph("Executable", 1.8f) {
+    moveTo(14f, 3f)
+    horizontalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 5f, y1 = 5f)
+    verticalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 7f, y1 = 21f)
+    horizontalLineTo(17f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 19f, y1 = 19f)
+    verticalLineTo(8f)
+    close()
+    moveTo(14f, 3f)
+    verticalLineTo(8f)
+    horizontalLineTo(19f)
+    moveTo(8.5f, 12f)
+    lineTo(10.5f, 14f)
+    lineTo(8.5f, 16f)
+    moveTo(12.5f, 16f)
+    horizontalLineTo(15.5f)
+}
+
+/** Two chain links pulled apart, with marks at the break: a link whose target is gone. */
+val BrokenLinkGlyph: ImageVector = glyph("BrokenLink") {
+    moveTo(13.5f, 6.5f)
+    lineTo(14f, 6f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19.7f, y1 = 11.7f)
+    lineTo(17.5f, 13.9f)
+    moveTo(10.5f, 17.5f)
+    lineTo(10f, 18f)
+    arcTo(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4.3f, y1 = 12.3f)
+    lineTo(6.5f, 10.1f)
+    moveTo(8f, 3f)
+    verticalLineTo(5f)
+    moveTo(3f, 8f)
+    horizontalLineTo(5f)
+    moveTo(16f, 21f)
+    verticalLineTo(19f)
+    moveTo(21f, 16f)
+    horizontalLineTo(19f)
+}
+
+/** A magnifier: search. */
+val SearchGlyph: ImageVector = glyph("Search") {
+    moveTo(4f, 10.5f)
+    arcTo(6.5f, 6.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17f, y1 = 10.5f)
+    arcTo(6.5f, 6.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 10.5f)
+    close()
+    moveTo(15.2f, 15.2f)
+    lineTo(20f, 20f)
+}
+
+/** An arrow down onto a tray: download to the phone. */
+val DownloadGlyph: ImageVector = glyph("Download") {
+    moveTo(12f, 4f)
+    verticalLineTo(15f)
+    moveTo(7f, 10f)
+    lineTo(12f, 15f)
+    lineTo(17f, 10f)
+    moveTo(5f, 19.5f)
+    horizontalLineTo(19f)
+}
+
+/** Three joined dots: share. */
+val ShareGlyph: ImageVector = glyph("Share", 1.8f) {
+    circle(18f, 5.5f, 2.5f)
+    circle(6f, 12f, 2.5f)
+    circle(18f, 18.5f, 2.5f)
+    moveTo(8.2f, 10.8f)
+    lineTo(15.8f, 6.7f)
+    moveTo(8.2f, 13.2f)
+    lineTo(15.8f, 17.3f)
+}
+
+/** A ticked box with another behind it: select all. */
+val SelectAllGlyph: ImageVector = glyph("SelectAll", 1.8f) {
+    roundRect(7f, 7f, 13f, 13f, 2.5f)
+    moveTo(4f, 15f)
+    verticalLineTo(6.5f)
+    arcTo(2.5f, 2.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 6.5f, y1 = 4f)
+    horizontalLineTo(15f)
+    moveTo(10.5f, 13.5f)
+    lineTo(12.5f, 15.5f)
+    lineTo(16.5f, 11f)
+}
+
+/** A circle at ([x], [y]) of radius [r], as two arcs. */
+private fun PathBuilder.circle(x: Float, y: Float, r: Float) {
+    moveTo(x - r, y)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x + r, y1 = y)
+    arcTo(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = x - r, y1 = y)
+    close()
+}
+
+/** A tick: done. */
+val DoneGlyph: ImageVector = glyph("Done", 2.2f) {
+    moveTo(5f, 12.5f)
+    lineTo(10f, 17.5f)
+    lineTo(19f, 7f)
+}
+
+/** A triangle with "!": mind this. */
+val WarnGlyph: ImageVector = glyph("Warn", 1.8f) {
+    moveTo(12f, 4f)
+    lineTo(21f, 19.5f)
+    horizontalLineTo(3f)
+    close()
+    moveTo(12f, 10f)
+    verticalLineTo(13.5f)
+    moveTo(12f, 16.5f)
+    verticalLineTo(16.51f)
+}
+
+/** A circle with "i": for your information. */
+val InfoGlyph: ImageVector = glyph("Info", 1.8f) {
+    moveTo(3.5f, 12f)
+    arcTo(8.5f, 8.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20.5f, y1 = 12f)
+    arcTo(8.5f, 8.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 3.5f, y1 = 12f)
+    close()
+    moveTo(12f, 11f)
+    verticalLineTo(16f)
+    moveTo(12f, 8f)
+    verticalLineTo(8.01f)
+}
+
+/** A push pin: a local port fixed to its connection. */
+val PinGlyph: ImageVector = glyph("Pin", 1.8f) {
+    moveTo(9f, 4f)
+    horizontalLineTo(15f)
+    moveTo(10f, 4f)
+    verticalLineTo(10f)
+    lineTo(7f, 14f)
+    horizontalLineTo(17f)
+    lineTo(14f, 10f)
+    verticalLineTo(4f)
+    moveTo(12f, 14f)
+    verticalLineTo(20f)
+}
+
+/** A puzzle piece: the MQTT explorer's plugins. */
+val PluginGlyph: ImageVector = pathGlyph("Plugin", "M4 6.5H8.25a2.5 2.5 0 1 1 5 0H17.5v4.25a2.5 2.5 0 1 1 0 5V20H4Z")

@@ -1,0 +1,74 @@
+package ru.adsrv.frpjump.ui.profiles
+
+import ru.adsrv.frpjump.profiles.ProfileIndex
+
+/** Where a profile is enrolled, as the owner knows it. */
+data class ProfileServer(val host: String, val deviceName: String)
+
+/** One profile as the switcher and the profile list show it. */
+data class ProfileItem(
+    val id: String,
+    val name: String,
+    /** A [ru.adsrv.frpjump.profiles.PROFILE_COLORS] name. */
+    val color: String,
+    /** Null while loading ([serverLoaded] false) or without an enrollment. */
+    val server: ProfileServer?,
+    /** [server] has been read: until then the row shows no line about it and cannot be forgotten. */
+    val serverLoaded: Boolean,
+    val tunnels: Int,
+    val current: Boolean,
+    /** Its server rejected its token (401): the phone was deleted there. */
+    val removed: Boolean,
+) {
+    /** The letter on its tile. */
+    val letter: String get() = name.trim().take(1).uppercase().ifEmpty { "?" }
+}
+
+/** The profiles in the owner's order, with what each one has going on. [servers] lists those read so far. */
+fun profileItems(
+    index: ProfileIndex,
+    tunnels: Map<String, Int>,
+    removed: Set<String>,
+    servers: Map<String, ProfileServer?>,
+): List<ProfileItem> = index.profiles.map {
+    ProfileItem(
+        id = it.id,
+        name = it.name,
+        color = it.color,
+        server = servers[it.id],
+        serverLoaded = it.id in servers,
+        tunnels = tunnels[it.id] ?: 0,
+        current = it.id == index.current,
+        removed = it.id in removed,
+    )
+}
+
+/**
+ * Profiles deleted on their server that the device list does not show:
+ * their polls stopped quietly, so the list says so in one line. (The
+ * current one gets a screen of its own.)
+ */
+fun removedElsewhere(items: List<ProfileItem>): List<ProfileItem> = items.filter { it.removed && !it.current }
+
+/** A profile's server as read from its credentials, and from which of its enrollments ([ru.adsrv.frpjump.profiles.ProfilesState.enrollments]). */
+data class KnownServer(val enrollment: Int, val server: ProfileServer?)
+
+/**
+ * What [known] still says about the profiles' current enrollments
+ * ([enrollments], by id): a server read from an enrollment since replaced
+ * in place is dropped, so the row shows "loading" rather than the old server.
+ */
+fun currentServers(enrollments: Map<String, Int>, known: Map<String, KnownServer>): Map<String, ProfileServer?> =
+    known.filter { (id, k) -> id in enrollments && k.enrollment == enrollments[id] }.mapValues { it.value.server }
+
+/**
+ * The profiles whose server to read (the Keystore), of [enrollments] (by
+ * id): new ones, those whose enrollment was filled in or wiped since, and
+ * those read without one (the Keystore may have been unavailable). The
+ * others keep what was read.
+ */
+fun serversToLoad(enrollments: Map<String, Int>, known: Map<String, KnownServer>): Set<String> =
+    enrollments.filterTo(mutableMapOf()) { (id, enrollment) ->
+        val k = known[id]
+        k == null || k.enrollment != enrollment || k.server == null
+    }.keys

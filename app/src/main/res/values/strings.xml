@@ -1,0 +1,1030 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">frp-jump</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="more">More</string>
+    <string name="settings">Settings</string>
+    <plurals name="tunnels">
+        <item quantity="one">%d tunnel</item>
+        <item quantity="other">%d tunnels</item>
+    </plurals>
+    <plurals name="terminals">
+        <item quantity="one">%d terminal</item>
+        <item quantity="other">%d terminals</item>
+    </plurals>
+
+    <!-- Profile colours, as the colour picker names them for accessibility -->
+    <string name="color_green">Green</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_purple">Purple</string>
+    <string name="color_blue">Blue</string>
+    <string name="color_crimson">Crimson</string>
+    <string name="color_grey">Grey</string>
+
+    <!-- Profile switcher and list -->
+    <string name="switch_profile">Switch profile</string>
+    <string name="profiles">Profiles</string>
+    <string name="profiles_hint">Tunnels of all profiles run at the same time</string>
+    <string name="profile_server">%1$s · phone “%2$s”</string>
+    <string name="profile_not_enrolled">Not connected</string>
+    <string name="profile_removed_badge">Removed</string>
+    <string name="profile_removed_sub">Removed from its server</string>
+    <string name="profile_current">Shown now</string>
+    <string name="add_profile">Add profile</string>
+    <string name="other_profiles">Other profiles</string>
+    <string name="name_and_color">Name and colour</string>
+    <string name="forget_profile">Forget profile</string>
+    <string name="removed_elsewhere_one">“%s” was removed from its server</string>
+    <plurals name="removed_elsewhere_many">
+        <item quantity="one">%d profile was removed from its server</item>
+        <item quantity="other">%d profiles were removed from their servers</item>
+    </plurals>
+
+    <!-- Forget profile -->
+    <string name="forget_title">Forget “%s”?</string>
+    <string name="forget_text">Its tunnels disconnect and this phone (“%1$s”) is removed from %2$s. Its credentials and saved lists are wiped from this phone.</string>
+    <string name="forget_text_removed">This phone was already removed from %s. Its credentials and saved lists are wiped from this phone.</string>
+    <string name="forget_text_local">Its tunnels disconnect and its data on this phone is wiped.</string>
+    <string name="forget">Forget</string>
+    <string name="profile_forgotten">Profile “%s” forgotten.</string>
+    <string name="forget_server_not_told">The server was not told (%1$s). Remove “%2$s” from a laptop: frp-jump-client devices delete %3$s</string>
+    <string name="forget_busy">Another profile is being forgotten; wait until it is done.</string>
+    <string name="profile_added">Profile “%s” added.</string>
+    <string name="profile_gone">This profile was forgotten meanwhile.</string>
+    <string name="forget_failed">Could not wipe this profile’s data (%s). Try again.</string>
+
+    <!-- Profile name and colour -->
+    <string name="profile_name">Name</string>
+    <string name="profile_name_missing">Give the profile a name.</string>
+    <string name="profile_color">Profile colour</string>
+
+    <!-- Add profile -->
+    <string name="new_profile">New profile</string>
+    <string name="enroll_step_invite">1. Get an invitation</string>
+    <string name="enroll_step_invite_text">On a computer with frp-jump, run this command. It prints the line and a QR code of it.</string>
+    <string name="enroll_command" translatable="false">frp-jump-client devices add-token --name phone --qr</string>
+    <string name="enroll_step_paste">2. Scan or paste</string>
+    <string name="enroll_line_label">Or paste the whole line</string>
+    <string name="enroll_line_placeholder" translatable="false">frp-jump-client enroll https://… &lt;token&gt;</string>
+    <string name="enroll_line_ok">Server: %s</string>
+    <string name="enroll_scan">Scan QR code</string>
+    <string name="camera_rationale">The camera only reads the QR code; nothing is recorded. Tap Scan QR code again to allow it, or paste the line.</string>
+    <string name="camera_denied">Camera access is off for this app.</string>
+    <string name="camera_open_settings">Open settings</string>
+    <string name="scan_hint">Point the camera at the QR code printed by add-token --qr</string>
+    <string name="scan_not_enroll">This QR is not a frp-jump enroll line</string>
+    <string name="scan_torch_on">Turn the torch on</string>
+    <string name="scan_torch_off">Turn the torch off</string>
+    <string name="scan_no_torch">This camera has no torch</string>
+    <string name="scan_torch_failed">Could not switch the torch</string>
+    <string name="scan_camera_failed">Could not open the camera. Pick a picture of the code from the gallery, or go back and paste the line.</string>
+    <string name="scan_from_gallery">From gallery</string>
+    <string name="scan_no_code">No QR code found in this picture</string>
+    <string name="scan_picture_failed">Could not open this picture</string>
+    <string name="enroll_phone_name">Name for this phone</string>
+    <string name="enroll_step_name">3. Name the profile</string>
+    <string name="enroll_submit">Connect phone</string>
+    <string name="enroll_store_failed">Enrolled as %1$s on the server, but could not store the credentials (%2$s). Delete it from a laptop: frp-jump-client devices delete %3$s</string>
+
+    <!-- Device list -->
+    <string name="device_online">Online</string>
+    <string name="device_tunnels_open">Tunnels open: %s</string>
+    <string name="tunnels_show">Show connections</string>
+    <string name="device_was_online">Was online</string>
+    <string name="device_last_seen">Last seen %s</string>
+    <string name="device_disabled">Disabled</string>
+    <string name="devices_empty">No other devices yet.</string>
+    <string name="devices_search">Search devices</string>
+    <string name="devices_search_hint">Name or label</string>
+    <string name="search_close">Close search</string>
+    <string name="devices_no_match">No devices match “%s”.</string>
+
+    <!-- Device icons (the server's fixed set) -->
+    <string name="device_icon_linux" translatable="false">Linux</string>
+    <string name="device_icon_wirenboard" translatable="false">Wiren Board</string>
+    <string name="device_icon_server">Server</string>
+    <string name="device_icon_pc">Computer</string>
+    <string name="device_icon_laptop">Laptop</string>
+    <string name="device_icon_router">Router</string>
+    <string name="device_icon_sbc">Single-board computer</string>
+    <string name="device_icon_camera">Camera</string>
+    <string name="device_icon_home">Home</string>
+    <string name="device_icon_phone">Phone</string>
+
+    <!-- Device label and icon -->
+    <string name="device_menu_label">Label…</string>
+    <string name="device_menu_icon">Icon…</string>
+    <string name="device_display_title">Label and icon</string>
+    <string name="device_label_field">Label</string>
+    <string name="device_label_hint">For example, Garage panel</string>
+    <string name="device_label_counter" translatable="false">%1$d/%2$d</string>
+    <string name="device_label_counter_spoken">%1$d of %2$d characters</string>
+    <string name="device_icon_section">Icon</string>
+    <string name="device_icon_auto">Auto</string>
+    <string name="device_icon_auto_detected">Auto: %s</string>
+    <string name="device_icon_other">Other</string>
+    <string name="label_refused_too_long_raw">The label is too long</string>
+    <string name="label_refused_too_long">The label is longer than 64 characters</string>
+    <string name="label_refused_control">The label contains a line break or a control character</string>
+    <string name="label_refused_invisible">The label contains an invisible or formatting character</string>
+    <string name="label_refused_not_visible">The label has no visible characters</string>
+    <string name="display_phone_disabled">This phone is disabled on the server, so nothing can be changed</string>
+    <string name="display_unreachable">No connection to the server, not saved</string>
+    <string name="offline_unreachable">No connection to the server · updated %s</string>
+    <string name="offline_server_error">The server returned an error · updated %s</string>
+    <string name="tap_to_retry">Tap to retry</string>
+
+    <!-- Removed (current profile) -->
+    <string name="removed_text">This phone was removed from the server of “%s”. Its tunnels are stopped.</string>
+    <string name="enroll_again">Enroll again</string>
+    <string name="enroll_again_failed">Could not wipe the old credentials (%s). Try again.</string>
+
+    <!-- Settings: profile group -->
+    <string name="settings_profile_group">Profile “%s”</string>
+    <string name="forget_profile_hint">Disconnects its tunnels and removes the phone from the server</string>
+
+    <!-- Tunnels notification -->
+    <string name="notification_channel">Tunnels</string>
+    <plurals name="tunnels_in_profiles">
+        <item quantity="one">%2$s in %1$d profile</item>
+        <item quantity="other">%2$s in %1$d profiles</item>
+    </plurals>
+    <string name="disconnect_all">Disconnect all</string>
+    <plurals name="tunnels_restoring">
+        <item quantity="one">Restoring %d tunnel…</item>
+        <item quantity="other">Restoring %d tunnels…</item>
+    </plurals>
+    <plurals name="restore_notice_title">
+        <item quantity="one">Tap to restore %d tunnel</item>
+        <item quantity="other">Tap to restore %d tunnels</item>
+    </plurals>
+    <string name="restore_notice_text">Android stopped the app while tunnels were up and did not let them start again in the background. Settings › Battery lets them come back by themselves.</string>
+    <string name="restore_notice_title_unknown">Tap to restore tunnels</string>
+    <plurals name="keep_notice_title">
+        <item quantity="one">Tap to keep %d tunnel running</item>
+        <item quantity="other">Tap to keep %d tunnels running</item>
+    </plurals>
+    <string name="keep_notice_title_unknown">Tap to keep tunnels running</string>
+    <string name="keep_notice_text">Android did not let the tunnels service start in the background, so it may stop the tunnels. Settings › Battery lets it start by itself.</string>
+    <string name="tunnels_restoring_unknown">Restoring tunnels…</string>
+    <string name="restore_waiting_network">Waiting for network…</string>
+    <string name="restore_waiting_unlock">Waiting for unlock…</string>
+    <string name="disconnect_all_failed">Couldn’t reach the server. Tunnels may come back.</string>
+    <string name="notifications_off">Notifications off: no restore notices</string>
+    <string name="notifications_allow">Allow</string>
+
+    <!-- Settings: battery -->
+    <string name="battery">Battery</string>
+    <string name="battery_hint">Android may stop tunnels</string>
+    <string name="battery_fix">Fix</string>
+    <string name="battery_no_settings">This phone has no battery optimisation settings screen.</string>
+
+    <!-- Direct or through the server -->
+    <string name="setting_direct">Direct connection (P2P)</string>
+    <string name="setting_direct_hint">Faster. If it does not work, connections go through the server.</string>
+    <string name="direct_channel">Direct connection</string>
+    <string name="direct_channel_description">When a direct connection did not work and a connection went through the server</string>
+    <string name="direct_failed_title">Direct didn’t work: %s</string>
+    <string name="direct_failed_text">%s already works through the server. The network does not seem to let direct connections through.</string>
+    <string name="direct_kept_text">%s is kept through the server on this network.</string>
+    <string name="retry_direct">Retry direct</string>
+    <string name="keep_through_server">Keep through the server</string>
+    <string name="keep_no_network">No network right now: the choice is kept per network. Try again once connected.</string>
+    <!-- Bottom navigation -->
+    <string name="tab_devices">Devices</string>
+    <string name="tab_connections">Connections</string>
+    <string name="tab_sessions">Sessions</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Connection kinds and states (the same words on every screen) -->
+    <string name="kind_web">Web</string>
+    <string name="kind_ssh" translatable="false">SSH</string>
+    <string name="kind_tcp" translatable="false">TCP</string>
+    <string name="kind_web_tile" translatable="false">WEB</string>
+    <string name="kind_ssh_tile" translatable="false">SSH</string>
+    <string name="kind_tcp_tile" translatable="false">TCP</string>
+    <string name="state_not_connected">Not connected</string>
+    <string name="state_device_offline">Device offline</string>
+    <string name="connections_search">Search connections</string>
+    <string name="connections_search_hint">Device or connection</string>
+    <string name="connections_no_match">No connections match “%s”.</string>
+    <string name="state_connecting">Connecting…</string>
+    <string name="state_disconnecting">Disconnecting…</string>
+    <string name="state_trying_direct">Trying direct…</string>
+    <string name="state_waiting_device">Waiting for the device…</string>
+    <string name="state_direct">Direct</string>
+    <string name="state_through_server">Through the server</string>
+    <string name="state_kept_through_server">Kept through the server</string>
+    <string name="state_failed">Failed</string>
+
+    <!-- Connection rows and their actions -->
+    <string name="connection_details">Port %1$d</string>
+    <string name="connection_details_https">Port %1$d · HTTPS</string>
+    <string name="connection_details_ssh_key">Port %1$d · %2$s · phone key</string>
+    <string name="connection_details_ssh_password">Port %1$d · %2$s · password</string>
+    <string name="connection_unsaved">Port %d</string>
+    <string name="connection_actions">Actions with “%s”</string>
+    <string name="connect">Connect</string>
+    <string name="connect_and_open">Connect and open</string>
+    <string name="disconnect_named">Disconnect “%s”</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="disconnect_all_tunnels">Disconnect all tunnels</string>
+    <string name="disconnect_device_tunnels">Disconnect tunnels of “%s”</string>
+    <plurals name="notification_sessions">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
+    <string name="retry">Retry</string>
+    <string name="open">Open</string>
+    <string name="terminal">Terminal</string>
+    <string name="terminal_count">Terminal · %d</string>
+    <plurals name="terminal_sessions_ended">
+        <item quantity="one">%d ended</item>
+        <item quantity="other">%d ended</item>
+    </plurals>
+    <string name="notice_dismiss">Hide</string>
+    <!-- Undo instead of confirm: the notice shared by deletes, disconnects and closes in a row -->
+    <string name="undo_deleted">Deleted: %d</string>
+    <string name="undo_disconnected">Disconnected: %d</string>
+    <string name="undo_closed">Closed: %d</string>
+    <string name="undo">Undo</string>
+    <string name="ssh_password_saved_spoken">%s, saved</string>
+    <plurals name="terminal_sessions_count">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
+    <string name="copy_address">Copy address</string>
+    <string name="terminal_copied">Copied to the clipboard: %s</string>
+    <string name="address_copied">Copied %s</string>
+    <string name="fullscreen">Full screen</string>
+    <string name="fullscreen_exit">Exit full screen</string>
+    <string name="open_in_browser">Open in browser</string>
+    <string name="open_in_ssh_app">Open in external app</string>
+    <string name="no_ssh_app">No installed app opens ssh:// links.</string>
+    <string name="no_browser">No browser installed; copy the address instead.</string>
+    <string name="change">Change</string>
+    <string name="delete">Delete</string>
+    <string name="delete_failed">Could not delete (%s). Try again.</string>
+    <string name="tunnel_not_listed">The server has not listed the connection yet; it will appear on a later poll.</string>
+
+    <!-- Device card -->
+    <string name="device_profile_chip">Profile “%s”</string>
+    <string name="device_offline">Offline</string>
+    <string name="connections_header">Connections</string>
+    <string name="connections_active_of">%1$d of %2$d active</string>
+    <string name="device_no_connections">No connections yet. Add a web page, SSH or any TCP port of this device.</string>
+    <string name="new_connection_button">Connection</string>
+    <string name="mismatch_banner">%s Running tunnels are left as they are.</string>
+
+    <!-- New / change connection sheet -->
+    <string name="new_connection">New connection</string>
+    <string name="change_connection">Change connection</string>
+    <string name="connection_to">to %s</string>
+    <string name="connection_kind">Kind</string>
+    <string name="port_on_device">Port on the device</string>
+    <string name="port_missing">Enter a port.</string>
+    <string name="port_out_of_range">A port is a number from 1 to 65535.</string>
+    <string name="preset_named" translatable="false">%1$s · %2$d</string>
+    <string name="connection_name">Name</string>
+    <string name="connection_name_hint">For example: %s</string>
+    <string name="connection_name_taken">Another connection to this port already has this name.</string>
+    <string name="https" translatable="false">HTTPS</string>
+    <string name="https_hint">A self-signed certificate is remembered after you confirm it on the first visit</string>
+    <string name="ssh_user">User</string>
+    <string name="ssh_user_missing">Enter a user.</string>
+    <string name="connect_now">Connect now</string>
+    <string name="save_failed">Could not save (%s). Try again.</string>
+
+    <!-- Connections tab -->
+    <string name="connections_empty">No saved connections yet. Open a device on Devices and tap “Connection”.</string>
+
+    <!-- Sessions tab -->
+    <string name="sessions_empty">No open sessions. Tap “Terminal” or “MQTT” on a connection.</string>
+    <string name="terminal_state_connecting">Connecting…</string>
+    <string name="terminal_state_open">Open</string>
+    <string name="terminal_state_asks">Waiting for you</string>
+    <string name="terminal_state_ended">Ended</string>
+    <string name="terminal_state_reconnecting">Reconnecting…</string>
+
+    <!-- HTTPS certificates -->
+    <string name="cert_unknown_title">Trust this certificate?</string>
+    <string name="cert_unknown_text">%1$s:%2$d presents a certificate this phone does not know yet. Compare its SHA-256 fingerprint with the one on the device before you trust it.</string>
+    <string name="cert_changed_title">The certificate has changed</string>
+    <string name="cert_changed_text">%1$s:%2$d presents a different certificate than the one you trusted before. If the device did not get a new certificate, someone may be intercepting the connection.</string>
+    <string name="cert_issued_to">Issued to: %s</string>
+    <string name="cert_fingerprint_now">SHA-256 now</string>
+    <string name="cert_fingerprint_before">SHA-256 trusted before</string>
+    <string name="cert_trust">Trust</string>
+    <string name="cert_trust_new">Trust the new one</string>
+    <string name="web_not_tls">The device answers this port over HTTP, not HTTPS.</string>
+    <string name="web_open_http">Open over HTTP</string>
+    <string name="web_http_on_443">Opened over HTTP for now: port 443 always opens over HTTPS. For HTTP, use the port the device serves it on.</string>
+    <string name="web_not_tls_unsaved">Opened over HTTP; the connection still says HTTPS, change it with Edit in the connection’s menu.</string>
+    <string name="cert_refused">Not opened: the certificate was not trusted.</string>
+    <string name="cert_try_again">Try again</string>
+    <string name="download_https">Files of an HTTPS connection cannot be downloaded here: the system downloader does not trust the certificate you confirmed in the app.</string>
+    <string name="protocol_clash_ssh">Another connection uses this port for SSH; SSH and other kinds cannot share a port.</string>
+    <string name="protocol_clash_other">Another connection uses this port as Web or TCP; SSH cannot share it.</string>
+    <string name="kind_locked">Disconnect to change the kind or the port.</string>
+    <string name="local_port">Local port</string>
+    <string name="local_port_auto">Auto</string>
+    <string name="local_port_note">Auto picks one from Settings › Local ports. A number (1024–65535) is kept for this connection only and never moves.</string>
+    <string name="local_port_locked">Disconnect to change the local port.</string>
+    <string name="local_port_out_of_range">A local port is a number from %d to 65535.</string>
+    <string name="local_port_pinned_elsewhere">Already pinned by the connection to %s.</string>
+    <string name="local_port_other_pin">Another connection to this port pins %s; they share one tunnel, so use the same one or Auto.</string>
+    <string name="local_port_in_use">The tunnel to %s uses it now. Disconnect it or choose another port.</string>
+    <string name="local_port_tunnel_up">This connection’s tunnel is up on port %s now; pinning another would move it. Disconnect first, or leave Auto.</string>
+    <string name="local_port_pinned_mark">Pinned local port</string>
+    <string name="local_port_taken_pinned">Port %1$d is taken by another app. The tunnel stays on it and tries again every %2$d s. To use another port, disconnect and change the connection’s local port.</string>
+
+    <!-- Failures in plain words -->
+    <string name="error_not_https">Not an https:// server URL: %s</string>
+    <string name="error_unreachable">Cannot reach %1$s: %2$s</string>
+    <string name="error_broke">Connection to %1$s broke: %2$s</string>
+    <string name="error_redirect">%1$s redirects to %2$s; not following it. Check the server URL.</string>
+    <string name="error_redirect_unknown">an unknown address</string>
+    <string name="error_protocol_update_app">The server speaks protocol %1$d, this app speaks %2$d: update the app.</string>
+    <string name="error_protocol_update_server">The server speaks protocol %1$d, this app speaks %2$d: update the server.</string>
+    <string name="error_unexpected_answer">Unexpected answer from the server.</string>
+    <string name="error_key_missing">The phone’s Keystore key is gone.</string>
+    <string name="error_no_free_port">No free local port in %1$d–%2$d.</string>
+
+    <!-- How long ago a device was seen -->
+    <string name="age_just_now">just now</string>
+    <plurals name="age_seconds">
+        <item quantity="one">%d s ago</item>
+        <item quantity="other">%d s ago</item>
+    </plurals>
+    <plurals name="age_minutes">
+        <item quantity="one">%d min ago</item>
+        <item quantity="other">%d min ago</item>
+    </plurals>
+    <plurals name="age_hours">
+        <item quantity="one">%d h ago</item>
+        <item quantity="other">%d h ago</item>
+    </plurals>
+    <plurals name="age_days">
+        <item quantity="one">%d day ago</item>
+        <item quantity="other">%d days ago</item>
+    </plurals>
+    <string name="device_never_seen">Never seen</string>
+
+    <!-- Why a pasted enroll line was not understood -->
+    <string name="enroll_line_empty">Paste the enroll line printed by frp-jump-client.</string>
+    <string name="enroll_line_name_empty">--name needs a value.</string>
+    <string name="enroll_line_no_url">Expected the server URL and the token.</string>
+    <string name="enroll_line_too_short">Expected the server URL followed by the token.</string>
+    <plurals name="enroll_line_token_length">
+        <item quantity="one">The token should be %d character; check that the whole line was copied.</item>
+        <item quantity="other">The token should be %d characters; check that the whole line was copied.</item>
+    </plurals>
+    <string name="enroll_line_bad_name">The name after --name may have only Latin letters, digits, _ and -, up to 63, starting with a letter or digit.</string>
+    <string name="enroll_line_http">The server URL must start with https://, not http://.</string>
+    <string name="enroll_line_bad_url">Expected an https:// server URL followed by the token; could not read a URL in it.</string>
+    <plurals name="enroll_line_bad_token">
+        <item quantity="one">The token does not look right: it is %d letter, digit, - or _.</item>
+        <item quantity="other">The token does not look right: it is %d letters, digits, - or _.</item>
+    </plurals>
+
+    <!-- Stored credentials unreadable -->
+    <string name="storage_unreadable">This phone’s stored credentials cannot be read right now. Nothing was deleted; try again in a moment.</string>
+
+    <!-- Web view -->
+    <string name="web_forward">Forward</string>
+    <string name="web_reload">Reload</string>
+    <string name="web_tunnel_closed">This tunnel is no longer here. Go back and open it again.</string>
+    <string name="web_start_page">Start page</string>
+    <string name="web_renderer_gone">The page stopped: its renderer crashed or Android closed it to free memory.</string>
+    <string name="web_no_file_picker">No app to pick files with.</string>
+    <string name="web_blocked">Blocked: %s is not this tunnel.</string>
+    <string name="web_download_page_made">The page made this file itself; use “Open in browser” to save it.</string>
+    <string name="web_downloading">Downloading %s</string>
+    <string name="web_no_app">No app can open %s</string>
+
+    <!-- SSH console -->
+    <string name="close">Close</string>
+    <string name="key_login">Use key login</string>
+    <string name="key_login_title">Key login: %s</string>
+    <string name="key_install_working">Installing the phone’s key…</string>
+    <string name="key_install_password_note">The password is needed once, to add the phone’s key to ~/.ssh/authorized_keys on the device. It is not kept.</string>
+    <string name="key_install_confirm">Install key</string>
+    <string name="key_install_done">Key installed, key login works</string>
+    <string name="key_install_done_password_kept">Key login works and is now used, but the remembered password could not be forgotten: %s</string>
+    <string name="key_install_refused">The key is in ~/.ssh/authorized_keys, but the device refused it for “%s”: sshd may forbid key logins or read keys from another file (AuthorizedKeysFile). Logins stay with the password.</string>
+    <string name="key_install_command_failed">Could not add the key: %s. Logins stay with the password.</string>
+    <string name="key_install_connection_failed">Could not connect: %s. Logins stay with the password.</string>
+    <string name="key_install_save_failed">Key login works, but the app could not save it: %s. Logins stay with the password.</string>
+    <string name="terminal_text_smaller">Smaller text</string>
+    <string name="terminal_text_larger">Larger text</string>
+    <string name="terminal_text_size">Text size</string>
+    <string name="terminal_keyboard">Keyboard</string>
+    <plurals name="sessions_left_running">
+        <item quantity="one">%d session keeps running: Sessions tab</item>
+        <item quantity="other">%d sessions keep running: Sessions tab</item>
+    </plurals>
+    <string name="terminal_close_session">Close session</string>
+    <string name="session_close_named">Close “%s”</string>
+    <string name="terminal_reconnect">Reconnect</string>
+    <string name="terminal_status_host_key_unknown">Waiting for the host key decision</string>
+    <string name="terminal_status_host_key_changed">Blocked: host key changed</string>
+    <string name="host_key_trust_title">Trust this device?</string>
+    <string name="host_key_first">First SSH connection to %s. Its host key:</string>
+    <string name="host_key_check">On the device, `%s` prints the same line if this is really it. The key is remembered for this device and port.</string>
+    <string name="host_key_changed_title">Host key changed</string>
+    <string name="host_key_changed_text">%s shows another host key than the one trusted before. That happens after a reinstall or a firmware reset, but it can also mean someone is in between. Nothing was sent.</string>
+    <string name="host_key_trusted_before">Trusted before:</string>
+    <string name="host_key_shown_now">Shown now:</string>
+    <string name="host_key_forget_hint">Forget the old key only if you know why it changed; you will be asked to trust the new one.</string>
+    <string name="host_key_forget">Forget the old key</string>
+    <string name="ssh_login_title">SSH to %s</string>
+    <string name="ssh_method_key">Key</string>
+    <string name="ssh_method_password">Password</string>
+    <string name="ssh_password_saved">•••••••• saved</string>
+    <string name="ssh_remember_password">Remember on this phone</string>
+    <string name="ssh_login_key_hint">Uses this phone’s key (Settings › %s); the device must have it in ~/.ssh/authorized_keys.</string>
+    <string name="secret_show">Show</string>
+    <string name="secret_hide">Hide</string>
+    <string name="ssh_closed">Closed.</string>
+    <string name="ssh_tunnel_closed">The tunnel was closed.</string>
+    <string name="ssh_note_connecting">Connecting to %1$s (%2$s)…</string>
+    <string name="ssh_note_host_key_unknown">The host key of %s is not known yet.</string>
+    <string name="ssh_note_host_key_changed">WARNING: the host key of %s has changed. Not connecting.</string>
+    <string name="ssh_cannot_connect">Cannot connect: %s</string>
+    <string name="ssh_failed">SSH failed: %s</string>
+    <string name="ssh_key_refused">The device did not accept this phone’s key for “%1$s”. Add the key from Settings › %2$s to ~/.ssh/authorized_keys there, or log in with a password.</string>
+    <string name="ssh_password_refused">Wrong user name or password for “%s”.</string>
+    <string name="ssh_saved_password_refused">The saved password didn’t work for “%s”; it is kept until you enter another.</string>
+    <string name="ssh_saved_password_unreadable">The saved password for “%s” can’t be read on this phone. Enter it again.</string>
+    <string name="ssh_saved_password_missing">No password is saved for “%s” now. Enter it.</string>
+    <string name="terminal_change_login">Change login</string>
+    <string name="ssh_connection_lost">Connection lost: %s</string>
+    <string name="ssh_logged_out">Logged out (exit %d).</string>
+    <string name="ssh_connection_closed">Connection closed.</string>
+    <string name="ssh_new_shell">New shell: the previous one ended with the connection</string>
+    <string name="ssh_session_restored">Session restored</string>
+    <plurals name="ssh_sessions_restored">
+        <item quantity="one">Restored %d session</item>
+        <item quantity="other">Restored %d sessions</item>
+    </plurals>
+    <string name="terminal_close_all">Close all sessions of this phone on %s</string>
+    <string name="terminal_close_all_looking">Looking for this phone\'s sessions on %s…</string>
+    <string name="terminal_close_all_none">No sessions of this phone on %s</string>
+    <string name="terminal_close_all_failed">Could not list the sessions on %1$s: %2$s</string>
+    <string name="terminal_close_all_failed_tabs">Could not list the sessions on %1$s: %2$s. Closing its tabs only; the sessions there keep running</string>
+    <string name="terminal_close_all_still_running">still running: %s</string>
+    <string name="terminal_close_all_end_failed">Could not end the sessions on %1$s: %2$s</string>
+    <string name="ssh_tmux_failed">tmux did not start (exit %d): a plain shell instead</string>
+    <string name="terminal_reconnecting">Connection lost · reconnecting (try %d)…</string>
+    <string name="terminal_reconnect_now">Now</string>
+
+    <!-- Settings -->
+    <string name="settings_tunnels">Tunnels</string>
+    <string name="settings_background">Background</string>
+    <string name="settings_app">App</string>
+    <string name="language">Language</string>
+    <string name="language_system">System</string>
+    <string name="language_russian" translatable="false">Русский</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="local_ports">Local ports</string>
+    <string name="local_ports_hint">Tunnels listen on 127.0.0.1 on a port from this range and keep it per device and port, so bookmarks stay valid. Ports already given out stay unless they fall outside a new range.</string>
+    <string name="local_ports_from">From</string>
+    <string name="local_ports_to">To</string>
+    <string name="ports_missing">Enter two port numbers.</string>
+    <string name="ports_outside">Ports must be within %1$d–%2$d.</string>
+    <string name="ports_reversed">The first port must not be above the last.</string>
+    <plurals name="ports_too_small">
+        <item quantity="one">Use at least %d port.</item>
+        <item quantity="other">Use at least %d ports.</item>
+    </plurals>
+    <string name="background_poll">Check the server in the background</string>
+    <string name="poll_off">Off</string>
+    <plurals name="poll_seconds">
+        <item quantity="one">%d s</item>
+        <item quantity="other">%d s</item>
+    </plurals>
+    <plurals name="poll_minutes">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
+    <string name="background_poll_off_hint">Off: with the app closed, open tunnels keep running but nothing is checked; tunnels closed or devices disabled elsewhere are noticed when you open the app.</string>
+    <string name="background_poll_on_hint">With the app closed, every %s while tunnels are up (the “Tunnels” notification is shown): keeps this phone online for the server and closes tunnels that were disconnected or disabled elsewhere.</string>
+    <string name="background_poll_open_hint">While the app is open it checks every 2 s. Without tunnels nothing runs in the background.</string>
+    <string name="ssh_public_key">Phone SSH key</string>
+    <string name="ssh_public_key_hint">Add this line to ~/.ssh/authorized_keys on a device to log in with this phone’s key.</string>
+    <string name="ssh_key_failed">Cannot make or read the SSH key: %s</string>
+    <string name="copy">Copy</string>
+    <string name="share">Share</string>
+    <string name="imported_key">Imported private key</string>
+    <string name="imported_key_hint">Optional: an OpenSSH private key file you already use, tried before this phone’s key.</string>
+    <string name="imported_key_tried_first">Tried before this phone’s own key:</string>
+    <string name="import_key">Import private key</string>
+    <string name="import_key_short">Import</string>
+    <string name="replace_key">Replace</string>
+    <string name="remove_key">Remove</string>
+    <string name="import_key_failed">Not a usable private key, or a wrong passphrase (%s).</string>
+    <string name="key_file_unreadable">Cannot read that file.</string>
+    <string name="key_passphrase">Key passphrase</string>
+    <string name="key_passphrase_label">Passphrase (empty if none)</string>
+    <string name="frpc_login_failed">Cannot log in to the relay: %s</string>
+    <string name="frpc_stopped">frpc stopped (exit code %d)</string>
+    <string name="device_port_not_open">The device did not open port %1$d: its agent did not answer. Check that frp-jump-client runs on the device.</string>
+
+    <!-- Stage 7: settings, lock, theme, terminal -->
+    <string name="settings_security">Security</string>
+    <string name="background_poll_row_hint">While tunnels are open</string>
+    <string name="setting_app_lock">Unlock with fingerprint</string>
+    <string name="setting_app_lock_hint">Fingerprint or screen lock when the app opens. Tunnels keep running.</string>
+    <string name="setting_hide_in_recents">Hide in Recents</string>
+    <string name="setting_hide_in_recents_hint">No picture in Recents. May block screenshots.</string>
+    <string name="setting_app_lock_needs_screen_lock">Needs a screen lock on the phone</string>
+    <string name="lock_needs_screen_lock_text">This phone has no screen lock. Set a PIN, pattern or password in the system settings, then turn this on.</string>
+    <string name="lock_open_settings">Open settings</string>
+    <string name="lock_no_settings">This phone has no screen lock settings screen.</string>
+    <string name="lock_turn_on_title">Turn on unlock with fingerprint</string>
+    <string name="lock_prompt_title">Unlock frp-jump</string>
+    <string name="lock_prompt_subtitle">Fingerprint or screen lock</string>
+    <string name="lock_not_turned_on">Not turned on: not confirmed.</string>
+    <string name="lock_failed">Couldn’t check: %s</string>
+    <string name="lock_cancelled">Not unlocked. Tap “Unlock” to try again.</string>
+    <string name="lock_no_screen_lock_off">The phone has no screen lock any more, so unlock with fingerprint is off.</string>
+    <string name="lock_title">frp-jump is locked</string>
+    <string name="lock_text">Tunnels keep running.</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="language_glyph">Aa</string>
+    <string name="theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="settings_version">Version %1$s · frpc %2$s</string>
+    <string name="copied">Copied</string>
+    <string name="terminal_key_backspace">Backspace</string>
+    <string name="terminal_key_enter">Enter</string>
+    <string name="terminal_key_left">Left</string>
+    <string name="terminal_key_right">Right</string>
+    <string name="terminal_key_up">Up</string>
+    <string name="terminal_key_down">Down</string>
+    <string name="terminal_key_ctrl_c">Ctrl+C — interrupt</string>
+    <string name="terminal_key_ctrl_d">Ctrl+D — end of input</string>
+    <string name="terminal_key_ctrl_z">Ctrl+Z — suspend</string>
+    <string name="terminal_key_ctrl_r">Ctrl+R — search history</string>
+    <string name="terminal_key_ctrl_l">Ctrl+L — clear screen</string>
+    <string name="terminal_paste">Paste</string>
+    <string name="terminal_clipboard_empty">clipboard is empty</string>
+    <string name="terminal_clipboard_empty_notice">Nothing to paste: the clipboard has no text</string>
+    <string name="terminal_paste_lines_text">Without bracketed paste each line runs at once</string>
+    <string name="terminal_paste_run">Paste</string>
+    <string name="terminal_paste_join">Remove line breaks</string>
+    <plurals name="terminal_paste_lines_title">
+        <item quantity="one">You are pasting %d line</item>
+        <item quantity="other">You are pasting %d lines</item>
+    </plurals>
+    <string name="terminal_not_open">The session is not open.</string>
+    <string name="terminal_new_session">New session</string>
+    <string name="terminal_new_session_as">Log in as another user</string>
+    <string name="terminal_tab_menu">Close or reconnect</string>
+    <string name="terminal_session_gone">The session is gone</string>
+    <string name="snippet_run">Run</string>
+    <string name="snippet_type">Type</string>
+    <string name="snippet_add_first">+ Add command</string>
+    <string name="snippets">Commands</string>
+    <string name="snippets_hint">Tap a command to type it; long press types it and presses Enter.</string>
+    <string name="snippets_empty">No saved commands yet. They are kept on this phone for every device.</string>
+    <string name="snippet_move_up">Move up</string>
+    <string name="snippet_move_down">Move down</string>
+    <string name="snippet_add">Add command</string>
+    <string name="snippet_change">Change command</string>
+    <string name="snippet_command">Command</string>
+    <string name="snippet_delete">Delete</string>
+    <string name="device_was_online_ago">Was online %s</string>
+    <string name="device_checking">Checking…</string>
+    <string name="settings_save_failed">Couldn’t save the setting: %s</string>
+    <string name="snippet_save_failed">Couldn’t save the commands: %s</string>
+    <!-- Settings › Version and update (update/Updater.kt) -->
+    <string name="update_available">Update available: %s</string>
+    <string name="update_action">Update</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_up_to_date">Up to date · checked %s</string>
+    <string name="update_check_hint">Tap to check for updates</string>
+    <string name="update_check_failed">Couldn’t check for updates: %s</string>
+    <string name="update_rate_limited">GitHub limits checks without an account. Try again in an hour.</string>
+    <string name="update_title">Update to %s</string>
+    <string name="update_notes">What’s new</string>
+    <string name="update_download_install">Download and install</string>
+    <string name="update_progress">%1$s of %2$s</string>
+    <string name="update_install">Install</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_no_checksum">This release has no SHA-256 file, so the app does not install it.</string>
+    <string name="update_checksum_mismatch">The download does not match the published SHA-256 and was deleted. Try again.</string>
+    <string name="update_download_failed">Download failed: %s</string>
+    <string name="update_allow_title">Allow installing the update</string>
+    <string name="update_allow_text">Android installs an update from an app only once you allow it. Turn on “Allow from this source” for frp-jump and come back: the installation goes on.</string>
+    <string name="update_not_allowed">Installing apps from frp-jump is not allowed, so the update cannot be installed.</string>
+    <string name="update_no_installer">No installer on this phone opens the APK.</string>
+    <string name="update_snackbar">Update %s is available</string>
+    <string name="update_snackbar_show">Show</string>
+    <string name="update_apk_unreadable">The downloaded file is not an APK Android can read; it was deleted.</string>
+    <string name="update_apk_other_app">The downloaded APK is another app, not frp-jump; it was deleted.</string>
+    <string name="update_apk_not_newer">The downloaded APK is not newer than the installed app; it was deleted.</string>
+    <string name="update_apk_other_version">The downloaded APK is not the version this release names; it was deleted.</string>
+    <string name="update_apk_other_signer">The downloaded APK is not signed with this app’s key; it was deleted.</string>
+    <!-- Files (SFTP) -->
+    <string name="files_change_login">Change login</string>
+    <string name="files_truncated">Only the first %d entries of this folder were kept.</string>
+    <string name="files_dismiss">Dismiss</string>
+    <string name="files_not_uploaded">Not uploaded: %s</string>
+    <string name="files">Files</string>
+    <string name="files_actions">File actions</string>
+    <string name="files_show_hidden">Show hidden files</string>
+    <string name="files_download_folder">Download folder: %s</string>
+    <string name="files_choose_download_folder">Choose download folder</string>
+    <string name="files_download">Download</string>
+    <string name="files_share">Share</string>
+    <string name="files_open">Open</string>
+    <string name="files_go_to_target">Go to the target</string>
+    <string name="files_upload">Upload files</string>
+    <string name="files_go_to_folder">Go to folder</string>
+    <string name="files_path">Path</string>
+    <string name="files_go">Go</string>
+    <string name="files_connecting">Connecting…</string>
+    <string name="files_tunnel_connecting">Connecting the tunnel…</string>
+    <string name="files_no_connection">No connection</string>
+    <string name="files_offline_cached">No connection. The list as of %s; downloads and uploads wait for the connection.</string>
+    <string name="files_offline_none">No connection, and this folder was not opened before.</string>
+    <string name="files_tunnel_down">The tunnel is not connected.</string>
+    <string name="files_empty">The folder is empty.</string>
+    <string name="files_hidden_only">Only hidden files here; ⋮ › Show hidden files.</string>
+    <string name="files_list_failed">Cannot open %1$s: %2$s</string>
+    <string name="files_broken">broken link</string>
+    <string name="files_broken_toast">The link’s target does not exist.</string>
+    <string name="files_not_regular">%s is not a regular file.</string>
+    <string name="files_downloaded">Downloaded %s</string>
+    <string name="files_uploaded">Uploaded %s</string>
+    <string name="files_uploading">Uploading %s</string>
+    <string name="files_busy">%s is being transferred already.</string>
+    <string name="files_open_with">Open with</string>
+    <string name="files_no_app">No app on this phone opens %s.</string>
+    <string name="files_needs_connection">No connection to the device. Pull down to retry.</string>
+    <string name="files_folder_not_kept">The phone did not let the app keep access to that folder; choose another one.</string>
+    <string name="files_gone">This file screen is no longer open. Open Files again from the connection.</string>
+    <string name="files_link_badge">Link</string>
+    <string name="files_kind_folder">Folder</string>
+    <string name="files_kind_file">File</string>
+    <string name="files_kind_executable">Executable file</string>
+    <string name="files_kind_archive">Archive</string>
+    <string name="files_kind_special">Special file</string>
+    <string name="files_kind_broken_link">Broken link</string>
+    <string name="files_problem_no_such">no such file or folder</string>
+    <string name="files_problem_permission">permission denied</string>
+    <string name="files_problem_space_device">no space left on the device</string>
+    <string name="files_problem_space_phone">no space left on the phone</string>
+    <string name="files_problem_connection">the connection dropped</string>
+    <string name="files_problem_folder_access">no access to the download folder; choose it again in ⋮</string>
+    <string name="files_problem_phone">the phone could not write or read it (%s)</string>
+    <string name="files_details">Details of %s</string>
+    <string name="files_details_short">Details</string>
+    <string name="files_select">Select</string>
+    <string name="files_select_all">Select all</string>
+    <string name="files_clear_selection">Cancel selection</string>
+    <string name="files_card_link">Link to</string>
+    <string name="files_card_size">Size</string>
+    <string name="files_card_modified">Modified</string>
+    <string name="files_card_permissions">Permissions</string>
+    <string name="files_card_owner">Owner</string>
+    <string name="files_card_owner_ids">uid %1$d, gid %2$d</string>
+    <string name="files_card_offline">No connection: these wait for it. Pull down in the list to retry.</string>
+    <string name="files_card_broken">The link’s target does not exist, so there is nothing to open.</string>
+    <string name="files_no_app_share">No app on this phone takes these files.</string>
+    <plurals name="files_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <plurals name="files_selection_skipped">
+        <item quantity="one">Skipped %d folder or special file: only files are downloaded and shared for now.</item>
+        <item quantity="other">Skipped %d folders or special files: only files are downloaded and shared for now.</item>
+    </plurals>
+    <plurals name="files_downloaded_many">
+        <item quantity="one">Downloaded %d file</item>
+        <item quantity="other">Downloaded %d files</item>
+    </plurals>
+    <string name="files_waiting">Waiting…</string>
+    <string name="files_shared_some">Sharing %1$d of %2$d files: the others did not download.</string>
+    <plurals name="files_busy_many">
+        <item quantity="one">%d file is being transferred already.</item>
+        <item quantity="other">%d files are being transferred already.</item>
+    </plurals>
+    <string name="files_search">Search by name</string>
+    <string name="files_search_hint">Part of a name</string>
+    <string name="files_search_no_match">No names here hold “%s”.</string>
+    <string name="files_search_subfolders">Search subfolders</string>
+    <string name="files_searching">Searching… %d found</string>
+    <string name="files_search_stop">Stop</string>
+    <string name="files_search_again">Search again</string>
+    <string name="files_search_found">%d found in subfolders</string>
+    <string name="files_search_none">Nothing found in subfolders</string>
+    <string name="files_search_capped">Showing the first %d</string>
+    <string name="files_search_timed_out">Stopped after 2 minutes · %d found</string>
+    <string name="files_search_stopped">Stopped · %d found</string>
+    <string name="files_search_failed">The search failed: %s</string>
+    <string name="files_search_failed_plain">The search stopped: the device did not say why.</string>
+    <string name="files_search_no_find">The device has no find command.</string>
+    <string name="files_search_no_commands">This login may not run commands on the device, only transfer files.</string>
+    <string name="files_search_no_root">Folder unavailable.</string>
+    <string name="files_search_no_answer">The device did not answer the search command: the login may not allow commands.</string>
+    <string name="files_search_case_hint">On the device, case may matter for non-Latin letters.</string>
+    <string name="files_search_slash_hint">Searching by name only, without /.</string>
+    <plurals name="files_search_skipped">
+        <item quantity="one">%d folder could not be read</item>
+        <item quantity="other">%d folders could not be read</item>
+    </plurals>
+    <string name="files_cancel_transfer">Cancel transfer</string>
+    <plurals name="files_leave_title">
+        <item quantity="one">%d transfer in progress</item>
+        <item quantity="other">%d transfers in progress</item>
+    </plurals>
+    <string name="files_leave_text">Leaving cancels the transfers.</string>
+    <string name="files_stay">Stay</string>
+    <string name="files_leave">Leave and cancel</string>
+    <plurals name="files_uploaded_many">
+        <item quantity="one">Uploaded %d file</item>
+        <item quantity="other">Uploaded %d files</item>
+    </plurals>
+
+    <!-- MQTT explorer -->
+    <string name="kind_mqtt" translatable="false">MQTT</string>
+    <string name="kind_mqtt_tile" translatable="false">MQTT</string>
+    <string name="mqtt_open_as">Open as MQTT</string>
+    <string name="mqtt_search">Search topics</string>
+    <string name="mqtt_search_hint">Part of a topic path</string>
+    <string name="mqtt_actions">Explorer actions</string>
+    <string name="mqtt_refresh_tree">Refresh tree</string>
+    <string name="mqtt_empty_level">(empty)</string>
+    <string name="mqtt_go_to_topic">Go to topic</string>
+    <string name="mqtt_topic">Topic</string>
+    <string name="mqtt_pin_branch">Pin a branch…</string>
+    <string name="mqtt_pin">Pin</string>
+    <string name="mqtt_state_login">Login needed</string>
+    <string name="mqtt_version_5" translatable="false">MQTT 5</string>
+    <string name="mqtt_version_311" translatable="false">MQTT 3.1.1</string>
+    <string name="mqtt_connecting">Connecting to the broker…</string>
+    <string name="mqtt_reconnecting">Reconnecting…</string>
+    <!-- An MQTT session's state on the Sessions tab (Russian agrees with «сессия») -->
+    <string name="mqtt_session_open">Open</string>
+    <string name="mqtt_session_ended">Ended</string>
+    <string name="mqtt_session_not_connected">Not connected</string>
+    <string name="mqtt_state_closed">Closed</string>
+    <plurals name="mqtt_reading_tree">
+        <item quantity="one">Reading the tree… %s topic</item>
+        <item quantity="other">Reading the tree… %s topics</item>
+    </plurals>
+    <string name="mqtt_login_needed">The broker asks for a login</string>
+    <string name="mqtt_log_in">Log in</string>
+    <string name="mqtt_no_broker">No broker answers on port %1$d of %2$s</string>
+    <string name="mqtt_no_common_version">The broker refused MQTT 5 and 3.1.1</string>
+    <string name="mqtt_refused">The broker refused the connection</string>
+    <string name="mqtt_closed_by_tunnel">The session closed with its tunnel</string>
+    <string name="mqtt_closed">The session is closed</string>
+    <string name="mqtt_snapshot_refused">The broker does not allow reading the whole tree</string>
+    <string name="mqtt_limit_reached">Topic limit reached: %1$s; new topics are not shown</string>
+    <string name="mqtt_snapshot_timed_out">The tree was read for 10 s, new topics kept coming: some may be missing</string>
+    <string name="mqtt_branch_refused">The broker does not allow reading this branch</string>
+    <string name="mqtt_no_messages">No messages</string>
+    <string name="mqtt_leading_slash">/ (leading slash)</string>
+    <string name="mqtt_leading_slash_spoken">leading slash</string>
+    <string name="mqtt_open_branch">Open branch</string>
+    <string name="mqtt_open_branch_count">Open branch (%1$s)</string>
+    <string name="mqtt_search_in">Search in %1$s</string>
+    <string name="mqtt_search_whole">Search the whole tree</string>
+    <string name="mqtt_before_session">before connecting</string>
+    <string name="mqtt_sys_not_subscribed">not subscribed</string>
+    <string name="mqtt_sys_no_messages">no messages</string>
+    <string name="mqtt_sys_refused">no access</string>
+    <string name="mqtt_publish_here">Publish here…</string>
+    <string name="mqtt_mask_topic_hint">This topic\'s value, nothing below it</string>
+    <string name="mqtt_mask_level_hint">+ = direct children: …/a, not …/a/b</string>
+    <string name="mqtt_mask_branch_hint"># = everything inside, the topic itself too</string>
+    <string name="mqtt_explore">Explore</string>
+    <string name="mqtt_open_card">Open the card</string>
+    <string name="mqtt_branch_card">Branch card</string>
+    <string name="mqtt_unfold">Unfold</string>
+    <string name="mqtt_card_path">Path</string>
+    <string name="mqtt_card_newest">Last change</string>
+    <string name="mqtt_card_value">Value</string>
+    <string name="mqtt_card_pinned">Pinned</string>
+    <string name="mqtt_card_history">Last values</string>
+    <string name="mqtt_view_text">Text</string>
+    <string name="mqtt_view_json" translatable="false">JSON</string>
+    <string name="mqtt_view_hex">Hex</string>
+    <string name="mqtt_value_cut">The value is cut here; copying takes up to 64 KB.</string>
+    <plurals name="mqtt_bytes">
+        <item quantity="one">%s byte</item>
+        <item quantity="other">%s bytes</item>
+    </plurals>
+    <string name="mqtt_copy_path">Copy path</string>
+    <string name="mqtt_copy_value">Copy value</string>
+    <string name="mqtt_copied_cut">The first 64 KB copied: %s</string>
+    <string name="mqtt_copy_failed">The clipboard did not take it</string>
+    <string name="mqtt_pin_ellipsis">Pin…</string>
+    <string name="mqtt_pin_title">Pin</string>
+    <string name="mqtt_pin_subtitle">The value keeps updating while you browse other branches. The pin is kept for this connection and subscribed again on every connect.</string>
+    <string name="mqtt_mask_topic">Topic only</string>
+    <string name="mqtt_mask_level">One level below</string>
+    <string name="mqtt_mask_branch">Whole branch</string>
+    <string name="mqtt_unpin">Unpin</string>
+    <string name="mqtt_pinned_notice">Pinned: %s</string>
+    <string name="mqtt_unpin_filter">Unpin %s</string>
+    <string name="mqtt_fold">Fold</string>
+    <string name="mqtt_pinned_mark">Pinned</string>
+    <string name="mqtt_kind_branch">Branch</string>
+    <string name="mqtt_kind_topic">Topic</string>
+    <string name="mqtt_cleared">(cleared)</string>
+    <string name="mqtt_empty_value">(empty value)</string>
+    <string name="mqtt_retained">retained</string>
+    <plurals name="mqtt_topics">
+        <item quantity="one">%s topic</item>
+        <item quantity="other">%s topics</item>
+    </plurals>
+    <string name="mqtt_qos" translatable="false">QoS %1$d</string>
+    <string name="mqtt_no_match">No topic path holds “%1$s”</string>
+    <string name="mqtt_no_pattern_match">No topic matches “%1$s”</string>
+    <string name="mqtt_pattern_case">Case matters: %1$s found ignoring case</string>
+    <string name="mqtt_pattern_syntax">* ? within a level · + one level · # all below · / first: from the root</string>
+    <string name="mqtt_pattern_in_level">+ and # take a whole level; within a level use * and ?</string>
+    <string name="mqtt_pattern_hash_last"># can only be the last level</string>
+    <string name="mqtt_subscribe_filter">Subscribe to this filter</string>
+    <string name="mqtt_unsubscribe_filter">Unsubscribe from this filter</string>
+    <string name="mqtt_tab_tree">Tree</string>
+    <string name="mqtt_tab_subscriptions">Subscriptions</string>
+    <string name="mqtt_subs_empty_title">No subscriptions yet</string>
+    <string name="mqtt_subs_empty_text">A subscription keeps a topic or a branch updating while you browse elsewhere and is subscribed again on every connect. Add one from a topic\'s card (Pin…), from a search pattern (Subscribe to this filter) or with +.</string>
+    <string name="mqtt_subs_add">Subscribe to a filter</string>
+    <string name="mqtt_subs_no_topics">No topics yet</string>
+    <string name="mqtt_subscription_actions">Actions for %1$s</string>
+    <string name="mqtt_open_in_tree">Open in the tree</string>
+    <string name="mqtt_change_mask">Change mask…</string>
+    <string name="mqtt_change_mask_title">Change mask</string>
+    <string name="mqtt_change_mask_subtitle">Replaces %1$s</string>
+    <string name="mqtt_filter">Topic filter</string>
+    <string name="mqtt_filter_empty">Type a topic filter.</string>
+    <string name="mqtt_filter_in_level">+ and # take a whole level.</string>
+    <string name="mqtt_filter_already">Already subscribed.</string>
+    <string name="mqtt_filter_dollar">A filter starting with + or # never matches topics starting with $ ($SYS).</string>
+    <string name="mqtt_filter_literal">* and ? are plain characters here: + is one level, # everything below.</string>
+    <string name="mqtt_filter_no_globs">The broker does not understand * and ?: only + and # can be subscribed</string>
+    <string name="mqtt_filter_pinned">Already pinned (through %1$s)</string>
+    <string name="mqtt_hits_more">The first %1$s of %2$s</string>
+    <string name="mqtt_login_title">Broker login: %1$s</string>
+    <string name="mqtt_login_wrong">Wrong user or password</string>
+    <string name="path_root">Root</string>
+    <string name="mqtt_topic_empty">Type a topic.</string>
+    <string name="mqtt_topic_wildcard">A topic cannot hold + or #.</string>
+    <string name="mqtt_topic_nul">A topic cannot hold the NUL character.</string>
+    <string name="mqtt_topic_too_long">A topic holds at most %1$d bytes.</string>
+    <string name="mqtt_publish_ellipsis">Publish…</string>
+    <string name="mqtt_publish_title">Publish to a topic</string>
+    <string name="mqtt_publish_retain">Retain</string>
+    <string name="mqtt_publish_retain_hint">The broker keeps the value and gives it to every new subscriber</string>
+    <string name="mqtt_publish_retain_empty">An empty value with Retain deletes the topic\'s retained value</string>
+    <string name="mqtt_publish_qos" translatable="false">QoS</string>
+    <string name="mqtt_publish_send">Send</string>
+    <string name="mqtt_topic_reserved">Topics starting with $ are reserved by brokers; this one may be refused.</string>
+    <string name="mqtt_publish_accepted">Accepted by the broker</string>
+    <string name="mqtt_publish_refused">Refused: %1$s</string>
+    <string name="mqtt_publish_unconfirmed">Sent, not confirmed</string>
+    <string name="mqtt_publish_not_connected">Not sent: no connection to the broker</string>
+    <string name="mqtt_publish_lost">The connection dropped before the broker answered</string>
+    <string name="mqtt_publish_timeout">No answer from the broker in %1$d s</string>
+    <string name="mqtt_publish_failed">Not sent: %1$s</string>
+    <string name="mqtt_publish_format_json">Format</string>
+    <string name="mqtt_publish_formatted_already">Already formatted</string>
+    <string name="mqtt_publish_format_too_large">Formatted it would be over %1$d KB, too large to send as JSON: left as it is</string>
+    <string name="mqtt_publish_json_empty">Empty: JSON needs a value</string>
+    <string name="mqtt_publish_json_too_large">Over %1$d KB: too large to check as JSON, send it as Text</string>
+    <string name="mqtt_publish_json_too_deep">Nested deeper than %1$d levels</string>
+    <string name="mqtt_publish_json_invalid">Not valid JSON</string>
+    <string name="mqtt_publish_json_invalid_at">Not valid JSON: line %1$d, column %2$d</string>
+    <string name="mqtt_publish_recent">Sent before</string>
+    <string name="mqtt_publish_recent_use">put in the value</string>
+    <string name="files_view_too_large">%s is larger than 2 MB: it opens in another app.</string>
+    <string name="viewer_search">Search in the text</string>
+    <string name="viewer_search_hint">Text to find</string>
+    <string name="viewer_searching">Searching…</string>
+    <string name="viewer_no_matches">No matches</string>
+    <string name="viewer_match_of">%1$d of %2$d</string>
+    <string name="viewer_previous">Previous match</string>
+    <string name="viewer_next">Next match</string>
+    <string name="viewer_wrap">Wrap lines</string>
+    <string name="viewer_wrap_too_long">Lines too long to wrap</string>
+    <string name="viewer_line_numbers">Line numbers</string>
+    <string name="viewer_copy_all">Copy all</string>
+    <string name="viewer_copy_too_large">Too large for the clipboard: use Share.</string>
+    <string name="viewer_copy_failed">The phone did not take the text on the clipboard.</string>
+    <string name="viewer_read_failed">Cannot read the downloaded file: %s</string>
+    <string name="viewer_out_of_memory">not enough memory on the phone</string>
+    <string name="viewer_file_gone">The downloaded copy of %s is gone; open it again.</string>
+    <string name="viewer_hand_over_failed">Could not prepare the file for another app: %s</string>
+    <string name="files_hand_over_failed">Cannot pass %s to another app.</string>
+    <string name="licenses">Components and licenses</string>
+    <string name="licenses_hint">The libraries in the app, their licenses and sources</string>
+    <string name="licenses_count">%d components</string>
+    <string name="licenses_sources">Sources</string>
+    <string name="licenses_reading">Reading…</string>
+    <string name="licenses_frpc_modules">Go modules in frpc</string>
+    <string name="licenses_frpc_modules_hint">%1$d modules built into the binary, their licenses and sources</string>
+    <string name="licenses_modules_count">%d modules</string>
+    <string name="licenses_mpl_unmodified">Built into frpc unmodified: the address above is the source of exactly this version.</string>
+    <string name="mqtt_rule_status_topic">Status topic</string>
+    <string name="mqtt_rule_command_topic">Command topic</string>
+    <string name="mqtt_rule_goes_to">Rule: %1$s · the value goes to %2$s</string>
+    <string name="mqtt_rule_itself">Commands go to this topic: %1$s</string>
+    <string name="mqtt_rule_retained_command">A retained command is sent to the device again on every reconnect</string>
+    <string name="mqtt_plugins_menu">Plugins…</string>
+    <string name="plugins_title">Plugins</string>
+    <string name="plugin_status_command">Status and command topics</string>
+    <string name="plugin_status_command_hint">Which topic a value is sent to, by rules</string>
+    <string name="plugin_presets">Presets</string>
+    <string name="plugin_own_rules">Own rules</string>
+    <string name="plugin_own_rules_hint">Tried before the presets, top to bottom; the first match wins</string>
+    <string name="plugin_own_rules_none">No own rules yet</string>
+    <string name="plugin_rule_add">Add rule</string>
+    <string name="plugin_rule_new">New rule</string>
+    <string name="plugin_rule_change">Change rule</string>
+    <string name="plugin_rule_status">Status topic template</string>
+    <string name="plugin_rule_command">Command topic template (optional)</string>
+    <string name="plugin_rule_command_note">Empty: commands go to the status topic itself</string>
+    <string name="plugin_rule_except">Exclusions, one per line (optional)</string>
+    <string name="plugin_rule_name">Name (optional)</string>
+    <string name="plugin_rule_syntax">{name} is one level, {name...} one or more (once a template); a leading / is an empty first level</string>
+    <string name="plugin_rule_delete">Delete rule %1$s</string>
+    <string name="plugin_rule_move_up">Move up</string>
+    <string name="plugin_rule_move_down">Move down</string>
+    <string name="plugin_rule_drag">Drag to reorder</string>
+    <string name="plugin_rule_edit">Change</string>
+    <string name="plugin_rule_except_line">Exclusion %1$d: %2$s</string>
+    <string name="plugin_wirenboard">Wiren Board</string>
+    <string name="plugin_wirenboard_hint">The WB tab: devices, values with units, switches</string>
+    <string name="wb_tab_devices" translatable="false">WB</string>
+    <string name="plugins_row_hint">For MQTT · on: %1$d of %2$d</string>
+    <string name="plugins_row_hint_exceptions">· with exceptions</string>
+    <string name="plugins_subtitle">For MQTT connections</string>
+    <string name="plugins_footer">One connection can differ: \"⋮\" → \"Plugins…\" in its explorer</string>
+    <plurals name="plugin_exceptions_off">
+        <item quantity="one">Off for %d connection</item>
+        <item quantity="other">Off for %d connections</item>
+    </plurals>
+    <plurals name="plugin_exceptions_on">
+        <item quantity="one">On for %d connection</item>
+        <item quantity="other">On for %d connections</item>
+    </plurals>
+    <string name="plugin_on">On</string>
+    <string name="plugin_on_hint">For every MQTT connection except those below</string>
+    <string name="plugin_exceptions_group">Connections set on their own</string>
+    <string name="plugin_off_here">Off here</string>
+    <string name="plugin_on_here">On here</string>
+    <string name="plugin_source_app">As in Settings</string>
+    <string name="plugin_source_own">Only for this connection</string>
+    <string name="plugin_follow_app">As in Settings</string>
+    <string name="plugins_unreadable">Plugin settings could not be read; the defaults apply</string>
+    <string name="plugin_settings_action">%1$s settings</string>
+    <string name="wb_reading_devices">Reading devices…</string>
+    <string name="wb_no_devices">No Wiren Board devices seen</string>
+    <string name="wb_has_errors">has errors</string>
+    <string name="wb_device_not_answering">The device does not answer</string>
+    <string name="wb_no_value">No value</string>
+    <string name="wb_error_read">Read error</string>
+    <string name="wb_error_write">Write error</string>
+    <string name="wb_error_polled_late">Polled late</string>
+    <string name="wb_sending">Sending</string>
+    <string name="wb_no_answer_device">No answer from the device</string>
+    <string name="wb_no_answer_broker">No answer from the broker</string>
+    <string name="wb_alarm_on">Alarm</string>
+    <string name="wb_alarm_off">No alarm</string>
+    <string name="wb_pick_colour">Pick a colour</string>
+    <string name="wb_change_value">Change</string>
+    <string name="wb_copy_value">Copy value</string>
+    <string name="wb_copy_control">Copy control</string>
+    <string name="wb_copy_topic">Copy topic</string>
+    <string name="wb_copy_unreadable">Nothing copied: the value cannot be read (read error)</string>
+    <string name="wb_copy_no_value">Nothing copied: no value yet</string>
+    <string name="wb_copy_empty">Nothing copied: the value is empty</string>
+    <string name="wb_card">Card</string>
+    <string name="wb_value">Value</string>
+    <string name="wb_number_not_number">Not a number</string>
+    <string name="wb_number_min">At least %1$s</string>
+    <string name="wb_number_max">At most %1$s</string>
+    <string name="template_empty">Enter a template</string>
+    <string name="template_wildcard">No + or # in a template</string>
+    <string name="template_bad_part">A level is text, {name} or {name...}; a name of Latin letters, digits and _</string>
+    <string name="template_two_rests">Only one {name...} in a template</string>
+    <string name="template_name_twice">A name is used twice</string>
+    <string name="template_no_literal">Needs at least one level of text</string>
+    <string name="template_unknown_name">Uses a name the status template does not have</string>
+    <string name="template_same_as_status">Same as the status template: leave it empty</string>
+    <string name="settings_terminal">Terminal</string>
+    <string name="setting_terminal_direct_input">Direct input</string>
+    <string name="setting_terminal_direct_input_hint">Send characters immediately, without keyboard composition. Off: the keyboard can buffer text and show suggestions.</string>
+</resources>
