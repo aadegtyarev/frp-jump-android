@@ -107,6 +107,8 @@ fun stateOf(row: ConnectionRow): Pair<String, Tone>? {
         row.pending == PendingOp.DISCONNECTING -> stringResource(R.string.state_disconnecting) to Tone.NEUTRAL
         tunnel == null && row.pending == PendingOp.CONNECTING -> stringResource(R.string.state_connecting) to Tone.NEUTRAL
         tunnel == null -> null
+        // Whatever the tunnel itself does: the device has not opened it yet.
+        tunnel.state.waitingForDevice -> stringResource(R.string.state_waiting_device) to Tone.NEUTRAL
         else -> when (tunnel.state.status) {
             TunnelStatus.CONNECTING -> stringResource(R.string.state_connecting) to Tone.NEUTRAL
             TunnelStatus.TRYING -> stringResource(R.string.state_trying_direct) to Tone.NEUTRAL

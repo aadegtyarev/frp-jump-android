@@ -327,4 +327,101 @@ class FrpcLogParserTest {
         now += TRY_DIRECT_MS - 1
         assertFalse(parser.expire())
     }
+
+    /** As on the operator's phone right after connecting (2026-11-01): the device's agent was still reloading its frpc. */
+    private val refused = warn("[g1-stcp-visitor] dialRawVisitorConn error: start new visitor connection error: custom listener for [g1-stcp] doesn't exist")
+
+    @Test
+    fun `a connection the device refuses - waiting for the device, not failed`() {
+        val parser = trying(g1.copy(direct = false))
+        assertEquals(TunnelStatus.RELAYED, parser.status())
+        parser.feed(refused)
+        val state = parser.state()
+        assertEquals(TunnelStatus.RELAYED, state.status)
+        assertTrue(state.waitingForDevice)
+        assertEquals(1, parser.refusalsOf("g1"))
+    }
+
+    @Test
+    fun `a refusal while trying direct keeps trying, and waits for the device through the punch`() {
+        val parser = trying()
+        parser.feed(refused)
+        assertEquals(VisitorState(TunnelStatus.TRYING, waitingForDevice = true), parser.state())
+        parser.punch()
+        assertEquals("the punch does not end the wait", VisitorState(TunnelStatus.DIRECT, waitingForDevice = true), parser.state())
+    }
+
+    @Test
+    fun `a refusal after a relay error - the relay answers, so it waits`() {
+        val parser = trying(g1.copy(direct = false))
+        parser.feed(warn("[g1-stcp-visitor] dialRawVisitorConn error: connect to server error: EOF"))
+        assertEquals(TunnelStatus.FAILED, parser.status())
+        parser.feed(refused)
+        assertEquals(TunnelStatus.RELAYED, parser.status())
+        assertTrue(parser.state().waitingForDevice)
+    }
+
+    @Test
+    fun `a connection that gets through ends the wait, one refused does not`() {
+        val parser = trying(g1.copy(direct = false))
+        parser.feed(refused)
+        val before = parser.refusalsOf("g1")
+        parser.feed(refused)
+        assertFalse("refused again since", parser.deviceReady("g1", before))
+        assertTrue(parser.state().waitingForDevice)
+        assertTrue(parser.deviceReady("g1", parser.refusalsOf("g1")))
+        assertEquals(VisitorState(TunnelStatus.RELAYED), parser.state())
+        assertFalse("nothing to end", parser.deviceReady("g1", parser.refusalsOf("g1")))
+    }
+
+    @Test
+    fun `refused for 30 s since the first refusal - failed, the device missing`() {
+        val parser = trying(g1.copy(direct = false))
+        parser.feed(refused)
+        now += DEVICE_WAIT_MS - 1
+        parser.feed(refused)
+        assertFalse(parser.expire())
+        assertTrue(parser.state().waitingForDevice)
+        now += 1
+        assertTrue(parser.expire())
+        assertEquals(VisitorState(TunnelStatus.FAILED, deviceMissing = true), parser.state())
+        parser.feed(refused)
+        assertEquals("still refused: still failed", VisitorState(TunnelStatus.FAILED, deviceMissing = true), parser.state())
+        // A later connection that gets through: it works after all.
+        assertTrue(parser.deviceReady("g1", parser.refusalsOf("g1")))
+        assertEquals(VisitorState(TunnelStatus.RELAYED), parser.state())
+    }
+
+    @Test
+    fun `a refusal past the wait fails at once`() {
+        val parser = trying(g1.copy(direct = false))
+        parser.feed(refused)
+        now += DEVICE_WAIT_MS
+        parser.feed(refused)
+        assertEquals(VisitorState(TunnelStatus.FAILED, deviceMissing = true), parser.state())
+    }
+
+    @Test
+    fun `a visitor started afresh waits a full window again`() {
+        val parser = trying(g1.copy(direct = false))
+        parser.feed(refused)
+        now += DEVICE_WAIT_MS - 1_000
+        parser.feed(login)
+        parser.feed(startSuccess)
+        assertEquals(VisitorState(TunnelStatus.RELAYED), parser.state())
+        parser.feed(refused)
+        now += DEVICE_WAIT_MS - 1
+        assertFalse(parser.expire())
+        assertTrue(parser.state().waitingForDevice)
+    }
+
+    @Test
+    fun `other refusals of the relay are failures`() {
+        for (reason in listOf("visitor connection of [g1-stcp] auth failed", "visitor connection of [g1-stcp] user [u] not allowed")) {
+            val parser = trying(g1.copy(direct = false))
+            parser.feed(warn("[g1-stcp-visitor] dialRawVisitorConn error: start new visitor connection error: $reason"))
+            assertEquals(reason, TunnelStatus.FAILED, parser.status())
+            assertFalse(reason, parser.state().waitingForDevice)
+        }
+    }
 }

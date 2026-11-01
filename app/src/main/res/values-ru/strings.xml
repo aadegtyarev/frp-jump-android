@@ -188,6 +188,7 @@
     <string name="state_connecting">Подключение…</string>
     <string name="state_disconnecting">Отключение…</string>
     <string name="state_trying_direct">Пробую напрямую…</string>
+    <string name="state_waiting_device">Ждём устройство…</string>
     <string name="state_direct">Напрямую</string>
     <string name="state_through_server">Через сервер</string>
     <string name="state_kept_through_server">Через сервер (ваш выбор)</string>
@@ -529,6 +530,7 @@
     <string name="key_passphrase_label">Парольная фраза (пусто, если нет)</string>
     <string name="frpc_login_failed">Не удалось подключиться к серверу туннелей: %s</string>
     <string name="frpc_stopped">frpc остановился (код %d)</string>
+    <string name="device_port_not_open">Устройство не открыло порт %1$d: агент не ответил. Проверьте, что frp-jump-client запущен на устройстве.</string>
 
     <!-- Stage 7: settings, lock, theme, terminal -->
     <string name="settings_security">Безопасность</string>

@@ -22,6 +22,12 @@ interface FrpcControl {
     /** Ends "Trying direct…" that went on too long ([FrpcLogParser.expire]). */
     fun expireTrying()
 
+    /** Connections the device refused on [grant] so far ([FrpcLogParser.refusalsOf]). */
+    fun refusalsOf(grant: String): Int
+
+    /** A connection to [grant]'s port was made after [refusalsBefore] refusals ([FrpcLogParser.deviceReady]). */
+    fun deviceReady(grant: String, refusalsBefore: Int)
+
     /** frpc's recent output, for diagnostics. */
     fun recentLog(): List<String>
 }
