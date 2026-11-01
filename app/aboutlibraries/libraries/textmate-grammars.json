@@ -1,0 +1,12 @@
+{
+  "uniqueId": "microsoft:vscode-textmate-grammars",
+  "name": "TextMate grammars (VS Code's built-in extensions)",
+  "artifactVersion": "1.142.0",
+  "website": "https://github.com/microsoft/vscode/tree/1.142.0/extensions",
+  "licenses": [
+    "TextMate-Grammars-Notice",
+    "MIT",
+    "TextMate-Bundle",
+    "Apache-2.0"
+  ]
+}

@@ -856,4 +856,9 @@
     <string name="viewer_file_gone">The downloaded copy of %s is gone; open it again.</string>
     <string name="viewer_hand_over_failed">Could not prepare the file for another app: %s</string>
     <string name="files_hand_over_failed">Cannot pass %s to another app.</string>
+    <string name="licenses">Components and licenses</string>
+    <string name="licenses_hint">The libraries in the app, their licenses and sources</string>
+    <string name="licenses_count">%d components</string>
+    <string name="licenses_sources">Sources</string>
+    <string name="licenses_reading">Reading…</string>
 </resources>

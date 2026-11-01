@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.aboutlibraries)
 }
 
 /**
@@ -99,6 +100,19 @@ android {
         }
     }
 }
+
+// Settings › Components and licenses: the libraries in the APK, read from their POMs at build time
+// (no network), into res/raw/aboutlibraries.json; the app adds what Gradle does not bring (frpc, the grammars).
+aboutLibraries {
+    offlineMode = true
+    // Termux's two modules are Apache-2.0 (their POM says nothing), and the entries Gradle cannot see
+    // (the path is from the root project).
+    configPath = "app/aboutlibraries"
+    excludeFields = arrayOf("developers", "funding", "description", "organization", "scm.connection", "scm.developerConnection")
+}
+
+// ComponentsTest checks the release's list against the license texts in the assets.
+tasks.withType<Test>().configureEach { dependsOn("prepareLibraryDefinitionsRelease") }
 
 if (!releaseSigned && gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
     logger.quiet(

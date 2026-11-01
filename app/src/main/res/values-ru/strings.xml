@@ -900,4 +900,9 @@
     <string name="viewer_file_gone">Скачанной копии %s больше нет; откройте файл снова.</string>
     <string name="viewer_hand_over_failed">Не удалось подготовить файл для другого приложения: %s</string>
     <string name="files_hand_over_failed">Не удалось передать %s другому приложению.</string>
+    <string name="licenses">Компоненты и лицензии</string>
+    <string name="licenses_hint">Библиотеки в приложении, их лицензии и исходники</string>
+    <string name="licenses_count">Компонентов: %d</string>
+    <string name="licenses_sources">Исходный код</string>
+    <string name="licenses_reading">Читаем…</string>
 </resources>
