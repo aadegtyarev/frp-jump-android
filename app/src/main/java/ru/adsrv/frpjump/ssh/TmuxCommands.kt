@@ -106,26 +106,47 @@ fun tmuxLeaveModeCommand(name: String): String {
 
 /**
  * What a tap on the terminal needs to know about session [name]'s pane:
- * one line, `<alternate_on> <pane_in_mode> <window_panes> <window_zoomed_flag>`;
- * see [parseTapToShell].
+ * one line, `<alternate_on> <pane_in_mode> <window_panes>
+ * <window_zoomed_flag> <pane_current_command>`; see [parseTapToShell].
  */
 fun tmuxTapStateCommand(name: String): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     return "tmux display-message -p -t ${shellQuote("=$name:")} " +
-        shellQuote("#{alternate_on} #{pane_in_mode} #{window_panes} #{window_zoomed_flag}")
+        shellQuote("#{alternate_on} #{pane_in_mode} #{window_panes} #{window_zoomed_flag} #{pane_current_command}")
 }
 
+/** What tmux said about a tap ([parseTapToShell]). */
+enum class TapAnswer {
+    /** A shell on its own screen: arrows move its cursor. */
+    SHELL,
+
+    /** Something else (a full-screen program, copy mode, a split window): the tap goes on as a click. */
+    NOT_SHELL,
+
+    /** No answer, a failed or a late one: the tap does nothing. */
+    NONE,
+}
+
+/** The shells whose line editor takes ← / → as cursor moves. */
+private val TAP_SHELLS = setOf("sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "mksh")
+
 /**
- * Whether the screen the app shows is the shell's command line, as
- * [tmuxTapStateCommand] answered: the pane is on its normal screen (no
- * `vim`, `htop`, `less`), in no mode (copy mode) and the only one on the
- * screen (one pane, or zoomed). Anything else, or no answer, is no.
+ * Reads [tmuxTapStateCommand]'s answer: [TapAnswer.SHELL] when the pane is
+ * on its normal screen (no `vim`, `htop`, `less`), in no mode (copy mode),
+ * the only one on the screen (one pane, or zoomed) and runs a shell in the
+ * foreground (not `python3`, `cat`, `ssh`); [TapAnswer.NOT_SHELL] for any
+ * other state; [TapAnswer.NONE] for what is not such an answer.
  */
-fun parseTapToShell(output: String): Boolean {
-    val fields = output.trim().split(' ')
-    if (fields.size != 4) return false
+fun parseTapToShell(output: String): TapAnswer {
+    val fields = output.trim().split(' ', limit = 5)
+    if (fields.size != 5) return TapAnswer.NONE
     val (alternate, mode, panes, zoomed) = fields
-    return alternate == "0" && mode == "0" && (panes == "1" || zoomed == "1")
+    val flags = listOf(alternate, mode, zoomed)
+    if (flags.any { it != "0" && it != "1" } || panes.toIntOrNull() == null) return TapAnswer.NONE
+    // A login shell may show as "-bash", a full path as "/bin/sh".
+    val command = fields[4].trim().removePrefix("-").substringAfterLast('/')
+    val shell = alternate == "0" && mode == "0" && (panes == "1" || zoomed == "1") && command in TAP_SHELLS
+    return if (shell) TapAnswer.SHELL else TapAnswer.NOT_SHELL
 }
 
 /** How long a tmux channel may run and still count as "tmux did not start" when it ends with an error. */

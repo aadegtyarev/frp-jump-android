@@ -40,8 +40,8 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
     /**
      * Offered each tap (a short touch that did not move) before the view
      * acts on it; true takes it: the view gets a cancel instead of the
-     * lift, so it neither clicks (mouse reporting) nor counts a tap, and
-     * the keyboard shows as for any tap. See [TerminalTap].
+     * lift, so it neither clicks (mouse reporting) nor counts a tap; the
+     * taker shows the keyboard. See [TerminalTap].
      */
     var onTap: ((MotionEvent) -> Boolean)? = null
 
@@ -65,10 +65,7 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
                 val tap = tapping && !terminal.isSelectingText &&
                     event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()
                 tapping = false
-                if (tap && onTap?.invoke(event) == true) {
-                    showKeyboard()
-                    return true
-                }
+                if (tap && onTap?.invoke(event) == true) return true
             }
         }
         return false

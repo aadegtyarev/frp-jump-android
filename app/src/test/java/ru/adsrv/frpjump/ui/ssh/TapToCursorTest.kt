@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui.ssh
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -18,6 +19,11 @@ class TapToCursorTest {
         override fun wraps(row: Int) = rows[row].endsWith("\\")
         override fun isWideTail(row: Int, column: Int) = cells[row][column] == '>'
         override fun isBlank(row: Int, column: Int) = cells[row][column] == ' '
+        override fun text(row: Int, column: Int) = when (val c = cells[row][column]) {
+            '>' -> ""
+            '<' -> "W"
+            else -> c.toString()
+        }
     }
 
     @Test
@@ -99,5 +105,18 @@ class TapToCursorTest {
     fun `the cursor's column past the row clamps to its last cell`() {
         val g = grid(4, "abcd")
         assertEquals(-3, tapCursorMoves(g, 0, 4, 0, 0))
+    }
+
+    @Test
+    fun `the cursor's line reads the same after it only re-wrapped`() {
+        val wide = grid(20, "output", "$ echo abc defghijkl\\", "mn")
+        val narrow = grid(10, "output", "$ echo abc\\", " defghijkl\\", "mn")
+        assertEquals("$ echo abc defghijklmn\u000020", cursorLineState(wide, 2, 0))
+        assertEquals(cursorLineState(wide, 2, 1), cursorLineState(narrow, 3, 1))
+        // Typed, or the cursor moved: not the same.
+        assertNotEquals(cursorLineState(wide, 2, 1), cursorLineState(grid(20, "output", "$ echo abc defghijkl\\", "mnX"), 2, 1))
+        assertNotEquals(cursorLineState(wide, 2, 1), cursorLineState(wide, 2, 0))
+        // A wide character that went to the next row leaves no blank in the text.
+        assertEquals("$ abW\u00005", cursorLineState(grid(5, "$ ab \\", "<>"), 1, 2))
     }
 }

@@ -21,6 +21,9 @@ interface TapGrid {
 
     /** Column [column] of [row] holds nothing but a space. */
     fun isBlank(row: Int, column: Int): Boolean
+
+    /** The text in column [column] of [row] (a space when blank, empty for a wide character's right half). */
+    fun text(row: Int, column: Int): String
 }
 
 /** The most arrow keys one tap sends. */
@@ -55,6 +58,30 @@ fun tapCursorMoves(grid: TapGrid, cursorRow: Int, cursorColumn: Int, tapRow: Int
     return (tap - cursor).coerceIn(-MAX_TAP_MOVES, MAX_TAP_MOVES)
 }
 
+/**
+ * The cursor's logical line as the shell has it: its text, without its
+ * trailing blanks, and the cursor's place in it in characters, whatever
+ * the width it wraps at. The same for a screen that only re-wrapped
+ * (the keyboard showed and tmux redrew); different once the line, the
+ * cursor or the screen (another program) changed. Empty when the cursor
+ * is off the grid.
+ */
+fun cursorLineState(grid: TapGrid, cursorRow: Int, cursorColumn: Int): String {
+    if (grid.columns <= 0 || cursorRow !in grid.firstRow..grid.lastRow) return ""
+    var start = cursorRow
+    while (start > grid.firstRow && grid.wraps(start - 1)) start--
+    var end = cursorRow
+    while (end < grid.lastRow && grid.wraps(end)) end++
+    val line = LogicalLine(grid, start, end)
+    val text = StringBuilder()
+    for (row in start..end) {
+        for (column in 0 until grid.columns) {
+            if (!line.isWrapGap(row, column)) text.append(grid.text(row, column))
+        }
+    }
+    return text.trimEnd().toString() + "\u0000" + line.indexOf(cursorRow, cursorColumn.coerceIn(0, grid.columns - 1))
+}
+
 /** Rows [start]..[end] of [grid], wrapped into one line; positions in it count characters. */
 private class LogicalLine(private val grid: TapGrid, private val start: Int, private val end: Int) {
     /** How many characters come before the one at ([row], [column]); the right half of a wide one counts as it. */
@@ -86,7 +113,7 @@ private class LogicalLine(private val grid: TapGrid, private val start: Int, pri
     }
 
     /** The last column of a wrapped row left blank because the wide character after it went to the next row. */
-    private fun isWrapGap(row: Int, column: Int): Boolean =
+    fun isWrapGap(row: Int, column: Int): Boolean =
         column == grid.columns - 1 && row < end && grid.wraps(row) && grid.isBlank(row, column) &&
             grid.columns > 1 && grid.isWideTail(row + 1, 1)
 }

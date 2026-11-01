@@ -350,28 +350,28 @@ class SshSession(
         }
 
     /**
-     * For a tap on the command line under tmux: whether the pane shows the
-     * shell's command line (see [parseTapToShell]), after one exec round
-     * trip. [answer] runs on a background thread; no tmux, no open
-     * connection, a failed exec or an answer later than [TAP_ANSWER_MAX_MS]
-     * (the screen has moved on) is false.
+     * For a tap on the command line under tmux: what the pane runs now
+     * (see [parseTapToShell]), after one exec round trip. [answer] runs
+     * once, on a background thread. No tmux, no open connection, a failed
+     * exec or an answer later than [TAP_ANSWER_MAX_MS] is [TapAnswer.NONE]:
+     * the screen may have moved on, so neither arrows nor a late click.
      */
-    fun askTapToShell(answer: (Boolean) -> Unit) {
+    fun askTapToShell(answer: (TapAnswer) -> Unit) {
         val name = tmux.assigned
         val c = openClient()
         if (!tmux.inUse || name == null || c == null) {
-            answer(false)
+            answer(TapAnswer.NONE)
             return
         }
         val asked = System.nanoTime()
         scope.launch(Dispatchers.IO) {
-            val shell = try {
+            val said = try {
                 parseTapToShell(execOutput(c, tmuxTapStateCommand(name)))
             } catch (e: Exception) {
                 Log.w(TAG, "tmux pane state failed: ${e.javaClass.simpleName}")
-                false
+                TapAnswer.NONE
             }
-            answer(shell && (System.nanoTime() - asked) / 1_000_000 <= TAP_ANSWER_MAX_MS)
+            answer(if ((System.nanoTime() - asked) / 1_000_000 <= TAP_ANSWER_MAX_MS) said else TapAnswer.NONE)
         }
     }
 
