@@ -565,10 +565,10 @@ else in this plugin.
      the rest of `stat/` are not matched;
   4. a generic "state/set" pair: `{x...}/state` → `{x...}/set`, except
      `zigbee2mqtt/bridge/state`.
-- **Presets on**: for a new connection all presets are off except Wiren
-  Board, which turns on by itself, once per connection, when the Wiren
-  Board plugin first shows its tab (see below); turned off by hand it
-  stays off.
+- **Presets on**: for a new connection all presets are off. From stage 7
+  the Wiren Board preset turns on by itself, once per connection, when
+  the Wiren Board plugin first shows its tab (see below) and this plugin
+  is on; turned off by hand afterwards it stays off.
 - **In the publish sheet**: when a rule matches the sheet's topic, a
   switch **Status topic / Command topic** («Топик статуса / Командный
   топик») above Send, defaulting to Command topic, with the rule that
@@ -624,8 +624,10 @@ live controller; where they differ, both are read.
 - **Subscriptions.** While the tab shows, the app also holds
   `/devices/+/meta/#` and `/devices/+/controls/+/meta/#`, so titles and
   error marks stay live (meta changes rarely and is nearly all in the
-  snapshot). An open device is the session's open branch,
-  `/devices/<d>/#`; going back to Tree subscribes the Tree's path again.
+  snapshot). On the devices list the session's open branch stays the
+  Tree's path, live as before. An open device is the session's open
+  branch, `/devices/<d>/#`; going back to the list or to Tree subscribes
+  the Tree's path again.
   In the dedupe order of "Subscriptions" the plugin's subscriptions come
   after the pins.
 - **Meta.** A control's meta is one JSON topic `<control>/meta`: `type`,
@@ -664,9 +666,11 @@ live controller; where they differ, both are read.
   - the control by type, on the right;
   - an error: a red mark with plain words under the title (below).
 - **Value display.**
-  - Digits: with `precision`, as many decimals as the precision has
-    (`0.01` → 2, `1e-06` → 6, `1` → 0), the value rounded to it; without,
-    the value as received.
+  - Digits: with `precision`, the value rounded to the nearest multiple
+    of it (half away from zero) and shown with as many decimals as the
+    precision has (`0.01` → 2, `1e-06` → 6, `0.5` → 1, `1` → 0),
+    computed in decimal arithmetic, never binary floating point; without
+    `precision`, the value as received. Inputs are rounded the same way.
   - Units: `units` from meta, else the units of a deprecated typed
     control (`temperature` deg C, `rel_humidity` %, RH,
     `atmospheric_pressure` mbar, `rainfall` mm/h, `wind_speed` m/s,
@@ -694,12 +698,13 @@ live controller; where they differ, both are read.
   - `alarm` (`0`/`1`): an indicator, red when `1`; never a control;
   - with `enum`: a tap opens a list of the enum titles, the current one
     marked;
-  - `value`, the typed controls, `local_time` (seconds, shown as a local
-    date and time without time zone) and an unknown type: the value; a tap
+  - `value`, the typed controls and `local_time` (seconds, shown as a
+    local date and time without time zone): the value; a tap
     opens a one-field numeric input, prefilled, selected whole, checked
     against `min`/`max` and rounded to `precision` before Send;
   - `text`, `w1-id`: the value; a tap opens a text input;
-  - meta without a type: the value as text, read-only.
+  - meta without a type, or a type not listed here: the value as text,
+    read-only.
 - **Writes** go to `<control>/on`, QoS 1, not retained, whatever the Status
   and command plugin says. Payloads:
   - `switch`, `wo-switch`: `1` to turn on, `0` to turn off (a value that
@@ -764,7 +769,7 @@ nothing else in the explorer changes for it.
 
 | What | Where |
 | --- | --- |
-| Pins with their masks, enabled plugins (the Wiren Board tab on or off), status/command presets and own rules, retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
+| Pins with their masks; the Status and command plugin on or off, its presets and own rules, and whether the Wiren Board preset was already turned on by itself; the Wiren Board plugin on or off, and whether its tab was shown before (to open on it); retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
 | Broker logins (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
 | The tree and history | memory only, for the session |
 
@@ -791,7 +796,8 @@ nothing else in the explorer changes for it.
    move onto the same plumbing.
 7. The Wiren Board plugin: the WB devices tab (devices list, a device's
    controls by type, writes to `/on` answered on the control, error
-   marks), both meta forms, on/off per connection.
+   marks), both meta forms, on/off per connection; the Wiren Board
+   preset turning on with the tab, only while the first plugin is on.
 8. Later: charts of chosen numeric topics, overlaid; later plugins
    (Tasmota, Zigbee2MQTT, Home Assistant).
 
@@ -872,8 +878,9 @@ On a Wiren Board on the tunnel unless said otherwise.
    - Zigbee2MQTT preset: `zigbee2mqtt/kitchen/lamp` offers
      `zigbee2mqtt/kitchen/lamp/set`; `zigbee2mqtt/bridge/state` and
      `zigbee2mqtt/kitchen/lamp/availability` offer no switch.
-   - Tasmota preset: `stat/plug/POWER1` offers `cmnd/plug/POWER1`;
-     `stat/plug/RESULT` offers no switch.
+   - Tasmota preset: `stat/plug/POWER` offers `cmnd/plug/POWER`,
+     `stat/plug/POWER1` offers `cmnd/plug/POWER1`; `stat/plug/RESULT`
+     offers no switch.
    - Exclusions: an own rule `{x...}/state` → `{x...}/cmd` excluding
      `home/{y...}/state` above the generic preset: `home/light/state`
      falls through to the preset and offers `home/light/set`.
@@ -916,6 +923,16 @@ On a Wiren Board on the tunnel unless said otherwise.
    - A device publishing only the older one-field meta topics, and one
      publishing only the JSON meta, show alike.
    - Tapping a control's title opens its topic card.
+   - A control with `hidden` true is not listed.
+   - A `wo-switch`: the toggle shows the value sent and answers on the
+     PUBACK, waiting for no echo.
+   - Toggling to the value already shown: the PUBACK ends the sending
+     state at once.
+   - A test broker that withholds the PUBACK: "No answer from the broker"
+     10 s after sending.
+   - A `pushbutton` on a 3.1.1 session answers "Sent, not confirmed".
+   - With the first plugin turned off, the tab appearing does not turn
+     the Wiren Board preset on.
 
 ## Decided
 
