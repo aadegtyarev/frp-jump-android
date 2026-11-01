@@ -104,6 +104,30 @@ fun tmuxLeaveModeCommand(name: String): String {
     return "tmux if-shell -F -t ${shellQuote("=$name:")} '#{pane_in_mode}' ${shellQuote("send-keys -t =$name: -X cancel")}"
 }
 
+/**
+ * What a tap on the terminal needs to know about session [name]'s pane:
+ * one line, `<alternate_on> <pane_in_mode> <window_panes> <window_zoomed_flag>`;
+ * see [parseTapToShell].
+ */
+fun tmuxTapStateCommand(name: String): String {
+    require(isTmuxName(name)) { "not a tmux session name of the app" }
+    return "tmux display-message -p -t ${shellQuote("=$name:")} " +
+        shellQuote("#{alternate_on} #{pane_in_mode} #{window_panes} #{window_zoomed_flag}")
+}
+
+/**
+ * Whether the screen the app shows is the shell's command line, as
+ * [tmuxTapStateCommand] answered: the pane is on its normal screen (no
+ * `vim`, `htop`, `less`), in no mode (copy mode) and the only one on the
+ * screen (one pane, or zoomed). Anything else, or no answer, is no.
+ */
+fun parseTapToShell(output: String): Boolean {
+    val fields = output.trim().split(' ')
+    if (fields.size != 4) return false
+    val (alternate, mode, panes, zoomed) = fields
+    return alternate == "0" && mode == "0" && (panes == "1" || zoomed == "1")
+}
+
 /** How long a tmux channel may run and still count as "tmux did not start" when it ends with an error. */
 const val TMUX_START_WINDOW_MS = 5_000L
 

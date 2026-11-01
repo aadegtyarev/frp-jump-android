@@ -2,13 +2,17 @@ package ru.adsrv.frpjump.ui.ssh
 
 import android.content.Context
 import android.text.InputType
+import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import com.termux.view.TerminalView
+import kotlin.math.abs
 
 /**
  * Holds a Termux view and talks to the keyboard for it, so every keystroke
@@ -31,6 +35,43 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
         descendantFocusability = FOCUS_BEFORE_DESCENDANTS
         addView(terminal, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         terminal.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) requestFocus() }
+    }
+
+    /**
+     * Offered each tap (a short touch that did not move) before the view
+     * acts on it; true takes it: the view gets a cancel instead of the
+     * lift, so it neither clicks (mouse reporting) nor counts a tap, and
+     * the keyboard shows as for any tap. See [TerminalTap].
+     */
+    var onTap: ((MotionEvent) -> Boolean)? = null
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var tapX = 0f
+    private var tapY = 0f
+    private var tapping = false
+
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                tapX = event.x
+                tapY = event.y
+                // A tap that ends a selection, or a real mouse, stays the view's.
+                tapping = !terminal.isSelectingText && !event.isFromSource(InputDevice.SOURCE_MOUSE)
+            }
+            MotionEvent.ACTION_MOVE ->
+                if (abs(event.x - tapX) > touchSlop || abs(event.y - tapY) > touchSlop) tapping = false
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> tapping = false
+            MotionEvent.ACTION_UP -> {
+                val tap = tapping && !terminal.isSelectingText &&
+                    event.eventTime - event.downTime < ViewConfiguration.getLongPressTimeout()
+                tapping = false
+                if (tap && onTap?.invoke(event) == true) {
+                    showKeyboard()
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     /**

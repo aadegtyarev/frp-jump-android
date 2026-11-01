@@ -31,6 +31,20 @@ class TmuxCommandsTest {
             "tmux if-shell -F -t '=frpjump-0a1b2c-7:' '#{pane_in_mode}' 'send-keys -t =frpjump-0a1b2c-7: -X cancel'",
             tmuxLeaveModeCommand(name),
         )
+        assertEquals(
+            "tmux display-message -p -t '=frpjump-0a1b2c-7:' '#{alternate_on} #{pane_in_mode} #{window_panes} #{window_zoomed_flag}'",
+            tmuxTapStateCommand(name),
+        )
+    }
+
+    @Test
+    fun `a tap moves the cursor only on the shell's own screen`() {
+        assertTrue(parseTapToShell("0 0 1 0\n"))
+        assertTrue(parseTapToShell("0 0 3 1\n"))
+        // vim / htop / less, copy mode, a split window, no answer or another one.
+        for (no in listOf("1 0 1 0", "0 1 1 0", "0 0 2 0", "", "0 0 1", "error: no such session")) {
+            assertFalse(no, parseTapToShell(no))
+        }
     }
 
     @Test

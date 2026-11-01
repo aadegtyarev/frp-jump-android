@@ -275,6 +275,25 @@ keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
+A tap on the command line moves the shell's cursor there: the app sends as
+many ← or → as there are characters between the cursor and the tapped cell
+(a wide character counts once, at most 2000), and the shell moves its
+cursor and echoes it; no other feedback. It counts only on the cursor's row
+and the rows wrapped into it at the margin (one logical line); a tap past
+the end of the text goes to its end. A row the shell broke with a real line
+break (a pasted multi-line command, a `for` loop's `>` lines), output above
+and the empty screen below keep the usual tap: it shows the keyboard (the
+tap on the command line shows it too). The arrows are plain keys: a held
+Ctrl / Alt stays held. Only on the shell's normal screen: in `vim`, `htop`,
+`mc` or `less` the tap goes to the program as before, mouse click included.
+In a tmux session tmux holds the alternate screen toward the app, so a tap
+on the cursor's line is kept from tmux as a click and one exec asks tmux
+(`display-message`) whether the pane is on its normal screen, in no copy
+mode and alone on the screen (one pane, or zoomed); yes sends the arrows,
+no hands the click on as it would have gone, and an answer later than 2 s
+does nothing. Swipes (scrolling, tmux copy mode) and long-press selection
+work as before.
+
 ### 8. Background, kill and reboot
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a

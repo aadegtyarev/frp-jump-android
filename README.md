@@ -630,6 +630,26 @@ filling in the user name leaves the saved password alone.
   second), with every repeat taking the Ctrl / Alt held at the press.
   Long-press selects text (Copy / Paste), pinch or A− / A+ changes the font
   size.
+- Tap the command line to move the cursor there (`ui/ssh/TerminalTap.kt`,
+  counting in `ui/ssh/TapToCursor.kt`). The terminal cannot move the
+  shell's cursor, so the app sends that many ← or → (the emulator's arrow
+  codes for its cursor-key mode, no Ctrl / Alt, at most 2000) and readline
+  moves it. The count runs from the cursor's cell to the tapped one over
+  the rows the emulator wrapped at the margin (its line-wrap flags), one per
+  character, so a wide character counts once and a blank at a wrap left by
+  a wide character that did not fit is skipped; past the end of the text
+  it stops at the end. Rows outside that wrapped line (a real line break in
+  the command, output, the empty screen) keep the plain tap. The tap is
+  taken in `TerminalInput` before the Termux view sees its lift (the view
+  gets a cancel), so it neither counts as a tap nor sends a mouse click;
+  the keyboard shows as for any tap. Plain shell: only while the emulator is
+  on its normal screen. tmux: the outer screen is always tmux's alternate
+  one, so one exec asks tmux for the pane's `alternate_on`, `pane_in_mode`,
+  `window_panes` and `window_zoomed_flag` (`tmuxTapStateCommand`); the
+  shell's own screen gets the arrows, anything else gets the click the view
+  would have sent, and an answer later than 2 s is dropped. A shell that
+  starts tmux or screen by hand in a plain tab is on the alternate screen
+  and keeps the plain tap.
 - Full screen (the corners icon in the bar) hides the bar and the system
   bars; the terminal, the session tabs (when there are several), the
   snippets and the keys stay, and a thin line says what a session that is
