@@ -359,7 +359,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 Grouped as in the mockup: profile (name and colour, forget profile); tunnels
 (direct connection, local port range); background (poll interval, battery);
 security (phone SSH key, unlock with fingerprint); app (language, theme,
-version and update).
+version and update, MQTT plugins (scenario 12), components and licenses).
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that
   server (offline: local wipe only), wipes its credentials and cached lists.
@@ -479,6 +479,328 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   is never cut: it wraps in the list row (scenario 3), on the card and in
   the Connections header.
 
+### 12. MQTT plugins in Settings
+
+The MQTT explorer's plugins (`docs/mqtt-contract.md`, "Payload views
+(plugins)") are turned on and off, and set up, for the whole app in
+Settings. One MQTT connection can differ from that, for example Wiren
+Board on for the controllers and off for a home Mosquitto. This replaces
+the per-connection Plugins sheet of MQTT stage 6. Status and command
+topics and Wiren Board work as that contract describes; only where their
+on/off state and settings are kept changes.
+
+**Plugins.** Ids are as stored today. Rows are listed in this order:
+
+| Id | Name (ru / en) | What it changes | Settings |
+| --- | --- | --- | --- |
+| `wirenboard` | Wiren Board | the «Устройства WB» tab | title language, hidden controls |
+| `status-command` | «Топики статуса и команд» / "Status and command topics" | the topic switch in the publish sheet | presets, own rules |
+
+A plugin is either on or off. When it is off, nothing of it shows: no
+tab, no filters held, no switch in the publish sheet. Its topics stay in
+the Tree, which no plugin ever changes. The explorer with every plugin
+off is the plain explorer of MQTT stages 1–5.
+
+**The rule: where a plugin is on.** For a plugin P and an MQTT connection C:
+
+- C has its own setting for P (on or off): that setting applies.
+- Otherwise the app-level switch of P applies.
+
+The switch on C stores its own setting only when the new position
+differs from the app-level one. Moving it back to the app-level
+position removes that setting, and so does «Как в настройках». Changing
+the app-level switch never touches settings of connections. A
+connection set to "off" stays off when the app-level switch is turned
+off and on again. It changes only when the owner changes it there or
+resets it. This is why the app-level screen lists such connections
+(below). Settings (presets, rules, language, hidden controls) are only
+app-level. A connection overrides only on or off.
+
+**New plugins.** A plugin added in a later version is on at app level,
+and no connection has its own setting for it. It shows only once a
+session sees its topics, as the Wiren Board tab does today: the tab
+appears when the session sees a control's meta, never takes the screen
+by itself, and is absent on a broker without them. A plugin without a
+tab (Status and command topics) shows only when one of its rules
+matches the publish sheet's topic.
+
+**Scenarios** (taps counted from the screen named first):
+
+1. *Wiren Board off everywhere.* Settings tab → «Плагины» → the switch on
+   the Wiren Board row. Three taps. Every open session drops the tab at
+   once (see edge cases).
+2. *Wiren Board off for the home broker only.* In that broker's explorer,
+   "⋮" → «Плагины…» → the Wiren Board switch. Three taps, no leaving the
+   explorer. The same sheet opens from the connection's "⋮" →
+   «Изменить» → «Плагины».
+3. *Wiren Board only on the controllers.* Off in Settings (scenario 1),
+   then on for each controller's connection (scenario 2). The rarer
+   case costs more taps.
+4. *Undo an exception.* In the connection's «Плагины» sheet, «Как в
+   настройках» under the switch. One tap. Or from Settings: «Плагины» →
+   the plugin → its row in «Свои настройки подключений» → «Как в
+   настройках».
+5. *An own rule for a non-Wiren Board device.* Settings → «Плагины» →
+   «Топики статуса и команд» → «Добавить правило» → templates → «Сохранить».
+   The rule applies to every connection with the plugin on. From the
+   explorer: "⋮" → «Плагины…» → a tap on the plugin's name opens the same
+   screen over the explorer, and Back returns to the sheet.
+6. *English titles on a Russian phone.* Settings → «Плагины» → Wiren
+   Board → «Язык названий» → English. Four taps. An open WB tab shows the
+   new titles at once.
+7. *Look at a hidden control.* Settings → «Плагины» → Wiren Board →
+   «Показывать скрытые». Hidden controls appear in their devices, marked.
+
+**Screens.**
+
+- **Settings, group «Приложение».** A row «Плагины» before «Компоненты и
+  лицензии», built the same way: a tile, the label, a hint line and a
+  chevron. The hint reads «Для MQTT · включено: 2 из 2». When a
+  connection has its own setting, the hint adds «· есть исключения».
+  A tap opens the plugins screen.
+- **«Плагины» (the plugins screen).** A full screen like «Компоненты и
+  лицензии»: AppTopBar with the title «Плагины», the subtitle «Для
+  MQTT-подключений» and the back arrow. Back closes one level at a time.
+  The body is one card of plugin rows with dividers, as in the licenses
+  list. Under the card, one muted line: «Отдельное подключение можно
+  настроить иначе: «⋮» → «Плагины…» в его обзоре».
+- **The plugin row.** It is one component used here and in the
+  connection's sheet (below). It shows the name (whole, wrapped, never
+  cut), a hint line and a switch on the right:
+  - a tap on the switch turns the plugin on or off; the switch moves at
+    once, and that is the feedback;
+  - a tap on the rest of the row opens the plugin's screen, and the row
+    has a chevron before the switch. A plugin with nothing to set has
+    no chevron, and a tap anywhere on its row toggles it;
+  - the hint is the plugin's purpose, as today («Вкладка «Устройства
+    WB»: устройства, значения с единицами, переключатели»). Under it, on
+    the plugins screen only, a muted line names the exceptions, for
+    example «Выключен для 1 подключения» or «Включён для 2 подключений».
+- **The plugin's screen.** It has the same top bar, with the plugin's
+  name as the title. It is made of groups as in Settings. The first
+  card holds one switch row, «Включён» («On»), with the hint «Для всех
+  MQTT-подключений, кроме исключений ниже». It is the same switch as on
+  the plugins screen. The plugin's own groups follow, and then the
+  exceptions. With the plugin off, its groups stay visible and can be
+  edited, muted, with the line «Плагин выключен — настройки сохранятся».
+  The owner can then set the plugin up before turning it on. This
+  differs from today's sheet, which hides the settings.
+  - *Status and command topics*: the groups «Готовые правила»
+    (the four presets as switch rows, the name with the first rule's
+    templates in monospace under it, as today) and «Свои правила» (the
+    rule list with drag, a tap to change it, the bin with Undo, and
+    «Добавить правило»). The rule sheet, its checks and its texts are
+    those of today's Plugins sheet, unchanged.
+  - *Wiren Board*: a group «Отображение» with:
+    - «Язык названий» with the value and a chevron. It opens the
+      ChoiceSheet of Settings with «Как в приложении» (default), «Русский»,
+      «English». "As in the app" is the app's language (Settings →
+      «Язык»), which today's code already uses. Russian and English pick
+      the `ru` or `en` key. When it is missing, the reading falls back as
+      the WB contract says: `en`, then the first key. The choice applies
+      to device and control titles and to enum titles;
+    - «Показывать скрытые» («Show hidden controls»), off by default,
+      with the hint «Элементы с hidden в meta. В дереве они видны
+      всегда». When it is on, a hidden control is listed in its device
+      in `order` like the others. Its title is followed by a muted
+      «скрытый» («hidden»), and its error counts toward the device's
+      "!". The control works as any other control.
+  - *Exceptions*: a group «Свои настройки подключений» («Connections
+    set on their own»). It shows only when there is at least one. A row
+    per connection holds the device's tile (as in the Connections
+    header), the device name and the connection's name in full,
+    wrapped, the profile's colour when there is more than one profile,
+    and the state «Выключен здесь» / «Включён здесь». It ends with a
+    text button «Как в настройках». A tap on it removes the row at once,
+    with no Undo: tapping the switch in the connection's sheet brings it
+    back, and nothing is lost.
+- **The connection's «Плагины» sheet.** It opens from the explorer's "⋮"
+  and from the connection's edit sheet, as today. The title is «Плагины»
+  and the subtitle is the connection's label, as today. It holds the
+  plugin rows only, with the switch showing the state in force for this
+  connection. The hint line under each row says where that state comes
+  from:
+  - «Как в настройках» when the connection follows the app level;
+  - «Только для этого подключения» («Only for this connection») with a
+    text button «Как в настройках» after it when the connection has its
+    own setting. A tap on the button returns the switch to the
+    app-level state at once.
+
+  A tap on a plugin's name opens its screen (above) over the sheet, and
+  Back returns to the sheet. The presets and own rules leave this sheet,
+  since they are app-level now.
+- **Failures.** When writing a change fails, the notice «Не удалось
+  сохранить настройку: …» appears, as it does today. The switch keeps
+  the new state in memory for the rest of the run.
+
+**TalkBack.**
+
+- Plugin row: «Wiren Board, переключатель, включён, Вкладка «Устройства
+  WB»: …, выключен для 1 подключения». A row with settings has the
+  action «Настройки Wiren Board» («Wiren Board settings») on the row, and
+  the switch is a separate focus.
+- In the connection's sheet, the hint is read as part of the row
+  («…, только для этого подключения»). «Как в настройках» is a button of
+  its own and also the row's custom action «Как в настройках».
+- An exception row is read as the device, the connection, the profile
+  (when more than one) and the state, with the action «Как в настройках».
+- A hidden control: its title, then «скрытый».
+
+**Texts** (new strings; the rest exist).
+
+| Where | ru | en |
+| --- | --- | --- |
+| Settings row | Плагины | Plugins |
+| its hint | Для MQTT · включено: %1$d из %2$d | For MQTT · on: %1$d of %2$d |
+| its hint, exceptions | · есть исключения | · with exceptions |
+| plugins screen subtitle | Для MQTT-подключений | For MQTT connections |
+| plugins screen footer | Отдельное подключение можно настроить иначе: «⋮» → «Плагины…» в его обзоре | One connection can differ: "⋮" → "Plugins…" in its explorer |
+| exceptions line (plural) | Выключен для %d подключения / подключений | Off for %d connection(s) |
+| | Включён для %d подключения / подключений | On for %d connection(s) |
+| plugin screen switch | Включён | On |
+| its hint | Для всех MQTT-подключений, кроме исключений ниже | For every MQTT connection except those below |
+| settings while off | Плагин выключен — настройки сохранятся | The plugin is off; its settings are kept |
+| exceptions group | Свои настройки подключений | Connections set on their own |
+| exception state | Выключен здесь / Включён здесь | Off here / On here |
+| source: app level | Как в настройках | As in Settings |
+| source: own | Только для этого подключения | Only for this connection |
+| reset button and action | Как в настройках | As in Settings |
+| settings action | Настройки %1$s | %1$s settings |
+| WB group | Отображение | Display |
+| WB language | Язык названий | Title language |
+| its values | Как в приложении · Русский · English | As in the app · Русский · English |
+| WB hidden | Показывать скрытые | Show hidden controls |
+| its hint | Элементы с hidden в meta. В дереве они видны всегда | Controls marked hidden in meta. The Tree always shows them |
+| hidden mark | скрытый | hidden |
+
+**Considered and left out.**
+
+- *Show read-only controls.* They are always shown with their value and
+  no control. Hiding them would hide most sensors, which defeats the
+  tab.
+- *Wiren Board topic prefix (`/devices`).* The prefix is fixed in the
+  plugin's filters and patterns (`WbDevices.kt`), its writes and the
+  Wiren Board preset. A different prefix only appears on a broker that
+  bridges one or more controllers under a prefix. There the tab would
+  also have to tell several controllers apart. That is a feature of its
+  own; see Open decisions.
+- *Own rules per connection.* Rules are app-level, as the owner asked.
+  A rule matches only its own topics, so it does nothing on a broker
+  that does not have them. Where it does get in the way, that
+  connection can turn the plugin off.
+
+**Edge cases.**
+
+- *Plugin turned off while its tab is open.* This can happen from the
+  explorer's «Плагины…» sheet, or from Settings in split screen. The tab
+  goes, and the explorer shows Tree at the Tree's own path, as today.
+  The plugin's filters are dropped. A write already sent is not called
+  back, and its answer is no longer shown. Turned on again, the tab
+  comes back as soon as meta is seen and does not take the screen.
+- *Plugin turned on while connected.* The tab appears from the meta the
+  tree already holds, without switching to it.
+- *Settings changed while connected.* The language, hidden controls,
+  presets and rules apply at once to every open session: titles and
+  lists are redrawn from the tree with nothing subscribed again, and
+  the publish sheet matches its topic again, as it does today on a rule
+  change. A change to a connection's own setting reaches its session
+  even with no explorer screen open, as the Wiren Board switch does today.
+- *The Wiren Board preset that turns on by itself* (MQTT contract) is
+  now app-level: it turns on once, the first time any connection shows
+  the WB tab while Status and command topics is on there. Turned off by
+  hand afterwards, it stays off.
+- *Connection deleted.* Its own settings go with it, as today. *Profile
+  forgotten*: its connections' own settings go. *Last profile
+  forgotten*: everything goes, app level included, as the whole file is
+  wiped today, since own rules name the owner's topics.
+- *TCP connection opened as MQTT*: it has no own setting and follows the
+  app level.
+- *Own rule deleted and the app closed before Undo is gone*: the delete
+  completes (UI rules).
+
+**Stored.** The data is kept in `mqtt_plugins_v2.json` in app-private
+storage, which holds:
+
+- app level:
+  - per plugin, on (default on);
+  - Status and command topics: the presets on, the own rules in order,
+    and whether the Wiren Board preset already turned on by itself;
+  - Wiren Board: the title language (`auto` / `ru` / `en`, default
+    `auto`) and show hidden (default off);
+- per connection (key: profile and connection id): per plugin, the
+  connection's own on or off, absent when it follows the app level,
+  plus the existing Wiren Board "the last session showed the tab".
+
+A connection that follows the app level for every plugin and never
+showed the tab has no entry.
+
+**Migration** from `mqtt_plugins.json` (per connection) runs once, when
+the new file does not exist yet:
+
+- Both plugins are on at app level, as today's defaults were.
+- A connection with a plugin off gets its own "off". A connection with
+  it on follows the app level. In-force states stay exactly as they were.
+- Presets on: every preset that was on for any connection. Every rule
+  that worked keeps working. A preset that was on for one connection and
+  off by hand for another is now on for both. Only the publish sheet's
+  default target changes, and the switch there still offers the status
+  topic.
+- Own rules: those of every connection, in the order the file holds
+  them. A rule equal to one already taken (same status, command and
+  exclusions) is dropped, and names and ids are kept.
+- The preset that turns on by itself counts as done if any connection
+  had seen the WB tab. "The last session showed the tab" is copied per
+  connection.
+- An unreadable old file gives the defaults, as an unreadable file does
+  today. The old file is left in place, untouched, so installing an
+  older APK again finds the settings as they were before the upgrade.
+  `wipe` deletes both files.
+
+**Acceptance.**
+
+- Upgrade with two MQTT connections, one with Wiren Board off and an own
+  rule, the other with the Zigbee2MQTT preset on. After the upgrade:
+  Settings → «Плагины» shows both plugins on, and Wiren Board says
+  «Выключен для 1 подключения». The first connection has no WB tab. The
+  rule and the preset are on the Status and command topics screen and
+  work on both connections.
+- Settings → «Плагины» → Wiren Board off: an open explorer on WB devices
+  falls back to Tree at once. Turned on again, the tab returns without
+  taking the screen.
+- From a controller's explorer, «Плагины…» → Wiren Board off: only that
+  connection loses the tab. The sheet says «Только для этого
+  подключения», and «Как в настройках» brings the tab back. Turning the
+  app-level switch off and on again leaves a connection set to off still
+  off.
+- The app level is off and one connection is on: the tab shows only
+  there. The Settings row reads «Включён для 1 подключения», and the
+  exception is listed with «Как в настройках».
+- «Язык названий» English on a Russian phone: WB titles and enum titles
+  are English where the meta has `en`; a title with only `ru` stays
+  Russian.
+- «Показывать скрытые» on: a hidden control is listed with «скрытый»,
+  and its error marks the device with "!". Off: as today.
+- An own rule added in Settings works in an explorer already open.
+- Upgrade, then install the previous APK: its per-connection plugin
+  settings are as they were before the upgrade.
+- TalkBack reads the rows as above. At 200 % font size, plugin names,
+  device names and connection names wrap and are not cut.
+
+**Delivery** as small PRs, each reviewed, each a build for the owner's
+phone once visible:
+
+- 10a. The store: app level, connections' own settings, the rule above
+  and the migration, with tests of each migration case and of the rule.
+  Today's Plugins sheet reads and writes through it, so the presets and
+  rules there become app-wide. This change is visible only through that.
+- 10b. Settings → «Плагины» and the plugin screens. Status and command
+  topics moves its presets and rules there. The connection's sheet keeps
+  only the plugin rows with «Как в настройках».
+- 10c. The exceptions: the line on the plugins screen and the group on a
+  plugin's screen.
+- 10d. Wiren Board «Язык названий».
+- 10e. Wiren Board «Показывать скрытые».
+
 ## Wire behaviour the app must match
 
 - Bearer token on every `/api/agent/*` call; `protocol_version` checked on
@@ -509,6 +831,7 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
 | Per profile: device token, cert, key, CA | app-private files, encrypted with a Keystore key |
 | SSH private key, remembered passwords | same |
 | Per profile: the server's last `features` answer, next to its cached device list (labels and icons included) | app-private storage |
+| MQTT plugins: app-level on/off and settings, each connection's own on/off (scenario 12) | app-private storage |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
 
 Nothing leaves the phone except calls to the frp-jump servers, the tunnels and
@@ -530,6 +853,7 @@ build for the owner's phone.
 9. Device labels and icons (scenario 11): the glyphs, the list row, search,
    the card header and sheet, the Connections header. It can ship before the
    server supports it, with the feature hidden until then.
+10. MQTT plugins in Settings (scenario 12), in slices 10a–10e.
 
 Screens touched by stages 1–5 get the new look in the same stage.
 
@@ -556,6 +880,7 @@ Screens touched by stages 1–5 get the new look in the same stage.
 - Against a server without labels: no «Подпись…»/«Значок…», no labels, and no
   errors. In airplane mode the sheet's «Сохранить» says it was not saved and
   keeps the text.
+- MQTT plugins in Settings: the checks of scenario 12.
 
 ## Decided
 
@@ -564,12 +889,22 @@ Screens touched by stages 1–5 get the new look in the same stage.
 - Device labels and icons (2026-11-01): a label is at most 64 characters. The
   icon set has `phone`, which the app reports for itself. Support is detected
   through the server's `features` list.
+- MQTT plugins (2026-11-01): turned on and off and set up at app level
+  in Settings → «Плагины»; a connection may turn a plugin on or off for
+  itself, and that wins over the app level; a plugin off has no tab and
+  its topics stay in the Tree; new plugins are on and show only once
+  their topics are seen.
 
 ## Open decisions
 
 - frp-jump release tag: the hot-reload change for exposing devices is in
   master but not released; until devices update, their tunnels still restart
   when a grant changes.
+
+- Wiren Board topic prefix (a bridged broker with controllers under
+  `wb1/devices/…`): recommended not now, since it needs the tab to tell
+  several controllers apart; a feature of its own when such a broker is
+  in use.
 
 ## Open risks
 
