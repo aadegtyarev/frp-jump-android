@@ -510,15 +510,16 @@ the tree is the "what is there" view.
 - Plugin form: declarative (a JSON description of filters and fields
   shipped with the app or imported), not downloaded code: Android forbids
   loading foreign code into an app of this kind safely.
-- Plugins are kept separate, each doing one job. They are turned on
-  and off and set up at app level in Settings → «Плагины», and a
-  connection may turn one on or off for itself (its edit sheet, also
-  reached from the explorer's "⋮" → **Plugins…**); see
-  `docs/contract.md`, scenario 12, which takes precedence over the
-  per-connection wording below. Two come first: **Status and
-  command topics** (any vendor, rules only) and **Wiren Board** (a
-  devices view of the Wiren Board convention). Both are on for every MQTT
-  connection until turned off.
+- Plugins are kept separate, each doing one job. Each is turned on and
+  off and set up for the whole app in Settings → «Плагины». A connection
+  can turn a plugin on or off for itself in its «Плагины» sheet, which
+  opens from the edit sheet or from the explorer's "⋮" → **Plugins…**.
+  The connection's own setting wins over the app level
+  (`docs/contract.md` scenario 12, which also has the storage and the migration from the earlier
+  per-connection settings). Two come first: **Status and command
+  topics** (any vendor, rules only) and **Wiren Board** (a devices view
+  of the Wiren Board convention). Both are on at app level until
+  turned off.
 
 ### Status and command topics
 
@@ -571,10 +572,11 @@ else in this plugin.
      the rest of `stat/` are not matched;
   4. a generic "state/set" pair: `{x...}/state` → `{x...}/set`, except
      `zigbee2mqtt/bridge/state`.
-- **Presets on**: for a new connection all presets are off. From stage 7
-  the Wiren Board preset turns on by itself, once per connection, when
-  the Wiren Board plugin first shows its tab (see below) and this plugin
-  is on; turned off by hand afterwards it stays off.
+- **Presets on**: at first all presets are off. From stage 7 the Wiren
+  Board preset turns on by itself, once for the app, the first time any
+  connection shows the WB tab (see below) while this plugin is on for
+  that connection. Turned off by hand afterwards, it stays off. Presets
+  are app-level (`docs/contract.md` scenario 12).
 - **In the publish sheet**: when a rule matches the sheet's topic, a
   switch **Status topic / Command topic** («Топик статуса / Командный
   топик») above Send, defaulting to Command topic, with the rule that
@@ -585,16 +587,20 @@ else in this plugin.
   the topic in the field. Editing the topic re-matches. With Command topic
   chosen and Retain on, one line warns: "A retained command is sent to
   the device again on every reconnect".
-- **Setting up**: in the plugin's settings the presets are switches, and
+- **Setting up**: in the plugin's screen, Settings → «Плагины» →
+  «Топики статуса и команд» (`docs/contract.md` scenario 12), the presets are switches, and
   own rules are a list with **+** (status template, optional command
   template, optional exclusions, optional name; checked as above, the
   field saying which rule failed), reordered by drag, deleted with Undo. A
-  new device kind needs a rule, not a plugin.
+  new device kind needs a rule, not a plugin. Presets and own rules apply
+  to every connection with the plugin on. Deleting the connection where
+  a rule was added does not delete the rule.
 - Later, not in stage 6: a command topic shown under its status topic in
   the tree.
 
 It is simple on purpose: it proves the plugin plumbing (description
-format, matching, enable per connection, override in the publish sheet)
+format, matching, on/off at app level with a per-connection setting
+(`docs/contract.md` scenario 12), override in the publish sheet)
 before the richer view below.
 
 ### Wiren Board
@@ -611,9 +617,9 @@ live controller; where they differ, both are read.
   sees a control's meta (below); before that, and on a broker without the
   convention, there is no third tab. The three tabs share the segmented
   switch's width equally; at large font sizes a label wraps to two lines
-  rather than being cut. Turning the plugin off in the connection's
-  settings removes the tab, and it stays off for that connection until
-  turned on again.
+  rather than being cut. Turning the plugin off, in Settings or for the
+  connection (`docs/contract.md` scenario 12), removes the tab. The tab stays away wherever the
+  plugin is off, until it is turned on again.
 - **Opening on it.** A connection whose last session showed the tab (kept
   per connection) opens the explorer on WB devices, which reads "Reading
   devices…" until the snapshot ends. A first session opens on Tree and
@@ -655,17 +661,25 @@ live controller; where they differ, both are read.
   shows "No value". Devices without the convention are not listed; the
   Tree is unchanged.
 - **Titles.** A title is a string, taken as is, or an object of language
-  keys (`{"en": "Lamp", "ru": "Лампа"}`): the key equal to the phone's
-  language code (`ru-RU` → `ru`), else `en`, else the first key in the
-  JSON's order; an empty string counts as absent. No title: for a device
+  keys (`{"en": "Lamp", "ru": "Лампа"}`). The key used is the one for
+  the language of the plugin's «Язык названий» setting
+  (`docs/contract.md` scenario 12), which defaults to the app's language
+  (`ru-RU` → `ru`). Without that key, `en` is used, and without `en`,
+  the first key in the JSON's order. An empty string counts as absent. No title: for a device
   `meta/name`, then the id; for a control the id. Enum titles follow the
   same rule.
 - **Devices list.** By title in the tree's natural order. A row: the
   title, the device id under it in monospace, small; a red **!** when the
-  device's `meta/error` or any of its controls' is set (read out as "has
-  errors"). A tap opens the device.
+  device's `meta/error` or any shown control's is set (read out as "has
+  errors"). A hidden control's error counts only while «Показывать
+  скрытые» is on. A tap opens the device.
 - **A device.** Its controls by `order` (no order: after the rest, by id
-  in natural order); a control with `hidden` true is not shown. A row:
+  in natural order). A control with `hidden` true is not shown unless
+  the plugin's «Показывать скрытые» is on (`docs/contract.md` scenario 12). When it is on, the
+  control is listed and marked «скрытый», and its error counts toward
+  the device's "!". This changes earlier behaviour, where hidden
+  controls never showed and their errors never counted. The setting is
+  off by default, which keeps the earlier behaviour. A row:
   - the title; a tap on the title opens the ordinary topic card of the
     control's topic (history, copy, pin, publish);
   - the value, with units and digits (below), or its enum title;
@@ -775,7 +789,9 @@ nothing else in the explorer changes for it.
 
 | What | Where |
 | --- | --- |
-| Pins with their masks; the Status and command plugin on or off, its presets and own rules, and whether the Wiren Board preset was already turned on by itself; the Wiren Board plugin on or off, and whether its tab was shown before (to open on it); retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
+| Pins with their masks; retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
+| Plugins, app level: each plugin on or off; Status and command presets and own rules, and whether the Wiren Board preset was already turned on by itself; Wiren Board title language and show hidden (`docs/contract.md` scenario 12) | app-private storage, `mqtt_plugins_v2.json` |
+| Plugins, per connection: each plugin's own on or off, if set; whether the WB tab was shown before (to open on it) (`docs/contract.md` scenario 12) | same file |
 | Broker logins (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
 | The tree and history | memory only, for the session |
 
@@ -796,14 +812,16 @@ nothing else in the explorer changes for it.
 5. TLS (preset 8883, pinned certificate); the Subscriptions tab: pins
    listed, masks changed, typed topic filters (the tab came first).
 6. Plugin infrastructure (declarative descriptions, matching, enable per
-   connection, the connection's Plugins settings) with the first plugin,
+   connection, the connection's Plugins settings; superseded by app-level
+   settings, `docs/contract.md` scenario 12, stage 10) with the first plugin,
    "Status and command topics": one- and two-template rules, the four
    presets, own rules, the publish sheet's switch. Moving the Text/JSON/Hex
    views onto the same plumbing has no visible effect and is left for a
    later small step.
 7. The Wiren Board plugin: the WB devices tab (devices list, a device's
    controls by type, writes to `/on` answered on the control, error
-   marks), both meta forms, on/off per connection; the Wiren Board
+   marks), both meta forms, on/off per connection (now app level with a
+   per-connection setting, `docs/contract.md` scenario 12); the Wiren Board
    preset turning on with the tab, only while the first plugin is on.
 8. Later: charts of chosen numeric topics, overlaid; later plugins
    (Tasmota, Zigbee2MQTT, Home Assistant).
@@ -902,8 +920,8 @@ On a Wiren Board on the tunnel unless said otherwise.
      (Russian on a Russian phone; on an English phone a title with only
      `ru` shows the Russian one; a device with only `meta/name` shows
      that), the id under each. A test broker without `/devices/…/meta`
-     shows no third tab; turned off in the connection's settings the tab
-     is gone in the next session too. With the tab shown the first time,
+     shows no third tab. Turned off, in Settings or for the connection
+     (`docs/contract.md` scenario 12), the tab is gone in the next session too. With the tab shown the first time,
      the Wiren Board preset of the first plugin is on.
    - Inside a device Back returns to the list, then to Tree, whose path
      is the one it had.
@@ -930,7 +948,9 @@ On a Wiren Board on the tunnel unless said otherwise.
    - A device publishing only the older one-field meta topics, and one
      publishing only the JSON meta, show alike.
    - Tapping a control's title opens its topic card.
-   - A control with `hidden` true is not listed.
+   - A control with `hidden` true is not listed. With «Показывать
+     скрытые» on, it is listed with «скрытый», and its error marks the
+     device "!".
    - A `wo-switch`: the toggle shows the value sent and answers on the
      PUBACK, waiting for no echo.
    - Toggling to the value already shown: the PUBACK ends the sending
@@ -979,7 +999,8 @@ On a Wiren Board on the tunnel unless said otherwise.
   generic. Both on by default; of the presets only Wiren Board, which
   turns on with the WB devices tab.
 - The WB devices tab is the third, shown on its own once Wiren Board meta
-  is seen, and can be turned off per connection; once a connection has
+  is seen. It can be turned off at app level or for one connection
+  (`docs/contract.md` scenario 12, 2026-11-01). Once a connection has
   shown it, its sessions open on it. The Tree never changes for it.
 - Wiren Board writes are answered on the control: sending until the
   status topic confirms, a refusal or 5 s after the PUBACK without the
