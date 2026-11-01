@@ -630,6 +630,47 @@ filling in the user name leaves the saved password alone.
   second), with every repeat taking the Ctrl / Alt held at the press.
   Long-press selects text (Copy / Paste), pinch or A− / A+ changes the font
   size.
+- Tap the command line to move the cursor there (`ui/ssh/TerminalTap.kt`,
+  counting in `ui/ssh/TapToCursor.kt`, tmux answers in
+  `ui/ssh/TmuxTapGate.kt`). The terminal cannot move the shell's cursor,
+  so the app sends that many ← or → (the emulator's arrow codes for its
+  cursor-key mode, no Ctrl / Alt, at most 1000, written in pieces of 64
+  whole arrows so a key typed meanwhile never lands inside one) and the
+  line editor moves it. Until their echo changes the cursor's line (or
+  400 ms pass), further taps on the command line are dropped
+  (`TapEchoHold`): counted from the old screen they would be off. The count runs from the cursor's
+  cell to the tapped one over the rows the emulator wrapped at the margin
+  (its line-wrap flags; tmux keeps them when it redraws, as after the
+  keyboard shows), one per character, so a wide character counts once and
+  a blank at a wrap left by a wide character that did not fit is skipped;
+  past the end of the text it stops at the end. Rows outside that wrapped
+  line (a real line break in the command, output, the empty screen) keep
+  the plain tap. The tap is taken in `TerminalInput` before the Termux
+  view sees its lift (the view gets a cancel), so it neither counts as a
+  tap nor sends a mouse click; the keyboard shows as for any tap. Not
+  while TalkBack explores by touch.
+  - Plain shell: only while the emulator is on its normal screen; whatever
+    reads input there gets the arrows (a `read` or password prompt too).
+  - tmux: the outer screen is always tmux's alternate one, so one exec
+    asks tmux for the pane's `alternate_on`, `pane_in_mode`,
+    `window_panes`, `window_zoomed_flag` and `pane_current_command`
+    (`tmuxTapStateCommand`, `parseTapToShell`). Three outcomes: a shell on
+    its own screen gets the arrows, if the cursor's line (its text and the
+    cursor's place in it, `cursorLineState`) is unchanged since the tap;
+    any other answer within 2 s gets the click the view would have sent;
+    no answer, a failed or a late one gets nothing. One exec at a time (a
+    tap meanwhile is dropped; a question open 2.5 s counts as no answer
+    and shows the keyboard), and an answer stands 400 ms for the same
+    line. A `read` prompt inside `bash` is `bash` to tmux (without
+    `read -e` it shows the arrows as `^[[D`). The keyboard shows after
+    the answer, not at the tap: coming up it resizes the terminal and
+    tmux redraws, which would otherwise change the line under the
+    question. Line-wrap flags survive that redraw (seen on tmux 3.x).
+  - zsh's RPROMPT and an autosuggestion right of the cursor read as text:
+    a tap on them sends → past the typed end, which the shell stops at
+    or, for fish and zsh-autosuggestions, takes as accepting the
+    suggestion. A shell that starts tmux or screen by hand in a plain tab
+    is on the alternate screen and keeps the plain tap.
 - Full screen (the corners icon in the bar) hides the bar and the system
   bars; the terminal, the session tabs (when there are several), the
   snippets and the keys stay, and a thin line says what a session that is

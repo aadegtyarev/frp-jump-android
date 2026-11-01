@@ -31,6 +31,25 @@ class TmuxCommandsTest {
             "tmux if-shell -F -t '=frpjump-0a1b2c-7:' '#{pane_in_mode}' 'send-keys -t =frpjump-0a1b2c-7: -X cancel'",
             tmuxLeaveModeCommand(name),
         )
+        assertEquals(
+            "tmux display-message -p -t '=frpjump-0a1b2c-7:' '#{alternate_on} #{pane_in_mode} #{window_panes} #{window_zoomed_flag} #{pane_current_command}'",
+            tmuxTapStateCommand(name),
+        )
+    }
+
+    @Test
+    fun `a tap moves the cursor only for a shell on its own screen`() {
+        for (shell in listOf("0 0 1 0 bash\n", "0 0 3 1 zsh", "0 0 1 0 -bash", "0 0 1 0 /bin/sh", "0 0 1 0 fish", "0 0 1 0 mksh")) {
+            assertEquals(shell, TapAnswer.SHELL, parseTapToShell(shell))
+        }
+        // vim / htop / less, copy mode, a split window, a program in the foreground.
+        for (other in listOf("1 0 1 0 bash", "0 1 1 0 bash", "0 0 2 0 bash", "0 0 1 0 python3", "0 0 1 0 cat", "0 0 1 0 ssh", "1 0 1 0 vim", "0 0 1 0 my shell")) {
+            assertEquals(other, TapAnswer.NOT_SHELL, parseTapToShell(other))
+        }
+        // Not an answer at all: nothing happens.
+        for (none in listOf("", "0 0 1 0", "error: no such session", "x y z w bash")) {
+            assertEquals(none, TapAnswer.NONE, parseTapToShell(none))
+        }
     }
 
     @Test

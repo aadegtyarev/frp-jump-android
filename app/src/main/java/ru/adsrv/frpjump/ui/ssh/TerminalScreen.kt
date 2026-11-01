@@ -253,6 +253,7 @@ fun TerminalScreen(
     val input = remember {
         TerminalInput(context, TerminalView(context, null).apply { isFocusable = true; isFocusableInTouchMode = true }).apply {
             terminal.setTerminalViewClient(ViewClient(this, { current.value }, modifiers, sessions))
+            onTap = TerminalTap(terminal, { current.value }, ::showKeyboard)::onTap
         }
     }
     val view = input.terminal

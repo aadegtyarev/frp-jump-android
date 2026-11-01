@@ -349,6 +349,32 @@ class SshSession(
             emptyList()
         }
 
+    /**
+     * For a tap on the command line under tmux: what the pane runs now
+     * (see [parseTapToShell]), after one exec round trip. [answer] runs
+     * once, on a background thread. No tmux, no open connection, a failed
+     * exec or an answer later than [TAP_ANSWER_MAX_MS] is [TapAnswer.NONE]:
+     * the screen may have moved on, so neither arrows nor a late click.
+     */
+    fun askTapToShell(answer: (TapAnswer) -> Unit) {
+        val name = tmux.assigned
+        val c = openClient()
+        if (!tmux.inUse || name == null || c == null) {
+            answer(TapAnswer.NONE)
+            return
+        }
+        val asked = System.nanoTime()
+        scope.launch(Dispatchers.IO) {
+            val said = try {
+                parseTapToShell(execOutput(c, tmuxTapStateCommand(name)))
+            } catch (e: Exception) {
+                Log.w(TAG, "tmux pane state failed: ${e.javaClass.simpleName}")
+                TapAnswer.NONE
+            }
+            answer(if ((System.nanoTime() - asked) / 1_000_000 <= TAP_ANSWER_MAX_MS) said else TapAnswer.NONE)
+        }
+    }
+
     /** See [CopyModeGuard]; on the terminal's writer thread, which it holds for one round trip at most. */
     private fun leaveCopyMode() {
         val name = tmux.assigned ?: return
@@ -527,6 +553,9 @@ class SshSession(
 
         /** The most a tmux probe, kill or copy-mode exec may take. */
         const val TMUX_EXEC_TIMEOUT_S = 10L
+
+        /** The longest a tmux answer to a tap may take and still move the cursor. */
+        const val TAP_ANSWER_MAX_MS = 2_000L
 
         /** The probe prints two short lines; anything past this is not read. */
         const val PROBE_MAX_BYTES = 4096

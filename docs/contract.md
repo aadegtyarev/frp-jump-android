@@ -275,6 +275,47 @@ keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
+A tap on the command line moves the shell's cursor there: the app sends as
+many ← or → as there are characters between the cursor and the tapped cell
+(a wide character counts once, at most 1000, which stays under the terminal's 4 KB write queue), and the shell moves its
+cursor and echoes it; no other feedback. It counts only on the cursor's row
+and the rows wrapped into it at the margin (one logical line); a tap past
+the end of the text goes to its end. A row the shell broke with a real line
+break (a pasted multi-line command, a `for` loop's `>` lines), output above
+and the empty screen below keep the usual tap: it shows the keyboard (the
+tap on the command line shows it too). The arrows are plain keys: a held
+Ctrl / Alt stays held. Until their echo shows (at most 400 ms), another
+tap on the command line does nothing: it would count from where the
+cursor was. With TalkBack's touch exploration on, taps stay as
+they were.
+
+What reads the arrows:
+- Plain shell: whatever runs on the normal screen. In `vim`, `htop`, `mc`
+  or `less` (the alternate screen) the tap goes to the program as before,
+  mouse click included. A program on the normal screen gets the arrows
+  too: a `read` or password prompt, `cat`, a REPL; one without a line
+  editor shows them as `^[[D`.
+- tmux (the app's sessions): tmux holds the alternate screen toward the
+  app, so a tap on the cursor's line is kept from tmux as a click and one
+  exec asks tmux (`display-message`) about the pane. The arrows go when it
+  is on its normal screen, in no copy mode, alone on the screen (one pane
+  or zoomed) and runs a shell in the foreground (`sh`, `bash`, `zsh`,
+  `fish`, `dash`, `ash`, `ksh`, `mksh`), and only if the cursor's line and
+  the cursor's place in it are unchanged since the tap (a re-wrap from the
+  keyboard showing is no change). Any other answer within 2 s hands the
+  program the click it would have had. No answer within 2 s, or a failed
+  one: nothing, never a late click. One question at a time: a tap while
+  one is out is dropped, and one open 2.5 s counts as no answer; an
+  answer stands 400 ms for an unchanged line. A `read` prompt of a script runs in `bash` too, so it gets the arrows,
+  and without `read -e` shows them as `^[[D`. The keyboard shows once
+  tmux has answered: coming up, it resizes the terminal and tmux redraws.
+- The text right of the cursor counts as the line: zsh's RPROMPT, or an
+  autosuggestion (fish, zsh-autosuggestions) shown after the cursor. A tap
+  there sends → past the end of what was typed, which the shell either
+  stops at or, for an autosuggestion, takes as accepting it.
+
+Swipes (scrolling, tmux copy mode) and long-press selection work as before.
+
 ### 8. Background, kill and reboot
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
