@@ -11,7 +11,9 @@ version describes 0.2. UX mockups are shared with the owner separately.
 
 - One user: the owner. APK installed by hand, no Google Play. Android 10+ (API 29), arm64.
 - Works against the existing frp-jump server, wire protocol version 1, frp 0.70.0.
-  No server changes.
+  No server changes, except device labels and icons (scenario 11), which need
+  a newer server. Against an older server the app hides that feature and
+  everything else works.
 - All devices reached are the owner's own (the server only allows that).
 - UI in Russian and English.
 
@@ -121,7 +123,16 @@ re-enroll.
 ### 3. Device list and offline
 
 - `GET /api/agent/devices`: name, online (last seen < 30 s), last seen time,
-  disabled flag. The phone itself is not listed.
+  disabled flag, and, from a server that has them, label and icon
+  (scenario 11). The phone itself is not listed.
+- A row shows the device's icon on its tile (the state dot stays in the
+  corner) and the name. The second line puts the label in front of the state:
+  «Щиток, гараж · Онлайн · ⛓ 22». When the line does not fit, the label is
+  cut with an ellipsis first, so the state and the tunnel ports always stay
+  visible. A device without a label shows the line as before.
+- A magnifier in the title opens search. It matches the device name or its
+  label, ignoring case and the spaces around the query; the hint says «Имя
+  или подпись». Nothing found says so.
 - The last answer is kept on the phone per profile. On start the app shows it
   at once, then refreshes; until the server answers, devices online in it
   say "Checking…" rather than an age that is really the app's absence.
@@ -158,6 +169,9 @@ re-enroll.
   Two connections cannot pin the same port; connections to the same device
   and port share their tunnel and its pin; a port another tunnel uses now
   is refused. It cannot be changed while the tunnel is up.
+- The card's header shows the device's icon on a tile, then the whole name and
+  under it the whole label (wrapped, never cut). The top bar's "⋮" holds
+  «Подпись…» and «Значок…» (scenario 11).
 - Rename, change and delete a connection from the card or the Connections tab.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
@@ -198,7 +212,10 @@ Quick access to the saved connections of every device, active ones first.
 - Grouped by device. A group's header is the device's whole name (wrapped,
   never cut) after its state as a dot in the Devices list's colours (online,
   online as of an old list, offline; none while its profile's list is not
-  read). With more than one profile on the tab, the header also shows the
+  read). Under the name, a muted line shows the device's label, whole and
+  wrapped, taken from the profile's last device list. No label, or a list not
+  read yet, means no line. The header has no icon: the dot already marks the
+  device. With more than one profile on the tab, the header also shows the
   profile's colour; devices of the same name in two profiles are two groups.
 - Order: devices with an active connection first, then online ones, then the
   rest (offline, or not in the list); within each part by device name.
@@ -224,8 +241,8 @@ Quick access to the saved connections of every device, active ones first.
   connects or comes online does not jump under the finger; it is sorted
   again on the next visit or after a pull.
 - From 6 connections, a magnifier in the title opens search, as on Devices:
-  it matches the device name (all its connections) or a connection's name;
-  nothing found says so.
+  it matches the device name or its label (all its connections) or a
+  connection's name; nothing found says so.
 - While any tunnel is up (or being restored), the title has the Devices
   bar's power button: it disconnects every profile's tunnels, with Undo.
 - Nothing saved: "No saved connections yet. Open a device on Devices and tap
@@ -356,6 +373,55 @@ version and update).
   release names, and signed with the installed app's key; otherwise it is
   deleted and the owner is told why.
 
+### 11. Device label and icon
+
+A label is free text such as «Щиток, гараж» that tells the owner what a device
+is and where it stands. An icon is one of a fixed set. Both live on the
+frp-jump server, so every phone and the CLI show the same values
+(frp-jump `docs/device-labels-icons_plan.md`). The device name does not change.
+
+- Icons, all drawn as stroked glyphs in the app's style: Linux (Tux), Wiren
+  Board, server, computer, laptop, router, single-board computer, camera,
+  home. The device's agent reports a detected one; the owner's choice wins
+  over it. With neither, or with a value this app version does not know, the
+  row shows the generic device glyph used today.
+- The device card's "⋮" has «Подпись…» and «Значок…». Both open the same
+  bottom sheet, «Подпись и значок», with the ✕ in its header. «Подпись…»
+  opens it with the keyboard up in the text field; «Значок…» opens it with
+  the keyboard down.
+- The sheet has:
+  - a single-line text field «Подпись», with the current label, the
+    placeholder «Например, Щиток, гараж» and a counter up to 64. Line breaks
+    in pasted text become spaces; nothing can be typed past 64;
+  - a grid of icon tiles, three per row, each with its caption. The first
+    tile is «Авто», showing the detected glyph and captioned with its name
+    («Авто: Wiren Board»), or the generic glyph when the device reports
+    none. The current choice has the accent border. TalkBack reads each tile
+    as its caption plus "selected";
+  - «Сохранить», enabled once something differs from what was saved.
+- «Сохранить» saves both in one call (`POST /api/agent/devices/{name}/display`)
+  and shows progress on the button. On success the sheet closes, and the
+  card, the row and the Connections header show the new values at once (from
+  the server's answer, not a guess). On failure the sheet stays open with the
+  reason under the button (the server's own reason for a bad label, under the
+  field) and the button offers to try again. The typed text is kept.
+- An empty field clears the label. Picking «Авто» drops the owner's choice.
+  Neither has an Undo: the sheet shows the old value until «Сохранить», and
+  the next edit restores it if needed. This matches renaming a connection.
+  The Undo rule covers actions that remove something at once, and here
+  nothing goes before an explicit save.
+- Without a connection to the server, the sheet opens with the last known
+  values. «Сохранить» fails with «Нет связи с сервером — не сохранено» and the
+  retry, as above. Edits are not queued for later: another phone may change
+  the same device in the meantime.
+- Against a server without labels (its device list has no `label` key), the
+  "⋮" items are not shown, and rows show no label. Nothing tells the owner
+  about it: there is nothing they can do from the phone.
+- Labels and icons are kept in the cached device list. Offline, the list, the
+  card and the Connections tab show them as last known.
+- A label is plain text everywhere: no links, no markup, one line in the list
+  row, wrapped on the card and the Connections header.
+
 ## Wire behaviour the app must match
 
 - Bearer token on every `/api/agent/*` call; `protocol_version` checked on
@@ -368,6 +434,14 @@ version and update).
   visitor with `fallbackTo` the stcp one; both `useEncryption`, bound on
   127.0.0.1 only. Config changes are applied by hot reload.
 - frpc is the upstream 0.70.0 built for android/arm64 and shipped inside the APK.
+- `GET /api/agent/devices` items may carry `label`, `icon` (the owner's
+  choice) and `kind` (the agent's detection), each possibly null. The shown
+  icon is `icon`, then `kind`, then the generic glyph. The `label` key being
+  present at all marks a server that supports editing.
+- `POST /api/agent/devices/{name}/display` with `{"label": …}`, `{"icon": …}`
+  or both. A missing field is left as it is, null clears it (`icon: null` is
+  "automatic"), and the answer is the updated device. The phone sends no
+  `kind` in its heartbeat (see Open decisions).
 
 ## Stored on the phone
 
@@ -393,6 +467,9 @@ build for the owner's phone.
 6. Russian and English.
 7. Redesign of the remaining screens per the mockups, dark theme; fingerprint unlock; snippets.
 8. Release signing and in-app updates.
+9. Device labels and icons (scenario 11): the glyphs, the list row, search,
+   the card header and sheet, the Connections header. It can ship before the
+   server supports it, with the feature hidden until then.
 
 Screens touched by stages 1–5 get the new look in the same stage.
 
@@ -409,6 +486,14 @@ Screens touched by stages 1–5 get the new look in the same stage.
 - Scan a QR code from the laptop screen and enroll.
 - System language English → English UI; Russian → Russian.
 - Install 0.2.0, publish 0.2.1: the app offers and installs the update.
+- Labels: set «Щиток, гараж» on wb01 from the card. The row reads
+  «Щиток, гараж · Онлайн», the Connections header shows it under wb01, and
+  search for «гараж» finds wb01. A second phone and `frp-jump-client devices
+  list` show the same label after their next refresh. Pick "router", then
+  «Авто»: the detected Wiren Board icon is back.
+- Against a server without labels: no «Подпись…»/«Значок…», no labels, and no
+  errors. In airplane mode the sheet's «Сохранить» says it was not saved and
+  keeps the text.
 
 ## Decided
 
@@ -420,6 +505,10 @@ Screens touched by stages 1–5 get the new look in the same stage.
 - frp-jump release tag: the hot-reload change for exposing devices is in
   master but not released; until devices update, their tunnels still restart
   when a grant changes.
+
+- Device icon for phones: each phone profile is a device in the owner's
+  list, and the icon set has no phone. Either the server adds a `phone` value
+  that the app reports in its heartbeat, or phones keep the generic glyph.
 
 ## Open risks
 
