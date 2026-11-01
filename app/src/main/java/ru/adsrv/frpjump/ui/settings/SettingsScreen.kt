@@ -83,6 +83,7 @@ import ru.adsrv.frpjump.settings.PortRangeProblem
 import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.FileGlyph
 import ru.adsrv.frpjump.ui.ChoiceSheet
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.EyeOffGlyph
@@ -125,6 +126,12 @@ fun SettingsScreen(
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
+    // Components and licenses: a screen of its own over the settings.
+    var licenses by rememberSaveable { mutableStateOf(false) }
+    if (licenses) {
+        LicensesScreen(onBack = { licenses = false })
+        return
+    }
     val context = LocalContext.current
     val colors = AppTheme.colors
     // Read again on every return: both may change in the system settings meanwhile.
@@ -257,6 +264,13 @@ fun SettingsScreen(
             ) { ValueChevron(themeLabel(settings.theme)) }
             RowDivider()
             VersionRow(update, onCheck = vm::checkForUpdates, onUpdate = { open = Open.UPDATE })
+            RowDivider()
+            SettingRow(
+                tile = { IconTile(FileGlyph) },
+                label = stringResource(R.string.licenses),
+                hint = stringResource(R.string.licenses_hint),
+                onClick = { licenses = true },
+            ) { Chevron() }
         }
     }
 
