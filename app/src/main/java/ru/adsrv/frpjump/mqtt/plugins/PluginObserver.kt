@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.mqtt.plugins
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +42,7 @@ fun wbFilters(on: Boolean, seen: Boolean, snapshot: SnapshotState): List<String>
  */
 class PluginObserver(
     private val store: PluginStore,
-    sessions: StateFlow<List<MqttSession>>,
+    private val sessions: StateFlow<List<MqttSession>>,
     scope: CoroutineScope,
     io: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -55,24 +57,43 @@ class PluginObserver(
             sessions.collect { list ->
                 val ids = list.map { it.id }.toSet()
                 watching.keys.filter { it !in ids }.forEach { watching.remove(it)?.cancel() }
-                seen.keys.removeAll { it !in ids }
+                // Against the sessions now, not this (maybe older) list: a session just opened keeps its mark.
+                val live = liveIds()
+                seen.keys.removeAll { it !in live }
                 list.filter { it.id !in watching }.forEach { s -> watching[s.id] = launch { watch(s) } }
             }
         }
     }
 
-    /** Whether session [sessionId] has shown Wiren Board meta; the explorer marks it too when it finds meta. Any thread. */
-    fun wbSeen(sessionId: Int): MutableStateFlow<Boolean> = seen.getOrPut(sessionId) { MutableStateFlow(false) }
+    /**
+     * Whether session [sessionId] has shown Wiren Board meta; the explorer
+     * marks it too when it finds meta. A session that is gone gets a mark
+     * of its own that is not kept. Any thread.
+     */
+    fun wbSeen(sessionId: Int): MutableStateFlow<Boolean> =
+        seen[sessionId] ?: if (sessionId in liveIds()) seen.getOrPut(sessionId) { MutableStateFlow(false) } else MutableStateFlow(false)
+
+    /** The watch of session [sessionId], if it is watched; for tests. */
+    internal fun watchOf(sessionId: Int): Job? = watching[sessionId]
+
+    private fun liveIds(): Set<Int> = sessions.value.mapTo(HashSet()) { it.id }
 
     private suspend fun watch(s: MqttSession) {
         val key = pluginKey(s.profile, s.connectionId)
         val known = wbSeen(s.id)
         combine(store.changes, s.snapshot, known) { _, snapshot, k -> snapshot to k }.collect { (snapshot, k) ->
-            val on = store.get().isOn(key, PluginIds.WIREN_BOARD)
-            // The tree may hold meta no screen has read yet: looked up first, so held filters are never dropped and taken again.
-            val seenNow = on && (k || wbSeenIn(s.tree))
-            if (seenNow && !k) known.value = true
-            wbFilters(on, k || seenNow, snapshot)?.let(s::setPluginFilters)
+            // One failed pass must not end the watch: the next change applies again.
+            runCatching {
+                val on = store.get().isOn(key, PluginIds.WIREN_BOARD)
+                // The tree may hold meta no screen has read yet: looked up first, so held filters are never dropped and taken again.
+                val seenNow = on && (k || wbSeenIn(s.tree))
+                if (seenNow && !k) known.value = true
+                wbFilters(on, k || seenNow, snapshot)?.let(s::setPluginFilters)
+            }.onFailure { if (it is CancellationException) throw it else Log.w(TAG, "plugin settings not applied: ${it.message}") }
         }
+    }
+
+    private companion object {
+        const val TAG = "PluginObserver"
     }
 }

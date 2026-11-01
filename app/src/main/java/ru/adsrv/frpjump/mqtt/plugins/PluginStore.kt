@@ -23,14 +23,18 @@ private val PluginsJson = Json {
  * Read on first use, off the main thread: a missing [file] is migrated
  * from the per-connection [legacy] one and written at once; one that does
  * not parse, or has a higher version, reads as the defaults and is copied
- * to [corruptCopy] (the first one only). [legacy] is otherwise only
- * scrubbed of deleted connections and forgotten profiles. [changes] counts
+ * to [corruptCopy] (the first one only). A [legacy] file that does not
+ * parse at all is copied to [legacyCorruptCopy] the same way. A file that
+ * cannot be read (an I/O error) reads as the defaults too, with nothing
+ * written or copied. [legacy] is otherwise only scrubbed of deleted
+ * connections and forgotten profiles. [changes] counts
  * the changes, so open screens and sessions read again.
  */
 class PluginStore(
     private val file: TextStorage,
     private val legacy: TextStorage,
     private val corruptCopy: TextStorage,
+    private val legacyCorruptCopy: TextStorage,
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
     private var loaded: PluginsFile? = null
@@ -117,13 +121,18 @@ class PluginStore(
         file.delete()
         legacy.delete()
         corruptCopy.delete()
+        legacyCorruptCopy.delete()
         loaded = PluginsFile()
         unreadable = false
         _changes.value++
     }
 
     private fun load(): PluginsFile {
-        val text = file.read() ?: return migrate()
+        val text = try {
+            file.read()
+        } catch (e: Exception) {
+            return unreadableNow("mqtt_plugins_v2.json", e)
+        } ?: return migrate()
         val read = runCatching { PluginsJson.decodeFromString<PluginsFile>(text) }.getOrNull()?.takeIf { it.version <= PLUGINS_VERSION }
         if (read != null) return read
         Log.w(TAG, "mqtt_plugins_v2.json does not read; the defaults apply, the file is kept as a copy")
@@ -134,11 +143,29 @@ class PluginStore(
 
     /** The first read after the upgrade: the old file's settings, written at once. */
     private fun migrate(): PluginsFile {
-        val migrated = migratePlugins(readLegacy(legacy.read()), newId)
+        val text = try {
+            legacy.read()
+        } catch (e: Exception) {
+            // Not written: the next start migrates again.
+            return unreadableNow("mqtt_plugins.json", e)
+        }
+        val old = readLegacy(text)
+        if (old == null && text != null) {
+            Log.w(TAG, "mqtt_plugins.json does not parse; the defaults apply, the file is kept as a copy")
+            runCatching { if (legacyCorruptCopy.read() == null) legacyCorruptCopy.write(text) }.onFailure { Log.w(TAG, "copy not kept: ${it.message}") }
+        }
+        val migrated = migratePlugins(old.orEmpty(), newId)
         // Written before any session reads it; a failure leaves it in memory, and the next start migrates again.
         runCatching { file.write(PluginsJson.encodeToString(PluginsFile.serializer(), migrated)) }
             .onFailure { Log.w(TAG, "migrated plugin settings not written: ${it.message}") }
         return migrated
+    }
+
+    /** A file that could not be read: the defaults, and nothing written over it until the owner changes something. */
+    private fun unreadableNow(name: String, e: Exception): PluginsFile {
+        Log.w(TAG, "$name not read: ${e.message}")
+        unreadable = true
+        return PluginsFile()
     }
 
     /** Keeps in the old file only the keys [keep] passes; an absent or unreadable file is left as it is. */

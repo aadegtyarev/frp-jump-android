@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.mqtt.plugins
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import ru.adsrv.frpjump.api.WireJson
 import ru.adsrv.frpjump.mqtt.profileOfKey
 
@@ -27,9 +28,20 @@ internal data class LegacyStatusCommand(
 @Serializable
 internal data class LegacyWirenBoard(val on: Boolean = true, val tabShown: Boolean = false)
 
-/** The old file's connections in the file's order, keyed as the MQTT stores key them; unreadable: none. */
-internal fun readLegacy(text: String?): Map<String, LegacyConnectionPlugins> =
-    text?.let { runCatching { WireJson.decodeFromString<Map<String, LegacyConnectionPlugins>>(it) }.getOrNull() }.orEmpty()
+/**
+ * The old file's connections in the file's order, keyed as the MQTT stores
+ * key them; an entry that does not read is skipped. No file: none. Null:
+ * the file is not a JSON object at all.
+ */
+internal fun readLegacy(text: String?): Map<String, LegacyConnectionPlugins>? {
+    text ?: return emptyMap()
+    val obj = runCatching { WireJson.decodeFromString<JsonObject>(text) }.getOrNull() ?: return null
+    return buildMap {
+        obj.forEach { (key, value) ->
+            runCatching { WireJson.decodeFromJsonElement(LegacyConnectionPlugins.serializer(), value) }.getOrNull()?.let { put(key, it) }
+        }
+    }
+}
 
 /**
  * The v2 settings from the old per-connection ones ([old] in the file's
@@ -39,7 +51,8 @@ internal fun readLegacy(text: String?): Map<String, LegacyConnectionPlugins> =
  *   (their union) and own rules (in connection, then rule order; a rule
  *   equal to one taken is dropped, one with a taken id gets [newId]);
  * - the Wiren Board preset counts as turned on by itself if any connection
- *   had seen the WB tab; "the tab was shown" is kept per connection.
+ *   had seen the WB tab, with Status and command topics on there or not
+ *   (as the contract's migration says); "the tab was shown" is kept per connection.
  */
 internal fun migratePlugins(old: Map<String, LegacyConnectionPlugins>, newId: () -> String): PluginsFile {
     val presets = LinkedHashSet<String>()

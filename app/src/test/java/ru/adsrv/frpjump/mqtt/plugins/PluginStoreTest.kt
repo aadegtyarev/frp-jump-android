@@ -14,14 +14,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.mqtt.connectionKey
 import ru.adsrv.frpjump.ssh.MemoryStorage
+import ru.adsrv.frpjump.store.TextStorage
+import java.io.IOException
 
 class PluginStoreTest {
     private val v2 = MemoryStorage()
     private val old = MemoryStorage()
     private val corrupt = MemoryStorage()
+    private val oldCorrupt = MemoryStorage()
     private var ids = 0
 
-    private fun store() = PluginStore(v2, old, corrupt, newId = { "new-${++ids}" })
+    private fun store(file: TextStorage = v2, legacy: TextStorage = old) = PluginStore(file, legacy, corrupt, oldCorrupt, newId = { "new-${++ids}" })
+
+    /** A file that cannot be read (an I/O error); counts writes. */
+    private class Failing : TextStorage {
+        var writes = 0
+
+        override fun read(): String? = throw IOException("EIO")
+
+        override fun write(text: String) {
+            writes++
+        }
+
+        override fun delete() = Unit
+    }
 
     /** An old per-connection file, connections in this order. */
     private fun oldFile(vararg connections: Pair<Pair<String, String>, String>): String =
@@ -135,11 +151,53 @@ class PluginStoreTest {
     }
 
     @Test
-    fun `an unreadable old file migrates to the defaults`() {
+    fun `an old file that does not parse migrates to the defaults and is copied aside once`() {
         old.text = "not json"
         assertEquals(PluginsFile(), store().get())
         assertNotNull(v2.text)
         assertEquals("not json", old.text)
+        assertEquals("not json", oldCorrupt.text)
+        v2.text = null
+        old.text = "[]"
+        store().get()
+        assertEquals("not json", oldCorrupt.text)
+    }
+
+    @Test
+    fun `an old entry that does not read is skipped, the others migrate`() {
+        old.text = oldFile(
+            ("p" to "bad") to """{"wirenBoard":{"on":"maybe"}}""",
+            ("p" to "home") to """{"wirenBoard":{"on":false},"statusCommand":{"rules":[{"status":"a/{x}","id":"r1"}]}}""",
+        )
+        val s = store()
+        assertFalse(s.get("p", "home").wirenBoardOn)
+        assertEquals(listOf("r1"), s.get().app.plugins.statusCommand.rules.map { it.id })
+        assertNull(oldCorrupt.text)
+    }
+
+    @Test
+    fun `a v2 file that cannot be read gives the defaults, writes nothing and copies nothing`() {
+        val failing = Failing()
+        old.text = oldFile(("p" to "home") to """{"wirenBoard":{"on":false}}""")
+        val s = store(file = failing)
+        assertEquals(PluginsFile(), s.get())
+        assertTrue(s.unreadable())
+        // Not migrated over it either.
+        assertTrue(s.get("p", "home").wirenBoardOn)
+        s.updateByApp { it.wbTabAppeared(pluginKey("p", "home")) }
+        assertEquals(0, failing.writes)
+        assertNull(corrupt.text)
+    }
+
+    @Test
+    fun `an old file that cannot be read gives the defaults and does not write v2, so the next start migrates`() {
+        val s = store(legacy = Failing())
+        assertEquals(PluginsFile(), s.get())
+        assertTrue(s.unreadable())
+        assertNull(v2.text)
+        assertNull(oldCorrupt.text)
+        old.text = oldFile(("p" to "home") to """{"wirenBoard":{"on":false}}""")
+        assertFalse(store().get("p", "home").wirenBoardOn)
     }
 
     @Test

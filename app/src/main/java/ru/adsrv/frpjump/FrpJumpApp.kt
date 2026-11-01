@@ -106,8 +106,9 @@ class FrpJumpApp : Application() {
     lateinit var mqttPublished: PublishMemory
         private set
 
-    /** The MQTT plugins' settings per connection. */
+    /** The MQTT plugins' settings: app level and each connection's own on or off. */
     lateinit var mqttPlugins: PluginStore
+        private set
 
     /** Applies the plugin settings to the MQTT sessions, with or without a screen. */
     lateinit var mqttPluginObserver: PluginObserver
@@ -368,6 +369,7 @@ class FrpJumpApp : Application() {
             file = AtomicTextFile(File(filesDir, "mqtt_plugins_v2.json")),
             legacy = AtomicTextFile(File(filesDir, "mqtt_plugins.json")),
             corruptCopy = AtomicTextFile(File(filesDir, "mqtt_plugins_v2.corrupt.json")),
+            legacyCorruptCopy = AtomicTextFile(File(filesDir, "mqtt_plugins.corrupt.json")),
         )
         mqtt = MqttSessions(
             env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler()),
