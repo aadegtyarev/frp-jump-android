@@ -29,7 +29,7 @@ enum class Bounce { SKIP_REDIRECT, CLOSE }
  * disarms it, as does anything the owner starts ([cancel]); [capMs] after
  * the landing nothing counts any more.
  */
-class BackBounce(private val capMs: Long = 5000) {
+class BackBounce(private val capMs: Long = 2000) {
     private var fromIndex = -1
     private var fromUrl: String? = null
     private var landedAt = -1L
