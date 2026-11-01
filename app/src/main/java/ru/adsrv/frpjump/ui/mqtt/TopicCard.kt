@@ -79,6 +79,7 @@ import ru.adsrv.frpjump.mqtt.multiLineText
 import ru.adsrv.frpjump.mqtt.pinFilter
 import ru.adsrv.frpjump.mqtt.valueLine
 import ru.adsrv.frpjump.mqtt.visibleJsonLines
+import ru.adsrv.frpjump.notices.NoticeAction
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ssh.copyPreview
 import ru.adsrv.frpjump.ui.AppSheet
@@ -193,13 +194,13 @@ fun TopicCard(
                         json,
                         onView = { v -> chosen = v },
                         detectedJson = json != null,
-                        onCopy = if (payload != null && view != null) ({ copy(context, copiedValue(payload, view)) }) else null,
+                        onCopy = if (payload != null && view != null) ({ copyToClipboard(context, copiedValue(payload, view)) }) else null,
                     )
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     // The empty first level reads (and copies) as `/`, where its topics start.
                     val shown = shownPath(path).orEmpty()
-                    PathLine(shown) { copy(context, CopiedValue(shown, cut = false)) }
+                    PathLine(shown) { copyToClipboard(context, CopiedValue(shown, cut = false)) }
                     val node = card.node
                     if (card.isBranch) {
                         // Only when it says more than the value's own time.
@@ -548,8 +549,8 @@ private fun viewLabel(view: PayloadView): String = when (view) {
     PayloadView.HEX -> stringResource(R.string.mqtt_view_hex)
 }
 
-/** Puts [copied] on the clipboard and says so on top, with a cleaned preview as the terminal does. */
-private fun copy(context: Context, copied: CopiedValue) {
+/** Puts [copied] on the clipboard and says so on top, with a cleaned preview as the terminal does; [action] rides on that notice. */
+internal fun copyToClipboard(context: Context, copied: CopiedValue, action: NoticeAction? = null) {
     try {
         context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(context.getString(R.string.kind_mqtt), copied.text))
     } catch (_: RuntimeException) {
@@ -558,7 +559,7 @@ private fun copy(context: Context, copied: CopiedValue) {
     }
     val preview = copyPreview(copied.text, COPY_PREVIEW)
     val text = if (copied.cut) context.getString(R.string.mqtt_copied_cut, preview) else context.getString(R.string.terminal_copied, preview)
-    context.notice(text, NoticeKind.DONE, key = "copied")
+    context.notice(text, NoticeKind.DONE, key = "copied", action = action)
 }
 
 /** Formatters of a value's time with seconds: today's (time only) and older ones (with the date); built once per locale. */

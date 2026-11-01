@@ -1,5 +1,19 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import ru.adsrv.frpjump.mqtt.CopiedValue
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbValueCopy
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.controlShortName
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.controlTopic
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.valueCopy
+import ru.adsrv.frpjump.notices.NoticeAction
+import ru.adsrv.frpjump.notices.NoticeKind
+import ru.adsrv.frpjump.ui.notice
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -93,12 +107,16 @@ private val OWN_SENDING = setOf(WbWidget.SWITCH, WbWidget.WO_SWITCH, WbWidget.RA
 private enum class ControlDialog { INPUT, ENUM, RGB }
 
 /**
- * A control's row (the Wiren Board plugin): the title (a tap opens the
- * topic's card), its error and its write's answer under it in plain words,
- * and on the right the control by type. [answer] is where the last write
+ * A control's row (the Wiren Board plugin): the title, its error and its
+ * write's answer under it in plain words, and on the right the control by
+ * type. A tap on the title copies the control as `device/control`, a tap
+ * on a value that is only shown copies the value, a long press on either
+ * copies the full topic; the copy's notice offers the topic's card
+ * ([onCard]). Widgets keep their own taps. [answer] is where the last write
  * stands; [sent] the last value sent to a `wo-switch`. [off] says why the
  * controls are off (a closed or reconnecting session), null while open.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ControlRow(
     control: WbControl,
@@ -106,11 +124,16 @@ internal fun ControlRow(
     answer: WriteView?,
     sent: String?,
     off: String?,
-    onTitle: () -> Unit,
+    onCard: () -> Unit,
     onWrite: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
     val widget = widgetOf(control.meta)
+    val copy = RowCopy(LocalContext.current, control, onCard)
+    val copyValueLabel = stringResource(R.string.wb_copy_value)
+    val copyControlLabel = stringResource(R.string.wb_copy_control)
+    val copyTopicLabel = stringResource(R.string.wb_copy_topic)
+    val cardLabel = stringResource(R.string.mqtt_open_card)
     val sending = answer as? WriteView.Sending
     val canWrite = off == null && sending == null
     var dialog by rememberSaveable { mutableStateOf<ControlDialog?>(null) }
@@ -119,7 +142,22 @@ internal fun ControlRow(
             Column(
                 Modifier
                     .weight(1f)
-                    .clickable(role = Role.Button, onClickLabel = stringResource(R.string.mqtt_open_card), onClick = onTitle),
+                    .combinedClickable(
+                        role = Role.Button,
+                        onClickLabel = copyControlLabel,
+                        onClick = copy::control,
+                        onLongClickLabel = copyTopicLabel,
+                        onLongClick = copy::topic,
+                    )
+                    // TalkBack: every copy on the row, whatever the widget, and the card.
+                    .semantics {
+                        customActions = listOf(
+                            CustomAccessibilityAction(copyValueLabel) { copy.value(); true },
+                            CustomAccessibilityAction(copyControlLabel) { copy.control(); true },
+                            CustomAccessibilityAction(copyTopicLabel) { copy.topic(); true },
+                            CustomAccessibilityAction(cardLabel) { onCard(); true },
+                        )
+                    },
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(oneLineText(control.title), fontSize = 15.sp, color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -135,7 +173,7 @@ internal fun ControlRow(
                 when {
                     // Controls with a shape of their own (toggle, slider, button, swatch) stay, showing the spinner themselves.
                     sending != null && widget !in OWN_SENDING -> SendingValue(control, sending.asked, language)
-                    else -> ControlWidget(control, widget, language, sending, sent, canWrite, off, onWrite, onDialog = { dialog = it })
+                    else -> ControlWidget(control, widget, language, sending, sent, canWrite, off, copy, onWrite, onDialog = { dialog = it })
                 }
             }
         }
@@ -201,10 +239,22 @@ private fun ControlWidget(
     sent: String?,
     canWrite: Boolean,
     off: String?,
+    copy: RowCopy,
     onWrite: (String) -> Unit,
     onDialog: (ControlDialog) -> Unit,
 ) {
     val colors = AppTheme.colors
+    // A value that is only shown (read-only, alarm) copies on tap; the topic on a long press.
+    val copyTarget = Modifier
+        .combinedClickable(
+            role = Role.Button,
+            onClickLabel = stringResource(R.string.wb_copy_value),
+            onClick = copy::value,
+            onLongClickLabel = stringResource(R.string.wb_copy_topic),
+            onLongClick = copy::topic,
+        )
+        .heightIn(min = 40.dp)
+        .padding(start = 8.dp)
     val offState = Modifier.semantics { off?.let { stateDescription = it } }
     when (widget) {
         WbWidget.SWITCH, WbWidget.WO_SWITCH -> {
@@ -253,13 +303,15 @@ private fun ControlWidget(
             // Unread, it is neither raised nor clear: the plain muted ring, read out as the read error.
             val raised = !control.valueUnknown && control.value?.trim() == "1"
             val spoken = if (control.valueUnknown) stringResource(R.string.wb_error_read) else stringResource(if (raised) R.string.wb_alarm_on else R.string.wb_alarm_off)
-            Box(
-                Modifier
-                    .size(20.dp)
-                    .background(if (raised) colors.error else Color.Transparent, CircleShape)
-                    .border(2.dp, if (raised) colors.error else colors.outline, CircleShape)
-                    .semantics { contentDescription = spoken },
-            )
+            Box(copyTarget.widthIn(min = 40.dp), contentAlignment = Alignment.CenterEnd) {
+                Box(
+                    Modifier
+                        .size(20.dp)
+                        .background(if (raised) colors.error else Color.Transparent, CircleShape)
+                        .border(2.dp, if (raised) colors.error else colors.outline, CircleShape)
+                        .semantics { contentDescription = spoken },
+                )
+            }
         }
         WbWidget.RGB -> {
             // While sending, the asked colour, muted beside a spinner.
@@ -303,7 +355,7 @@ private fun ControlWidget(
         }
         // The slider under the title shows a range's value.
         WbWidget.RANGE -> Unit
-        WbWidget.READ_ONLY -> ControlValue(control, language)
+        WbWidget.READ_ONLY -> Box(copyTarget, contentAlignment = Alignment.CenterEnd) { ControlValue(control, language) }
     }
 }
 
@@ -351,6 +403,30 @@ private fun RangeSlider(control: WbControl, sending: WriteView.Sending?, canWrit
             Text(shown, fontSize = 15.sp, color = if (sending != null) colors.muted else colors.ink)
         }
     }
+}
+
+/**
+ * The copies of a control's row, each confirmed by the shared copy notice
+ * that names what was copied and offers the topic's card ([onCard]); a
+ * value that cannot be copied says why instead.
+ */
+internal class RowCopy(private val context: Context, private val control: WbControl, private val onCard: () -> Unit) {
+    private fun put(text: String) =
+        copyToClipboard(context, CopiedValue(text, cut = false), NoticeAction(context.getString(R.string.wb_card), onCard))
+
+    fun value() {
+        val why = when (val v = valueCopy(control)) {
+            is WbValueCopy.Text -> return put(v.text)
+            WbValueCopy.Unreadable -> R.string.wb_copy_unreadable
+            WbValueCopy.NoValue -> R.string.wb_copy_no_value
+            WbValueCopy.Empty -> R.string.wb_copy_empty
+        }
+        context.notice(context.getString(why), NoticeKind.INFO, key = "copied")
+    }
+
+    fun control() = put(controlShortName(control))
+
+    fun topic() = put(controlTopic(control))
 }
 
 /** How long a let-go slider holds its value waiting for the write to show. */
