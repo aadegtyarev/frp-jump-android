@@ -175,6 +175,10 @@ neither option; see "Retained topics" for what that changes.
   and each mask says what it covers (topic only; `+` the direct children;
   `#` everything inside, the topic too). A search pattern with only `+`
   and `#` pins its filter ("Subscribe to this filter", see "The tree").
+  A filter a broader pin already delivers is not pinned again, alike in
+  the three places: the Pin sheet shows that mask off with "Already
+  pinned (through <pin>)", the search's button is off with the same
+  words, and the Subscriptions tab's "+" refuses it so.
   Also typed as a topic filter on the Subscriptions tab (see there).
 - A typed topic filter is checked before it is saved: not empty; `#` only
   as a whole level and only the last one; `+` only as a whole level. The
@@ -219,7 +223,12 @@ banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
     (`/devices/+/controls/K1`), the rest of the filter is also searched
     there as a pattern (`+/controls/K1` in `/devices`);
   - a filter starting with a wildcard (`+/controls/#`, `#`): the tree's
-    search with it as a pattern over the whole tree.
+    search with it as a pattern over the whole tree;
+  - a filter with `+` or `#` that also holds `*` or `?` (plain characters
+    to MQTT, wildcards to the search, which would find more than the
+    filter delivers) is never searched: its branch up to the first level
+    holding a wildcard or either character opens (the root when that is
+    the first level). Without `+` and `#` it is one topic, its card.
 - **Unpin**: a swipe to the left reveals ✕ (as on the Devices screen);
   "⋮" on the row holds **Unpin** too; TalkBack gets "Unpin <filter>" as
   an action of the row. Gone at once, Undo on the shared notice, as on a
@@ -227,8 +236,10 @@ banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
 - **Change mask…** ("⋮", and a TalkBack action) for a pin a card can name
   (`<t>`, `<t>/+`, `<t>/#`): the Pin sheet titled "Change mask",
   "Replaces <filter>"; the masks pinned already are marked and not
-  offered; a pick replaces the pin in its place ("Pinned: <filter>"
-  notice). Other filters have no mask to change.
+  offered, nor a mask another pin already delivers (as on a card; the
+  pin being replaced does not count); a pick replaces the pin in its
+  place ("Pinned: <filter>" notice). Other filters have no mask to
+  change.
 - **+** (a floating button, as Files' upload): "Subscribe to a filter", a
   field taken as is. Checked as "Pins" says, the field saying which rule
   failed ("+ and # take a whole level.", "# can only be the last level");
@@ -236,7 +247,9 @@ banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
   pin ("Already pinned (through <pin>)", as the search says) is not
   pinned again. Under the field, while it applies: a first-level wildcard
   never matches `$` topics; `*` and `?` are plain characters here.
-  Pinned, the dialog closes with "Pinned: <filter>".
+  Pinned, the dialog closes with "Pinned: <filter>". The session closing
+  while the dialog or the mask sheet is open closes it with "The session
+  is closed"; nothing is pinned and no "Pinned" notice shows.
 - **Empty**: "No subscriptions yet", what a subscription gives and the
   three ways to make one (a topic's card, a search pattern, +).
 - **Closed session**: the stored pins stay listed with what the tree last

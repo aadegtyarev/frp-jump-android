@@ -64,6 +64,7 @@ import ru.adsrv.frpjump.mqtt.SubscriptionRow
 import ru.adsrv.frpjump.mqtt.SubscriptionTarget
 import ru.adsrv.frpjump.mqtt.filterHasGlobChars
 import ru.adsrv.frpjump.mqtt.filterSkipsDollar
+import ru.adsrv.frpjump.mqtt.maskCoveredBy
 import ru.adsrv.frpjump.mqtt.pinnedMasks
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.Field
@@ -265,6 +266,8 @@ internal fun ChangeMaskSheet(row: SubscriptionRow, pins: List<String>, onPick: (
     PinSheet(
         path = rooted.topic,
         pinned = pinnedMasks(rooted.topic, pins),
+        // The pin being replaced covers its narrower masks itself: it does not count against them.
+        coveredBy = maskCoveredBy(rooted.topic, pins - row.filter),
         initial = rooted.mask,
         onPick = onPick,
         onDismiss = onDismiss,
@@ -327,4 +330,5 @@ private fun refusalText(refusal: FilterRefusal): String = when (refusal) {
     }
     FilterRefusal.Pinned -> stringResource(R.string.mqtt_filter_already)
     is FilterRefusal.Covered -> stringResource(R.string.mqtt_filter_pinned, refusal.by)
+    FilterRefusal.SessionClosed -> stringResource(R.string.mqtt_closed)
 }

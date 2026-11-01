@@ -43,6 +43,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
@@ -227,6 +228,7 @@ fun TopicCard(
                             onClick = onOpenBranch,
                         )
                     }
+                    // Hidden once every mask is pinned; masks a broader pin covers show in the sheet, off, saying through which.
                     if (card.pinned.size < pinMasksFor(path).size) {
                         SecondaryButton(stringResource(R.string.mqtt_pin_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { picking = true }
                     }
@@ -241,6 +243,7 @@ fun TopicCard(
         PinSheet(
             path = path,
             pinned = card.pinned,
+            coveredBy = card.coveredBy,
             initial = if (card.isBranch && value == null) PinMask.WHOLE_BRANCH else PinMask.TOPIC,
             onPick = { mask ->
                 val filter = onPin(mask)
@@ -453,6 +456,8 @@ private fun History(history: List<TopicValue>) {
 internal fun PinSheet(
     path: MqttPath,
     pinned: List<PinMask>,
+    /** Masks off because a broader pin already delivers them, each with that pin (as the search says it). */
+    coveredBy: Map<PinMask, String>,
     initial: PinMask,
     onPick: (PinMask) -> Unit,
     onDismiss: () -> Unit,
@@ -465,18 +470,24 @@ internal fun PinSheet(
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             pinMasksFor(path).forEach { mask ->
                 val done = mask in pinned
-                val suggested = mask == initial && !done
+                val by = coveredBy[mask]?.takeIf { !done }
+                val off = done || by != null
+                val suggested = mask == initial && !off
                 val pinnedState = stringResource(R.string.mqtt_pinned_mark)
+                val coveredState = by?.let { stringResource(R.string.mqtt_filter_pinned, it) }
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 56.dp)
                         .background(if (suggested) colors.accentContainer else colors.card, RoundedCornerShape(12.dp))
-                        .clickable(enabled = !done, role = Role.Button) {
+                        .clickable(enabled = !off, role = Role.Button) {
                             onPick(mask)
                             onDismiss()
                         }
-                        .semantics { if (done) stateDescription = pinnedState }
+                        .semantics {
+                            if (done) stateDescription = pinnedState
+                            coveredState?.let { stateDescription = it }
+                        }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -486,7 +497,7 @@ internal fun PinSheet(
                             fontSize = 16.sp,
                             fontWeight = if (suggested) FontWeight.SemiBold else FontWeight.Normal,
                             color = when {
-                                done -> colors.muted
+                                off -> colors.muted
                                 suggested -> colors.onAccentContainer
                                 else -> colors.ink
                             },
@@ -500,6 +511,8 @@ internal fun PinSheet(
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        // Off with why: the pin that already delivers it, as the search and "+" say.
+                        coveredState?.let { Text(it, fontSize = 12.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics {}) }
                     }
                     if (done) {
                         Text(stringResource(R.string.mqtt_pinned_mark), fontSize = 12.sp, color = colors.muted)

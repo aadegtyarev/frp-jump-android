@@ -175,8 +175,15 @@ fun filterOffer(query: SearchQuery, scope: MqttPath, pins: Collection<String>, o
     // Unpinning is the phone's own list: also in a closed session, applied on the next connect.
     if (filter in pins) return FilterOffer.Unsubscribe(filter)
     if (!open) return FilterOffer.SessionClosed
-    return pins.firstOrNull { filterCovers(it, filter) }?.let { FilterOffer.Covered(filter, it) } ?: FilterOffer.Subscribe(filter)
+    return coveringPin(filter, pins)?.let { FilterOffer.Covered(filter, it) } ?: FilterOffer.Subscribe(filter)
 }
+
+/**
+ * The first of [pins], other than [filter] itself, that already delivers
+ * all [filter] does; null when none. The search's offer, the Subscriptions
+ * tab's "+" and the Pin sheet's masks all refuse such a filter with it.
+ */
+fun coveringPin(filter: String, pins: Collection<String>): String? = pins.firstOrNull { it != filter && filterCovers(it, filter) }
 
 /**
  * Whether the valid topic filter [pin] delivers every topic [filter]

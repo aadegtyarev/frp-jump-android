@@ -377,7 +377,13 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             onDismiss = { typing = false },
         )
     }
-    if (subscribing) {
+    if (subscribing && !open) {
+        // Closed while it was open: nothing can be subscribed any more; say why rather than vanish.
+        LaunchedEffect(Unit) {
+            subscribing = false
+            context.notice(context.getString(R.string.mqtt_closed), NoticeKind.INFO)
+        }
+    } else if (subscribing) {
         SubscribeDialog(
             onSubscribe = { text ->
                 vm.subscribeTyped(text).also {
@@ -394,7 +400,10 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
         // Gone meanwhile (unpinned, or the session closed): nothing to change.
         val row = state.subscriptions.firstOrNull { it.filter == filter }
         if (row == null || !open) {
-            LaunchedEffect(filter) { masking = null }
+            LaunchedEffect(filter) {
+                masking = null
+                if (!open) context.notice(context.getString(R.string.mqtt_closed), NoticeKind.INFO)
+            }
         } else {
             ChangeMaskSheet(
                 row,

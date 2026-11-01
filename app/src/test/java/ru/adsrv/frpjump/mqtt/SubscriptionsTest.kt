@@ -151,4 +151,37 @@ class SubscriptionsTest {
         assertTrue(filterHasGlobChars("/devices/*/controls"))
         assertFalse(filterHasGlobChars("/devices/+/controls"))
     }
+
+    @Test
+    fun `a filter holding star or question mark is never searched, its fixed branch opens`() {
+        // Plain characters in MQTT but wildcards in the search, which would find more than the filter does.
+        assertEquals(SubscriptionTarget.Branch(p("/devices"), null), subscriptionTarget("/devices/*/controls/#"))
+        assertEquals(SubscriptionTarget.Branch(p("/devices/x"), null), subscriptionTarget("/devices/x/+/K?"))
+        assertEquals(SubscriptionTarget.Branch(MqttPath.ROOT, null), subscriptionTarget("+/a*"))
+        assertEquals(SubscriptionTarget.Branch(MqttPath.ROOT, null), subscriptionTarget("a?/#"))
+        // Without + or # it is one topic, taken literally: its card.
+        assertEquals(SubscriptionTarget.Topic(p("a/b*")), subscriptionTarget("a/b*"))
+    }
+
+    @Test
+    fun `a typed filter is refused once the session is closed`() {
+        assertEquals(FilterRefusal.SessionClosed, typedFilterRefusal("y/#", emptyList(), open = false))
+        // What is wrong with the text itself is still said first.
+        assertEquals(FilterRefusal.Invalid(FilterProblem.HASH_NOT_LAST), typedFilterRefusal("a/#/b", emptyList(), open = false))
+        assertNull(typedFilterRefusal("y/#", emptyList(), open = true))
+    }
+
+    @Test
+    fun `the pin sheet offers a mask a broader pin delivers off, naming that pin`() {
+        val controls = p("/devices/x/controls")
+        assertEquals(
+            mapOf(PinMask.TOPIC to "/devices/+/controls/#", PinMask.ONE_LEVEL_BELOW to "/devices/+/controls/#"),
+            maskCoveredBy(controls, listOf("/devices/+/controls/#", "/devices/x/controls/#")),
+        )
+        // A mask pinned itself is "pinned", not covered; nothing covers the whole branch but itself.
+        assertEquals(mapOf(PinMask.ONE_LEVEL_BELOW to "/devices/x/controls/#"), maskCoveredBy(controls, listOf("/devices/x/controls/#", "/devices/x/controls")))
+        assertEquals(emptyMap<PinMask, String>(), maskCoveredBy(controls, emptyList()))
+        assertNull(coveringPin("a/#", listOf("a/#")))
+        assertEquals("#", coveringPin("a/#", listOf("a/#", "#")))
+    }
 }

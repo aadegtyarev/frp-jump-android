@@ -18,11 +18,23 @@ sealed interface SubscriptionTarget {
 
 private fun isWildcardLevel(level: String) = level == "+" || level == "#"
 
-/** Where a tap on the subscription [filter] (a valid topic filter) leads. */
+private fun hasGlobChar(level: String) = level.any { it == '*' || it == '?' }
+
+/**
+ * Where a tap on the subscription [filter] (a valid topic filter) leads.
+ * `*` and `?` are plain characters in a filter but wildcards in the
+ * search, so a wildcard filter holding them is never searched: its branch
+ * up to the first level with a wildcard or either of them opens (the root
+ * when that is the first level).
+ */
 fun subscriptionTarget(filter: String): SubscriptionTarget {
     val levels = filter.split('/')
     val first = levels.indexOfFirst(::isWildcardLevel)
     if (first < 0) return SubscriptionTarget.Topic(MqttPath(levels))
+    if (levels.any(::hasGlobChar)) {
+        val fixed = levels.indexOfFirst { isWildcardLevel(it) || hasGlobChar(it) }
+        return SubscriptionTarget.Branch(MqttPath(levels.take(fixed)), null)
+    }
     if (first == 0) return SubscriptionTarget.Search(filter)
     val rest = levels.drop(first)
     // `<t>/+` and `<t>/#` are the branch's own level; more levels below the wildcard are searched there.
@@ -128,13 +140,20 @@ sealed interface FilterRefusal {
 
     /** A broader pin, [by], already delivers all it does (as the search's offer says). */
     data class Covered(val by: String) : FilterRefusal
+
+    /** The session closed while the filter was typed: nothing can be subscribed. */
+    data object SessionClosed : FilterRefusal
 }
 
-/** Why [text] typed on the Subscriptions tab cannot be pinned next to [pins]; null when it can. */
-fun typedFilterRefusal(text: String, pins: Collection<String>): FilterRefusal? {
+/**
+ * Why [text] typed on the Subscriptions tab cannot be pinned next to
+ * [pins]; null when it can. [open]: the session can still subscribe.
+ */
+fun typedFilterRefusal(text: String, pins: Collection<String>, open: Boolean = true): FilterRefusal? {
     filterProblem(text)?.let { return FilterRefusal.Invalid(it) }
+    if (!open) return FilterRefusal.SessionClosed
     if (text in pins) return FilterRefusal.Pinned
-    return pins.firstOrNull { filterCovers(it, text) }?.let { FilterRefusal.Covered(it) }
+    return coveringPin(text, pins)?.let { FilterRefusal.Covered(it) }
 }
 
 /** A filter whose first level is a wildcard, which never matches `$` topics (`$SYS`): the field reminds of it. */

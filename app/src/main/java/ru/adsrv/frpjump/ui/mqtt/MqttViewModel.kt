@@ -45,6 +45,7 @@ import ru.adsrv.frpjump.mqtt.parseSearch
 import ru.adsrv.frpjump.mqtt.FilterRefusal
 import ru.adsrv.frpjump.mqtt.SubscriptionRow
 import ru.adsrv.frpjump.mqtt.rootedPin
+import ru.adsrv.frpjump.mqtt.maskCoveredBy
 import ru.adsrv.frpjump.mqtt.subscriptionRows
 import ru.adsrv.frpjump.mqtt.typedFilterRefusal
 
@@ -71,6 +72,8 @@ data class CardState(
     val history: List<TopicValue>,
     /** The masks [path] is pinned with. */
     val pinned: List<PinMask>,
+    /** The masks not pinned that a broader pin already delivers, each with that pin. */
+    val coveredBy: Map<PinMask, String> = emptyMap(),
 ) {
     /** A branch card (counts) rather than only a topic's: it has children, or it is the root's `$SYS`. */
     val isBranch: Boolean get() = node?.hasChildren == true || (path.levels.size == 1 && path.name == SYS)
@@ -226,7 +229,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             now = now,
             shownSince = shownSince,
             closedByTunnel = state == MqttState.Ended && app.mqtt.closedByTunnel(s.id),
-            card = card?.let { CardState(it, s.tree.node(it), s.tree.history(it), pinnedMasks(it, pins)) },
+            card = card?.let { CardState(it, s.tree.node(it), s.tree.history(it), pinnedMasks(it, pins), maskCoveredBy(it, pins)) },
             tab = tab,
             pins = pins,
             subscriptions = if (tab == ExplorerTab.SUBSCRIPTIONS) subscriptionRows(pins, s.tree) else emptyList(),
@@ -316,25 +319,31 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         // Pinned again while the notice is up: the pin stays (it shows once the notice goes).
         val mark = mqtt.pinMark(s.profile, s.connectionId, filter)
         app.pendingUndo.enqueue(PendingUndo.mqttPinKey(s.profile, s.connectionId, filter), commit = {
-            withContext(Dispatchers.Main) {
-                // No session of the connection is open (this one closed): this one still takes it from the
-                // store and from the list its Subscriptions tab shows; the next session subscribes without it.
-                if (mqtt.find(s.profile, s.connectionId) == null) s.unpin(filter) else mqtt.unpin(s.profile, s.connectionId, filter, mark)
-            }
+            // No session of the connection open (this one closed): this one still takes it from the store and
+            // from the list its Subscriptions tab shows; the next session subscribes without it.
+            withContext(Dispatchers.Main) { mqtt.unpin(s.profile, s.connectionId, filter, mark, closed = s) }
         })
     }
 
-    /** "Change mask" of the pin [filter] (one a card can name) to [mask]; returns the new filter, or null when it is no such pin. */
+    /** Whether pins can still be made: the session has not ended (a closed one is gone from the app's list). */
+    private fun canPin(s: MqttSession) = s.state.value != MqttState.Ended && app.mqtt.find(s.profile, s.connectionId) === s
+
+    /**
+     * "Change mask" of the pin [filter] (one a card can name) to [mask];
+     * returns the new filter, or null when nothing changed: no such pin,
+     * or the session closed while the sheet was open.
+     */
     fun changeMask(filter: String, mask: PinMask): String? {
-        val s = session ?: return null
+        val s = session?.takeIf(::canPin) ?: return null
         val rooted = rootedPin(filter) ?: return null
         return pinFilter(rooted.topic, mask).also { app.mqtt.replacePin(s.profile, s.connectionId, filter, it) }
     }
 
     /** "+" on the Subscriptions tab: pins the typed topic filter [text]; returns why it cannot be, or null once it is. */
     fun subscribeTyped(text: String): FilterRefusal? {
-        val s = session ?: return null
-        typedFilterRefusal(text, state.value.pins)?.let { return it }
+        val s = session
+        typedFilterRefusal(text, state.value.pins, open = s != null && canPin(s))?.let { return it }
+        s ?: return FilterRefusal.SessionClosed
         app.mqtt.pin(s.profile, s.connectionId, text)
         return null
     }
