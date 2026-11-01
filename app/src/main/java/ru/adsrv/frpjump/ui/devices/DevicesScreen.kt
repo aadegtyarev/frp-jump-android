@@ -410,7 +410,7 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
                 },
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 LabelAndState(device.label, state = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -435,9 +435,7 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
 private fun TunnelPorts(ports: List<Int>) {
     val colors = AppTheme.colors
     val (shown, more) = portsShown(ports)
-    val spoken = stringResource(R.string.device_tunnels_open, ports.joinToString(", "))
     Row(
-        Modifier.clearAndSetSemantics { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(" · ", fontSize = 13.sp, color = colors.muted)

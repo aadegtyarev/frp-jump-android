@@ -1,6 +1,10 @@
 package ru.adsrv.frpjump.devices
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -61,10 +65,10 @@ class ServerFeaturesTest {
     private val server = FakeServer()
     private val storage = MemoryStorage()
 
-    private fun directory(): DeviceDirectory {
+    private fun CoroutineScope.directory(): DeviceDirectory {
         val keystore = FakeKeystore()
         val store = CredentialStore(MemoryStorage(), keystore.box("p")).apply { save(credentials("way.example")) }
-        return DeviceDirectory(store, FrpJumpApi(server.http), ProfileSession(), DeviceListCache(MemoryStorage()), ServerFeaturesCache(storage))
+        return DeviceDirectory(store, FrpJumpApi(server.http), ProfileSession(), DeviceListCache(MemoryStorage()), ServerFeaturesCache(storage), this)
     }
 
     @Test
@@ -74,6 +78,7 @@ class ServerFeaturesTest {
         d.restore()
         assertFalse(d.checkFeatures())
         d.refresh()
+        yield()
         assertFalse(d.state.value.display)
         assertNull(d.state.value.devices!!.single().label)
     }
@@ -82,7 +87,10 @@ class ServerFeaturesTest {
     fun `an answer turns labels on, is stored, and survives a failed check after a restart`() = runBlocking {
         val first = directory()
         first.refresh()
-        assertTrue(first.state.value.display)
+        // The check the refresh started runs on its own.
+        withTimeout(5_000) { first.state.first { it.display } }
+        // Waits for the lock the check stores the answer under.
+        first.refresh(wait = true)
         assertEquals("Щиток", first.state.value.devices!!.single().label)
         assertEquals(listOf("device-display"), ServerFeaturesCache(storage).load(url))
 
@@ -97,7 +105,7 @@ class ServerFeaturesTest {
     fun `an old server without features turns them off`() = runBlocking {
         val d = directory()
         d.refresh()
-        assertTrue(d.state.value.display)
+        withTimeout(5_000) { d.state.first { it.display } }
         server.version = """{"protocol_version":1,"package_version":"0.3.0"}"""
         assertTrue(d.checkFeatures())
         assertFalse(d.state.value.display)

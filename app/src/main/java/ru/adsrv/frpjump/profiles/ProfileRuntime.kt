@@ -100,6 +100,7 @@ class ProfileRuntime(
         session,
         DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))),
         ServerFeaturesCache(shared.storageFor(File(dir, ProfileFiles.SERVER_FEATURES))),
+        scope,
     )
     val tunnels = TunnelManager(
         profile = id,

@@ -2,6 +2,8 @@ package ru.adsrv.frpjump.devices
 
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -99,6 +101,8 @@ class DeviceDirectory(
     private val session: ProfileSession,
     private val cache: DeviceListCache,
     private val featuresCache: ServerFeaturesCache,
+    /** Runs the features check a list refresh starts, so the poll does not wait for it. */
+    private val background: CoroutineScope,
 ) {
     private val _state = MutableStateFlow(DeviceList())
     val state: StateFlow<DeviceList> = _state
@@ -111,6 +115,9 @@ class DeviceDirectory(
     /** The server answered `GET /version` since the app started; until then the stored answer stands. */
     @Volatile
     private var featuresAnswered = false
+
+    /** A features check started by [refresh] is still out: no second one. */
+    private val featuresInFlight = AtomicBoolean(false)
 
     /** The screens showing this list now (Devices, Connections). */
     private val wantedBy = ScreenMarks()
@@ -151,7 +158,15 @@ class DeviceDirectory(
     suspend fun refresh(wait: Boolean = false): Boolean {
         val ok = fetch(wait)
         // The check at start failed (offline, or not enrolled yet): the server answers now.
-        if (ok && !featuresAnswered) checkFeatures()
+        if (ok && !featuresAnswered && featuresInFlight.compareAndSet(false, true)) {
+            background.launch {
+                try {
+                    checkFeatures()
+                } finally {
+                    featuresInFlight.set(false)
+                }
+            }
+        }
         return ok
     }
 
@@ -207,7 +222,7 @@ class DeviceDirectory(
 
     /**
      * Asks the server's `GET /version` which features it has; at start, on
-     * pull to refresh, and with the list until it answers once. A failure
+     * pull to refresh, and after a good list refresh (not awaited by it) until it answers once. A failure
      * keeps the last stored answer. False when it failed.
      */
     suspend fun checkFeatures(): Boolean {
@@ -225,12 +240,13 @@ class DeviceDirectory(
             if (store.load()?.apiToken != credentials.apiToken) return true
             featuresAnswered = true
             applyFeatures(features)
-        }
-        try {
-            withContext(Dispatchers.IO) { featuresCache.save(credentials.controlUrl, features) }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Log.w(TAG, "features not stored: ${e.javaClass.simpleName}")
+            // Under the lock, as forget() wipes it: a late save cannot bring the file back.
+            try {
+                withContext(Dispatchers.IO) { featuresCache.save(credentials.controlUrl, features) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w(TAG, "features not stored: ${e.javaClass.simpleName}")
+            }
         }
         return true
     }
