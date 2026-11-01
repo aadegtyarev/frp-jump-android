@@ -510,9 +510,12 @@ the tree is the "what is there" view.
 - Plugin form: declarative (a JSON description of filters and fields
   shipped with the app or imported), not downloaded code: Android forbids
   loading foreign code into an app of this kind safely.
-- Plugins are kept separate, each doing one job, and are enabled per
-  connection in the connection's settings (its edit sheet, also reached
-  from the explorer's "⋮" → **Plugins…**). Two come first: **Status and
+- Plugins are kept separate, each doing one job. They are turned on
+  and off and set up at app level in Settings → «Плагины», and a
+  connection may turn one on or off for itself (its edit sheet, also
+  reached from the explorer's "⋮" → **Plugins…**); see
+  `docs/contract.md`, scenario 12, which takes precedence over the
+  per-connection wording below. Two come first: **Status and
   command topics** (any vendor, rules only) and **Wiren Board** (a
   devices view of the Wiren Board convention). Both are on for every MQTT
   connection until turned off.
