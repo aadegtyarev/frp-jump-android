@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.ui.connections
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
@@ -33,5 +35,18 @@ class CardTapTest {
     fun `being disconnected - nothing`() {
         assertEquals(CardTap.NONE, cardTap(row(pending = PendingOp.DISCONNECTING)))
         assertEquals("a tap on its disabled power button is not an open", CardTap.NONE, cardTap(row(tunnel, PendingOp.DISCONNECTING)))
+    }
+
+    @Test
+    fun `one open per tunnel while it comes up, again once it is done`() {
+        val opens = PendingOpens()
+        val first = row(pending = PendingOp.CONNECTING)
+        assertTrue(opens.start(first))
+        assertFalse("tapped again", opens.start(first))
+        val sameTunnel = first.copy(connection = connection.copy(id = "c2", user = "other"))
+        assertFalse("another connection to the same tunnel", opens.start(sameTunnel))
+        assertTrue("another profile's tunnel", opens.start(first.copy(profile = "p2")))
+        opens.done(first)
+        assertTrue(opens.start(first))
     }
 }

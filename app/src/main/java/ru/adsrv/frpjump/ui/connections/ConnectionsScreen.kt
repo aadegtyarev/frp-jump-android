@@ -174,7 +174,9 @@ private fun Line(row: ConnectionRow, profileColor: String?, sessions: SessionCou
                 .clip(RoundedCornerShape(16.dp))
                 // Anywhere but its buttons: its main action, as the button labels it (connecting first when down).
                 .combinedClickable(
-                    onClickLabel = mainActionLabel(row, sessions),
+                    // Being disconnected: no action of its own, for touch or TalkBack.
+                    enabled = cardTap(row) != CardTap.NONE,
+                    onClickLabel = cardTapLabel(row, sessions),
                     onClick = { actions.tap(row) },
                     onLongClick = { if (hasMenu(row)) ui.menu = row.key },
                 ),

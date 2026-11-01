@@ -170,10 +170,16 @@ re-enroll.
   recovers by itself once the device takes connections (checked every 10 s).
 - A tap anywhere on a connection's card (device card and Connections tab)
   does its main action, which the visible button names: connected, it
-  opens (Terminal, Explore, Open, Copy); not connected, it connects, then
-  opens. SSH with no login to use at once opens the login dialog first.
-  The disconnect button, "⋮", the state and the other buttons keep their
-  own actions. TalkBack reads the main action as the card's action.
+  opens (Terminal, Explore, Open) or, for TCP and a tunnel no connection
+  names, copies the address; not connected, it connects, then does the
+  same (TCP: connects and copies the address). SSH with no login to use at
+  once opens the login dialog first. Taps while it is coming up open it
+  once. Leaving the screen before it is up cancels the open (the tunnel
+  stays). The disconnect button, "⋮" and the other buttons keep their own
+  actions, and so does the state when it offers a choice ("Through the
+  server ›"). While a connection is being disconnected the card has no
+  action. TalkBack reads the card's action as the main action's label
+  when connected and "Connect and open" when not.
 
 ### 5. Connections tab
 

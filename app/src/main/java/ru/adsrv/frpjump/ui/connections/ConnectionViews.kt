@@ -38,6 +38,8 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -373,6 +375,34 @@ fun cardTap(row: ConnectionRow): CardTap = when {
     else -> CardTap.CONNECT_THEN_MAIN
 }
 
+/**
+ * The tunnels with a "connect, then open" under way, by profile and
+ * [ConnectionRow.tunnelKey]: one open per tunnel, however often its cards are
+ * tapped while it comes up (the spinner shows it is coming).
+ */
+class PendingOpens {
+    private val keys = mutableSetOf<String>()
+
+    /** False when one is already under way for [row]'s tunnel. */
+    @Synchronized
+    fun start(row: ConnectionRow): Boolean = keys.add(keyOf(row))
+
+    @Synchronized
+    fun done(row: ConnectionRow) {
+        keys.remove(keyOf(row))
+    }
+
+    private fun keyOf(row: ConnectionRow) = "${row.profile}/${row.tunnelKey}"
+}
+
+/** What TalkBack reads as the card's action ([cardTap]); null when it has none. */
+@Composable
+fun cardTapLabel(row: ConnectionRow, sessions: SessionCount): String? = when (cardTap(row)) {
+    CardTap.MAIN -> mainActionLabel(row, sessions)
+    CardTap.CONNECT_THEN_MAIN -> stringResource(R.string.connect_and_open)
+    CardTap.NONE -> null
+}
+
 /** Everything a row can do, wired to [actions] and the screen's navigation. */
 class RowActions(
     val connect: (ConnectionRow) -> Unit,
@@ -411,6 +441,9 @@ fun rememberRowActions(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val notificationsFirst = rememberNotificationsFirst()
+    // Opens after connecting only while this screen is shown: leaving it cancels them.
+    val screenScope = rememberCoroutineScope()
+    val opening = remember { PendingOpens() }
     val copy = { row: ConnectionRow ->
         row.tunnel?.let {
             val address = localAddress(it.localPort)
@@ -449,7 +482,17 @@ fun rememberRowActions(
                 CardTap.CONNECT_THEN_MAIN -> if (row.saved && row.connection.kind == PortKind.SSH && actions.loginAtOnce(row) == null) {
                     ui.login = row
                 } else {
-                    notificationsFirst { actions.connectThen(row, main) }
+                    notificationsFirst {
+                        if (opening.start(row)) {
+                            screenScope.launch {
+                                try {
+                                    actions.connectedRow(row)?.let(main)
+                                } finally {
+                                    opening.done(row)
+                                }
+                            }
+                        }
+                    }
                 }
                 CardTap.NONE -> Unit
             }

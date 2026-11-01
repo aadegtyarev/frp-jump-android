@@ -123,22 +123,21 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /**
-     * A tap on a card that is down: connect as [connect] does, then [then]
-     * gets the row with its tunnel up (its main action); a tunnel that does
-     * not come up says why. Main thread.
+     * A tap on a card that is down: connects as [connect] does and returns
+     * the row with its tunnel up, for its main action; null when it does not
+     * come up (a notice says why). In the caller's scope, so leaving the
+     * screen cancels it and nothing opens. Main thread.
      */
-    fun connectThen(row: ConnectionRow, then: (ConnectionRow) -> Unit) {
+    suspend fun connectedRow(row: ConnectionRow): ConnectionRow? {
         val c = row.connection
-        scope.launch {
-            try {
-                tunnelPort(row.profile, c.device, c.port, c.kind)
-            } catch (e: IOException) {
-                app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
-                return@launch
-            }
-            val tunnel = runtime(row.profile)?.tunnels?.state?.value?.tunnels?.firstOrNull { it.key == row.tunnelKey } ?: return@launch
-            then(row.copy(tunnel = tunnel, pending = null, error = null))
+        try {
+            tunnelPort(row.profile, c.device, c.port, c.kind)
+        } catch (e: IOException) {
+            app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+            return null
         }
+        val tunnel = runtime(row.profile)?.tunnels?.state?.value?.tunnels?.firstOrNull { it.key == row.tunnelKey } ?: return null
+        return row.copy(tunnel = tunnel, pending = null, error = null)
     }
 
     /** A tunnel whose disconnect waits for Undo, used again from its row: it stays up ([TunnelDisconnects.revive]). Main thread. */
