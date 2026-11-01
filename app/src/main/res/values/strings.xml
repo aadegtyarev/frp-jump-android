@@ -363,6 +363,7 @@
     <string name="storage_unreadable">This phone’s stored credentials cannot be read right now. Nothing was deleted; try again in a moment.</string>
 
     <!-- Web view -->
+    <string name="web_forward">Forward</string>
     <string name="web_reload">Reload</string>
     <string name="web_tunnel_closed">This tunnel is no longer here. Go back and open it again.</string>
     <string name="web_start_page">Start page</string>

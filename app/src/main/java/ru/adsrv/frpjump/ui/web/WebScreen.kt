@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Environment
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -65,6 +66,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -94,13 +96,17 @@ import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
+import ru.adsrv.frpjump.web.BackBounce
+import ru.adsrv.frpjump.web.Bounce
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.GoodPages
+import ru.adsrv.frpjump.web.WebBack
 import ru.adsrv.frpjump.web.WebNavigation
 import ru.adsrv.frpjump.web.answersInPlainHttp
 import ru.adsrv.frpjump.web.certFingerprint
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
 import ru.adsrv.frpjump.web.isTunnelUrl
+import ru.adsrv.frpjump.web.webBackFor
 import ru.adsrv.frpjump.web.webNavigationFor
 
 /** A certificate waiting for the owner's word, with every request that waits on it. */
@@ -140,7 +146,6 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     var title by remember { mutableStateOf(device) }
     var url by remember { mutableStateOf(start) }
     var progress by remember { mutableIntStateOf(0) }
-    var canGoBack by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     /** Bumped to replace a web view whose renderer is gone. */
     var generation by remember { mutableIntStateOf(0) }
@@ -162,6 +167,12 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     // This web view's first page was asked for (after clearing another site's data, maybe later).
     var loadIssued by remember(webView) { mutableStateOf(false) }
     val keep = { page: String? -> page?.let { app.webPages.remember(profile, device, targetPort, localPort, it) } }
+    // Per web view: a fresh one after a renderer crash starts with no history to walk.
+    var canGoBack by remember(webView) { mutableStateOf(false) }
+    var canGoForward by remember(webView) { mutableStateOf(false) }
+    val bounce = remember(webView) { BackBounce() }
+    val currentOnBack by rememberUpdatedState(onBack)
+    val close = { currentOnBack() }
 
     DisposableEffect(webView) {
         configure(
@@ -176,7 +187,20 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                             notTls = false
                         }
                         url = pageUrl
-                        canGoBack = webView.canGoBack()
+                    }
+                }
+                // Every event, in-page routes (history.pushState) included: Back walks what the page has.
+                canGoBack = webView.canGoBack()
+                canGoForward = webView.canGoForward()
+                if (event == PageEvent.HISTORY && bounce.armed) {
+                    val index = webView.copyBackForwardList().currentIndex
+                    when (bounce.landed(index, pageUrl, SystemClock.uptimeMillis())) {
+                        Bounce.SKIP_REDIRECT -> {
+                            bounce.leaving(index, pageUrl)
+                            webView.goBackOrForward(-2)
+                        }
+                        Bounce.CLOSE -> close()
+                        null -> {}
                     }
                 }
             },
@@ -271,11 +295,15 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                     tunnelGone = false
                     webView.visibility = View.VISIBLE
                     // Before the first load was asked for, that load is still to come and goes where it should.
-                    if (!rendererGone && loadIssued) webView.loadUrl(app.webPages.startFor(profile, device, targetPort, localPort, root))
+                    if (!rendererGone && loadIssued) {
+                        bounce.cancel()
+                        webView.loadUrl(app.webPages.startFor(profile, device, targetPort, localPort, root))
+                    }
                 }
             }
     }
     val reload: () -> Unit = {
+        bounce.cancel()
         notTls = false
         sslErrorSeen = false
         if (certRefused) {
@@ -291,10 +319,20 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     }
     val (fullscreen, setFullscreen) = rememberFullscreen(FullscreenOf.WEB)
     val clipboard = LocalClipboardManager.current
-    // With the tunnel gone the page is hidden: Back leaves rather than walking it.
-    BackHandler(enabled = canGoBack && !rendererGone && !tunnelGone) { webView.goBack() }
-    // Declared after the page's: Back leaves full screen first, then walks the history.
-    BackHandler(enabled = fullscreen) { setFullscreen(false) }
+    // With the tunnel gone or the renderer dead the page is hidden: Back leaves rather than walking it.
+    val pageShown = !rendererGone && !tunnelGone
+    // System Back and the bar's arrow alike: full screen first, then the page's history, then the screen closes.
+    val back: () -> Unit = {
+        when (webBackFor(fullscreen, canGoBack, pageShown)) {
+            WebBack.LEAVE_FULLSCREEN -> setFullscreen(false)
+            WebBack.PAGE_BACK -> {
+                bounce.leaving(webView.copyBackForwardList().currentIndex, url)
+                webView.goBack()
+            }
+            WebBack.CLOSE -> onBack()
+        }
+    }
+    BackHandler(onBack = back)
     SystemBarsHidden(fullscreen)
 
     Scaffold(
@@ -304,7 +342,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         topBar = {
             if (!fullscreen) CompactTopBar(
                 title = title,
-                onBack = onBack,
+                onBack = back,
+                onClose = onBack,
                 actions = {
                     IconButton(onClick = { setFullscreen(true) }) { Icon(FullscreenGlyph, contentDescription = stringResource(R.string.fullscreen), modifier = Modifier.size(20.dp)) }
                     Box {
@@ -320,6 +359,23 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 },
                             )
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.back)) },
+                                enabled = canGoBack && pageShown,
+                                onClick = {
+                                    menu = false
+                                    back()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.web_forward)) },
+                                enabled = canGoForward && pageShown,
+                                onClick = {
+                                    menu = false
+                                    bounce.cancel()
+                                    webView.goForward()
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.web_reload)) },
                                 onClick = {
                                     menu = false
@@ -331,6 +387,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 text = { Text(stringResource(R.string.web_start_page)) },
                                 onClick = {
                                     menu = false
+                                    bounce.cancel()
                                     webView.loadUrl(root)
                                 },
                             )
@@ -339,6 +396,13 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 onClick = {
                                     menu = false
                                     openExternally(context, url)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.close)) },
+                                onClick = {
+                                    menu = false
+                                    onBack()
                                 },
                             )
                         }
@@ -364,6 +428,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                     val note = if (targetPort == 443) R.string.web_http_on_443 else R.string.web_not_tls_unsaved
                                     context.notice(context.getString(note), NoticeKind.WARN, long = true)
                                 }
+                                bounce.cancel()
                                 webView.loadUrl("http://127.0.0.1:$localPort/")
                             }
                         },

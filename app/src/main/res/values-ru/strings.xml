@@ -388,6 +388,7 @@
     <string name="storage_unreadable">Сохранённые ключи доступа сейчас не читаются. Ничего не удалено; попробуйте чуть позже.</string>
 
     <!-- Web view -->
+    <string name="web_forward">Вперёд</string>
     <string name="web_reload">Обновить</string>
     <string name="web_tunnel_closed">Туннель закрыт или переехал. Вернитесь и откройте заново.</string>
     <string name="web_start_page">Начальная страница</string>
