@@ -89,6 +89,8 @@ data class MqttUiState(
     val searchProblem: PatternProblem? = null,
     /** Subscribing the pattern's filter, under its hits; null for a substring query. */
     val filterOffer: FilterOffer? = null,
+    /** A pattern that found nothing: how many it finds ignoring case (0 when it found something). */
+    val hitsIgnoringCase: Int = 0,
     /** Search hits for the query under [searchAt], at most [MAX_HITS]; [hitsTotal] counts them all. */
     val hits: List<SearchHit> = emptyList(),
     val hitsTotal: Int = 0,
@@ -187,7 +189,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         }
         // Hits of another place (the search not yet run again after a move) are not shown.
         val searchAt = searchScope(path, whole)
-        val hits = if (search.scope == searchAt) search else Search(searchAt, searchAt, search.query, emptyList(), 0)
+        val hits = if (search.scope == searchAt) search else Search(searchAt, searchAt, search.query, emptyList(), 0, 0)
         return MqttUiState(
             state = state,
             snapshot = snapshot,
@@ -199,7 +201,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             searchAt = hits.at,
             searchPattern = hits.query !is SearchQuery.Substring,
             searchProblem = (hits.query as? SearchQuery.Invalid)?.problem,
-            filterOffer = filterOffer(hits.query, hits.scope, pins),
+            filterOffer = filterOffer(hits.query, hits.scope, pins, open = state != MqttState.Ended),
+            hitsIgnoringCase = hits.withoutCase,
             hits = hits.hits,
             hitsTotal = hits.total,
             now = now,
@@ -212,9 +215,10 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     /**
      * The hits of [query] run for [scope] (the open level or the whole
      * tree), relative to [at] (the root for a pattern starting with `/`):
-     * at most [MAX_HITS], with their values as they were then.
+     * at most [MAX_HITS], with their values as they were then. A pattern
+     * that found nothing is run once more ignoring case: [withoutCase].
      */
-    private data class Search(val scope: MqttPath, val at: MqttPath, val query: SearchQuery, val hits: List<SearchHit>, val total: Int)
+    private data class Search(val scope: MqttPath, val at: MqttPath, val query: SearchQuery, val hits: List<SearchHit>, val total: Int, val withoutCase: Int)
 
     private fun search(s: MqttSession, scope: MqttPath, needle: String): Search {
         val query = parseSearch(needle)
@@ -226,7 +230,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             else -> emptyList()
         }
         val hits = found.take(MAX_HITS).mapNotNull { rel -> s.tree.node(MqttPath(at.levels + rel.levels))?.let { SearchHit(rel, it) } }
-        return Search(scope, at, query, hits, found.size)
+        val withoutCase = if (found.isEmpty() && query is SearchQuery.Pattern) s.tree.match(at, query.levels, ignoreCase = true).size else 0
+        return Search(scope, at, query, hits, found.size, withoutCase)
     }
 
     /** Opens the level [path]. */

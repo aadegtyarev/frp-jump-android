@@ -48,6 +48,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -239,7 +241,6 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     padding,
                     onOpen = { hit -> vm.openCard(MqttPath(state.searchAt.levels + hit.relative.levels)) },
                     onSearchWhole = { vm.searchWhole.value = true },
-                    canPin = state.state != MqttState.Ended,
                     onSubscribe = { filter ->
                         vm.subscribeFilter(filter)
                         context.notice(context.getString(R.string.mqtt_pinned_notice, filter), NoticeKind.DONE)
@@ -570,7 +571,6 @@ private fun SearchHits(
     padding: PaddingValues,
     onOpen: (SearchHit) -> Unit,
     onSearchWhole: () -> Unit,
-    canPin: Boolean,
     onSubscribe: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -605,6 +605,17 @@ private fun SearchHits(
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                         .semantics { liveRegion = LiveRegionMode.Polite },
                 )
+            }
+            // Patterns are exact, as the broker is: say when the case alone kept them from matching.
+            if (state.hitsIgnoringCase > 0) {
+                item(key = "case") {
+                    Text(
+                        stringResource(R.string.mqtt_pattern_case, count(state.hitsIgnoringCase)),
+                        color = colors.muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp),
+                    )
+                }
             }
             // Nothing in this branch: one tap widens the search, so an empty result is no dead end.
             if (!state.searchAt.isRoot) {
@@ -649,17 +660,18 @@ private fun SearchHits(
             }
             HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 20.dp))
         }
-        state.filterOffer?.let { offer -> item(key = "subscribe") { SubscribeOffer(offer, canPin, onSubscribe) } }
+        state.filterOffer?.let { offer -> item(key = "subscribe") { SubscribeOffer(offer, onSubscribe) } }
     }
 }
 
 /** "Subscribe to this filter" under a pattern's hits: the absolute filter it pins, or why it cannot. */
 @Composable
-private fun SubscribeOffer(offer: FilterOffer, canPin: Boolean, onSubscribe: (String) -> Unit) {
+private fun SubscribeOffer(offer: FilterOffer, onSubscribe: (String) -> Unit) {
     val colors = AppTheme.colors
     val filter = (offer as? FilterOffer.Subscribe)?.filter
     val note = when (offer) {
         is FilterOffer.Subscribe -> if (offer.pinned) stringResource(R.string.mqtt_filter_pinned) else null
+        FilterOffer.SessionClosed -> stringResource(R.string.mqtt_closed)
         FilterOffer.NotForBroker -> stringResource(R.string.mqtt_filter_no_globs)
         FilterOffer.TooLong -> stringResource(R.string.mqtt_topic_too_long, MAX_TOPIC_BYTES)
     }
@@ -668,10 +680,13 @@ private fun SubscribeOffer(offer: FilterOffer, canPin: Boolean, onSubscribe: (St
         SecondaryButton(
             stringResource(R.string.mqtt_subscribe_filter),
             PinGlyph,
-            enabled = canPin && offer is FilterOffer.Subscribe && !offer.pinned,
-            Modifier.fillMaxWidth(),
+            enabled = offer is FilterOffer.Subscribe && !offer.pinned,
+            // Why it is off is read with the button itself; the line below is for the eye only.
+            Modifier
+                .fillMaxWidth()
+                .semantics { note?.let { stateDescription = it } },
         ) { filter?.let(onSubscribe) }
-        note?.let { Text(it, fontSize = 12.sp, color = colors.muted) }
+        note?.let { Text(it, fontSize = 12.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics {}) }
     }
 }
 

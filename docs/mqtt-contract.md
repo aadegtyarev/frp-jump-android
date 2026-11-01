@@ -38,9 +38,11 @@ The same thing is called the same way on every screen:
   A topic's **levels** are the parts between `/`; a level may be empty.
 - **Topic filter**: what MQTT subscribes to, a topic that may hold the
   wildcards `+` (one level) and `#` (this level and all below).
-- **Search**: a case-insensitive substring match on topic paths in the
-  tree and the feed, or in the tree a **search pattern** (see "The tree");
-  it never looks at values and subscribes only when asked to.
+- **Search**: a match on topic paths, never on values: a plain query is
+  a case-insensitive substring (in the tree and the feed); in the tree a
+  query with `* ? + #` is a **search pattern**, matched level by level
+  and exactly, case included (see "The tree"). Searching never
+  subscribes; a pattern's filter is pinned only on request.
 - **Pin**: a topic or branch the owner keeps subscribed, with a **mask**,
   the form of its topic filter (see "Pins"). In Russian «Подписка».
 - **Pattern**: a topic template with named parts used by plugin rules
@@ -230,7 +232,7 @@ neither option; see "Retained topics" for what that changes.
   moment and fades back; with system animations off it switches back
   without a fade. Nothing else moves.
 - Search in the top bar filters the current level and below by path
-  substring (`K1`, `meta/error`) and shows the matching topics as a flat
+  substring (`K1`, `meta/error`) or by a search pattern (below) and shows the matching topics as a flat
   list, paths relative to the current level as their real text (at the
   root `/devices/x/controls/K1`); tap opens the topic. The field's hint
   says where it looks ("Search in /devices/x", at the root "Search the
@@ -264,9 +266,19 @@ neither option; see "Retained topics" for what that changes.
   - under the hits of a pattern with only whole-level `+` and `#`, its
     absolute filter (a relative pattern put under the level it started
     at) and **Subscribe to this filter**, which pins it ("Pinned: <filter>"
-    notice); already pinned, the button is off and says so. A pattern with
-    `*` or `?` shows the button off with "The broker does not understand *
-    and ?: only + and # can be subscribed".
+    notice); already pinned (that filter, or a pin delivering all it does,
+    such as `/devices/#` for `/devices/+/controls/#`), the button is off
+    and says so; in a closed session it is off with "Session closed". A
+    pattern with `*` or `?` shows the button off with "The broker does not
+    understand * and ?: only + and # can be subscribed". The reason is read
+    out with the button. A relative `#` pinned in branch `X` (`X/#`) also
+    delivers `X` itself, as MQTT does, although the search did not list it;
+  - patterns are exact, as the broker is; when one finds nothing but
+    would ignoring case, the empty result says so ("Case matters: N found
+    ignoring case"), one extra run only then;
+  - the field's hint shows only while the field is empty, so it never
+    speaks of a pattern; where a pattern starts is in its syntax line
+    (`/ first: from the root`) and in the hits' paths.
   Patterns are matched by walking the tree level by level, looking an
   exact level up rather than scanning it, with no regular expressions: a
   glob level costs at most pattern × level characters.

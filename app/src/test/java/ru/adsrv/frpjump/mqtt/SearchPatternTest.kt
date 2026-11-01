@@ -112,11 +112,72 @@ class SearchPatternTest {
     @Test
     fun `the offer under the hits`() {
         val pins = listOf("/devices/+/controls/#")
-        assertNull(filterOffer(parseSearch("K1"), MqttPath.ROOT, pins))
-        assertEquals(FilterOffer.Subscribe("/devices/+/controls/#", pinned = true), filterOffer(parseSearch("+/controls/#"), p("/devices"), pins))
-        assertEquals(FilterOffer.Subscribe("/devices/+", pinned = false), filterOffer(parseSearch("/devices/+"), p("x"), pins))
-        assertEquals(FilterOffer.NotForBroker, filterOffer(parseSearch("/devices/+/controls/K?"), MqttPath.ROOT, pins))
-        assertEquals(FilterOffer.TooLong, filterOffer(parseSearch("a".repeat(MAX_TOPIC_BYTES) + "/#"), MqttPath.ROOT, pins))
+        fun offer(query: String, at: String = "", open: Boolean = true) = filterOffer(parseSearch(query), p(at), pins, open)
+        assertNull(offer("K1"))
+        assertNull(offer("K+"))
+        assertEquals(FilterOffer.Subscribe("/devices/+/controls/#", pinned = true), offer("+/controls/#", at = "/devices"))
+        assertEquals(FilterOffer.Subscribe("/devices/+", pinned = false), offer("/devices/+", at = "x"))
+        // Covered by an existing pin.
+        assertEquals(FilterOffer.Subscribe("/devices/+/controls/K1", pinned = true), offer("/devices/+/controls/K1"))
+        assertEquals(FilterOffer.SessionClosed, offer("/devices/+", open = false))
+        assertEquals(FilterOffer.NotForBroker, offer("/devices/+/controls/K?"))
+        assertEquals(FilterOffer.NotForBroker, offer("/devices/+/controls/K?", open = false))
+        assertEquals(FilterOffer.TooLong, offer("a".repeat(MAX_TOPIC_BYTES) + "/#"))
+    }
+
+    @Test
+    fun `a pin covers a filter when it delivers all the filter does`() {
+        assertTrue(filterCovers("a/b", "a/b"))
+        assertTrue(filterCovers("#", "a/+/#"))
+        assertTrue(filterCovers("a/#", "a"))
+        assertTrue(filterCovers("a/+", "a/+"))
+        assertTrue(filterCovers("+/+", "a/b"))
+        assertFalse(filterCovers("a/+", "a/#"))
+        assertFalse(filterCovers("a/b", "a/+"))
+        assertFalse(filterCovers("a/+", "a/b/c"))
+        assertFalse(filterCovers("a/b/#", "a/#"))
+        // Wildcards at the first level never bring `$` topics.
+        assertFalse(filterCovers("#", "\$SYS/#"))
+        assertFalse(filterCovers("+/x", "\$SYS/x"))
+        assertTrue(filterCovers("#", "/devices/#"))
+    }
+
+    @Test
+    fun `dollar levels below the root and empty levels`() {
+        val tree = tree("a/\$x/y", "/\$SYS/x", "a//b")
+        // The `$` rule is for the tree's first level only.
+        assertEquals(listOf("a/\$x/y"), tree.find("a/+/y"))
+        assertEquals(listOf("\$x/y"), tree.find("+/y", at = "a"))
+        assertEquals(listOf("\$x/y"), tree.find("*/y", at = "a"))
+        // The empty first level is literal: `/#` brings `$` topics below it.
+        assertEquals(listOf("/\$SYS/x"), tree.find("/#"))
+        // `+` takes an empty level.
+        assertEquals(listOf("a//b"), tree.find("a/+/b"))
+    }
+
+    @Test
+    fun `pure filters find what the broker would deliver`() {
+        val topics = listOf(
+            "/devices/a/controls/K1", "/devices/a/controls/K1/meta", "/devices/a", "/devices/b/meta/name",
+            "a", "a/b", "a/b/c", "a//b", "a/", "\$SYS/broker/uptime", "/\$SYS/x", "x/\$y/z",
+        )
+        val tree = tree(*topics.toTypedArray())
+        val filters = listOf(
+            "#", "+", "+/#", "+/+", "/#", "/+", "/+/+", "/devices/+", "/devices/#", "/devices/+/controls/+",
+            "/devices/+/controls/#", "/devices/+/meta/+", "a/#", "a/+", "a/+/b", "a/+/+", "+/+/c", "x/+/z", "\$SYS/#", "+/\$y/#",
+        )
+        filters.forEach { filter ->
+            val expected = topics.filter { topicMatches(filter, p(it)) }.sortedWith(compareBy(NaturalOrder.paths) { p(it) })
+            assertEquals(filter, expected, tree.find(filter))
+        }
+    }
+
+    @Test
+    fun `a case-insensitive run is only on request`() {
+        val tree = tree("/devices/Relay/controls/K1")
+        assertEquals(emptyList<String>(), tree.find("/devices/relay/+/k*"))
+        val q = pattern("/devices/relay/+/k*")
+        assertEquals(listOf(p("/devices/Relay/controls/K1")), tree.match(q.base(MqttPath.ROOT), q.levels, ignoreCase = true))
     }
 
     @Test

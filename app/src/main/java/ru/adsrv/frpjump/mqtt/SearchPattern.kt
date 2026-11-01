@@ -97,7 +97,7 @@ fun parseSearch(query: String): SearchQuery {
  * `?` exactly one. Greedy with one backtrack point, so at most
  * pattern × level steps, never exponential.
  */
-internal fun globMatches(pattern: IntArray, level: String): Boolean {
+internal fun globMatches(pattern: IntArray, level: String, ignoreCase: Boolean = false): Boolean {
     var p = 0
     var t = 0
     var star = -1
@@ -107,7 +107,7 @@ internal fun globMatches(pattern: IntArray, level: String): Boolean {
         if (p < pattern.size && pattern[p] == '*'.code) {
             star = p++
             starAt = t
-        } else if (p < pattern.size && (pattern[p] == '?'.code || pattern[p] == c)) {
+        } else if (p < pattern.size && (pattern[p] == '?'.code || pattern[p] == c || ignoreCase && sameIgnoringCase(pattern[p], c))) {
             p++
             t += Character.charCount(c)
         } else if (star >= 0) {
@@ -122,10 +122,13 @@ internal fun globMatches(pattern: IntArray, level: String): Boolean {
     return p == pattern.size
 }
 
-/** Whether one tree level [name] matches [pattern]. */
-internal fun levelMatches(pattern: LevelPattern, name: String): Boolean = when (pattern) {
-    is LevelPattern.Exact -> pattern.text == name
-    is LevelPattern.Glob -> globMatches(pattern.points, name)
+private fun sameIgnoringCase(a: Int, b: Int) =
+    Character.toLowerCase(a) == Character.toLowerCase(b) || Character.toUpperCase(a) == Character.toUpperCase(b)
+
+/** Whether one tree level [name] matches [pattern]; [ignoreCase] only for "found without case" (patterns are exact). */
+internal fun levelMatches(pattern: LevelPattern, name: String, ignoreCase: Boolean = false): Boolean = when (pattern) {
+    is LevelPattern.Exact -> pattern.text.equals(name, ignoreCase)
+    is LevelPattern.Glob -> globMatches(pattern.points, name, ignoreCase)
     LevelPattern.OneLevel, LevelPattern.Rest -> true
 }
 
@@ -141,8 +144,11 @@ internal fun skipsDollar(pattern: LevelPattern): Boolean = when (pattern) {
 
 /** What the search offers for subscribing the pattern it ran. */
 sealed interface FilterOffer {
-    /** [filter] can be pinned; [pinned] when it already is. */
+    /** [filter] can be pinned; [pinned] when it or a pin covering it already is. */
     data class Subscribe(val filter: String, val pinned: Boolean) : FilterOffer
+
+    /** The session is closed: nothing can be subscribed. */
+    data object SessionClosed : FilterOffer
 
     /** The pattern holds `*` or `?`, which the broker does not understand. */
     data object NotForBroker : FilterOffer
@@ -151,10 +157,36 @@ sealed interface FilterOffer {
     data object TooLong : FilterOffer
 }
 
-/** The offer under the hits of [query] run at [scope]; null for a query that is no pattern. */
-fun filterOffer(query: SearchQuery, scope: MqttPath, pins: Collection<String>): FilterOffer? {
+/**
+ * The offer under the hits of [query] run at [scope]; null for a query
+ * that is no pattern. [open]: the session can still subscribe.
+ */
+fun filterOffer(query: SearchQuery, scope: MqttPath, pins: Collection<String>, open: Boolean): FilterOffer? {
     if (query !is SearchQuery.Pattern) return null
     val filter = query.filter(scope) ?: return FilterOffer.NotForBroker
     if (filter.toByteArray(Charsets.UTF_8).size > MAX_TOPIC_BYTES) return FilterOffer.TooLong
-    return FilterOffer.Subscribe(filter, filter in pins)
+    if (!open) return FilterOffer.SessionClosed
+    return FilterOffer.Subscribe(filter, pins.any { filterCovers(it, filter) })
+}
+
+/**
+ * Whether the valid topic filter [pin] delivers every topic [filter]
+ * does: `#` covers the rest (and the level above it), `+` any one level
+ * of [filter] but not its `#`, other levels only themselves. A wildcard
+ * first level of [pin] does not cover a `$` first level.
+ */
+fun filterCovers(pin: String, filter: String): Boolean {
+    val p = pin.split('/')
+    val f = filter.split('/')
+    p.forEachIndexed { k, part ->
+        val dollar = k == 0 && f[0].startsWith("$")
+        if (part == "#") return !dollar
+        if (k >= f.size) return false
+        if (part == "+") {
+            if (f[k] == "#" || dollar) return false
+        } else if (part != f[k]) {
+            return false
+        }
+    }
+    return p.size == f.size
 }

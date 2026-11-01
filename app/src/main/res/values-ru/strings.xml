@@ -841,6 +841,7 @@
     </plurals>
     <string name="mqtt_no_match">Нет топиков, в пути которых есть «%1$s»</string>
     <string name="mqtt_no_pattern_match">Нет топиков по шаблону «%1$s»</string>
+    <string name="mqtt_pattern_case">Регистр важен: найдено %1$s без учёта регистра</string>
     <string name="mqtt_pattern_syntax">* ? — внутри уровня · + — один уровень · # — всё ниже · / в начале — от корня</string>
     <string name="mqtt_pattern_in_level">+ и # занимают уровень целиком; внутри уровня используйте * и ?</string>
     <string name="mqtt_pattern_hash_last"># может быть только последним уровнем</string>

@@ -158,13 +158,14 @@ class TopicTree(
      * to [at] in [NaturalOrder]; [at] itself is not listed. An exact level
      * is looked up, not scanned, so only the branches the pattern opens are
      * walked. At the root a level starting with a wildcard skips `$` levels.
+     * [ignoreCase] scans every level instead, for "found without case".
      */
-    fun match(at: MqttPath, pattern: List<LevelPattern>): List<MqttPath> {
+    fun match(at: MqttPath, pattern: List<LevelPattern>, ignoreCase: Boolean = false): List<MqttPath> {
         if (pattern.isEmpty()) return emptyList()
         val found = mutableListOf<MqttPath>()
         synchronized(lock) {
             val start = find(at) ?: return emptyList()
-            walk(start, at.isRoot, pattern, 0, ArrayList(), found)
+            walk(start, at.isRoot, pattern, ignoreCase, 0, ArrayList(), found)
         }
         return found.sortedWith(NaturalOrder.paths)
     }
@@ -194,7 +195,7 @@ class TopicTree(
     }
 
     /** [node] is at [levels]; [k] is the pattern level its children are matched against. */
-    private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, k: Int, levels: ArrayList<String>, found: MutableList<MqttPath>) {
+    private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, ignoreCase: Boolean, k: Int, levels: ArrayList<String>, found: MutableList<MqttPath>) {
         val part = pattern[k]
         if (part == LevelPattern.Rest) {
             // `a/#` matches `a` as well, unless `a` is where the search started.
@@ -208,18 +209,18 @@ class TopicTree(
             if (last) {
                 if (child.history.isNotEmpty()) found += MqttPath(levels.toList())
             } else {
-                walk(child, atRoot, pattern, k + 1, levels, found)
+                walk(child, atRoot, pattern, ignoreCase, k + 1, levels, found)
             }
             levels.removeAt(levels.lastIndex)
         }
-        if (part is LevelPattern.Exact) {
+        if (part is LevelPattern.Exact && !ignoreCase) {
             node.children[part.text]?.let { step(part.text, it) }
             return
         }
         val noDollar = atRoot && levels.isEmpty() && skipsDollar(part)
         node.children.forEach { (level, child) ->
             if (noDollar && level.startsWith("$")) return@forEach
-            if (levelMatches(part, level)) step(level, child)
+            if (levelMatches(part, level, ignoreCase)) step(level, child)
         }
     }
 
