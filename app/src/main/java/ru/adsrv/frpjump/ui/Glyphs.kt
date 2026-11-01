@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
@@ -17,6 +18,16 @@ private fun glyph(name: String, width: Float = 2f, block: PathBuilder.() -> Unit
         strokeLineCap = StrokeCap.Round,
         strokeLineJoin = StrokeJoin.Round,
         pathBuilder = block,
+    ).build()
+
+/** As [glyph], drawn from SVG path data [d]. */
+internal fun pathGlyph(name: String, d: String, width: Float = 1.8f): ImageVector =
+    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).addPath(
+        pathData = addPathNodes(d),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = width,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
     ).build()
 
 /** A rounded rectangle from ([x], [y]) of [w]×[h] with corner [r]. */

@@ -19,6 +19,7 @@ import ru.adsrv.frpjump.connections.migrateDevicePorts
 import ru.adsrv.frpjump.connections.tunnelPins
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceListCache
+import ru.adsrv.frpjump.devices.ServerFeaturesCache
 import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.restore.RestoreRecord
@@ -93,7 +94,13 @@ class ProfileRuntime(
         )
         ConnectionStore(file, corruptCopy = shared.storageFor(File(dir, ProfileFiles.CONNECTIONS_CORRUPT)))
     }
-    val devices = DeviceDirectory(store, shared.api, session, DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))))
+    val devices = DeviceDirectory(
+        store,
+        shared.api,
+        session,
+        DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))),
+        ServerFeaturesCache(shared.storageFor(File(dir, ProfileFiles.SERVER_FEATURES))),
+    )
     val tunnels = TunnelManager(
         profile = id,
         enrollment = store::state,
@@ -154,8 +161,11 @@ class ProfileRuntime(
             val listed = if (shown && devices.wanted) devices.refresh() else true
             synced && listed
         }
-        // The list shows before the server answers.
-        scope.launch(Dispatchers.IO) { devices.restore() }
+        // The list shows before the server answers; then the server says what it supports.
+        scope.launch(Dispatchers.IO) {
+            devices.restore()
+            devices.checkFeatures()
+        }
     }
 
     /** Stops the poller and everything else this runtime runs; after "Forget profile". */

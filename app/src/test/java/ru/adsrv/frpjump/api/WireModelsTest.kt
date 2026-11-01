@@ -35,6 +35,36 @@ class WireModelsTest {
     }
 
     @Test
+    fun `version features, none from an old server`() {
+        val r = WireJson.decodeFromString<VersionResponse>("""{"protocol_version":1,"package_version":"0.4.0","features":["device-display"]}""")
+        assertEquals(listOf(FEATURE_DEVICE_DISPLAY), r.features)
+        assertEquals(emptyList<String>(), WireJson.decodeFromString<VersionResponse>("""{"protocol_version":1,"package_version":"0.3.0"}""").features)
+    }
+
+    @Test
+    fun `device label, icon and kind, each may be null or absent`() {
+        val body = """
+            [{"name":"wb01","enrolled_at":"2026-10-01T08:00:00","last_seen_at":null,"enabled":true,
+              "label":"Щиток, гараж","icon":"router","kind":"wirenboard"},
+             {"name":"pc","enrolled_at":"2026-10-01T08:00:00","last_seen_at":null,"enabled":true,
+              "label":null,"icon":null,"kind":null},
+             {"name":"old","enrolled_at":"2026-10-01T08:00:00","last_seen_at":null,"enabled":true}]
+        """.trimIndent()
+        val (wb, pc, old) = WireJson.decodeFromString<List<OwnedDevice>>(body)
+        assertEquals(Triple("Щиток, гараж", "router", "wirenboard"), Triple(wb.label, wb.icon, wb.kind))
+        assertEquals(Triple(null, null, null), Triple(pc.label, pc.icon, pc.kind))
+        assertEquals(Triple(null, null, null), Triple(old.label, old.icon, old.kind))
+    }
+
+    @Test
+    fun `the heartbeat says this is a phone`() {
+        assertEquals(
+            """{"agent_version":"android-0.4.0","kind":"phone"}""",
+            WireJson.encodeToString(HeartbeatRequest("android-0.4.0", PHONE_KIND)),
+        )
+    }
+
+    @Test
     fun deviceList() {
         val body = """
             [{"name":"laptop","enrolled_at":"2026-10-01T08:00:00.000001","last_seen_at":"2026-10-30T11:59:58.123456","enabled":true},

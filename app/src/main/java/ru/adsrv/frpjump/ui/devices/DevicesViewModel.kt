@@ -122,7 +122,7 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
         val devices = directory.value ?: return
         refreshing.value = true
         viewModelScope.launch {
-            devices.refresh(wait = true)
+            devices.pull()
             refreshing.value = false
         }
     }

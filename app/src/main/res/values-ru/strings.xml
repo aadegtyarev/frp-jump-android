@@ -104,9 +104,19 @@
     <string name="device_disabled">Отключено</string>
     <string name="devices_empty">Других устройств пока нет.</string>
     <string name="devices_search">Поиск устройств</string>
-    <string name="devices_search_hint">Имя устройства</string>
+    <string name="devices_search_hint">Имя или подпись</string>
     <string name="search_close">Закрыть поиск</string>
     <string name="devices_no_match">Нет устройств по запросу «%s».</string>
+
+    <!-- Значки устройств (набор сервера) -->
+    <string name="device_icon_server">Сервер</string>
+    <string name="device_icon_pc">Компьютер</string>
+    <string name="device_icon_laptop">Ноутбук</string>
+    <string name="device_icon_router">Роутер</string>
+    <string name="device_icon_sbc">Одноплатный ПК</string>
+    <string name="device_icon_camera">Камера</string>
+    <string name="device_icon_home">Дом</string>
+    <string name="device_icon_phone">Телефон</string>
     <string name="offline_unreachable">Нет связи с сервером · обновлено в %s</string>
     <string name="offline_server_error">Сервер ответил ошибкой · обновлено в %s</string>
     <string name="tap_to_retry">Нажмите, чтобы повторить</string>

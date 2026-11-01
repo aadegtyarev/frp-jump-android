@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +56,8 @@ import ru.adsrv.frpjump.connections.filterGroups
 import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.tunnel.Waiting
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.caption
+import ru.adsrv.frpjump.ui.devices.DeviceTile
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
@@ -224,22 +225,24 @@ private fun DisconnectAllButton(busy: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * A device over its connections: its whole name (wrapped, never cut) after
- * its state as a dot, the Devices list's colours; [profileColor] as a bar
- * before it when the tab shows more than one profile.
+ * A device over its connections: its tile as on Devices, smaller (the
+ * icon, its state as a dot in the Devices list's colours; no dot and the
+ * generic glyph while its profile's list is not read), then its whole name
+ * and, muted under it, its label, both wrapped and never cut; [profileColor]
+ * as a bar before it when the tab shows more than one profile.
  */
 @Composable
 private fun GroupHeader(group: DeviceGroup, profileColor: String?, first: Boolean) {
     val colors = AppTheme.colors
     val device = group.device
     val (dot, spoken) = when {
-        device == null -> colors.faint to null
+        device == null -> null to null
         !device.online -> colors.offline to stringResource(R.string.device_offline)
         // Online as of the last answer only.
         device.stale -> colors.online.copy(alpha = 0.4f) to wasOnline(device)
         else -> colors.online to stringResource(R.string.device_online)
     }
-    val description = listOfNotNull(group.name, spoken).joinToString(", ")
+    val description = listOfNotNull(group.name, device?.label, spoken, device?.icon?.let { stringResource(it.caption) }).joinToString(", ")
     Row(
         Modifier
             .fillMaxWidth()
@@ -249,7 +252,7 @@ private fun GroupHeader(group: DeviceGroup, profileColor: String?, first: Boolea
                 contentDescription = description
             },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         profileColor?.let {
             Box(
@@ -259,7 +262,10 @@ private fun GroupHeader(group: DeviceGroup, profileColor: String?, first: Boolea
                     .background(colors.profile(it), RoundedCornerShape(2.dp)),
             )
         }
-        Box(Modifier.size(10.dp).background(dot, CircleShape))
-        Text(group.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.ink, modifier = Modifier.weight(1f))
+        DeviceTile(device?.icon, dot, size = 28.dp, ring = colors.ground)
+        Column(Modifier.weight(1f)) {
+            Text(group.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+            device?.label?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
+        }
     }
 }

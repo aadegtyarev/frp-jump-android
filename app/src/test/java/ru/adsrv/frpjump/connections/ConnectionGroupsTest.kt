@@ -92,6 +92,14 @@ class ConnectionGroupsTest {
     }
 
     @Test
+    fun `a device label match keeps all its connections, compared as Devices search`() {
+        val labelled = groupByDevice(rows("p", listOf(kitchenSsh, kitchenZ2m, boiler)), mapOf("p" to listOf(device("wb-kitchen", true).copy(label = "Щиток, ГАРАЖ"))))
+        val found = filterGroups(labelled, " гараж ", ::label)
+        assertEquals(listOf("wb-kitchen"), found.map { it.name })
+        assertEquals(2, found.single().rows.size)
+    }
+
+    @Test
     fun `nothing matching gives no groups`() {
         assertEquals(emptyList<DeviceGroup>(), filterGroups(groups, "printer", ::label))
     }

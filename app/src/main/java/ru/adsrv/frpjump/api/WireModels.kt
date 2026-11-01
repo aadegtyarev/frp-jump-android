@@ -21,7 +21,12 @@ val WireJson = Json {
 data class VersionResponse(
     @SerialName("protocol_version") val protocolVersion: Int,
     @SerialName("package_version") val packageVersion: String,
+    /** Optional capabilities; an old server sends none, read as an empty list. */
+    val features: List<String> = emptyList(),
 )
+
+/** In [VersionResponse.features]: device labels and icons are supported. */
+const val FEATURE_DEVICE_DISPLAY = "device-display"
 
 @Serializable
 data class EnrollRequest(
@@ -50,6 +55,12 @@ data class OwnedDevice(
     @SerialName("enrolled_at") val enrolledAt: String,
     @SerialName("last_seen_at") val lastSeenAt: String?,
     val enabled: Boolean,
+    /** Free text the owner set; null or absent when unset or the server is older. */
+    val label: String? = null,
+    /** The owner's icon choice; null means automatic. */
+    val icon: String? = null,
+    /** What the device reports about itself; null when unknown. */
+    val kind: String? = null,
 )
 
 /** FastAPI errors are `{"detail": "..."}`; anything else is shown as the raw body. */
@@ -59,8 +70,14 @@ fun errorDetail(body: String): String {
     return (detail as? JsonPrimitive)?.takeIf { it.isString }?.content ?: body
 }
 
+/** What this app reports about itself in every heartbeat; an old server ignores it. */
+const val PHONE_KIND = "phone"
+
 @Serializable
-data class HeartbeatRequest(@SerialName("agent_version") val agentVersion: String?)
+data class HeartbeatRequest(
+    @SerialName("agent_version") val agentVersion: String?,
+    val kind: String?,
+)
 
 /** `protocol` is the server's `ServiceProtocol`: only `"ssh"` and `"tcp"` exist. */
 @Serializable
