@@ -130,7 +130,6 @@ internal fun ControlRow(
     val colors = AppTheme.colors
     val widget = widgetOf(control.meta)
     val copy = RowCopy(LocalContext.current, control, onCard)
-    val copyValueLabel = stringResource(R.string.wb_copy_value)
     val copyControlLabel = stringResource(R.string.wb_copy_control)
     val copyTopicLabel = stringResource(R.string.wb_copy_topic)
     val cardLabel = stringResource(R.string.mqtt_open_card)
@@ -149,15 +148,10 @@ internal fun ControlRow(
                         onLongClickLabel = copyTopicLabel,
                         onLongClick = copy::topic,
                     )
-                    // TalkBack: every copy on the row, whatever the widget, and the card.
-                    .semantics {
-                        customActions = listOf(
-                            CustomAccessibilityAction(copyValueLabel) { copy.value(); true },
-                            CustomAccessibilityAction(copyControlLabel) { copy.control(); true },
-                            CustomAccessibilityAction(copyTopicLabel) { copy.topic(); true },
-                            CustomAccessibilityAction(cardLabel) { onCard(); true },
-                        )
-                    },
+                    // TalkBack: the tap ("Copy control") and the long press ("Copy topic") are the
+                    // title's own actions, each named once; the card is added. "Copy value" is the
+                    // shown value's own tap (read-only, alarm), as on screen: a writable widget has none.
+                    .semantics { customActions = listOf(CustomAccessibilityAction(cardLabel) { onCard(); true }) },
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(oneLineText(control.title), fontSize = 15.sp, color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -253,7 +247,7 @@ private fun ControlWidget(
             onLongClickLabel = stringResource(R.string.wb_copy_topic),
             onLongClick = copy::topic,
         )
-        .heightIn(min = 40.dp)
+        // Wider to the left only: the row keeps its height.
         .padding(start = 8.dp)
     val offState = Modifier.semantics { off?.let { stateDescription = it } }
     when (widget) {

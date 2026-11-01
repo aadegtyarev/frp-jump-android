@@ -716,13 +716,34 @@ live controller; where they differ, both are read.
   - a long press on the title or on such a value: the full topic
     (`/devices/wb-map6s_34/controls/Irms 1`).
   Each copy is confirmed by the app's copy notice naming what was copied
-  ("Copied to the clipboard: wb-map6s_34/Irms 1"), with **Card** on it,
-  which opens the ordinary topic card of the control (history, copy, pin,
-  publish): the title no longer opens it. Widgets (switch, slider, button,
-  colour, enum, input) keep their own tap; the title's tap and long press
-  still copy on their rows. TalkBack offers on every row the actions
-  «Копировать значение», «Копировать контрол», «Копировать топик» and
-  «Открыть карточку».
+  ("Copied to the clipboard: wb-map6s_34/Irms 1" / «В буфере обмена: …»),
+  with **Card** («Карточка») on it, which opens the ordinary topic card of
+  the control (history, copy, pin, publish): the title no longer opens it.
+  A notice with a button stays the longest (6 s, against 2.5 s plain and
+  4 s long), so there is time to tap Card. Widgets
+  (switch, slider, button, colour, enum, input) keep their own tap; the
+  title's tap and long press still copy on their rows. A copyable value
+  is wider to the left only; rows keep their height.
+
+  Writable controls have no value copy at all: switch, `wo-switch`,
+  range, `pushbutton`, `rgb`, enum and the editable number and text
+  fields alike; a tap on the widget is its own action (toggle, slide,
+  press, picker, list, input), and no other path copies their value
+  there (it is on the topic card). The title's tap and long press copy on
+  every row.
+
+  TalkBack, the same as on screen. On the title: the tap is "Copy
+  control" («Копировать контрол», `wb_copy_control`), the long press
+  "Copy topic" («Копировать топик», `wb_copy_topic`), each announced
+  once, and a custom action "Open the card" («Открыть карточку»,
+  `mqtt_open_card`). On a shown value (read-only, alarm): the tap is
+  "Copy value" («Копировать значение», `wb_copy_value`), the long press
+  "Copy topic".
+
+  Decided (2026-11-01, the operator): the copy notice carries Card in place
+  of the title opening the card; the value copied is the raw published
+  payload, not the shown text; writable widgets keep tap = their own
+  action, identically for all of them, with no value copy.
 - **Value display.**
   - Digits: with `precision`, the value rounded to the nearest multiple
     of it (half away from zero), computed in decimal arithmetic, never

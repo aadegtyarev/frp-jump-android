@@ -549,7 +549,11 @@ private fun viewLabel(view: PayloadView): String = when (view) {
     PayloadView.HEX -> stringResource(R.string.mqtt_view_hex)
 }
 
-/** Puts [copied] on the clipboard and says so on top, with a cleaned preview as the terminal does; [action] rides on that notice. */
+/**
+ * Puts [copied] on the clipboard and says so on top, with a cleaned preview
+ * as the terminal does; [action] rides on that notice, which a button keeps
+ * up the longest (6 s, [ru.adsrv.frpjump.notices.TopNotice.ACTION_MS]).
+ */
 internal fun copyToClipboard(context: Context, copied: CopiedValue, action: NoticeAction? = null) {
     try {
         context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(context.getString(R.string.kind_mqtt), copied.text))
