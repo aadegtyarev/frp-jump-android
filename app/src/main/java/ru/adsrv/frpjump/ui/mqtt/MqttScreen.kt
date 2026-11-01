@@ -214,6 +214,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 AppTopBar(
                     title = session?.device ?: stringResource(R.string.kind_mqtt),
                     subtitle = session?.let { stringResource(R.string.connection_details, it.port) + " · " + status } ?: status,
+                    // Connecting or reconnecting: the state's only place, with a small spinner, no banner repeating it.
+                    busy = stateBusy(state.state),
                     // In a WB device the arrow steps out to the devices list first, as system Back does.
                     onBack = barBack,
                     wrapTitle = true,
@@ -305,7 +307,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 }
             }
             if (state.shownTab == ExplorerTab.WB_DEVICES && !searching) {
-                Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
+                Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
                 WbDevicesTab(
                     state,
                     language,
@@ -318,7 +320,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 return@Column
             }
             if (state.shownTab == ExplorerTab.SUBSCRIPTIONS && !searching) {
-                Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
+                Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
                 SubscriptionsList(
                     state,
                     open = open,
@@ -347,7 +349,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 )
             }
             SnapshotLine(state)
-            Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
+            Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
             if (searching && query.isNotBlank()) {
                 // The card opens over the hits, so closing it returns to them.
                 SearchHits(
@@ -516,10 +518,11 @@ private fun SnapshotLine(state: MqttUiState) {
     }
 }
 
-/** The connection's state and what the tree is missing, each with what may fix it. */
+/** What the subtitle cannot say about the connection, and what the tree is missing, each with what may fix it. */
 @Composable
-private fun Banners(state: MqttUiState, device: String, port: Int, onRetry: () -> Unit, onLogin: () -> Unit, onPinBranch: () -> Unit) {
-    when (val s = state.state) {
+private fun Banners(state: MqttUiState, device: String, port: Int, subtitleShown: Boolean, onRetry: () -> Unit, onLogin: () -> Unit, onPinBranch: () -> Unit) {
+    // The state is in the subtitle; a banner only adds an action or a reason (see stateNeedsBanner).
+    if (stateNeedsBanner(state.state, state.closedByTunnel, subtitleShown)) when (val s = state.state) {
         MqttState.Connecting -> StatusBanner(stringResource(R.string.mqtt_connecting), busy = true)
         MqttState.Reconnecting -> StatusBanner(stringResource(R.string.mqtt_reconnecting), busy = true)
         is MqttState.NeedsLogin -> StatusBanner(stringResource(R.string.mqtt_login_needed), action = stringResource(R.string.mqtt_log_in), onAction = onLogin)

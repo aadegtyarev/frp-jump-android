@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,11 +54,12 @@ import ru.adsrv.frpjump.R
  * The bar of a screen opened from a card (web page): back, a title with a
  * muted line under it, actions. With [wrapTitle] the title is identifying
  * text that is never cut: it takes up to two lines, and a name longer than
- * that is drawn smaller until it fits.
+ * that is drawn smaller until it fits. With [busy] a small spinner leads
+ * the subtitle: the state there is still on its way (connecting).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, wrapTitle: Boolean = false, actions: @Composable RowScope.() -> Unit = {}) {
+fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, wrapTitle: Boolean = false, busy: Boolean = false, actions: @Composable RowScope.() -> Unit = {}) {
     val colors = AppTheme.colors
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -68,7 +71,12 @@ fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, wrapTitle: B
         title = {
             Column {
                 if (wrapTitle) WrappedTitle(title) else Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                subtitle?.let { Text(it, fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                subtitle?.let {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (busy) CircularProgressIndicator(Modifier.size(10.dp), color = colors.muted, strokeWidth = 1.5.dp)
+                        Text(it, fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         },
         navigationIcon = {
