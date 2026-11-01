@@ -277,7 +277,7 @@ while held (400 ms, then about 15 a second); the other keys do not.
 
 A tap on the command line moves the shell's cursor there: the app sends as
 many ← or → as there are characters between the cursor and the tapped cell
-(a wide character counts once, at most 2000), and the shell moves its
+(a wide character counts once, at most 1000, which stays under the terminal's 4 KB write queue), and the shell moves its
 cursor and echoes it; no other feedback. It counts only on the cursor's row
 and the rows wrapped into it at the margin (one logical line); a tap past
 the end of the text goes to its end. A row the shell broke with a real line

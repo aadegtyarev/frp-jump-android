@@ -27,7 +27,7 @@ interface TapGrid {
 }
 
 /** The most arrow keys one tap sends. */
-const val MAX_TAP_MOVES = 2000
+const val MAX_TAP_MOVES = 1000
 
 /**
  * How many characters the shell's cursor has to move for a tap on

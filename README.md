@@ -634,7 +634,7 @@ filling in the user name leaves the saved password alone.
   counting in `ui/ssh/TapToCursor.kt`, tmux answers in
   `ui/ssh/TmuxTapGate.kt`). The terminal cannot move the shell's cursor,
   so the app sends that many ← or → (the emulator's arrow codes for its
-  cursor-key mode, no Ctrl / Alt, at most 2000, written in pieces of 64
+  cursor-key mode, no Ctrl / Alt, at most 1000, written in pieces of 64
   whole arrows so a key typed meanwhile never lands inside one) and the
   line editor moves it. Until their echo changes the cursor's line (or
   400 ms pass), further taps on the command line are dropped
