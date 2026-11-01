@@ -268,7 +268,7 @@ neither option; see "Retained topics" for what that changes.
     at) and **Subscribe to this filter**, which pins it ("Pinned: <filter>"
     notice); already pinned (that filter, or a pin delivering all it does,
     such as `/devices/#` for `/devices/+/controls/#`), the button is off
-    and says so; in a closed session it is off with "Session closed". A
+    and says so; in a closed session it is off with "The session is closed". A
     pattern with `*` or `?` shows the button off with "The broker does not
     understand * and ?: only + and # can be subscribed". The reason is read
     out with the button. A relative `#` pinned in branch `X` (`X/#`) also
