@@ -63,7 +63,23 @@ class WbValuesTest {
         assertEquals("21.3456", valueDigits("21.3456", null))
         assertEquals("21.35", valueDigits("21.3456", BigDecimal("0.01")))
         assertEquals("n/a", valueDigits("n/a", BigDecimal("0.01")))
-        assertEquals("230.0", valueDigits("230", BigDecimal("0.1")))
+        assertEquals("230", valueDigits("230", BigDecimal("0.1")))
+    }
+
+    @Test
+    fun `shown digits are rounded to the precision but never padded`() {
+        // Live WB-MAP6S: `AP energy 1`, precision 1e-06, publishes "76.50263": shown as published.
+        assertEquals("76.50263", valueDigits("76.50263", BigDecimal("1e-06")))
+        assertEquals("76.501711", valueDigits("76.5017105", BigDecimal("1e-06")))
+        // `Irms 1`, precision 0.0001.
+        assertEquals("0.0853", valueDigits("0.08531", BigDecimal("0.0001")))
+        assertEquals("0.5", valueDigits("0.50", BigDecimal("0.01")))
+        assertEquals("-31.8", valueDigits("-31.80", BigDecimal("0.01")))
+        assertEquals("0", valueDigits("0", BigDecimal("0.01")))
+        assertEquals("0", valueDigits("0.001", BigDecimal("0.01")))
+        // Whole tens stay plain, never `1E+2`.
+        assertEquals("100", valueDigits("100", BigDecimal("1")))
+        assertEquals("20", valueDigits("15", BigDecimal("10")))
     }
 
     @Test

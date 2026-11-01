@@ -951,7 +951,6 @@
     <string name="wb_reading_devices">Reading devices…</string>
     <string name="wb_no_devices">No Wiren Board devices seen</string>
     <string name="wb_has_errors">has errors</string>
-    <string name="wb_devices_back">Back to devices</string>
     <string name="wb_device_not_answering">The device does not answer</string>
     <string name="wb_no_value">No value</string>
     <string name="wb_error_read">Read error</string>

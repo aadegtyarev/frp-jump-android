@@ -16,12 +16,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +58,6 @@ internal fun WbDevicesTab(
     language: String,
     padding: PaddingValues,
     onOpen: (String) -> Unit,
-    onBack: () -> Unit,
     onCard: (WbControl) -> Unit,
     onWrite: (WbControl, String) -> Unit,
 ) {
@@ -72,7 +67,7 @@ internal fun WbDevicesTab(
     if (device == null) {
         WbDeviceList(state, devices, padding, onOpen)
     } else {
-        WbDeviceControls(state, device, language, padding, onBack, onCard, onWrite)
+        WbDeviceControls(state, device, language, padding, onCard, onWrite)
     }
 }
 
@@ -142,14 +137,17 @@ internal fun ErrorMark(spoken: String) {
     }
 }
 
-/** A device opened in the tab: a header with Back and its title, then its controls in meta order. */
+/**
+ * A device opened in the tab: a header with its title, then its controls in
+ * meta order. The screen's own Back (top bar and system) leaves it for the
+ * list, so the header has no arrow of its own.
+ */
 @Composable
 private fun WbDeviceControls(
     state: MqttUiState,
     id: String,
     language: String,
     padding: PaddingValues,
-    onBack: () -> Unit,
     onCard: (WbControl) -> Unit,
     onWrite: (WbControl, String) -> Unit,
 ) {
@@ -165,12 +163,9 @@ private fun WbDeviceControls(
     LaunchedEffect(id) { list.scrollToItem(0) }
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(end = 16.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.wb_devices_back), tint = colors.ink)
-            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     oneLineText(view?.title ?: id),
@@ -219,10 +214,17 @@ private fun WbDeviceControls(
     }
 }
 
-/** The value with its units (or its enum title), "No value" before one is seen. */
+/** What a control whose value is unknown (a read error) shows in its place; the error line says why. */
+internal const val UNKNOWN_VALUE = "—"
+
+/** The value with its units (or its enum title), "No value" before one is seen, "—" while it cannot be read. */
 @Composable
 internal fun ControlValue(control: WbControl, language: String, modifier: Modifier = Modifier, accent: Boolean = false) {
     val colors = AppTheme.colors
+    if (control.valueUnknown) {
+        Text(UNKNOWN_VALUE, fontSize = 15.sp, color = colors.muted, textAlign = TextAlign.End, modifier = modifier)
+        return
+    }
     val raw = control.value
     if (raw == null || raw.isEmpty()) {
         // An empty text reads as the tree's empty value, not as nothing at all.

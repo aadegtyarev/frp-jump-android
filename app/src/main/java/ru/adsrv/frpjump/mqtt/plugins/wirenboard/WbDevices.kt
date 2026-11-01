@@ -138,7 +138,14 @@ data class WbControl(
     /** The status topic's value; null when not seen ("No value"). */
     val value: String?,
     val errors: List<WbError>,
-)
+) {
+    /**
+     * The driver could not read the control (`r`): the value is the last
+     * good one and means nothing now, so it is shown as unknown. `w` (write
+     * failed) and `p` (polled late) leave the read value valid.
+     */
+    val valueUnknown: Boolean get() = WbError.Read in errors
+}
 
 /** A device opened in the tab. */
 data class WbDeviceView(

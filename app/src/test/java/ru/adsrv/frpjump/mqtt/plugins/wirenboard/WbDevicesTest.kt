@@ -172,4 +172,38 @@ class WbDevicesTest {
         assertEquals("", view.getValue("msg").value)
         assertNull(view.getValue("v").value)
     }
+
+    @Test
+    fun `a read error makes the value unknown, a write error or a late poll does not`() {
+        val t = texts(
+            "/devices/d/controls/Ipeak/meta" to """{"type":"value","precision":0.01,"units":"A"}""",
+            "/devices/d/controls/Ipeak" to "0",
+            "/devices/d/controls/Ipeak/meta/error" to "r",
+            "/devices/d/controls/W/meta" to """{"type":"value"}""",
+            "/devices/d/controls/W" to "5",
+            "/devices/d/controls/W/meta/error" to "w",
+            "/devices/d/controls/P/meta" to """{"type":"value"}""",
+            "/devices/d/controls/P" to "6",
+            "/devices/d/controls/P/meta/error" to "p",
+            "/devices/d/controls/RW/meta" to """{"type":"switch"}""",
+            "/devices/d/controls/RW" to "1",
+            "/devices/d/controls/RW/meta/error" to "wr",
+            "/devices/d/controls/RP/meta" to """{"type":"value"}""",
+            "/devices/d/controls/RP" to "8",
+            "/devices/d/controls/RP/meta/error" to "rp",
+            "/devices/d/controls/RcW/meta" to """{"type":"value"}""",
+            "/devices/d/controls/RcW" to "9",
+            "/devices/d/controls/RcW/meta/error" to "r,w",
+            "/devices/d/controls/WP/meta" to """{"type":"value"}""",
+            "/devices/d/controls/WP" to "10",
+            "/devices/d/controls/WP/meta/error" to "w p",
+            "/devices/d/controls/Ok/meta" to """{"type":"value"}""",
+            "/devices/d/controls/Ok" to "7",
+        )
+        val unknown = wbDevice("d", t, "en")!!.controls.associate { it.id to it.valueUnknown }
+        assertEquals(
+            mapOf("Ipeak" to true, "W" to false, "P" to false, "RW" to true, "RP" to true, "RcW" to true, "WP" to false, "Ok" to false),
+            unknown,
+        )
+    }
 }

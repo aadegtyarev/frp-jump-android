@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -208,23 +209,38 @@ private fun ControlWidget(
     when (widget) {
         WbWidget.SWITCH, WbWidget.WO_SWITCH -> {
             val shown = if (widget == WbWidget.WO_SWITCH) sent else control.value
-            val on = switchOn(sending?.asked ?: shown)
+            // A switch that cannot be read has no state to show: the toggle is neutral (off, muted) and still taps.
+            val unknown = widget == WbWidget.SWITCH && control.valueUnknown && sending == null
+            val on = !unknown && switchOn(sending?.asked ?: shown)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
                     sending != null -> CircularProgressIndicator(color = colors.accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                    // A value that cannot be read is unknown, whatever the toggle shows.
+                    unknown -> Text(UNKNOWN_VALUE, fontSize = 13.sp, color = colors.muted)
                     // A missing or other value is off, and also shown as text.
                     widget == WbWidget.SWITCH && control.value?.trim() != "1" && control.value?.trim() != "0" ->
                         Text(control.value?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value), fontSize = 13.sp, color = colors.muted)
                 }
                 val spoken = control.title
                 val sendingWord = stringResource(R.string.wb_sending)
+                val unknownWord = stringResource(R.string.wb_error_read)
                 Switch(
                     checked = on,
                     enabled = canWrite,
                     onCheckedChange = { onWrite(switchPayload(it)) },
+                    colors = if (unknown) {
+                        SwitchDefaults.colors(
+                            uncheckedThumbColor = colors.faint,
+                            uncheckedTrackColor = colors.tile,
+                            uncheckedBorderColor = colors.faint,
+                        )
+                    } else {
+                        SwitchDefaults.colors()
+                    },
                     modifier = offState.semantics {
                         contentDescription = spoken
                         if (sending != null) stateDescription = sendingWord
+                        else if (unknown && off == null) stateDescription = unknownWord
                     },
                 )
             }
@@ -234,8 +250,9 @@ private fun ControlWidget(
             SecondaryButton(oneLineText(control.title, 24), null, enabled = canWrite, offState) { onWrite(PUSH_PAYLOAD) }
         }
         WbWidget.ALARM -> {
-            val raised = control.value?.trim() == "1"
-            val spoken = stringResource(if (raised) R.string.wb_alarm_on else R.string.wb_alarm_off)
+            // Unread, it is neither raised nor clear: the plain muted ring, read out as the read error.
+            val raised = !control.valueUnknown && control.value?.trim() == "1"
+            val spoken = if (control.valueUnknown) stringResource(R.string.wb_error_read) else stringResource(if (raised) R.string.wb_alarm_on else R.string.wb_alarm_off)
             Box(
                 Modifier
                     .size(20.dp)
@@ -257,7 +274,11 @@ private fun ControlWidget(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (sending != null) Spinner()
-                Text(shown?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value), fontSize = 13.sp, color = colors.muted)
+                Text(
+                    if (control.valueUnknown && sending == null) UNKNOWN_VALUE else shown?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value),
+                    fontSize = 13.sp,
+                    color = colors.muted,
+                )
                 Box(
                     Modifier
                         .size(32.dp)
@@ -302,7 +323,8 @@ private fun RangeSlider(control: WbControl, sending: WriteView.Sending?, canWrit
     LaunchedEffect(held) { if (held != null) { delay(HOLD_MS); held = null } }
     if (!dragging) position = (held ?: status).toFloat()
     val units = unitsOf(control.meta)?.let { " $it" }.orEmpty()
-    val shown = position.roundToInt().toString() + units
+    // A value that cannot be read is unknown; what is being dragged or sent is shown.
+    val shown = if (control.valueUnknown && !dragging && held == null && sending == null) UNKNOWN_VALUE else position.roundToInt().toString() + units
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Slider(
             value = position,
