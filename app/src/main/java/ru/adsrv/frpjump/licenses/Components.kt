@@ -50,6 +50,7 @@ fun licenseFor(key: String, license: LicenseEntry): ComponentLicense? {
         id == "MIT" -> ComponentLicense("MIT License", "MIT", "licenses/MIT.txt")
         id == "MIT-0" -> ComponentLicense("MIT No Attribution", "MIT-0", "licenses/MIT-0.txt")
         id == "TextMate-Bundle" -> ComponentLicense("TextMate Bundle License", "TextMate", "licenses/TextMate-Bundle.txt")
+        id == "BSD-3-Clause-Go" -> ComponentLicense("BSD 3-Clause (Go, golang.org/x)", "Go BSD", "licenses/BSD-3-Clause-Go.txt")
         // The grammars' sources and copyright holders, one by one.
         id == "TextMate-Grammars-Notice" -> ComponentLicense("Sources and copyrights", "Copyrights", "textmate/NOTICE.md")
         "lgpl-2.1" in url -> ComponentLicense("GNU LGPL 2.1", "LGPL 2.1", "licenses/LGPL-2.1.txt")
@@ -66,12 +67,15 @@ fun licenseFor(key: String, license: LicenseEntry): ComponentLicense? {
  * it does not start a block of its own (a list item, a numbered section,
  * a heading in capitals), the one before is no heading and does not end
  * with ":", and it is indented as the one before (give or take two
- * spaces) or further, under a list item's text.
+ * spaces) or further, under a list item's text. In [markdown], a table
+ * row (`|`) and a code line (indented four spaces or more) stay as they
+ * are, and nothing joins them.
  */
-fun reflow(text: String): String {
+fun reflow(text: String, markdown: Boolean = false): String {
     val out = StringBuilder()
     var previous = ""
     var previousItem = false
+    var previousVerbatim = false
     for (raw in text.lines()) {
         val line = raw.trimEnd()
         val body = line.trimStart()
@@ -79,13 +83,15 @@ fun reflow(text: String): String {
         val previousBody = previous.trimStart()
         val previousIndent = previous.length - previousBody.length
         val item = ITEM.containsMatchIn(body)
-        val joins = body.isNotEmpty() && previousBody.isNotEmpty() && !item && !HEADING.matches(body) &&
-            !HEADING.matches(previousBody) && !previousBody.endsWith(":") &&
+        val verbatim = markdown && (body.startsWith("|") || indent >= 4)
+        val joins = body.isNotEmpty() && previousBody.isNotEmpty() && !item && !verbatim && !previousVerbatim &&
+            !HEADING.matches(body) && !HEADING.matches(previousBody) && !previousBody.endsWith(":") &&
             // A paragraph's first line may stand out by a space or two ("  The licenses for most software…").
             (abs(indent - previousIndent) <= 2 || (previousItem && indent > previousIndent))
         if (out.isNotEmpty()) out.append(if (joins) ' ' else '\n')
         out.append(if (joins) body else line)
         previous = line
+        previousVerbatim = verbatim
         // A list item's text goes on in lines indented under it.
         previousItem = if (joins) previousItem else item
     }

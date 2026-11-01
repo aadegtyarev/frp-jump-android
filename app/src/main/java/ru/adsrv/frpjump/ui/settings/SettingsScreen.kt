@@ -126,6 +126,8 @@ fun SettingsScreen(
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
+    // Above the licenses' early return, so the settings come back scrolled where they were.
+    val scroll = rememberScrollState()
     // Components and licenses: a screen of its own over the settings.
     var licenses by rememberSaveable { mutableStateOf(false) }
     if (licenses) {
@@ -172,7 +174,7 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {

@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -153,7 +154,9 @@ private fun ComponentScreen(c: Component, onBack: () -> Unit) {
     var text by remember(license) { mutableStateOf<String?>(null) }
     LaunchedEffect(license) {
         text = license?.let { l ->
-            withContext(Dispatchers.IO) { reflow(context.assets.open(l.asset).bufferedReader().use { it.readText() }) }
+            withContext(Dispatchers.IO) {
+                reflow(context.assets.open(l.asset).bufferedReader().use { it.readText() }, markdown = l.asset.endsWith(".md"))
+            }
         }
     }
     Scaffold(
@@ -171,13 +174,16 @@ private fun ComponentScreen(c: Component, onBack: () -> Unit) {
             c.source?.let { url ->
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(stringResource(R.string.licenses_sources), fontSize = 13.sp, color = colors.muted)
-                    Text(
-                        url,
-                        fontSize = 14.sp,
-                        color = colors.accent,
-                        textDecoration = TextDecoration.Underline,
-                        modifier = Modifier.clickable { openInBrowser(context, url) },
-                    )
+                    // A link to tap: a button's height and role, its text the address.
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable(role = Role.Button) { openInBrowser(context, url) },
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(url, fontSize = 14.sp, color = colors.accent, textDecoration = TextDecoration.Underline)
+                    }
                 }
             }
             if (c.licenses.size > 1) {
