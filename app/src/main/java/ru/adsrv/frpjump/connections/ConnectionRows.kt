@@ -62,9 +62,6 @@ fun connectionRows(
     return rows + unsaved
 }
 
-/** The Connections tab's order: active ones first, each group in profile order as [rows] come. */
-fun activeFirst(rows: List<ConnectionRow>): Pair<List<ConnectionRow>, List<ConnectionRow>> = rows.partition { it.active }
-
 /**
  * Whether removing [removed] (or moving it to another port) leaves its
  * tunnel without any connection of the same profile: then the tunnel is

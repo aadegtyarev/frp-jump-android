@@ -77,14 +77,6 @@ class ConnectionRowsTest {
     }
 
     @Test
-    fun `active ones go first, each group keeps its order`() {
-        val tunnels = TunnelsState(tunnels = listOf(tunnel("wb", 80, 40002), tunnel("pc", 22, 40003)))
-        val (active, saved) = activeFirst(connectionRows("p1", listOf(root, ui, admin, other), tunnels))
-        assertEquals(listOf("3", "4"), active.map { it.connection.id })
-        assertEquals(listOf("1", "2"), saved.map { it.connection.id })
-    }
-
-    @Test
     fun `deleting the last connection of a port takes its tunnel along, not otherwise`() {
         assertFalse(lastOnItsTunnel(root, listOf(root, admin, ui)))
         assertTrue(lastOnItsTunnel(ui, listOf(root, admin, ui)))

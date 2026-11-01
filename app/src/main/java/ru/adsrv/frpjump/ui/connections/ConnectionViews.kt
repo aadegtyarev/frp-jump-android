@@ -264,17 +264,17 @@ fun MainButton(text: String, onClick: () -> Unit) {
 
 /**
  * The outlined "Connect" of an inactive row; a spinner in its place while
- * connecting, "Retry" after a failure.
+ * connecting, "Retry" after a failure; greyed out when not [enabled].
  */
 @Composable
-fun ConnectButton(row: ConnectionRow, onClick: () -> Unit) {
+fun ConnectButton(row: ConnectionRow, enabled: Boolean = true, onClick: () -> Unit) {
     val c = AppTheme.colors
     val busy = row.pending != null
     OutlinedButton(
         onClick = onClick,
-        enabled = !busy,
+        enabled = enabled && !busy,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, if (busy) c.outline else c.accent),
+        border = BorderStroke(1.dp, if (busy || !enabled) c.outline else c.accent),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = c.card, contentColor = c.accent),
         contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = Modifier.height(40.dp),
@@ -282,7 +282,7 @@ fun ConnectButton(row: ConnectionRow, onClick: () -> Unit) {
         Box(contentAlignment = Alignment.Center) {
             // The label keeps the button's width while the spinner shows.
             val label = stringResource(if (row.error != null) R.string.retry else R.string.connect)
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (busy) Color.Transparent else c.accent)
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (busy) Color.Transparent else if (enabled) c.accent else c.muted)
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = c.accent, strokeWidth = 2.dp)
         }
     }

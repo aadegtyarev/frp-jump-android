@@ -1,10 +1,7 @@
 package ru.adsrv.frpjump.ui.devices
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,19 +15,16 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,13 +34,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,37 +45,18 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ports.PortKind
-import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.PlusGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
-import ru.adsrv.frpjump.ui.connections.ConnectButton
+import ru.adsrv.frpjump.ui.connections.ConnectionCard
 import ru.adsrv.frpjump.ui.connections.ConnectionDialogs
-import ru.adsrv.frpjump.ui.connections.ConnectionMenu
 import ru.adsrv.frpjump.ui.connections.ConnectionSheet
 import ru.adsrv.frpjump.ui.connections.ConnectionUi
-import ru.adsrv.frpjump.ui.connections.DisconnectIcon
-import ru.adsrv.frpjump.ui.connections.LocalAddress
-import ru.adsrv.frpjump.ui.connections.MainButton
-import ru.adsrv.frpjump.ui.connections.RowActions
-import ru.adsrv.frpjump.ui.connections.SessionsPill
-import ru.adsrv.frpjump.ui.connections.StatePill
-import ru.adsrv.frpjump.ui.connections.offersDirectChoice
-import ru.adsrv.frpjump.tunnel.DirectMode
-import ru.adsrv.frpjump.tunnel.SessionCount
-import ru.adsrv.frpjump.ui.connections.kindLabel
-import ru.adsrv.frpjump.ui.connections.mainActionLabel
-import ru.adsrv.frpjump.ui.connections.CardTap
-import ru.adsrv.frpjump.ui.connections.cardTap
-import ru.adsrv.frpjump.ui.connections.cardTapLabel
-import ru.adsrv.frpjump.ui.connections.problemOf
 import ru.adsrv.frpjump.ui.connections.rememberLocalPortContext
 import ru.adsrv.frpjump.ui.connections.rememberNotificationsFirst
 import ru.adsrv.frpjump.ui.connections.rememberRowActions
-import ru.adsrv.frpjump.ui.connections.rowName
 import ru.adsrv.frpjump.ui.connections.sessionsIn
-import ru.adsrv.frpjump.ui.connections.stateOf
 
 /**
  * A device of the current profile: its state, its connections with their
@@ -199,6 +171,7 @@ fun DeviceCardScreen(
                     menuOpen = ui.menu == row.key,
                     onMenu = { ui.menu = if (it) row.key else null },
                     actions = actions,
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
         }
@@ -227,7 +200,7 @@ private fun Header(name: String, device: DeviceRow?, profileName: String) {
     val colors = AppTheme.colors
     Column {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (device != null) {
                     val (dot, text) = when {
@@ -266,130 +239,4 @@ private fun HeaderChip(content: @Composable () -> Unit) {
 @Composable
 private fun Problem(text: String) {
     Text(text, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
-}
-
-/**
- * One connection as the mockup's card: kind tile, name and what it is, "⋮";
- * below, the state, Disconnect and the main action when up, or "Not
- * connected" and Connect. Long press opens the same menu as "⋮".
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun ConnectionCard(
-    row: ConnectionRow,
-    sshMethod: SshAuthMethod?,
-    sessions: SessionCount,
-    menuOpen: Boolean,
-    onMenu: (Boolean) -> Unit,
-    actions: RowActions,
-) {
-    val colors = AppTheme.colors
-    val c = row.connection
-    val up = row.tunnel != null
-    Surface(
-        color = colors.card,
-        shape = RoundedCornerShape(18.dp),
-        border = if (up) BorderStroke(1.5.dp, colors.accent.copy(alpha = 0.45f)) else BorderStroke(1.dp, colors.divider),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(18.dp))
-            // Anywhere but its buttons: its main action, as the button labels it (connecting first when down);
-            // being disconnected, no action of its own, for touch or TalkBack.
-            .combinedClickable(
-                enabled = cardTap(row) != CardTap.NONE,
-                onClickLabel = cardTapLabel(row, sessions),
-                onClick = { actions.tap(row) },
-                onLongClick = { onMenu(true) },
-            ),
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                KindTile(c.kind, up, row.saved)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(rowName(row), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(subtitle(row, sshMethod), fontSize = 13.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    // On a line of its own: next to a long state and the main action it would be cut.
-                    if (row.tunnel != null || sessions.total > 0) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f, fill = false), pinned = it.pinned) }
-                            SessionsPill(sessions)
-                        }
-                    }
-                }
-                Box {
-                    IconButton(onClick = { onMenu(true) }, modifier = Modifier.width(36.dp)) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions, rowName(row)), tint = colors.muted)
-                    }
-                    ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val state = stateOf(row)
-                // The state gives way (ellipsis) before the buttons do.
-                Box(Modifier.weight(1f)) {
-                    if (state != null) {
-                        StatePill(
-                            state.first,
-                            state.second,
-                            onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) },
-                            chevron = row.tunnel?.direct != DirectMode.KEPT,
-                        )
-                    } else Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
-                }
-                if (up) {
-                    DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
-                    MainButton(mainActionLabel(row, sessions)) { actions.main(row) }
-                } else {
-                    ConnectButton(row) { actions.connect(row) }
-                }
-            }
-            problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
-        }
-    }
-}
-
-/** "Web · port 80", "SSH · port 22 · root · phone key", …; an unsaved tunnel shows its device and port only. */
-@Composable
-private fun subtitle(row: ConnectionRow, sshMethod: SshAuthMethod?): String {
-    val c = row.connection
-    if (!row.saved) return "${c.device}:${c.port}"
-    val kind = kindLabel(c.kind)
-    return when {
-        c.kind == PortKind.WEB && c.https -> stringResource(R.string.connection_sub_https, kind, c.port)
-        c.kind == PortKind.SSH && sshMethod == SshAuthMethod.PASSWORD -> stringResource(R.string.connection_sub_ssh_password, kind, c.port, c.sshUser)
-        c.kind == PortKind.SSH -> stringResource(R.string.connection_sub_ssh_key, kind, c.port, c.sshUser)
-        else -> stringResource(R.string.connection_sub, kind, c.port)
-    }
-}
-
-/** WEB / SSH / TCP / MQTT on a tile, in the accent while connected. */
-@Composable
-private fun KindTile(kind: PortKind, up: Boolean, saved: Boolean) {
-    val colors = AppTheme.colors
-    Box(
-        Modifier
-            .size(40.dp)
-            .background(if (up) colors.accentContainer else colors.tile, RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            stringResource(
-                if (!saved) {
-                    R.string.kind_tcp_tile
-                } else {
-                    when (kind) {
-                        PortKind.WEB -> R.string.kind_web_tile
-                        PortKind.SSH -> R.string.kind_ssh_tile
-                        PortKind.TCP -> R.string.kind_tcp_tile
-                        PortKind.MQTT -> R.string.kind_mqtt_tile
-                    }
-                },
-            ),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (up) colors.onAccentContainer else colors.muted,
-        )
-    }
 }

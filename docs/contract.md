@@ -183,9 +183,36 @@ re-enroll.
 
 ### 5. Connections tab
 
-- All saved connections of all profiles; active ones on top with their state
-  and local address, the rest below with a connect button.
-- "Disconnect all".
+Quick access to the saved connections of every device, active ones first.
+
+- Grouped by device. A group's header is the device's whole name (wrapped,
+  never cut) after its state as a dot in the Devices list's colours (online,
+  online as of an old list, offline; none while its profile's list is not
+  read). With more than one profile on the tab, the header also shows the
+  profile's colour; devices of the same name in two profiles are two groups.
+- Order: devices with an active connection first, then online ones, then the
+  rest (offline, or not in the list); within each part by device name.
+  Within a group the connections keep their stored order; a tunnel up that
+  no saved connection names is listed after them, under its device.
+- Each connection is the same card as on the device card: kind tile, its own
+  name only when it has one other than the kind (a default "SSH" is not
+  repeated), port (and the SSH user and login method), state, the main
+  button ("Connect" / "Terminal" / "Explore" / "Open" / "Copy"),
+  Disconnect while up, and "⋮". A tap on the card does its main action
+  (scenario 4).
+- On a device known to be offline, a connection that is down is dimmed: its
+  Connect and the tap on its card are off, and its state says "Device
+  offline" instead of "Not connected". Its "⋮" still works. An active one
+  stays as it is, so it can be disconnected.
+- The device lists of the profiles on the tab are asked again each time the
+  tab shows, so the dots are current.
+- From 6 connections, a magnifier in the title opens search, as on Devices:
+  it matches the device name (all its connections) or a connection's name;
+  nothing found says so.
+- While any tunnel is up (or being restored), the title has the Devices
+  bar's power button: it disconnects every profile's tunnels, with Undo.
+- Nothing saved: "No saved connections yet. Open a device on Devices and tap
+  “Connection”."
 
 ### 6. Direct or through the server
 

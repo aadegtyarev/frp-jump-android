@@ -176,6 +176,10 @@
     <string name="kind_ssh_tile" translatable="false">SSH</string>
     <string name="kind_tcp_tile" translatable="false">TCP</string>
     <string name="state_not_connected">Not connected</string>
+    <string name="state_device_offline">Device offline</string>
+    <string name="connections_search">Search connections</string>
+    <string name="connections_search_hint">Device or connection</string>
+    <string name="connections_no_match">No connections match “%s”.</string>
     <string name="state_connecting">Connecting…</string>
     <string name="state_disconnecting">Disconnecting…</string>
     <string name="state_trying_direct">Trying direct…</string>
@@ -186,15 +190,13 @@
     <string name="state_failed">Failed</string>
 
     <!-- Connection rows and their actions -->
-    <string name="connection_sub">%1$s · port %2$d</string>
-    <string name="connection_sub_short" translatable="false">%1$s · %2$d</string>
-    <string name="connection_sub_https">%1$s · port %2$d · HTTPS</string>
-    <string name="connection_sub_ssh_key">%1$s · port %2$d · %3$s · phone key</string>
-    <string name="connection_sub_ssh_password">%1$s · port %2$d · %3$s · password</string>
+    <string name="connection_details">Port %1$d</string>
+    <string name="connection_details_https">Port %1$d · HTTPS</string>
+    <string name="connection_details_ssh_key">Port %1$d · %2$s · phone key</string>
+    <string name="connection_details_ssh_password">Port %1$d · %2$s · password</string>
     <string name="connection_unsaved">Port %d</string>
     <string name="connection_actions">Actions with “%s”</string>
     <string name="connect">Connect</string>
-    <string name="connect_named">Connect “%s”</string>
     <string name="connect_and_open">Connect and open</string>
     <string name="disconnect_named">Disconnect “%s”</string>
     <string name="disconnect">Disconnect</string>
@@ -266,10 +268,7 @@
     <string name="save_failed">Could not save (%s). Try again.</string>
 
     <!-- Connections tab -->
-    <string name="connections_active">Active · %d</string>
-    <string name="connections_saved">Saved</string>
-    <string name="connections_empty">No saved connections yet. Open a device and add one with “Connection”.</string>
-    <string name="connection_on_device" translatable="false">· %s</string>
+    <string name="connections_empty">No saved connections yet. Open a device on Devices and tap “Connection”.</string>
 
     <!-- Sessions tab -->
     <string name="sessions_empty">No open sessions. Tap “Terminal” or “MQTT” on a connection.</string>
