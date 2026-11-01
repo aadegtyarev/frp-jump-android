@@ -541,10 +541,12 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 if (seen && !known) wbSeenNow.value = true
                 val complete = snapshot == SnapshotState.Done(SnapshotEnd.QUIET)
                 when {
-                    // A broker refusing `#` may still allow the meta: asked for, so the tab can appear from them.
-                    seen || snapshot == SnapshotState.Refused -> s.setPluginFilters(WB_META_FILTERS)
-                    // Only a whole tree without meta drops them; meanwhile (a refresh re-reading) they are left as held.
-                    complete -> s.setPluginFilters(emptyList())
+                    // Only a whole tree without meta drops them.
+                    complete && !seen -> s.setPluginFilters(emptyList())
+                    // A snapshot cut short (time, topic limit) or `#` refused may have missed the meta: asked for,
+                    // so the tab can still appear from them.
+                    seen || snapshot is SnapshotState.Done || snapshot == SnapshotState.Refused -> s.setPluginFilters(WB_META_FILTERS)
+                    // Meanwhile (a snapshot or a refresh still reading) they are left as held.
                 }
                 // Read whole without meta: the tab is gone, and appearing later it does not take the screen.
                 if (!seen && snapshot is SnapshotState.Done) tab.compareAndSet(ExplorerTab.WB_DEVICES, ExplorerTab.TREE)
