@@ -13,7 +13,34 @@ import ru.adsrv.frpjump.store.TextStorage
 @Serializable
 data class ConnectionPlugins(
     val statusCommand: StatusCommandSettings = StatusCommandSettings(),
+    val wirenBoard: WirenBoardSettings = WirenBoardSettings(),
 )
+
+/** The Wiren Board plugin's settings for one connection. */
+@Serializable
+data class WirenBoardSettings(
+    /** On for every MQTT connection until turned off. */
+    val on: Boolean = true,
+    /** The last session showed the WB devices tab: the next one opens on it. */
+    val tabShown: Boolean = false,
+)
+
+/**
+ * The WB devices tab appeared in a session: the next session opens on it,
+ * and the first plugin's Wiren Board preset turns on, once per connection
+ * and only while that plugin is on (turned off by hand afterwards it stays off).
+ */
+fun wbTabAppeared(plugins: ConnectionPlugins): ConnectionPlugins {
+    val sc = plugins.statusCommand
+    val turnOn = sc.on && !sc.wirenBoardTurnedOn
+    return plugins.copy(
+        wirenBoard = plugins.wirenBoard.copy(tabShown = true),
+        statusCommand = if (turnOn) sc.copy(presets = sc.presets + PluginIds.PRESET_WIREN_BOARD, wirenBoardTurnedOn = true) else sc,
+    )
+}
+
+/** A session read its whole tree and saw no Wiren Board meta: the next one opens on Tree. */
+fun wbTabAbsent(plugins: ConnectionPlugins): ConnectionPlugins = plugins.copy(wirenBoard = plugins.wirenBoard.copy(tabShown = false))
 
 /**
  * The plugins' settings per connection of a profile, kept after sessions

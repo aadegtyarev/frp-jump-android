@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -192,6 +194,8 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
     Row(
         Modifier
             .then(if (compact) Modifier else Modifier.fillMaxWidth())
+            // Options share one height: a label wrapped at a large font size makes all of them taller.
+            .height(IntrinsicSize.Min)
             .background(colors.tile, RoundedCornerShape(14.dp))
             .padding(4.dp)
             .selectableGroup(),
@@ -202,7 +206,8 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
             Box(
                 Modifier
                     .then(if (compact) Modifier.widthIn(min = 64.dp) else Modifier.weight(1f))
-                    .height(if (compact) 32.dp else 40.dp)
+                    .heightIn(min = if (compact) 32.dp else 40.dp)
+                    .fillMaxHeight()
                     .then(if (on) Modifier.shadow(1.dp, RoundedCornerShape(10.dp)) else Modifier)
                     .background(if (on) colors.card else colors.tile, RoundedCornerShape(10.dp))
                     .selectable(selected = on, enabled = enabled, role = Role.RadioButton, onClick = { onPick(option) }),
@@ -211,7 +216,8 @@ fun <T> Segmented(options: List<T>, selected: T, label: @Composable (T) -> Strin
                 Text(
                     label(option),
                     fontSize = if (compact) 13.sp else 14.sp,
-                    modifier = if (compact) Modifier.padding(horizontal = 12.dp) else Modifier,
+                    textAlign = TextAlign.Center,
+                    modifier = if (compact) Modifier.padding(horizontal = 12.dp) else Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                     fontWeight = FontWeight.SemiBold,
                     color = (if (on) colors.accent else colors.muted).let { if (enabled || on) it else it.copy(alpha = 0.5f) },
                 )

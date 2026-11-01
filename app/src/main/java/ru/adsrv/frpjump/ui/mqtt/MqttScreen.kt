@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.pluralStringResource
@@ -126,6 +127,9 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     val published by vm.published.collectAsStateWithLifecycle()
     val tab by vm.tab.collectAsStateWithLifecycle()
     val rules by vm.commandRules.collectAsStateWithLifecycle()
+    // Titles in the phone's language (the app's own when set): `ru-RU` → `ru`.
+    val language = LocalConfiguration.current.locales[0].language
+    LaunchedEffect(language) { vm.language.value = language }
     val colors = AppTheme.colors
     val session = vm.session
     var menu by remember { mutableStateOf(false) }
@@ -160,7 +164,9 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     // Declared later, so it comes first: Back closes the search before it goes up a level.
     BackHandler(enabled = searching) { closeSearch() }
     // On another tab Back returns to the tree first, as the app's bottom bar returns to its first tab.
-    BackHandler(enabled = tab != ExplorerTab.TREE && !searching) { vm.tab.value = ExplorerTab.TREE }
+    BackHandler(enabled = state.shownTab != ExplorerTab.TREE && !searching) { vm.tab.value = ExplorerTab.TREE }
+    // Inside a device Back returns to the devices list first.
+    BackHandler(enabled = state.shownTab == ExplorerTab.WB_DEVICES && state.wbDeviceId != null && !searching) { vm.closeWbDevice() }
     val open = state.state != MqttState.Ended
     // Where a subscription's tap leads: its topic's card (over the list), its branch, or its pattern searched.
     val goTo: (SubscriptionRow) -> Unit = { row ->
@@ -259,7 +265,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             }
         },
         floatingActionButton = {
-            if (tab == ExplorerTab.SUBSCRIPTIONS) {
+            if (state.shownTab == ExplorerTab.SUBSCRIPTIONS && !searching) {
                 val closedReason = stringResource(R.string.mqtt_closed)
                 // A closed session cannot subscribe: the button is muted and a tap says why.
                 FloatingActionButton(
@@ -280,10 +286,23 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             // A search is the tree's own mode: the tabs come back when it closes.
             if (!searching) {
                 Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                    Segmented(ExplorerTab.entries, tab, label = { tabLabel(it) }, onPick = { vm.tab.value = it })
+                    Segmented(state.tabs, state.shownTab, label = { tabLabel(it) }, onPick = { vm.tab.value = it })
                 }
             }
-            if (tab == ExplorerTab.SUBSCRIPTIONS && !searching) {
+            if (state.shownTab == ExplorerTab.WB_DEVICES && !searching) {
+                Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
+                WbDevicesTab(
+                    state,
+                    language,
+                    padding,
+                    onOpen = vm::openWbDevice,
+                    onBack = vm::closeWbDevice,
+                    // The ordinary card of the control's topic, over the tab.
+                    onCard = { vm.openCard(it.path) },
+                )
+                return@Column
+            }
+            if (state.shownTab == ExplorerTab.SUBSCRIPTIONS && !searching) {
                 Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
                 SubscriptionsList(
                     state,
@@ -446,6 +465,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
 private fun tabLabel(tab: ExplorerTab): String = when (tab) {
     ExplorerTab.TREE -> stringResource(R.string.mqtt_tab_tree)
     ExplorerTab.SUBSCRIPTIONS -> stringResource(R.string.mqtt_tab_subscriptions)
+    ExplorerTab.WB_DEVICES -> stringResource(R.string.wb_tab_devices)
 }
 
 @Composable

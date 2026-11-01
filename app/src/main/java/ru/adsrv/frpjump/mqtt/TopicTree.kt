@@ -194,6 +194,22 @@ class TopicTree(
         return Summary(topics, newest)
     }
 
+    /**
+     * The current values of the seen topics [pattern]'s levels match from
+     * the root (as [summary] does), with their paths, in no order: one walk
+     * under the lock for a view that reads a whole convention at once.
+     */
+    fun values(pattern: List<LevelPattern>): List<Pair<MqttPath, TopicValue>> {
+        if (pattern.isEmpty()) return emptyList()
+        val found = ArrayList<Pair<MqttPath, TopicValue>>()
+        synchronized(lock) {
+            walk(root, true, pattern, false, 0, ArrayList()) { levels, node ->
+                node.history.firstOrNull()?.let { found += MqttPath(levels.toList()) to it }
+            }
+        }
+        return found
+    }
+
     /** Forgets every topic, for "Refresh tree". */
     fun clear() = synchronized(lock) {
         root = Node()

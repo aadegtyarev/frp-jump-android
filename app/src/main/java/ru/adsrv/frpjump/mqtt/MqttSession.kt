@@ -99,6 +99,12 @@ class MqttSession(
     /** The level being viewed; at a path `p` other than the root, `p/#` is subscribed. */
     val branch: StateFlow<MqttPath> = _branch
 
+    /** A view other than the tree open at a branch (a plugin's device): live instead of [branch] while set. */
+    private var viewBranch: MqttPath? = null
+
+    /** The plugins' filters, subscribed after the pins. */
+    private var pluginFilters: List<String> = emptyList()
+
     private val _pins = MutableStateFlow<List<String>>(emptyList())
 
     /** The pins' topic filters, in order. */
@@ -142,7 +148,7 @@ class MqttSession(
 
     private val subscribed = LinkedHashSet<String>()
 
-    /** The filters wanted now, in the order copies are matched: open branch, pins, the snapshot's `#`. */
+    /** The filters wanted now, in the order copies are matched: open branch, pins, plugins, the snapshot's `#`. */
     private var active: List<String> = emptyList()
     private val copies = CopyFilter(scheduler::now)
 
@@ -190,6 +196,24 @@ class MqttSession(
         if (_branch.value == path) return@post
         _branch.value = path
         reconcile()
+    }
+
+    /**
+     * Makes [path] the live branch instead of the tree's level while a
+     * plugin's view of it is open (a device); null returns to the tree's
+     * level. [branch], the tree's place, does not change.
+     */
+    fun openView(path: MqttPath?) = scheduler.post {
+        if (viewBranch == path) return@post
+        viewBranch = path
+        reconcile()
+    }
+
+    /** Subscribes the plugins' [filters] for the session, after the pins in the order copies are matched. */
+    fun setPluginFilters(filters: List<String>) = scheduler.post {
+        if (pluginFilters == filters) return@post
+        pluginFilters = filters
+        if (!ended) reconcile()
     }
 
     /** Pins [filter] (kept for the connection) and subscribes it. */
@@ -416,8 +440,10 @@ class MqttSession(
     /** Subscribes what is wanted and not subscribed, unsubscribes the rest. */
     private fun reconcile() {
         val wanted = buildList {
-            if (!_branch.value.isRoot) add(_branch.value.format() + "/#")
+            val live = viewBranch ?: _branch.value
+            if (!live.isRoot) add(live.format() + "/#")
             addAll(_pins.value)
+            addAll(pluginFilters)
             if (snapshotOn) add(SNAPSHOT_FILTER)
         }.distinct()
         active = wanted

@@ -104,6 +104,8 @@ data class StatusCommandSettings(
     val presets: Set<String> = emptySet(),
     /** The owner's own rules, in order; tried before the presets. */
     val rules: List<RuleSpec> = emptyList(),
+    /** The Wiren Board preset was turned on by itself once (with the Wiren Board tab): never again, also when turned off by hand. */
+    val wirenBoardTurnedOn: Boolean = false,
 )
 
 /**
