@@ -112,6 +112,8 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
         // A device view of the Wiren Board convention: on or off, nothing more to set.
         SwitchRow(stringResource(R.string.plugin_wirenboard), stringResource(R.string.plugin_wirenboard_hint), plugins.wirenBoard.on, bold = true) { on ->
             changeAll { it.copy(wirenBoard = it.wirenBoard.copy(on = on)) }
+            // Off: its session drops the plugin's filters at once, also when no explorer screen is open.
+            if (!on) app.mqtt.find(profile, connectionId)?.setPluginFilters(emptyList())
         }
         SwitchRow(stringResource(R.string.plugin_status_command), stringResource(R.string.plugin_status_command_hint), s.on, bold = true) { on ->
             change { it.copy(on = on) }

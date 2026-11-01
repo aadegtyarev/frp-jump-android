@@ -19,19 +19,22 @@ class WirenBoardSettingsTest {
         val first = wbTabAppeared(ConnectionPlugins())
         assertTrue(first.wirenBoard.tabShown)
         assertEquals(setOf(PluginIds.PRESET_WIREN_BOARD), first.statusCommand.presets)
-        assertTrue(first.statusCommand.wirenBoardTurnedOn)
+        assertTrue(first.statusCommand.wirenBoardTabSeen)
         // Turned off by hand afterwards: it stays off when the tab appears again.
         val off = first.copy(statusCommand = first.statusCommand.copy(presets = emptySet()))
         assertEquals(off, wbTabAppeared(off))
     }
 
     @Test
-    fun `with the first plugin off the tab appearing does not turn the preset on`() {
+    fun `with the first plugin off the tab appearing does not turn the preset on, nor does a later appearance`() {
         val plugins = ConnectionPlugins(statusCommand = StatusCommandSettings(on = false))
         val after = wbTabAppeared(plugins)
         assertTrue(after.wirenBoard.tabShown)
         assertEquals(emptySet<String>(), after.statusCommand.presets)
-        assertFalse(after.statusCommand.wirenBoardTurnedOn)
+        assertTrue(after.statusCommand.wirenBoardTabSeen)
+        // The owner turns the first plugin on afterwards: the tab appearing again leaves the preset off.
+        val turnedOn = after.copy(statusCommand = after.statusCommand.copy(on = true))
+        assertEquals(emptySet<String>(), wbTabAppeared(turnedOn).statusCommand.presets)
     }
 
     @Test

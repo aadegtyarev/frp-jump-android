@@ -225,8 +225,9 @@ private fun ControlRow(control: WbControl, language: String, onTitle: () -> Unit
 internal fun ControlValue(control: WbControl, language: String, modifier: Modifier = Modifier) {
     val colors = AppTheme.colors
     val raw = control.value
-    if (raw == null) {
-        Text(stringResource(R.string.wb_no_value), fontSize = 14.sp, color = colors.muted, modifier = modifier)
+    if (raw == null || raw.isEmpty()) {
+        // An empty text reads as the tree's empty value, not as nothing at all.
+        Text(stringResource(if (raw == null) R.string.wb_no_value else R.string.mqtt_empty_value), fontSize = 14.sp, color = colors.muted, modifier = modifier)
         return
     }
     val shown = shownValue(control.meta, raw, language)

@@ -29,6 +29,7 @@ import ru.adsrv.frpjump.mqtt.PublishRequest
 import ru.adsrv.frpjump.mqtt.SentTopic
 import ru.adsrv.frpjump.mqtt.wasSent
 import ru.adsrv.frpjump.mqtt.SnapshotState
+import ru.adsrv.frpjump.mqtt.SnapshotEnd
 import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
 import ru.adsrv.frpjump.mqtt.TopicValue
@@ -297,19 +298,39 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      */
     private fun readWb(s: MqttSession, ui: MqttUiState, wb: WbAsk): MqttUiState {
         if (!wb.on) return ui
-        if (!wbSeenNow.value && wbSeen(wbTexts(s.tree.values(WB_CONTROL_META_PATTERN)))) wbSeenNow.value = true
+        if (!wbSeenNow.value && seenInTree(s)) wbSeenNow.value = true
         val seen = wbSeenNow.value
         val finished = ui.snapshot is SnapshotState.Done || ui.snapshot == SnapshotState.Refused || ui.state is MqttState.Failed || ui.state == MqttState.Ended
         val reading = !seen && wb.openedOnWb && !finished
         val present = seen || reading
         if (!present || ui.tab != ExplorerTab.WB_DEVICES) return ui.copy(wbTab = present, wbReading = reading)
         val device = wb.device
-        if (device == null) {
-            val texts = wbTexts(s.tree.values(WB_DEVICE_META_PATTERN) + s.tree.values(WB_CONTROL_META_PATTERN))
-            return ui.copy(wbTab = true, wbReading = reading, wbDevices = wbDevices(texts, wb.language))
-        }
+        if (device == null) return ui.copy(wbTab = true, wbReading = reading, wbDevices = deviceList(s, wb.language))
         val view = wbDevice(device, wbTexts(s.tree.values(wbDevicePattern(device))), wb.language)
         return ui.copy(wbTab = true, wbReading = reading, wbDeviceId = device, wbDevice = view)
+    }
+
+    /** A control's meta is in the tree now. */
+    private fun seenInTree(s: MqttSession): Boolean = wbSeen(wbTexts(s.tree.values(WB_CONTROL_META_PATTERN)))
+
+    /** The meta texts and language the devices list was last read from, and that list. */
+    private var listTexts: Map<MqttPath, String>? = null
+    private var listLanguage = ""
+    private var list: List<WbDevice> = emptyList()
+
+    /**
+     * The devices list. The meta topics are gathered on every read (one
+     * walk of `/devices/+`, no parsing), but parsed and sorted again only
+     * when they or the language changed: meta changes rarely.
+     */
+    private fun deviceList(s: MqttSession, language: String): List<WbDevice> {
+        val texts = wbTexts(s.tree.values(WB_DEVICE_META_PATTERN) + s.tree.values(WB_CONTROL_META_PATTERN))
+        if (texts != listTexts || language != listLanguage) {
+            listTexts = texts
+            listLanguage = language
+            list = wbDevices(texts, language)
+        }
+        return list
     }
 
     /**
@@ -505,21 +526,32 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            combine(plugins, wbSeenNow, s.snapshot) { p, seen, snapshot -> Triple(p, seen, snapshot) }.collect { (p, seen, snapshot) ->
+            combine(plugins, wbSeenNow, s.snapshot) { p, seen, snapshot -> Triple(p, seen, snapshot) }.collect { (p, known, snapshot) ->
                 p ?: return@collect
                 val on = p.wirenBoard.on
-                s.setPluginFilters(if (on && seen) WB_META_FILTERS else emptyList())
-                if (!on) return@collect
-                // The snapshot may end between two reads of the screen: look once more before forgetting the tab.
-                if (!seen && snapshot is SnapshotState.Done && wbSeen(wbTexts(s.tree.values(WB_CONTROL_META_PATTERN)))) {
-                    wbSeenNow.value = true
+                if (!on) {
+                    // Off: no filters, and turned on again later the tab does not take the screen by itself.
+                    s.setPluginFilters(emptyList())
+                    tab.compareAndSet(ExplorerTab.WB_DEVICES, ExplorerTab.TREE)
                     return@collect
+                }
+                // The tree may hold meta the screen has not read yet (a session entered again, a snapshot just ended):
+                // looked up first, so the filters a session already holds are never dropped and taken again.
+                val seen = known || seenInTree(s)
+                if (seen && !known) wbSeenNow.value = true
+                val complete = snapshot == SnapshotState.Done(SnapshotEnd.QUIET)
+                when {
+                    // A broker refusing `#` may still allow the meta: asked for, so the tab can appear from them.
+                    seen || snapshot == SnapshotState.Refused -> s.setPluginFilters(WB_META_FILTERS)
+                    // Only a whole tree without meta drops them; meanwhile (a refresh re-reading) they are left as held.
+                    complete -> s.setPluginFilters(emptyList())
                 }
                 // Read whole without meta: the tab is gone, and appearing later it does not take the screen.
                 if (!seen && snapshot is SnapshotState.Done) tab.compareAndSet(ExplorerTab.WB_DEVICES, ExplorerTab.TREE)
                 val change: ((ConnectionPlugins) -> ConnectionPlugins)? = when {
                     seen && wbTabAppeared(p) != p -> ::wbTabAppeared
-                    !seen && p.wirenBoard.tabShown && snapshot is SnapshotState.Done -> ::wbTabAbsent
+                    // Only a snapshot that read the whole tree says there is no meta; a cut one may have missed it.
+                    !seen && p.wirenBoard.tabShown && complete -> ::wbTabAbsent
                     else -> null
                 }
                 change?.let { c -> runCatching { store.update(s.profile, s.connectionId, c) }.onFailure { Log.w(TAG, "plugin settings not saved: ${it.message}") } }
@@ -535,6 +567,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         }
     }
 
+    /**
+     * The plugin's meta filters stay with the session after the screen goes
+     * (they are few and change rarely; the next screen finds them held);
+     * turning the plugin off drops them, also from the connection's settings.
+     */
     override fun onCleared() {
         // The tree's level is live again for whoever comes back to the session.
         session?.openView(null)

@@ -42,12 +42,13 @@ fun wbDevicePath(id: String): MqttPath = MqttPath(listOf("", DEVICES, id))
 fun wbControlPath(device: String, control: String): MqttPath = MqttPath(listOf("", DEVICES, device, CONTROLS, control))
 
 /**
- * The topics' texts as the plugin reads them: a cleared, empty or non-UTF-8
- * value is the same as no topic.
+ * The topics' texts as the plugin reads them: a non-UTF-8 value is left
+ * out; an empty one (an empty message, or a cleared retained value) is an
+ * empty text, which every meta and error topic reads as absent and a value
+ * topic as an empty text for `text` controls and "No value" for the rest.
  */
 fun wbTexts(values: List<Pair<MqttPath, TopicValue>>): Map<MqttPath, String> = buildMap {
     values.forEach { (path, value) ->
-        if (value.cleared || value.payload.isEmpty()) return@forEach
         decodeUtf8(value.payload)?.let { put(path, it) }
     }
 }
@@ -102,7 +103,7 @@ data class WbDevice(
     val title: String,
     /** `meta/error` of the device itself: "The device does not answer". */
     val deviceError: Boolean,
-    /** The device's or any control's `meta/error` is set: the red "!". */
+    /** The device's or any shown (not hidden) control's `meta/error` is set: the red "!". */
     val hasErrors: Boolean,
 )
 
@@ -116,10 +117,12 @@ private val BY_TITLE: Comparator<WbDevice> = compareBy<WbDevice, String>(Natural
  */
 fun wbDevices(texts: Map<MqttPath, String>, language: String): List<WbDevice> =
     gather(texts).mapNotNull { (id, topics) ->
-        val withMeta = topics.controls.values.filter { parseControlMeta(it.json, it.fields) != null }
+        val withMeta = topics.controls.values.mapNotNull { c -> parseControlMeta(c.json, c.fields)?.let { c to it } }
         if (withMeta.isEmpty()) return@mapNotNull null
         val deviceError = parseErrors(topics.error).isNotEmpty()
-        WbDevice(id, deviceTitle(id, topics, language), deviceError, deviceError || withMeta.any { parseErrors(it.error).isNotEmpty() })
+        // A hidden control is not shown in the device, so its error would be a mark with nothing behind it.
+        val controlError = withMeta.any { (c, meta) -> !meta.hidden && parseErrors(c.error).isNotEmpty() }
+        WbDevice(id, deviceTitle(id, topics, language), deviceError, deviceError || controlError)
     }.sortedWith(BY_TITLE)
 
 /** Whether [texts] (control meta) hold any control with meta: the tab shows. */
@@ -166,7 +169,9 @@ fun wbDevice(id: String, texts: Map<MqttPath, String>, language: String): WbDevi
     val topics = gather(texts)[id] ?: return null
     val all = topics.controls.mapNotNull { (cid, c) ->
         val meta = parseControlMeta(c.json, c.fields) ?: return@mapNotNull null
-        WbControl(cid, wbControlPath(id, cid), meta.title?.pick(language) ?: cid, meta, c.value, parseErrors(c.error))
+        // An empty value is a value of a text control, and none of any other.
+        val value = c.value?.takeIf { it.isNotEmpty() || isTextType(meta) }
+        WbControl(cid, wbControlPath(id, cid), meta.title?.pick(language) ?: cid, meta, value, parseErrors(c.error))
     }
     if (all.isEmpty()) return null
     return WbDeviceView(id, deviceTitle(id, topics, language), parseErrors(topics.error).isNotEmpty(), all.filter { !it.meta.hidden }.sortedWith(BY_ORDER))

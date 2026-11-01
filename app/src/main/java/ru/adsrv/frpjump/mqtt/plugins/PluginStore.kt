@@ -26,16 +26,19 @@ data class WirenBoardSettings(
 )
 
 /**
- * The WB devices tab appeared in a session: the next session opens on it,
- * and the first plugin's Wiren Board preset turns on, once per connection
- * and only while that plugin is on (turned off by hand afterwards it stays off).
+ * The WB devices tab appeared in a session: the next session opens on it.
+ * Its first appearance for the connection also turns the first plugin's
+ * Wiren Board preset on, only if that plugin is on then; later appearances
+ * never do (turned off by hand it stays off; the first plugin turned on
+ * later does not bring it).
  */
 fun wbTabAppeared(plugins: ConnectionPlugins): ConnectionPlugins {
     val sc = plugins.statusCommand
-    val turnOn = sc.on && !sc.wirenBoardTurnedOn
+    val first = !sc.wirenBoardTabSeen
+    val presets = if (first && sc.on) sc.presets + PluginIds.PRESET_WIREN_BOARD else sc.presets
     return plugins.copy(
         wirenBoard = plugins.wirenBoard.copy(tabShown = true),
-        statusCommand = if (turnOn) sc.copy(presets = sc.presets + PluginIds.PRESET_WIREN_BOARD, wirenBoardTurnedOn = true) else sc,
+        statusCommand = sc.copy(presets = presets, wirenBoardTabSeen = true),
     )
 }
 

@@ -146,4 +146,30 @@ class WbDevicesTest {
         assertNull(wbDevice("nope", wbTexts(tree.values(wbDevicePattern("nope"))), "en"))
         assertEquals(MqttPath.parse("/devices/d"), wbDevicePath("d"))
     }
+
+    @Test
+    fun `a hidden control's error does not mark the device`() {
+        val t = texts(
+            "/devices/a/controls/shown/meta" to """{"type":"value"}""",
+            "/devices/a/controls/secret/meta" to """{"type":"value","hidden":true}""",
+            "/devices/a/controls/secret/meta/error" to "r",
+        )
+        assertFalse(wbDevices(t, "en").single().hasErrors)
+    }
+
+    @Test
+    fun `an empty value is an empty text for a text control and no value otherwise`() {
+        val tree = tree(
+            "/devices/d/controls/msg/meta" to """{"type":"text"}""",
+            "/devices/d/controls/msg" to "hello",
+            "/devices/d/controls/v/meta" to """{"type":"value"}""",
+            "/devices/d/controls/v" to "5",
+        )
+        // Cleared retained values (an empty retained message under MQTT 5).
+        tree.receive(MqttPath.parse("/devices/d/controls/msg"), ByteArray(0), retain = true, qos = 0, MqttVersion.V5)
+        tree.receive(MqttPath.parse("/devices/d/controls/v"), ByteArray(0), retain = true, qos = 0, MqttVersion.V5)
+        val view = wbDevice("d", wbTexts(tree.values(wbDevicePattern("d"))), "en")!!.controls.associateBy { it.id }
+        assertEquals("", view.getValue("msg").value)
+        assertNull(view.getValue("v").value)
+    }
 }
