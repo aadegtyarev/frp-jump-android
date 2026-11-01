@@ -1,7 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
 import android.content.Context
-import android.text.InputType
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -15,18 +14,13 @@ import com.termux.view.TerminalView
 import kotlin.math.abs
 
 /**
- * Holds a Termux view and talks to the keyboard for it, so every keystroke
- * reaches the shell at once, whatever the keyboard.
- *
- * Termux v0.118.3 asks for char-based input with an input type that has no
- * class (VISIBLE_PASSWORD | NO_SUGGESTIONS alone), which some keyboards
- * (Yandex) read as ordinary text: they show suggestions and hold the word as
- * composing text, which Termux sends only on commit — so `ls /mnt/` showed
- * `ls /` and a sticky Ctrl waited for a word that never came. [TerminalView]
- * is final, so this parent takes the input focus instead: it adds the text
- * class to Termux's EditorInfo, forwards composing text as it changes, and
- * passes key events through. The terminal stays focusable (its long-press
- * selection needs that) but hands the focus straight back.
+ * Holds a Termux view and owns its keyboard focus. Normally the keyboard
+ * composes text and Termux sends it on commit. Settings › Terminal › Direct
+ * input opts into sending composing changes immediately, useful for shell
+ * commands and sticky Ctrl/Alt. That mode also asks for no suggestions.
+ * [TerminalView] is final, so this parent supplies EditorInfo and optionally
+ * wraps its connection. Hardware key events pass through in either mode.
+ * The terminal stays focusable for selection but hands focus straight back.
  */
 class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(context) {
     init {
@@ -85,18 +79,24 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
         context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(windowToken, 0)
     }
 
+    private var activeConnection: InputConnection? = null
+
+    /** Switching mode finishes the old composition once, then asks the IME for a fresh connection. */
+    var directInput: Boolean = false
+        set(value) {
+            if (field == value) return
+            activeConnection?.finishComposingText()
+            activeConnection = null
+            field = value
+            if (isFocused) context.getSystemService(InputMethodManager::class.java).restartInput(this)
+        }
+
     override fun onCheckIsTextEditor() = true
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
         val connection = terminal.onCreateInputConnection(outAttrs) ?: return null
-        if (outAttrs.inputType and InputType.TYPE_MASK_CLASS == 0 &&
-            outAttrs.inputType and InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD != 0
-        ) {
-            outAttrs.inputType = InputType.TYPE_CLASS_TEXT or
-                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        }
-        return ComposingForwarder(connection)
+        outAttrs.inputType = terminalInputType(directInput)
+        return (if (directInput) ComposingForwarder(connection) else connection).also { activeConnection = it }
     }
 
     override fun onKeyPreIme(keyCode: Int, event: KeyEvent) = terminal.onKeyPreIme(keyCode, event)

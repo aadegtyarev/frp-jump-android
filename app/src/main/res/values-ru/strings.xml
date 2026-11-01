@@ -1072,4 +1072,7 @@
     <string name="template_no_literal">Нужен хотя бы один уровень с текстом</string>
     <string name="template_unknown_name">Используется имя, которого нет в шаблоне статуса</string>
     <string name="template_same_as_status">Совпадает с шаблоном статуса — оставьте пустым</string>
+    <string name="settings_terminal">Терминал</string>
+    <string name="setting_terminal_direct_input">Прямой ввод</string>
+    <string name="setting_terminal_direct_input_hint">Отправлять символы сразу, без буферизации клавиатурой. Если выключено, клавиатура может накапливать текст и показывать подсказки.</string>
 </resources>

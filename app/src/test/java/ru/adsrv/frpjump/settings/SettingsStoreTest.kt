@@ -16,6 +16,26 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `terminal direct input is off for fresh and existing installations`() {
+        assertEquals(false, SettingsStore(MemoryStorage()).settings.value.terminalDirectInput)
+        val old = SettingsStore(MemoryStorage("""{"direct":false,"terminal_fullscreen":true}""")).settings.value
+        assertEquals(false, old.terminalDirectInput)
+        assertEquals(true, old.terminalFullscreen)
+        assertEquals(false, old.direct)
+    }
+
+    @Test
+    fun `terminal direct input persists independently and can be turned off`() {
+        val storage = MemoryStorage()
+        SettingsStore(storage).update { it.copy(terminalDirectInput = true, direct = false) }
+        assertEquals(true, SettingsStore(storage).settings.value.terminalDirectInput)
+        SettingsStore(storage).update { it.copy(terminalDirectInput = false) }
+        val reread = SettingsStore(storage).settings.value
+        assertEquals(false, reread.terminalDirectInput)
+        assertEquals(false, reread.direct)
+    }
+
+    @Test
     fun `changes persist`() {
         val storage = MemoryStorage()
         SettingsStore(storage).update { it.copy(backgroundPoll = BackgroundPoll.SECONDS_30, direct = false, localPortFirst = 50000, localPortLast = 50009) }

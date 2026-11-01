@@ -1024,4 +1024,7 @@
     <string name="template_no_literal">Needs at least one level of text</string>
     <string name="template_unknown_name">Uses a name the status template does not have</string>
     <string name="template_same_as_status">Same as the status template: leave it empty</string>
+    <string name="settings_terminal">Terminal</string>
+    <string name="setting_terminal_direct_input">Direct input</string>
+    <string name="setting_terminal_direct_input_hint">Send characters immediately, without keyboard composition. Off: the keyboard can buffer text and show suggestions.</string>
 </resources>

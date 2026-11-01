@@ -301,6 +301,16 @@ keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
+Settings → Terminal → Direct input is off by default, including after an
+upgrade from a version without the setting. Off uses ordinary text input:
+the keyboard may compose a word and offer suggestions before committing it
+to the terminal. On requests no suggestions and forwards composing changes
+immediately, as in earlier versions. The choice is app-wide and persisted;
+changing it finishes the old composition and restarts the keyboard input
+connection, not the SSH session. Hardware key events pass through in both
+modes. With direct input off, sticky Ctrl/Alt applies when the keyboard
+commits the text, not while it is still composing it.
+
 A tap on the command line moves the shell's cursor there: the app sends as
 many ← or → as there are characters between the cursor and the tapped cell
 (a wide character counts once, at most 1000, which stays under the terminal's 4 KB write queue), and the shell moves its

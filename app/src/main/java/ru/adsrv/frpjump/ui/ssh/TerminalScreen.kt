@@ -44,6 +44,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +78,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.snippets.stepsAmongShown
@@ -256,6 +258,8 @@ fun TerminalScreen(
             onTap = TerminalTap(terminal, { current.value }, ::showKeyboard)::onTap
         }
     }
+    val inputSettings by (context.applicationContext as FrpJumpApp).settings.settings.collectAsStateWithLifecycle()
+    SideEffect { input.directInput = inputSettings.terminalDirectInput }
     val view = input.terminal
     // A multi-line paste waiting for the owner's answer (see PasteSheet).
     var pasteAsk by remember { mutableStateOf<Pair<SshSession, PastePlan.Ask>?>(null) }

@@ -219,6 +219,15 @@ fun SettingsScreen(
                 onClick = { open = Open.PORTS },
             ) { ValueChevron("${settings.localPortFirst}–${settings.localPortLast}") }
         }
+        Group(stringResource(R.string.settings_terminal)) {
+            SwitchRow(
+                tile = { GlyphTile(">_") },
+                label = stringResource(R.string.setting_terminal_direct_input),
+                hint = stringResource(R.string.setting_terminal_direct_input_hint),
+                checked = settings.terminalDirectInput,
+                onChange = vm::setTerminalDirectInput,
+            )
+        }
         Group(stringResource(R.string.settings_background)) {
             SettingRow(
                 tile = { IconTile(RepeatGlyph) },

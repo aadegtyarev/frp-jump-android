@@ -679,6 +679,12 @@ filling in the user name leaves the saved password alone.
   separately from the web pages. Landscape with the keyboard up hides the
   bar anyway, and the session tabs too while there is only one session;
   hide the keyboard to reach the icon.
+- Settings → Terminal → Direct input is off by default, also after an
+  upgrade. The keyboard can buffer a word and offer suggestions before
+  sending it. Turn Direct input on to send composing changes immediately
+  and request no suggestions, as in earlier versions. The choice is saved
+  for all terminals. With it off, sticky Ctrl/Alt applies when the keyboard
+  commits text; hardware key events work in either mode.
 - Snippets: a row of saved commands above the keys. Tap types a command
   without Enter (to finish it first), long press types it and presses
   Enter; the manager says so. The last chip ("+ Add command" while there

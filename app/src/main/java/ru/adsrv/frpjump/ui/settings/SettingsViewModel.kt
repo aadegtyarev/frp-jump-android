@@ -74,6 +74,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     fun setDirect(direct: Boolean) = save { it.copy(direct = direct) }
 
+    fun setTerminalDirectInput(direct: Boolean) = save { it.copy(terminalDirectInput = direct) }
+
     /** Returns why the range was refused, or null once it is saved. */
     fun setLocalPorts(first: Int?, last: Int?): PortRangeProblem? {
         portRangeProblem(first, last)?.let { return it }
