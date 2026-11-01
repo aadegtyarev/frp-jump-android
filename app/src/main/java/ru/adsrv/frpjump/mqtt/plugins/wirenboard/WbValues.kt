@@ -70,11 +70,16 @@ fun numberOf(text: String, hex: Boolean = false): BigDecimal? {
     return decimalOf(t)
 }
 
-/** [raw] with the digits of [precision]; the value as received without a precision or when it is no number. */
+/**
+ * [raw] rounded to [precision], never padded: trailing zeros go, so a
+ * value that already fits reads as published (`76.50263` with `1e-06`,
+ * not `76.502630`); the value as received without a precision or when it
+ * is no number.
+ */
 fun valueDigits(raw: String, precision: BigDecimal?): String {
     if (precision == null) return raw
     val n = numberOf(raw) ?: return raw
-    return roundToPrecision(n, precision).toPlainString()
+    return roundToPrecision(n, precision).stripTrailingZeros().toPlainString()
 }
 
 /** Types whose enum keys are numbers; any other type with an enum (`text`) matches them as strings. */

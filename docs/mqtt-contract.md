@@ -639,8 +639,9 @@ live controller; where they differ, both are read.
 - **Navigation.** The tab follows the tab rules of "Subscriptions tab"
   (kept across rotation; the search shows Tree; the connection banners
   show on it). It has two levels of its own: the devices list and a
-  device, opened inside the tab with the device's title and a back arrow
-  in a header under the tabs. Back in a device returns to the list; Back
+  device, opened inside the tab with the device's title in a header under
+  the tabs (no arrow of its own: one Back on screen). Back in a device,
+  the top bar's arrow as well as the system's, returns to the list; Back
   on the list returns to Tree. The Tree's path is never changed by the
   tab. A control's card opens over the tab; its **Open branch** shows
   Tree, as from anywhere.
@@ -698,9 +699,10 @@ live controller; where they differ, both are read.
   - an error: a red mark with plain words under the title (below).
 - **Value display.**
   - Digits: with `precision`, the value rounded to the nearest multiple
-    of it (half away from zero) and shown with as many decimals as the
-    precision has (`0.01` → 2, `1e-06` → 6, `0.5` → 1, `1` → 0),
-    computed in decimal arithmetic, never binary floating point; without
+    of it (half away from zero), computed in decimal arithmetic, never
+    binary floating point, and shown without trailing zeros: never padded
+    to the precision's decimals, so a value that already fits reads as
+    published (`76.50263` with `1e-06`, `0.5` with `0.01`); without
     `precision`, the value as received. Inputs are rounded the same way.
   - Units: `units` from meta, else the units of a deprecated typed
     control (`temperature` deg C, `rel_humidity` %, RH,
@@ -773,9 +775,11 @@ live controller; where they differ, both are read.
   "Reconnecting…").
 - **Errors** (`meta/error`, one or more of the letters `r`, `w`, `p`): a
   red mark on the control with plain words, one per letter: `r` "Read
-  error" («ошибка чтения»; the value shown is the last good one), `w`
-  "Write error" («ошибка записи»), `p` "Polled late" («опрос не
-  успевает»); an unknown letter shows as is. Any device-level
+  error" («ошибка чтения»; the value is the last good one and means
+  nothing now, so «—» stands in its place, in a switch, slider or colour
+  too, while the error is set), `w` "Write error" («ошибка записи»), `p`
+  "Polled late" («опрос не успевает»), both keeping the value shown (it
+  was read); an unknown letter shows as is. Any device-level
   `meta/error` shows the mark on the device's header and row as "The
   device does not answer" («устройство не отвечает»). The marks go when
   the error topic is emptied.
@@ -934,8 +938,9 @@ On a Wiren Board on the tunnel unless said otherwise.
      shows no third tab. Turned off, in Settings or for the connection
      (`docs/contract.md` scenario 12), the tab is gone in the next session too. With the tab shown the first time,
      the Wiren Board preset of the first plugin is on.
-   - Inside a device Back returns to the list, then to Tree, whose path
-     is the one it had.
+   - Inside a device Back (the top bar's arrow or the system's) returns to
+     the list, then to Tree, whose path is the one it had; the device's
+     header has no arrow of its own.
    - `wb-mr6c_2`: its controls in meta order; toggling K1 switches the
      relay, the toggle shows sending, then the state the status topic
      brings; switching the relay from the controller's web UI moves the
@@ -943,8 +948,9 @@ On a Wiren Board on the tunnel unless said otherwise.
      5 s after the PUBACK, the toggle back as it was; an ACL denying
      `…/K1/on` (MQTT 5): "Refused: not authorized" on the control.
    - A read-only temperature (`wb-msw-v3_21`) shows its value with °C and
-     no control; a `value` control shows its `units` and the digits of its
-     `precision`.
+     no control; a `value` control shows its `units` and its value
+     rounded to its `precision` without trailing zeros (`76.50263` with
+     `1e-06` reads `76.50263`).
    - A test device with a `range` (no `max`: the slider ends at 255), an
      `rgb`, a `pushbutton`, an `alarm` and a `value` with `enum`: the
      slider sends one integer on release and the echo ends it; the colour
@@ -953,9 +959,9 @@ On a Wiren Board on the tunnel unless said otherwise.
      its title and a tap offers the titles.
    - A control whose JSON meta has no `readonly` but whose `meta/readonly`
      topic is `1` shows no control.
-   - A control with `meta/error` `r` shows the red mark with "Read error",
-     and its device the "!" in the list; emptying the error topic clears
-     both.
+   - A control with `meta/error` `r` shows the red mark with "Read error"
+     and «—» for its value, and its device the "!" in the list; emptying
+     the error topic clears both and the value shows again.
    - A device publishing only the older one-field meta topics, and one
      publishing only the JSON meta, show alike.
    - Tapping a control's title opens its topic card.

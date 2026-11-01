@@ -212,6 +212,8 @@ private fun ControlWidget(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
                     sending != null -> CircularProgressIndicator(color = colors.accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                    // A value that cannot be read is unknown, whatever the toggle shows.
+                    widget == WbWidget.SWITCH && control.valueUnknown -> Text(UNKNOWN_VALUE, fontSize = 13.sp, color = colors.muted)
                     // A missing or other value is off, and also shown as text.
                     widget == WbWidget.SWITCH && control.value?.trim() != "1" && control.value?.trim() != "0" ->
                         Text(control.value?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value), fontSize = 13.sp, color = colors.muted)
@@ -257,7 +259,11 @@ private fun ControlWidget(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (sending != null) Spinner()
-                Text(shown?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value), fontSize = 13.sp, color = colors.muted)
+                Text(
+                    if (control.valueUnknown && sending == null) UNKNOWN_VALUE else shown?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value),
+                    fontSize = 13.sp,
+                    color = colors.muted,
+                )
                 Box(
                     Modifier
                         .size(32.dp)
@@ -302,7 +308,8 @@ private fun RangeSlider(control: WbControl, sending: WriteView.Sending?, canWrit
     LaunchedEffect(held) { if (held != null) { delay(HOLD_MS); held = null } }
     if (!dragging) position = (held ?: status).toFloat()
     val units = unitsOf(control.meta)?.let { " $it" }.orEmpty()
-    val shown = position.roundToInt().toString() + units
+    // A value that cannot be read is unknown; what is being dragged or sent is shown.
+    val shown = if (control.valueUnknown && !dragging && held == null && sending == null) UNKNOWN_VALUE else position.roundToInt().toString() + units
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Slider(
             value = position,

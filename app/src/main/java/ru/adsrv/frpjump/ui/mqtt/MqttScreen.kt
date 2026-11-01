@@ -212,7 +212,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 AppTopBar(
                     title = session?.device ?: stringResource(R.string.kind_mqtt),
                     subtitle = session?.let { stringResource(R.string.connection_details, it.port) + " · " + status } ?: status,
-                    onBack = leave,
+                    // In a WB device the arrow steps out to the devices list first, as system Back does.
+                    onBack = { if (state.shownTab == ExplorerTab.WB_DEVICES && state.wbDeviceId != null) vm.closeWbDevice() else leave() },
                     wrapTitle = true,
                     actions = {
                         IconButton(onClick = {
@@ -308,7 +309,6 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     language,
                     padding,
                     onOpen = vm::openWbDevice,
-                    onBack = vm::closeWbDevice,
                     // The ordinary card of the control's topic, over the tab.
                     onCard = { vm.openCard(it.path) },
                     onWrite = vm::writeWb,

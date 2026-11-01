@@ -996,7 +996,6 @@
     <string name="wb_reading_devices">Читаю устройства…</string>
     <string name="wb_no_devices">Устройств Wiren Board не видно</string>
     <string name="wb_has_errors">есть ошибки</string>
-    <string name="wb_devices_back">К списку устройств</string>
     <string name="wb_device_not_answering">Устройство не отвечает</string>
     <string name="wb_no_value">Нет значения</string>
     <string name="wb_error_read">ошибка чтения</string>
