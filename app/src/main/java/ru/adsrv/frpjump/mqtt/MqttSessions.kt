@@ -107,14 +107,23 @@ class MqttSessions(
         session.pin(filter)
     }
 
+    /** Replaces the pin [old] with [new] through the connection's open session ("Change mask"). Main thread. */
+    fun replacePin(profile: String, connectionId: String, old: String, new: String) {
+        val session = find(profile, connectionId) ?: return
+        pinsMade.merge(pinKey(profile, connectionId, new), 1, Int::plus)
+        session.replacePin(old, new)
+    }
+
     /**
      * Unpins [filter] of a connection: through its session when one is open
-     * (it unsubscribes), else in the store only; not when [mark] is given
-     * and the filter was pinned again since it was taken. Main thread.
+     * (it unsubscribes), else through [closed], the connection's closed
+     * session whose Subscriptions tab still lists it, else in the store
+     * only; not when [mark] is given and the filter was pinned again since
+     * it was taken. Main thread.
      */
-    fun unpin(profile: String, connectionId: String, filter: String, mark: Int? = null) {
+    fun unpin(profile: String, connectionId: String, filter: String, mark: Int? = null, closed: MqttSession? = null) {
         if (mark != null && mark != pinMark(profile, connectionId, filter)) return
-        val session = find(profile, connectionId)
+        val session = find(profile, connectionId) ?: closed
         if (session != null) {
             session.unpin(filter)
         } else {

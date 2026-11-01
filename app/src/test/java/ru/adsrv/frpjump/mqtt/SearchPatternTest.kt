@@ -124,7 +124,8 @@ class SearchPatternTest {
         assertEquals(FilterOffer.Covered("/devices/+/controls/K1", by = "/devices/+/controls/#"), offer("/devices/+/controls/K1"))
         assertEquals(FilterOffer.Covered("/devices/+", by = "/devices/#"), offer("/devices/+", at = "x"))
         assertEquals(FilterOffer.SessionClosed, offer("/devices/+", open = false))
-        assertEquals(FilterOffer.SessionClosed, offer("/devices/#", open = false))
+        // A pin itself can still be unpinned in a closed session: the list is the phone's.
+        assertEquals(FilterOffer.Unsubscribe("/devices/#"), offer("/devices/#", open = false))
         assertEquals(FilterOffer.NotForBroker, offer("/devices/+/controls/K?"))
         assertEquals(FilterOffer.NotForBroker, offer("/devices/+/controls/K?", open = false))
         assertEquals(FilterOffer.TooLong, offer("a".repeat(MAX_TOPIC_BYTES) + "/#"))

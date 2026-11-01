@@ -97,6 +97,11 @@ import ru.adsrv.frpjump.ui.ageText
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.files.PathBar
 import ru.adsrv.frpjump.ui.files.SecondaryButton
+import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.Segmented
+import ru.adsrv.frpjump.mqtt.SubscriptionRow
+import ru.adsrv.frpjump.mqtt.SubscriptionTarget
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import java.text.NumberFormat
@@ -119,6 +124,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     val query by vm.query.collectAsStateWithLifecycle()
     val focused by vm.focused.collectAsStateWithLifecycle()
     val published by vm.published.collectAsStateWithLifecycle()
+    val tab by vm.tab.collectAsStateWithLifecycle()
     val colors = AppTheme.colors
     val session = vm.session
     var menu by remember { mutableStateOf(false) }
@@ -126,6 +132,9 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     var pinning by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var focusSearch by rememberSaveable { mutableStateOf(false) }
+    var subscribing by rememberSaveable { mutableStateOf(false) }
+    // The pin whose mask is being changed, by its filter.
+    var masking by rememberSaveable { mutableStateOf<String?>(null) }
     // "Publish here…": the levels of the place it was asked at (a Bundle holds no MqttPath).
     var writingAt by rememberSaveable { mutableStateOf<List<String>?>(null) }
     // The refusal the dialog was answered or dismissed for (compared by identity: each refusal is a new
@@ -148,6 +157,29 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     BackHandler { if (!vm.up()) leave() }
     // Declared later, so it comes first: Back closes the search before it goes up a level.
     BackHandler(enabled = searching) { closeSearch() }
+    // On another tab Back returns to the tree first, as the app's bottom bar returns to its first tab.
+    BackHandler(enabled = tab != ExplorerTab.TREE && !searching) { vm.tab.value = ExplorerTab.TREE }
+    val open = state.state != MqttState.Ended
+    // Where a subscription's tap leads: its topic's card (over the list), its branch, or its pattern searched.
+    val goTo: (SubscriptionRow) -> Unit = { row ->
+        when (val target = row.target) {
+            is SubscriptionTarget.Topic -> vm.openCard(target.path)
+            is SubscriptionTarget.Branch -> {
+                closeSearch()
+                vm.open(target.path)
+                target.search?.let {
+                    vm.query.value = it
+                    searching = true
+                }
+            }
+            is SubscriptionTarget.Search -> {
+                vm.tab.value = ExplorerTab.TREE
+                vm.query.value = target.pattern
+                vm.searchWhole.value = true
+                searching = true
+            }
+        }
+    }
 
     val target = session?.let { "${it.device}:${it.port}" }.orEmpty()
     Scaffold(
@@ -172,6 +204,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     onBack = leave,
                     actions = {
                         IconButton(onClick = {
+                            // Search looks in the tree.
+                            vm.tab.value = ExplorerTab.TREE
                             searching = true
                             focusSearch = true
                         }) {
@@ -213,12 +247,44 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 )
             }
         },
+        floatingActionButton = {
+            if (tab == ExplorerTab.SUBSCRIPTIONS) {
+                val closedReason = stringResource(R.string.mqtt_closed)
+                // A closed session cannot subscribe: the button is muted and a tap says why.
+                FloatingActionButton(
+                    onClick = { if (open) subscribing = true else context.notice(closedReason, NoticeKind.INFO) },
+                    containerColor = if (open) colors.strong else colors.tile,
+                    contentColor = if (open) colors.onStrong else colors.muted,
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier.semantics { if (!open) stateDescription = closedReason },
+                ) { Icon(PlusGlyph, contentDescription = stringResource(R.string.mqtt_subs_add), modifier = Modifier.size(22.dp)) }
+            }
+        },
     ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding()),
         ) {
+            // A search is the tree's own mode: the tabs come back when it closes.
+            if (!searching) {
+                Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Segmented(ExplorerTab.entries, tab, label = { tabLabel(it) }, onPick = { vm.tab.value = it })
+                }
+            }
+            if (tab == ExplorerTab.SUBSCRIPTIONS && !searching) {
+                Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
+                SubscriptionsList(
+                    state,
+                    open = open,
+                    padding = padding,
+                    onTap = goTo,
+                    // Gone at once with Undo on the shared notice, as Unpin on a card.
+                    onUnpin = vm::unpinFilter,
+                    onChangeMask = { masking = it.filter },
+                )
+                return@Column
+            }
             val empty = stringResource(R.string.mqtt_empty_level)
             val labels = pathBarLabels(state.path, "", empty)
             val leadingSlash = stringResource(R.string.mqtt_leading_slash_spoken)
@@ -311,6 +377,44 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             onDismiss = { typing = false },
         )
     }
+    if (subscribing && !open) {
+        // Closed while it was open: nothing can be subscribed any more; say why rather than vanish.
+        LaunchedEffect(Unit) {
+            subscribing = false
+            context.notice(context.getString(R.string.mqtt_closed), NoticeKind.INFO)
+        }
+    } else if (subscribing) {
+        SubscribeDialog(
+            onSubscribe = { text ->
+                vm.subscribeTyped(text).also {
+                    if (it == null) {
+                        subscribing = false
+                        context.notice(context.getString(R.string.mqtt_pinned_notice, text), NoticeKind.DONE)
+                    }
+                }
+            },
+            onDismiss = { subscribing = false },
+        )
+    }
+    masking?.let { filter ->
+        // Gone meanwhile (unpinned, or the session closed): nothing to change.
+        val row = state.subscriptions.firstOrNull { it.filter == filter }
+        if (row == null || !open) {
+            LaunchedEffect(filter) {
+                masking = null
+                if (!open) context.notice(context.getString(R.string.mqtt_closed), NoticeKind.INFO)
+            }
+        } else {
+            ChangeMaskSheet(
+                row,
+                state.pins,
+                onPick = { mask ->
+                    vm.changeMask(filter, mask)?.let { context.notice(context.getString(R.string.mqtt_pinned_notice, it), NoticeKind.DONE) }
+                },
+                onDismiss = { masking = null },
+            )
+        }
+    }
     if (pinning) {
         TopicDialog(
             title = stringResource(R.string.mqtt_pin_branch),
@@ -320,6 +424,12 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             onDismiss = { pinning = false },
         )
     }
+}
+
+@Composable
+private fun tabLabel(tab: ExplorerTab): String = when (tab) {
+    ExplorerTab.TREE -> stringResource(R.string.mqtt_tab_tree)
+    ExplorerTab.SUBSCRIPTIONS -> stringResource(R.string.mqtt_tab_subscriptions)
 }
 
 @Composable
@@ -512,7 +622,7 @@ internal fun KindTile(branch: Boolean) {
 
 /** The value in one line: text made safe, hex when not UTF-8, or what an empty one means. */
 @Composable
-private fun ValueText(value: TopicValue) {
+internal fun ValueText(value: TopicValue) {
     val colors = AppTheme.colors
     val (text, plain) = when {
         value.cleared -> stringResource(R.string.mqtt_cleared) to false

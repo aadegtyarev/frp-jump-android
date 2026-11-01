@@ -43,6 +43,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
@@ -125,7 +126,7 @@ private const val COPY_PREVIEW = 40
  * the full path with copy; a branch's newest change when it is not the
  * value's; the last values; Publish… (the main action), Open branch (N),
  * Pin… and Unpin. [canPin] is false once the session has ended; Publish…
- * is then off too. [state] is the session's, for Send.
+ * is then off too, Unpin is not (the pins are the phone's list). [state] is the session's, for Send.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +211,8 @@ fun TopicCard(
                         }
                     }
                     if (node == null && !card.isBranch) InfoLine(stringResource(R.string.mqtt_card_value), stringResource(R.string.mqtt_no_messages))
-                    if (card.pinned.isNotEmpty()) Pinned(path, card.pinned, canPin, onUnpin)
+                    // Unpinning changes the phone's list only: also in a closed session (the next one subscribes without it).
+                    if (card.pinned.isNotEmpty()) Pinned(path, card.pinned, onUnpin)
                 }
                 if (card.history.isNotEmpty()) History(card.history)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -226,6 +228,7 @@ fun TopicCard(
                             onClick = onOpenBranch,
                         )
                     }
+                    // Hidden once every mask is pinned; masks a broader pin covers show in the sheet, off, saying through which.
                     if (card.pinned.size < pinMasksFor(path).size) {
                         SecondaryButton(stringResource(R.string.mqtt_pin_ellipsis), null, enabled = canPin, Modifier.fillMaxWidth()) { picking = true }
                     }
@@ -240,6 +243,7 @@ fun TopicCard(
         PinSheet(
             path = path,
             pinned = card.pinned,
+            coveredBy = card.coveredBy,
             initial = if (card.isBranch && value == null) PinMask.WHOLE_BRANCH else PinMask.TOPIC,
             onPick = { mask ->
                 val filter = onPin(mask)
@@ -252,7 +256,7 @@ fun TopicCard(
 
 /** The pins made on this path, each with Unpin, done at once with a notice. */
 @Composable
-private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpin: (PinMask) -> Unit) {
+private fun Pinned(path: MqttPath, masks: List<PinMask>, onUnpin: (PinMask) -> Unit) {
     val colors = AppTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(R.string.mqtt_card_pinned), fontSize = 12.sp, color = colors.muted)
@@ -265,10 +269,9 @@ private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpi
                 // Gone at once with Undo on the shared notice (UI rules); unsubscribed when that goes.
                 val label = stringResource(R.string.mqtt_unpin_filter, pinFilter(path, mask))
                 TextButton(
-                    enabled = canPin,
                     onClick = { onUnpin(mask) },
                     modifier = Modifier.semantics { contentDescription = label },
-                ) { Text(stringResource(R.string.mqtt_unpin), color = if (canPin) colors.accent else colors.muted) }
+                ) { Text(stringResource(R.string.mqtt_unpin), color = colors.accent) }
             }
         }
     }
@@ -444,27 +447,47 @@ private fun History(history: List<TopicValue>) {
     }
 }
 
-/** "Pin…": one tap on a mask pins it and closes; masks already pinned are marked and not offered again. */
+/**
+ * "Pin…": one tap on a mask pins it and closes; masks already pinned are
+ * marked and not offered again. The Subscriptions tab's "Change mask"
+ * opens it too, with its own [title] and [subtitle].
+ */
 @Composable
-private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, onPick: (PinMask) -> Unit, onDismiss: () -> Unit) {
+internal fun PinSheet(
+    path: MqttPath,
+    pinned: List<PinMask>,
+    /** Masks off because a broader pin already delivers them, each with that pin (as the search says it). */
+    coveredBy: Map<PinMask, String>,
+    initial: PinMask,
+    onPick: (PinMask) -> Unit,
+    onDismiss: () -> Unit,
+    title: String = stringResource(R.string.mqtt_pin_title),
+    subtitle: String = stringResource(R.string.mqtt_pin_subtitle),
+) {
     val colors = AppTheme.colors
     // What a pin gives, said once on top; each mask says what it covers.
-    AppSheet(title = stringResource(R.string.mqtt_pin_title), subtitle = stringResource(R.string.mqtt_pin_subtitle), onDismiss = onDismiss) {
+    AppSheet(title = title, subtitle = subtitle, onDismiss = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             pinMasksFor(path).forEach { mask ->
                 val done = mask in pinned
-                val suggested = mask == initial && !done
+                val by = coveredBy[mask]?.takeIf { !done }
+                val off = done || by != null
+                val suggested = mask == initial && !off
                 val pinnedState = stringResource(R.string.mqtt_pinned_mark)
+                val coveredState = by?.let { stringResource(R.string.mqtt_filter_pinned, it) }
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 56.dp)
                         .background(if (suggested) colors.accentContainer else colors.card, RoundedCornerShape(12.dp))
-                        .clickable(enabled = !done, role = Role.Button) {
+                        .clickable(enabled = !off, role = Role.Button) {
                             onPick(mask)
                             onDismiss()
                         }
-                        .semantics { if (done) stateDescription = pinnedState }
+                        .semantics {
+                            if (done) stateDescription = pinnedState
+                            coveredState?.let { stateDescription = it }
+                        }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -474,7 +497,7 @@ private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, on
                             fontSize = 16.sp,
                             fontWeight = if (suggested) FontWeight.SemiBold else FontWeight.Normal,
                             color = when {
-                                done -> colors.muted
+                                off -> colors.muted
                                 suggested -> colors.onAccentContainer
                                 else -> colors.ink
                             },
@@ -488,6 +511,8 @@ private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, on
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        // Off with why: the pin that already delivers it, as the search and "+" say.
+                        coveredState?.let { Text(it, fontSize = 12.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics {}) }
                     }
                     if (done) {
                         Text(stringResource(R.string.mqtt_pinned_mark), fontSize = 12.sp, color = colors.muted)

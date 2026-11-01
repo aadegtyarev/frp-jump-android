@@ -35,6 +35,21 @@ fun pinFilter(topic: MqttPath, mask: PinMask): String {
     }
 }
 
+/**
+ * The masks of [topic] not pinned themselves whose filter a broader pin
+ * among [pins] already delivers, each with that pin: the Pin sheet offers
+ * them off, saying so, as the search and the Subscriptions tab's "+" do.
+ */
+fun maskCoveredBy(topic: MqttPath, pins: Collection<String>): Map<PinMask, String> =
+    if (topic.isRoot) {
+        emptyMap()
+    } else {
+        pinMasksFor(topic).mapNotNull { mask ->
+            val filter = pinFilter(topic, mask)
+            if (filter in pins) null else coveringPin(filter, pins)?.let { mask to it }
+        }.toMap()
+    }
+
 /** The masks [topic] is pinned with among [pins], in [PinMask] order; empty for the root. */
 fun pinnedMasks(topic: MqttPath, pins: Collection<String>): List<PinMask> =
     if (topic.isRoot) emptyList() else PinMask.entries.filter { pinFilter(topic, it) in pins }

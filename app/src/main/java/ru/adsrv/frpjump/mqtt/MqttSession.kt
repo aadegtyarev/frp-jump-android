@@ -196,15 +196,25 @@ class MqttSession(
     fun pin(filter: String) = changePins { if (filter in it) it else it + filter }
 
     /**
+     * Replaces the pin [old] with [new] in its place ("Change mask"); [old]
+     * alone goes when [new] is a pin already.
+     */
+    fun replacePin(old: String, new: String) = changePins { list ->
+        if (new in list) list - old else list.map { if (it == old) new else it }
+    }
+
+    /**
      * Unpins [filter]. Also after the session has ended: the pin is still
-     * taken from the store (an Undo that ran out after the session closed);
-     * removing never brings back pins of a forgotten connection.
+     * taken from the store (an Undo that ran out after the session closed,
+     * or an unpin on the Subscriptions tab of a closed session, which still
+     * lists [pins]); removing never brings back pins of a forgotten
+     * connection.
      */
     fun unpin(filter: String) = scheduler.post {
         val now = env.pins.get(profile, connectionId) - filter
         env.pins.set(profile, connectionId, now)
-        if (ended) return@post
         _pins.value = now
+        if (ended) return@post
         reconcile()
     }
 

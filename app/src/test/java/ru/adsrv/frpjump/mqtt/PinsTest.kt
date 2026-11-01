@@ -96,6 +96,8 @@ class PinsTest {
         session.close()
         session.unpin("b/#")
         assertEquals(listOf("a", "c/+"), PinStore(storage).get("p", "c"))
+        // The closed session's Subscriptions tab lists what is left.
+        assertEquals(listOf("a", "c/+"), session.pins.value)
         // No session at all: the store only, the others kept in their order.
         sessions.close(session.id)
         sessions.unpin("p", "c", "a")
@@ -126,5 +128,40 @@ class PinsTest {
         assertEquals(listOf("a/#"), PinStore(storage).get("p", "c"))
         sessions.unpin("p", "c", "a/#", sessions.pinMark("p", "c", "a/#"))
         assertEquals(emptyList<String>(), PinStore(storage).get("p", "c"))
+    }
+
+    @Test
+    fun `a mask changed keeps the pin's place`() {
+        val scheduler = FakeScheduler()
+        val storage = MemoryStorage()
+        val env = MqttEnvironment(MqttLogins(MemoryStorage(), FakeKeystore().box("k")), PinStore(storage).apply { set("p", "c", listOf("a", "b/#", "c/+")) }, MqttConnector { _, _, _ -> }, scheduler)
+        val sessions = MqttSessions(env, MutableStateFlow(setOf(profilePortKey("p", "wb", 1883))), CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined)
+        val session = sessions.open("p", "c", "wb", 1883, 20000)
+        sessions.replacePin("p", "c", "b/#", "b/+")
+        assertEquals(listOf("a", "b/+", "c/+"), PinStore(storage).get("p", "c"))
+        assertEquals(listOf("a", "b/+", "c/+"), session.pins.value)
+        // To a mask pinned already: the old one just goes.
+        sessions.replacePin("p", "c", "b/+", "c/+")
+        assertEquals(listOf("a", "c/+"), PinStore(storage).get("p", "c"))
+    }
+
+    @Test
+    fun `an unpin of a closed session goes through it, unless the filter was pinned again`() {
+        // The explorer's Undo ran out after its session closed: no session is open, the closed one takes it.
+        val scheduler = FakeScheduler()
+        val storage = MemoryStorage()
+        val env = MqttEnvironment(MqttLogins(MemoryStorage(), FakeKeystore().box("k")), PinStore(storage).apply { set("p", "c", listOf("a", "b/#")) }, MqttConnector { _, _, _ -> }, scheduler)
+        val sessions = MqttSessions(env, MutableStateFlow(setOf(profilePortKey("p", "wb", 1883))), CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined)
+        val session = sessions.open("p", "c", "wb", 1883, 20000)
+        val stale = sessions.pinMark("p", "c", "b/#")
+        sessions.pin("p", "c", "b/#")
+        sessions.close(session.id)
+        // Pinned again after the mark was taken: kept.
+        sessions.unpin("p", "c", "b/#", stale, closed = session)
+        assertEquals(listOf("a", "b/#"), PinStore(storage).get("p", "c"))
+        sessions.unpin("p", "c", "b/#", sessions.pinMark("p", "c", "b/#"), closed = session)
+        assertEquals(listOf("a"), PinStore(storage).get("p", "c"))
+        // The closed session's Subscriptions tab lists what is left.
+        assertEquals(listOf("a"), session.pins.value)
     }
 }

@@ -153,7 +153,7 @@ sealed interface FilterOffer {
     /** A broader pin, [by], already delivers all [filter] does. */
     data class Covered(val filter: String, val by: String) : FilterOffer
 
-    /** The session is closed: nothing can be subscribed. */
+    /** The session is closed: nothing can be subscribed (a pin can still be unpinned). */
     data object SessionClosed : FilterOffer
 
     /** The pattern holds `*` or `?`, which the broker does not understand. */
@@ -165,16 +165,25 @@ sealed interface FilterOffer {
 
 /**
  * The offer under the hits of [query] run at [scope]; null for a query
- * that is no pattern. [open]: the session can still subscribe.
+ * that is no pattern. [open]: the session can still subscribe; a pin
+ * itself is offered for unpinning either way.
  */
 fun filterOffer(query: SearchQuery, scope: MqttPath, pins: Collection<String>, open: Boolean): FilterOffer? {
     if (query !is SearchQuery.Pattern) return null
     val filter = query.filter(scope) ?: return FilterOffer.NotForBroker
     if (filter.toByteArray(Charsets.UTF_8).size > MAX_TOPIC_BYTES) return FilterOffer.TooLong
-    if (!open) return FilterOffer.SessionClosed
+    // Unpinning is the phone's own list: also in a closed session, applied on the next connect.
     if (filter in pins) return FilterOffer.Unsubscribe(filter)
-    return pins.firstOrNull { filterCovers(it, filter) }?.let { FilterOffer.Covered(filter, it) } ?: FilterOffer.Subscribe(filter)
+    if (!open) return FilterOffer.SessionClosed
+    return coveringPin(filter, pins)?.let { FilterOffer.Covered(filter, it) } ?: FilterOffer.Subscribe(filter)
 }
+
+/**
+ * The first of [pins], other than [filter] itself, that already delivers
+ * all [filter] does; null when none. The search's offer, the Subscriptions
+ * tab's "+" and the Pin sheet's masks all refuse such a filter with it.
+ */
+fun coveringPin(filter: String, pins: Collection<String>): String? = pins.firstOrNull { it != filter && filterCovers(it, filter) }
 
 /**
  * Whether the valid topic filter [pin] delivers every topic [filter]
