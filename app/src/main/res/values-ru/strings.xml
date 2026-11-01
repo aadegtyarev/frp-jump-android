@@ -840,6 +840,13 @@
         <item quantity="other">%s топика</item>
     </plurals>
     <string name="mqtt_no_match">Нет топиков, в пути которых есть «%1$s»</string>
+    <string name="mqtt_no_pattern_match">Нет топиков по шаблону «%1$s»</string>
+    <string name="mqtt_pattern_syntax">* ? — внутри уровня · + — один уровень · # — всё ниже · / в начале — от корня</string>
+    <string name="mqtt_pattern_in_level">+ и # занимают уровень целиком; внутри уровня используйте * и ?</string>
+    <string name="mqtt_pattern_hash_last"># может быть только последним уровнем</string>
+    <string name="mqtt_subscribe_filter">Подписаться на этот фильтр</string>
+    <string name="mqtt_filter_no_globs">Брокер не понимает * и ?: подписка возможна только с + и #</string>
+    <string name="mqtt_filter_pinned">Подписка уже есть</string>
     <string name="mqtt_hits_more">Первые %1$s из %2$s</string>
     <string name="mqtt_login_title">Вход в брокер: %1$s</string>
     <string name="mqtt_login_wrong">Неверный пользователь или пароль</string>

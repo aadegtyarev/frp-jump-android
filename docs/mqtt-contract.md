@@ -39,7 +39,8 @@ The same thing is called the same way on every screen:
 - **Topic filter**: what MQTT subscribes to, a topic that may hold the
   wildcards `+` (one level) and `#` (this level and all below).
 - **Search**: a case-insensitive substring match on topic paths in the
-  tree and the feed; it never looks at values and never subscribes.
+  tree and the feed, or in the tree a **search pattern** (see "The tree");
+  it never looks at values and subscribes only when asked to.
 - **Pin**: a topic or branch the owner keeps subscribed, with a **mask**,
   the form of its topic filter (see "Pins"). In Russian «Подписка».
 - **Pattern**: a topic template with named parts used by plugin rules
@@ -170,8 +171,9 @@ neither option; see "Retained topics" for what that changes.
   gives (the value keeps updating while other branches are browsed; the
   pin is kept for the connection and subscribed again on every connect)
   and each mask says what it covers (topic only; `+` the direct children;
-  `#` everything inside, the topic too). From stage 5 also typed as a topic filter on
-  the Subscriptions tab.
+  `#` everything inside, the topic too). A search pattern with only `+`
+  and `#` pins its filter ("Subscribe to this filter", see "The tree").
+  From stage 5 also typed as a topic filter on the Subscriptions tab.
 - A typed topic filter is checked before it is saved: not empty; `#` only
   as a whole level and only the last one; `+` only as a whole level. The
   field says which rule failed. The owner is told that a filter whose
@@ -236,6 +238,38 @@ neither option; see "Retained topics" for what that changes.
   tree**, which widens it until the search is closed. A long path in the
   hint is cut in the middle. Going elsewhere from a hit (its card's Open
   branch) or by a typed path closes the search.
+- **Search patterns.** A query holding any of `* ? + #` is a pattern,
+  matched level by level, exactly (case counts, as in MQTT):
+  - `*` is any run of characters within one level (none too), `?` exactly
+    one character; neither crosses `/`. Every other character is literal;
+    there is no escaping (a topic holding `*` is found with `?` there);
+  - `+` is exactly one level (an empty one too), `#` this level and all
+    below and, as in MQTT, the level above it; each takes a whole level,
+    `#` only the last. Mixing is allowed: `/devices/+/controls/K*`;
+  - without a leading `/` the pattern starts at the open level (or the
+    root once widened to the whole tree); with one it starts at the root,
+    and the leading `/` is the empty first level, so `/devices/+` finds the
+    topics starting with `/devices/`. A pattern whose first level at the
+    root starts with a wildcard skips `$` topics, as `+` and `#` do. The
+    level the search starts at is never a hit of its own;
+  - hits are listed as for a substring, relative to where the pattern
+    starts (at the root, full paths); `meta` and the like only when the
+    pattern asks for them;
+  - while the query is a pattern, one muted line on top of the hits says
+    the syntax (`* ? within a level · + one level · # all below · / first:
+    from the root`). `+` or `#` with other characters in a level, or `#`
+    before the last level, is not searched: that line says why instead
+    ("+ and # take a whole level; within a level use * and ?", "# can only
+    be the last level");
+  - under the hits of a pattern with only whole-level `+` and `#`, its
+    absolute filter (a relative pattern put under the level it started
+    at) and **Subscribe to this filter**, which pins it ("Pinned: <filter>"
+    notice); already pinned, the button is off and says so. A pattern with
+    `*` or `?` shows the button off with "The broker does not understand *
+    and ?: only + and # can be subscribed".
+  Patterns are matched by walking the tree level by level, looking an
+  exact level up rather than scanning it, with no regular expressions: a
+  glob level costs at most pattern × level characters.
 - The explorer's "⋮" and an empty level ("No messages") offer **Publish
   here…**: the publish sheet with the topic `<level>/` (cursor at its end,
   so the new topic's name is typed straight after it), a way to create a

@@ -86,6 +86,8 @@ import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.FileGlyph
 import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.PinGlyph
+import ru.adsrv.frpjump.mqtt.FilterOffer
+import ru.adsrv.frpjump.mqtt.PatternProblem
 import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.StatusBanner
@@ -237,6 +239,11 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     padding,
                     onOpen = { hit -> vm.openCard(MqttPath(state.searchAt.levels + hit.relative.levels)) },
                     onSearchWhole = { vm.searchWhole.value = true },
+                    canPin = state.state != MqttState.Ended,
+                    onSubscribe = { filter ->
+                        vm.subscribeFilter(filter)
+                        context.notice(context.getString(R.string.mqtt_pinned_notice, filter), NoticeKind.DONE)
+                    },
                 )
             } else {
                 Level(state, focused, padding, onOpen = vm::open, onCard = vm::openCard, onWriteHere = { writingAt = ArrayList(state.path.levels) })
@@ -550,16 +557,48 @@ private fun Meta(node: TopicNode, value: TopicValue?, change: LastChange?, now: 
     }
 }
 
-/** The topics under the level whose path holds the query, as paths relative to it; a tap shows the topic in its level. */
+/**
+ * The topics under the level whose path holds the query, or that a
+ * pattern matches, as paths relative to where it looked; a tap shows the
+ * topic in its level. A pattern gets its syntax line on top (or why it
+ * cannot be searched) and, under the hits, subscribing its filter.
+ */
 @Composable
-private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues, onOpen: (SearchHit) -> Unit, onSearchWhole: () -> Unit) {
+private fun SearchHits(
+    state: MqttUiState,
+    query: String,
+    padding: PaddingValues,
+    onOpen: (SearchHit) -> Unit,
+    onSearchWhole: () -> Unit,
+    canPin: Boolean,
+    onSubscribe: (String) -> Unit,
+) {
     val colors = AppTheme.colors
     val empty = stringResource(R.string.mqtt_empty_level)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp)) {
+        if (state.searchPattern) {
+            item(key = "syntax") {
+                val problem = state.searchProblem
+                Text(
+                    when (problem) {
+                        null -> stringResource(R.string.mqtt_pattern_syntax)
+                        PatternProblem.WILDCARD_IN_LEVEL -> stringResource(R.string.mqtt_pattern_in_level)
+                        PatternProblem.HASH_NOT_LAST -> stringResource(R.string.mqtt_pattern_hash_last)
+                    },
+                    color = if (problem == null) colors.muted else colors.error,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            // A pattern that cannot run has nothing more to show.
+            if (state.searchProblem != null) return@LazyColumn
+        }
         if (state.hits.isEmpty()) {
             item(key = "none") {
                 Text(
-                    stringResource(R.string.mqtt_no_match, query),
+                    stringResource(if (state.searchPattern) R.string.mqtt_no_pattern_match else R.string.mqtt_no_match, query),
                     color = colors.muted,
                     fontSize = 14.sp,
                     modifier = Modifier
@@ -610,6 +649,29 @@ private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues
             }
             HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 20.dp))
         }
+        state.filterOffer?.let { offer -> item(key = "subscribe") { SubscribeOffer(offer, canPin, onSubscribe) } }
+    }
+}
+
+/** "Subscribe to this filter" under a pattern's hits: the absolute filter it pins, or why it cannot. */
+@Composable
+private fun SubscribeOffer(offer: FilterOffer, canPin: Boolean, onSubscribe: (String) -> Unit) {
+    val colors = AppTheme.colors
+    val filter = (offer as? FilterOffer.Subscribe)?.filter
+    val note = when (offer) {
+        is FilterOffer.Subscribe -> if (offer.pinned) stringResource(R.string.mqtt_filter_pinned) else null
+        FilterOffer.NotForBroker -> stringResource(R.string.mqtt_filter_no_globs)
+        FilterOffer.TooLong -> stringResource(R.string.mqtt_topic_too_long, MAX_TOPIC_BYTES)
+    }
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        filter?.let { Text(it, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        SecondaryButton(
+            stringResource(R.string.mqtt_subscribe_filter),
+            PinGlyph,
+            enabled = canPin && offer is FilterOffer.Subscribe && !offer.pinned,
+            Modifier.fillMaxWidth(),
+        ) { filter?.let(onSubscribe) }
+        note?.let { Text(it, fontSize = 12.sp, color = colors.muted) }
     }
 }
 
