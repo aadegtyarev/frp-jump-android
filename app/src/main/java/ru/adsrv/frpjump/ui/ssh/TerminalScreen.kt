@@ -330,8 +330,6 @@ fun TerminalScreen(
                 actions = {
                     val smaller = stringResource(R.string.terminal_text_smaller)
                     val larger = stringResource(R.string.terminal_text_larger)
-                    val keyboard = stringResource(R.string.terminal_keyboard)
-                    BarButton("\u2328", keyboard, onClick = input::showKeyboard)
                     IconButton(onClick = { onOpenFiles(selected) }) {
                         Icon(FolderGlyph, contentDescription = stringResource(R.string.files), modifier = Modifier.size(20.dp))
                     }
@@ -512,6 +510,7 @@ fun TerminalScreen(
                 )
                 ExtraKeys(
                     modifiers = modifiers,
+                    onKeyboard = { show -> if (show) input.showKeyboard() else input.hideKeyboard() },
                     onKey = { key ->
                         selected.typed()
                         sendExtraKey(view, key, modifiers)

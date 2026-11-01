@@ -38,6 +38,10 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
         context.getSystemService(InputMethodManager::class.java).showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
     }
 
+    fun hideKeyboard() {
+        context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(windowToken, 0)
+    }
+
     override fun onCheckIsTextEditor() = true
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {

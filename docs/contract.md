@@ -258,6 +258,12 @@ commands, owner-defined) above the extra keys; the sessions as a row of tabs
 above the terminal, where "+" opens another session to the same device with
 the same login (long press: as another user).
 
+The extra keys under the terminal are one row: ^C, Tab, ← ↑ ↓ →, ⌫, ⏎ and
+⌨, which shows and hides the soft keyboard (the bar has no keyboard button).
+While the keyboard is up, extra rows slide in above it: Esc, sticky Ctrl and
+Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
+while held (400 ms, then about 15 a second); the other keys do not.
+
 ### 8. Background, kill and reboot
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
