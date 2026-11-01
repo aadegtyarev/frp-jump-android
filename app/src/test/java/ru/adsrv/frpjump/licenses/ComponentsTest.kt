@@ -42,7 +42,10 @@ class ComponentsTest {
     @Test
     fun `the app's own entries are there, frpc at the version built in`() {
         val byName = componentsFrom(json).associateBy { it.name }
-        assertEquals(BuildConfig.FRPC_VERSION, byName.getValue("frp (frpc, built into the APK)").version)
+        val frp = byName.getValue("frp (frpc, built into the APK, a static Go binary)")
+        assertEquals(BuildConfig.FRPC_VERSION, frp.version)
+        // A static Go binary: the Go standard library and golang.org/x are in it.
+        assertEquals(listOf("licenses/Apache-2.0.txt", "licenses/BSD-3-Clause-Go.txt"), frp.licenses.map { it.asset })
         assertTrue(byName.keys.any { it.startsWith("TextMate grammars") })
         assertTrue(byName.keys.any { it.startsWith("Eclipse tm4e") })
         val sora = componentsFrom(json).filter { it.name.startsWith("Sora Editor") }
@@ -112,5 +115,42 @@ class ComponentsTest {
             """.trimMargin(),
             reflow(text),
         )
+    }
+
+    @Test
+    fun `reflow leaves a Markdown table and a code block as they are`() {
+        val text = """
+            |Each grammar comes from the upstream project below,
+            |under its license.
+            |
+            || File | Scope |
+            ||---|---|
+            || json | source.json |
+            |
+            |    Docker
+            |    Copyright 2012-2017 Docker, Inc.
+        """.trimMargin()
+        assertEquals(
+            """
+            |Each grammar comes from the upstream project below, under its license.
+            |
+            || File | Scope |
+            ||---|---|
+            || json | source.json |
+            |
+            |    Docker
+            |    Copyright 2012-2017 Docker, Inc.
+            """.trimMargin(),
+            reflow(text, markdown = true),
+        )
+    }
+
+    @Test
+    fun `the grammars' NOTICE keeps every table row and code line`() {
+        val notice = File(assets, "textmate/NOTICE.md").readText()
+        val kept = reflow(notice, markdown = true).lines().toSet()
+        val verbatim = notice.lines().map { it.trimEnd() }.filter { it.startsWith("|") || it.startsWith("    ") }
+        assertTrue(verbatim.size > 15)
+        assertEquals(emptyList<String>(), verbatim.filterNot { it in kept })
     }
 }
