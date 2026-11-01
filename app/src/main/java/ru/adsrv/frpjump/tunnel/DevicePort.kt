@@ -3,26 +3,44 @@ package ru.adsrv.frpjump.tunnel
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.SocketTimeoutException
 
-/** How long a connection made only to see whether the device takes it is kept open at most. */
-const val TOUCH_READ_MS = 1_500
+/** How long a check connection waits to connect locally, and then for the relay's refusal. */
+const val TOUCH_MS = 500
+
+/** What a check connection to a tunnel's local port saw. */
+enum class Touch {
+    /** frpc did not take it (not listening yet, or busy): it proves nothing. */
+    NOT_CONNECTED,
+
+    /** Closed: the relay refused it, or the device's service closed it ([FrpcLogParser.deviceReady] tells which). */
+    CLOSED,
+
+    /** Still open after [TOUCH_MS], or the device's service spoke first. */
+    OPEN,
+}
 
 /**
  * Opens a connection to a tunnel's local port and closes it: frpc carries
- * it to the device, or logs that the device refused it
- * ([FrpcLogParser.deviceReady] tells which). Waits up to [TOUCH_READ_MS]
- * for the relay's answer: a refusal closes the connection at once, one
- * that got through stays open (or the device's service speaks first).
- * Blocking; IO dispatcher.
+ * it to the device, or logs that the device refused it. A refusal closes
+ * the connection within a round trip to the relay. The device's service
+ * sees one connection that sends nothing. Blocking; IO dispatcher.
  */
-fun touchLocalPort(localPort: Int) {
-    try {
-        Socket().use { socket ->
-            socket.connect(InetSocketAddress("127.0.0.1", localPort), TOUCH_READ_MS)
-            socket.soTimeout = TOUCH_READ_MS
-            socket.getInputStream().read()
+fun touchLocalPort(localPort: Int): Touch {
+    Socket().use { socket ->
+        try {
+            socket.connect(InetSocketAddress("127.0.0.1", localPort), TOUCH_MS)
+        } catch (_: IOException) {
+            return Touch.NOT_CONNECTED
         }
-    } catch (_: IOException) {
-        // Refused, closed or timed out alike: frpc's log says what happened.
+        return try {
+            socket.soTimeout = TOUCH_MS
+            if (socket.getInputStream().read() < 0) Touch.CLOSED else Touch.OPEN
+        } catch (_: SocketTimeoutException) {
+            Touch.OPEN
+        } catch (_: IOException) {
+            // Reset: closed as a refusal is.
+            Touch.CLOSED
+        }
     }
 }

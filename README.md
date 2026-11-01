@@ -293,12 +293,18 @@ connection never waits for the outcome.
   connection error: custom listener for [<proxy>] doesn't exist` (frps has
   no proxy of the device for this grant yet: its agent is still reloading
   frpc) is "Waiting for the device…", not "Failed". frpc logs nothing for
-  a connection that gets through, so while it waits the app connects to
-  the tunnel's local port every 2 s and closes at once
-  (`tunnel/DevicePort.kt`): no new refusal in the log, the wait is over.
-  An opener (terminal, MQTT explorer, files) of a tunnel it brought up
-  checks the same way once before its first connection. Refused for 30 s
-  since the first refusal: "Failed", naming the port and the agent.
+  a connection that gets through, so while it waits the app checks the
+  tunnel every 2 s, each tunnel on its own (`tunnel/DevicePort.kt`): it
+  connects to the local port, waits up to 0.5 s and closes. Only a check
+  that frpc took and that drew no refusal within 1 s ends the wait; one
+  frpc did not take (not listening yet) proves nothing. Each check is one
+  connection to the device's service that sends nothing, so the service
+  may log it (sshd: "Connection closed … [preauth]"). An opener (terminal,
+  MQTT explorer, files) of a tunnel it brought up checks once before its
+  first connection, after waiting up to 15 s for the tunnel to listen.
+  Refused for 30 s since the first refusal: "Failed", naming the port and
+  the agent; such a tunnel is still checked every 10 s and comes back by
+  itself when the device takes connections.
 - A direct tunnel that dies (its periodic check or a connection logs `get
   tunnel connection error` / `open tunnel error`) is "Trying direct…"
   again while frpc punches anew, with the same outcomes.

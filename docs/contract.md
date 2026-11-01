@@ -166,7 +166,8 @@ re-enroll.
   a new tunnel) is "Waiting for the device…", not an error; a terminal,
   explorer or file screen opened with it waits too. Still not open 30 s
   after the first refusal: "The device did not open port N: its agent did
-  not answer. Check that frp-jump-client runs on the device."
+  not answer. Check that frp-jump-client runs on the device." It
+  recovers by itself once the device takes connections (checked every 10 s).
 
 ### 5. Connections tab
 
