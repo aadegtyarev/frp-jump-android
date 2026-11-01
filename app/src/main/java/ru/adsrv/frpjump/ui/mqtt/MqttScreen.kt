@@ -299,6 +299,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     onBack = vm::closeWbDevice,
                     // The ordinary card of the control's topic, over the tab.
                     onCard = { vm.openCard(it.path) },
+                    onWrite = vm::writeWb,
                 )
                 return@Column
             }

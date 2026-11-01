@@ -968,6 +968,17 @@
     <string name="wb_error_read">ошибка чтения</string>
     <string name="wb_error_write">ошибка записи</string>
     <string name="wb_error_polled_late">опрос не успевает</string>
+    <string name="wb_sending">Отправляется</string>
+    <string name="wb_no_answer_device">Нет ответа от устройства</string>
+    <string name="wb_no_answer_broker">Нет ответа от брокера</string>
+    <string name="wb_alarm_on">Тревога</string>
+    <string name="wb_alarm_off">Тревоги нет</string>
+    <string name="wb_pick_colour">Выбрать цвет</string>
+    <string name="wb_change_value">Изменить</string>
+    <string name="wb_value">Значение</string>
+    <string name="wb_number_not_number">Это не число</string>
+    <string name="wb_number_min">Не меньше %1$s</string>
+    <string name="wb_number_max">Не больше %1$s</string>
     <string name="template_empty">Введите шаблон</string>
     <string name="template_wildcard">В шаблоне нельзя + и #</string>
     <string name="template_bad_part">Уровень — текст, {имя} или {имя...}; имя из латинских букв, цифр и _</string>

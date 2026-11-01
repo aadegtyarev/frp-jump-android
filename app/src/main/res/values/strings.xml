@@ -922,6 +922,17 @@
     <string name="wb_error_read">Read error</string>
     <string name="wb_error_write">Write error</string>
     <string name="wb_error_polled_late">Polled late</string>
+    <string name="wb_sending">Sending</string>
+    <string name="wb_no_answer_device">No answer from the device</string>
+    <string name="wb_no_answer_broker">No answer from the broker</string>
+    <string name="wb_alarm_on">Alarm</string>
+    <string name="wb_alarm_off">No alarm</string>
+    <string name="wb_pick_colour">Pick a colour</string>
+    <string name="wb_change_value">Change</string>
+    <string name="wb_value">Value</string>
+    <string name="wb_number_not_number">Not a number</string>
+    <string name="wb_number_min">At least %1$s</string>
+    <string name="wb_number_max">At most %1$s</string>
     <string name="template_empty">Enter a template</string>
     <string name="template_wildcard">No + or # in a template</string>
     <string name="template_bad_part">A level is text, {name} or {name...}; a name of Latin letters, digits and _</string>
