@@ -14,19 +14,21 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
 /**
- * Whether the clipboard holds text to paste, from its description only (that
- * reads no content, so no "pasted from" notice). Checked again on resume and
+ * Whether the clipboard holds text to paste, from its description only: the
+ * content is not read (that would show the system's "pasted from" notice on
+ * every check), so text of only spaces counts here and is caught on the tap
+ * (see planPaste). Checked again on resume and
  * whenever the clipboard changes while the app is in front.
  */
 @Composable
 fun clipboardHasText(): Boolean {
     val clipboard = LocalContext.current.getSystemService(ClipboardManager::class.java)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var hasText by remember { mutableStateOf(clipboard.hasText()) }
+    var hasText by remember { mutableStateOf(clipboard.holdsText()) }
     DisposableEffect(clipboard, lifecycle) {
-        val changed = ClipboardManager.OnPrimaryClipChangedListener { hasText = clipboard.hasText() }
+        val changed = ClipboardManager.OnPrimaryClipChangedListener { hasText = clipboard.holdsText() }
         val resumed = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) hasText = clipboard.hasText()
+            if (event == Lifecycle.Event.ON_RESUME) hasText = clipboard.holdsText()
         }
         clipboard.addPrimaryClipChangedListener(changed)
         lifecycle.addObserver(resumed)
@@ -38,7 +40,7 @@ fun clipboardHasText(): Boolean {
     return hasText
 }
 
-private fun ClipboardManager.hasText(): Boolean = try {
+private fun ClipboardManager.holdsText(): Boolean = try {
     val description = primaryClipDescription
     description != null && (description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
         description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) || description.hasMimeType("text/*"))

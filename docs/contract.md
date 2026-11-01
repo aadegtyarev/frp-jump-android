@@ -263,10 +263,13 @@ and ⌨, which shows and hides the soft keyboard (the bar has no keyboard
 button). Paste works as the selection menu's paste and is disabled while the
 clipboard has no text. Any paste drops all trailing line breaks and blank
 lines, so a single line never runs by itself. With bracketed paste enabled by the remote side it
-goes as is; several lines without it show a sheet first, "Paste N lines?" —
-"Without bracketed paste each line runs at once": Paste and run, Join into one
-line (each line trimmed, blank lines dropped, joined by a single space), or
-Cancel. While the
+goes as is; several lines without it show a sheet first, "You are pasting N
+lines" (ru «Вы вставляете N строк») — "Without bracketed paste each line runs
+at once": Paste (as is, the lines run), Remove line breaks (each line trimmed,
+blank lines dropped, joined by a single space; no shell syntax, so a trailing
+`\` continuation stays); the sheet's ✕ or a swipe down cancels. In a tmux
+session the bracketed flag is not trusted (tmux keeps it on toward the app
+whatever the pane asked), so several lines always show the sheet there. While the
 keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.

@@ -132,8 +132,12 @@ private val NAV_SLOTS: List<Slot> = listOf(
 ).map(Slot::Send)
 
 /** The narrowest an extra key gets before its group wraps onto another line. */
-private val EXTRA_KEY_MIN = 38.dp
-private val ROW_GAP = 4.dp
+private val EXTRA_KEY_MIN = 36.dp
+private val ROW_GAP = 3.dp
+
+/** The main row's keys; the extra rows' are lower, so all of it stays small above the keyboard. */
+private val KEY_HEIGHT = 44.dp
+private val EXTRA_KEY_HEIGHT = 36.dp
 
 /**
  * [count] keys in lines of at most [perLine], as even as possible: 7 by 6
@@ -163,7 +167,7 @@ fun ExtraKeys(modifiers: Modifiers, onKeyboard: (show: Boolean) -> Unit, onPaste
         Modifier
             .fillMaxWidth()
             .background(colors.termBar)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         AnimatedVisibility(
             visible = keyboard,
@@ -200,8 +204,8 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
                         group.subList(from, from + size).forEach { slot ->
                             when (slot) {
                                 is Slot.Send -> Key(slot.key, modifiers, onKey, small = true)
-                                Slot.Ctrl -> Toggle("Ctrl", modifiers.ctrl) { modifiers.ctrl = it }
-                                Slot.Alt -> Toggle("Alt", modifiers.alt) { modifiers.alt = it }
+                                Slot.Ctrl -> Toggle("Ctrl", modifiers.ctrl, small = true) { modifiers.ctrl = it }
+                                Slot.Alt -> Toggle("Alt", modifiers.alt, small = true) { modifiers.alt = it }
                             }
                         }
                     }
@@ -250,7 +254,7 @@ private fun RowScope.Key(key: ExtraKey, modifiers: Modifiers, onKey: (ExtraKey) 
         }
     } else {
         val colors = AppTheme.colors
-        KeyBox(described.clickable(role = Role.Button) { onKey(key) }, colors.termKey) {
+        KeyBox(described.clickable(role = Role.Button) { onKey(key) }, colors.termKey, small) {
             KeyLabel(key.label, small)
         }
     }
@@ -287,7 +291,7 @@ private fun RowScope.RepeatKey(label: String, modifier: Modifier, small: Boolean
                 }
             }
         }
-    KeyBox(action, if (held) colors.termLine else colors.termKey) {
+    KeyBox(action, if (held) colors.termLine else colors.termKey, small) {
         KeyLabel(label, small)
     }
 }
@@ -299,19 +303,19 @@ private fun KeyLabel(label: String, small: Boolean) {
 
 /** A held key: lit in the accent while on. */
 @Composable
-private fun RowScope.Toggle(label: String, on: Boolean, modifier: Modifier = Modifier, onChange: (Boolean) -> Unit) {
+private fun RowScope.Toggle(label: String, on: Boolean, modifier: Modifier = Modifier, small: Boolean = false, onChange: (Boolean) -> Unit) {
     val colors = AppTheme.colors
-    KeyBox(modifier.toggleable(value = on, role = Role.Switch, onValueChange = onChange), if (on) colors.accent else colors.termKey) {
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (on) colors.onAccent else colors.onTerm, maxLines = 1)
+    KeyBox(modifier.toggleable(value = on, role = Role.Switch, onValueChange = onChange), if (on) colors.accent else colors.termKey, small) {
+        Text(label, fontSize = if (small) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, color = if (on) colors.onAccent else colors.onTerm, maxLines = 1)
     }
 }
 
 @Composable
-private fun RowScope.KeyBox(action: Modifier, background: Color, content: @Composable () -> Unit) {
+private fun RowScope.KeyBox(action: Modifier, background: Color, small: Boolean = false, content: @Composable () -> Unit) {
     Box(
         Modifier
             .weight(1f)
-            .height(44.dp)
+            .height(if (small) EXTRA_KEY_HEIGHT else KEY_HEIGHT)
             .clip(RoundedCornerShape(10.dp))
             .background(background)
             .then(action),
@@ -319,28 +323,49 @@ private fun RowScope.KeyBox(action: Modifier, background: Color, content: @Compo
     ) { content() }
 }
 
+/** What an extra key does to the terminal, worked out before it is sent. */
+sealed interface KeyPress {
+    /** A control byte (^C ...) written as is. */
+    data class Control(val byte: Int) : KeyPress
+
+    /** A key code with its Ctrl / Alt ([KeyHandler] KEYMOD_*), turned into bytes by the emulator. */
+    data class Code(val keyCode: Int, val keyMod: Int) : KeyPress
+
+    /** A character typed as is; the view applies a held Ctrl / Alt itself. */
+    data class Typed(val codePoint: Int) : KeyPress
+}
+
 /**
- * Sends [key] to the terminal, with Ctrl / Alt if held (and releases them).
- * A ready combo (^C ...) is its control byte as is: like a snippet, it uses
- * up a held Ctrl / Alt without applying it.
+ * The press for [key], taking up the held Ctrl / Alt where it applies them
+ * (key codes) or drops them (ready combos, like a snippet). A character key
+ * leaves them for the view, which reads them as it types.
  */
-fun sendExtraKey(view: TerminalView, key: ExtraKey, modifiers: Modifiers) {
-    val session = view.currentSession ?: return
-    val keyCode = key.keyCode
+fun pressFor(key: ExtraKey, modifiers: Modifiers): KeyPress {
     val control = key.control
-    when {
+    val keyCode = key.keyCode
+    return when {
         control != null -> {
             modifiers.ctrl = false
             modifiers.alt = false
-            session.writeCodePoint(false, control)
+            KeyPress.Control(control)
         }
         keyCode != null -> {
             var mod = 0
             if (modifiers.takeCtrl()) mod = mod or KeyHandler.KEYMOD_CTRL
             if (modifiers.takeAlt()) mod = mod or KeyHandler.KEYMOD_ALT
-            view.handleKeyCode(keyCode, mod)
+            KeyPress.Code(keyCode, mod)
         }
+        else -> KeyPress.Typed(key.label.codePointAt(0))
+    }
+}
+
+/** Sends [key] to the terminal, with Ctrl / Alt if held (and releases them); see [pressFor]. */
+fun sendExtraKey(view: TerminalView, key: ExtraKey, modifiers: Modifiers) {
+    val session = view.currentSession ?: return
+    when (val press = pressFor(key, modifiers)) {
+        is KeyPress.Control -> session.writeCodePoint(false, press.byte)
+        is KeyPress.Code -> view.handleKeyCode(press.keyCode, press.keyMod)
         // inputCodePoint reads (and releases) the sticky Ctrl / Alt itself.
-        else -> view.inputCodePoint(key.label.codePointAt(0), false, false)
+        is KeyPress.Typed -> view.inputCodePoint(press.codePoint, false, false)
     }
 }

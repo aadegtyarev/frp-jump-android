@@ -54,5 +54,21 @@ class PastePlanTest {
         assertNull(planPaste("", bracketed = false))
         assertNull(planPaste("\n", bracketed = true))
         assertNull(planPaste("\n \n", bracketed = false))
+        assertNull(planPaste("   ", bracketed = false))
+        assertNull(planPaste(" \t \n", bracketed = true))
+    }
+
+    /**
+     * The bug seen live: `sh` in tmux 3.5. tmux keeps bracketed paste on toward
+     * the app (the emulator's flag reads on) but hands the pane bare lines, which
+     * ran. Under tmux the flag is not trusted: several lines are asked about.
+     */
+    @Test
+    fun underTmuxTheFlagIsNotTrusted() {
+        assertEquals(false, pasteBracketed(flag = true, underTmux = true))
+        assertEquals(false, pasteBracketed(flag = false, underTmux = true))
+        assertEquals(true, pasteBracketed(flag = true, underTmux = false))
+        assertEquals(false, pasteBracketed(flag = false, underTmux = false))
+        assertEquals(PastePlan.Ask("echo a\necho b", 2), planPaste("echo a\necho b\n", pasteBracketed(flag = true, underTmux = true)))
     }
 }

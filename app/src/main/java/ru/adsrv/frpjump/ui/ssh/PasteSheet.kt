@@ -21,8 +21,9 @@ import ru.adsrv.frpjump.ui.MainButton
 
 /**
  * Several lines to paste and no bracketed paste on the remote side: each line
- * would run as it arrives. Paste them so, join them into one line (trimmed,
- * blank ones dropped, a space between), or leave it.
+ * would run as it arrives. "Paste" sends them so, "Remove line breaks" joins
+ * them into one line (trimmed, blank ones dropped, a space between); ✕ or a
+ * swipe down leaves it.
  */
 @Composable
 fun PasteSheet(ask: PastePlan.Ask, onPaste: (String) -> Unit, onDismiss: () -> Unit) {
@@ -49,11 +50,6 @@ fun PasteSheet(ask: PastePlan.Ask, onPaste: (String) -> Unit, onDismiss: () -> U
                 colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             ) { Text(stringResource(R.string.terminal_paste_join), fontSize = 16.sp) }
-            TextButton(
-                onClick = onDismiss,
-                colors = ButtonDefaults.textButtonColors(contentColor = colors.muted),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            ) { Text(stringResource(R.string.cancel), fontSize = 16.sp) }
         }
     }
 }

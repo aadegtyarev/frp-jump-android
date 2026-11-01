@@ -610,8 +610,15 @@ filling in the user name leaves the saved password alone.
   breaks and blank lines are dropped, so a copied line never runs by itself. With
   bracketed paste on (the remote side's DECSET 2004, read from the
   emulator) the text goes as is; several lines without it ask first
-  ("Paste N lines?"): paste and run, join into one line (lines trimmed,
-  blank ones dropped, a space between) or cancel. While the keyboard is up, extra rows
+  ("You are pasting N lines"): Paste (as is, the lines run) or Remove line
+  breaks (lines trimmed, blank ones dropped, a space between); ✕ or a
+  swipe down cancels. Joining is plain text
+  work: it does not know shell syntax, so a line ending in a `\`
+  continuation keeps that `\` in the middle of the joined line. Under
+  tmux the flag is not trusted (tmux keeps bracketed paste on toward the
+  app and strips it for a pane that did not ask, as `sh`), so several
+  lines are always asked about there. A clipboard of only spaces and line
+  breaks pastes nothing and says so. While the keyboard is up, extra rows
   slide in above that row: Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
   and `| ~ / -` (one line when they all fit, as in landscape; even lines
   when narrow). Ctrl and Alt stay held, lit, until the next key, and apply

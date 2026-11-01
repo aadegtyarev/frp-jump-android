@@ -33,9 +33,14 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
         terminal.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) requestFocus() }
     }
 
-    fun showKeyboard() {
+    /**
+     * Shows the soft keyboard: implicitly for a tap on the terminal; [explicit]
+     * for ⌨, so it shows after Back hid it and with a hardware keyboard too.
+     */
+    fun showKeyboard(explicit: Boolean = false) {
         requestFocus()
-        context.getSystemService(InputMethodManager::class.java).showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+        val flags = if (explicit) 0 else InputMethodManager.SHOW_IMPLICIT
+        context.getSystemService(InputMethodManager::class.java).showSoftInput(this, flags)
     }
 
     fun hideKeyboard() {

@@ -315,8 +315,9 @@ class SshSessions(
             val clip = context.getSystemService(ClipboardManager::class.java).primaryClip ?: return
             val text = (0 until clip.itemCount).joinToString("") { clip.getItemAt(it).coerceToText(context) }
             val target = _sessions.value.firstOrNull { it.terminal.session === session } ?: return
-            when (val plan = planPaste(text, target.terminal.bracketedPaste)) {
-                null -> Unit
+            when (val plan = planPaste(text, pasteBracketed(target.terminal.bracketedPaste, target.tmux.inUse))) {
+                // Nothing but spaces and line breaks: said, as the key's tap needs an answer.
+                null -> notices.show(Texts.get(R.string.terminal_clipboard_empty_notice), NoticeKind.INFO, key = PASTE_EMPTY_KEY)
                 is PastePlan.Paste -> target.paste(plan.text)
                 // No screen to ask on: nothing goes rather than lines that would run.
                 is PastePlan.Ask -> listener?.onPasteAsk(target, plan)
@@ -366,6 +367,7 @@ class SshSessions(
 
         /** A newer "copied" takes the place of the one shown. */
         private const val COPIED_KEY = "copied"
+        private const val PASTE_EMPTY_KEY = "paste-empty"
 
         /** A newer "session restored" takes the place of the one shown. */
         private const val REATTACHED_KEY = "ssh-reattached"
