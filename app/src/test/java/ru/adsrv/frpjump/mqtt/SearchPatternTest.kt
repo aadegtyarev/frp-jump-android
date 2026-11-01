@@ -111,15 +111,20 @@ class SearchPatternTest {
 
     @Test
     fun `the offer under the hits`() {
-        val pins = listOf("/devices/+/controls/#")
+        val pins = listOf("/devices/+/controls/#", "/devices/#")
         fun offer(query: String, at: String = "", open: Boolean = true) = filterOffer(parseSearch(query), p(at), pins, open)
         assertNull(offer("K1"))
         assertNull(offer("K+"))
-        assertEquals(FilterOffer.Subscribe("/devices/+/controls/#", pinned = true), offer("+/controls/#", at = "/devices"))
-        assertEquals(FilterOffer.Subscribe("/devices/+", pinned = false), offer("/devices/+", at = "x"))
-        // Covered by an existing pin.
-        assertEquals(FilterOffer.Subscribe("/devices/+/controls/K1", pinned = true), offer("/devices/+/controls/K1"))
+        // The filter is a pin itself, even when a broader pin covers it too: it can be unpinned here.
+        assertEquals(FilterOffer.Unsubscribe("/devices/+/controls/#"), offer("+/controls/#", at = "/devices"))
+        assertEquals(FilterOffer.Unsubscribe("/devices/#"), offer("/devices/#"))
+        assertEquals(FilterOffer.Subscribe("devices/+"), offer("devices/+"))
+        assertEquals(FilterOffer.Subscribe("x/+"), offer("+", at = "x"))
+        // Only covered by a broader pin: the first one that covers it is named.
+        assertEquals(FilterOffer.Covered("/devices/+/controls/K1", by = "/devices/+/controls/#"), offer("/devices/+/controls/K1"))
+        assertEquals(FilterOffer.Covered("/devices/+", by = "/devices/#"), offer("/devices/+", at = "x"))
         assertEquals(FilterOffer.SessionClosed, offer("/devices/+", open = false))
+        assertEquals(FilterOffer.SessionClosed, offer("/devices/#", open = false))
         assertEquals(FilterOffer.NotForBroker, offer("/devices/+/controls/K?"))
         assertEquals(FilterOffer.NotForBroker, offer("/devices/+/controls/K?", open = false))
         assertEquals(FilterOffer.TooLong, offer("a".repeat(MAX_TOPIC_BYTES) + "/#"))

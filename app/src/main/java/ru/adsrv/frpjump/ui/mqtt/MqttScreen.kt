@@ -245,6 +245,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                         vm.subscribeFilter(filter)
                         context.notice(context.getString(R.string.mqtt_pinned_notice, filter), NoticeKind.DONE)
                     },
+                    // Gone at once with Undo on the shared notice, as Unpin on a card.
+                    onUnsubscribe = vm::unpinFilter,
                 )
             } else {
                 Level(state, focused, padding, onOpen = vm::open, onCard = vm::openCard, onWriteHere = { writingAt = ArrayList(state.path.levels) })
@@ -572,6 +574,7 @@ private fun SearchHits(
     onOpen: (SearchHit) -> Unit,
     onSearchWhole: () -> Unit,
     onSubscribe: (String) -> Unit,
+    onUnsubscribe: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
     val empty = stringResource(R.string.mqtt_empty_level)
@@ -660,32 +663,43 @@ private fun SearchHits(
             }
             HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 20.dp))
         }
-        state.filterOffer?.let { offer -> item(key = "subscribe") { SubscribeOffer(offer, onSubscribe) } }
+        state.filterOffer?.let { offer -> item(key = "subscribe") { SubscribeOffer(offer, onSubscribe, onUnsubscribe) } }
     }
 }
 
-/** "Subscribe to this filter" under a pattern's hits: the absolute filter it pins, or why it cannot. */
+/**
+ * Under a pattern's hits: the absolute filter it makes and "Subscribe to
+ * this filter", "Unsubscribe from this filter" when it is a pin itself,
+ * or the button off with why.
+ */
 @Composable
-private fun SubscribeOffer(offer: FilterOffer, onSubscribe: (String) -> Unit) {
+private fun SubscribeOffer(offer: FilterOffer, onSubscribe: (String) -> Unit, onUnsubscribe: (String) -> Unit) {
     val colors = AppTheme.colors
-    val filter = (offer as? FilterOffer.Subscribe)?.filter
+    val filter = when (offer) {
+        is FilterOffer.Subscribe -> offer.filter
+        is FilterOffer.Unsubscribe -> offer.filter
+        is FilterOffer.Covered -> offer.filter
+        else -> null
+    }
     val note = when (offer) {
-        is FilterOffer.Subscribe -> if (offer.pinned) stringResource(R.string.mqtt_filter_pinned) else null
+        is FilterOffer.Subscribe, is FilterOffer.Unsubscribe -> null
+        is FilterOffer.Covered -> stringResource(R.string.mqtt_filter_pinned, offer.by)
         FilterOffer.SessionClosed -> stringResource(R.string.mqtt_closed)
         FilterOffer.NotForBroker -> stringResource(R.string.mqtt_filter_no_globs)
         FilterOffer.TooLong -> stringResource(R.string.mqtt_topic_too_long, MAX_TOPIC_BYTES)
     }
     Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         filter?.let { Text(it, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        val unsubscribe = offer is FilterOffer.Unsubscribe
         SecondaryButton(
-            stringResource(R.string.mqtt_subscribe_filter),
+            stringResource(if (unsubscribe) R.string.mqtt_unsubscribe_filter else R.string.mqtt_subscribe_filter),
             PinGlyph,
-            enabled = offer is FilterOffer.Subscribe && !offer.pinned,
+            enabled = offer is FilterOffer.Subscribe || unsubscribe,
             // Why it is off is read with the button itself; the line below is for the eye only.
             Modifier
                 .fillMaxWidth()
                 .semantics { note?.let { stateDescription = it } },
-        ) { filter?.let(onSubscribe) }
+        ) { filter?.let(if (unsubscribe) onUnsubscribe else onSubscribe) }
         note?.let { Text(it, fontSize = 12.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics {}) }
     }
 }

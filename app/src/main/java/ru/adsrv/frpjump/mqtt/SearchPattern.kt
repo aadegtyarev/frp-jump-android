@@ -144,8 +144,14 @@ internal fun skipsDollar(pattern: LevelPattern): Boolean = when (pattern) {
 
 /** What the search offers for subscribing the pattern it ran. */
 sealed interface FilterOffer {
-    /** [filter] can be pinned; [pinned] when it or a pin covering it already is. */
-    data class Subscribe(val filter: String, val pinned: Boolean) : FilterOffer
+    /** [filter] can be pinned. */
+    data class Subscribe(val filter: String) : FilterOffer
+
+    /** [filter] is a pin itself: it can be unpinned here. */
+    data class Unsubscribe(val filter: String) : FilterOffer
+
+    /** A broader pin, [by], already delivers all [filter] does. */
+    data class Covered(val filter: String, val by: String) : FilterOffer
 
     /** The session is closed: nothing can be subscribed. */
     data object SessionClosed : FilterOffer
@@ -166,7 +172,8 @@ fun filterOffer(query: SearchQuery, scope: MqttPath, pins: Collection<String>, o
     val filter = query.filter(scope) ?: return FilterOffer.NotForBroker
     if (filter.toByteArray(Charsets.UTF_8).size > MAX_TOPIC_BYTES) return FilterOffer.TooLong
     if (!open) return FilterOffer.SessionClosed
-    return FilterOffer.Subscribe(filter, pins.any { filterCovers(it, filter) })
+    if (filter in pins) return FilterOffer.Unsubscribe(filter)
+    return pins.firstOrNull { filterCovers(it, filter) }?.let { FilterOffer.Covered(filter, it) } ?: FilterOffer.Subscribe(filter)
 }
 
 /**

@@ -266,9 +266,12 @@ neither option; see "Retained topics" for what that changes.
   - under the hits of a pattern with only whole-level `+` and `#`, its
     absolute filter (a relative pattern put under the level it started
     at) and **Subscribe to this filter**, which pins it ("Pinned: <filter>"
-    notice); already pinned (that filter, or a pin delivering all it does,
-    such as `/devices/#` for `/devices/+/controls/#`), the button is off
-    and says so; in a closed session it is off with "The session is closed". A
+    notice). When the filter is a pin itself, the button is **Unsubscribe
+    from this filter**, which unpins it as Unpin on a card does (gone at
+    once, Undo on the shared notice), so a pin made here, which no card's
+    mask can name, is never stuck. When only a broader pin delivers all it
+    does (`/devices/#` for `/devices/+/controls/#`), the button is off with
+    "Already pinned (through <pin>)"; in a closed session it is off with "The session is closed". A
     pattern with `*` or `?` shows the button off with "The broker does not
     understand * and ?: only + and # can be subscribed". The reason is read
     out with the button. A relative `#` pinned in branch `X` (`X/#`) also

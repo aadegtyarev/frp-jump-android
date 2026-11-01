@@ -284,9 +284,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      * the screen at once and unsubscribed when the notice goes; Undo puts it
      * back where it was.
      */
-    fun unpin(path: MqttPath, mask: PinMask) {
+    fun unpin(path: MqttPath, mask: PinMask) = unpinFilter(pinFilter(path, mask))
+
+    /** Unpins the pin [filter] with Undo, as [unpin] does (a card's mask, or the search's filter). */
+    fun unpinFilter(filter: String) {
         val s = session ?: return
-        val filter = pinFilter(path, mask)
         val mqtt = app.mqtt
         // Pinned again while the notice is up: the pin stays (it shows once the notice goes).
         val mark = mqtt.pinMark(s.profile, s.connectionId, filter)
