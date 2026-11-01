@@ -23,8 +23,8 @@ enum class OpenRoute {
 
 /** Extensions of text without a colouring of their own ([formatByName] covers the rest). */
 private val TEXT_EXTENSIONS = setOf(
-    "txt", "text", "csv", "tsv", "xml", "html", "htm", "css", "svg", "py", "rb", "pl", "lua", "c", "h", "cpp", "hpp",
-    "go", "rs", "java", "kt", "kts", "ts", "tsx", "jsx", "sql", "diff", "patch", "rules", "list", "lst", "pem", "crt",
+    "txt", "text", "csv", "tsv", "rb", "pl", "cpp", "hpp",
+    "rs", "java", "kt", "kts", "ts", "tsx", "jsx", "diff", "patch", "rules", "list", "lst", "pem", "crt",
     "pub", "out", "err", "rst", "adoc", "tex", "gradle", "mk", "cmake", "dts", "dtsi", "template",
 )
 
@@ -119,6 +119,9 @@ fun viewable(size: Long, head: ByteArray, length: Int): Viewable = when {
     !looksLikeText(head, length) -> Viewable.BINARY
     else -> Viewable.YES
 }
+
+/** [bytes] as UTF-8 text, a bad sequence as U+FFFD, without a leading byte order mark. */
+fun decodeText(bytes: ByteArray): String = bytes.decodeToString().removePrefix("\uFEFF")
 
 /** Names whose text is likely a secret: `.env` files, keys, Wi-Fi connections, password files. */
 fun looksSecret(name: String): Boolean {

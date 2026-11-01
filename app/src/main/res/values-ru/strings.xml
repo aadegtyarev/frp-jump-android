@@ -887,10 +887,10 @@
     <string name="viewer_searching">Ищем…</string>
     <string name="viewer_no_matches">Не найдено</string>
     <string name="viewer_match_of">%1$d из %2$d</string>
-    <string name="viewer_match_of_many">%1$d из %2$d+</string>
     <string name="viewer_previous">Предыдущее совпадение</string>
     <string name="viewer_next">Следующее совпадение</string>
     <string name="viewer_wrap">Переносить строки</string>
+    <string name="viewer_wrap_too_long">Строки слишком длинные для переноса</string>
     <string name="viewer_line_numbers">Номера строк</string>
     <string name="viewer_copy_all">Копировать всё</string>
     <string name="viewer_copy_too_large">Слишком много для буфера обмена: используйте «Поделиться».</string>

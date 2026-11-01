@@ -57,6 +57,15 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (releaseSigned) signingConfigs.getByName("release") else null
         }
+        // The release as R8 makes it (shrunk and renamed, not debuggable), but signed with the debug key
+        // and with x86_64 too: installs over a debug build, so the R8 rules (Sora, tm4e, Gson reflection)
+        // can be checked on a phone or the emulator (./gradlew installMinified).
+        create("minified") {
+            initWith(getByName("release"))
+            ndk { abiFilters += listOf("x86_64") }
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {
@@ -128,6 +137,9 @@ dependencies {
     implementation(libs.androidx.biometric)
     // The MQTT explorer: MQTT 5 and 3.1.1 (docs/mqtt-contract.md).
     implementation(libs.hivemq.mqtt.client)
+    // The file viewer: Sora Editor with TextMate grammars (LGPL-2.1, docs/files-contract.md › 5).
+    implementation(libs.sora.editor)
+    implementation(libs.sora.language.textmate)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

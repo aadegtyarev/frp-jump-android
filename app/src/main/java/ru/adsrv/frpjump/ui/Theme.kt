@@ -20,7 +20,7 @@ import ru.adsrv.frpjump.settings.ThemeMode
 
 /** The app's colours beyond Material's roles: status and profile colours, cards and tiles. */
 @Immutable
-class AppColors(private val palette: Palette) {
+class AppColors(val palette: Palette) {
     val ground = Color(palette.ground)
     val card = Color(palette.card)
     val tile = Color(palette.tile)

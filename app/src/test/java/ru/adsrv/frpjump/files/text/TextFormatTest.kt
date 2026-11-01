@@ -26,6 +26,16 @@ class TextFormatTest {
             ".bashrc" to TextFormat.SHELL,
             "deploy.sh" to TextFormat.SHELL,
             "rules.js" to TextFormat.JS,
+            "tool.py" to TextFormat.PYTHON,
+            "main.go" to TextFormat.GO,
+            "gpio.h" to TextFormat.C,
+            "init.lua" to TextFormat.LUA,
+            "Dockerfile" to TextFormat.DOCKERFILE,
+            "Dockerfile.dev" to TextFormat.DOCKERFILE,
+            "schema.sql" to TextFormat.SQL,
+            "icon.svg" to TextFormat.XML,
+            "index.html" to TextFormat.HTML,
+            "style.css" to TextFormat.CSS,
         )
         for ((name, format) in cases) assertEquals(name, format, formatByName(name))
         for (name in listOf("notes", "notes.txt", "a.", "image.png", "backup.1")) assertNull(name, formatByName(name))
@@ -37,7 +47,9 @@ class TextFormatTest {
         assertEquals(TextFormat.SHELL, sniffFormat("\n#!/usr/bin/env bash\n"))
         assertEquals(TextFormat.SHELL, sniffFormat("#!/bin/busybox ash"))
         assertEquals(TextFormat.JS, sniffFormat("#!/usr/bin/env node\n"))
-        assertEquals(TextFormat.PLAIN, sniffFormat("#!/usr/bin/python3\n"))
+        assertEquals(TextFormat.PYTHON, sniffFormat("#!/usr/bin/python3\n"))
+        assertEquals(TextFormat.PYTHON, sniffFormat("#!/usr/bin/env python3.11\n"))
+        assertEquals(TextFormat.PLAIN, sniffFormat("#!/usr/bin/perl\n"))
         assertEquals(TextFormat.JSON, sniffFormat("{\"a\": 1}"))
         assertEquals(TextFormat.JSON, sniffFormat("[{\"a\": 1}]"))
         assertEquals(TextFormat.YAML, sniffFormat("---\na: 1"))
@@ -120,5 +132,16 @@ class TextFormatTest {
         assertTrue(looksLikeJson("[true]"))
         assertFalse(looksLikeJson("[x]"))
         assertFalse(looksLikeJson(""))
+    }
+
+    @Test
+    fun `every format but plain names a grammar`() {
+        for (format in TextFormat.entries) assertEquals(format.name, format == TextFormat.PLAIN, format.scope == null)
+    }
+
+    @Test
+    fun `decoding replaces bad bytes and drops a byte order mark`() {
+        val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte(), 'a'.code.toByte(), 0xFF.toByte(), 'b'.code.toByte())
+        assertEquals("a\uFFFDb", decodeText(bytes))
     }
 }

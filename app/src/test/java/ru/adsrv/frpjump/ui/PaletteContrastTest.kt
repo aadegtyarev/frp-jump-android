@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.profiles.PROFILE_COLORS
+import ru.adsrv.frpjump.ui.files.SYNTAX_RULES
 import java.io.File
 import kotlin.math.pow
 
@@ -48,10 +49,10 @@ class PaletteContrastTest {
         // Snackbars: Material's inverse surface is ink with the ground as text.
         put("ground on ink", p.ground to p.ink)
         PROFILE_COLORS.forEach { put("onProfile on $it", p.onProfile to p.profiles.getValue(it)) }
-        // The text viewer's syntax colours, on the card (ui/files/SyntaxStyles.kt); accent, muted, error, warning are above.
-        put("executable on card (strings, code)", p.executable to p.card)
-        put("archive on card (Markdown marks)", p.archive to p.card)
-        for (name in listOf("blue", "purple", "orange", "crimson")) put("$name on card (syntax)", p.profiles.getValue(name) to p.card)
+        // The text viewer's syntax colours, every rule of its TextMate theme, on the card (ui/files/ViewerTheme.kt).
+        SYNTAX_RULES.forEach { put("${it.scopes.first()} on card (syntax)", it.colour(p) to p.card) }
+        // The search match stepped to: the selection, its text recoloured.
+        put("onAccent on accent (current match)", p.onAccent to p.accent)
     }
 
     /** Marks that carry meaning alone (status dots, profile colours): 3:1 against the card (1.4.11). */
@@ -69,6 +70,9 @@ class PaletteContrastTest {
         // A session tab's profile dot: the dark theme's shades, the terminal being dark in both.
         PROFILE_COLORS.forEach { put("$it on termKey", DarkPalette.profiles.getValue(it) to p.termKey) }
         PROFILE_COLORS.forEach { put("$it on termBar", DarkPalette.profiles.getValue(it) to p.termBar) }
+        // The viewer's other search matches: Sora fills under the text and keeps its syntax colour, so the
+        // fill only needs to leave each colour readable as a mark; the match stepped to is recoloured (above).
+        SYNTAX_RULES.forEach { put("${it.scopes.first()} on accentContainer (match)", it.colour(p) to p.accentContainer) }
     }
 
     private fun check(name: String, p: Palette) {
