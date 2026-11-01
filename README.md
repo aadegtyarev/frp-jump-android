@@ -755,7 +755,7 @@ each other; both log in through `ssh/SshConnector.kt`.
 | [CameraX](https://developer.android.com/jetpack/androidx/releases/camera) camera-camera2 / camera-lifecycle / camera-view | 1.4.1 | Apache-2.0 |
 | [ZXing](https://github.com/zxing/zxing) core | 3.5.3 | Apache-2.0 |
 | [Sora Editor](https://github.com/Rosemoe/sora-editor) editor / language-textmate ([sources of 0.23.7](https://github.com/Rosemoe/sora-editor/tree/0.23.7)) | 0.23.7 | LGPL-2.1 |
-| [Eclipse tm4e](https://github.com/eclipse/tm4e) core and language configuration, inside language-textmate | (Sora's copy) | EPL-2.0 |
+| [Eclipse tm4e](https://github.com/eclipse/tm4e) core and language configuration, a copy inside language-textmate ([its sources in the Sora 0.23.7 tree](https://github.com/Rosemoe/sora-editor/tree/0.23.7/language-textmate/src/main/java/org/eclipse/tm4e)) | Sora's copy | EPL-2.0 |
 | [joni](https://github.com/jruby/joni), [jcodings](https://github.com/jruby/jcodings) (via language-textmate) | 2.2.6, 1.0.63 | MIT |
 | [snakeyaml-engine](https://bitbucket.org/snakeyaml/snakeyaml-engine), [Gson](https://github.com/google/gson) (via language-textmate) | 2.9, 2.13.1 | Apache-2.0 |
 | Eclipse JDT annotations (via language-textmate, compile-time annotations) | 2.3.100 | EPL-2.0 |
@@ -767,6 +767,14 @@ Emulator for Android); only those two modules are used. The app drives
 Termux's `TerminalSession` from the SSH stream instead of a local pty
 through package-private members (`com.termux.terminal.RemoteTerminal`);
 re-check that class when bumping the Termux version.
+
+Copyright of the viewer's components: Sora Editor (C) 2020-2025 Rosemoe;
+tm4e (c) 2015-2017 Angelo ZERR, (c) 2022 Sebastian Thomschke, (c) 2023
+Vegard IT GmbH and others, initially (C) Microsoft Corporation and (c) 2013
+GitHub Inc.; joni and jcodings (c) JRuby Team; the grammars' holders are in
+`app/src/main/assets/textmate/NOTICE.md`. The full license texts (LGPL-2.1,
+EPL-2.0, MIT, Apache-2.0, the TextMate bundle license) ship in the APK, in
+`app/src/main/assets/licenses/`.
 
 Sora Editor is LGPL-2.1: the app uses it unchanged, as a library from
 Maven Central, and the release build keeps its classes (and tm4e's, joni's,
@@ -791,6 +799,11 @@ scripts/build-frpc.sh        # upstream frpc 0.70.0 -> app/src/main/jniLibs/<abi
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.
 If Gradle reports that the toolchain has no `JAVA_COMPILER`, point `JAVA_HOME`
 at a full JDK, e.g. `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64`.
+
+`./gradlew installMinified` installs the release as R8 makes it (shrunk and
+renamed), signed with the debug key and with x86_64 too, over a debug build:
+the way to check the R8 rules (`app/proguard-rules.pro`) on a phone or the
+emulator before a release.
 
 ## Release
 

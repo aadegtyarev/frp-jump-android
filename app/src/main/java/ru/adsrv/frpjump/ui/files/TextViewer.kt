@@ -154,7 +154,9 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
     var menu by remember { mutableStateOf(false) }
     val fontSp by fontSize.collectAsStateWithLifecycle()
 
-    // Colours: the theme and the grammar are read off the main thread; the text shows plain until then.
+    // Colours: the grammar is read off the main thread; the text shows plain until then. On a change of
+    // theme the language is made anew too, so the text is coloured again: Sora keeps each token's colour
+    // as an index into the theme it was coloured with, and the light and dark themes number theirs apart.
     val palette = colors.palette
     LaunchedEffect(editor, ready, palette) {
         val e = editor ?: return@LaunchedEffect
@@ -330,6 +332,8 @@ fun TextViewer(viewed: ViewedFile, fontSize: MutableStateFlow<Int>, onClose: () 
                         },
                         onRelease = { e ->
                             if (editor === e) editor = null
+                            // A search still running off the main thread ends with the editor.
+                            if (e.searcher.hasQuery()) e.searcher.stopSearch()
                             e.release()
                         },
                         modifier = Modifier
@@ -493,14 +497,17 @@ private const val SEARCH_DEBOUNCE_MS = 200L
 /** The longest line the viewer wraps: Sora wraps a line in time growing with its length squared (52 K characters: 6 s on the emulator). */
 internal const val MAX_WRAP_LINE = 16 * 1024
 
-/** The length of [text]'s longest line, in characters. */
+/** The length of [text]'s longest line, in characters: LF, CR LF and a lone CR each end one, as in the editor. */
 internal fun longestLine(text: String): Int {
     var longest = 0
-    var start = 0
-    while (start <= text.length) {
-        val end = text.indexOf('\n', start).let { if (it < 0) text.length else it }
-        longest = maxOf(longest, end - start)
-        start = end + 1
+    var run = 0
+    for (c in text) {
+        if (c == '\n' || c == '\r') {
+            longest = maxOf(longest, run)
+            run = 0
+        } else {
+            run++
+        }
     }
-    return longest
+    return maxOf(longest, run)
 }

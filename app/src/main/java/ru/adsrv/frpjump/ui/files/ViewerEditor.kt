@@ -77,9 +77,7 @@ internal class ViewerEditor(context: Context) : CodeEditor(context) {
     override fun createAccessibilityNodeInfo(): AccessibilityNodeInfo {
         val info = super.createAccessibilityNodeInfo()
         if (isEnabled && lineCount > 0) {
-            val first = firstVisibleLine.coerceIn(0, lineCount - 1)
-            val last = lastVisibleLine.coerceIn(first, lineCount - 1)
-            info.text = text.subContent(first, 0, last, text.getColumnCount(last)).toString()
+            info.text = visibleText()
             info.setTextSelection(-1, -1)
         }
         if (!isEditable) {
@@ -90,6 +88,31 @@ internal class ViewerEditor(context: Context) : CodeEditor(context) {
         return info
     }
 
+    /**
+     * The lines on screen, for TalkBack: of an unwrapped line longer than
+     * [A11Y_LINE_CHARS], the part from the first column on screen; at most
+     * [A11Y_CHARS] in all.
+     */
+    private fun visibleText(): String {
+        val first = firstVisibleLine.coerceIn(0, lineCount - 1)
+        val last = lastVisibleLine.coerceIn(first, lineCount - 1)
+        val charWidth = textPaint.measureText("0").coerceAtLeast(1f)
+        val out = StringBuilder()
+        for (line in first..last) {
+            val length = text.getColumnCount(line)
+            var from = 0
+            var to = length
+            if (!isWordwrap && length > A11Y_LINE_CHARS) {
+                from = (offsetX / charWidth).toInt().coerceIn(0, length)
+                to = minOf(length, from + A11Y_LINE_CHARS)
+            }
+            out.append(text.getLine(line), from, to)
+            if (out.length >= A11Y_CHARS) return out.substring(0, A11Y_CHARS)
+            if (line < last) out.append('\n')
+        }
+        return out.toString()
+    }
+
     override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean {
         val edits = action == AccessibilityNodeInfo.ACTION_CUT || action == AccessibilityNodeInfo.ACTION_PASTE ||
             action == AccessibilityNodeInfo.ACTION_SET_TEXT
@@ -97,6 +120,12 @@ internal class ViewerEditor(context: Context) : CodeEditor(context) {
         return super.performAccessibilityAction(action, arguments)
     }
 }
+
+/** The most of one unwrapped line TalkBack gets: more than a screen's width at any text size. */
+private const val A11Y_LINE_CHARS = 1000
+
+/** The most text TalkBack gets in all. */
+private const val A11Y_CHARS = 8 * 1024
 
 /**
  * The editor's colours: the TextMate [model] for the text, the rest from

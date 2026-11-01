@@ -10,7 +10,9 @@ class LongestLineTest {
         assertEquals(0, longestLine(""))
         assertEquals(3, longestLine("abc"))
         assertEquals(5, longestLine("ab\nabcde\nx\n"))
-        assertEquals(4, longestLine("ab\r\nabc\r\n"))
+        assertEquals(3, longestLine("ab\r\nabc\r\n"))
+        // A lone CR (a progress bar) ends a line in the editor too.
+        assertEquals(4, longestLine("12%\r100%\r\ndone"))
     }
 
     @Test
