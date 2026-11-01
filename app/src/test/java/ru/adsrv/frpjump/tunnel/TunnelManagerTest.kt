@@ -394,6 +394,7 @@ class TunnelManagerTest {
             }
         }
         // Not moved (a rebind would apply at once, on another port).
+        delay(100)
         assertEquals(1, frpc.applies)
     }
 
