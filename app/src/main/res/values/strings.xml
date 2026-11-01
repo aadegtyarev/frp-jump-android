@@ -543,6 +543,13 @@
     <string name="terminal_key_ctrl_l">Ctrl+L — clear screen</string>
     <string name="terminal_paste">Paste</string>
     <string name="terminal_clipboard_empty">clipboard is empty</string>
+    <string name="terminal_paste_lines_text">Without bracketed paste each line runs at once</string>
+    <string name="terminal_paste_run">Paste and run</string>
+    <string name="terminal_paste_join">Join into one line</string>
+    <plurals name="terminal_paste_lines_title">
+        <item quantity="one">Paste %d line?</item>
+        <item quantity="other">Paste %d lines?</item>
+    </plurals>
     <string name="terminal_not_open">The session is not open.</string>
     <string name="terminal_new_session">New session</string>
     <string name="terminal_new_session_as">Log in as another user</string>

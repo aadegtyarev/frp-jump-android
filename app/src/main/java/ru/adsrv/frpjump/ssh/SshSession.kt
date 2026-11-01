@@ -142,6 +142,16 @@ class SshSession(
         copyMode.ownerTyped()
     }
 
+    /**
+     * The owner's paste of [text], as decided by [planPaste]: typed first, so
+     * it does not land in tmux's copy mode (see CopyModeGuard); bracketed if
+     * the remote side asked for it. Main thread.
+     */
+    fun paste(text: String) {
+        typed()
+        terminal.paste(text)
+    }
+
     @Volatile
     private var client: SSHClient? = null
 

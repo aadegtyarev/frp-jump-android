@@ -66,3 +66,9 @@
 # Sora's ShareableData.clone() refers to kotlin.Cloneable's DefaultImpls,
 # which no kotlin-stdlib ships; the viewer never clones its text.
 -dontwarn kotlin.Cloneable$DefaultImpls
+
+# RemoteTerminal reads the emulator's private DECSET flags by name to see
+# whether the remote side turned bracketed paste on (bracketedPasteOn).
+-keepclassmembers class com.termux.terminal.TerminalEmulator {
+    int mCurrentDecSetFlags;
+}

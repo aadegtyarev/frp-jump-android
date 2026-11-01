@@ -37,6 +37,9 @@ interface TerminalScreenListener {
     fun onScreenChanged(session: TerminalSession)
 
     fun onCursorStateChanged(visible: Boolean)
+
+    /** A multi-line paste into [session] with no bracketed paste: the screen asks before it goes. */
+    fun onPasteAsk(session: SshSession, ask: PastePlan.Ask)
 }
 
 /**
@@ -311,11 +314,12 @@ class SshSessions(
         override fun onPasteTextFromClipboard(session: TerminalSession?) {
             val clip = context.getSystemService(ClipboardManager::class.java).primaryClip ?: return
             val text = (0 until clip.itemCount).joinToString("") { clip.getItemAt(it).coerceToText(context) }
-            if (text.isEmpty()) return
-            _sessions.value.firstOrNull { it.terminal.session === session }?.let {
-                // Typed first: the paste must not land in tmux's copy mode (see CopyModeGuard).
-                it.typed()
-                it.terminal.paste(text)
+            val target = _sessions.value.firstOrNull { it.terminal.session === session } ?: return
+            when (val plan = planPaste(text, target.terminal.bracketedPaste)) {
+                null -> Unit
+                is PastePlan.Paste -> target.paste(plan.text)
+                // No screen to ask on: nothing goes rather than lines that would run.
+                is PastePlan.Ask -> listener?.onPasteAsk(target, plan)
             }
         }
 

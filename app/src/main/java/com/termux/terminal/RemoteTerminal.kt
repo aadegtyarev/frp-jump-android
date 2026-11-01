@@ -144,6 +144,9 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         if (session.isRunning) session.mEmulator.paste(text)
     }
 
+    /** Whether the remote side turned bracketed paste on (see [bracketedPasteOn]). */
+    val bracketedPaste: Boolean get() = bracketedPasteOn(session.mEmulator)
+
     // The queue is never closed: once closed it drops what is still in it.
     private fun show(bytes: ByteArray, count: Int) {
         var offset = 0
@@ -176,4 +179,25 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         /** TerminalSession.MSG_NEW_INPUT. */
         const val MSG_NEW_INPUT = 1
     }
+}
+
+/** v0.118.3 keeps DECSET flags private: `mCurrentDecSetFlags`, bracketed paste (2004) is bit 1024. */
+private const val BRACKETED_PASTE_BIT = 1024
+
+private val decSetFlags = try {
+    TerminalEmulator::class.java.getDeclaredField("mCurrentDecSetFlags").apply { isAccessible = true }
+} catch (e: ReflectiveOperationException) {
+    null
+}
+
+/**
+ * Whether [emulator]'s remote side turned bracketed paste on (DECSET 2004).
+ * Read on the main thread, where the emulator takes its input. Should the
+ * private flag ever be out of reach, it says off: a multi-line paste is then
+ * asked about rather than run line by line.
+ */
+fun bracketedPasteOn(emulator: TerminalEmulator?): Boolean = try {
+    emulator != null && decSetFlags != null && (decSetFlags.getInt(emulator) and BRACKETED_PASTE_BIT) != 0
+} catch (e: ReflectiveOperationException) {
+    false
 }

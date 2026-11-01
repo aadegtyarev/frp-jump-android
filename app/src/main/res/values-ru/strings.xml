@@ -576,6 +576,15 @@
     <string name="terminal_key_ctrl_l">Ctrl+L — очистить экран</string>
     <string name="terminal_paste">Вставить</string>
     <string name="terminal_clipboard_empty">буфер обмена пуст</string>
+    <string name="terminal_paste_lines_text">Без защищённой вставки каждая строка выполнится сразу</string>
+    <string name="terminal_paste_run">Вставить и выполнить</string>
+    <string name="terminal_paste_join">Склеить в одну строку</string>
+    <plurals name="terminal_paste_lines_title">
+        <item quantity="one">Вставить %d строку?</item>
+        <item quantity="few">Вставить %d строки?</item>
+        <item quantity="many">Вставить %d строк?</item>
+        <item quantity="other">Вставить %d строки?</item>
+    </plurals>
     <string name="terminal_not_open">Сессия не открыта.</string>
     <string name="terminal_new_session">Новая сессия</string>
     <string name="terminal_new_session_as">Войти другим пользователем</string>

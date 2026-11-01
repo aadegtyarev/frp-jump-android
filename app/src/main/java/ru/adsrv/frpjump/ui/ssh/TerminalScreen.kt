@@ -89,6 +89,7 @@ import ru.adsrv.frpjump.ssh.SshSessions
 import ru.adsrv.frpjump.sessions.OpenSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
+import ru.adsrv.frpjump.ssh.PastePlan
 import ru.adsrv.frpjump.ssh.saysTunnelClosed
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
@@ -255,6 +256,11 @@ fun TerminalScreen(
         }
     }
     val view = input.terminal
+    // A multi-line paste waiting for the owner's answer (see PasteSheet).
+    var pasteAsk by remember { mutableStateOf<Pair<SshSession, PastePlan.Ask>?>(null) }
+    pasteAsk?.let { (session, ask) ->
+        PasteSheet(ask, onPaste = session::paste, onDismiss = { pasteAsk = null })
+    }
     DisposableEffect(view) {
         sessions.listener = object : TerminalScreenListener {
             override fun onScreenChanged(session: TerminalSession) {
@@ -262,6 +268,10 @@ fun TerminalScreen(
             }
 
             override fun onCursorStateChanged(visible: Boolean) = Unit
+
+            override fun onPasteAsk(session: SshSession, ask: PastePlan.Ask) {
+                pasteAsk = session to ask
+            }
         }
         onDispose { sessions.listener = null }
     }
