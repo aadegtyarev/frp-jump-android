@@ -905,4 +905,8 @@
     <string name="licenses_count">Компонентов: %d</string>
     <string name="licenses_sources">Исходный код</string>
     <string name="licenses_reading">Читаем…</string>
+    <string name="licenses_frpc_modules">Go-модули в frpc</string>
+    <string name="licenses_frpc_modules_hint">Модулей в бинарнике: %1$d, их лицензии и исходники</string>
+    <string name="licenses_modules_count">Модулей: %d</string>
+    <string name="licenses_mpl_unmodified">Встроен в frpc без изменений: по адресу выше исходный код именно этой версии.</string>
 </resources>

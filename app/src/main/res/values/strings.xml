@@ -861,4 +861,8 @@
     <string name="licenses_count">%d components</string>
     <string name="licenses_sources">Sources</string>
     <string name="licenses_reading">Reading…</string>
+    <string name="licenses_frpc_modules">Go modules in frpc</string>
+    <string name="licenses_frpc_modules_hint">%1$d modules built into the binary, their licenses and sources</string>
+    <string name="licenses_modules_count">%d modules</string>
+    <string name="licenses_mpl_unmodified">Built into frpc unmodified: the address above is the source of exactly this version.</string>
 </resources>

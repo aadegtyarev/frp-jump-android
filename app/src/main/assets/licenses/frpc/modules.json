@@ -1,0 +1,812 @@
+{
+  "frp": "0.70.0",
+  "go": "go1.25.3",
+  "modules": [
+    {
+      "path": "github.com/fatedier/frp",
+      "version": "v0.70.0",
+      "source": "https://github.com/fatedier/frp/tree/v0.70.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-958e28cd3f.txt"
+        }
+      ]
+    },
+    {
+      "path": "std",
+      "version": "go1.25.3",
+      "source": "https://go.googlesource.com/go/+/refs/tags/go1.25.3",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/Azure/go-ntlmssp",
+      "version": "v0.1.0",
+      "sum": "h1:DjFo6YtWzNqNvQdrwEyr/e4nhU3vRiwenz5QX7sFz+A=",
+      "source": "https://github.com/Azure/go-ntlmssp/tree/v0.1.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-b62d22a282.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/armon/go-socks5",
+      "version": "v0.0.0-20160902184237-e75332964ef5",
+      "sum": "h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=",
+      "source": "https://github.com/armon/go-socks5/tree/e75332964ef5",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-e7f6b787b9.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/coreos/go-oidc/v3",
+      "version": "v3.14.1",
+      "sum": "h1:9ePWwfdwC4QKRlCXsJGou56adA/owXczOzwKdOumLqk=",
+      "source": "https://github.com/coreos/go-oidc/tree/v3.14.1",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-958e28cd3f.txt"
+        },
+        {
+          "ids": [
+            "NOTICE"
+          ],
+          "file": "NOTICE",
+          "text": "licenses/frpc/NOTICE-259377b177.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/fatedier/golib",
+      "version": "v0.7.0",
+      "sum": "h1:tMDF9ObcwVt59VUHroJOzHQjVFPLymZVMpGm9WAVwhY=",
+      "source": "https://github.com/fatedier/golib/tree/v0.7.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-958e28cd3f.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/go-jose/go-jose/v4",
+      "version": "v4.0.5",
+      "sum": "h1:M6T8+mKZl/+fNNuFHvGIzDz7BTLQPIounk/b9dw3AaE=",
+      "source": "https://github.com/go-jose/go-jose/tree/v4.0.5",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-0ffddef9e4.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "json/LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-e9f95572db.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/golang/snappy",
+      "version": "v0.0.4",
+      "sum": "h1:yAGX7huGHXlcLOEtBnF4w7FQwA26wojNCwOYAEhLjQM=",
+      "source": "https://github.com/golang/snappy/tree/v0.0.4",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-88a84875ac.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/gorilla/mux",
+      "version": "v1.8.1",
+      "sum": "h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=",
+      "source": "https://github.com/gorilla/mux/tree/v1.8.1",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-39c3bfa050.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/hashicorp/yamux",
+      "version": "v0.1.1",
+      "replacedBy": {
+        "path": "github.com/fatedier/yamux",
+        "version": "v0.0.0-20250825093530-d0154be01cd6"
+      },
+      "sum": "h1:u92UUy6FURPmNsMBUuongRWC0rBqN6gd01Dzu+D21NE=",
+      "source": "https://github.com/fatedier/yamux/tree/d0154be01cd6",
+      "licenses": [
+        {
+          "ids": [
+            "MPL-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MPL-2.0-a63b39eeb1.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/klauspost/cpuid/v2",
+      "version": "v2.2.6",
+      "sum": "h1:ndNyv040zDGIDh8thGkXYjnFtiN02M1PVVF+JE/48xc=",
+      "source": "https://github.com/klauspost/cpuid/tree/v2.2.6",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-b2fde8fee4.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/klauspost/reedsolomon",
+      "version": "v1.12.0",
+      "sum": "h1:I5FEp3xSwVCcEh3F5A7dofEfhXdF/bWhQWPH+XwBFno=",
+      "source": "https://github.com/klauspost/reedsolomon/tree/v1.12.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-f7d1c8c74f.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pelletier/go-toml/v2",
+      "version": "v2.2.0",
+      "sum": "h1:QLgLl2yMN7N+ruc31VynXs1vhMZa7CeHHejIeBAsoHo=",
+      "source": "https://github.com/pelletier/go-toml/tree/v2.2.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-f786cfc5fe.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pion/dtls/v3",
+      "version": "v3.0.10",
+      "sum": "h1:k9ekkq1kaZoxnNEbyLKI8DI37j/Nbk1HWmMuywpQJgg=",
+      "source": "https://github.com/pion/dtls/tree/v3.0.10",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-a850c461b9.txt"
+        },
+        {
+          "ids": [
+            "CC0-1.0"
+          ],
+          "file": "LICENSES/CC0-1.0.txt",
+          "text": "licenses/frpc/CC0-1.0-05d9f1a0af.txt"
+        },
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSES/MIT.txt",
+          "text": "licenses/frpc/MIT-c963879647.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pion/logging",
+      "version": "v0.2.4",
+      "sum": "h1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=",
+      "source": "https://github.com/pion/logging/tree/v0.2.4",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-a850c461b9.txt"
+        },
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSES/MIT.txt",
+          "text": "licenses/frpc/MIT-c963879647.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pion/stun/v3",
+      "version": "v3.1.1",
+      "sum": "h1:CkQxveJ4xGQjulGSROXbXq94TAWu8gIX2dT+ePhUkqw=",
+      "source": "https://github.com/pion/stun/tree/v3.1.1",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-a850c461b9.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSES/BSD-3-Clause.txt",
+          "text": "licenses/frpc/BSD-3-Clause-65e7987f84.txt"
+        },
+        {
+          "ids": [
+            "CC0-1.0"
+          ],
+          "file": "LICENSES/CC0-1.0.txt",
+          "text": "licenses/frpc/CC0-1.0-05d9f1a0af.txt"
+        },
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSES/MIT.txt",
+          "text": "licenses/frpc/MIT-c963879647.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pion/transport/v4",
+      "version": "v4.0.1",
+      "sum": "h1:sdROELU6BZ63Ab7FrOLn13M6YdJLY20wldXW2Cu2k8o=",
+      "source": "https://github.com/pion/transport/tree/v4.0.1",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-a850c461b9.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSES/BSD-3-Clause.txt",
+          "text": "licenses/frpc/BSD-3-Clause-65e7987f84.txt"
+        },
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSES/MIT.txt",
+          "text": "licenses/frpc/MIT-c963879647.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pires/go-proxyproto",
+      "version": "v0.7.0",
+      "sum": "h1:IukmRewDQFWC7kfnb66CSomk2q/seBuilHBYFwyq0Hs=",
+      "source": "https://github.com/pires/go-proxyproto/tree/v0.7.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-d8f36e6f27.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/pkg/errors",
+      "version": "v0.9.1",
+      "sum": "h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=",
+      "source": "https://github.com/pkg/errors/tree/v0.9.1",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-2-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-2-Clause-42edc0930a.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/quic-go/quic-go",
+      "version": "v0.55.0",
+      "sum": "h1:zccPQIqYCXDt5NmcEabyYvOnomjs8Tlwl7tISjJh9Mk=",
+      "source": "https://github.com/quic-go/quic-go/tree/v0.55.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-bfe854d5d5.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/rodaine/table",
+      "version": "v1.2.0",
+      "sum": "h1:38HEnwK4mKSHQJIkavVj+bst1TEY7j9zhLMWu4QJrMA=",
+      "source": "https://github.com/rodaine/table/tree/v1.2.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "license",
+          "text": "licenses/frpc/MIT-f80ed461fa.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/samber/lo",
+      "version": "v1.47.0",
+      "sum": "h1:z7RynLwP5nbyRscyvcD043DWYoOcYRv3mV8lBeqOCLc=",
+      "source": "https://github.com/samber/lo/tree/v1.47.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-2c50b7b165.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/songgao/water",
+      "version": "v0.0.0-20200317203138-2b4b6d7c09d8",
+      "sum": "h1:TG/diQgUe0pntT/2D9tmUCz4VNwm9MfrtPr0SU2qSX8=",
+      "source": "https://github.com/songgao/water/tree/2b4b6d7c09d8",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-1d45e62f26.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/spf13/cobra",
+      "version": "v1.8.0",
+      "sum": "h1:7aJaZx1B85qltLMc546zn58BxxfZdR/W22ej9CFoEf0=",
+      "source": "https://github.com/spf13/cobra/tree/v1.8.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE.txt",
+          "text": "licenses/frpc/Apache-2.0-09ae9bf188.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/spf13/pflag",
+      "version": "v1.0.5",
+      "sum": "h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=",
+      "source": "https://github.com/spf13/pflag/tree/v1.0.5",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-609ca90df9.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/templexxx/cpu",
+      "version": "v0.1.1",
+      "sum": "h1:isxHaxBXpYFWnk2DReuKkigaZyrjs2+9ypIdGP4h+HI=",
+      "source": "https://github.com/templexxx/cpu/tree/v0.1.1",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-f26414a237.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/templexxx/xorsimd",
+      "version": "v0.4.3",
+      "sum": "h1:9AQTFHd7Bhk3dIT7Al2XeBX5DWOvsUPZCuhyAtNbHjU=",
+      "source": "https://github.com/templexxx/xorsimd/tree/v0.4.3",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-7aaf0acc78.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/tjfoc/gmsm",
+      "version": "v1.4.1",
+      "sum": "h1:aMe1GlZb+0bLjn+cKTPEvvn9oUEBlJitaZiiBwsbgho=",
+      "source": "https://github.com/tjfoc/gmsm/tree/v1.4.1",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-958e28cd3f.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/vishvananda/netlink",
+      "version": "v1.3.0",
+      "sum": "h1:X7l42GfcV4S6E4vHTsw48qbrV+9PVojNfIhZcwQdrZk=",
+      "source": "https://github.com/vishvananda/netlink/tree/v1.3.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-87b19954f5.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/vishvananda/netns",
+      "version": "v0.0.4",
+      "sum": "h1:Oeaw1EM2JMxD51g9uhtC0D7erkIjgmj8+JZc26m1YX8=",
+      "source": "https://github.com/vishvananda/netns/tree/v0.0.4",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-87b19954f5.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/wlynxg/anet",
+      "version": "v0.0.5",
+      "sum": "h1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=",
+      "source": "https://github.com/wlynxg/anet/tree/v0.0.5",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-0e74bdd4f9.txt"
+        }
+      ]
+    },
+    {
+      "path": "github.com/xtaci/kcp-go/v5",
+      "version": "v5.6.13",
+      "sum": "h1:FEjtz9+D4p8t2x4WjciGt/jsIuhlWjjgPCCWjrVR4Hk=",
+      "source": "https://github.com/xtaci/kcp-go/tree/v5.6.13",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-81ad561151.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/crypto",
+      "version": "v0.49.0",
+      "sum": "h1:+Ng2ULVvLHnJ/ZFEq4KdcDd/cfjrrjjNSXNzxg0Y4U4=",
+      "source": "https://go.googlesource.com/crypto/+/refs/tags/v0.49.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/net",
+      "version": "v0.52.0",
+      "sum": "h1:He/TN1l0e4mmR3QqHMT2Xab3Aj3L9qjbhRm78/6jrW0=",
+      "source": "https://go.googlesource.com/net/+/refs/tags/v0.52.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/oauth2",
+      "version": "v0.28.0",
+      "sum": "h1:CrgCKl8PPAVtLnU3c+EDw6x11699EWlsDeWNWKdIOkc=",
+      "source": "https://go.googlesource.com/oauth2/+/refs/tags/v0.28.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/sync",
+      "version": "v0.20.0",
+      "sum": "h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=",
+      "source": "https://go.googlesource.com/sync/+/refs/tags/v0.20.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/sys",
+      "version": "v0.42.0",
+      "sum": "h1:omrd2nAlyT5ESRdCLYdm3+fMfNFE/+Rf4bDIQImRJeo=",
+      "source": "https://go.googlesource.com/sys/+/refs/tags/v0.42.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/text",
+      "version": "v0.35.0",
+      "sum": "h1:JOVx6vVDFokkpaq1AEptVzLTpDe9KGpj5tR4/X+ybL8=",
+      "source": "https://go.googlesource.com/text/+/refs/tags/v0.35.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.org/x/time",
+      "version": "v0.10.0",
+      "sum": "h1:3usCWA8tQn0L8+hFJQNgzpWbd89begxN66o1Ojdn5L4=",
+      "source": "https://go.googlesource.com/time/+/refs/tags/v0.10.0",
+      "licenses": [
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-08c3237831.txt"
+        }
+      ]
+    },
+    {
+      "path": "golang.zx2c4.com/wireguard",
+      "version": "v0.0.0-20231211153847-12269c276173",
+      "sum": "h1:/jFs0duh4rdb8uIfPMv78iAJGcPKDeqAFnaLBropIC4=",
+      "source": "https://pkg.go.dev/golang.zx2c4.com/wireguard@v0.0.0-20231211153847-12269c276173",
+      "licenses": [
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT-fe2a981798.txt"
+        }
+      ]
+    },
+    {
+      "path": "gopkg.in/ini.v1",
+      "version": "v1.67.0",
+      "sum": "h1:Dgnx+6+nfE+IfzjUEISNeydPJh9AXNNsWbGP9KzCsOA=",
+      "source": "https://pkg.go.dev/gopkg.in/ini.v1@v1.67.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-e5b0252c7e.txt"
+        }
+      ]
+    },
+    {
+      "path": "gopkg.in/yaml.v2",
+      "version": "v2.4.0",
+      "sum": "h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY=",
+      "source": "https://pkg.go.dev/gopkg.in/yaml.v2@v2.4.0",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-958e28cd3f.txt"
+        },
+        {
+          "ids": [
+            "MIT"
+          ],
+          "file": "LICENSE.libyaml",
+          "text": "licenses/frpc/MIT-36c1951c1a.txt"
+        },
+        {
+          "ids": [
+            "NOTICE"
+          ],
+          "file": "NOTICE",
+          "text": "licenses/frpc/NOTICE-d703b0c359.txt"
+        }
+      ]
+    },
+    {
+      "path": "k8s.io/apimachinery",
+      "version": "v0.28.8",
+      "sum": "h1:hi/nrxHwk4QLV+W/SHve1bypTE59HCDorLY1stBIxKQ=",
+      "source": "https://pkg.go.dev/k8s.io/apimachinery@v0.28.8",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-0ffddef9e4.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "third_party/forked/golang/LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-afe6db7ac9.txt"
+        }
+      ]
+    },
+    {
+      "path": "k8s.io/utils",
+      "version": "v0.0.0-20230406110748-d93618cff8a2",
+      "sum": "h1:qY1Ad8PODbnymg2pRbkyMT/ylpTrCM8P2RJ0yroCyIk=",
+      "source": "https://pkg.go.dev/k8s.io/utils@v0.0.0-20230406110748-d93618cff8a2",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0-0ffddef9e4.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "inotify/LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-afe6db7ac9.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "internal/third_party/forked/golang/LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-e9f95572db.txt"
+        },
+        {
+          "ids": [
+            "BSD-3-Clause"
+          ],
+          "file": "third_party/forked/golang/LICENSE",
+          "text": "licenses/frpc/BSD-3-Clause-e9f95572db.txt"
+        }
+      ]
+    },
+    {
+      "path": "sigs.k8s.io/json",
+      "version": "v0.0.0-20221116044647-bc3834ca7abd",
+      "sum": "h1:EDPBXCAspyGV4jQlpZSudPeMmr1bNJefnuqLsRAsHZo=",
+      "source": "https://pkg.go.dev/sigs.k8s.io/json@v0.0.0-20221116044647-bc3834ca7abd",
+      "licenses": [
+        {
+          "ids": [
+            "Apache-2.0",
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/Apache-2.0+BSD-3-Clause-e4397f7e53.txt"
+        }
+      ]
+    },
+    {
+      "path": "sigs.k8s.io/yaml",
+      "version": "v1.3.0",
+      "sum": "h1:a2VclLzOGrwOHDiV8EfBGhvjHvP46CtW5j6POvhYGGo=",
+      "source": "https://pkg.go.dev/sigs.k8s.io/yaml@v1.3.0",
+      "licenses": [
+        {
+          "ids": [
+            "MIT",
+            "BSD-3-Clause"
+          ],
+          "file": "LICENSE",
+          "text": "licenses/frpc/MIT+BSD-3-Clause-2542e4a94e.txt"
+        }
+      ]
+    }
+  ]
+}

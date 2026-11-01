@@ -39,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -50,7 +51,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.licenses.Component
+import ru.adsrv.frpjump.licenses.FRPC_COMPONENT
+import ru.adsrv.frpjump.licenses.FRPC_MODULES_ASSET
+import ru.adsrv.frpjump.licenses.FrpcModules
+import ru.adsrv.frpjump.licenses.MPL
 import ru.adsrv.frpjump.licenses.componentsFrom
+import ru.adsrv.frpjump.licenses.frpcModulesFrom
 import ru.adsrv.frpjump.licenses.reflow
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ui.AppTheme
@@ -62,35 +68,70 @@ import ru.adsrv.frpjump.ui.notice
  * Settings › Components and licenses: every component in the APK (from
  * the build's `res/raw/aboutlibraries.json`) with its version and
  * licenses; a tap shows the full license text, shipped in the assets, and
- * a link to the sources. Back or the arrow closes it.
+ * a link to the sources. frpc's own leads on to the Go modules built into
+ * it (`assets/licenses/frpc/modules.json`), each opening the same way.
+ * Back or the arrow closes it, one level at a time.
  */
 @Composable
 fun LicensesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var components by remember { mutableStateOf<List<Component>?>(null) }
+    var frpc by remember { mutableStateOf<FrpcModules?>(null) }
     LaunchedEffect(Unit) {
+        frpc = withContext(Dispatchers.IO) {
+            context.assets.open(FRPC_MODULES_ASSET).bufferedReader().use { frpcModulesFrom(it.readText()) }
+        }
         components = withContext(Dispatchers.IO) {
             context.resources.openRawResource(R.raw.aboutlibraries).bufferedReader().use { componentsFrom(it.readText()) }
         }
     }
     var opened by rememberSaveable { mutableStateOf<String?>(null) }
-    val component = components?.firstOrNull { it.id == opened }
-    if (component != null) {
-        ComponentScreen(component, onBack = { opened = null })
+    var modulesOpen by rememberSaveable { mutableStateOf(false) }
+    var openedModule by rememberSaveable { mutableStateOf<String?>(null) }
+    val modules = frpc?.modules
+    val module = modules?.firstOrNull { it.id == openedModule }
+    if (module != null) {
+        ComponentScreen(module, onBack = { openedModule = null })
         return
     }
+    if (modulesOpen && modules != null) {
+        ComponentList(
+            title = stringResource(R.string.licenses_frpc_modules),
+            subtitle = stringResource(R.string.licenses_modules_count, modules.size),
+            list = modules,
+            onOpen = { openedModule = it },
+            onBack = { modulesOpen = false },
+        )
+        return
+    }
+    val component = components?.firstOrNull { it.id == opened }
+    if (component != null) {
+        ComponentScreen(
+            component,
+            modules = modules?.takeIf { component.id == FRPC_COMPONENT },
+            onOpenModules = { modulesOpen = true },
+            onBack = { opened = null },
+        )
+        return
+    }
+    val list = components
+    ComponentList(
+        title = stringResource(R.string.licenses),
+        subtitle = list?.let { stringResource(R.string.licenses_count, it.size) },
+        list = list,
+        onOpen = { opened = it },
+        onBack = onBack,
+    )
+}
+
+/** Components as one card of rows, a spinner while [list] is read. */
+@Composable
+private fun ComponentList(title: String, subtitle: String?, list: List<Component>?, onOpen: (String) -> Unit, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     val colors = AppTheme.colors
-    val list = components
     Scaffold(
         containerColor = colors.ground,
-        topBar = {
-            AppTopBar(
-                title = stringResource(R.string.licenses),
-                subtitle = list?.let { stringResource(R.string.licenses_count, it.size) },
-                onBack = onBack,
-            )
-        },
+        topBar = { AppTopBar(title = title, subtitle = subtitle, onBack = onBack) },
     ) { padding ->
         if (list == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -110,7 +151,7 @@ fun LicensesScreen(onBack: () -> Unit) {
                     else -> RoundedCornerShape(0.dp)
                 }
                 Column(Modifier.background(colors.card, shape)) {
-                    ComponentRow(c, onClick = { opened = c.id })
+                    ComponentRow(c, onClick = { onOpen(c.id) })
                     if (index < list.lastIndex) HorizontalDivider(color = colors.divider)
                 }
             }
@@ -121,9 +162,19 @@ fun LicensesScreen(onBack: () -> Unit) {
 /** A component: name, then "version · licenses", and a chevron. */
 @Composable
 private fun ComponentRow(c: Component, onClick: () -> Unit) {
+    NavRow(
+        c.name,
+        listOfNotNull(c.version, c.licenses.map { it.title }.distinct().joinToString(", ").ifEmpty { null }).joinToString(" · "),
+        onClick,
+    )
+}
+
+/** A row that leads on: a [title], a [detail] line under it, and a chevron. */
+@Composable
+private fun NavRow(title: String, detail: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = AppTheme.colors
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clickable(onClick = onClick)
@@ -131,9 +182,9 @@ private fun ComponentRow(c: Component, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(c.name, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = colors.ink)
+            Text(title, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, color = colors.ink)
             Text(
-                listOfNotNull(c.version, c.licenses.joinToString(", ") { it.title }.ifEmpty { null }).joinToString(" · "),
+                detail,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 color = colors.muted,
@@ -143,9 +194,14 @@ private fun ComponentRow(c: Component, onClick: () -> Unit) {
     }
 }
 
-/** One component: its sources' address (opens in a browser) and its license's full text, a switch between several. */
+/**
+ * One component: its sources' address (opens in a browser), for frpc a
+ * row on to its Go [modules], and its license's full text, a switch
+ * between several. Under MPL-2.0 (yamux) it says the code is unmodified,
+ * the address being the source of exactly the version built in.
+ */
 @Composable
-private fun ComponentScreen(c: Component, onBack: () -> Unit) {
+private fun ComponentScreen(c: Component, onBack: () -> Unit, modules: List<Component>? = null, onOpenModules: () -> Unit = {}) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val colors = AppTheme.colors
@@ -184,7 +240,18 @@ private fun ComponentScreen(c: Component, onBack: () -> Unit) {
                     ) {
                         Text(url, fontSize = 14.sp, color = colors.accent, textDecoration = TextDecoration.Underline)
                     }
+                    if (c.licenses.any { MPL in it.ids }) {
+                        Text(stringResource(R.string.licenses_mpl_unmodified), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+                    }
                 }
+            }
+            modules?.let {
+                NavRow(
+                    stringResource(R.string.licenses_frpc_modules),
+                    stringResource(R.string.licenses_frpc_modules_hint, it.size),
+                    onOpenModules,
+                    Modifier.clip(RoundedCornerShape(18.dp)).background(colors.tile),
+                )
             }
             if (c.licenses.size > 1) {
                 Segmented(c.licenses.indices.toList(), shown, label = { c.licenses[it].short }, compact = true, onPick = { shown = it })

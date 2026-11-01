@@ -14,3 +14,6 @@ Components and licenses (which component is under which comes from
 - `BSD-3-Clause-libyuv.txt`: libyuv, inside CameraX's camera-core
 - `BSD-3-Clause-Go.txt`: the Go standard library and golang.org/x packages inside frpc
 - `TextMate-Bundle.txt`: the TextMate bundles some grammars come from
+- `frpc/`: the Go modules built into frpc (`modules.json`) and their license
+  and NOTICE files, one per distinct text; made by `scripts/build-frpc.sh`,
+  do not edit by hand

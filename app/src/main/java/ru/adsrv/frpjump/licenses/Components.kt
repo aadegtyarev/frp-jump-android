@@ -14,9 +14,13 @@ data class Component(val id: String, val name: String, val version: String?, val
 
 /**
  * A license of a component: its [title], a [short] one for a switch
- * between several, and the asset with its full text (`licenses/MIT.txt`).
+ * between several, and the asset with its full text (`licenses/MIT.txt`);
+ * [ids], SPDX ids, where the list says them (frpc's Go modules).
  */
-data class ComponentLicense(val title: String, val short: String, val asset: String)
+data class ComponentLicense(val title: String, val short: String, val asset: String, val ids: List<String> = emptyList())
+
+/** frpc's entry in `app/aboutlibraries/`: its Go modules are listed under it. */
+const val FRPC_COMPONENT = "fatedier:frp"
 
 /**
  * The components of [json], the AboutLibraries plugin's
