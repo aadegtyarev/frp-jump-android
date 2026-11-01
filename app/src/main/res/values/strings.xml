@@ -795,6 +795,14 @@
     </plurals>
     <string name="mqtt_qos" translatable="false">QoS %1$d</string>
     <string name="mqtt_no_match">No topic path holds “%1$s”</string>
+    <string name="mqtt_no_pattern_match">No topic matches “%1$s”</string>
+    <string name="mqtt_pattern_case">Case matters: %1$s found ignoring case</string>
+    <string name="mqtt_pattern_syntax">* ? within a level · + one level · # all below · / first: from the root</string>
+    <string name="mqtt_pattern_in_level">+ and # take a whole level; within a level use * and ?</string>
+    <string name="mqtt_pattern_hash_last"># can only be the last level</string>
+    <string name="mqtt_subscribe_filter">Subscribe to this filter</string>
+    <string name="mqtt_filter_no_globs">The broker does not understand * and ?: only + and # can be subscribed</string>
+    <string name="mqtt_filter_pinned">Already pinned</string>
     <string name="mqtt_hits_more">The first %1$s of %2$s</string>
     <string name="mqtt_login_title">Broker login: %1$s</string>
     <string name="mqtt_login_wrong">Wrong user or password</string>

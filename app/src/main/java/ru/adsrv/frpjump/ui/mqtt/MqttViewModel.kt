@@ -37,6 +37,11 @@ import ru.adsrv.frpjump.mqtt.pinnedMasks
 import ru.adsrv.frpjump.mqtt.topicProblem
 import ru.adsrv.frpjump.mqtt.pinnedAt
 import ru.adsrv.frpjump.mqtt.searchScope
+import ru.adsrv.frpjump.mqtt.FilterOffer
+import ru.adsrv.frpjump.mqtt.PatternProblem
+import ru.adsrv.frpjump.mqtt.SearchQuery
+import ru.adsrv.frpjump.mqtt.filterOffer
+import ru.adsrv.frpjump.mqtt.parseSearch
 
 /** One row of a level: a node of the tree, or the root's `$SYS` before anything was seen there. */
 data class TopicRow(val node: TopicNode, val pinned: Boolean) {
@@ -72,8 +77,20 @@ data class MqttUiState(
     val limitReached: Boolean = false,
     /** The open branch's filter was refused by the broker (an ACL). */
     val branchRefused: Boolean = false,
-    /** Where the search looks: the open level and below, or the root when widened to the whole tree. */
+    /**
+     * Where the search looks and what the hits are relative to: the open
+     * level and below, or the root when widened to the whole tree or for a
+     * pattern starting with `/`.
+     */
     val searchAt: MqttPath = MqttPath.ROOT,
+    /** The query is a pattern (`* ? + #`): the syntax line shows. */
+    val searchPattern: Boolean = false,
+    /** Why the pattern cannot be searched; no hits then. */
+    val searchProblem: PatternProblem? = null,
+    /** Subscribing the pattern's filter, under its hits; null for a substring query. */
+    val filterOffer: FilterOffer? = null,
+    /** A pattern that found nothing: how many it finds ignoring case (0 when it found something). */
+    val hitsIgnoringCase: Int = 0,
     /** Search hits for the query under [searchAt], at most [MAX_HITS]; [hitsTotal] counts them all. */
     val hits: List<SearchHit> = emptyList(),
     val hitsTotal: Int = 0,
@@ -172,7 +189,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         }
         // Hits of another place (the search not yet run again after a move) are not shown.
         val searchAt = searchScope(path, whole)
-        val hits = if (search.path == searchAt) search else Search(searchAt, emptyList(), 0)
+        val hits = if (search.scope == searchAt) search else Search(searchAt, searchAt, search.query, emptyList(), 0, 0)
         return MqttUiState(
             state = state,
             snapshot = snapshot,
@@ -181,7 +198,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             topicCount = s.tree.topicCount,
             limitReached = s.tree.limitReached,
             branchRefused = !path.isRoot && (path.format() + "/#") in refused,
-            searchAt = searchAt,
+            searchAt = hits.at,
+            searchPattern = hits.query !is SearchQuery.Substring,
+            searchProblem = (hits.query as? SearchQuery.Invalid)?.problem,
+            filterOffer = filterOffer(hits.query, hits.scope, pins, open = state != MqttState.Ended),
+            hitsIgnoringCase = hits.withoutCase,
             hits = hits.hits,
             hitsTotal = hits.total,
             now = now,
@@ -191,14 +212,26 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         )
     }
 
-    /** The hits of [needle] at [path]: at most [MAX_HITS], with their values as they were then. */
-    private data class Search(val path: MqttPath, val hits: List<SearchHit>, val total: Int)
+    /**
+     * The hits of [query] run for [scope] (the open level or the whole
+     * tree), relative to [at] (the root for a pattern starting with `/`):
+     * at most [MAX_HITS], with their values as they were then. A pattern
+     * that found nothing is run once more ignoring case: [withoutCase].
+     */
+    private data class Search(val scope: MqttPath, val at: MqttPath, val query: SearchQuery, val hits: List<SearchHit>, val total: Int, val withoutCase: Int)
 
-    private fun search(s: MqttSession, path: MqttPath, needle: String): Search {
-        if (needle.isEmpty()) return Search(path, emptyList(), 0)
-        val found = s.tree.search(path, needle)
-        val hits = found.take(MAX_HITS).mapNotNull { rel -> s.tree.node(MqttPath(path.levels + rel.levels))?.let { SearchHit(rel, it) } }
-        return Search(path, hits, found.size)
+    private fun search(s: MqttSession, scope: MqttPath, needle: String): Search {
+        val query = parseSearch(needle)
+        val at = (query as? SearchQuery.Pattern)?.base(scope) ?: scope
+        val found = when {
+            needle.isEmpty() -> emptyList()
+            query is SearchQuery.Pattern -> s.tree.match(at, query.levels)
+            query is SearchQuery.Substring -> s.tree.search(at, needle)
+            else -> emptyList()
+        }
+        val hits = found.take(MAX_HITS).mapNotNull { rel -> s.tree.node(MqttPath(at.levels + rel.levels))?.let { SearchHit(rel, it) } }
+        val withoutCase = if (found.isEmpty() && query is SearchQuery.Pattern) s.tree.match(at, query.levels, ignoreCase = true).size else 0
+        return Search(scope, at, query, hits, found.size, withoutCase)
     }
 
     /** Opens the level [path]. */
@@ -238,6 +271,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
 
     /** Pins [path] with [mask]; returns the topic filter pinned. */
     fun pin(path: MqttPath, mask: PinMask): String = pinFilter(path, mask).also { filter ->
+        session?.let { app.mqtt.pin(it.profile, it.connectionId, filter) }
+    }
+
+    /** Pins the topic [filter] a search pattern makes ("Subscribe to this filter"). */
+    fun subscribeFilter(filter: String) {
         session?.let { app.mqtt.pin(it.profile, it.connectionId, filter) }
     }
 

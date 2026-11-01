@@ -48,6 +48,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,6 +88,8 @@ import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.FileGlyph
 import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.PinGlyph
+import ru.adsrv.frpjump.mqtt.FilterOffer
+import ru.adsrv.frpjump.mqtt.PatternProblem
 import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.StatusBanner
@@ -237,6 +241,10 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     padding,
                     onOpen = { hit -> vm.openCard(MqttPath(state.searchAt.levels + hit.relative.levels)) },
                     onSearchWhole = { vm.searchWhole.value = true },
+                    onSubscribe = { filter ->
+                        vm.subscribeFilter(filter)
+                        context.notice(context.getString(R.string.mqtt_pinned_notice, filter), NoticeKind.DONE)
+                    },
                 )
             } else {
                 Level(state, focused, padding, onOpen = vm::open, onCard = vm::openCard, onWriteHere = { writingAt = ArrayList(state.path.levels) })
@@ -550,22 +558,64 @@ private fun Meta(node: TopicNode, value: TopicValue?, change: LastChange?, now: 
     }
 }
 
-/** The topics under the level whose path holds the query, as paths relative to it; a tap shows the topic in its level. */
+/**
+ * The topics under the level whose path holds the query, or that a
+ * pattern matches, as paths relative to where it looked; a tap shows the
+ * topic in its level. A pattern gets its syntax line on top (or why it
+ * cannot be searched) and, under the hits, subscribing its filter.
+ */
 @Composable
-private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues, onOpen: (SearchHit) -> Unit, onSearchWhole: () -> Unit) {
+private fun SearchHits(
+    state: MqttUiState,
+    query: String,
+    padding: PaddingValues,
+    onOpen: (SearchHit) -> Unit,
+    onSearchWhole: () -> Unit,
+    onSubscribe: (String) -> Unit,
+) {
     val colors = AppTheme.colors
     val empty = stringResource(R.string.mqtt_empty_level)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp)) {
+        if (state.searchPattern) {
+            item(key = "syntax") {
+                val problem = state.searchProblem
+                Text(
+                    when (problem) {
+                        null -> stringResource(R.string.mqtt_pattern_syntax)
+                        PatternProblem.WILDCARD_IN_LEVEL -> stringResource(R.string.mqtt_pattern_in_level)
+                        PatternProblem.HASH_NOT_LAST -> stringResource(R.string.mqtt_pattern_hash_last)
+                    },
+                    color = if (problem == null) colors.muted else colors.error,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            // A pattern that cannot run has nothing more to show.
+            if (state.searchProblem != null) return@LazyColumn
+        }
         if (state.hits.isEmpty()) {
             item(key = "none") {
                 Text(
-                    stringResource(R.string.mqtt_no_match, query),
+                    stringResource(if (state.searchPattern) R.string.mqtt_no_pattern_match else R.string.mqtt_no_match, query),
                     color = colors.muted,
                     fontSize = 14.sp,
                     modifier = Modifier
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                         .semantics { liveRegion = LiveRegionMode.Polite },
                 )
+            }
+            // Patterns are exact, as the broker is: say when the case alone kept them from matching.
+            if (state.hitsIgnoringCase > 0) {
+                item(key = "case") {
+                    Text(
+                        stringResource(R.string.mqtt_pattern_case, count(state.hitsIgnoringCase)),
+                        color = colors.muted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp),
+                    )
+                }
             }
             // Nothing in this branch: one tap widens the search, so an empty result is no dead end.
             if (!state.searchAt.isRoot) {
@@ -610,6 +660,33 @@ private fun SearchHits(state: MqttUiState, query: String, padding: PaddingValues
             }
             HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 20.dp))
         }
+        state.filterOffer?.let { offer -> item(key = "subscribe") { SubscribeOffer(offer, onSubscribe) } }
+    }
+}
+
+/** "Subscribe to this filter" under a pattern's hits: the absolute filter it pins, or why it cannot. */
+@Composable
+private fun SubscribeOffer(offer: FilterOffer, onSubscribe: (String) -> Unit) {
+    val colors = AppTheme.colors
+    val filter = (offer as? FilterOffer.Subscribe)?.filter
+    val note = when (offer) {
+        is FilterOffer.Subscribe -> if (offer.pinned) stringResource(R.string.mqtt_filter_pinned) else null
+        FilterOffer.SessionClosed -> stringResource(R.string.mqtt_closed)
+        FilterOffer.NotForBroker -> stringResource(R.string.mqtt_filter_no_globs)
+        FilterOffer.TooLong -> stringResource(R.string.mqtt_topic_too_long, MAX_TOPIC_BYTES)
+    }
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        filter?.let { Text(it, fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        SecondaryButton(
+            stringResource(R.string.mqtt_subscribe_filter),
+            PinGlyph,
+            enabled = offer is FilterOffer.Subscribe && !offer.pinned,
+            // Why it is off is read with the button itself; the line below is for the eye only.
+            Modifier
+                .fillMaxWidth()
+                .semantics { note?.let { stateDescription = it } },
+        ) { filter?.let(onSubscribe) }
+        note?.let { Text(it, fontSize = 12.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics {}) }
     }
 }
 
