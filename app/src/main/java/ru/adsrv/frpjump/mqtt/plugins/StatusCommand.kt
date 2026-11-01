@@ -104,6 +104,12 @@ data class StatusCommandSettings(
     val presets: Set<String> = emptySet(),
     /** The owner's own rules, in order; tried before the presets. */
     val rules: List<RuleSpec> = emptyList(),
+    /**
+     * The Wiren Board tab has appeared once for this connection: the Wiren
+     * Board preset was turned on then if this plugin was on, and is never
+     * turned on by itself again (turned off by hand, it stays off).
+     */
+    val wirenBoardTabSeen: Boolean = false,
 )
 
 /**

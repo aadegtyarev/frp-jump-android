@@ -54,6 +54,7 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.mqtt.plugins.ConnectionPlugins
 import ru.adsrv.frpjump.mqtt.plugins.Preset
 import ru.adsrv.frpjump.mqtt.plugins.RuleCheck
 import ru.adsrv.frpjump.mqtt.plugins.RuleField
@@ -79,9 +80,9 @@ import kotlin.math.roundToInt
 /**
  * The MQTT plugins of one connection (its settings, also reached from the
  * explorer's "⋮"): each plugin with its switch and, when on, its settings.
- * For now one plugin, "Status and command topics": the presets as
- * switches, the own rules as a list with + (add), drag (reorder), a tap
- * (change) and delete with Undo. Every change is saved at once.
+ * "Wiren Board" is a switch only; "Status and command topics" has the
+ * presets as switches, the own rules as a list with + (add), drag
+ * (reorder), a tap (change) and delete with Undo. Every change is saved at once.
  */
 @Composable
 fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDismiss: () -> Unit) {
@@ -89,23 +90,31 @@ fun PluginsSheet(profile: String, connectionId: String, subtitle: String, onDism
     val store = app.mqttPlugins
     val changes by store.changes.collectAsStateWithLifecycle()
     val hidden by app.pendingUndo.hidden.collectAsStateWithLifecycle()
-    val settings by produceState<StatusCommandSettings?>(null, changes) {
-        value = withContext(Dispatchers.IO) { store.get(profile, connectionId).statusCommand }
+    val all by produceState<ConnectionPlugins?>(null, changes) {
+        value = withContext(Dispatchers.IO) { store.get(profile, connectionId) }
     }
     // A change written in the app's scope: closing the sheet right after the tap must not lose it.
-    val change = { edit: (StatusCommandSettings) -> StatusCommandSettings ->
+    val changeAll = { edit: (ConnectionPlugins) -> ConnectionPlugins ->
         app.appScope.launch {
             val failure = withContext(Dispatchers.IO) {
-                runCatching { store.update(profile, connectionId) { it.copy(statusCommand = edit(it.statusCommand)) } }.exceptionOrNull()
+                runCatching { store.update(profile, connectionId, edit) }.exceptionOrNull()
             }
             if (failure != null) app.notices.show(Texts.get(R.string.settings_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
         }
         Unit
     }
+    val change = { edit: (StatusCommandSettings) -> StatusCommandSettings -> changeAll { it.copy(statusCommand = edit(it.statusCommand)) } }
     // The rule being changed (its id), or "" for a new one.
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     AppSheet(title = stringResource(R.string.plugins_title), subtitle = subtitle, onDismiss = onDismiss) {
-        val s = settings ?: return@AppSheet
+        val plugins = all ?: return@AppSheet
+        val s = plugins.statusCommand
+        // A device view of the Wiren Board convention: on or off, nothing more to set.
+        SwitchRow(stringResource(R.string.plugin_wirenboard), stringResource(R.string.plugin_wirenboard_hint), plugins.wirenBoard.on, bold = true) { on ->
+            changeAll { it.copy(wirenBoard = it.wirenBoard.copy(on = on)) }
+            // Off: its session drops the plugin's filters at once, also when no explorer screen is open.
+            if (!on) app.mqtt.find(profile, connectionId)?.setPluginFilters(emptyList())
+        }
         SwitchRow(stringResource(R.string.plugin_status_command), stringResource(R.string.plugin_status_command_hint), s.on, bold = true) { on ->
             change { it.copy(on = on) }
         }
