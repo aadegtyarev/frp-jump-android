@@ -84,6 +84,8 @@ import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FileGlyph
+import ru.adsrv.frpjump.ui.PluginGlyph
+import ru.adsrv.frpjump.ui.plugins.PluginsScreen
 import ru.adsrv.frpjump.ui.ChoiceSheet
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.EyeOffGlyph
@@ -134,6 +136,13 @@ fun SettingsScreen(
         LicensesScreen(onBack = { licenses = false })
         return
     }
+    // MQTT plugins: a screen of its own over the settings, as the licenses.
+    var plugins by rememberSaveable { mutableStateOf(false) }
+    if (plugins) {
+        PluginsScreen(onBack = { plugins = false })
+        return
+    }
+    val pluginsSummary by vm.plugins.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val colors = AppTheme.colors
     // Read again on every return: both may change in the system settings meanwhile.
@@ -268,6 +277,16 @@ fun SettingsScreen(
             VersionRow(update, onCheck = vm::checkForUpdates, onUpdate = { open = Open.UPDATE })
             RowDivider()
             SettingRow(
+                tile = { IconTile(PluginGlyph) },
+                label = stringResource(R.string.plugins_title),
+                hint = pluginsSummary?.let { p ->
+                    stringResource(R.string.plugins_row_hint, p.on, p.total) +
+                        if (p.anyExceptions) " " + stringResource(R.string.plugins_row_hint_exceptions) else ""
+                } ?: "…",
+                onClick = { plugins = true },
+            ) { Chevron() }
+            RowDivider()
+            SettingRow(
                 tile = { IconTile(FileGlyph) },
                 label = stringResource(R.string.licenses),
                 hint = stringResource(R.string.licenses_hint),
@@ -389,11 +408,11 @@ private fun VersionRow(update: UpdateState, onCheck: () -> Unit, onUpdate: () ->
     }
 }
 
-/** A group's title, as the mockup sets it (small capitals, muted), over a card of rows. */
+/** A group's title, as the mockup sets it (small capitals, muted), over a card of rows; no title: the card alone. */
 @Composable
-private fun Group(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun Group(title: String?, content: @Composable ColumnScope.() -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
+        if (title != null) Text(
             title.uppercase(),
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
@@ -408,11 +427,11 @@ private fun Group(title: String, content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun RowDivider() = HorizontalDivider(color = AppTheme.colors.divider)
+internal fun RowDivider() = HorizontalDivider(color = AppTheme.colors.divider)
 
 /** A 34 dp tile with an icon. */
 @Composable
-private fun IconTile(icon: ImageVector) {
+internal fun IconTile(icon: ImageVector) {
     Box(
         Modifier
             .size(34.dp)
@@ -438,7 +457,7 @@ private fun GlyphTile(glyph: String, background: Color = AppTheme.colors.tile, i
 
 /** A row: tile, label with an optional hint, and what is on the right (value, chevron, switch). */
 @Composable
-private fun SettingRow(
+internal fun SettingRow(
     tile: @Composable () -> Unit,
     label: String,
     onClick: (() -> Unit)?,
@@ -469,7 +488,7 @@ private fun SettingRow(
 
 /** A row the whole of which toggles its switch; [busy] shows progress in place of the switch. */
 @Composable
-private fun SwitchRow(
+internal fun SwitchRow(
     tile: @Composable () -> Unit,
     label: String,
     hint: String?,
@@ -497,7 +516,7 @@ private fun SwitchRow(
 }
 
 @Composable
-private fun Chevron() = Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AppTheme.colors.faint)
+internal fun Chevron() = Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AppTheme.colors.faint)
 
 @Composable
 private fun ValueChevron(value: String) {

@@ -8,6 +8,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import ru.adsrv.frpjump.mqtt.plugins.PluginsSummary
+import ru.adsrv.frpjump.mqtt.plugins.pluginsSummary
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.notices.NoticeKind
@@ -51,6 +57,12 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     /** Settings › Version: a newer release and its download; the app keeps them across screens. */
     val update: StateFlow<UpdateState> = app.updater.state
+
+    /** Settings › «Плагины»: how many are on, and whether a connection has its own setting. */
+    val plugins: StateFlow<PluginsSummary?> = app.mqttPlugins.changes
+        .map { pluginsSummary(app.mqttPlugins.get()) }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun checkForUpdates() = app.updater.check()
 
