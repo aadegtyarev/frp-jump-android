@@ -279,7 +279,8 @@ no separate "publish under": the topic field is the way to any other topic.
   branch without a value, or "Publish here…", the focus is on the topic. 2b adds a format switch Text / JSON (JSON is
   validated and can be formatted) and the last payloads sent to this
   topic, one tap away.
-- **Retain** and **QoS** (0/1/2); 2a starts each sheet at retain off,
+- **Retain** and **QoS** (0/1/2); with Retain on and an empty value the
+  sheet warns in one line that it deletes the topic's retained value; 2a starts each sheet at retain off,
   QoS 1; 2b remembers them per topic.
 - From stage 6 only: the status/command switch (see the plugin below).
   Before it the value goes to the topic in the field, nothing else.

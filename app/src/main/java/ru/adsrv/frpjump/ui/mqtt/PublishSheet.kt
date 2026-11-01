@@ -233,6 +233,10 @@ fun PublishSheet(
             }
             Switch(checked = retain, onCheckedChange = null)
         }
+        // An empty retained message is how MQTT removes a retained value: say so before it is sent.
+        if (retain && payload.isEmpty()) {
+            Text(stringResource(R.string.mqtt_publish_retain_empty), fontSize = 13.sp, lineHeight = 18.sp, color = colors.warning)
+        }
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.mqtt_publish_qos), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
             Segmented(QOS_LEVELS, qos, label = { it.toString() }, onPick = {

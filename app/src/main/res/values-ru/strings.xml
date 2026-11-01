@@ -789,7 +789,7 @@
     <string name="mqtt_search_whole">Искать во всём дереве</string>
     <string name="mqtt_before_session">до подключения</string>
     <string name="mqtt_publish_here">Записать сюда…</string>
-    <string name="mqtt_mask_topic_hint">Только сам топик</string>
+    <string name="mqtt_mask_topic_hint">Значение этого топика, без того, что внутри</string>
     <string name="mqtt_mask_level_hint">+ — прямые потомки: …/a, но не …/a/b</string>
     <string name="mqtt_mask_branch_hint"># — всё внутри, вместе с самим топиком</string>
     <string name="mqtt_explore">Обзор</string>
@@ -849,6 +849,7 @@
     <string name="mqtt_publish_title">Запись в топик</string>
     <string name="mqtt_publish_retain">Retain</string>
     <string name="mqtt_publish_retain_hint">Брокер сохранит значение и отдаст его каждому новому подписчику</string>
+    <string name="mqtt_publish_retain_empty">Пустое значение с Retain удалит сохранённое значение топика</string>
     <string name="mqtt_publish_send">Отправить</string>
     <string name="mqtt_topic_reserved">Топики на $ брокеры резервируют; этот могут отклонить.</string>
     <string name="mqtt_publish_accepted">Брокер принял</string>

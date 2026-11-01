@@ -746,7 +746,7 @@
     <string name="mqtt_search_whole">Search the whole tree</string>
     <string name="mqtt_before_session">before connecting</string>
     <string name="mqtt_publish_here">Publish here…</string>
-    <string name="mqtt_mask_topic_hint">This topic only</string>
+    <string name="mqtt_mask_topic_hint">This topic\'s value, nothing below it</string>
     <string name="mqtt_mask_level_hint">+ = direct children: …/a, not …/a/b</string>
     <string name="mqtt_mask_branch_hint"># = everything inside, the topic itself too</string>
     <string name="mqtt_explore">Explore</string>
@@ -804,6 +804,7 @@
     <string name="mqtt_publish_title">Publish to a topic</string>
     <string name="mqtt_publish_retain">Retain</string>
     <string name="mqtt_publish_retain_hint">The broker keeps the value and gives it to every new subscriber</string>
+    <string name="mqtt_publish_retain_empty">An empty value with Retain deletes the topic\'s retained value</string>
     <string name="mqtt_publish_qos" translatable="false">QoS</string>
     <string name="mqtt_publish_send">Send</string>
     <string name="mqtt_topic_reserved">Topics starting with $ are reserved by brokers; this one may be refused.</string>

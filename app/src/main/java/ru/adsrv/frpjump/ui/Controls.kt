@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
@@ -320,11 +321,21 @@ fun SheetHeader(
 fun SheetClose(sheet: SheetState, onDismiss: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     IconButton(
-        onClick = { scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss() } },
+        onClick = {
+            // Already sliding away: one dismiss is enough.
+            if (sheet.targetValue != SheetValue.Hidden) {
+                // Dismissed only once it is really gone, not when the slide was cut short.
+                scope.launch { sheet.hide() }.invokeOnCompletion { if (!sheet.isVisible) onDismiss() }
+            }
+        },
         enabled = enabled,
         modifier = modifier.size(48.dp),
     ) {
-        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close), tint = AppTheme.colors.muted)
+        Icon(
+            Icons.Filled.Close,
+            contentDescription = stringResource(R.string.close),
+            tint = AppTheme.colors.muted.copy(alpha = if (enabled) 1f else 0.38f),
+        )
     }
 }
 
