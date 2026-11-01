@@ -603,11 +603,33 @@ filling in the user name leaves the saved password alone.
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.
 - The terminal requests `xterm-256color` and sends `window-change` when the
-  view or the font size changes. Below it, as the mockup: Esc, Tab, Ctrl,
-  Alt, ↑, ↓ and "⋯", which opens a second row (← → Home End PgUp PgDn
-  `| ~ / -`). Ctrl and Alt stay held, lit, until the next key.
+  view or the font size changes. Below it, one row of keys: ^C, Paste,
+  ← ↑ ↓ →, ⌫ (DEL), ⏎ (CR) and ⌨, which shows and hides the keyboard (a
+  tap on the terminal shows it too). Paste is the selection menu's paste
+  and is dimmed while the clipboard has no text. Either way trailing line
+  breaks and blank lines are dropped, so a copied line never runs by itself. With
+  bracketed paste on (the remote side's DECSET 2004, read from the
+  emulator) the text goes as is; several lines without it ask first
+  ("You are pasting N lines"): Paste (as is, the lines run) or Remove line
+  breaks (lines trimmed, blank ones dropped, a space between); ✕ or a
+  swipe down cancels. Joining is plain text
+  work: it does not know shell syntax, so a line ending in a `\`
+  continuation keeps that `\` in the middle of the joined line. Under
+  tmux the flag is not trusted (tmux keeps bracketed paste on toward the
+  app and strips it for a pane that did not ask, as `sh`), so several
+  lines are always asked about there. A multiplexer started by hand in a
+  plain-shell tab (typing `tmux` or `screen`) can't be seen, so there the
+  same caveat applies without the sheet. A clipboard of only spaces and line
+  breaks pastes nothing and says so. While the keyboard is up, extra rows
+  slide in above that row: Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
+  and `| ~ / -` (one line when they all fit, as in landscape; even lines
+  when narrow). Ctrl and Alt stay held, lit, until the next key, and apply
+  to ⌫ ⏎ and the arrows as to a hardware keyboard; ^C ^D ^Z ^R ^L send
+  their control byte as is and, like a snippet, use up a held Ctrl / Alt.
+  The arrows and ⌫ repeat while held (after 400 ms, then about 15 a
+  second), with every repeat taking the Ctrl / Alt held at the press.
   Long-press selects text (Copy / Paste), pinch or A− / A+ changes the font
-  size, ⌨ brings the keyboard back.
+  size.
 - Full screen (the corners icon in the bar) hides the bar and the system
   bars; the terminal, the session tabs (when there are several), the
   snippets and the keys stay, and a thin line says what a session that is
