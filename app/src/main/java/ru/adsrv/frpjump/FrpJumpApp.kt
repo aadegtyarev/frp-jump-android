@@ -238,6 +238,9 @@ class FrpJumpApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First, before anything can open a connection: the swap removes "BC" for a moment, and a TLS
+        // handshake in that moment fails ("KeyStoreException: BKS not found"), as the first /version did.
+        installFullBouncyCastle()
         Texts.init(this)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         restoreAppLanguage(settings.settings.value.language)
@@ -307,7 +310,6 @@ class FrpJumpApp : Application() {
             scope = appScope,
             inspect = { apk, version -> apkProblem(archiveFacts(this, apk), installedFacts(this), version) },
         ).also { it.start(visible) }
-        installFullBouncyCastle()
         // Its own Keystore key, shared by all profiles: re-enrolling must not lose the SSH key.
         val sshBox = KeystoreSecretBox(SSH_KEY_ALIAS)
         sshKeys = SshKeyStore(AtomicTextFile(File(filesDir, "ssh_keys.json")), sshBox)
