@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.connections
 
+import ru.adsrv.frpjump.ui.mqtt.PluginsSheet
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -41,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -652,6 +654,7 @@ fun ConnectionDialogs(
     ui.editing?.let { row ->
         // Live, not as the row was when "Change" was tapped: a tunnel may come up meanwhile.
         val now = rows.firstOrNull { it.key == row.key } ?: row
+        var plugins by rememberSaveable { mutableStateOf(false) }
         ConnectionSheet(
             device = row.connection.device,
             editing = row.connection,
@@ -660,7 +663,11 @@ fun ConnectionDialogs(
             ports = rememberLocalPortContext(actions, row.profile),
             onSave = { connection, _, done -> actions.save(row.profile, connection, previous = row.connection, connectNow = false, onDone = done) },
             onDismiss = { ui.editing = null },
+            onPlugins = { plugins = true },
         )
+        if (plugins) {
+            PluginsSheet(row.profile, row.connection.id, subtitle = connectionLabel(LocalContext.current, row.connection), onDismiss = { plugins = false })
+        }
     }
 }
 

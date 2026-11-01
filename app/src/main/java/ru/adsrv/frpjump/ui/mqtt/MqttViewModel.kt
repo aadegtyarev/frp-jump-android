@@ -48,6 +48,9 @@ import ru.adsrv.frpjump.mqtt.rootedPin
 import ru.adsrv.frpjump.mqtt.maskCoveredBy
 import ru.adsrv.frpjump.mqtt.subscriptionRows
 import ru.adsrv.frpjump.mqtt.typedFilterRefusal
+import ru.adsrv.frpjump.mqtt.plugins.Rule
+import ru.adsrv.frpjump.mqtt.plugins.STATUS_COMMAND_PLUGIN
+import ru.adsrv.frpjump.mqtt.plugins.rulesInForce
 
 /** The explorer's tabs under its top bar, in their order; a third one fits the row. */
 enum class ExplorerTab { TREE, SUBSCRIPTIONS }
@@ -393,9 +396,24 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     }
 
     /**
+     * The rules of the "Status and command topics" plugin in force for this
+     * connection, own rules first, then the presets on; empty with the
+     * plugin off. Read again when the settings change; an own rule deleted
+     * with Undo on screen is left out until Undo brings it back.
+     */
+    val commandRules: StateFlow<List<Rule>> = session?.let { s ->
+        combine(app.mqttPlugins.changes, app.pendingUndo.hidden) { _, hidden ->
+            val settings = app.mqttPlugins.get(s.profile, s.connectionId).statusCommand
+            rulesInForce(settings, STATUS_COMMAND_PLUGIN.presets, PendingUndo.mqttRules(hidden, s.profile, s.connectionId))
+        }.flowOn(Dispatchers.IO)
+    }.let { it ?: flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
      * Send of the publish sheet (the topic checked by it); [done] gets the
      * answer on the main thread. A message that left the phone is
-     * remembered for its topic: the payload, retain, QoS and format.
+     * remembered for the topic in the sheet's field (also when a rule sent
+     * it to a command topic): the payload, retain, QoS and format.
      */
     fun publish(request: PublishRequest, done: (PublishAnswer) -> Unit) {
         val s = session ?: return done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
@@ -407,7 +425,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                     // Under the store's lock, so overlapping sends show in the order they were stored.
                     synchronized(memory) {
                         // A failed write (a full disk) keeps what was sent in memory; the send itself went.
-                        runCatching { with(request) { memory.sent(s.profile, s.connectionId, topic, payload, retain, qos, json) } }
+                        runCatching { with(request) { memory.sent(s.profile, s.connectionId, field, payload, retain, qos, json) } }
                             .onFailure { Log.w(TAG, "publish memory not saved: ${it.message}") }
                         published.value = memory.get(s.profile, s.connectionId)
                     }

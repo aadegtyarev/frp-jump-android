@@ -1,7 +1,12 @@
 package ru.adsrv.frpjump.mqtt
 
-/** What the publish sheet's Send sends: [payload] as UTF-8 to [topic]; [json] is the format it was written in. */
-data class PublishRequest(val topic: String, val payload: String, val qos: Int, val retain: Boolean, val json: Boolean)
+/**
+ * What the publish sheet's Send sends: [payload] as UTF-8 to [topic]; [json]
+ * is the format it was written in. [field] is the topic in the sheet's
+ * field, under which the send is remembered: [topic] is another one when a
+ * rule sends the value to a command topic.
+ */
+data class PublishRequest(val topic: String, val payload: String, val qos: Int, val retain: Boolean, val json: Boolean, val field: String = topic)
 
 /** Whether [answer] means the message left the phone: what the sheet remembers. */
 fun wasSent(answer: PublishAnswer): Boolean = answer == PublishAnswer.Accepted || answer == PublishAnswer.Unconfirmed

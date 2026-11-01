@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui.connections
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -84,6 +85,8 @@ fun ConnectionSheet(
     ports: LocalPortContext,
     onSave: (connection: Connection, connectNow: Boolean, done: (String?) -> Unit) -> Unit,
     onDismiss: () -> Unit,
+    /** Opens the MQTT plugins of the connection [editing]; offered while the kind is MQTT. */
+    onPlugins: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
@@ -245,6 +248,9 @@ fun ConnectionSheet(
                         problem = stringResource(R.string.ssh_user_missing).takeIf { problems.userMissing },
                     )
                 }
+                if (kind == PortKind.MQTT && editing != null && onPlugins != null) {
+                    PluginsRow(onPlugins)
+                }
                 if (editing == null) {
                     Row(
                         Modifier
@@ -281,6 +287,26 @@ fun ConnectionSheet(
                 }
             }
         }
+    }
+}
+
+/** "Plugins ›": the connection's MQTT plugins, saved on their own (not by Save). */
+@Composable
+private fun PluginsRow(onClick: () -> Unit) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.plugins_title), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.plugin_status_command), fontSize = 13.sp, color = colors.muted)
+        }
+        Text("›", fontSize = 22.sp, color = colors.muted)
     }
 }
 

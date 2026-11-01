@@ -125,6 +125,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     val focused by vm.focused.collectAsStateWithLifecycle()
     val published by vm.published.collectAsStateWithLifecycle()
     val tab by vm.tab.collectAsStateWithLifecycle()
+    val rules by vm.commandRules.collectAsStateWithLifecycle()
     val colors = AppTheme.colors
     val session = vm.session
     var menu by remember { mutableStateOf(false) }
@@ -133,6 +134,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var focusSearch by rememberSaveable { mutableStateOf(false) }
     var subscribing by rememberSaveable { mutableStateOf(false) }
+    var plugins by rememberSaveable { mutableStateOf(false) }
     // The pin whose mask is being changed, by its filter.
     var masking by rememberSaveable { mutableStateOf<String?>(null) }
     // "Publish here…": the levels of the place it was asked at (a Bundle holds no MqttPath).
@@ -232,6 +234,15 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                                         vm.refreshTree()
                                     },
                                 )
+                                if (session != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.mqtt_plugins_menu)) },
+                                        onClick = {
+                                            menu = false
+                                            plugins = true
+                                        },
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.terminal_close_session)) },
                                     enabled = state.state != MqttState.Ended,
@@ -342,6 +353,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             onPin = { vm.pin(card.path, it) },
             onUnpin = { vm.unpin(card.path, it) },
             published = published,
+            rules = rules,
             onPublish = vm::publish,
             onOpenBranch = {
                 // Going somewhere ends the search it was found by (as a typed path does).
@@ -357,9 +369,13 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             start = publishAtLevel(MqttPath(levels)),
             state = state.state,
             published = published,
+            rules = rules,
             onPublish = vm::publish,
             onDismiss = { writingAt = null },
         )
+    }
+    if (plugins && session != null) {
+        PluginsSheet(session.profile, session.connectionId, subtitle = target, onDismiss = { plugins = false })
     }
     if (typing) {
         TopicDialog(
