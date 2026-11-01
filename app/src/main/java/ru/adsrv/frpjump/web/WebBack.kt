@@ -21,31 +21,50 @@ enum class Bounce { SKIP_REDIRECT, CLOSE }
 /**
  * Catches a Back that bounces: single-page UIs (homeui) keep a first entry
  * (`/`) that pushes their start route the moment it is shown, so going back
- * to it lands right where Back started, forever. When, shortly after a
- * Back, the page pushes an entry at or past the one Back left, that entry
- * behind was a redirect: Back then steps over it ([Bounce.SKIP_REDIRECT],
- * two entries back) or, with nothing before it, closes ([Bounce.CLOSE]).
+ * to it lands right where Back started, forever. A bounce is a push, after
+ * the Back landed, of the very URL Back left: the entry behind was a
+ * redirect, and Back steps over it ([Bounce.SKIP_REDIRECT], two entries
+ * back) or, with nothing before it, closes ([Bounce.CLOSE]). A push of
+ * another URL (a link, the page's own navigation) is never a bounce and
+ * disarms it, as does anything the owner starts ([cancel]); [capMs] after
+ * the landing nothing counts any more.
  */
-class BackBounce(private val windowMs: Long = 1000) {
+class BackBounce(private val capMs: Long = 5000) {
     private var fromIndex = -1
-    private var at = 0L
+    private var fromUrl: String? = null
+    private var landedAt = -1L
 
-    /** Back is about to leave the history entry at [index]. */
-    fun leaving(index: Int, now: Long) {
+    /** Waiting for a Back to land or bounce: only then do history events need the back/forward list. */
+    val armed: Boolean get() = fromUrl != null
+
+    /** Back is about to leave the history entry at [index], showing [url]. A later Back replaces an earlier one. */
+    fun leaving(index: Int, url: String) {
         fromIndex = index
-        at = now
+        fromUrl = url
+        landedAt = -1L
     }
 
-    /** A history entry is now at [index] (of the web view's back/forward list); non-null when Back bounced. */
-    fun landed(index: Int, now: Long): Bounce? {
-        if (fromIndex < 0) return null
-        if (now - at > windowMs) {
-            fromIndex = -1
+    /** Forward, reload, another page asked for: whatever comes next is not a bounce. */
+    fun cancel() {
+        fromIndex = -1
+        fromUrl = null
+        landedAt = -1L
+    }
+
+    /** A history entry at [index] of the web view's back/forward list now shows [url]; non-null when Back bounced. */
+    fun landed(index: Int, url: String, now: Long): Bounce? {
+        val left = fromUrl ?: return null
+        if (landedAt >= 0 && now - landedAt > capMs) {
+            cancel()
             return null
         }
-        // The back landing itself (or an in-page route on it): wait for a push.
-        if (index < fromIndex) return null
-        fromIndex = -1
+        if (index < fromIndex) {
+            // The Back's landing (or an in-page route on it): the cap runs from the first one.
+            if (landedAt < 0) landedAt = now
+            return null
+        }
+        cancel()
+        if (url != left) return null
         // The list is now [... earlier, redirect, pushed]: earlier is two back, if there is one.
         return if (index >= 2) Bounce.SKIP_REDIRECT else Bounce.CLOSE
     }

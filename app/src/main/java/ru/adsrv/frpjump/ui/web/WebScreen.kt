@@ -146,8 +146,6 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     var title by remember { mutableStateOf(device) }
     var url by remember { mutableStateOf(start) }
     var progress by remember { mutableIntStateOf(0) }
-    var canGoBack by remember { mutableStateOf(false) }
-    var canGoForward by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     /** Bumped to replace a web view whose renderer is gone. */
     var generation by remember { mutableIntStateOf(0) }
@@ -169,6 +167,9 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     // This web view's first page was asked for (after clearing another site's data, maybe later).
     var loadIssued by remember(webView) { mutableStateOf(false) }
     val keep = { page: String? -> page?.let { app.webPages.remember(profile, device, targetPort, localPort, it) } }
+    // Per web view: a fresh one after a renderer crash starts with no history to walk.
+    var canGoBack by remember(webView) { mutableStateOf(false) }
+    var canGoForward by remember(webView) { mutableStateOf(false) }
     val bounce = remember(webView) { BackBounce() }
     val currentOnBack by rememberUpdatedState(onBack)
     val close = { currentOnBack() }
@@ -191,11 +192,11 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                 // Every event, in-page routes (history.pushState) included: Back walks what the page has.
                 canGoBack = webView.canGoBack()
                 canGoForward = webView.canGoForward()
-                if (event == PageEvent.HISTORY) {
+                if (event == PageEvent.HISTORY && bounce.armed) {
                     val index = webView.copyBackForwardList().currentIndex
-                    when (bounce.landed(index, SystemClock.uptimeMillis())) {
+                    when (bounce.landed(index, pageUrl, SystemClock.uptimeMillis())) {
                         Bounce.SKIP_REDIRECT -> {
-                            bounce.leaving(index, SystemClock.uptimeMillis())
+                            bounce.leaving(index, pageUrl)
                             webView.goBackOrForward(-2)
                         }
                         Bounce.CLOSE -> close()
@@ -294,11 +295,15 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                     tunnelGone = false
                     webView.visibility = View.VISIBLE
                     // Before the first load was asked for, that load is still to come and goes where it should.
-                    if (!rendererGone && loadIssued) webView.loadUrl(app.webPages.startFor(profile, device, targetPort, localPort, root))
+                    if (!rendererGone && loadIssued) {
+                        bounce.cancel()
+                        webView.loadUrl(app.webPages.startFor(profile, device, targetPort, localPort, root))
+                    }
                 }
             }
     }
     val reload: () -> Unit = {
+        bounce.cancel()
         notTls = false
         sslErrorSeen = false
         if (certRefused) {
@@ -321,7 +326,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         when (webBackFor(fullscreen, canGoBack, pageShown)) {
             WebBack.LEAVE_FULLSCREEN -> setFullscreen(false)
             WebBack.PAGE_BACK -> {
-                bounce.leaving(webView.copyBackForwardList().currentIndex, SystemClock.uptimeMillis())
+                bounce.leaving(webView.copyBackForwardList().currentIndex, url)
                 webView.goBack()
             }
             WebBack.CLOSE -> onBack()
@@ -366,6 +371,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 enabled = canGoForward && pageShown,
                                 onClick = {
                                     menu = false
+                                    bounce.cancel()
                                     webView.goForward()
                                 },
                             )
@@ -381,6 +387,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                 text = { Text(stringResource(R.string.web_start_page)) },
                                 onClick = {
                                     menu = false
+                                    bounce.cancel()
                                     webView.loadUrl(root)
                                 },
                             )
@@ -421,6 +428,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                                     val note = if (targetPort == 443) R.string.web_http_on_443 else R.string.web_not_tls_unsaved
                                     context.notice(context.getString(note), NoticeKind.WARN, long = true)
                                 }
+                                bounce.cancel()
                                 webView.loadUrl("http://127.0.0.1:$localPort/")
                             }
                         },
