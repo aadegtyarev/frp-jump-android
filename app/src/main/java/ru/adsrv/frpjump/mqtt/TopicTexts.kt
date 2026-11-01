@@ -211,3 +211,28 @@ fun middleEllipsis(text: String, maxChars: Int): String {
     if (tailStart < text.length && Character.isLowSurrogate(text[tailStart])) tailStart++
     return text.substring(0, head) + "…" + text.substring(tailStart)
 }
+
+/**
+ * What the root's `$SYS` row says while nothing of it is in the tree: `#`
+ * never brings `$` topics, so only a filter naming `$SYS` does.
+ */
+enum class SysRowState {
+    /** No pin names `$SYS`: opening the row subscribes it. */
+    NOT_SUBSCRIBED,
+
+    /** A pin names it and nothing came (a broker without `$SYS`). */
+    NO_MESSAGES,
+
+    /** The broker refused a filter under `$SYS` on this connection. */
+    REFUSED,
+}
+
+/** [SysRowState] of the root's `$SYS` row from the connection's [pins] and the filters the broker [refused]. */
+fun sysRowState(pins: Collection<String>, refused: Collection<String>): SysRowState {
+    fun namesSys(filter: String) = filter.substringBefore('/') == "\$SYS"
+    return when {
+        refused.any(::namesSys) -> SysRowState.REFUSED
+        pins.any(::namesSys) -> SysRowState.NO_MESSAGES
+        else -> SysRowState.NOT_SUBSCRIBED
+    }
+}

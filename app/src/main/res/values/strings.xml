@@ -780,6 +780,9 @@
     <string name="mqtt_search_in">Search in %1$s</string>
     <string name="mqtt_search_whole">Search the whole tree</string>
     <string name="mqtt_before_session">before connecting</string>
+    <string name="mqtt_sys_not_subscribed">not subscribed</string>
+    <string name="mqtt_sys_no_messages">no messages</string>
+    <string name="mqtt_sys_refused">no access</string>
     <string name="mqtt_publish_here">Publish here…</string>
     <string name="mqtt_mask_topic_hint">This topic\'s value, nothing below it</string>
     <string name="mqtt_mask_level_hint">+ = direct children: …/a, not …/a/b</string>
@@ -943,8 +946,8 @@
     <string name="plugin_rule_edit">Change</string>
     <string name="plugin_rule_except_line">Exclusion %1$d: %2$s</string>
     <string name="plugin_wirenboard">Wiren Board</string>
-    <string name="plugin_wirenboard_hint">The WB devices tab: devices, values with units, switches</string>
-    <string name="wb_tab_devices">WB devices</string>
+    <string name="plugin_wirenboard_hint">The WB tab: devices, values with units, switches</string>
+    <string name="wb_tab_devices" translatable="false">WB</string>
     <string name="wb_reading_devices">Reading devices…</string>
     <string name="wb_no_devices">No Wiren Board devices seen</string>
     <string name="wb_has_errors">has errors</string>

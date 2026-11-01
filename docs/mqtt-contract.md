@@ -140,7 +140,12 @@ neither option; see "Retained topics" for what that changes.
   match topics starting with `$`, so `$SYS` is never in the snapshot or
   the root. The root always shows a `$SYS` row; opening it subscribes
   `$SYS/#` like any branch, and a pin may name it (`$SYS/#`). A broker
-  without `$SYS` leaves the branch empty ("No messages").
+  without `$SYS` leaves the branch empty ("No messages"). While nothing
+  of `$SYS` is in the tree its row says why on the meta line: "not
+  subscribed" (no pin names it; a tap opens and subscribes it), "no
+  messages" (a pin names it, nothing came), "no access" (the broker
+  refused a filter under it); once its topics are seen it reads as any
+  branch (age · N topics).
 - **Pins.** Kept subscribed for the whole session (see "Pins").
 - **Refused.** A broker that refuses `#` (SUBACK failure, usually an ACL)
   gets an inline banner on the tree: "The broker does not allow reading the
@@ -198,9 +203,11 @@ neither option; see "Retained topics" for what that changes.
 
 ## Subscriptions tab
 
-Under the explorer's top bar two tabs, **Tree · Subscriptions**, drawn as
-the app's segmented switch; the Wiren Board plugin adds a third, **WB
-devices** (see "Payload views (plugins)"). The tab is kept
+The explorer's top bar has the device as its title, on up to two lines
+and drawn smaller rather than cut when longer, and "Port <n> · <MQTT
+version or state>" under it. Under it two tabs, **Tree · Subscriptions**, drawn as
+the app's segmented switch; the Wiren Board plugin adds a third, **WB**
+(see "Payload views (plugins)"). The tab is kept
 across rotation; Back on Subscriptions returns to Tree; the search (a mode
 of the tree) hides the tabs and opens on Tree. Opening a level from
 anywhere (a card's Open branch, a typed path) shows Tree. The connection
@@ -262,7 +269,9 @@ banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
 
 ## The tree
 
-- A path bar on top as in Files, but its root is a house icon, read out
+- A path bar on top as in Files, but drawn as a plain breadcrumb on the
+  ground (no field outline), shown below the root only (at the root it
+  would hold the house alone), and its root is a house icon, read out
   as "Root" (the whole tree; a `/` would read as a real topic prefix
   here), then one part per level. The empty first level, under which every
   topic starting with `/` lives, is the part `/` (read out as "leading
@@ -270,7 +279,8 @@ banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
   `⌂ /devices / wb-mr6c_1`, each of `⌂`, `/`, `devices` and `wb-mr6c_1` a
   part of its own; an empty level further down is `(empty)`. The card of
   the empty first level shows and copies its path as `/`, publishes from
-  `/`, and pins only as `/+` or `/#` (its own text is empty, no topic). Tap a part to go there; tap the path to type
+  `/`, and pins only as `/+` or `/#` (its own text is empty, no topic). Tap a part to go there; tap the path, or
+  **Go to topic** in the top bar's menu (also at the root), to type
   or paste a topic, taken as is (`/devices/x` and `devices/x` are different
   places); the dialog opens with the current path selected whole, so a
   paste replaces it, and the keyboard's action key is Go. A typed path to a topic without children opens its parent level
@@ -613,11 +623,12 @@ README, version 1.5.0 (2026-09-02), checked against a retained dump of a
 live controller; where they differ, both are read.
 
 - **The tab.** With the plugin on, the explorer's tabs become **Tree ·
-  Subscriptions · WB devices** («Устройства WB») as soon as the session
+  Subscriptions · WB** (one short label in every language, so the three
+  stay one line and one height) as soon as the session
   sees a control's meta (below); before that, and on a broker without the
   convention, there is no third tab. The three tabs share the segmented
-  switch's width equally; at large font sizes a label wraps to two lines
-  rather than being cut. Turning the plugin off, in Settings or for the
+  switch's width equally; «WB» never wraps, and only at very large font
+  sizes may another label wrap to two lines rather than being cut. Turning the plugin off, in Settings or for the
   connection (`docs/contract.md` scenario 12), removes the tab. The tab stays away wherever the
   plugin is off, until it is turned on again.
 - **Opening on it.** A connection whose last session showed the tab (kept
