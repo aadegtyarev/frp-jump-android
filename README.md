@@ -617,7 +617,9 @@ filling in the user name leaves the saved password alone.
   continuation keeps that `\` in the middle of the joined line. Under
   tmux the flag is not trusted (tmux keeps bracketed paste on toward the
   app and strips it for a pane that did not ask, as `sh`), so several
-  lines are always asked about there. A clipboard of only spaces and line
+  lines are always asked about there. A multiplexer started by hand in a
+  plain-shell tab (typing `tmux` or `screen`) can't be seen, so there the
+  same caveat applies without the sheet. A clipboard of only spaces and line
   breaks pastes nothing and says so. While the keyboard is up, extra rows
   slide in above that row: Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
   and `| ~ / -` (one line when they all fit, as in landscape; even lines

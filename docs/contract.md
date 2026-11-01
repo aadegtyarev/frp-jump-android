@@ -269,7 +269,8 @@ at once": Paste (as is, the lines run), Remove line breaks (each line trimmed,
 blank lines dropped, joined by a single space; no shell syntax, so a trailing
 `\` continuation stays); the sheet's ✕ or a swipe down cancels. In a tmux
 session the bracketed flag is not trusted (tmux keeps it on toward the app
-whatever the pane asked), so several lines always show the sheet there. While the
+whatever the pane asked), so several lines always show the sheet there; a
+multiplexer started by hand in a plain-shell tab can't be detected. While the
 keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
