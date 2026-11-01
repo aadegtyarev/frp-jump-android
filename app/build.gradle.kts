@@ -128,6 +128,9 @@ dependencies {
     implementation(libs.androidx.biometric)
     // The MQTT explorer: MQTT 5 and 3.1.1 (docs/mqtt-contract.md).
     implementation(libs.hivemq.mqtt.client)
+    // The file viewer: Sora Editor with TextMate grammars (LGPL-2.1, docs/files-contract.md › 5).
+    implementation(libs.sora.editor)
+    implementation(libs.sora.language.textmate)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

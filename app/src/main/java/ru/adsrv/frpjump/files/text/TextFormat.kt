@@ -1,7 +1,28 @@
 package ru.adsrv.frpjump.files.text
 
-/** How the viewer colours a text: by its name, else by its first line. */
-enum class TextFormat { PLAIN, MARKDOWN, LOG, JSON, YAML, INI, SHELL, JS }
+/**
+ * How the viewer colours a text: by its name, else by its first line. Each
+ * format but [PLAIN] is a TextMate grammar's [scope] (assets/textmate/).
+ */
+enum class TextFormat(val scope: String?) {
+    PLAIN(null),
+    MARKDOWN("text.html.markdown"),
+    LOG("text.log"),
+    JSON("source.json"),
+    YAML("source.yaml"),
+    INI("source.ini"),
+    SHELL("source.shell"),
+    JS("source.js"),
+    PYTHON("source.python"),
+    GO("source.go"),
+    C("source.c"),
+    LUA("source.lua"),
+    DOCKERFILE("source.dockerfile"),
+    SQL("source.sql"),
+    XML("text.xml"),
+    HTML("text.html.basic"),
+    CSS("source.css"),
+}
 
 private val BY_EXTENSION = mapOf(
     "md" to TextFormat.MARKDOWN, "markdown" to TextFormat.MARKDOWN,
@@ -16,6 +37,15 @@ private val BY_EXTENSION = mapOf(
     "nmconnection" to TextFormat.INI,
     "sh" to TextFormat.SHELL, "bash" to TextFormat.SHELL, "zsh" to TextFormat.SHELL, "ksh" to TextFormat.SHELL,
     "js" to TextFormat.JS, "mjs" to TextFormat.JS, "cjs" to TextFormat.JS,
+    "py" to TextFormat.PYTHON, "pyw" to TextFormat.PYTHON,
+    "go" to TextFormat.GO,
+    "c" to TextFormat.C, "h" to TextFormat.C,
+    "lua" to TextFormat.LUA,
+    "dockerfile" to TextFormat.DOCKERFILE,
+    "sql" to TextFormat.SQL,
+    "xml" to TextFormat.XML, "svg" to TextFormat.XML, "xsd" to TextFormat.XML, "plist" to TextFormat.XML,
+    "html" to TextFormat.HTML, "htm" to TextFormat.HTML,
+    "css" to TextFormat.CSS,
 )
 
 /** Whole names (dotfiles and logs without an extension). */
@@ -24,17 +54,19 @@ private val BY_NAME = mapOf(
     ".profile" to TextFormat.SHELL, ".zshrc" to TextFormat.SHELL, ".bash_aliases" to TextFormat.SHELL,
     ".env" to TextFormat.INI, ".gitconfig" to TextFormat.INI, ".editorconfig" to TextFormat.INI,
     "syslog" to TextFormat.LOG, "messages" to TextFormat.LOG, "dmesg" to TextFormat.LOG,
+    "dockerfile" to TextFormat.DOCKERFILE, "containerfile" to TextFormat.DOCKERFILE,
 )
 
 /**
  * The format [name] names, ignoring case, or null when it says nothing:
  * rotated logs (`syslog.1`, `app.log.3`) count as logs, `.env.local` as
- * `.env`.
+ * `.env`, `Dockerfile.dev` as a Dockerfile.
  */
 fun formatByName(name: String): TextFormat? {
     val lower = name.lowercase()
     BY_NAME[lower]?.let { return it }
     if (lower.startsWith(".env.")) return TextFormat.INI
+    if (lower.startsWith("dockerfile.")) return TextFormat.DOCKERFILE
     // Rotated logs: syslog.1, app.log.3.
     val unrotated = lower.replace(ROTATION, "")
     if (unrotated != lower) {
@@ -54,7 +86,7 @@ private val LOG_START = Regex(
 
 /**
  * The format a text with no telling name has, by its first non-blank line
- * ([head] is the text's start): a shebang of a shell or `node`, `{` or `[`
+ * ([head] is the text's start): a shebang of a shell, `node` or `python`, `{` or `[`
  * of JSON, `---` of YAML, `[section]` of INI, a time stamp of a log;
  * else plain.
  */
@@ -67,6 +99,7 @@ fun sniffFormat(head: String): TextFormat {
         return when {
             program in SHELLS -> TextFormat.SHELL
             program == "node" || program == "nodejs" -> TextFormat.JS
+            PYTHON_PROGRAM.matches(program) -> TextFormat.PYTHON
             else -> TextFormat.PLAIN
         }
     }
@@ -81,6 +114,8 @@ fun sniffFormat(head: String): TextFormat {
 }
 
 private val SECTION = Regex("""\[[\w .:"-]+]""")
+
+private val PYTHON_PROGRAM = Regex("""python[0-9.]*""")
 
 private val SHELLS = setOf("sh", "bash", "ash", "dash", "zsh", "ksh", "busybox")
 
@@ -128,5 +163,5 @@ fun looksLikeJson(text: String): Boolean {
 private fun literalAt(text: String, at: Int, word: String): Boolean {
     if (!text.startsWith(word, at)) return false
     val after = text.getOrNull(at + word.length) ?: return true
-    return !isWordChar(after) && after != '-'
+    return !after.isLetterOrDigit() && after != '_' && after != '-'
 }

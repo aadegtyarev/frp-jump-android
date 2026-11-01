@@ -51,3 +51,18 @@
 # the obfuscated names back.
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Sora Editor and its TextMate support (LGPL-2.1, with tm4e under EPL-2.0)
+# stay whole, unrenamed and unmerged with the app's code: a user can swap in
+# their own build of the library (LGPL-2.1 section 6), and tm4e reads its
+# grammars and themes through Gson and reflection. joni / jcodings (the
+# regex engine) and snakeyaml-engine come along with it.
+-keep class io.github.rosemoe.sora.** { *; }
+-keep class org.eclipse.tm4e.** { *; }
+-keep class org.joni.** { *; }
+-keep class org.jcodings.** { *; }
+-dontwarn org.eclipse.jdt.annotation.**
+-dontwarn org.snakeyaml.engine.**
+# Sora's ShareableData.clone() refers to kotlin.Cloneable's DefaultImpls,
+# which no kotlin-stdlib ships; the viewer never clones its text.
+-dontwarn kotlin.Cloneable$DefaultImpls

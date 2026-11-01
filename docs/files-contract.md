@@ -116,39 +116,52 @@ transfers that resume and run in the background.
   process went) go once a few minutes old: when a file screen goes, and at
   the next start. A copy gone from under a viewer (the cache cleared)
   closes it with a note.
+- The viewer is [Sora Editor](https://github.com/Rosemoe/sora-editor)
+  0.23.7 (LGPL-2.1) with its TextMate support (tm4e and the joni regex
+  engine), in the Compose screen as a view, read only; the editor of
+  stage 4 is the same view with editing turned on.
 - It shows the text as UTF-8 (a bad byte shows as �), monospace, line
   numbers off, lines wrapped; "⋮" has Wrap lines, Line numbers, the text
   size (A− / A+, shared with the terminal), Copy all, Share and Open with.
-  It scrolls by line, so a 2 MB log of 50 000 lines scrolls smoothly; a
-  line longer than 1000 characters (minified JSON, a long log line) is
-  shown in pieces of 1000, each piece after the first marked `↪`. Control
-  characters show as their signs (`␛`, a lone CR as `␍`). TalkBack reads
-  each row's text, without its number or `↪`.
+  A text with a line over 16 K characters (minified JSON) is not wrapped
+  (Sora's wrapping costs a line's length squared: a 52 K line takes 6 s on
+  the emulator); it scrolls sideways, and the menu's Wrap lines is off,
+  saying "Lines too long to wrap". Line numbers stay in place while the
+  text scrolls sideways. ASCII control characters show as their names in
+  a small box (`ESC`, `BEL`, `NUL`); CR, LF and CR LF all end a line, so
+  a lone CR (a progress bar) starts a new one. TalkBack reads the lines on
+  screen (not the whole file, which may be 2 MB) and offers no editing
+  actions. A long press selects text, with the editor's Copy.
   Copy all takes up to 128 K characters (the system clipboard's limit is
   near); a larger file says to use Share. A copy of a secret-looking file
   (`.env`, keys, `.nmconnection`) is marked sensitive, so Android 13 and
   later do not preview it.
 - A `.conf`, `.cfg` or `.cnf` whose text is a JSON object or array (as
   `wb-mqtt-serial.conf`) is coloured as JSON; otherwise as INI.
-- Colours, from the theme's colours in light and dark, picked by the
-  file's name and, without a known one, its first line (`#!` of a shell or
-  `node`, a leading `{` / `[`, `---`, a log timestamp): Markdown (headings,
-  emphasis, inline and fenced code, links, list marks, quotes); logs
-  (time stamps; ERROR/FATAL/CRIT in red, WARN in amber, INFO/DEBUG muted);
-  JSON (keys, strings, numbers, `true` / `false` / `null`); YAML (keys,
-  comments, strings, anchors and aliases, list dashes, block scalars);
-  INI, conf, properties, systemd units, `.env` (`[sections]`, keys,
-  comments); shell (comments, strings, `$variables`, keywords);
-  JavaScript, wb-rules among it (comments, strings, keywords, numbers,
-  regular expressions). Anything else is plain text. Colouring is by line
-  with the state a line leaves (an open fence, block comment, quote or
-  here-document), worked out off the main thread; the text shows at once
-  and the colours follow. Lines over 4000 characters stay plain in
-  Markdown, logs, YAML and INI.
+- Colours: TextMate grammars, the ones VS Code ships (1.142.0; YAML the
+  textmate one of 1.90.0), bundled in `assets/textmate/` with their
+  sources and licenses in `NOTICE.md`, a few patterns changed so joni
+  compiles them (listed there, checked by `GrammarsTest`). The grammar
+  goes by the file's name and, without a known one, its first line (`#!`
+  of a shell, `node` or `python`, a leading `{` / `[`, `---`, a log
+  timestamp): Markdown (with fenced code in the languages below), logs
+  (time stamps; ERROR / FATAL / CRITICAL red, WARN amber, INFO / DEBUG
+  muted), JSON, YAML, INI, conf, properties, systemd units, `.env` and
+  TOML (as INI), shell, JavaScript (wb-rules among it), Python, Go, C,
+  Lua, Dockerfile, SQL, XML (and SVG), HTML, CSS. Anything else is plain
+  text. The scopes take the theme's own colours in light and dark
+  (`ui/files/ViewerTheme.kt`, each at least 4.5:1 on the card; checked by
+  `PaletteContrastTest`). A grammar is read when a file first needs it;
+  the text shows at once, plain, and the colours come when Sora has
+  coloured the whole text: a 2 MB, 50 000-line log about 20 s later on the
+  emulator (Sora 0.24 colours as it goes, but needs a newer Kotlin and
+  compile SDK than the app's). A line takes at most 2 s to colour, then
+  stays plain.
 - Search: the magnifier opens the search field over the top bar, as in
-  the file list; matches of the text, ignoring case, are marked, the
-  current one stronger, with "3 of 17" and next / previous; ✕ or Back
-  closes it. Nothing found: "No matches". It counts up to 10 000 matches.
+  the file list; matches of the text, ignoring case, are marked (Sora's
+  search, run off the main thread), the current one as the selection,
+  with "3 of 17" and next / previous, round from the last to the first;
+  ✕ or Back closes it. Nothing found: "No matches". Every match counts.
   The keyboard shrinks the text, so a match stepped to is never under it.
 - Editor (stage 4): the viewer plus editing, undo; "Save" uploads it back.
 - Saving through a symlink writes the file it points to, never replaces the
@@ -243,7 +256,8 @@ Decided 2026-10-31: by name only; content is searched in the terminal.
 4. Text editor with symlink-safe save and change detection.
 5. Pack and unpack.
 6. Search by name: the folder's filter and the search in subfolders.
-7. Text viewer with minimal colouring (before the editor of stage 4).
+7. Text viewer with minimal colouring (before the editor of stage 4);
+   then the viewer on Sora Editor with TextMate grammars.
 
 Each stage a separate PR, reviewed, checked on the emulator against a test
 device, then a build for the owner's phone.
@@ -258,8 +272,9 @@ device, then a build for the owner's phone.
   the target has the new content and its old mode.
 - Pack a folder to `.tar.gz`, download it, unpack another on the device.
 - No network: the last listing shows with "No connection".
-- Open a 2 MB log: it shows in the viewer, scrolls smoothly, ERROR
-  marked red; search `error` steps through the matches. A `.png` opens with
+- Open a 2 MB log: it shows in the viewer at once, scrolls smoothly, ERROR
+  marked red once coloured; search `error` steps through the matches. A
+  2 MB one-line JSON shows unwrapped and scrolls sideways. A `.png` opens with
   another app; a 5 MB log too, with a note.
 - In `/etc`, type `wb-`: the folder's matching rows show at once;
   "Search subfolders" lists `wb-rules/…` hits as they come; Stop ends it
@@ -269,3 +284,9 @@ device, then a build for the owner's phone.
 
 - Decided 2026-11-01: minimal colouring by format (see "5. View and
   edit"), in a viewer first; the editor reuses it.
+- Decided 2026-11-01: one component for viewing and editing, Sora Editor
+  with standard TextMate grammars (many languages), in place of the
+  app's own tokenizers; LGPL-2.1 accepted.
+- Open: Sora 0.24 (colours a large file as it goes, every 1000 lines)
+  needs Kotlin 2.2+ and compile SDK 36; the app is on Kotlin 2.0.21 and
+  SDK 35, so the viewer stays on 0.23.7 until the toolchain moves.
