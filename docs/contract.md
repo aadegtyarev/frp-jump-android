@@ -493,7 +493,7 @@ on/off state and settings are kept changes.
 
 | Id | Name (ru / en) | What it changes | Settings |
 | --- | --- | --- | --- |
-| `wirenboard` | Wiren Board | the «Устройства WB» tab | title language, hidden controls |
+| `wirenboard` | Wiren Board | the «WB» tab (WB devices) | title language, hidden controls |
 | `status-command` | «Топики статуса и команд» / "Status and command topics" | the topic switch in the publish sheet | presets, own rules |
 
 A plugin is either on or off. When it is off, nothing of it shows: no
