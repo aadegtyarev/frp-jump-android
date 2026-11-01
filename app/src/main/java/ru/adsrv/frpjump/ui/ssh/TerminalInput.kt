@@ -15,8 +15,8 @@ import kotlin.math.abs
 
 /**
  * Holds a Termux view and owns its keyboard focus. Normally the keyboard
- * composes text and Termux sends it on commit. Settings › Terminal › Direct
- * input opts into sending composing changes immediately, useful for shell
+ * can compose text and Termux sends it on commit when Direct input is off.
+ * Settings › Terminal › Direct input defaults to sending changes immediately, useful for shell
  * commands and sticky Ctrl/Alt. That mode also asks for no suggestions.
  * [TerminalView] is final, so this parent supplies EditorInfo and optionally
  * wraps its connection. Hardware key events pass through in either mode.
@@ -82,7 +82,7 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
     private var activeConnection: InputConnection? = null
 
     /** Switching mode finishes the old composition once, then asks the IME for a fresh connection. */
-    var directInput: Boolean = false
+    var directInput: Boolean = true
         set(value) {
             if (field == value) return
             activeConnection?.finishComposingText()

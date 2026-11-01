@@ -301,8 +301,9 @@ keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
-Settings → Terminal → Direct input is off by default, including after an
-upgrade from a version without the setting. Off uses ordinary text input:
+Settings → Terminal → Direct input is on by default, including when an
+existing settings file has no value for it. An explicitly stored on/off
+value is preserved. Off uses ordinary text input:
 the keyboard may compose a word and offer suggestions before committing it
 to the terminal. On requests no suggestions and forwards composing changes
 immediately, as in earlier versions. The choice is app-wide and persisted;
