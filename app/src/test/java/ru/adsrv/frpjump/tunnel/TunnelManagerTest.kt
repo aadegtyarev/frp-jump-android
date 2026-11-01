@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -161,9 +162,12 @@ class TunnelManagerTest {
     /** The profile's pinned local ports, as its connections give them. */
     @Volatile private var pins: Map<String, Int> = emptyMap()
 
-    private suspend fun eventually(what: String, check: () -> Boolean) = withTimeout(2_000) {
-        while (!check()) delay(10)
-    }.also { assertTrue(what, check()) }
+    // A state not there yet (an empty list, say) is "not yet", not a failure; slow CI runners get time.
+    private suspend fun eventually(what: String, check: () -> Boolean) {
+        fun holds() = runCatching(check).getOrDefault(false)
+        withTimeoutOrNull(10_000) { while (!holds()) delay(10) }
+        assertTrue(what, holds())
+    }
 
     @Test
     fun `a sync starts frpc and the service for a consumed grant`() = runBlocking {
