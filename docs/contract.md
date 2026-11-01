@@ -63,6 +63,9 @@ enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
   that matters (a folder and a file tile share shape and size and differ by
   glyph and tint). A new control starts from an existing one, not from a
   new design.
+  Every bottom sheet has a ✕ on the right of its header that closes it,
+  read out as "Close", besides a swipe down, a tap outside and Back: a
+  sheet pulled to full height leaves no other visible way out.
 - Keep screens light. Each screen shows the main action and the state; a
   clear icon replaces a caption where the meaning is obvious. Rare actions
   (rename, delete, copy address, open in another app, forget profile) live in

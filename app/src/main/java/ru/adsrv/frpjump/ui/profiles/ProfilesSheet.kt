@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.ui.SheetHeader
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.NoticeLayer
 
@@ -69,9 +70,10 @@ fun ProfilesSheet(
     val forget by vm.forget.collectAsStateWithLifecycle()
     var confirm by rememberSaveable { mutableStateOf<String?>(null) }
     val colors = AppTheme.colors
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
         containerColor = colors.card,
     ) {
         // A message posted while the sheet is open shows on it, not under its scrim.
@@ -83,9 +85,13 @@ fun ProfilesSheet(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(stringResource(R.string.profiles), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(stringResource(R.string.profiles_hint), fontSize = 13.sp, color = colors.muted)
+                Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)) {
+                    SheetHeader(sheet, onDismiss) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(stringResource(R.string.profiles), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.profiles_hint), fontSize = 13.sp, color = colors.muted)
+                        }
+                    }
                 }
                 items.forEach { item ->
                     ProfileRow(

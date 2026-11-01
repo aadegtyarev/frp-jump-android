@@ -84,6 +84,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CopyGlyph
 import ru.adsrv.frpjump.ui.FolderGlyph
 import ru.adsrv.frpjump.ui.MainButton
+import ru.adsrv.frpjump.ui.SheetHeader
 import androidx.compose.material3.IconButton
 import androidx.compose.foundation.layout.size
 import ru.adsrv.frpjump.ui.NoticeLayer
@@ -156,9 +157,10 @@ fun TopicCard(
     }
     val json = reading?.json
     val view = chosen?.takeIf { it != PayloadView.JSON || json != null } ?: reading?.view
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
         containerColor = colors.card,
     ) {
         NoticeLayer {
@@ -169,7 +171,7 @@ fun TopicCard(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                SheetHeader(sheet, onDismiss, verticalAlignment = Alignment.CenterVertically) {
                     KindTile(card.isBranch)
                     Text(
                         nodeLabel(path, stringResource(R.string.mqtt_empty_level), stringResource(R.string.mqtt_leading_slash)),

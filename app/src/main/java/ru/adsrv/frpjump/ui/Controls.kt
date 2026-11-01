@@ -23,6 +23,17 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SheetState
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.stringResource
+import kotlinx.coroutines.launch
+import ru.adsrv.frpjump.R
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -248,9 +259,10 @@ fun MainButton(
 @Composable
 fun AppSheet(title: String, subtitle: String? = null, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val colors = AppTheme.colors
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
         containerColor = colors.card,
     ) {
         // A message posted while the sheet is open shows on it, not under its scrim.
@@ -263,13 +275,56 @@ fun AppSheet(title: String, subtitle: String? = null, onDismiss: () -> Unit, con
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    subtitle?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) }
+                SheetHeader(sheet, onDismiss) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        subtitle?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) }
+                    }
                 }
                 content()
             }
         }
+    }
+}
+
+/**
+ * A sheet's header: [title] (the name, wrapping as it needs) and, on the
+ * right of its first line, the close button every sheet has in the same
+ * place ([SheetClose]). The button is drawn over the sheet's side padding,
+ * so the header is as tall as the title and nothing under it moves.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SheetHeader(
+    sheet: SheetState,
+    onDismiss: () -> Unit,
+    enabled: Boolean = true,
+    verticalAlignment: Alignment.Vertical = Alignment.Top,
+    title: @Composable RowScope.() -> Unit,
+) {
+    Row(verticalAlignment = verticalAlignment) {
+        Row(Modifier.weight(1f), verticalAlignment = verticalAlignment, horizontalArrangement = Arrangement.spacedBy(14.dp)) { title() }
+        // Its icon lines up with the content's right edge; on a top-aligned title it sits on the first line.
+        Box(Modifier.width(36.dp).height(if (verticalAlignment == Alignment.Top) 28.dp else 48.dp), contentAlignment = Alignment.CenterEnd) {
+            SheetClose(sheet, onDismiss, enabled, Modifier.offset(x = 12.dp).wrapContentSize(unbounded = true))
+        }
+    }
+}
+
+/**
+ * ✕ that closes a sheet: it slides away, then [onDismiss] runs, as a
+ * swipe down or a tap outside would. 48 dp, read out as "Close".
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SheetClose(sheet: SheetState, onDismiss: () -> Unit, enabled: Boolean = true, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
+    IconButton(
+        onClick = { scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss() } },
+        enabled = enabled,
+        modifier = modifier.size(48.dp),
+    ) {
+        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close), tint = AppTheme.colors.muted)
     }
 }
 
