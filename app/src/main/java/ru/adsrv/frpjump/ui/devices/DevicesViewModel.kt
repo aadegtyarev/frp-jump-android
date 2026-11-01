@@ -93,7 +93,7 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
             directory.collect { now ->
                 // A pull of the profile left behind no longer spins on this one's list.
                 if (previous != null && previous != now) refreshing.value = false
-                previous?.wanted = false
+                previous?.want(this@DevicesViewModel, false)
                 previous = now
                 if (shown && now != null) want(now)
             }
@@ -104,11 +104,11 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     fun shown(visible: Boolean) {
         shown = visible
         val now = directory.value ?: return
-        if (visible) want(now) else now.wanted = false
+        if (visible) want(now) else now.want(this, false)
     }
 
     private fun want(devices: DeviceDirectory) {
-        devices.wanted = true
+        devices.want(this, true)
         viewModelScope.launch { devices.refresh() }
     }
 

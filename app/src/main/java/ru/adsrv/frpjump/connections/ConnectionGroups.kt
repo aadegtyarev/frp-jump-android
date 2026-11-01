@@ -18,8 +18,38 @@ data class DeviceGroup(
 
     val active: Boolean get() = rows.any { it.active }
 
-    /** Known to be offline: its connections that are down cannot be connected now. */
-    val offline: Boolean get() = device != null && !device.online
+    /** Known to be offline now ([knownOffline]): its connections that are down cannot be connected. */
+    val offline: Boolean get() = knownOffline(device)
+}
+
+/**
+ * Whether [device] is offline as of a fresh answer of the server. An old
+ * list (no answer since, or not checked yet since the start) may be wrong,
+ * and not being listed or a list not read says nothing: connecting is left
+ * to try then.
+ */
+fun knownOffline(device: DeviceRow?): Boolean = device != null && !device.online && !device.stale && !device.checking
+
+/** Whether [row]'s Connect (and the tap on its card) is off: down, on a device [offline] now. Up, it stays usable. */
+fun connectBlocked(row: ConnectionRow, offline: Boolean): Boolean = offline && !row.active
+
+/**
+ * The name a card shows over the port: the owner's own, unless it only says
+ * the kind again ([kindWord], case ignored), or none.
+ */
+fun connectionTitle(connection: Connection, kindWord: String): String? =
+    connection.customName?.trim()?.takeIf { it.isNotEmpty() && !it.equals(kindWord, ignoreCase = true) }
+
+/**
+ * [groups] in the [order] of their keys given at the start of a visit, so
+ * that a device does not jump under the finger when it connects or comes
+ * online; groups not in it (new ones) follow in their own order. Null
+ * [order]: as they are.
+ */
+fun keepOrder(groups: List<DeviceGroup>, order: List<String>?): List<DeviceGroup> {
+    if (order == null) return groups
+    val place = order.withIndex().associate { (i, key) -> key to i }
+    return groups.sortedBy { place[it.key] ?: Int.MAX_VALUE }
 }
 
 /**

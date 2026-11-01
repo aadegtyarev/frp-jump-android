@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -52,6 +54,8 @@ import ru.adsrv.frpjump.connections.CONNECTIONS_SEARCH_FROM
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.DeviceGroup
 import ru.adsrv.frpjump.connections.filterGroups
+import ru.adsrv.frpjump.connections.keepOrder
+import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.tunnel.Waiting
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PowerGlyph
@@ -65,6 +69,7 @@ import ru.adsrv.frpjump.ui.wasOnline
  * the rest. Each connection is the device card's own card. Search by
  * device or connection name once there are many.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectionsScreen(
     vm: ConnectionsViewModel,
@@ -79,10 +84,28 @@ fun ConnectionsScreen(
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val colors = AppTheme.colors
     val context = LocalContext.current
-    // The devices' online state as of now, each time the tab shows.
+    // The order of the devices, fixed for a visit (and after a pull): a device that connects or comes
+    // online does not jump under the finger; its dot and its buttons follow at once.
+    var order by remember { mutableStateOf<List<String>?>(null) }
+    // While the tab shows, the device lists are kept fresh, as on Devices.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { vm.shown() }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            order = null
+            vm.shown(true)
+            try {
+                awaitCancellation()
+            } finally {
+                vm.shown(false)
+            }
+        }
+    }
+    LaunchedEffect(state.groups, state.listsRead, state.refreshing) {
+        if (order == null && state.listsRead && !state.refreshing && state.groups.isNotEmpty()) order = state.groups.map { it.key }
+    }
+    val pull = {
+        order = null
+        vm.pull()
     }
     // "Disconnect all": the tunnels show down at once, with Undo. Only one still being restored is told
     // to its server now: then it spins until every server was asked (the line below tells the rest).
@@ -103,7 +126,7 @@ fun ConnectionsScreen(
     }
     BackHandler(enabled = searching) { closeSearch() }
     val all = state.rows
-    val shown = filterGroups(state.groups, query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
+    val shown = filterGroups(keepOrder(state.groups, order), query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
     Column(Modifier.fillMaxSize()) {
         if (searching) {
             SearchBar(
@@ -116,75 +139,81 @@ fun ConnectionsScreen(
                 hint = stringResource(R.string.connections_search_hint),
             )
         }
-        LazyColumn(
-            Modifier
+        PullToRefreshBox(
+            isRefreshing = state.refreshing,
+            onRefresh = pull,
+            modifier = Modifier
                 .fillMaxSize()
                 .then(if (searching) Modifier else Modifier.statusBarsPadding()),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(key = "title") {
-                Column(Modifier.padding(start = 4.dp, top = if (searching) 0.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!searching) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.tab_connections), fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            if (all.any { it.active } || restoring != null || disconnecting) {
-                                DisconnectAllButton(busy = disconnecting, onClick = disconnectAll)
-                            }
-                            if (all.size >= CONNECTIONS_SEARCH_FROM) {
-                                IconButton(onClick = {
-                                    searching = true
-                                    focusOnOpen = true
-                                }, modifier = Modifier.size(44.dp)) {
-                                    Icon(SearchGlyph, contentDescription = stringResource(R.string.connections_search), tint = colors.ink, modifier = Modifier.size(22.dp))
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item(key = "title") {
+                    Column(Modifier.padding(start = 4.dp, top = if (searching) 0.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!searching) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.tab_connections), fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                if (all.any { it.active } || restoring != null || disconnecting) {
+                                    DisconnectAllButton(busy = disconnecting, onClick = disconnectAll)
+                                }
+                                if (all.size >= CONNECTIONS_SEARCH_FROM) {
+                                    IconButton(onClick = {
+                                        searching = true
+                                        focusOnOpen = true
+                                    }, modifier = Modifier.size(44.dp)) {
+                                        Icon(SearchGlyph, contentDescription = stringResource(R.string.connections_search), tint = colors.ink, modifier = Modifier.size(22.dp))
+                                    }
                                 }
                             }
                         }
-                    }
-                    // Where "Disconnect all" was tapped: why tunnels may come back, until they are back.
-                    if (state.disconnectAllFailed && !disconnecting && restoring != null) {
-                        Text(stringResource(R.string.disconnect_all_failed), fontSize = 14.sp, color = colors.error)
-                    }
-                    restoring?.let { count ->
-                        val waiting = when (state.restoreWaiting) {
-                            Waiting.UNLOCK -> stringResource(R.string.restore_waiting_unlock)
-                            Waiting.NETWORK -> stringResource(R.string.restore_waiting_network)
-                            null -> null
+                        // Where "Disconnect all" was tapped: why tunnels may come back, until they are back.
+                        if (state.disconnectAllFailed && !disconnecting && restoring != null) {
+                            Text(stringResource(R.string.disconnect_all_failed), fontSize = 14.sp, color = colors.error)
                         }
-                        val line = pluralStringResource(R.plurals.tunnels_restoring, count, count)
-                        Text(waiting?.let { "$line $it" } ?: line, fontSize = 14.sp, color = colors.muted)
+                        restoring?.let { count ->
+                            val waiting = when (state.restoreWaiting) {
+                                Waiting.UNLOCK -> stringResource(R.string.restore_waiting_unlock)
+                                Waiting.NETWORK -> stringResource(R.string.restore_waiting_network)
+                                null -> null
+                            }
+                            val line = pluralStringResource(R.plurals.tunnels_restoring, count, count)
+                            Text(waiting?.let { "$line $it" } ?: line, fontSize = 14.sp, color = colors.muted)
+                        }
                     }
                 }
-            }
-            if (state.loaded && all.isEmpty()) {
-                item(key = "empty") { Text(stringResource(R.string.connections_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.padding(4.dp)) }
-            }
-            // A search that finds nothing says so, rather than leave an empty screen.
-            if (all.isNotEmpty() && shown.isEmpty()) {
-                item(key = "no-match") {
-                    Text(
-                        stringResource(R.string.connections_no_match, query.trim()),
-                        color = colors.muted,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .semantics { liveRegion = LiveRegionMode.Polite },
-                    )
+                if (state.loaded && all.isEmpty()) {
+                    item(key = "empty") { Text(stringResource(R.string.connections_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.padding(4.dp)) }
                 }
-            }
-            shown.forEachIndexed { index, group ->
-                item(key = "device/${group.key}") {
-                    GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0)
+                // A search that finds nothing says so, rather than leave an empty screen.
+                if (all.isNotEmpty() && shown.isEmpty()) {
+                    item(key = "no-match") {
+                        Text(
+                            stringResource(R.string.connections_no_match, query.trim()),
+                            color = colors.muted,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                    }
                 }
-                items(group.rows, key = { it.key }) { row ->
-                    ConnectionCard(
-                        row = row,
-                        sshMethod = state.sshMethods[row.key],
-                        sessions = row.sessionsIn(sessions),
-                        menuOpen = ui.menu == row.key,
-                        onMenu = { ui.menu = if (it) row.key else null },
-                        actions = actions,
-                        offline = group.offline,
-                    )
+                shown.forEachIndexed { index, group ->
+                    item(key = "device/${group.key}") {
+                        GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0)
+                    }
+                    items(group.rows, key = { it.key }) { row ->
+                        ConnectionCard(
+                            row = row,
+                            sshMethod = state.sshMethods[row.key],
+                            sessions = row.sessionsIn(sessions),
+                            menuOpen = ui.menu == row.key,
+                            onMenu = { ui.menu = if (it) row.key else null },
+                            actions = actions,
+                            offline = group.offline,
+                        )
+                    }
                 }
             }
         }

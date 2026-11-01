@@ -175,7 +175,8 @@ re-enroll.
   same (TCP: connects and copies the address). SSH with no login to use at
   once opens the login dialog first. Taps while it is coming up open it
   once. Leaving the screen before it is up cancels the open (the tunnel
-  stays). The disconnect button, "⋮" and the other buttons keep their own
+  stays). On a device offline now, a connection that is down has no tap
+  action and its Connect is off (scenario 5); "⋮" and a long press work. The disconnect button, "⋮" and the other buttons keep their own
   actions, and so does the state when it offers a choice ("Through the
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
@@ -200,12 +201,18 @@ Quick access to the saved connections of every device, active ones first.
   button ("Connect" / "Terminal" / "Explore" / "Open" / "Copy"),
   Disconnect while up, and "⋮". A tap on the card does its main action
   (scenario 4).
-- On a device known to be offline, a connection that is down is dimmed: its
-  Connect and the tap on its card are off, and its state says "Device
-  offline" instead of "Not connected". Its "⋮" still works. An active one
-  stays as it is, so it can be disconnected.
-- The device lists of the profiles on the tab are asked again each time the
-  tab shows, so the dots are current.
+- On a device offline as of a fresh answer of the server, a connection that
+  is down is dimmed: its Connect and the tap on its card are off, and its
+  state says "Device offline" instead of "Not connected". Its "⋮" and a long
+  press still work. An active one stays as it is, so it can be disconnected.
+  An old list (the server not answering, or not checked yet since the start)
+  blocks nothing: the device may be back. The device card does the same.
+- While the tab shows, every profile's device list is kept fresh as on
+  Devices (asked when the tab shows; the shown profile's polled), and pull
+  to refresh asks them all again. Dots and buttons follow at once; the
+  order of the devices is fixed for the visit, so a device that connects
+  or comes online does not jump under the finger. It is sorted again on
+  the next visit or a pull.
 - From 6 connections, a magnifier in the title opens search, as on Devices:
   it matches the device name (all its connections) or a connection's name;
   nothing found says so.

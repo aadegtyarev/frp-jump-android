@@ -3,6 +3,9 @@ package ru.adsrv.frpjump.ui.connections
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -16,6 +19,7 @@ import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.DeviceGroup
 import ru.adsrv.frpjump.connections.connectionRows
 import ru.adsrv.frpjump.connections.groupByDevice
+import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.profiles.ProfilesState
@@ -37,6 +41,10 @@ data class ConnectionsUiState(
     val restoreWaiting: Waiting? = null,
     /** The last "Disconnect all" could not tell a server: tunnels may come back. */
     val disconnectAllFailed: Boolean = false,
+    /** Every profile's device list is read (cached or fresh): the groups' order means something. */
+    val listsRead: Boolean = false,
+    /** A pull to refresh is asking the servers. */
+    val refreshing: Boolean = false,
 ) {
     val rows: List<ConnectionRow> get() = groups.flatMap { it.rows }
 
@@ -56,6 +64,8 @@ private class ProfilePart(
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
     val actions = ConnectionActions(app, viewModelScope)
+
+    private val refreshing = MutableStateFlow(false)
 
     val state: StateFlow<ConnectionsUiState> = app.profiles.state.flatMapLatest { profiles ->
         val runtimes = profiles.index.profiles.mapNotNull { p -> profiles.runtimes[p.id] }
@@ -78,8 +88,8 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
             }
         }
     }.let { rows ->
-        combine(rows, app.profiles.restorePending, app.profiles.restoreWaiting, app.profiles.disconnectAllFailed) { s, pending, waiting, failed ->
-            s.copy(restoring = pending, restoreWaiting = waiting, disconnectAllFailed = failed)
+        combine(rows, app.profiles.restorePending, app.profiles.restoreWaiting, app.profiles.disconnectAllFailed, refreshing) { s, pending, waiting, failed, busy ->
+            s.copy(restoring = pending, restoreWaiting = waiting, disconnectAllFailed = failed, refreshing = busy)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
 
@@ -88,18 +98,57 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
         colors = profiles.index.profiles.associate { it.id to it.color },
         sshMethods = parts.fold(emptyMap()) { all, part -> all + part.sshMethods },
         loaded = profiles.loaded,
+        listsRead = parts.all { it.devices != null },
     )
 
-    /**
-     * The tab is on screen: the device lists of the profiles it shows are
-     * asked once, so the online dots and the offline state are as of now
-     * (only the Devices list keeps its profile's list polled).
-     */
-    fun shown() {
-        app.profiles.state.value.runtimes.values
-            .filter { r -> r.connections.connections.value.isNotEmpty() || r.tunnels.state.value.tunnels.isNotEmpty() }
-            .forEach { r -> viewModelScope.launch { r.devices.refresh() } }
+    /** The tab is on screen. */
+    private var visible = false
+
+    /** The device lists this tab has asked the pollers to keep fresh. */
+    private var wanted: Set<DeviceDirectory> = emptySet()
+
+    init {
+        // A profile added or forgotten while the tab shows: its list is wanted, or let go.
+        viewModelScope.launch { app.profiles.state.collect { if (visible) wantLists() } }
     }
+
+    /**
+     * The tab is on screen (or not). While it is, every profile's device list
+     * is wanted as on Devices, so the dots and the offline state follow the
+     * server (the poller fetches the shown profile's; the others are asked
+     * once here, each time the tab shows).
+     */
+    fun shown(on: Boolean) {
+        visible = on
+        if (!on) return letGo()
+        wantLists()
+        runtimes().forEach { r -> viewModelScope.launch { r.devices.refresh() } }
+    }
+
+    /** Pull to refresh: every profile's list, waiting for a fetch already in flight. */
+    fun pull() {
+        refreshing.value = true
+        viewModelScope.launch {
+            runtimes().map { r -> async { r.devices.refresh(wait = true) } }.awaitAll()
+            refreshing.value = false
+        }
+    }
+
+    private fun runtimes() = app.profiles.state.value.runtimes.values.toList()
+
+    private fun wantLists() {
+        val now = runtimes().map { it.devices }.toSet()
+        (wanted - now).forEach { it.want(this, false) }
+        now.forEach { it.want(this, true) }
+        wanted = now
+    }
+
+    private fun letGo() {
+        wanted.forEach { it.want(this, false) }
+        wanted = emptySet()
+    }
+
+    override fun onCleared() = letGo()
 
     /** A profile's connections, for the sheet's name check. */
     fun connections(profile: String): List<Connection> = app.profiles.runtime(profile)?.connections?.connections?.value.orEmpty()

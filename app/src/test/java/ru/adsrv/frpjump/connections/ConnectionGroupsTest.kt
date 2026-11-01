@@ -13,7 +13,8 @@ import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.tunnel.VisitorState
 
 class ConnectionGroupsTest {
-    private fun device(name: String, online: Boolean) = DeviceRow(name, online = online, lastSeen = null, disabled = false)
+    private fun device(name: String, online: Boolean, stale: Boolean = false, checking: Boolean = false) =
+        DeviceRow(name, online = online, lastSeen = null, disabled = false, stale = stale, checking = checking)
     private fun tunnel(device: String, port: Int) = Tunnel(device, port, "g-$device-$port", 40000 + port, VisitorState(TunnelStatus.DIRECT))
 
     private val kitchenSsh = Connection("1", "wb-kitchen", 22, PortKind.SSH)
@@ -93,5 +94,46 @@ class ConnectionGroupsTest {
     @Test
     fun `nothing matching gives no groups`() {
         assertEquals(emptyList<DeviceGroup>(), filterGroups(groups, "printer", ::label))
+    }
+
+    @Test
+    fun `only a fresh offline blocks connecting, an old or unchecked list does not`() {
+        assertTrue(knownOffline(device("wb", online = false)))
+        assertFalse(knownOffline(device("wb", online = false, stale = true)))
+        assertFalse(knownOffline(device("wb", online = false, stale = true, checking = true)))
+        assertFalse(knownOffline(device("wb", online = true)))
+        assertFalse(knownOffline(null))
+        val rows = rows("p1", listOf(kitchenSsh), up = emptyList())
+        val stale = groupByDevice(rows, mapOf("p1" to listOf(device("wb-kitchen", online = false, stale = true))))
+        assertFalse(stale.single().offline)
+    }
+
+    @Test
+    fun `offline blocks Connect of a connection that is down, never Disconnect of one up`() {
+        val (down, up) = rows("p1", listOf(boiler, router), up = listOf(tunnel("router", 80)))
+        assertTrue(connectBlocked(down, offline = true))
+        assertFalse(connectBlocked(up, offline = true))
+        assertFalse(connectBlocked(down, offline = false))
+    }
+
+    @Test
+    fun `a card shows the connection's own name only when it says more than the kind`() {
+        assertEquals("z2m", connectionTitle(kitchenZ2m, "Web"))
+        assertNull(connectionTitle(boiler, "Web"))
+        assertNull(connectionTitle(kitchenSsh.copy(customName = "ssh"), "SSH"))
+        assertNull(connectionTitle(kitchenSsh.copy(customName = "  "), "SSH"))
+        assertEquals("root", connectionTitle(kitchenSsh.copy(customName = " root "), "SSH"))
+    }
+
+    @Test
+    fun `the order of a visit holds while states change and new devices follow`() {
+        val before = groupByDevice(rows("p1", listOf(kitchenSsh, boiler)), emptyMap())
+        val order = before.map { it.key }
+        assertEquals(listOf("Boiler", "wb-kitchen"), before.map { it.name })
+        // The kitchen connects: by rank it would go first; attic is new.
+        val after = groupByDevice(rows("p1", listOf(kitchenSsh, boiler, attic), up = listOf(tunnel("wb-kitchen", 22))), emptyMap())
+        assertEquals(listOf("wb-kitchen", "attic", "Boiler"), after.map { it.name })
+        assertEquals(listOf("Boiler", "wb-kitchen", "attic"), keepOrder(after, order).map { it.name })
+        assertEquals(after, keepOrder(after, null))
     }
 }

@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.connections.knownOffline
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
@@ -172,6 +173,8 @@ fun DeviceCardScreen(
                     onMenu = { ui.menu = if (it) row.key else null },
                     actions = actions,
                     modifier = Modifier.padding(horizontal = 16.dp),
+                    // As on the Connections tab: down on a device offline now, it cannot be connected.
+                    offline = knownOffline(state.device),
                 )
             }
         }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,10 +21,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.connections.connectBlocked
+import ru.adsrv.frpjump.connections.connectionTitle
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
@@ -43,8 +49,9 @@ import ru.adsrv.frpjump.ui.AppTheme
  * kind tile, its own name (when it has one) over the port and login, "⋮";
  * below, the state, Disconnect and the main action when up, or "Not
  * connected" and Connect. A tap on the card does its main action, a long
- * press opens the same menu as "⋮". On a device known to be [offline], a
- * connection that is down is dimmed and cannot be connected; its "⋮" works.
+ * press opens the same menu as "⋮". On a device known to be [offline]
+ * ([ru.adsrv.frpjump.connections.knownOffline]), a connection that is down
+ * is dimmed and cannot be connected; its "⋮" and long press work.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -62,11 +69,12 @@ fun ConnectionCard(
     val c = row.connection
     val up = row.tunnel != null
     // Up, it stays usable: Disconnect is what the owner needs then.
-    val unreachable = offline && !up
+    val unreachable = connectBlocked(row, offline)
+    val tapEnabled = cardTap(row) != CardTap.NONE && !unreachable
+    val openMenu by rememberUpdatedState { onMenu(true) }
     val details = details(row, sshMethod)
     // Its own name only when it says more than the tile: "z2m", not "SSH".
-    val kind = kindLabel(c.kind)
-    val title = if (row.saved) c.customName?.trim()?.takeIf { it.isNotEmpty() && !it.equals(kind, ignoreCase = true) } else rowName(row)
+    val title = if (row.saved) connectionTitle(c, kindLabel(c.kind)) else rowName(row)
     Surface(
         color = colors.card,
         shape = RoundedCornerShape(18.dp),
@@ -75,12 +83,20 @@ fun ConnectionCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             // Anywhere but its buttons: its main action, as the button labels it (connecting first when down);
-            // being disconnected, or its device offline, no action of its own, for touch or TalkBack.
-            .combinedClickable(
-                enabled = cardTap(row) != CardTap.NONE && !unreachable,
-                onClickLabel = cardTapLabel(row, sessions),
-                onClick = { actions.tap(row) },
-                onLongClick = { if (hasMenu(row)) onMenu(true) },
+            // being disconnected, or its device offline, no action of its own, for touch or TalkBack,
+            // while a long press still opens its menu (TalkBack has "⋮" for it).
+            .then(
+                if (tapEnabled) {
+                    Modifier.combinedClickable(
+                        onClickLabel = cardTapLabel(row, sessions),
+                        onClick = { actions.tap(row) },
+                        onLongClick = { if (hasMenu(row)) onMenu(true) },
+                    )
+                } else if (hasMenu(row)) {
+                    Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { openMenu() }) }
+                } else {
+                    Modifier
+                },
             ),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
