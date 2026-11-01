@@ -81,15 +81,21 @@ const val PUSH_PAYLOAD = "1"
 
 /** A `range`'s bounds, integers: `min` (default 0) to `max` (default 255); an upside-down pair is put right. */
 fun rangeBounds(meta: ControlMeta): IntRange {
-    val lo = (meta.min ?: RANGE_DEFAULT_MIN).setScale(0, RoundingMode.CEILING).toInt()
-    val hi = (meta.max ?: RANGE_DEFAULT_MAX).setScale(0, RoundingMode.FLOOR).toInt()
+    val lo = toInt((meta.min ?: RANGE_DEFAULT_MIN).setScale(0, RoundingMode.CEILING))
+    val hi = toInt((meta.max ?: RANGE_DEFAULT_MAX).setScale(0, RoundingMode.FLOOR))
     return if (lo <= hi) lo..hi else hi..lo
 }
+
+private val INT_MIN = BigDecimal(Int.MIN_VALUE)
+private val INT_MAX = BigDecimal(Int.MAX_VALUE)
+
+/** [n] as an Int, held to the Int range rather than wrapping round. */
+private fun toInt(n: BigDecimal): Int = n.max(INT_MIN).min(INT_MAX).toInt()
 
 /** A `range`'s value as a slider position in [bounds]; [bounds]' start when it is no number. */
 fun rangePosition(value: String?, bounds: IntRange): Int {
     val n = value?.let { numberOf(it) } ?: return bounds.first
-    return n.setScale(0, RoundingMode.HALF_UP).toInt().coerceIn(bounds)
+    return toInt(n.setScale(0, RoundingMode.HALF_UP)).coerceIn(bounds)
 }
 
 /** What a `range` sends: the integer, in decimal. */
@@ -246,3 +252,17 @@ fun writeView(write: WbWrite, meta: ControlMeta, history: List<TopicValue>, now:
 
 /** Types whose write has no status to wait for: their PUBACK is shown for a moment. */
 private val SHORT_ANSWER_TYPES = setOf("pushbutton", "wo-switch")
+
+/**
+ * The status topic's value now, from its [history] (newest first), as a
+ * control with [meta] reads it: an empty one is a value of a text control
+ * and none of any other; not UTF-8 is none.
+ */
+fun currentValue(meta: ControlMeta, history: List<TopicValue>): String? {
+    val text = history.firstOrNull()?.let { decodeUtf8(it.payload) } ?: return null
+    return text.takeIf { it.isNotEmpty() || isTextType(meta) }
+}
+
+/** A new write to a control waits while [existing], its last one, has no outcome yet (a double tap sends once). */
+fun writeBlocked(existing: WbWrite?, meta: ControlMeta, history: List<TopicValue>, now: Long): Boolean =
+    existing != null && writeView(existing, meta, history, now) is WriteView.Sending

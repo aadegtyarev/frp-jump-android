@@ -71,6 +71,8 @@ import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWidget
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWrite
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WriteView
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.awaitsEcho
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.currentValue
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.writeBlocked
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.widgetOf
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.writeView
 import kotlinx.coroutines.flow.update
@@ -316,6 +318,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      * is the tab shown, the devices list or the open device.
      */
     private fun readWb(s: MqttSession, ui: MqttUiState, wb: WbAsk): MqttUiState {
+        // Set again below while a device with a waiting write is shown.
+        writeWaiting = false
         if (!wb.on) return ui
         if (!wbSeenNow.value && seenInTree(s)) wbSeenNow.value = true
         val seen = wbSeenNow.value
@@ -332,6 +336,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             val write = writes[c.path] ?: return@mapNotNull null
             c.id to writeView(write, c.meta, s.tree.history(c.path), now)
         }?.toMap().orEmpty()
+        writeWaiting = answers.values.any { it is WriteView.Sending }
         return ui.copy(wbTab = true, wbReading = reading, wbDeviceId = device, wbDevice = view, wbAnswers = answers, wbSent = wbSent.value)
     }
 
@@ -385,24 +390,33 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         wbDeviceId.value = id
     }
 
-    private fun writesPending(): Boolean {
-        val now = System.currentTimeMillis()
-        return wbWrites.value.values.any { now - it.sentAt < PENDING_WRITE_MS }
-    }
+    /** A write shown on the open device still has no outcome: the device is read more often. Set by each read. */
+    @Volatile
+    private var writeWaiting = false
+
+    private fun writesPending(): Boolean = writeWaiting
 
     /**
      * Writes [payload] to [control]'s `/on` (QoS 1, not retained, whatever
      * the Status and command plugin says); the answer shows on the control.
+     * A tap while the control's last write has no outcome yet is ignored, so
+     * a double tap sends once. Whether an echo is awaited is decided on the
+     * status topic's value now, not on the last read of the screen.
      */
     fun writeWb(control: WbControl, payload: String) {
         val s = session ?: return
+        val now = System.currentTimeMillis()
+        val history = s.tree.history(control.path)
+        if (writeBlocked(wbWrites.value[control.path], control.meta, history, now)) return
         val widget = widgetOf(control.meta)
-        val shown = if (widget == WbWidget.WO_SWITCH) wbSent.value[control.path] else control.value
-        val write = WbWrite(control.path, payload, awaitsEcho(control.meta, widget, shown, payload), System.currentTimeMillis())
+        val shown = if (widget == WbWidget.WO_SWITCH) wbSent.value[control.path] else currentValue(control.meta, history)
+        val write = WbWrite(control.path, payload, awaitsEcho(control.meta, widget, shown, payload), now)
         wbWrites.update { it + (control.path to write) }
-        if (widget == WbWidget.WO_SWITCH) wbSent.update { it + (control.path to payload) }
+        writeWaiting = true
         s.publish(control.path.format() + "/on", payload.toByteArray(Charsets.UTF_8), qos = 1, retain = false) { answer ->
             val at = System.currentTimeMillis()
+            // A wo-switch shows what it was last sent: only what left for the device counts.
+            if (widget == WbWidget.WO_SWITCH && wasSent(answer)) wbSent.update { it + (control.path to payload) }
             // A newer write to the control replaced this one: its answer is not shown.
             wbWrites.update { all -> all[control.path]?.takeIf { it.sentAt == write.sentAt && it.asked == payload }?.let { all + (control.path to it.copy(answer = answer, answeredAt = at)) } ?: all }
         }
@@ -684,9 +698,6 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
 
         /** How often the open device is read while a write waits for its answer. */
         const val WRITE_REFRESH_MS = 250L
-
-        /** A write is read often for this long after sending: the broker's 10 s and the device's 5 s after it. */
-        const val PENDING_WRITE_MS = 17_000L
 
         /** Search hits listed at most. */
         const val MAX_HITS = 500

@@ -39,6 +39,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import kotlinx.coroutines.delay
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -82,6 +84,9 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.files.SecondaryButton
 import kotlin.math.roundToInt
+
+/** Widgets that show a write in flight themselves rather than as the asked value's text. */
+private val OWN_SENDING = setOf(WbWidget.SWITCH, WbWidget.WO_SWITCH, WbWidget.RANGE, WbWidget.PUSHBUTTON, WbWidget.RGB)
 
 /** The dialogs a control opens: an input, the enum's titles, the colour picker. */
 private enum class ControlDialog { INPUT, ENUM, RGB }
@@ -127,8 +132,8 @@ internal fun ControlRow(
             }
             Box(Modifier.widthIn(max = 220.dp), contentAlignment = Alignment.CenterEnd) {
                 when {
-                    sending != null && widget != WbWidget.SWITCH && widget != WbWidget.WO_SWITCH && widget != WbWidget.RANGE ->
-                        SendingValue(control, sending.asked, language)
+                    // Controls with a shape of their own (toggle, slider, button, swatch) stay, showing the spinner themselves.
+                    sending != null && widget !in OWN_SENDING -> SendingValue(control, sending.asked, language)
                     else -> ControlWidget(control, widget, language, sending, sent, canWrite, off, onWrite, onDialog = { dialog = it })
                 }
             }
@@ -224,7 +229,10 @@ private fun ControlWidget(
                 )
             }
         }
-        WbWidget.PUSHBUTTON -> SecondaryButton(oneLineText(control.title, 24), null, enabled = canWrite, offState) { onWrite(PUSH_PAYLOAD) }
+        WbWidget.PUSHBUTTON -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (sending != null) Spinner()
+            SecondaryButton(oneLineText(control.title, 24), null, enabled = canWrite, offState) { onWrite(PUSH_PAYLOAD) }
+        }
         WbWidget.ALARM -> {
             val raised = control.value?.trim() == "1"
             val spoken = stringResource(if (raised) R.string.wb_alarm_on else R.string.wb_alarm_off)
@@ -237,7 +245,9 @@ private fun ControlWidget(
             )
         }
         WbWidget.RGB -> {
-            val rgb = rgbOf(control.value)
+            // While sending, the asked colour, muted beside a spinner.
+            val shown = sending?.asked ?: control.value
+            val rgb = rgbOf(shown)
             Row(
                 Modifier
                     .clickable(enabled = canWrite, role = Role.Button, onClickLabel = stringResource(R.string.wb_pick_colour)) { onDialog(ControlDialog.RGB) }
@@ -246,10 +256,12 @@ private fun ControlWidget(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(control.value?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value), fontSize = 13.sp, color = colors.muted)
+                if (sending != null) Spinner()
+                Text(shown?.let { oneLineText(it, 20) } ?: stringResource(R.string.wb_no_value), fontSize = 13.sp, color = colors.muted)
                 Box(
                     Modifier
                         .size(32.dp)
+                        .alpha(if (sending != null) 0.5f else 1f)
                         .background(rgb?.let { Color(it.first, it.second, it.third) } ?: colors.tile, RoundedCornerShape(8.dp))
                         .border(1.dp, colors.outline, RoundedCornerShape(8.dp)),
                 )
@@ -280,11 +292,17 @@ private fun RangeSlider(control: WbControl, sending: WriteView.Sending?, canWrit
     val colors = AppTheme.colors
     val bounds = rangeBounds(control.meta)
     val status = rangePosition(sending?.asked ?: control.value, bounds)
-    // While dragging the slider follows the finger; otherwise the status value (or the asked one) places it.
+    // While dragging the slider follows the finger; once let go it holds the picked value until the write
+    // shows as sending (no frame back at the old value), else the status value (or the asked one) places it.
     var dragging by remember { mutableStateOf(false) }
+    var held by remember { mutableStateOf<Int?>(null) }
     var position by remember { mutableFloatStateOf(status.toFloat()) }
-    if (!dragging) position = status.toFloat()
-    val span = bounds.last - bounds.first
+    LaunchedEffect(sending != null) { if (sending != null) held = null }
+    // A write that never showed (ignored, or answered at once) lets go of the held value soon.
+    LaunchedEffect(held) { if (held != null) { delay(HOLD_MS); held = null } }
+    if (!dragging) position = (held ?: status).toFloat()
+    val units = unitsOf(control.meta)?.let { " $it" }.orEmpty()
+    val shown = position.roundToInt().toString() + units
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Slider(
             value = position,
@@ -295,22 +313,31 @@ private fun RangeSlider(control: WbControl, sending: WriteView.Sending?, canWrit
             onValueChangeFinished = {
                 dragging = false
                 val picked = position.roundToInt().coerceIn(bounds)
-                if (picked != rangePosition(control.value, bounds) || control.value == null) onWrite(rangePayload(picked))
+                held = picked
+                // Let go on the value it shows is still sent: the PUBACK ends it, no echo awaited.
+                onWrite(rangePayload(picked))
             },
             valueRange = bounds.first.toFloat()..bounds.last.toFloat(),
-            enabled = canWrite && span > 0,
+            enabled = canWrite && bounds.last > bounds.first,
             modifier = Modifier.weight(1f).semantics {
                 contentDescription = control.title
-                off?.let { stateDescription = it }
+                stateDescription = off ?: shown
             },
         )
         Row(Modifier.widthIn(min = 64.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-            if (sending != null) CircularProgressIndicator(color = colors.accent, strokeWidth = 2.dp, modifier = Modifier.size(14.dp).padding(end = 4.dp))
-            val units = unitsOf(control.meta)?.let { " $it" }.orEmpty()
-            Text(position.roundToInt().toString() + units, fontSize = 15.sp, color = if (sending != null) colors.muted else colors.ink)
+            if (sending != null) Spinner(Modifier.padding(end = 4.dp))
+            Text(shown, fontSize = 15.sp, color = if (sending != null) colors.muted else colors.ink)
         }
     }
 }
+
+/** How long a let-go slider holds its value waiting for the write to show. */
+private const val HOLD_MS = 1_000L
+
+/** The small spinner of a write in flight. */
+@Composable
+private fun Spinner(modifier: Modifier = Modifier) =
+    CircularProgressIndicator(color = AppTheme.colors.accent, strokeWidth = 2.dp, modifier = modifier.size(16.dp))
 
 /**
  * A one-field input for a numeric or text control: prefilled with the
@@ -382,6 +409,7 @@ private fun EnumDialog(control: WbControl, language: String, onPick: (String) ->
                     Row(
                         Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .selectable(selected = picked, role = Role.RadioButton) { onPick(entry.key) }
                             .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -436,7 +464,10 @@ private fun ChannelSlider(name: String, value: Int, onChange: (Int) -> Unit) {
             value = value.toFloat(),
             onValueChange = { onChange(it.roundToInt().coerceIn(0, 255)) },
             valueRange = 0f..255f,
-            modifier = Modifier.weight(1f).semantics { contentDescription = name },
+            modifier = Modifier.weight(1f).semantics {
+                contentDescription = name
+                stateDescription = value.toString()
+            },
         )
         Text(value.toString(), fontSize = 13.sp, modifier = Modifier.width(32.dp), textAlign = TextAlign.End)
     }

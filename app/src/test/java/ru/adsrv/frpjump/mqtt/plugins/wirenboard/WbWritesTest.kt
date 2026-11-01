@@ -174,4 +174,37 @@ class WbWritesTest {
         val v311 = write.copy(answer = PublishAnswer.Unconfirmed)
         assertEquals(WriteView.Answered(PublishAnswer.Unconfirmed), writeView(v311, meta("""{"type":"wo-switch"}"""), emptyList(), 1_200))
     }
+
+    @Test
+    fun `range bounds beyond Int are held to its range`() {
+        val huge = rangeBounds(meta("""{"type":"range","min":-1e20,"max":1e20}"""))
+        assertEquals(Int.MIN_VALUE..Int.MAX_VALUE, huge)
+        assertEquals(Int.MAX_VALUE, rangePosition("1e30", huge))
+    }
+
+    @Test
+    fun `the current value is read from the newest status value`() {
+        val text = meta("""{"type":"text"}""")
+        val number = meta("""{"type":"value"}""")
+        assertEquals("5", currentValue(number, listOf(value("5", 2), value("4", 1))))
+        assertNull(currentValue(number, emptyList()))
+        val empty = TopicValue.of(ByteArray(0), retain = true, qos = 1, at = 3, version = MqttVersion.V5, previous = null)
+        assertNull(currentValue(number, listOf(empty)))
+        assertEquals("", currentValue(text, listOf(empty)))
+    }
+
+    @Test
+    fun `a second tap waits while the last write has no outcome`() {
+        val button = meta("""{"type":"pushbutton"}""")
+        val pending = WbWrite(k1, "1", awaitsEcho = false, sentAt = 1_000)
+        assertFalse(writeBlocked(null, button, emptyList(), 1_000))
+        assertTrue(writeBlocked(pending, button, emptyList(), 1_050))
+        // Answered: the next tap goes.
+        assertFalse(writeBlocked(pending.copy(answer = PublishAnswer.Accepted, answeredAt = 1_100), button, emptyList(), 1_150))
+        // A switch waiting for its echo still blocks; a failed one does not.
+        val sw = meta("""{"type":"switch"}""")
+        val echo = WbWrite(k1, "1", awaitsEcho = true, sentAt = 1_000, answer = PublishAnswer.Accepted, answeredAt = 1_100)
+        assertTrue(writeBlocked(echo, sw, listOf(value("0", 500)), 2_000))
+        assertFalse(writeBlocked(echo, sw, listOf(value("0", 500)), 1_100 + ECHO_TIMEOUT_MS))
+    }
 }
