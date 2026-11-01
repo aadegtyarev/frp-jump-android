@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.FEATURE_DEVICE_DISPLAY
@@ -273,9 +274,15 @@ class DeviceDirectory(
     /**
      * Sends [change] of [name]'s label and icon. On success the list, its
      * cache and every screen showing it take the server's answer at once.
-     * Throws what the call threw.
+     * Throws what the call threw. Runs in the profile's scope: a caller that
+     * goes away mid-save (the card left) does not drop the server's answer.
      */
     suspend fun setDisplay(name: String, change: DisplayChange) {
+        // Caught inside, so a failure reaches the caller and never cancels the profile's scope.
+        background.async { runCatching { saveDisplay(name, change) } }.await().getOrThrow()
+    }
+
+    private suspend fun saveDisplay(name: String, change: DisplayChange) {
         val credentials = store.load() ?: throw IllegalStateException("no credentials")
         val updated = api.setDisplay(credentials, name, change)
         // After a fetch in flight: a list asked for before the save cannot overwrite its answer.

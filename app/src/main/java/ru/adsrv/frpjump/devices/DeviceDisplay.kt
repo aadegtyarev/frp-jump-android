@@ -24,7 +24,7 @@ fun labelChanged(field: String, current: String?): Boolean = labelToSend(field) 
 /** Line breaks and tabs in what was pasted or typed become spaces: the label is one line. */
 fun oneLine(text: String): String = text.replace("\r\n", " ").map { if (it in LINE_BREAKS) ' ' else it }.joinToString("")
 
-private val LINE_BREAKS = setOf('\n', '\r', '\t', '\u000B', '\u000C', '\u0085', ' ', ' ')
+private val LINE_BREAKS = setOf('\n', '\r', '\t', '\u000B', '\u000C', '\u0085', '\u2028', '\u2029')
 
 /** The field after an edit: its text and where the cursor goes. */
 data class LabelEdit(val text: String, val cursor: Int)
@@ -75,6 +75,14 @@ sealed interface IconPick {
 
     /** The owner's choice on the server is a value this app does not know; kept as is, never sent. */
     data class Other(val wire: String) : IconPick
+
+    /** The owner's choice this tile stands for, as on the wire; null: automatic. */
+    val choice: String?
+        get() = when (this) {
+            Auto -> null
+            is Known -> icon.wire
+            is Other -> wire
+        }
 
     companion object {
         /** The tile for the owner's choice [icon] as the server has it. */

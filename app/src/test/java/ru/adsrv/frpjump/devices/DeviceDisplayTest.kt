@@ -9,18 +9,18 @@ import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.NetworkException
 
 class DeviceDisplayTest {
-    private val decomposed = "é" // é as two code points, one after NFC
+    private val decomposed = "e\u0301" // é as two code points, one after NFC
 
     @Test
     fun `the counter counts code points after NFC`() {
         assertEquals(1, labelLength(decomposed))
-        assertEquals(2, labelLength("🖥️")) // 🖥️: a surrogate pair and a selector
+        assertEquals(2, labelLength("\uD83D\uDDA5\ufe0f")) // a desktop-computer emoji: a surrogate pair and a selector
         assertEquals(0, labelLength(""))
     }
 
     @Test
     fun `line breaks and tabs become spaces`() {
-        assertEquals("a b c d e", oneLine("a\r\nb\nc\td e"))
+        assertEquals("a b c d e", oneLine("a\r\nb\nc\td\u2028e"))
         assertEquals(LabelEdit("Щиток гараж", 11), limitLabel("", "Щиток\nгараж", 11))
     }
 
@@ -43,16 +43,16 @@ class DeviceDisplayTest {
     fun `a cut counts after NFC and never splits a surrogate pair`() {
         val decomposedPaste = decomposed.repeat(70)
         assertEquals(LABEL_MAX, labelLength(limitLabel("", decomposedPaste, decomposedPaste.length).text))
-        val emoji = "😀".repeat(70)
+        val emoji = "\uD83D\uDE00".repeat(70)
         val cut = limitLabel("", emoji, emoji.length).text
-        assertEquals("😀".repeat(LABEL_MAX), cut)
+        assertEquals("\uD83D\uDE00".repeat(LABEL_MAX), cut)
     }
 
     @Test
     fun `save is enabled by a real change only`() {
         assertFalse(labelChanged("Щиток ", "Щиток"))
         assertFalse(labelChanged("  ", null))
-        assertFalse(labelChanged("caf$decomposed", "café"))
+        assertFalse(labelChanged("caf$decomposed", "caf\u00e9"))
         assertTrue(labelChanged("Щиток, гараж", "Щиток"))
         assertTrue(labelChanged("", "Щиток"))
     }

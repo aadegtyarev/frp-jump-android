@@ -4,6 +4,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -25,6 +30,8 @@ import ru.adsrv.frpjump.profiles.credentials
 import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.ssh.MemoryStorage
 import ru.adsrv.frpjump.store.CredentialStore
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class DeviceDisplaySaveTest {
     @Test
@@ -40,11 +47,23 @@ class DeviceDisplaySaveTest {
             """{"name":"wb01","enrolled_at":"2026-10-01T00:00:00","last_seen_at":null,"enabled":true,"label":"Гараж","icon":"camera","kind":"wirenboard"}"""
         val seen = mutableListOf<Pair<Request, String>>()
 
+        /** When set, `/devices` answers the old list only once it opens; [listAsked] says it was asked. */
+        @Volatile var listGate: CountDownLatch? = null
+        val listAsked = CountDownLatch(1)
+        val displayAnswered = CountDownLatch(1)
+
         val http: OkHttpClient = OkHttpClient.Builder().addInterceptor(
             Interceptor { chain ->
                 val request = chain.request()
                 val sent = request.body?.let { Buffer().apply { it.writeTo(this) }.readUtf8() }.orEmpty()
-                seen += request to sent
+                synchronized(seen) { seen += request to sent }
+                when (request.url.pathSegments.last()) {
+                    "devices" -> listGate?.let {
+                        listAsked.countDown()
+                        it.await(5, TimeUnit.SECONDS)
+                    }
+                    "display" -> displayAnswered.countDown()
+                }
                 val (code, body) = when (request.url.pathSegments.last()) {
                     "version" -> 200 to """{"protocol_version":1,"package_version":"0.3.19","features":["device-display"]}"""
                     "devices" -> 200 to
@@ -96,7 +115,7 @@ class DeviceDisplaySaveTest {
         d.refresh(wait = true)
         server.display = 400 to """{"detail":"label has no visible characters"}"""
         try {
-            d.setDisplay("wb01", DisplayChange(DisplayValue("‍"), null))
+            d.setDisplay("wb01", DisplayChange(DisplayValue("\u200d"), null))
             fail("no error")
         } catch (e: ApiException) {
             assertEquals(400, e.status)
@@ -105,5 +124,26 @@ class DeviceDisplaySaveTest {
         assertEquals("Щиток", d.state.value.devices!!.single().label)
         assertNull(d.state.value.devices!!.single().iconChoice)
         assertTrue(d.state.value.display)
+    }
+
+    @Test
+    fun `a save answered while a fetch is out is applied after that fetch`() = runBlocking {
+        val d = directory()
+        d.refresh()
+        withTimeout(5_000) { d.state.first { it.display } }
+        d.refresh(wait = true)
+        val gate = CountDownLatch(1)
+        server.listGate = gate
+        // A fetch asked before the save, answering the old label after the save's answer.
+        val fetch = launch { d.refresh() }
+        withContext(Dispatchers.IO) { assertTrue(server.listAsked.await(5, TimeUnit.SECONDS)) }
+        val save = async { d.setDisplay("wb01", DisplayChange(DisplayValue("Гараж"), null)) }
+        withContext(Dispatchers.IO) { assertTrue(server.displayAnswered.await(5, TimeUnit.SECONDS)) }
+        delay(100)
+        gate.countDown()
+        fetch.join()
+        save.await()
+        assertEquals("Гараж", d.state.value.devices!!.single().label)
+        assertEquals("camera", d.state.value.devices!!.single().iconChoice)
     }
 }

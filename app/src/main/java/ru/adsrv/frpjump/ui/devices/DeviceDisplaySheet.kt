@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -73,7 +74,9 @@ fun DeviceDisplaySheet(
     val loaded = device.label.orEmpty()
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(loaded, TextRange(loaded.length))) }
     val initialPick = remember(device.iconChoice) { IconPick.of(device.iconChoice) }
-    var pick by remember { mutableStateOf(initialPick) }
+    // As its wire value, so a rotation keeps the tile picked.
+    var pickedChoice by rememberSaveable { mutableStateOf(device.iconChoice) }
+    val pick = IconPick.of(pickedChoice)
     var busy by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<DisplayFailure?>(null) }
     val change = displayChange(field.text, pick, device.label, device.iconChoice)
@@ -87,7 +90,7 @@ fun DeviceDisplaySheet(
         }
     }
 
-    AppSheet(title = stringResource(R.string.device_display_title), subtitle = device.name, onDismiss = onDismiss) {
+    AppSheet(title = stringResource(R.string.device_display_title), subtitle = device.name, onDismiss = onDismiss, dismissible = !busy) {
         val length = labelLength(field.text)
         val spokenCount = stringResource(R.string.device_label_counter_spoken, length, LABEL_MAX)
         Field(
@@ -109,6 +112,8 @@ fun DeviceDisplaySheet(
             counter = {
                 Text(
                     stringResource(R.string.device_label_counter, length, LABEL_MAX),
+                    // At the cap: a key that adds nothing more is seen to do so.
+                    color = if (length >= LABEL_MAX) colors.error else Color.Unspecified,
                     modifier = Modifier.clearAndSetSemantics { contentDescription = spokenCount },
                 )
             },
@@ -132,7 +137,7 @@ fun DeviceDisplaySheet(
                                 selected = tile == pick,
                                 enabled = !busy,
                                 modifier = Modifier.weight(1f),
-                            ) { pick = tile }
+                            ) { pickedChoice = tile.choice }
                         }
                         // The last row keeps the tiles' width.
                         repeat(3 - row.size) { Box(Modifier.weight(1f)) }
