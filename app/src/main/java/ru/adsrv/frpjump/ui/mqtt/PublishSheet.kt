@@ -63,6 +63,9 @@ import ru.adsrv.frpjump.mqtt.TopicProblem
 import ru.adsrv.frpjump.mqtt.isReservedTopic
 import ru.adsrv.frpjump.mqtt.refusalText
 import ru.adsrv.frpjump.mqtt.topicProblem
+import ru.adsrv.frpjump.mqtt.plugins.CommandTarget
+import ru.adsrv.frpjump.mqtt.plugins.Rule
+import ru.adsrv.frpjump.mqtt.plugins.commandFor
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.Field
@@ -74,6 +77,9 @@ private val QOS_LEVELS = listOf(0, 1, 2)
 
 /** The payload's formats, as the switch shows them: text, then JSON. */
 private val FORMATS = listOf(false, true)
+
+/** The Status topic / Command topic switch: true is the status topic (the one in the field). */
+private val TARGETS = listOf(true, false)
 
 /** Characters of a recent payload shown on its chip. */
 private const val RECENT_CHARS = 40
@@ -90,13 +96,19 @@ private const val RECENT_CHARS = 40
  * retain off, QoS 1, Text. Send checks the topic and, as JSON, the value
  * first and answers on the button itself until something changes; it is
  * off, saying why, while the session is not open. The sheet stays open
- * after an answer, so the next value is one tap away.
+ * after an answer, so the next value is one tap away. When one of [rules]
+ * (the "Status and command topics" plugin) matches the topic in the field,
+ * the value goes to its command topic by default, the switch above Send
+ * offering the status topic for this send, the rule named under it; a
+ * one-template rule only says the topic takes commands itself.
  */
 @Composable
 fun PublishSheet(
     start: PublishStart,
     state: MqttState,
     published: List<SentTopic>?,
+    /** The plugin's rules in force for the connection, in order; empty: the value goes to the topic in the field. */
+    rules: List<Rule>,
     onPublish: (PublishRequest, done: (PublishAnswer) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -131,6 +143,11 @@ fun PublishSheet(
     var sending by remember { mutableStateOf(false) }
     var answer by remember { mutableStateOf<PublishAnswer?>(null) }
     var edits by remember { mutableStateOf(0) }
+    // Editing the topic matches it again; a switch to the status topic holds for the rule it was made for.
+    val target = remember(topic.text, rules) { commandFor(topic.text, rules) }
+    var toStatus by remember(target) { mutableStateOf(false) }
+    val sendTo = (target as? CommandTarget.Elsewhere)?.takeIf { !toStatus }?.topic ?: topic.text
+    val toCommand = target is CommandTarget.Itself || (target is CommandTarget.Elsewhere && !toStatus)
     val focus = remember { FocusRequester() }
     val payloadFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { (if (start.focusPayload) payloadFocus else focus).requestFocus() } }
@@ -245,6 +262,32 @@ fun PublishSheet(
                 changed()
             })
         }
+        target?.let { matched ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (matched is CommandTarget.Elsewhere) {
+                    Segmented(TARGETS, toStatus, label = {
+                        stringResource(if (it) R.string.mqtt_rule_status_topic else R.string.mqtt_rule_command_topic)
+                    }, onPick = {
+                        toStatus = it
+                        changed()
+                    })
+                }
+                Text(
+                    if (matched is CommandTarget.Elsewhere) {
+                        stringResource(R.string.mqtt_rule_goes_to, matched.rule.label, sendTo)
+                    } else {
+                        stringResource(R.string.mqtt_rule_itself, matched.rule.label)
+                    },
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = colors.muted,
+                )
+            }
+        }
+        // A retained command is the broker's to give the device again: say so before it is sent.
+        if (toCommand && retain) {
+            Text(stringResource(R.string.mqtt_rule_retained_command), fontSize = 13.sp, lineHeight = 18.sp, color = colors.warning)
+        }
         val open = state is MqttState.Open
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // The answer is on the button itself until something changes, so nothing below moves.
@@ -257,7 +300,8 @@ fun PublishSheet(
                 announce = true,
                 onClick = {
                     val text = topic.text
-                    val found = topicProblem(text)
+                    // The command topic a rule makes of it is checked too (it may come out too long).
+                    val found = topicProblem(text) ?: topicProblem(sendTo)
                     problem = found
                     // As JSON, a value that is not JSON is not sent: its problem shows under the field.
                     val notJson = jsonCheck?.problem != null
@@ -269,7 +313,7 @@ fun PublishSheet(
                     sending = true
                     answer = null
                     val sentAt = edits
-                    onPublish(PublishRequest(text, payload, qos, retain, json)) {
+                    onPublish(PublishRequest(sendTo, payload, qos, retain, json, field = text)) {
                         sending = false
                         // An edit made while sending makes the answer stale: drop it.
                         if (edits == sentAt) answer = it

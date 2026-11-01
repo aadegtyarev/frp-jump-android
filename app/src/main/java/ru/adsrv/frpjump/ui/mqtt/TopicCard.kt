@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.mqtt.plugins.Rule
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -138,6 +139,8 @@ fun TopicCard(
     onUnpin: (PinMask) -> Unit,
     /** What the publish sheet remembers of the connection's topics; null until read. */
     published: List<SentTopic>?,
+    /** The "Status and command topics" rules in force, for the publish sheet. */
+    rules: List<Rule>,
     onPublish: (PublishRequest, done: (PublishAnswer) -> Unit) -> Unit,
     /** "Open branch": closes the card and opens the node's level. */
     onOpenBranch: () -> Unit,
@@ -237,7 +240,7 @@ fun TopicCard(
         }
     }
     if (publishing) {
-        PublishSheet(start = publishFromCard(path, value), state = state, published = published, onPublish = onPublish, onDismiss = { publishing = false })
+        PublishSheet(start = publishFromCard(path, value), state = state, published = published, rules = rules, onPublish = onPublish, onDismiss = { publishing = false })
     }
     if (picking) {
         PinSheet(
