@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.api.ApiException
 import ru.adsrv.frpjump.api.FEATURE_DEVICE_DISPLAY
@@ -41,6 +42,10 @@ data class DeviceRow(
     val label: String? = null,
     /** The icon to show ([shownIcon]); null: the generic device glyph. */
     val icon: DeviceIcon? = null,
+    /** The owner's icon choice as the server has it, for the edit sheet; null: automatic (or no labels). */
+    val iconChoice: String? = null,
+    /** What the device reports about itself, for the sheet's «Авто» tile; null: unknown (or no labels). */
+    val kind: String? = null,
 )
 
 data class DeviceList(
@@ -84,9 +89,14 @@ fun deviceRows(
 /** [row] with [device]'s label and icon when [display] is on, without them otherwise. */
 private fun DeviceRow.shown(device: OwnedDevice?, display: Boolean): DeviceRow =
     if (display && device != null) {
-        copy(label = device.label?.takeIf { it.isNotBlank() }, icon = shownIcon(device.icon, device.kind))
+        copy(
+            label = device.label?.takeIf { it.isNotBlank() },
+            icon = shownIcon(device.icon, device.kind),
+            iconChoice = device.icon,
+            kind = device.kind,
+        )
     } else {
-        copy(label = null, icon = null)
+        copy(label = null, icon = null, iconChoice = null, kind = null)
     }
 
 /**
@@ -258,6 +268,36 @@ class DeviceDirectory(
         val known = last?.devices.orEmpty().associateBy { it.name }
         _state.update { list ->
             list.copy(display = display, devices = list.devices?.map { it.shown(known[it.name], display) })
+        }
+    }
+
+    /**
+     * Sends [change] of [name]'s label and icon. On success the list, its
+     * cache and every screen showing it take the server's answer at once.
+     * Throws what the call threw. Runs in the profile's scope: a caller that
+     * goes away mid-save (the card left) does not drop the server's answer.
+     */
+    suspend fun setDisplay(name: String, change: DisplayChange) {
+        // Caught inside, so a failure reaches the caller and never cancels the profile's scope.
+        background.async { runCatching { saveDisplay(name, change) } }.await().getOrThrow()
+    }
+
+    private suspend fun saveDisplay(name: String, change: DisplayChange) {
+        val credentials = store.load() ?: throw IllegalStateException("no credentials")
+        val updated = api.setDisplay(credentials, name, change)
+        // After a fetch in flight: a list asked for before the save cannot overwrite its answer.
+        fetching.withLock {
+            // "Forget" or a new enrollment while the call was out: not this enrollment's list any more.
+            if (store.load()?.apiToken != credentials.apiToken) return
+            val known = last?.takeIf { it.controlUrl == credentials.controlUrl && it.deviceName == credentials.deviceName }
+            if (known != null) {
+                val fresh = known.copy(devices = known.devices.map { if (it.name == updated.name) updated else it })
+                last = fresh
+                saveQuietly(fresh)
+            }
+            _state.update { list ->
+                list.copy(devices = list.devices?.map { if (it.name == updated.name) it.shown(updated, list.display) else it })
+            }
         }
     }
 

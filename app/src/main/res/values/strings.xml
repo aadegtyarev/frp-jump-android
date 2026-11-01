@@ -114,6 +114,26 @@
     <string name="device_icon_camera">Camera</string>
     <string name="device_icon_home">Home</string>
     <string name="device_icon_phone">Phone</string>
+
+    <!-- Device label and icon -->
+    <string name="device_menu_label">Label…</string>
+    <string name="device_menu_icon">Icon…</string>
+    <string name="device_display_title">Label and icon</string>
+    <string name="device_label_field">Label</string>
+    <string name="device_label_hint">For example, Garage panel</string>
+    <string name="device_label_counter" translatable="false">%1$d/%2$d</string>
+    <string name="device_label_counter_spoken">%1$d of %2$d characters</string>
+    <string name="device_icon_section">Icon</string>
+    <string name="device_icon_auto">Auto</string>
+    <string name="device_icon_auto_detected">Auto: %s</string>
+    <string name="device_icon_other">Other</string>
+    <string name="label_refused_too_long_raw">The label is too long</string>
+    <string name="label_refused_too_long">The label is longer than 64 characters</string>
+    <string name="label_refused_control">The label contains a line break or a control character</string>
+    <string name="label_refused_invisible">The label contains an invisible or formatting character</string>
+    <string name="label_refused_not_visible">The label has no visible characters</string>
+    <string name="display_phone_disabled">This phone is disabled on the server, so nothing can be changed</string>
+    <string name="display_unreachable">No connection to the server, not saved</string>
     <string name="offline_unreachable">No connection to the server · updated %s</string>
     <string name="offline_server_error">The server returned an error · updated %s</string>
     <string name="tap_to_retry">Tap to retry</string>

@@ -33,7 +33,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.R
@@ -141,17 +143,33 @@ fun Field(
     /** Lines shown at least when not [singleLine]. */
     minLines: Int = 1,
     onDone: (() -> Unit)? = null,
+    placeholder: String? = null,
+    /** At the end of the line under the field (a character count), beside the problem or note. */
+    counter: (@Composable () -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+        val below = problem ?: note
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = singleLine,
             minLines = if (singleLine) 1 else minLines,
             isError = problem != null,
-            supportingText = (problem ?: note)?.let { { Text(it) } },
+            placeholder = placeholder?.let { { Text(it, color = colors.muted) } },
+            supportingText = when {
+                counter != null -> {
+                    {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) { below?.let { Text(it) } }
+                            counter()
+                        }
+                    }
+                }
+                below != null -> { { Text(below) } }
+                else -> null
+            },
             textStyle = fieldTextStyle(mono),
             keyboardOptions = KeyboardOptions(
                 keyboardType = keyboard,
@@ -264,11 +282,19 @@ fun MainButton(
 /** A sheet as the connection sheet: a bold title, an optional line under it, the content scrolling. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppSheet(title: String, subtitle: String? = null, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+fun AppSheet(
+    title: String,
+    subtitle: String? = null,
+    onDismiss: () -> Unit,
+    /** False while it waits for an answer: no swipe, tap outside, Back or ✕ closes it, so the answer is seen. */
+    dismissible: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val colors = AppTheme.colors
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val canDismiss by rememberUpdatedState(dismissible)
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden || canDismiss })
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (canDismiss) onDismiss() },
         sheetState = sheet,
         containerColor = colors.card,
     ) {
@@ -282,7 +308,7 @@ fun AppSheet(title: String, subtitle: String? = null, onDismiss: () -> Unit, con
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                SheetHeader(sheet, onDismiss) {
+                SheetHeader(sheet, onDismiss, enabled = dismissible) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         subtitle?.let { Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) }

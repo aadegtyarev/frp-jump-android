@@ -12,6 +12,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import ru.adsrv.frpjump.BuildConfig
+import ru.adsrv.frpjump.devices.DisplayChange
 import ru.adsrv.frpjump.enroll.validateControlUrl
 import ru.adsrv.frpjump.store.Credentials
 import java.io.IOException
@@ -97,6 +98,18 @@ class FrpJumpApi(
             .post(ByteArray(0).toRequestBody(null))
             .build()
         call(request)
+    }
+
+    /**
+     * `POST /devices/{name}/display` with only the fields in [change], so an
+     * edit of the other field made meanwhile elsewhere survives. The answer
+     * is the device as the server now has it.
+     */
+    suspend fun setDisplay(c: Credentials, name: String, change: DisplayChange): OwnedDevice {
+        val request = authorized(c, endpoint(c.controlUrl, "devices", name, "display"))
+            .post(displayBody(change).toRequestBody(JSON))
+            .build()
+        return WireJson.decodeFromString(call(request))
     }
 
     /** 204 on success; marks the phone online for the owner's other devices. */

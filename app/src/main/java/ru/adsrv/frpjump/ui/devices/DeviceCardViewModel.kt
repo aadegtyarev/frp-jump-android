@@ -2,21 +2,29 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.connectionRows
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.devices.DisplayChange
+import ru.adsrv.frpjump.devices.DisplayFailure
+import ru.adsrv.frpjump.devices.displayFailure
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.ui.connections.ConnectionActions
+import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.undo.PendingUndo
 
 data class DeviceCardUiState(
@@ -28,6 +36,8 @@ data class DeviceCardUiState(
     val mismatch: String? = null,
     /** The login method remembered per SSH port, for the cards' subtitles. */
     val sshMethods: Map<Int, SshAuthMethod> = emptyMap(),
+    /** The server supports labels and icons: the "⋮" offers to edit them. */
+    val display: Boolean = false,
 )
 
 /** [device] of the current profile and its connections. */
@@ -69,6 +79,7 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
             rows = connectionRows(profile, connections, tunnels.withoutDark(PendingUndo.darkTunnels(hidden, profile)), device, hidden = PendingUndo.connectionIds(hidden, profile)),
             device = list.devices?.firstOrNull { it.name == device },
             profileName = profileName,
+            display = list.display,
             syncError = tunnels.syncError,
             mismatch = tunnels.mismatch,
             sshMethods = connections.filter { it.device == device && it.kind == PortKind.SSH }
@@ -76,6 +87,23 @@ class DeviceCardViewModel(private val app: FrpJumpApp, val device: String) : Vie
                 .distinct()
                 .associateWith { runtime.sshLogins.get(device, it).method },
         )
+
+    /**
+     * Saves [change] of this device's label and icon; [done] gets null on
+     * success (the list already shows it), else why it failed.
+     */
+    fun saveDisplay(change: DisplayChange, done: (DisplayFailure?) -> Unit) {
+        viewModelScope.launch {
+            val failure = try {
+                withContext(Dispatchers.IO) { runtime.devices.setDisplay(device, change) }
+                null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                displayFailure(e, change) { it.userMessage() }
+            }
+            done(failure)
+        }
+    }
 
     /** The profile's connections, for the sheet's name check. */
     fun connections(): List<Connection> = runtime.connections.connections.value
