@@ -166,8 +166,10 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
     BackHandler(enabled = searching) { closeSearch() }
     // On another tab Back returns to the tree first, as the app's bottom bar returns to its first tab.
     BackHandler(enabled = state.shownTab != ExplorerTab.TREE && !searching) { vm.tab.value = ExplorerTab.TREE }
-    // Inside a device Back returns to the devices list first.
-    BackHandler(enabled = state.shownTab == ExplorerTab.WB_DEVICES && state.wbDeviceId != null && !searching) { vm.closeWbDevice() }
+    // Inside a device Back returns to the devices list first; the top bar's arrow calls the same.
+    val inWbDevice = state.shownTab == ExplorerTab.WB_DEVICES && state.wbDeviceId != null
+    val barBack = { if (inWbDevice) vm.closeWbDevice() else leave() }
+    BackHandler(enabled = inWbDevice && !searching, onBack = barBack)
     val open = state.state != MqttState.Ended
     // Where a subscription's tap leads: its topic's card (over the list), its branch, or its pattern searched.
     val goTo: (SubscriptionRow) -> Unit = { row ->
@@ -213,7 +215,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     title = session?.device ?: stringResource(R.string.kind_mqtt),
                     subtitle = session?.let { stringResource(R.string.connection_details, it.port) + " · " + status } ?: status,
                     // In a WB device the arrow steps out to the devices list first, as system Back does.
-                    onBack = { if (state.shownTab == ExplorerTab.WB_DEVICES && state.wbDeviceId != null) vm.closeWbDevice() else leave() },
+                    onBack = barBack,
                     wrapTitle = true,
                     actions = {
                         IconButton(onClick = {

@@ -777,7 +777,8 @@ live controller; where they differ, both are read.
   red mark on the control with plain words, one per letter: `r` "Read
   error" («ошибка чтения»; the value is the last good one and means
   nothing now, so «—» stands in its place, in a switch, slider or colour
-  too, while the error is set), `w` "Write error" («ошибка записи»), `p`
+  too, while the error is set; a switch's toggle is then neutral (off,
+  muted) and still taps, an alarm is the muted ring), `w` "Write error" («ошибка записи»), `p`
   "Polled late" («опрос не успевает»), both keeping the value shown (it
   was read); an unknown letter shows as is. Any device-level
   `meta/error` shows the mark on the device's header and row as "The
