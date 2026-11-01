@@ -453,7 +453,8 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
     - `label contains an invisible or formatting character`
     - `label has no visible characters`
 
-    A reason the app does not know is shown as the server's text;
+    A reason the app does not know is shown as the server's text, under
+    the field when only the label was sent, otherwise under the button;
   - this profile's phone disabled on the server (403): «Этот телефон
     отключён на сервере — изменить нельзя», under the button;
   - anything else: the reason, under the button.
@@ -467,7 +468,9 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   was saved yet, and typing up to 64 characters again is cheap.
 - **No connection to the server.** The sheet opens with the last known
   values. «Сохранить» fails with «Нет связи с сервером — не сохранено» and
-  the retry described above. Edits are not queued for later, because
+  the retry described above. A connection that broke while the answer
+  was coming says what the system says instead, since the server may
+  have saved it. Edits are not queued for later, because
   another phone may change the same device in the meantime.
 - **Old server.** If the cached features lack "device-display", the "⋮"
   items are not shown and rows show no label. The owner is not told, since

@@ -21,6 +21,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,6 +83,9 @@ fun DeviceCardScreen(
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val notificationsFirst = rememberNotificationsFirst()
     var adding by rememberSaveable { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    // The label and icon sheet, and which way it was opened; null: closed.
+    var editing by rememberSaveable { mutableStateOf<DisplayEdit?>(null) }
     val colors = AppTheme.colors
     Scaffold(
         containerColor = colors.ground,
@@ -96,15 +102,33 @@ fun DeviceCardScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = colors.ink)
                 }
+                Box(Modifier.weight(1f))
                 // This device's tunnels, as the power button on the Devices bar does for the profile's: down at once, with Undo.
                 if (state.rows.any { it.active }) {
-                    Box(Modifier.weight(1f))
                     val label = stringResource(R.string.disconnect_device_tunnels, vm.device)
                     IconButton(
                         onClick = { vm.actions.disconnectDevice(vm.profile, vm.device) },
                         modifier = Modifier.padding(end = 8.dp).size(44.dp).semantics { contentDescription = label },
                     ) {
                         Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
+                    }
+                }
+                // Label and icon, only where the server keeps them; the phone itself is never in its own list.
+                if (state.display && state.device != null) {
+                    Box(Modifier.padding(end = 8.dp)) {
+                        IconButton(onClick = { menu = true }, modifier = Modifier.size(44.dp)) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more), tint = colors.ink)
+                        }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_label)) }, onClick = {
+                                menu = false
+                                editing = DisplayEdit.LABEL
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_icon)) }, onClick = {
+                                menu = false
+                                editing = DisplayEdit.ICON
+                            })
+                        }
                     }
                 }
             }
@@ -181,6 +205,16 @@ fun DeviceCardScreen(
         }
     }
     ConnectionDialogs(ui, vm.actions, existing = { vm.connections() }, rows = state.rows, onOpenTerminal = onOpenTerminal, onOpenFiles = onOpenFiles)
+    val shown = editing
+    val device = state.device
+    if (shown != null && device != null && state.display) {
+        DeviceDisplaySheet(
+            device = device,
+            focusLabel = shown == DisplayEdit.LABEL,
+            onSave = vm::saveDisplay,
+            onDismiss = { editing = null },
+        )
+    }
     if (adding) {
         ConnectionSheet(
             device = vm.device,
@@ -196,6 +230,9 @@ fun DeviceCardScreen(
         )
     }
 }
+
+/** Which "⋮" item opened the label and icon sheet: the keyboard comes up for the label only. */
+private enum class DisplayEdit { LABEL, ICON }
 
 /**
  * The device's icon on a tile, its whole name and under it its whole label

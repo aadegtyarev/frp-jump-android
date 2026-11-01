@@ -141,17 +141,33 @@ fun Field(
     /** Lines shown at least when not [singleLine]. */
     minLines: Int = 1,
     onDone: (() -> Unit)? = null,
+    placeholder: String? = null,
+    /** At the end of the line under the field (a character count), beside the problem or note. */
+    counter: (@Composable () -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+        val below = problem ?: note
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = singleLine,
             minLines = if (singleLine) 1 else minLines,
             isError = problem != null,
-            supportingText = (problem ?: note)?.let { { Text(it) } },
+            placeholder = placeholder?.let { { Text(it, color = colors.muted) } },
+            supportingText = when {
+                counter != null -> {
+                    {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) { below?.let { Text(it) } }
+                            counter()
+                        }
+                    }
+                }
+                below != null -> { { Text(below) } }
+                else -> null
+            },
             textStyle = fieldTextStyle(mono),
             keyboardOptions = KeyboardOptions(
                 keyboardType = keyboard,

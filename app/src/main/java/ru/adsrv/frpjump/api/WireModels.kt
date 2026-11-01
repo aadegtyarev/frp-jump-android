@@ -4,7 +4,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import ru.adsrv.frpjump.devices.DisplayChange
 
 /** The wire format this app speaks; the server's `common/api.py` PROTOCOL_VERSION. */
 const val PROTOCOL_VERSION = 1
@@ -62,6 +65,15 @@ data class OwnedDevice(
     /** What the device reports about itself; null when unknown. */
     val kind: String? = null,
 )
+
+/**
+ * The `/display` body: a field left out stays as it is on the server, an
+ * explicit null clears it. Built by hand, since [WireJson] drops nulls.
+ */
+fun displayBody(change: DisplayChange): String = buildJsonObject {
+    change.label?.let { put("label", it.value?.let(::JsonPrimitive) ?: JsonNull) }
+    change.icon?.let { put("icon", it.value?.let(::JsonPrimitive) ?: JsonNull) }
+}.toString()
 
 /** FastAPI errors are `{"detail": "..."}`; anything else is shown as the raw body. */
 fun errorDetail(body: String): String {
