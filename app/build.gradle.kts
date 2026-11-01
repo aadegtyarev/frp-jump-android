@@ -20,7 +20,7 @@ val releaseSigned = releaseSigningKeys.values.all { it != null }
 
 android {
     namespace = "ru.adsrv.frpjump"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ru.adsrv.frpjump"
@@ -73,9 +73,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     buildFeatures {
         compose = true
@@ -98,6 +95,12 @@ android {
             // Netty's jars (under the MQTT client) each carry a JAR index and a version list; neither is read on Android.
             excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
