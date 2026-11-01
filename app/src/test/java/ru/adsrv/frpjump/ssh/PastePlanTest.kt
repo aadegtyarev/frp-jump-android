@@ -7,12 +7,15 @@ import org.junit.Test
 /** A paste never runs a line by itself; several lines without bracketed paste are asked about. */
 class PastePlanTest {
     @Test
-    fun dropsOneTrailingLineBreak() {
-        assertEquals("ls -l", dropTrailingNewline("ls -l\n"))
-        assertEquals("ls -l", dropTrailingNewline("ls -l\r\n"))
-        assertEquals("ls -l", dropTrailingNewline("ls -l\r"))
-        assertEquals("ls -l\n", dropTrailingNewline("ls -l\n\n"))
-        assertEquals("ls -l", dropTrailingNewline("ls -l"))
+    fun dropsAllTrailingBreaksAndBlankLines() {
+        assertEquals("ls -l", dropTrailingBreaks("ls -l\n"))
+        assertEquals("ls -l", dropTrailingBreaks("ls -l\r\n"))
+        assertEquals("ls -l", dropTrailingBreaks("ls -l\r"))
+        assertEquals("ls -l", dropTrailingBreaks("ls -l\n\n\r\n"))
+        assertEquals("ls -l", dropTrailingBreaks("ls -l\n  \n\t\n "))
+        assertEquals("ls -l  ", dropTrailingBreaks("ls -l  \n"))
+        assertEquals("a\n\nb", dropTrailingBreaks("a\n\nb\n"))
+        assertEquals("ls -l", dropTrailingBreaks("ls -l"))
     }
 
     @Test
@@ -37,7 +40,8 @@ class PastePlanTest {
     @Test
     fun severalLinesAskWithoutBracketedPaste() {
         assertEquals(PastePlan.Ask("a\nb", 2), planPaste("a\nb\n", bracketed = false))
-        assertEquals(PastePlan.Ask("a\n", 2), planPaste("a\n\n", bracketed = false))
+        assertEquals(PastePlan.Paste("a"), planPaste("a\n\n", bracketed = false))
+        assertEquals(PastePlan.Ask("a\n\nb", 3), planPaste("a\n\nb\n \n", bracketed = false))
     }
 
     @Test
@@ -49,5 +53,6 @@ class PastePlanTest {
     fun nothingToPaste() {
         assertNull(planPaste("", bracketed = false))
         assertNull(planPaste("\n", bracketed = true))
+        assertNull(planPaste("\n \n", bracketed = false))
     }
 }

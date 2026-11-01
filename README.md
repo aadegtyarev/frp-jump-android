@@ -606,8 +606,8 @@ filling in the user name leaves the saved password alone.
   view or the font size changes. Below it, one row of keys: ^C, Paste,
   ← ↑ ↓ →, ⌫ (DEL), ⏎ (CR) and ⌨, which shows and hides the keyboard (a
   tap on the terminal shows it too). Paste is the selection menu's paste
-  and is dimmed while the clipboard has no text. Either way one trailing
-  line break is dropped, so a copied line never runs by itself. With
+  and is dimmed while the clipboard has no text. Either way trailing line
+  breaks and blank lines are dropped, so a copied line never runs by itself. With
   bracketed paste on (the remote side's DECSET 2004, read from the
   emulator) the text goes as is; several lines without it ask first
   ("Paste N lines?"): paste and run, join into one line (lines trimmed,

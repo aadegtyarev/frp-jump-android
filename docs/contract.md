@@ -261,8 +261,8 @@ the same login (long press: as another user).
 The extra keys under the terminal are one row: ^C, Paste, ← ↑ ↓ →, ⌫, ⏎
 and ⌨, which shows and hides the soft keyboard (the bar has no keyboard
 button). Paste works as the selection menu's paste and is disabled while the
-clipboard has no text. Any paste drops one trailing line break, so a single
-line never runs by itself. With bracketed paste enabled by the remote side it
+clipboard has no text. Any paste drops all trailing line breaks and blank
+lines, so a single line never runs by itself. With bracketed paste enabled by the remote side it
 goes as is; several lines without it show a sheet first, "Paste N lines?" —
 "Without bracketed paste each line runs at once": Paste and run, Join into one
 line (each line trimmed, blank lines dropped, joined by a single space), or
