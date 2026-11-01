@@ -175,7 +175,7 @@ neither option; see "Retained topics" for what that changes.
   and each mask says what it covers (topic only; `+` the direct children;
   `#` everything inside, the topic too). A search pattern with only `+`
   and `#` pins its filter ("Subscribe to this filter", see "The tree").
-  From stage 5 also typed as a topic filter on the Subscriptions tab.
+  Also typed as a topic filter on the Subscriptions tab (see there).
 - A typed topic filter is checked before it is saved: not empty; `#` only
   as a whole level and only the last one; `+` only as a whole level. The
   field says which rule failed. The owner is told that a filter whose
@@ -184,6 +184,65 @@ neither option; see "Retained topics" for what that changes.
   the tunnel are closed, and are subscribed whenever a session of that
   connection opens. Pinned topics carry a pin mark in the tree and are
   listed on top of the feed.
+- Unpinning changes only the phone's list, so it works in a closed
+  session too (on a card, in the search, on the Subscriptions tab): the
+  next session subscribes without it. Pinning and changing a mask need
+  the broker and are off in a closed session, saying "The session is
+  closed".
+
+## Subscriptions tab
+
+Under the explorer's top bar two tabs, **Tree · Subscriptions**, drawn as
+the app's segmented switch (it holds a third tab later). The tab is kept
+across rotation; Back on Subscriptions returns to Tree; the search (a mode
+of the tree) hides the tabs and opens on Tree. Opening a level from
+anywhere (a card's Open branch, a typed path) shows Tree. The connection
+banners (connecting, reconnecting, closed, refused `#`) show on both tabs.
+
+- **Rows**: every pin of the connection in the order made, without those
+  waiting for Undo. Each row: the filter in monospace, then
+  - a filter without wildcards (one topic): its value in one line, as in
+    the tree, or "No messages"; then its age, "before connecting" by the
+    tree's rules;
+  - a filter with `+` or `#`: how many seen topics it matches in the tree
+    (MQTT matching: `a/#` counts `a`, a first-level wildcard skips `$`
+    topics, `*` and `?` are plain characters) or "No topics yet", then
+    the age of the newest change among them ("before connecting" when
+    all came from before the session).
+
+  Rows are read once a second only while the tab is shown, by counting
+  in the tree without building the topics' paths.
+- **Tap**:
+  - one topic: its card, over the list (closing it returns to the list);
+  - a filter with a fixed start (`/devices/battery/#`, `<t>/+`): that
+    branch opened in the tree; when wildcards go on below
+    (`/devices/+/controls/K1`), the rest of the filter is also searched
+    there as a pattern (`+/controls/K1` in `/devices`);
+  - a filter starting with a wildcard (`+/controls/#`, `#`): the tree's
+    search with it as a pattern over the whole tree.
+- **Unpin**: a swipe to the left reveals ✕ (as on the Devices screen);
+  "⋮" on the row holds **Unpin** too; TalkBack gets "Unpin <filter>" as
+  an action of the row. Gone at once, Undo on the shared notice, as on a
+  card.
+- **Change mask…** ("⋮", and a TalkBack action) for a pin a card can name
+  (`<t>`, `<t>/+`, `<t>/#`): the Pin sheet titled "Change mask",
+  "Replaces <filter>"; the masks pinned already are marked and not
+  offered; a pick replaces the pin in its place ("Pinned: <filter>"
+  notice). Other filters have no mask to change.
+- **+** (a floating button, as Files' upload): "Subscribe to a filter", a
+  field taken as is. Checked as "Pins" says, the field saying which rule
+  failed ("+ and # take a whole level.", "# can only be the last level");
+  a filter already pinned ("Already subscribed.") or covered by a broader
+  pin ("Already pinned (through <pin>)", as the search says) is not
+  pinned again. Under the field, while it applies: a first-level wildcard
+  never matches `$` topics; `*` and `?` are plain characters here.
+  Pinned, the dialog closes with "Pinned: <filter>".
+- **Empty**: "No subscriptions yet", what a subscription gives and the
+  three ways to make one (a topic's card, a search pattern, +).
+- **Closed session**: the stored pins stay listed with what the tree last
+  held; taps still go to the card, branch or search; Unpin works (see
+  "Pins"); Change mask… is off with "The session is closed" under it; +
+  is muted and a tap says "The session is closed".
 
 ## The tree
 
@@ -271,7 +330,8 @@ neither option; see "Retained topics" for what that changes.
     once, Undo on the shared notice), so a pin made here, which no card's
     mask can name, is never stuck. When only a broader pin delivers all it
     does (`/devices/#` for `/devices/+/controls/#`), the button is off with
-    "Already pinned (through <pin>)"; in a closed session it is off with "The session is closed". A
+    "Already pinned (through <pin>)"; in a closed session Subscribe is off
+    with "The session is closed", Unsubscribe still works. A
     pattern with `*` or `?` shows the button off with "The broker does not
     understand * and ?: only + and # can be subscribed". The reason is read
     out with the button. A relative `#` pinned in branch `X` (`X/#`) also
@@ -508,7 +568,7 @@ nothing else in the explorer changes for it.
 3. Feed with pause, filter and pinned topics.
 4. Retained delete for a topic and a branch.
 5. TLS (preset 8883, pinned certificate); the Subscriptions tab: pins
-   listed, masks changed, typed topic filters.
+   listed, masks changed, typed topic filters (the tab came first).
 6. Plugin infrastructure (declarative descriptions, matching, enable per
    connection) with the first plugin, "Status and command topics", and the
    publish sheet's switch; Text/JSON/Hex views move onto the same plumbing.

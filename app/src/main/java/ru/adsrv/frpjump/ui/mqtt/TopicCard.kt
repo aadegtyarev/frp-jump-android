@@ -125,7 +125,7 @@ private const val COPY_PREVIEW = 40
  * the full path with copy; a branch's newest change when it is not the
  * value's; the last values; Publish… (the main action), Open branch (N),
  * Pin… and Unpin. [canPin] is false once the session has ended; Publish…
- * is then off too. [state] is the session's, for Send.
+ * is then off too, Unpin is not (the pins are the phone's list). [state] is the session's, for Send.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +210,8 @@ fun TopicCard(
                         }
                     }
                     if (node == null && !card.isBranch) InfoLine(stringResource(R.string.mqtt_card_value), stringResource(R.string.mqtt_no_messages))
-                    if (card.pinned.isNotEmpty()) Pinned(path, card.pinned, canPin, onUnpin)
+                    // Unpinning changes the phone's list only: also in a closed session (the next one subscribes without it).
+                    if (card.pinned.isNotEmpty()) Pinned(path, card.pinned, onUnpin)
                 }
                 if (card.history.isNotEmpty()) History(card.history)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -252,7 +253,7 @@ fun TopicCard(
 
 /** The pins made on this path, each with Unpin, done at once with a notice. */
 @Composable
-private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpin: (PinMask) -> Unit) {
+private fun Pinned(path: MqttPath, masks: List<PinMask>, onUnpin: (PinMask) -> Unit) {
     val colors = AppTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(stringResource(R.string.mqtt_card_pinned), fontSize = 12.sp, color = colors.muted)
@@ -265,10 +266,9 @@ private fun Pinned(path: MqttPath, masks: List<PinMask>, canPin: Boolean, onUnpi
                 // Gone at once with Undo on the shared notice (UI rules); unsubscribed when that goes.
                 val label = stringResource(R.string.mqtt_unpin_filter, pinFilter(path, mask))
                 TextButton(
-                    enabled = canPin,
                     onClick = { onUnpin(mask) },
                     modifier = Modifier.semantics { contentDescription = label },
-                ) { Text(stringResource(R.string.mqtt_unpin), color = if (canPin) colors.accent else colors.muted) }
+                ) { Text(stringResource(R.string.mqtt_unpin), color = colors.accent) }
             }
         }
     }
@@ -444,12 +444,24 @@ private fun History(history: List<TopicValue>) {
     }
 }
 
-/** "Pin…": one tap on a mask pins it and closes; masks already pinned are marked and not offered again. */
+/**
+ * "Pin…": one tap on a mask pins it and closes; masks already pinned are
+ * marked and not offered again. The Subscriptions tab's "Change mask"
+ * opens it too, with its own [title] and [subtitle].
+ */
 @Composable
-private fun PinSheet(path: MqttPath, pinned: List<PinMask>, initial: PinMask, onPick: (PinMask) -> Unit, onDismiss: () -> Unit) {
+internal fun PinSheet(
+    path: MqttPath,
+    pinned: List<PinMask>,
+    initial: PinMask,
+    onPick: (PinMask) -> Unit,
+    onDismiss: () -> Unit,
+    title: String = stringResource(R.string.mqtt_pin_title),
+    subtitle: String = stringResource(R.string.mqtt_pin_subtitle),
+) {
     val colors = AppTheme.colors
     // What a pin gives, said once on top; each mask says what it covers.
-    AppSheet(title = stringResource(R.string.mqtt_pin_title), subtitle = stringResource(R.string.mqtt_pin_subtitle), onDismiss = onDismiss) {
+    AppSheet(title = title, subtitle = subtitle, onDismiss = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             pinMasksFor(path).forEach { mask ->
                 val done = mask in pinned

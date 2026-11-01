@@ -42,6 +42,14 @@ import ru.adsrv.frpjump.mqtt.PatternProblem
 import ru.adsrv.frpjump.mqtt.SearchQuery
 import ru.adsrv.frpjump.mqtt.filterOffer
 import ru.adsrv.frpjump.mqtt.parseSearch
+import ru.adsrv.frpjump.mqtt.FilterRefusal
+import ru.adsrv.frpjump.mqtt.SubscriptionRow
+import ru.adsrv.frpjump.mqtt.rootedPin
+import ru.adsrv.frpjump.mqtt.subscriptionRows
+import ru.adsrv.frpjump.mqtt.typedFilterRefusal
+
+/** The explorer's tabs under its top bar, in their order; a third one fits the row. */
+enum class ExplorerTab { TREE, SUBSCRIPTIONS }
 
 /** One row of a level: a node of the tree, or the root's `$SYS` before anything was seen there. */
 data class TopicRow(val node: TopicNode, val pinned: Boolean) {
@@ -102,6 +110,11 @@ data class MqttUiState(
     val closedByTunnel: Boolean = false,
     /** The topic card open, or null. */
     val card: CardState? = null,
+    val tab: ExplorerTab = ExplorerTab.TREE,
+    /** The connection's pins, in order, without those waiting for Undo. */
+    val pins: List<String> = emptyList(),
+    /** The Subscriptions tab's rows; read only while it is shown. */
+    val subscriptions: List<SubscriptionRow> = emptyList(),
 )
 
 /**
@@ -125,6 +138,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     /** The node whose card is open; kept here so it outlives a rotation. */
     val card = MutableStateFlow<MqttPath?>(null)
 
+    /** The tab shown; kept here so it outlives a rotation. */
+    val tab = MutableStateFlow(ExplorerTab.TREE)
+
     val state: StateFlow<MqttUiState> = session?.let { s ->
         val ticks = flow {
             while (true) {
@@ -142,7 +158,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             val gone = PendingUndo.mqttPins(hidden, s.profile, s.connectionId)
             if (gone.isEmpty()) all else all.filter { it !in gone }
         }
-        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole) { values ->
+        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -155,6 +171,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[6] as MqttPath?,
                 values[7] as Long,
                 values[8] as Boolean,
+                values[9] as ExplorerTab,
             )
         }.flowOn(Dispatchers.Default)
     }.let { it ?: flowOf(MqttUiState(state = MqttState.Ended, closedByTunnel = app.mqtt.closedByTunnel(sessionId))) }
@@ -175,6 +192,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         card: MqttPath?,
         now: Long,
         whole: Boolean,
+        tab: ExplorerTab,
     ): MqttUiState {
         if (path != shownPath) {
             shownPath = path
@@ -209,6 +227,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             shownSince = shownSince,
             closedByTunnel = state == MqttState.Ended && app.mqtt.closedByTunnel(s.id),
             card = card?.let { CardState(it, s.tree.node(it), s.tree.history(it), pinnedMasks(it, pins)) },
+            tab = tab,
+            pins = pins,
+            subscriptions = if (tab == ExplorerTab.SUBSCRIPTIONS) subscriptionRows(pins, s.tree) else emptyList(),
         )
     }
 
@@ -234,9 +255,10 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         return Search(scope, at, query, hits, found.size, withoutCase)
     }
 
-    /** Opens the level [path]. */
+    /** Opens the level [path], in the tree. */
     fun open(path: MqttPath) {
         focused.value = null
+        tab.value = ExplorerTab.TREE
         session?.open(path)
     }
 
@@ -264,6 +286,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      * children).
      */
     fun reveal(path: MqttPath) {
+        tab.value = ExplorerTab.TREE
         session?.open(path.parent)
         focused.value = path
         card.value = path
@@ -293,8 +316,27 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         // Pinned again while the notice is up: the pin stays (it shows once the notice goes).
         val mark = mqtt.pinMark(s.profile, s.connectionId, filter)
         app.pendingUndo.enqueue(PendingUndo.mqttPinKey(s.profile, s.connectionId, filter), commit = {
-            withContext(Dispatchers.Main) { mqtt.unpin(s.profile, s.connectionId, filter, mark) }
+            withContext(Dispatchers.Main) {
+                // No session of the connection is open (this one closed): this one still takes it from the
+                // store and from the list its Subscriptions tab shows; the next session subscribes without it.
+                if (mqtt.find(s.profile, s.connectionId) == null) s.unpin(filter) else mqtt.unpin(s.profile, s.connectionId, filter, mark)
+            }
         })
+    }
+
+    /** "Change mask" of the pin [filter] (one a card can name) to [mask]; returns the new filter, or null when it is no such pin. */
+    fun changeMask(filter: String, mask: PinMask): String? {
+        val s = session ?: return null
+        val rooted = rootedPin(filter) ?: return null
+        return pinFilter(rooted.topic, mask).also { app.mqtt.replacePin(s.profile, s.connectionId, filter, it) }
+    }
+
+    /** "+" on the Subscriptions tab: pins the typed topic filter [text]; returns why it cannot be, or null once it is. */
+    fun subscribeTyped(text: String): FilterRefusal? {
+        val s = session ?: return null
+        typedFilterRefusal(text, state.value.pins)?.let { return it }
+        app.mqtt.pin(s.profile, s.connectionId, text)
+        return null
     }
 
     /**

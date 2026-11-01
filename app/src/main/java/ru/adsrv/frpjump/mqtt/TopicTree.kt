@@ -165,9 +165,33 @@ class TopicTree(
         val found = mutableListOf<MqttPath>()
         synchronized(lock) {
             val start = find(at) ?: return emptyList()
-            walk(start, at.isRoot, pattern, ignoreCase, 0, ArrayList(), found)
+            walk(start, at.isRoot, pattern, ignoreCase, 0, ArrayList()) { levels, _ -> found += MqttPath(levels.toList()) }
         }
         return found.sortedWith(NaturalOrder.paths)
+    }
+
+    /** How many seen topics a topic filter's [pattern] matches from the root, and the newest change among them. */
+    data class Summary(
+        val topics: Int,
+        /** Milliseconds since the epoch; 0 when none changed in the session (all from before it, or none). */
+        val newestChangeAt: Long,
+    )
+
+    /**
+     * [match] from the root, counted rather than listed: no paths are
+     * built, so a broad filter (`#`) read once a second stays cheap.
+     */
+    fun summary(pattern: List<LevelPattern>): Summary {
+        if (pattern.isEmpty()) return Summary(0, 0)
+        var topics = 0
+        var newest = 0L
+        synchronized(lock) {
+            walk(root, true, pattern, false, 0, ArrayList()) { _, node ->
+                topics++
+                node.history.firstOrNull()?.changedAt?.let { newest = maxOf(newest, it) }
+            }
+        }
+        return Summary(topics, newest)
     }
 
     /** Forgets every topic, for "Refresh tree". */
@@ -195,11 +219,11 @@ class TopicTree(
     }
 
     /** [node] is at [levels]; [k] is the pattern level its children are matched against. */
-    private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, ignoreCase: Boolean, k: Int, levels: ArrayList<String>, found: MutableList<MqttPath>) {
+    private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, ignoreCase: Boolean, k: Int, levels: ArrayList<String>, found: (ArrayList<String>, Node) -> Unit) {
         val part = pattern[k]
         if (part == LevelPattern.Rest) {
             // `a/#` matches `a` as well, unless `a` is where the search started.
-            if (levels.isNotEmpty() && node.history.isNotEmpty()) found += MqttPath(levels.toList())
+            if (levels.isNotEmpty() && node.history.isNotEmpty()) found(levels, node)
             collectAll(node, atRoot && levels.isEmpty(), levels, found)
             return
         }
@@ -207,7 +231,7 @@ class TopicTree(
         val step = { level: String, child: Node ->
             levels.add(level)
             if (last) {
-                if (child.history.isNotEmpty()) found += MqttPath(levels.toList())
+                if (child.history.isNotEmpty()) found(levels, child)
             } else {
                 walk(child, atRoot, pattern, ignoreCase, k + 1, levels, found)
             }
@@ -225,11 +249,11 @@ class TopicTree(
     }
 
     /** Every topic below [node]; [noDollar] skips its `$` children. */
-    private fun collectAll(node: Node, noDollar: Boolean, levels: ArrayList<String>, found: MutableList<MqttPath>) {
+    private fun collectAll(node: Node, noDollar: Boolean, levels: ArrayList<String>, found: (ArrayList<String>, Node) -> Unit) {
         node.children.forEach { (level, child) ->
             if (noDollar && level.startsWith("$")) return@forEach
             levels.add(level)
-            if (child.history.isNotEmpty()) found += MqttPath(levels.toList())
+            if (child.history.isNotEmpty()) found(levels, child)
             collectAll(child, false, levels, found)
             levels.removeAt(levels.lastIndex)
         }
