@@ -574,6 +574,8 @@
     <string name="terminal_key_ctrl_z">Ctrl+Z — приостановить</string>
     <string name="terminal_key_ctrl_r">Ctrl+R — поиск в истории</string>
     <string name="terminal_key_ctrl_l">Ctrl+L — очистить экран</string>
+    <string name="terminal_paste">Вставить</string>
+    <string name="terminal_clipboard_empty">буфер обмена пуст</string>
     <string name="terminal_not_open">Сессия не открыта.</string>
     <string name="terminal_new_session">Новая сессия</string>
     <string name="terminal_new_session_as">Войти другим пользователем</string>

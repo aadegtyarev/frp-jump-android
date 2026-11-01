@@ -541,6 +541,8 @@
     <string name="terminal_key_ctrl_z">Ctrl+Z — suspend</string>
     <string name="terminal_key_ctrl_r">Ctrl+R — search history</string>
     <string name="terminal_key_ctrl_l">Ctrl+L — clear screen</string>
+    <string name="terminal_paste">Paste</string>
+    <string name="terminal_clipboard_empty">clipboard is empty</string>
     <string name="terminal_not_open">The session is not open.</string>
     <string name="terminal_new_session">New session</string>
     <string name="terminal_new_session_as">Log in as another user</string>

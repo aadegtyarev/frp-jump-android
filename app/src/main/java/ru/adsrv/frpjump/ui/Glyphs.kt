@@ -98,6 +98,20 @@ val CopyGlyph: ImageVector = glyph("Copy") {
     horizontalLineTo(15f)
 }
 
+/** A clipboard with its clip: "Paste". */
+val PasteGlyph: ImageVector = glyph("Paste") {
+    roundRect(8f, 2f, 8f, 4f, 1f)
+    moveTo(16f, 4f); horizontalLineTo(18f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20f, y1 = 6f)
+    verticalLineTo(20f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 18f, y1 = 22f)
+    horizontalLineTo(6f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 4f, y1 = 20f)
+    verticalLineTo(6f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 6f, y1 = 4f)
+    horizontalLineTo(8f)
+}
+
 /** A plus, for "add" buttons. */
 val PlusGlyph: ImageVector = glyph("Plus", 2.4f) {
     moveTo(12f, 5f)

@@ -7,9 +7,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -19,13 +16,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -46,6 +48,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +57,7 @@ import com.termux.view.TerminalView
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PasteGlyph
 
 /** Sticky Ctrl / Alt from the extra rows: apply to the next key, then release. */
 @Stable
@@ -104,9 +108,9 @@ enum class ExtraKey(
     DASH("-", null),
 }
 
-/** The row under the terminal: the keys used all the time, then ⌨. */
+/** The row under the terminal after ^C and Paste: the keys used all the time, then ⌨. */
 private val ROW_KEYS = listOf(
-    ExtraKey.CTRL_C, ExtraKey.TAB, ExtraKey.LEFT, ExtraKey.UP, ExtraKey.DOWN, ExtraKey.RIGHT,
+    ExtraKey.LEFT, ExtraKey.UP, ExtraKey.DOWN, ExtraKey.RIGHT,
     ExtraKey.BACKSPACE, ExtraKey.ENTER,
 )
 
@@ -117,8 +121,8 @@ private sealed interface Slot {
     data object Alt : Slot
 }
 
-/** The extra rows' first group: Esc, the modifiers and the ready combos. */
-private val COMBO_SLOTS: List<Slot> = listOf(Slot.Send(ExtraKey.ESC), Slot.Ctrl, Slot.Alt) +
+/** The extra rows' first group: Esc, Tab, the modifiers and the ready combos. */
+private val COMBO_SLOTS: List<Slot> = listOf(Slot.Send(ExtraKey.ESC), Slot.Send(ExtraKey.TAB), Slot.Ctrl, Slot.Alt) +
     listOf(ExtraKey.CTRL_D, ExtraKey.CTRL_Z, ExtraKey.CTRL_R, ExtraKey.CTRL_L).map(Slot::Send)
 
 /** The extra rows' second group: navigation keys and symbols. */
@@ -128,7 +132,7 @@ private val NAV_SLOTS: List<Slot> = listOf(
 ).map(Slot::Send)
 
 /** The narrowest an extra key gets before its group wraps onto another line. */
-private val EXTRA_KEY_MIN = 44.dp
+private val EXTRA_KEY_MIN = 38.dp
 private val ROW_GAP = 4.dp
 
 /**
@@ -145,14 +149,14 @@ fun balancedLines(count: Int, perLine: Int): List<Int> {
 }
 
 /**
- * One row: ^C Tab ← ↑ ↓ → ⌫ ⏎ ⌨, where ⌨ shows and hides the keyboard.
- * While the keyboard is up the extra rows slide in above it: Esc, Ctrl, Alt,
+ * One row: ^C, Paste, ← ↑ ↓ → ⌫ ⏎ ⌨, where ⌨ shows and hides the keyboard.
+ * While the keyboard is up the extra rows slide in above it: Esc, Tab, Ctrl, Alt,
  * ^D ^Z ^R ^L, Home End PgUp PgDn, | ~ / -. Ctrl and Alt stay held, lit,
  * until the next key.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ExtraKeys(modifiers: Modifiers, onKeyboard: (show: Boolean) -> Unit, onKey: (ExtraKey) -> Unit) {
+fun ExtraKeys(modifiers: Modifiers, onKeyboard: (show: Boolean) -> Unit, onPaste: () -> Unit, onKey: (ExtraKey) -> Unit) {
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
     Column(
@@ -169,6 +173,8 @@ fun ExtraKeys(modifiers: Modifiers, onKeyboard: (show: Boolean) -> Unit, onKey: 
             ExtraRows(modifiers, onKey, Modifier.padding(bottom = ROW_GAP))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+            Key(ExtraKey.CTRL_C, modifiers, onKey)
+            PasteKey(onPaste)
             ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
             val label = stringResource(R.string.terminal_keyboard)
             Toggle("⌨", keyboard, Modifier.semantics { contentDescription = label }, onChange = onKeyboard)
@@ -203,6 +209,26 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
                 }
             }
         }
+    }
+}
+
+/** Pastes the clipboard's text; dimmed, saying why, while there is none. */
+@Composable
+private fun RowScope.PasteKey(onPaste: () -> Unit) {
+    val colors = AppTheme.colors
+    val canPaste = clipboardHasText()
+    val label = stringResource(R.string.terminal_paste)
+    val empty = stringResource(R.string.terminal_clipboard_empty)
+    KeyBox(
+        Modifier
+            .semantics {
+                contentDescription = label
+                if (!canPaste) stateDescription = empty
+            }
+            .clickable(enabled = canPaste, role = Role.Button, onClick = onPaste),
+        colors.termKey,
+    ) {
+        Icon(PasteGlyph, contentDescription = null, tint = if (canPaste) colors.onTerm else colors.termMuted, modifier = Modifier.size(18.dp))
     }
 }
 

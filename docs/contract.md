@@ -258,9 +258,11 @@ commands, owner-defined) above the extra keys; the sessions as a row of tabs
 above the terminal, where "+" opens another session to the same device with
 the same login (long press: as another user).
 
-The extra keys under the terminal are one row: ^C, Tab, ← ↑ ↓ →, ⌫, ⏎ and
-⌨, which shows and hides the soft keyboard (the bar has no keyboard button).
-While the keyboard is up, extra rows slide in above it: Esc, sticky Ctrl and
+The extra keys under the terminal are one row: ^C, Paste, ← ↑ ↓ →, ⌫, ⏎
+and ⌨, which shows and hides the soft keyboard (the bar has no keyboard
+button). Paste works as the selection menu's paste (bracketed when the remote
+side enabled it) and is disabled while the clipboard has no text. While the
+keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 

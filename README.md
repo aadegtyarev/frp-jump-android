@@ -603,10 +603,12 @@ filling in the user name leaves the saved password alone.
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.
 - The terminal requests `xterm-256color` and sends `window-change` when the
-  view or the font size changes. Below it, one row of keys: ^C, Tab,
+  view or the font size changes. Below it, one row of keys: ^C, Paste,
   ← ↑ ↓ →, ⌫ (DEL), ⏎ (CR) and ⌨, which shows and hides the keyboard (a
-  tap on the terminal shows it too). While the keyboard is up, extra rows
-  slide in above that row: Esc, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
+  tap on the terminal shows it too). Paste is the selection menu's paste
+  (bracketed when the remote side asked for it) and is dimmed while the
+  clipboard has no text. While the keyboard is up, extra rows
+  slide in above that row: Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
   and `| ~ / -` (one line when they all fit, as in landscape; even lines
   when narrow). Ctrl and Alt stay held, lit, until the next key, and apply
   to ⌫ ⏎ and the arrows as to a hardware keyboard; ^C ^D ^Z ^R ^L send

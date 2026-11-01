@@ -511,6 +511,8 @@ fun TerminalScreen(
                 ExtraKeys(
                     modifiers = modifiers,
                     onKeyboard = { show -> if (show) input.showKeyboard() else input.hideKeyboard() },
+                    // The same paste as the selection menu's: bracketed when the remote side asked for it.
+                    onPaste = { view.currentSession?.onPasteTextFromClipboard() },
                     onKey = { key ->
                         selected.typed()
                         sendExtraKey(view, key, modifiers)
