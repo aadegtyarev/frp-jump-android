@@ -103,6 +103,7 @@ class FrpJumpApp : Application() {
 
     /** The publish sheet's retain, QoS and recent payloads per topic, per connection. */
     lateinit var mqttPublished: PublishMemory
+        private set
 
     /** The MQTT plugins' settings per connection. */
     lateinit var mqttPlugins: PluginStore

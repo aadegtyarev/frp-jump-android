@@ -533,7 +533,10 @@ else in this plugin.
 - **Template syntax**: levels split by `/` as in topics; a level is
   literal text, `{name}` (exactly one level), or `{name...}` (one or more
   levels; at most one per template, at any position). A template holds at
-  least one literal level and no MQTT wildcards. A template starting with
+  least one literal level with text (an empty level does not count, so
+  `/{x...}` is refused) and no MQTT wildcards. A command template equal to
+  the status one is refused (leave it empty: the topic takes its own
+  commands); a stored rule that no longer parses is skipped. A template starting with
   `/` has an empty first level and matches only topics that have one. The
   command template uses only names of the status template.
 - **Matching**: without `{name...}` the topic has as many levels as the
@@ -792,8 +795,9 @@ nothing else in the explorer changes for it.
 6. Plugin infrastructure (declarative descriptions, matching, enable per
    connection, the connection's Plugins settings) with the first plugin,
    "Status and command topics": one- and two-template rules, the four
-   presets, own rules, the publish sheet's switch; Text/JSON/Hex views
-   move onto the same plumbing.
+   presets, own rules, the publish sheet's switch. Moving the Text/JSON/Hex
+   views onto the same plumbing has no visible effect and is left for a
+   later small step.
 7. The Wiren Board plugin: the WB devices tab (devices list, a device's
    controls by type, writes to `/on` answered on the control, error
    marks), both meta forms, on/off per connection; the Wiren Board
