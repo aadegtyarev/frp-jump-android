@@ -747,7 +747,7 @@ each other; both log in through `ssh/SshConnector.kt`.
 
 | Library | Version | License |
 | --- | --- | --- |
-| [frp](https://github.com/fatedier/frp) `frpc`, built into the APK | 0.70.0 | Apache-2.0 |
+| [frp](https://github.com/fatedier/frp) `frpc`, built into the APK | 0.70.0 | Apache-2.0; the Go standard library and golang.org/x packages in it (Go 1.25.3): BSD-3-Clause |
 | [sshj](https://github.com/hierynomus/sshj) | 0.41.2 | Apache-2.0 |
 | [BouncyCastle](https://www.bouncycastle.org/) bcprov / bcpkix (via sshj) | 1.84 | MIT (Bouncy Castle licence) |
 | [Termux](https://github.com/termux/termux-app) terminal-emulator / terminal-view (JitPack) | v0.118.3 | Apache-2.0 |
@@ -767,6 +767,12 @@ Emulator for Android); only those two modules are used. The app drives
 Termux's `TerminalSession` from the SSH stream instead of a local pty
 through package-private members (`com.termux.terminal.RemoteTerminal`);
 re-check that class when bumping the Termux version.
+
+`frpc` is a static Go binary: besides frp it holds the Go standard library
+and golang.org/x packages (BSD-3-Clause, Copyright 2009 The Go Authors; the
+text is in `app/src/main/assets/licenses/BSD-3-Clause-Go.txt`) and the other
+Go modules frp uses, which `go version -m libfrpc.so` lists (among them
+hashicorp/yamux, MPL-2.0); those are not listed here yet.
 
 Copyright of the viewer's components: Sora Editor (C) 2020-2025 Rosemoe;
 tm4e (c) 2015-2017 Angelo ZERR, (c) 2022 Sebastian Thomschke, (c) 2023

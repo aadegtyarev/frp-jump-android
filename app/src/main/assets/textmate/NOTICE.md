@@ -42,6 +42,12 @@ Corporation, MIT.
 | css | source.css | microsoft/vscode-css (de9e6bee) | Copyright (c) Microsoft Corporation | MIT |
 | log | text.log | emilast/vscode-logfile-highlighter (396c8552) | Copyright (c) 2015 emilast | MIT |
 
+The commits are the ones VS Code's `cgmanifest.json` pins for each
+upstream repository; three files name another commit in their own
+`version` field, the one the file was last converted from: javascript
+(TypeScript-TmLanguage 48f60869), dockerfile (moby c2029cb2) and
+python-regexp (MagicPython c9b3409d).
+
 ## moby NOTICE (Dockerfile grammar)
 
     Docker
