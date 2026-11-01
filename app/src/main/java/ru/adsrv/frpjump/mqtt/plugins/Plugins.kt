@@ -3,7 +3,7 @@ package ru.adsrv.frpjump.mqtt.plugins
 import kotlinx.serialization.Serializable
 import ru.adsrv.frpjump.api.WireJson
 
-/** A set of rules shipped with a plugin, turned on per connection. */
+/** A set of rules shipped with a plugin, turned on at app level. */
 @Serializable
 data class Preset(val id: String, val name: String, val rules: List<RuleSpec>)
 
@@ -15,9 +15,20 @@ data class Preset(val id: String, val name: String, val rules: List<RuleSpec>)
 @Serializable
 data class PluginDescription(val id: String, val presets: List<Preset> = emptyList())
 
-/** Ids of the shipped plugins and presets, as stored per connection. */
+/**
+ * Ids of the shipped plugins and presets, as stored. Plugin ids and preset
+ * ids are separate namespaces: preset ids appear only in the Status and
+ * command plugin's presets, and the shared word `wirenboard` names two things.
+ */
 object PluginIds {
+    /** Plugin: the Wiren Board devices view (the «WB» tab). */
+    const val WIREN_BOARD = "wirenboard"
+
+    /** Plugin: Status and command topics. */
     const val STATUS_COMMAND = "status-command"
+
+    /** The plugins in the order their rows are listed. */
+    val ALL = listOf(WIREN_BOARD, STATUS_COMMAND)
 
     const val PRESET_WIREN_BOARD = "wirenboard"
     const val PRESET_ZIGBEE2MQTT = "zigbee2mqtt"

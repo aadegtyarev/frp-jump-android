@@ -186,12 +186,12 @@ class PendingUndo(
             return hidden.filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
         }
 
-        /** The key of own rule [ruleId] of the MQTT plugin settings of [profile]'s connection [connectionId]. */
-        fun mqttRuleKey(profile: String, connectionId: String, ruleId: String) = "mqttrule:$profile/$connectionId\u0000$ruleId"
+        /** The key of own rule [ruleId] of the MQTT Status and command topics plugin (app level). */
+        fun mqttRuleKey(ruleId: String) = "mqttrule:$ruleId"
 
-        /** The own rules of [profile]'s connection [connectionId] among [hidden], as their ids. */
-        fun mqttRules(hidden: Set<String>, profile: String, connectionId: String): Set<String> {
-            val prefix = "mqttrule:$profile/$connectionId\u0000"
+        /** The own MQTT rules among [hidden], as their ids. */
+        fun mqttRules(hidden: Set<String>): Set<String> {
+            val prefix = "mqttrule:"
             return hidden.filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
         }
 
