@@ -442,11 +442,16 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   values at once, taken from the server's answer rather than guessed. On
   failure the sheet stays open with the typed text kept, and the button
   offers to try again. The reason appears where it belongs:
-  - a refused label: under the field. The server's known reasons (too long,
-    a line break or control character, a forbidden character, no visible
-    characters; the exact texts are in frp-jump's plan) are shown as the
-    app's own Russian or English strings. A reason the app does not know is
-    shown as the server's text;
+  - a refused label: under the field. The server's five known reasons are
+    matched as whole strings and shown in the app's own Russian or English
+    text. They are fixed in frp-jump's plan:
+    - `label is too long`
+    - `label is longer than 64 characters`
+    - `label contains a line break or control character`
+    - `label contains an invisible or formatting character`
+    - `label has no visible characters`
+
+    A reason the app does not know is shown as the server's text;
   - this profile's phone disabled on the server (403): «Этот телефон
     отключён на сервере — изменить нельзя», under the button;
   - anything else: the reason, under the button.
