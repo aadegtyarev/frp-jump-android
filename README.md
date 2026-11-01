@@ -770,11 +770,11 @@ Components and licenses.
 | [CameraX](https://developer.android.com/jetpack/androidx/releases/camera) camera-camera2 / camera-lifecycle / camera-view | 1.4.1 | Apache-2.0 |
 | [ZXing](https://github.com/zxing/zxing) core | 3.5.3 | Apache-2.0 |
 | [AboutLibraries](https://github.com/mikepenz/AboutLibraries) Gradle plugin (build time only) | 11.6.3 | Apache-2.0 |
-| [Sora Editor](https://github.com/Rosemoe/sora-editor) editor / language-textmate ([sources of 0.23.7](https://github.com/Rosemoe/sora-editor/tree/0.23.7)) | 0.23.7 | LGPL-2.1 |
-| [Eclipse tm4e](https://github.com/eclipse/tm4e) core and language configuration, a copy inside language-textmate ([its sources in the Sora 0.23.7 tree](https://github.com/Rosemoe/sora-editor/tree/0.23.7/language-textmate/src/main/java/org/eclipse/tm4e)) | Sora's copy | EPL-2.0 |
-| [joni](https://github.com/jruby/joni), [jcodings](https://github.com/jruby/jcodings) (via language-textmate) | 2.2.6, 1.0.63 | MIT |
-| [snakeyaml-engine](https://bitbucket.org/snakeyaml/snakeyaml-engine), [Gson](https://github.com/google/gson) (via language-textmate) | 2.9, 2.13.1 | Apache-2.0 |
-| Eclipse JDT annotations (via language-textmate, compile-time annotations) | 2.3.100 | EPL-2.0 |
+| [Sora Editor](https://github.com/Rosemoe/sora-editor) editor / language-textmate ([sources of 0.24.6](https://github.com/Rosemoe/sora-editor/tree/0.24.6)) | 0.24.6 | LGPL-2.1 |
+| [Eclipse tm4e](https://github.com/eclipse/tm4e) core and language configuration, a copy inside language-textmate ([its sources in the Sora 0.24.6 tree](https://github.com/Rosemoe/sora-editor/tree/0.24.6/language-textmate/src/main/java/org/eclipse/tm4e)) | Sora's copy | EPL-2.0 |
+| [joni](https://github.com/jruby/joni), [jcodings](https://github.com/jruby/jcodings) (via language-textmate) | 2.2.7, 1.0.64 | MIT |
+| [snakeyaml-engine](https://bitbucket.org/snakeyaml/snakeyaml-engine), [Gson](https://github.com/google/gson) (via language-textmate) | 3.0.1, 2.13.2 | Apache-2.0 |
+| Eclipse JDT annotations (via language-textmate, compile-time annotations) | 2.4.100 | EPL-2.0 |
 | TextMate grammars from [VS Code](https://github.com/microsoft/vscode)'s built-in extensions, in `app/src/main/assets/textmate/` | 1.142.0 (YAML 1.90.0) | MIT, TextMate Bundle License, Apache-2.0 (Dockerfile): see `NOTICE.md` there |
 
 termux-app as a whole is GPLv3, but its LICENSE.md lists terminal-emulator
@@ -803,7 +803,7 @@ checks that its frp version is `FRPC_VERSION` and that every module's
 license has its text. `scripts/build-frpc.sh --licenses-only` remakes it
 for the binaries already in `jniLibs` without rebuilding them.
 
-Copyright of the viewer's components: Sora Editor (C) 2020-2025 Rosemoe;
+Copyright of the viewer's components: Sora Editor (C) 2020-2026 Rosemoe;
 tm4e (c) 2015-2017 Angelo ZERR, (c) 2022 Sebastian Thomschke, (c) 2023
 Vegard IT GmbH and others, initially (C) Microsoft Corporation and (c) 2013
 GitHub Inc.; joni and jcodings (c) JRuby Team; the grammars' holders are in

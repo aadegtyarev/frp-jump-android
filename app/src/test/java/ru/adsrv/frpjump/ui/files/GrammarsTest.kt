@@ -7,7 +7,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.eclipse.tm4e.core.TMException
 import org.eclipse.tm4e.core.grammar.IStateStack
-import org.eclipse.tm4e.core.internal.oniguruma.OnigRegExp
+import org.eclipse.tm4e.core.internal.oniguruma.impl.joni.JoniOnigRegExp
 import org.eclipse.tm4e.core.registry.IGrammarSource
 import org.eclipse.tm4e.core.registry.Registry
 import org.junit.Assert.assertEquals
@@ -77,7 +77,8 @@ class GrammarsTest {
                 // An end or while pattern with back-references is compiled once they are filled in.
                 if ((key == "end" || key == "while") && BACKREF.containsMatchIn(pattern)) return@forEach
                 try {
-                    OnigRegExp(pattern)
+                    // joni, as on the phone: the app does not bundle Sora's optional native Oniguruma.
+                    JoniOnigRegExp(pattern)
                 } catch (e: TMException) {
                     failures += "${f.name}: $pattern (${e.cause?.message ?: e.message})"
                 }

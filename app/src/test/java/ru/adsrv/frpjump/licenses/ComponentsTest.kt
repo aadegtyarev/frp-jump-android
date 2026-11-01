@@ -62,10 +62,18 @@ class ComponentsTest {
     }
 
     @Test
-    fun `Sora links to the sources of the version in the APK`() {
-        componentsFrom(json).filter { it.name.startsWith("Sora Editor") }.forEach {
-            assertEquals("https://github.com/Rosemoe/sora-editor/tree/0.23.7", it.source)
+    fun `Sora and its tm4e copy link to the sources of the version in the APK`() {
+        val components = componentsFrom(json)
+        val sora = components.filter { it.name.startsWith("Sora Editor") }
+        // The version Gradle put in the APK (from the POMs); app/aboutlibraries/ pins the links by hand.
+        val version = sora.first().version
+        sora.forEach {
+            assertEquals(version, it.version)
+            assertEquals("https://github.com/Rosemoe/sora-editor/tree/$version", it.source)
         }
+        val tm4e = components.first { it.name.startsWith("Eclipse tm4e") }
+        assertEquals("Sora $version", tm4e.version)
+        assertEquals("https://github.com/Rosemoe/sora-editor/tree/$version/language-textmate/src/main/java/org/eclipse/tm4e", tm4e.source)
     }
 
     @Test
