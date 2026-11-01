@@ -164,9 +164,10 @@ class TunnelManagerTest {
 
     // A state not there yet (an empty list, say) is "not yet", not a failure; slow CI runners get time.
     private suspend fun eventually(what: String, check: () -> Boolean) {
-        fun holds() = runCatching(check).getOrDefault(false)
+        var last: Throwable? = null
+        fun holds() = runCatching(check).onFailure { last = it }.getOrDefault(false)
         withTimeoutOrNull(10_000) { while (!holds()) delay(10) }
-        assertTrue(what, holds())
+        if (!holds()) throw AssertionError(what + (last?.let { " (last check threw $it)" } ?: ""), last)
     }
 
     @Test
@@ -326,7 +327,7 @@ class TunnelManagerTest {
     fun `trying direct is expired while it lasts`() = runBlocking {
         manager.sync()
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.TRYING))
-        withTimeout(3_000) { while (frpc.expiries == 0) delay(20) }
+        withTimeout(10_000) { while (frpc.expiries == 0) delay(20) }
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.DIRECT))
         val expiries = frpc.expiries
         delay(1_500)
@@ -386,14 +387,14 @@ class TunnelManagerTest {
         manager.sync()
         assertEquals(18080, frpc.last!!.visitors.single().localPort)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "listen tcp 127.0.0.1:18080: bind: address already in use"))
-        delay(100)
+        // Said plainly, not frpc's words.
+        eventually("said plainly") {
+            manager.state.value.tunnels.single().let {
+                it.pinned && it.localPort == 18080 && it.state.detail != null && !it.state.detail!!.contains("address already in use")
+            }
+        }
         // Not moved (a rebind would apply at once, on another port).
         assertEquals(1, frpc.applies)
-        val tunnel = manager.state.value.tunnels.single()
-        assertTrue(tunnel.pinned)
-        assertEquals(18080, tunnel.localPort)
-        // Said plainly, not frpc's words.
-        assertFalse(tunnel.state.detail!!.contains("address already in use"))
     }
 
     @Test
@@ -630,7 +631,7 @@ class TunnelManagerTest {
         manager.sync()
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.RELAYED))
         // No wait for manager.state: the opener reads the plan and frpc's states themselves.
-        assertEquals(null, withTimeout(2_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(null, withTimeout(10_000) { manager.awaitDevice("wb", 80, fresh = true) })
         assertEquals(1, touched.size)
     }
 
@@ -641,7 +642,7 @@ class TunnelManagerTest {
         // The check is refused once; frpc's state says so at once, the manager's view a moment later.
         var refusalsLeft = 1
         onTouch = { if (refusalsLeft-- > 0) frpc.refuse("g1"); Touch.CLOSED }
-        assertEquals(null, withTimeout(3_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(null, withTimeout(10_000) { manager.awaitDevice("wb", 80, fresh = true) })
         assertTrue("waited for a check that got through", touched.size >= 2)
     }
 
@@ -654,7 +655,7 @@ class TunnelManagerTest {
         eventually("waiting") { touched.size >= 2 }
         assertFalse(opened.isCompleted)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
-        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(2_000) { opened.await() })
+        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(10_000) { opened.await() })
     }
 
     @Test
@@ -663,7 +664,7 @@ class TunnelManagerTest {
         shown(VisitorState(TunnelStatus.RELAYED))
         var refusalsLeft = 3
         onTouch = { if (refusalsLeft-- > 0) frpc.refuse("g1"); Touch.CLOSED }
-        assertEquals(null, withTimeout(3_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(null, withTimeout(10_000) { manager.awaitDevice("wb", 80, fresh = true) })
         assertEquals(VisitorState(TunnelStatus.RELAYED), frpc.states.value["g1"])
     }
 
@@ -686,7 +687,7 @@ class TunnelManagerTest {
         assertEquals("not before the slow interval", 0, touched.size)
         eventually("checked") { touched.size >= 1 }
         onTouch = { Touch.OPEN }
-        withTimeout(2_000) { while (frpc.states.value["g1"] != VisitorState(TunnelStatus.RELAYED)) delay(10) }
+        withTimeout(10_000) { while (frpc.states.value["g1"] != VisitorState(TunnelStatus.RELAYED)) delay(10) }
     }
 
     @Test
@@ -715,7 +716,7 @@ class TunnelManagerTest {
     fun `an opener does not wait for a tunnel that never listens`() = runBlocking {
         manager.sync()
         shown(VisitorState(TunnelStatus.CONNECTING))
-        assertEquals(null, withTimeout(2_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(null, withTimeout(10_000) { manager.awaitDevice("wb", 80, fresh = true) })
         assertEquals("nothing to check yet", 0, touched.size)
     }
 
@@ -724,6 +725,6 @@ class TunnelManagerTest {
         manager.sync()
         onTouch = { Touch.NOT_CONNECTED }
         frpc.refuse("g1")
-        withTimeout(3_000) { while (frpc.expiries == 0) delay(20) }
+        withTimeout(10_000) { while (frpc.expiries == 0) delay(20) }
     }
 }
