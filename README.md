@@ -823,7 +823,7 @@ and the Keystore keep their providers).
 
 ## Build
 
-Needs the Android SDK (platform 35, NDK 26.3 for frpc), a JDK 17+ with `javac`,
+Needs the Android SDK (platform 36, NDK 26.3 for frpc), a JDK 17+ with `javac`,
 and Docker for the frpc build.
 
 ```sh
