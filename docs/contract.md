@@ -168,6 +168,12 @@ re-enroll.
   after the first refusal: "The device did not open port N: its agent did
   not answer. Check that frp-jump-client runs on the device." It
   recovers by itself once the device takes connections (checked every 10 s).
+- A tap anywhere on a connection's card (device card and Connections tab)
+  does its main action, which the visible button names: connected, it
+  opens (Terminal, Explore, Open, Copy); not connected, it connects, then
+  opens. SSH with no login to use at once opens the login dialog first.
+  The disconnect button, "⋮", the state and the other buttons keep their
+  own actions. TalkBack reads the main action as the card's action.
 
 ### 5. Connections tab
 

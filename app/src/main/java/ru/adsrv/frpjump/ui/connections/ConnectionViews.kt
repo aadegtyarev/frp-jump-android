@@ -355,10 +355,30 @@ class ConnectionUi {
     var direct by mutableStateOf<ConnectionRow?>(null)
 }
 
+/** What a tap on a connection's card (anywhere but its buttons) does: the same as its main action. */
+enum class CardTap {
+    /** Up: the main action itself (Open, Terminal, Explore, Copy). */
+    MAIN,
+
+    /** Down: connect, then the main action once it is up. */
+    CONNECT_THEN_MAIN,
+
+    /** Being disconnected: nothing (a tap on its disabled power button lands on the card). */
+    NONE,
+}
+
+fun cardTap(row: ConnectionRow): CardTap = when {
+    row.pending == PendingOp.DISCONNECTING -> CardTap.NONE
+    row.tunnel != null -> CardTap.MAIN
+    else -> CardTap.CONNECT_THEN_MAIN
+}
+
 /** Everything a row can do, wired to [actions] and the screen's navigation. */
 class RowActions(
     val connect: (ConnectionRow) -> Unit,
     val main: (ConnectionRow) -> Unit,
+    /** A tap on the card ([cardTap]). */
+    val tap: (ConnectionRow) -> Unit,
     val disconnect: (ConnectionRow) -> Unit,
     val copy: (ConnectionRow) -> Unit,
     val browser: (ConnectionRow) -> Unit,
@@ -399,26 +419,39 @@ fun rememberRowActions(
         }
         Unit
     }
+    val main = { row: ConnectionRow ->
+        when {
+            row.tunnel == null -> Unit
+            !row.saved -> copy(row)
+            else -> when (row.connection.kind) {
+                PortKind.TCP -> copy(row)
+                PortKind.WEB -> onOpenWeb(row)
+                // Back to the explorer session of this connection, or a new one; the screen shows it connecting.
+                PortKind.MQTT -> actions.openMqtt(row)?.let(onOpenMqtt)
+                    ?: context.notice(context.getString(if (row.tunnel == null) R.string.files_tunnel_down else R.string.profile_gone), NoticeKind.WARN)
+                // Back to the session already open on this port; a new one is "+" on its tab row.
+                PortKind.SSH -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
+                    // A usable remembered login connects at once; the dialog only when there is none.
+                    val login = actions.loginAtOnce(row)
+                    val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
+                    if (opened != null) onOpenTerminal(opened) else ui.login = row
+                }
+            }
+        }
+    }
     return RowActions(
         connect = { row -> notificationsFirst { actions.connect(row) } },
-        main = { row ->
-            when {
-                row.tunnel == null -> Unit
-                !row.saved -> copy(row)
-                else -> when (row.connection.kind) {
-                    PortKind.TCP -> copy(row)
-                    PortKind.WEB -> onOpenWeb(row)
-                    // Back to the explorer session of this connection, or a new one; the screen shows it connecting.
-                    PortKind.MQTT -> actions.openMqtt(row)?.let(onOpenMqtt)
-                        ?: context.notice(context.getString(if (row.tunnel == null) R.string.files_tunnel_down else R.string.profile_gone), NoticeKind.WARN)
-                    // Back to the session already open on this port; a new one is "+" on its tab row.
-                    PortKind.SSH -> actions.openSession(row)?.let(onOpenTerminal) ?: run {
-                        // A usable remembered login connects at once; the dialog only when there is none.
-                        val login = actions.loginAtOnce(row)
-                        val opened = login?.let { actions.openSsh(row, it.user, it.method, password = "", remember = true) }
-                        if (opened != null) onOpenTerminal(opened) else ui.login = row
-                    }
+        main = main,
+        tap = { row ->
+            when (cardTap(row)) {
+                CardTap.MAIN -> main(row)
+                // No login to use at once: its dialog first, whose Connect brings the tunnel up (nothing up for a cancel).
+                CardTap.CONNECT_THEN_MAIN -> if (row.saved && row.connection.kind == PortKind.SSH && actions.loginAtOnce(row) == null) {
+                    ui.login = row
+                } else {
+                    notificationsFirst { actions.connectThen(row, main) }
                 }
+                CardTap.NONE -> Unit
             }
         },
         // No question: it shows down at once, with Undo on the notice; its sessions close when that goes.
