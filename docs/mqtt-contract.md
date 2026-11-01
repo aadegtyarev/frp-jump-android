@@ -2,8 +2,9 @@
 
 Status: approved by the owner 2026-10-31; revised after review the same day;
 publishing reshaped to the owner's answers the same day (one Publish…,
-editable topic, slices 2a/2b). The UI rules of `docs/contract.md`
-apply unchanged.
+editable topic, slices 2a/2b); plugins reshaped to the owner's decisions
+of 2026-11-01 (two separate plugins: status and command topics, Wiren
+Board). The UI rules of `docs/contract.md` apply unchanged.
 
 A generic MQTT explorer for a broker reached through a frp-jump tunnel: the
 topic tree browsed like folders, live values, publishing anywhere in the
@@ -45,8 +46,8 @@ The same thing is called the same way on every screen:
   subscribes; a pattern's filter is pinned only on request.
 - **Pin**: a topic or branch the owner keeps subscribed, with a **mask**,
   the form of its topic filter (see "Pins"). In Russian «Подписка».
-- **Pattern**: a topic template with named parts used by plugin rules
-  (see "Payload views (plugins)"); not a topic filter.
+- **Template**: a topic with named parts used by plugin rules (see
+  "Payload views (plugins)"); neither a topic filter nor a search pattern.
 - **Seen topic**: a topic the session has received at least one message
   for. Every count in the explorer counts seen topics; the app cannot know
   topics the broker has not sent.
@@ -151,7 +152,8 @@ neither option; see "Retained topics" for what that changes.
   it (the open branch and a pin). Under MQTT 5 the app matches the topic
   against its own filters and takes a message only through the first
   matching subscription in the order open branch, then pins in their
-  order; copies through the others are dropped. (The client library does
+  order, then the plugins' subscriptions; copies through the others are
+  dropped. (The client library does
   not let the app set subscription identifiers; the result is the same.) Under 3.1.1 a copy is a
   message identical to the one just received for that topic (payload,
   retain, QoS), arriving before any other message for that topic, at most
@@ -197,7 +199,8 @@ neither option; see "Retained topics" for what that changes.
 ## Subscriptions tab
 
 Under the explorer's top bar two tabs, **Tree · Subscriptions**, drawn as
-the app's segmented switch (it holds a third tab later). The tab is kept
+the app's segmented switch; the Wiren Board plugin adds a third, **WB
+devices** (see "Payload views (plugins)"). The tab is kept
 across rotation; Back on Subscriptions returns to Tree; the search (a mode
 of the tree) hides the tabs and opens on Tree. Opening a level from
 anywhere (a card's Open branch, a typed path) shows Tree. The connection
@@ -404,8 +407,10 @@ no separate "publish under": the topic field is the way to any other topic.
 - **Retain** and **QoS** (0/1/2); with Retain on and an empty value the
   sheet warns in one line that it deletes the topic's retained value; 2a starts each sheet at retain off,
   QoS 1; 2b remembers them per topic.
-- From stage 6 only: the status/command switch (see the plugin below).
-  Before it the value goes to the topic in the field, nothing else.
+- From stage 6 only: the Status topic / Command topic switch when a rule
+  of the "Status and command topics" plugin matches (see there). Before
+  it, and with no rule matching, the value goes to the topic in the
+  field, nothing else.
 - Send answers on the button itself (its label becomes the answer,
   wrapping onto a second line rather than cut, in the error colours for a
   refusal or failure, read out by screen readers, until anything is
@@ -498,59 +503,261 @@ the tree is the "what is there" view.
 - A payload view turns a topic's raw bytes into what the card and the
   tree row show. Built in: Text, JSON, Hex.
 - Views are chosen by topic filter (first match wins), so a later view for
-  a convention (Wiren Board `/devices/+/controls/+`, Zigbee2MQTT, Home
-  Assistant discovery) plugs in by declaring its filters and how it shows
-  a value and its metadata. The explorer never depends on a view.
+  a convention plugs in by declaring its filters and how it shows a value
+  and its metadata. The explorer never depends on a plugin: with every
+  plugin off it is the explorer of stages 1–5, and no plugin changes the
+  Tree.
 - Plugin form: declarative (a JSON description of filters and fields
   shipped with the app or imported), not downloaded code: Android forbids
-  loading foreign code into an app of this kind safely. Plugins are enabled
-  per connection.
-- **First plugin: "Status and command topics".** A list of rules, each a
-  status pattern, a command pattern and optional exclusions.
-  - Pattern syntax: levels split by `/` as in topics; a level is literal
-    text, `{name}` (exactly one level), or `{name...}` (one or more levels;
-    at most one per pattern, at any position). A pattern holds at least one
-    literal level and no MQTT wildcards. A pattern starting with `/` has an
-    empty first level and matches only topics that have one. The command
-    pattern uses only names of the status pattern.
-  - Matching: without `{name...}` the topic has as many levels as the
-    pattern and each level matches in turn (literal: equal text, case
-    sensitive; `{name}`: any one level, which may be empty). With
-    `{name...}` the levels before it match the topic's first levels one by
-    one, the levels after it match the topic's last levels one by one, and
-    `{name...}` takes what is left in between, which must be at least one
-    level. So `{x...}/state` matches `home/light/state` with `x` =
-    `home/light`, and `{x...}/set` then gives `home/light/set`.
-  - Order matters: rules are tried top to bottom, the first match wins;
-    the owner's own rules come first, then the enabled presets in their
-    shipped order, most specific first:
-    1. Wiren Board: `/devices/{d}/controls/{c}` →
-       `/devices/{d}/controls/{c}/on`;
-    2. Zigbee2MQTT: `zigbee2mqtt/{d}` → `zigbee2mqtt/{d}/set`, except
-       `zigbee2mqtt/bridge` and `zigbee2mqtt/bridge/{rest...}`;
-    3. Tasmota: `stat/{d}/{p}` → `cmnd/{d}/{p}`, except `stat/{d}/LWT`;
-    4. a generic "state/set" pair: `{x...}/state` → `{x...}/set`, except
-       `zigbee2mqtt/bridge/state`.
-  - An exclusion is a pattern; a topic matching it is not matched by the
-    rule, on either side.
-  - For a topic matching a status pattern, the command topic comes from
-    the other pattern. A topic matching a command pattern is shown as the
-    command of its status topic, under it, when that status topic is in
-    the tree; with no status topic it stays an ordinary topic.
-  - The publish sheet gets a switch "Status topic / Command topic". Its
-    default: the command topic when a status rule matches the selected
-    topic, else the topic itself. The rule that matched is shown; the
-    switch can be changed for this send.
+  loading foreign code into an app of this kind safely.
+- Plugins are kept separate, each doing one job, and are enabled per
+  connection in the connection's settings (its edit sheet, also reached
+  from the explorer's "⋮" → **Plugins…**). Two come first: **Status and
+  command topics** (any vendor, rules only) and **Wiren Board** (a
+  devices view of the Wiren Board convention). Both are on for every MQTT
+  connection until turned off.
 
-  The owner turns presets on per connection and adds own rules in the app
-  (two patterns, no code), so a new device kind needs a rule, not a plugin.
-  It is simple on purpose: it proves the plugin plumbing (description
-  format, matching, enable per connection, override in the publish sheet)
-  before any richer view.
+### Status and command topics
+
+Which topic a value is sent to, for any vendor, by rules. A preset is
+only a set of rules shipped with the app; vendor knowledge is nowhere
+else in this plugin.
+
+- **A rule** is a status template and, optionally, a command template,
+  plus optional exclusions and a name:
+  - two templates: the command goes to another topic
+    (`{x...}/state` → `{x...}/set`);
+  - one template: the topic is its own command topic (a value sent to it
+    is the command). Such a rule also ends the search, so a later,
+    broader rule (a preset) does not offer a wrong command topic for it.
+- **Template syntax**: levels split by `/` as in topics; a level is
+  literal text, `{name}` (exactly one level), or `{name...}` (one or more
+  levels; at most one per template, at any position). A template holds at
+  least one literal level and no MQTT wildcards. A template starting with
+  `/` has an empty first level and matches only topics that have one. The
+  command template uses only names of the status template.
+- **Matching**: without `{name...}` the topic has as many levels as the
+  template and each level matches in turn (literal: equal text, case
+  sensitive; `{name}`: any one level, which may be empty). With
+  `{name...}` the levels before it match the topic's first levels one by
+  one, the levels after it match the topic's last levels one by one, and
+  `{name...}` takes what is left in between, which must be at least one
+  level. So `{x...}/state` matches `home/light/state` with `x` =
+  `home/light`, and `{x...}/set` then gives `home/light/set`;
+  `home/{x...}/state` matches `home/a/b/state` with `x` = `a/b`.
+- **Exclusions**: each a template, matched against the topic like the
+  status template (for a one-template rule too). A topic matching any
+  exclusion is skipped by that rule only: the search goes on with the
+  next rule.
+- **Order**: rules are tried top to bottom, the first match wins; the
+  owner's own rules come first, then the enabled presets in their shipped
+  order, most specific first:
+  1. Wiren Board: `/devices/{d}/controls/{c}` →
+     `/devices/{d}/controls/{c}/on` (the command topic only; the devices
+     view is the Wiren Board plugin);
+  2. Zigbee2MQTT (friendly names may hold `/`): `zigbee2mqtt/{d...}` →
+     `zigbee2mqtt/{d...}/set`, except `zigbee2mqtt/bridge`,
+     `zigbee2mqtt/bridge/{rest...}`, `zigbee2mqtt/{d...}/set`,
+     `zigbee2mqtt/{d...}/get` and `zigbee2mqtt/{d...}/availability`. A
+     base topic other than `zigbee2mqtt` needs an own rule;
+  3. Tasmota, relays only: `stat/{d}/POWER` → `cmnd/{d}/POWER`, and the
+     same for `POWER1` … `POWER8` (nine rules); `RESULT`, `STATUS*` and
+     the rest of `stat/` are not matched;
+  4. a generic "state/set" pair: `{x...}/state` → `{x...}/set`, except
+     `zigbee2mqtt/bridge/state`.
+- **Presets on**: for a new connection all presets are off. From stage 7
+  the Wiren Board preset turns on by itself, once per connection, when
+  the Wiren Board plugin first shows its tab (see below) and this plugin
+  is on; turned off by hand afterwards it stays off.
+- **In the publish sheet**: when a rule matches the sheet's topic, a
+  switch **Status topic / Command topic** («Топик статуса / Командный
+  топик») above Send, defaulting to Command topic, with the rule that
+  matched in one muted line under it (its name, else its templates) and
+  the topic the value goes to. The switch can be changed for this send. A
+  one-template rule shows no switch, only the line ("Commands go to this
+  topic: <rule>"). No rule matching: no switch, no line; the value goes to
+  the topic in the field. Editing the topic re-matches. With Command topic
+  chosen and Retain on, one line warns: "A retained command is sent to
+  the device again on every reconnect".
+- **Setting up**: in the plugin's settings the presets are switches, and
+  own rules are a list with **+** (status template, optional command
+  template, optional exclusions, optional name; checked as above, the
+  field saying which rule failed), reordered by drag, deleted with Undo. A
+  new device kind needs a rule, not a plugin.
+- Later, not in stage 6: a command topic shown under its status topic in
+  the tree.
+
+It is simple on purpose: it proves the plugin plumbing (description
+format, matching, enable per connection, override in the publish sheet)
+before the richer view below.
+
+### Wiren Board
+
+A devices view of the Wiren Board MQTT convention
+(`/devices/<d>/controls/<c>` with meta), for the owner's daily jobs on a
+controller: see the devices, read values with their units, switch and set.
+Source: the Wiren Board MQTT conventions, `wirenboard/conventions`
+README, version 1.5.0 (2026-09-02), checked against a retained dump of a
+live controller; where they differ, both are read.
+
+- **The tab.** With the plugin on, the explorer's tabs become **Tree ·
+  Subscriptions · WB devices** («Устройства WB») as soon as the session
+  sees a control's meta (below); before that, and on a broker without the
+  convention, there is no third tab. The three tabs share the segmented
+  switch's width equally; at large font sizes a label wraps to two lines
+  rather than being cut. Turning the plugin off in the connection's
+  settings removes the tab, and it stays off for that connection until
+  turned on again.
+- **Opening on it.** A connection whose last session showed the tab (kept
+  per connection) opens the explorer on WB devices, which reads "Reading
+  devices…" until the snapshot ends. A first session opens on Tree and
+  the tab appears without switching to it, so nothing moves under the
+  finger.
+- **Navigation.** The tab follows the tab rules of "Subscriptions tab"
+  (kept across rotation; the search shows Tree; the connection banners
+  show on it). It has two levels of its own: the devices list and a
+  device, opened inside the tab with the device's title and a back arrow
+  in a header under the tabs. Back in a device returns to the list; Back
+  on the list returns to Tree. The Tree's path is never changed by the
+  tab. A control's card opens over the tab; its **Open branch** shows
+  Tree, as from anywhere.
+- **Subscriptions.** While the tab shows, the app also holds
+  `/devices/+/meta/#` and `/devices/+/controls/+/meta/#`, so titles and
+  error marks stay live (meta changes rarely and is nearly all in the
+  snapshot). On the devices list the session's open branch stays the
+  Tree's path, live as before. An open device is the session's open
+  branch, `/devices/<d>/#`; going back to the list or to Tree subscribes
+  the Tree's path again.
+  In the dedupe order of "Subscriptions" the plugin's subscriptions come
+  after the pins.
+- **Meta.** A control's meta is one JSON topic `<control>/meta`: `type`,
+  `units`, `min`, `max`, `precision`, `order`, `readonly` (default false),
+  `hidden` (default false), `title`, `enum`. For backward compatibility
+  drivers also publish one-field topics: the conventions name
+  `meta/type`, `meta/min`, `meta/max`, `meta/order`, `meta/readonly`
+  (`1`/`0`); live controllers also send `meta/precision` and
+  `meta/units`. These seven are read; per field the JSON wins, a one-field
+  topic fills what the JSON lacks. There is no `meta/title` topic. A
+  device's meta is the JSON `/devices/<d>/meta` (`driver`, `title`); its
+  older `/devices/<d>/meta/name` is the English title. Errors are only in
+  the topics `<control>/meta/error` and `/devices/<d>/meta/error`, never
+  in the JSON. An empty retained message (cleared) is the same as no
+  topic; an empty or unparsable JSON is no meta.
+- **What is listed.** A control is listed when it has meta: a non-empty
+  JSON meta or any of the one-field topics. A device is listed when at
+  least one of its controls is. A control's value topic not seen yet
+  shows "No value". Devices without the convention are not listed; the
+  Tree is unchanged.
+- **Titles.** A title is a string, taken as is, or an object of language
+  keys (`{"en": "Lamp", "ru": "Лампа"}`): the key equal to the phone's
+  language code (`ru-RU` → `ru`), else `en`, else the first key in the
+  JSON's order; an empty string counts as absent. No title: for a device
+  `meta/name`, then the id; for a control the id. Enum titles follow the
+  same rule.
+- **Devices list.** By title in the tree's natural order. A row: the
+  title, the device id under it in monospace, small; a red **!** when the
+  device's `meta/error` or any of its controls' is set (read out as "has
+  errors"). A tap opens the device.
+- **A device.** Its controls by `order` (no order: after the rest, by id
+  in natural order); a control with `hidden` true is not shown. A row:
+  - the title; a tap on the title opens the ordinary topic card of the
+    control's topic (history, copy, pin, publish);
+  - the value, with units and digits (below), or its enum title;
+  - the control by type, on the right;
+  - an error: a red mark with plain words under the title (below).
+- **Value display.**
+  - Digits: with `precision`, the value rounded to the nearest multiple
+    of it (half away from zero) and shown with as many decimals as the
+    precision has (`0.01` → 2, `1e-06` → 6, `0.5` → 1, `1` → 0),
+    computed in decimal arithmetic, never binary floating point; without
+    `precision`, the value as received. Inputs are rounded the same way.
+  - Units: `units` from meta, else the units of a deprecated typed
+    control (`temperature` deg C, `rel_humidity` %, RH,
+    `atmospheric_pressure` mbar, `rainfall` mm/h, `wind_speed` m/s,
+    `power` W, `power_consumption` kWh, `voltage` V, `water_flow` m^3/h,
+    `water_consumption` m^3, `resistance` Ohm, `concentration` ppm,
+    `heat_power` Gcal/h, `heat_energy` Gcal, `current` A, `pressure` bar,
+    `lux` lx, `sound_level` dB). Units are ASCII on the wire and drawn
+    with symbols: `deg C` °C, `deg` °, `%, RH` %RH, `^3` ³, `Ohm` Ω,
+    `mOhm` mΩ; the rest as is.
+  - Enum (`value` and `text`): when the value has an enum entry its title
+    is shown instead (the raw value stays on the card). For `value` the
+    keys are numbers, decimal or hex (`"0x10"`), matched numerically; for
+    `text`, as strings.
+- **Controls by type.** Read-only (`readonly` true or `1`; absent means
+  writable) shows the value only, whatever the type:
+  - `switch` (`0`/`1`): a toggle; on when the value is `1`, off for `0`,
+    a missing or other value, which is also shown as text;
+  - `wo-switch` (write-only: the driver does not read the state back): a
+    toggle showing the last value sent in this session, else off;
+  - `pushbutton`: a button with the title;
+  - `range` (integers): a slider from `min` (default 0) to `max` (default
+    255), step 1, the value next to it; sent once on release, not while
+    dragging;
+  - `rgb`: a colour swatch; a tap opens a colour picker;
+  - `alarm` (`0`/`1`): an indicator, red when `1`; never a control;
+  - with `enum`: a tap opens a list of the enum titles, the current one
+    marked;
+  - `value`, the typed controls and `local_time` (seconds, shown as a
+    local date and time without time zone): the value; a tap
+    opens a one-field numeric input, prefilled, selected whole, checked
+    against `min`/`max` and rounded to `precision` before Send;
+  - `text`, `w1-id`: the value; a tap opens a text input;
+  - meta without a type, or a type not listed here: the value as text,
+    read-only.
+- **Writes** go to `<control>/on`, QoS 1, not retained, whatever the Status
+  and command plugin says. Payloads:
+  - `switch`, `wo-switch`: `1` to turn on, `0` to turn off (a value that
+    is not `1` counts as off, so a tap sends `1`);
+  - `pushbutton`: `1`;
+  - `range`: the integer, in decimal;
+  - `rgb`: `R;G;B`, three integers 0–255;
+  - `value` and the others with a numeric input: the number in decimal,
+    no exponent, rounded to `precision` with its digits; an enum pick
+    sends its key as written in the meta;
+  - `text`, `w1-id`: the text as typed.
+- **The answer** shows on the control itself, nothing else moves:
+  - while sending, the control shows the asked value muted with a spinner
+    and is not tappable;
+  - the status topic (`<control>`) bringing a value equal to the asked one
+    ends it: the control shows it as usual. Equal means: numbers
+    (`switch`, `range`, `value`, typed, `local_time`, numeric enum keys)
+    compared as numbers after rounding both to `precision`; `rgb` as three
+    integers, spaces ignored; anything else as exact strings;
+  - asking for the value the control already shows needs no echo (a
+    driver need not re-publish an unchanged value): it is sent, and the
+    broker's PUBACK ends it;
+  - the broker refusing (MQTT 5 reason code): the control returns to the
+    status value and says "Refused: <reason>" under the title, in the
+    error colours, until the next change;
+  - no equal value within 5 s of the PUBACK: the control returns to the
+    status value and says "No answer from the device"; no PUBACK within
+    10 s of sending: "No answer from the broker";
+  - `pushbutton` and `wo-switch` have no status to wait for: the PUBACK
+    ends them ("Accepted by the broker" / "Refused: …" for a moment, under
+    3.1.1 "Sent, not confirmed").
+
+  Screen readers get the same words. In a closed or reconnecting session
+  the controls are off, saying so ("The session is closed",
+  "Reconnecting…").
+- **Errors** (`meta/error`, one or more of the letters `r`, `w`, `p`): a
+  red mark on the control with plain words, one per letter: `r` "Read
+  error" («ошибка чтения»; the value shown is the last good one), `w`
+  "Write error" («ошибка записи»), `p` "Polled late" («опрос не
+  успевает»); an unknown letter shows as is. Any device-level
+  `meta/error` shows the mark on the device's header and row as "The
+  device does not answer" («устройство не отвечает»). The marks go when
+  the error topic is emptied.
+
+### Later plugins
+
+Tasmota, Zigbee2MQTT and Home Assistant discovery views, each a plugin of
+its own beside these two; not part of the delivery stages or the
+acceptance.
 
 ## Later: charts
 
-Not part of the delivery stages 1–6 or of the acceptance; the data model
+Not part of the delivery stages 1–7 or of the acceptance; the data model
 keeps room for it: numeric values of chosen topics are collected while the
 session runs and drawn as charts over time, several on one chart with their
 own scales, to see how parameters depend on each other (a room's
@@ -562,7 +769,7 @@ nothing else in the explorer changes for it.
 
 | What | Where |
 | --- | --- |
-| Pins with their masks, enabled plugins and own rules, retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
+| Pins with their masks; the Status and command plugin on or off, its presets and own rules, and whether the Wiren Board preset was already turned on by itself; the Wiren Board plugin on or off, and whether its tab was shown before (to open on it); retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
 | Broker logins (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
 | The tree and history | memory only, for the session |
 
@@ -583,9 +790,16 @@ nothing else in the explorer changes for it.
 5. TLS (preset 8883, pinned certificate); the Subscriptions tab: pins
    listed, masks changed, typed topic filters (the tab came first).
 6. Plugin infrastructure (declarative descriptions, matching, enable per
-   connection) with the first plugin, "Status and command topics", and the
-   publish sheet's switch; Text/JSON/Hex views move onto the same plumbing.
-7. Later: charts of chosen numeric topics, overlaid.
+   connection, the connection's Plugins settings) with the first plugin,
+   "Status and command topics": one- and two-template rules, the four
+   presets, own rules, the publish sheet's switch; Text/JSON/Hex views
+   move onto the same plumbing.
+7. The Wiren Board plugin: the WB devices tab (devices list, a device's
+   controls by type, writes to `/on` answered on the control, error
+   marks), both meta forms, on/off per connection; the Wiren Board
+   preset turning on with the tab, only while the first plugin is on.
+8. Later: charts of chosen numeric topics, overlaid; later plugins
+   (Tasmota, Zigbee2MQTT, Home Assistant).
 
 Each stage is delivered in small PRs, each reviewed; a stage's first
 build for the owner's phone goes out once something in it is visible, then
@@ -651,11 +865,74 @@ On a Wiren Board on the tunnel unless said otherwise.
    certificate is replaced, "The certificate has changed" with both
    fingerprints; not trusted, "Not connected" with Retry. The Subscriptions
    tab takes `$SYS/#` and refuses `a/#/b`.
-6. With the Wiren Board preset on, the publish sheet for `K1` defaults to
-   "Command topic", shows the rule, and `1` goes to `K1/on` and switches
-   the relay; switched to "Status topic", the value goes to `K1` itself.
-   With the generic preset on, `home/light/state` offers
-   `home/light/set`.
+6. Status and command topics:
+   - With the Wiren Board preset on, the publish sheet for
+     `/devices/wb-mr6c_2/controls/K1` defaults to "Command topic"
+     (`…/K1/on`), shows the rule, and `1` switches the relay; switched to
+     "Status topic", the value goes to `K1` itself. Retain on with
+     Command topic shows the warning.
+   - With the generic preset on, `home/light/state` offers
+     `home/light/set`; an own rule `home/{x...}/state` →
+     `home/{x...}/cmd` above it gives `home/a/b/cmd` for
+     `home/a/b/state`.
+   - Zigbee2MQTT preset: `zigbee2mqtt/kitchen/lamp` offers
+     `zigbee2mqtt/kitchen/lamp/set`; `zigbee2mqtt/bridge/state` and
+     `zigbee2mqtt/kitchen/lamp/availability` offer no switch.
+   - Tasmota preset: `stat/plug/POWER` offers `cmnd/plug/POWER`,
+     `stat/plug/POWER1` offers `cmnd/plug/POWER1`; `stat/plug/RESULT`
+     offers no switch.
+   - Exclusions: an own rule `{x...}/state` → `{x...}/cmd` excluding
+     `home/{y...}/state` above the generic preset: `home/light/state`
+     falls through to the preset and offers `home/light/set`.
+   - An own one-template rule `home/{x...}/state` above the presets: the
+     sheet for `home/light/state` shows no switch and says the topic takes
+     commands itself; the value goes to `home/light/state`.
+   - All presets off and no own rule: the sheet is the one of stage 2.
+7. Wiren Board:
+   - On the Wiren Board the WB devices tab appears after the snapshot of
+     the first session without switching to it; the next session opens on
+     it. It lists the devices with their titles in the phone's language
+     (Russian on a Russian phone; on an English phone a title with only
+     `ru` shows the Russian one; a device with only `meta/name` shows
+     that), the id under each. A test broker without `/devices/…/meta`
+     shows no third tab; turned off in the connection's settings the tab
+     is gone in the next session too. With the tab shown the first time,
+     the Wiren Board preset of the first plugin is on.
+   - Inside a device Back returns to the list, then to Tree, whose path
+     is the one it had.
+   - `wb-mr6c_2`: its controls in meta order; toggling K1 switches the
+     relay, the toggle shows sending, then the state the status topic
+     brings; switching the relay from the controller's web UI moves the
+     toggle. A test broker that never echoes: "No answer from the device"
+     5 s after the PUBACK, the toggle back as it was; an ACL denying
+     `…/K1/on` (MQTT 5): "Refused: not authorized" on the control.
+   - A read-only temperature (`wb-msw-v3_21`) shows its value with °C and
+     no control; a `value` control shows its `units` and the digits of its
+     `precision`.
+   - A test device with a `range` (no `max`: the slider ends at 255), an
+     `rgb`, a `pushbutton`, an `alarm` and a `value` with `enum`: the
+     slider sends one integer on release and the echo ends it; the colour
+     is sent as `R;G;B`; the button answers "Accepted by the broker"; the
+     alarm turns red on `1` and offers no control; the enum value shows
+     its title and a tap offers the titles.
+   - A control whose JSON meta has no `readonly` but whose `meta/readonly`
+     topic is `1` shows no control.
+   - A control with `meta/error` `r` shows the red mark with "Read error",
+     and its device the "!" in the list; emptying the error topic clears
+     both.
+   - A device publishing only the older one-field meta topics, and one
+     publishing only the JSON meta, show alike.
+   - Tapping a control's title opens its topic card.
+   - A control with `hidden` true is not listed.
+   - A `wo-switch`: the toggle shows the value sent and answers on the
+     PUBACK, waiting for no echo.
+   - Toggling to the value already shown: the PUBACK ends the sending
+     state at once.
+   - A test broker that withholds the PUBACK: "No answer from the broker"
+     10 s after sending.
+   - A `pushbutton` on a 3.1.1 session answers "Sent, not confirmed".
+   - With the first plugin turned off, the tab appearing does not turn
+     the Wiren Board preset on.
 
 ## Decided
 
@@ -688,7 +965,27 @@ On a Wiren Board on the tunnel unless said otherwise.
   delivers as retained, so no command topic gets an empty message.
 - Existing TCP connections on 1883 stay TCP; "Open as MQTT" in their "⋮"
   converts them.
-- Plugin patterns allow one `{name...}` at any position.
+- Plugin templates allow one `{name...}` at any position.
+- Two separate plugins (2026-11-01): "Status and command topics" for any
+  vendor by rules (a rule has one topic or two; presets are only rules),
+  and "Wiren Board" for the devices view; the explorer itself stays
+  generic. Both on by default; of the presets only Wiren Board, which
+  turns on with the WB devices tab.
+- The WB devices tab is the third, shown on its own once Wiren Board meta
+  is seen, and can be turned off per connection; once a connection has
+  shown it, its sessions open on it. The Tree never changes for it.
+- Wiren Board writes are answered on the control: sending until the
+  status topic confirms, a refusal or 5 s after the PUBACK without the
+  echo shown there.
+- Wiren Board errors in plain words: `r` "Read error", `w` "Write error",
+  `p` "Polled late"; a device-level error "The device does not answer".
+- Enum titles are shown instead of raw values, in the phone's language.
+- Wiren Board facts follow `wirenboard/conventions` 1.5.0: `readonly`
+  and `hidden` default false; `range` is integer, `min` 0, `max` 255
+  (the README's meta section says 10^9 for range, its type section 255;
+  the type section is followed); one-field meta topics only for `type`,
+  `min`, `max`, `order`, `readonly` (plus `precision` and `units`, seen on
+  live controllers); errors only in `meta/error` topics.
 
 ## Open risks
 
