@@ -37,6 +37,8 @@ import ru.adsrv.frpjump.mqtt.pinFilter
 import ru.adsrv.frpjump.mqtt.pinnedMasks
 import ru.adsrv.frpjump.mqtt.topicProblem
 import ru.adsrv.frpjump.mqtt.pinnedAt
+import ru.adsrv.frpjump.mqtt.SysRowState
+import ru.adsrv.frpjump.mqtt.sysRowState
 import ru.adsrv.frpjump.mqtt.searchScope
 import ru.adsrv.frpjump.mqtt.FilterOffer
 import ru.adsrv.frpjump.mqtt.PatternProblem
@@ -80,8 +82,11 @@ import kotlinx.coroutines.flow.update
 /** The explorer's tabs under its top bar, in their order; the third is the Wiren Board plugin's, shown only with it. */
 enum class ExplorerTab { TREE, SUBSCRIPTIONS, WB_DEVICES }
 
-/** One row of a level: a node of the tree, or the root's `$SYS` before anything was seen there. */
-data class TopicRow(val node: TopicNode, val pinned: Boolean) {
+/**
+ * One row of a level: a node of the tree, or the root's `$SYS` before
+ * anything was seen there, with [sys] saying why.
+ */
+data class TopicRow(val node: TopicNode, val pinned: Boolean, val sys: SysRowState? = null) {
     /** Drawn as a folder with "⋮" for its card: it has children, or it is the root's `$SYS` (always a branch). */
     val isBranch: Boolean get() = node.hasChildren || (node.path.levels.size == 1 && node.name == SYS)
 
@@ -279,7 +284,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             children.forEach { add(TopicRow(it, pinnedAt(it.path, pins))) }
             // `#` never brings `$` topics: the root always offers `$SYS`, which subscribes it when opened.
             val sys = MqttPath.ROOT.child(SYS)
-            if (path.isRoot && children.none { it.path == sys }) add(TopicRow(TopicNode(sys, null, 0, 0, false), pinnedAt(sys, pins)))
+            if (path.isRoot && children.none { it.path == sys }) {
+                add(TopicRow(TopicNode(sys, null, 0, 0, false), pinnedAt(sys, pins), sysRowState(pins, refused)))
+            }
         }
         // Hits of another place (the search not yet run again after a move) are not shown.
         val searchAt = searchScope(path, whole)

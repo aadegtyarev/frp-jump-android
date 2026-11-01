@@ -94,6 +94,8 @@ fun PathBar(
     rootIcon: ImageVector? = null,
     /** What part `i` is read out as when its label alone says too little; null: the label. */
     spoken: (Int) -> String? = { null },
+    /** Drawn as a field (Files); false: a plain breadcrumb on the ground, read as a path rather than an input. */
+    framed: Boolean = true,
 ) {
     val colors = AppTheme.colors
     val scroll = rememberScrollState()
@@ -104,8 +106,7 @@ fun PathBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(colors.card)
-            .border(1.dp, colors.divider, RoundedCornerShape(12.dp))
+            .then(if (framed) Modifier.background(colors.card).border(1.dp, colors.divider, RoundedCornerShape(12.dp)) else Modifier)
             .clickable(role = Role.Button, onClickLabel = typeLabel, onClick = onType)
             .heightIn(min = 40.dp)
             .padding(horizontal = 4.dp)

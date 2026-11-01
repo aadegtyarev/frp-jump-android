@@ -126,4 +126,17 @@ class TopicTextsTest {
         assertNull(topicProblem("a".repeat(MAX_TOPIC_BYTES - 2), suffix = "/#"))
         assertEquals(TopicProblem.TOO_LONG, topicProblem("a".repeat(MAX_TOPIC_BYTES - 1), suffix = "/#"))
     }
+
+    @Test
+    fun `the root SYS row says why nothing of it is known`() {
+        // `#` and first-level wildcards never bring `$` topics.
+        assertEquals(SysRowState.NOT_SUBSCRIBED, sysRowState(listOf("#", "+/x", "/devices/#"), emptySet()))
+        assertEquals(SysRowState.NO_MESSAGES, sysRowState(listOf("\$SYS/#"), emptySet()))
+        assertEquals(SysRowState.NO_MESSAGES, sysRowState(listOf("\$SYS/broker/uptime"), emptySet()))
+        // A similar name is another branch.
+        assertEquals(SysRowState.NOT_SUBSCRIBED, sysRowState(listOf("\$SYSTEM/#", "x/\$SYS/#"), emptySet()))
+        // Refused wins over pinned: the pin cannot bring anything.
+        assertEquals(SysRowState.REFUSED, sysRowState(listOf("\$SYS/#"), setOf("\$SYS/#")))
+        assertEquals(SysRowState.REFUSED, sysRowState(emptyList(), setOf("\$SYS/#")))
+    }
 }

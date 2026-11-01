@@ -70,6 +70,7 @@ import ru.adsrv.frpjump.mqtt.MAX_TOPIC_BYTES
 import ru.adsrv.frpjump.mqtt.TopicNode
 import ru.adsrv.frpjump.mqtt.TopicProblem
 import ru.adsrv.frpjump.mqtt.TopicValue
+import ru.adsrv.frpjump.mqtt.SysRowState
 import ru.adsrv.frpjump.mqtt.ValueLine
 import ru.adsrv.frpjump.mqtt.LastChange
 import ru.adsrv.frpjump.mqtt.hitLabel
@@ -206,9 +207,11 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                         ?: stringResource(R.string.mqtt_search_whole),
                 )
             } else {
+                // The device whole as the title, the port with the state under it: a long name is not cut by the port.
+                val status = statusWord(state.state)
                 AppTopBar(
-                    title = target.ifEmpty { stringResource(R.string.kind_mqtt) },
-                    subtitle = statusWord(state.state),
+                    title = session?.device ?: stringResource(R.string.kind_mqtt),
+                    subtitle = session?.let { stringResource(R.string.connection_details, it.port) + " · " + status } ?: status,
                     onBack = leave,
                     actions = {
                         IconButton(onClick = {
@@ -230,6 +233,14 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                                     onClick = {
                                         menu = false
                                         writingAt = ArrayList(state.path.levels)
+                                    },
+                                )
+                                // Also where the path bar is hidden (the root): typing a topic is always one menu away.
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.mqtt_go_to_topic)) },
+                                    onClick = {
+                                        menu = false
+                                        typing = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -316,18 +327,22 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 )
                 return@Column
             }
-            val empty = stringResource(R.string.mqtt_empty_level)
-            val labels = pathBarLabels(state.path, "", empty)
-            val leadingSlash = stringResource(R.string.mqtt_leading_slash_spoken)
-            PathBar(
-                labels,
-                onOpen = { vm.open(pathAtPart(state.path, it)) },
-                onType = { typing = true },
-                typeLabel = stringResource(R.string.mqtt_go_to_topic),
-                separatorBefore = { pathBarSeparator(state.path, it) },
-                rootIcon = HomeGlyph,
-                spoken = { i -> leadingSlash.takeIf { i == 1 && state.path.levels.firstOrNull() == "" } },
-            )
+            // A breadcrumb, not a field: at the root it would hold only the house, so it is not shown there.
+            if (!state.path.isRoot) {
+                val empty = stringResource(R.string.mqtt_empty_level)
+                val labels = pathBarLabels(state.path, "", empty)
+                val leadingSlash = stringResource(R.string.mqtt_leading_slash_spoken)
+                PathBar(
+                    labels,
+                    onOpen = { vm.open(pathAtPart(state.path, it)) },
+                    onType = { typing = true },
+                    typeLabel = stringResource(R.string.mqtt_go_to_topic),
+                    separatorBefore = { pathBarSeparator(state.path, it) },
+                    rootIcon = HomeGlyph,
+                    spoken = { i -> leadingSlash.takeIf { i == 1 && state.path.levels.firstOrNull() == "" } },
+                    framed = false,
+                )
+            }
             SnapshotLine(state)
             Banners(state, session?.device.orEmpty(), session?.port ?: 0, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
             if (searching && query.isNotBlank()) {
@@ -628,7 +643,7 @@ private fun TopicRowView(row: TopicRow, now: Long, shownSince: Long, onClick: ()
                 value?.let { ValueText(it) }
                 // A value from before the session is no change, also when it arrives while the level is shown.
                 val changedAt = value?.changedAt
-                Meta(node, value, change, now, highlight = changedAt != null && changedAt > shownSince && now - changedAt < HIGHLIGHT_MS)
+                Meta(node, value, change, now, row.sys, highlight = changedAt != null && changedAt > shownSince && now - changedAt < HIGHLIGHT_MS)
             }
             if (row.isBranch) {
                 IconButton(onClick = onCard) {
@@ -679,11 +694,21 @@ internal fun ValueText(value: TopicValue) {
     )
 }
 
-/** "12 s ago · retained · 34 topics"; "before connecting" when nothing changed since the session saw it. */
+/**
+ * "12 s ago · retained · 34 topics"; "before connecting" when nothing
+ * changed since the session saw it; for the root's `$SYS` while nothing of
+ * it is known, why ("not subscribed", "no messages", "no access").
+ */
 @Composable
-private fun Meta(node: TopicNode, value: TopicValue?, change: LastChange?, now: Long, highlight: Boolean) {
+private fun Meta(node: TopicNode, value: TopicValue?, change: LastChange?, now: Long, sys: SysRowState?, highlight: Boolean) {
     val colors = AppTheme.colors
     val parts = buildList {
+        when (sys) {
+            SysRowState.NOT_SUBSCRIBED -> add(stringResource(R.string.mqtt_sys_not_subscribed))
+            SysRowState.NO_MESSAGES -> add(stringResource(R.string.mqtt_sys_no_messages))
+            SysRowState.REFUSED -> add(stringResource(R.string.mqtt_sys_refused))
+            null -> Unit
+        }
         when (change) {
             is LastChange.At -> add(ageText(relativeAge(Duration.ofMillis(maxOf(0, now - change.ms)))))
             LastChange.BeforeSession -> add(stringResource(R.string.mqtt_before_session))

@@ -825,6 +825,9 @@
     <string name="mqtt_search_in">Искать в %1$s</string>
     <string name="mqtt_search_whole">Искать во всём дереве</string>
     <string name="mqtt_before_session">до подключения</string>
+    <string name="mqtt_sys_not_subscribed">не подписаны</string>
+    <string name="mqtt_sys_no_messages">сообщений нет</string>
+    <string name="mqtt_sys_refused">нет доступа</string>
     <string name="mqtt_publish_here">Записать сюда…</string>
     <string name="mqtt_mask_topic_hint">Значение этого топика, без того, что внутри</string>
     <string name="mqtt_mask_level_hint">+ — прямые потомки: …/a, но не …/a/b</string>
@@ -990,7 +993,6 @@
     <string name="plugin_rule_except_line">Исключение %1$d: %2$s</string>
     <string name="plugin_wirenboard">Wiren Board</string>
     <string name="plugin_wirenboard_hint">Вкладка «Устройства WB»: устройства, значения с единицами, переключатели</string>
-    <string name="wb_tab_devices">Устройства WB</string>
     <string name="wb_reading_devices">Читаю устройства…</string>
     <string name="wb_no_devices">Устройств Wiren Board не видно</string>
     <string name="wb_has_errors">есть ошибки</string>
