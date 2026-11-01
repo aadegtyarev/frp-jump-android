@@ -16,12 +16,23 @@ class SettingsStoreTest {
     }
 
     @Test
-    fun `terminal direct input is off for fresh and existing installations`() {
-        assertEquals(false, SettingsStore(MemoryStorage()).settings.value.terminalDirectInput)
+    fun `terminal direct input is on for fresh installations and files without the setting`() {
+        assertEquals(true, SettingsStore(MemoryStorage()).settings.value.terminalDirectInput)
         val old = SettingsStore(MemoryStorage("""{"direct":false,"terminal_fullscreen":true}""")).settings.value
-        assertEquals(false, old.terminalDirectInput)
+        assertEquals(true, old.terminalDirectInput)
         assertEquals(true, old.terminalFullscreen)
         assertEquals(false, old.direct)
+    }
+
+    @Test
+    fun `explicitly saved terminal direct input choices override the new default`() {
+        for (choice in listOf(false, true)) {
+            val storage = MemoryStorage("""{"terminal_direct_input":$choice,"direct":false}""")
+            val store = SettingsStore(storage)
+            assertEquals(choice, store.settings.value.terminalDirectInput)
+            store.update { it.copy(terminalFullscreen = true) }
+            assertEquals(choice, SettingsStore(storage).settings.value.terminalDirectInput)
+        }
     }
 
     @Test

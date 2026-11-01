@@ -7,8 +7,8 @@ import ru.adsrv.frpjump.settings.AppSettings
 
 class TerminalInputModeTest {
     @Test
-    fun `default mode allows ordinary text composition and multiline input`() {
-        val type = terminalInputType(AppSettings().terminalDirectInput)
+    fun `explicit buffered mode allows ordinary text composition and multiline input`() {
+        val type = terminalInputType(false)
         assertEquals(InputType.TYPE_CLASS_TEXT, type and InputType.TYPE_MASK_CLASS)
         assertEquals(InputType.TYPE_TEXT_VARIATION_NORMAL, type and InputType.TYPE_MASK_VARIATION)
         assertEquals(0, type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
@@ -16,8 +16,8 @@ class TerminalInputModeTest {
     }
 
     @Test
-    fun `direct mode requests characters without suggestions with a valid text class`() {
-        val type = terminalInputType(true)
+    fun `default mode requests characters without suggestions with a valid text class`() {
+        val type = terminalInputType(AppSettings().terminalDirectInput)
         assertEquals(InputType.TYPE_CLASS_TEXT, type and InputType.TYPE_MASK_CLASS)
         assertEquals(InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD, type and InputType.TYPE_MASK_VARIATION)
         assertEquals(InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
