@@ -11,7 +11,6 @@ import com.termux.terminal.WcWidth
 import com.termux.view.TerminalView
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshState
-import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
@@ -31,8 +30,9 @@ import kotlin.math.abs
  *   have had; no answer in time, nothing.
  * - With TalkBack's touch exploration on, taps stay as they were.
  *
- * The arrows go as plain keys (a held Ctrl / Alt is not used up), written
- * off the main thread: the terminal's writer may wait for tmux. The
+ * The arrows go as plain keys (a held Ctrl / Alt is not used up), in
+ * pieces of whole arrows ([arrowPieces]); until they have shown, taps on
+ * the command line are dropped ([TapEchoHold]). The
  * keyboard shows as for any tap; under tmux once tmux has answered, as the
  * keyboard coming up resizes the terminal and tmux redraws it, which
  * would otherwise land between the tap and the answer.
@@ -42,9 +42,9 @@ class TerminalTap(
     private val session: () -> SshSession,
     private val showKeyboard: () -> Unit,
 ) {
-    private val gate = TmuxTapGate { SystemClock.elapsedRealtime() }
+    private val gate = TmuxTapGate({ SystemClock.elapsedRealtime() }) { ms, task -> view.postDelayed(task, ms) }
+    private val hold = TapEchoHold { SystemClock.elapsedRealtime() }
     private val accessibility = view.context.getSystemService(AccessibilityManager::class.java)
-    private val writer = Executors.newSingleThreadExecutor { Thread(it, "terminal-tap").apply { isDaemon = true } }
 
     /** Takes a tap at [event] if it lands on the cursor's line; false leaves it to the view as before. */
     fun onTap(event: MotionEvent): Boolean {
@@ -58,6 +58,12 @@ class TerminalTap(
         val grid = BufferGrid(emulator)
         val moves = tapCursorMoves(grid, emulator.cursorRow, emulator.cursorCol, row, column)
             ?: return false
+        val line = cursorLineState(grid, emulator.cursorRow, emulator.cursorCol)
+        // The last tap's arrows have not shown yet: counted from this screen, this one would be off.
+        if (hold.holds(line)) {
+            showKeyboard()
+            return true
+        }
         if (!tmux) {
             sendArrows(s, moves)
             showKeyboard()
@@ -66,7 +72,7 @@ class TerminalTap(
         // A tap while tmux has not answered the last one is dropped, not sent on as a click.
         val asked = gate.tap(
             session = s,
-            screen = cursorLineState(grid, emulator.cursorRow, emulator.cursorCol),
+            screen = line,
             ask = { answered -> s.askTapToShell { answer -> view.post { answered(answer) } } },
             screenNow = { s.terminal.session.emulator?.let { cursorLineState(BufferGrid(it), it.cursorRow, it.cursorCol) }.orEmpty() },
             act = { action ->
@@ -90,8 +96,25 @@ class TerminalTap(
         val code = KeyHandler.getCode(key, 0, emulator.isCursorKeysApplicationMode, emulator.isKeypadApplicationMode)
             ?: return
         s.typed()
-        val keys = code.repeat(abs(moves))
-        writer.execute { terminal.write(keys) }
+        gate.forget()
+        hold.sending()
+        writePieces(s, arrowPieces(code, abs(moves)), 0)
+    }
+
+    /**
+     * Writes [pieces] from [index] on, one per main-thread turn: keys typed
+     * meanwhile go between whole arrows, never inside one.
+     */
+    private fun writePieces(s: SshSession, pieces: List<String>, index: Int) {
+        val terminal = s.terminal.session
+        if (index < pieces.size && terminal.isRunning) {
+            terminal.write(pieces[index])
+            if (index + 1 < pieces.size) {
+                view.post { writePieces(s, pieces, index + 1) }
+                return
+            }
+        }
+        hold.sent(terminal.emulator?.let { cursorLineState(BufferGrid(it), it.cursorRow, it.cursorCol) }.orEmpty())
     }
 
     /** The click the view would have sent for the tap at [column], [row] (screen cells, from 0). */

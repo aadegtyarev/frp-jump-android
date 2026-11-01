@@ -8,7 +8,8 @@ import ru.adsrv.frpjump.ssh.TapAnswer
 
 class TmuxTapGateTest {
     private var now = 0L
-    private val gate = TmuxTapGate { now }
+    private val timers = mutableListOf<Pair<Long, () -> Unit>>()
+    private val gate = TmuxTapGate({ now }) { ms, task -> timers += ms to task }
     private val session = Any()
     private var screen = "one"
     private val actions = mutableListOf<TapAction>()
@@ -75,13 +76,34 @@ class TmuxTapGateTest {
     }
 
     @Test
-    fun `a question that never comes back stops holding taps, and its late answer is ignored`() {
+    fun `a question still open after the answer limit counts as no answer, its late answer is ignored`() {
         tap()
-        now += TmuxTapGate.PENDING_MAX_MS
+        val (delay, timeout) = timers.single()
+        assertEquals(TmuxTapGate.PENDING_MAX_MS, delay)
+        timeout()
+        assertEquals(listOf(TapAction.NOTHING), actions)
+        // Taps go through again; the old answer does nothing, not even a click.
         assertTrue(tap())
         questions[0](TapAnswer.NOT_SHELL)
-        assertTrue(actions.isEmpty())
+        assertEquals(listOf(TapAction.NOTHING), actions)
         questions[1](TapAnswer.SHELL)
+        assertEquals(listOf(TapAction.NOTHING, TapAction.ARROWS), actions)
+    }
+
+    @Test
+    fun `the timeout after an answer does nothing`() {
+        tap()
+        questions.single()(TapAnswer.SHELL)
+        timers.single().second()
         assertEquals(listOf(TapAction.ARROWS), actions)
+    }
+
+    @Test
+    fun `sent arrows drop the kept answer`() {
+        tap()
+        questions.single()(TapAnswer.SHELL)
+        gate.forget()
+        tap()
+        assertEquals(2, questions.size)
     }
 }

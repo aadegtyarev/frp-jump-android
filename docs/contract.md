@@ -284,7 +284,9 @@ the end of the text goes to its end. A row the shell broke with a real line
 break (a pasted multi-line command, a `for` loop's `>` lines), output above
 and the empty screen below keep the usual tap: it shows the keyboard (the
 tap on the command line shows it too). The arrows are plain keys: a held
-Ctrl / Alt stays held. With TalkBack's touch exploration on, taps stay as
+Ctrl / Alt stays held. Until their echo shows (at most 400 ms), another
+tap on the command line does nothing: it would count from where the
+cursor was. With TalkBack's touch exploration on, taps stay as
 they were.
 
 What reads the arrows:
@@ -303,8 +305,8 @@ What reads the arrows:
   keyboard showing is no change). Any other answer within 2 s hands the
   program the click it would have had. No answer within 2 s, or a failed
   one: nothing, never a late click. One question at a time: a tap while
-  one is out is dropped; an answer stands 400 ms for an unchanged line. A
-  `read` prompt of a script runs in `bash` too, so it gets the arrows,
+  one is out is dropped, and one open 2.5 s counts as no answer; an
+  answer stands 400 ms for an unchanged line. A `read` prompt of a script runs in `bash` too, so it gets the arrows,
   and without `read -e` shows them as `^[[D`. The keyboard shows once
   tmux has answered: coming up, it resizes the terminal and tmux redraws.
 - The text right of the cursor counts as the line: zsh's RPROMPT, or an

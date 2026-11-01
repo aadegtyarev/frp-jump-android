@@ -634,8 +634,11 @@ filling in the user name leaves the saved password alone.
   counting in `ui/ssh/TapToCursor.kt`, tmux answers in
   `ui/ssh/TmuxTapGate.kt`). The terminal cannot move the shell's cursor,
   so the app sends that many ← or → (the emulator's arrow codes for its
-  cursor-key mode, no Ctrl / Alt, at most 2000, written off the main
-  thread) and the line editor moves it. The count runs from the cursor's
+  cursor-key mode, no Ctrl / Alt, at most 2000, written in pieces of 64
+  whole arrows so a key typed meanwhile never lands inside one) and the
+  line editor moves it. Until their echo changes the cursor's line (or
+  400 ms pass), further taps on the command line are dropped
+  (`TapEchoHold`): counted from the old screen they would be off. The count runs from the cursor's
   cell to the tapped one over the rows the emulator wrapped at the margin
   (its line-wrap flags; tmux keeps them when it redraws, as after the
   keyboard shows), one per character, so a wide character counts once and
@@ -656,7 +659,8 @@ filling in the user name leaves the saved password alone.
     cursor's place in it, `cursorLineState`) is unchanged since the tap;
     any other answer within 2 s gets the click the view would have sent;
     no answer, a failed or a late one gets nothing. One exec at a time (a
-    tap meanwhile is dropped), and an answer stands 400 ms for the same
+    tap meanwhile is dropped; a question open 2.5 s counts as no answer
+    and shows the keyboard), and an answer stands 400 ms for the same
     line. A `read` prompt inside `bash` is `bash` to tmux (without
     `read -e` it shows the arrows as `^[[D`). The keyboard shows after
     the answer, not at the tap: coming up it resizes the terminal and
