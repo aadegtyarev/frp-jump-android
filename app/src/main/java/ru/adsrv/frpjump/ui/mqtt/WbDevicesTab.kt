@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -58,14 +57,22 @@ private const val CONTROL_VALUE_CHARS = 60
  * its topic's card.
  */
 @Composable
-internal fun WbDevicesTab(state: MqttUiState, language: String, padding: PaddingValues, onOpen: (String) -> Unit, onBack: () -> Unit, onCard: (WbControl) -> Unit) {
+internal fun WbDevicesTab(
+    state: MqttUiState,
+    language: String,
+    padding: PaddingValues,
+    onOpen: (String) -> Unit,
+    onBack: () -> Unit,
+    onCard: (WbControl) -> Unit,
+    onWrite: (WbControl, String) -> Unit,
+) {
     val device = state.wbDeviceId
     // Held above the device, so Back from one returns to the list where it was.
     val devices = rememberLazyListState()
     if (device == null) {
         WbDeviceList(state, devices, padding, onOpen)
     } else {
-        WbDeviceControls(state, device, language, padding, onBack, onCard)
+        WbDeviceControls(state, device, language, padding, onBack, onCard, onWrite)
     }
 }
 
@@ -137,9 +144,23 @@ internal fun ErrorMark(spoken: String) {
 
 /** A device opened in the tab: a header with Back and its title, then its controls in meta order. */
 @Composable
-private fun WbDeviceControls(state: MqttUiState, id: String, language: String, padding: PaddingValues, onBack: () -> Unit, onCard: (WbControl) -> Unit) {
+private fun WbDeviceControls(
+    state: MqttUiState,
+    id: String,
+    language: String,
+    padding: PaddingValues,
+    onBack: () -> Unit,
+    onCard: (WbControl) -> Unit,
+    onWrite: (WbControl, String) -> Unit,
+) {
     val colors = AppTheme.colors
     val view = state.wbDevice
+    // In a closed or reconnecting session the controls are off, saying so.
+    val off = when (state.state) {
+        is MqttState.Open -> null
+        MqttState.Reconnecting -> stringResource(R.string.mqtt_reconnecting)
+        else -> stringResource(R.string.mqtt_closed)
+    }
     val list = rememberLazyListState()
     LaunchedEffect(id) { list.scrollToItem(0) }
     Column(Modifier.fillMaxSize()) {
@@ -183,46 +204,24 @@ private fun WbDeviceControls(state: MqttUiState, id: String, language: String, p
             contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp),
         ) {
             items(view.controls, key = { it.id }) { control ->
-                ControlRow(control, language, onTitle = { onCard(control) })
+                ControlRow(
+                    control,
+                    language,
+                    answer = state.wbAnswers[control.id],
+                    sent = state.wbSent[control.path],
+                    off = off,
+                    onTitle = { onCard(control) },
+                    onWrite = { onWrite(control, it) },
+                )
                 HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 16.dp))
             }
         }
     }
 }
 
-/**
- * A control: its title (a tap opens the topic's card), its error in plain
- * words under it, and its value with units on the right.
- */
-@Composable
-private fun ControlRow(control: WbControl, language: String, onTitle: () -> Unit) {
-    val colors = AppTheme.colors
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(
-            Modifier
-                .weight(1f)
-                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.mqtt_open_card), onClick = onTitle),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(oneLineText(control.title), fontSize = 15.sp, color = colors.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (control.errors.isNotEmpty()) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(8.dp).background(colors.error, CircleShape))
-                    Text(errorWords(control.errors), fontSize = 13.sp, color = colors.error)
-                }
-            }
-        }
-        ControlValue(control, language, Modifier.widthIn(max = 200.dp))
-    }
-}
-
 /** The value with its units (or its enum title), "No value" before one is seen. */
 @Composable
-internal fun ControlValue(control: WbControl, language: String, modifier: Modifier = Modifier) {
+internal fun ControlValue(control: WbControl, language: String, modifier: Modifier = Modifier, accent: Boolean = false) {
     val colors = AppTheme.colors
     val raw = control.value
     if (raw == null || raw.isEmpty()) {
@@ -232,7 +231,7 @@ internal fun ControlValue(control: WbControl, language: String, modifier: Modifi
     }
     val shown = shownValue(control.meta, raw, language)
     val text = oneLineText(shown.text, CONTROL_VALUE_CHARS) + (shown.units?.let { " $it" } ?: "")
-    Text(text, fontSize = 15.sp, color = colors.ink, textAlign = TextAlign.End, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = modifier)
+    Text(text, fontSize = 15.sp, color = if (accent) colors.accent else colors.ink, textAlign = TextAlign.End, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = modifier)
 }
 
 /** The errors in plain words, one per letter, the first capitalised: "Read error, polled late" reads as one line. */

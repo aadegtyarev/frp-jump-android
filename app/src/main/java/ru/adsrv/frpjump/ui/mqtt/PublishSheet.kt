@@ -380,7 +380,7 @@ private fun blockedText(state: MqttState): String = when (state) {
 }
 
 @Composable
-private fun answerText(answer: PublishAnswer): String = when (answer) {
+internal fun answerText(answer: PublishAnswer): String = when (answer) {
     PublishAnswer.Accepted -> stringResource(R.string.mqtt_publish_accepted)
     is PublishAnswer.Refused -> stringResource(R.string.mqtt_publish_refused, refusalText(answer))
     PublishAnswer.Unconfirmed -> stringResource(R.string.mqtt_publish_unconfirmed)
