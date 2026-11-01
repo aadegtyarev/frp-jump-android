@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.connections
 
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.devices.searchMatches
 
 /**
  * One device's connections on the Connections tab, with the device as its
@@ -80,16 +81,17 @@ private fun rank(group: DeviceGroup): Int = when {
 }
 
 /**
- * The groups matching [query], ignoring case and the spaces around it: a
- * device whose name contains it with all its connections, otherwise only
- * its connections whose [label] contains it. All of them for a blank query.
+ * The groups matching [query], ignoring the spaces around it and case as
+ * Devices search does ([searchMatches]): a device whose name or label
+ * contains it with all its connections, otherwise only its connections
+ * whose [label] contains it. All of them for a blank query.
  */
 fun filterGroups(groups: List<DeviceGroup>, query: String, label: (ConnectionRow) -> String): List<DeviceGroup> {
     val wanted = query.trim()
     if (wanted.isEmpty()) return groups
     return groups.mapNotNull { group ->
-        if (group.name.contains(wanted, ignoreCase = true)) return@mapNotNull group
-        group.rows.filter { label(it).contains(wanted, ignoreCase = true) }
+        if (searchMatches(group.name, wanted) || searchMatches(group.device?.label, wanted)) return@mapNotNull group
+        group.rows.filter { searchMatches(label(it), wanted) }
             .takeIf { it.isNotEmpty() }
             ?.let { group.copy(rows = it) }
     }

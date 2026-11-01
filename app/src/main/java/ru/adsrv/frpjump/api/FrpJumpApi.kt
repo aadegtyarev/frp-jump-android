@@ -101,7 +101,7 @@ class FrpJumpApi(
 
     /** 204 on success; marks the phone online for the owner's other devices. */
     override suspend fun heartbeat(c: Credentials) {
-        val body = WireJson.encodeToString(HeartbeatRequest(AGENT_VERSION))
+        val body = WireJson.encodeToString(HeartbeatRequest(AGENT_VERSION, PHONE_KIND))
         call(authorized(c, endpoint(c.controlUrl, "heartbeat")).post(body.toRequestBody(JSON)).build())
     }
 

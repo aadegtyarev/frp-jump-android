@@ -173,7 +173,7 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
         order.value = null
         refreshing.value = true
         viewModelScope.launch {
-            runtimes().map { r -> async { r.devices.refresh(wait = true) } }.awaitAll()
+            runtimes().map { r -> async { r.devices.pull() } }.awaitAll()
             refreshing.value = false
         }
     }

@@ -99,9 +99,21 @@
     <string name="device_disabled">Disabled</string>
     <string name="devices_empty">No other devices yet.</string>
     <string name="devices_search">Search devices</string>
-    <string name="devices_search_hint">Device name</string>
+    <string name="devices_search_hint">Name or label</string>
     <string name="search_close">Close search</string>
     <string name="devices_no_match">No devices match “%s”.</string>
+
+    <!-- Device icons (the server's fixed set) -->
+    <string name="device_icon_linux" translatable="false">Linux</string>
+    <string name="device_icon_wirenboard" translatable="false">Wiren Board</string>
+    <string name="device_icon_server">Server</string>
+    <string name="device_icon_pc">Computer</string>
+    <string name="device_icon_laptop">Laptop</string>
+    <string name="device_icon_router">Router</string>
+    <string name="device_icon_sbc">Single-board computer</string>
+    <string name="device_icon_camera">Camera</string>
+    <string name="device_icon_home">Home</string>
+    <string name="device_icon_phone">Phone</string>
     <string name="offline_unreachable">No connection to the server · updated %s</string>
     <string name="offline_server_error">The server returned an error · updated %s</string>
     <string name="tap_to_retry">Tap to retry</string>

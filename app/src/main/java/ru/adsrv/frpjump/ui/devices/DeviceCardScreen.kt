@@ -47,6 +47,7 @@ import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.connections.knownOffline
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.caption
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.PlusGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
@@ -196,14 +197,26 @@ fun DeviceCardScreen(
     }
 }
 
-/** The device's name, its state and its profile, as the mockup. */
+/**
+ * The device's icon on a tile, its whole name and under it its whole label
+ * (wrapped, never cut), then its state and its profile, as the mockup.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Header(name: String, device: DeviceRow?, profileName: String) {
     val colors = AppTheme.colors
     Column {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                val iconName = device?.icon?.let { stringResource(it.caption) }
+                Box(Modifier.semantics { iconName?.let { contentDescription = it } }) {
+                    DeviceTile(device?.icon, dot = null, size = 48.dp, ring = colors.ground)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(name, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    device?.label?.let { Text(it, fontSize = 15.sp, color = colors.muted) }
+                }
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (device != null) {
                     val (dot, text) = when {

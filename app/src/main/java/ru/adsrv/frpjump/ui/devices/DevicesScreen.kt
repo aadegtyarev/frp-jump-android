@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -49,7 +47,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -75,11 +72,11 @@ import ru.adsrv.frpjump.ui.LinkGlyph
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.NotificationsOffLine
-import ru.adsrv.frpjump.ui.DeviceGlyph
 import ru.adsrv.frpjump.ui.SearchBar
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.ageText
+import ru.adsrv.frpjump.ui.caption
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.profiles.Chip
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
@@ -369,6 +366,21 @@ private fun DisconnectDeviceButton(device: String, onClick: () -> Unit) {
 private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit, onDisconnect: (() -> Unit)?) {
     val colors = AppTheme.colors
     val disconnectLabel = stringResource(R.string.disconnect_device_tunnels, device.name)
+    val stateText = when {
+        device.online && device.stale -> wasOnline(device)
+        device.online -> stringResource(R.string.device_online)
+        device.lastSeen == null -> stringResource(R.string.device_never_seen)
+        else -> stringResource(R.string.device_last_seen, ageText(device.lastSeen))
+    }
+    // Name, label, state, then the icon's name (the generic glyph says nothing).
+    val spoken = listOfNotNull(
+        device.name,
+        device.label,
+        stateText,
+        stringResource(R.string.device_tunnels_open, ports.joinToString(", ")).takeIf { ports.isNotEmpty() },
+        stringResource(R.string.device_disabled).takeIf { device.disabled },
+        device.icon?.let { stringResource(it.caption) },
+    ).joinToString(", ")
     Surface(
         onClick = onClick,
         color = colors.card,
@@ -382,11 +394,14 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
             },
     ) {
         Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            Modifier
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+                .clearAndSetSemantics { contentDescription = spoken },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             DeviceTile(
+                device.icon,
                 when {
                     !device.online -> colors.offline
                     // Online as of the last answer only.
@@ -395,23 +410,20 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
                 },
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        when {
-                            device.online && device.stale -> wasOnline(device)
-                            device.online -> stringResource(R.string.device_online)
-                            device.lastSeen == null -> stringResource(R.string.device_never_seen)
-                            else -> stringResource(R.string.device_last_seen, ageText(device.lastSeen))
-                        },
-                        fontSize = 13.sp,
-                        color = colors.muted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (ports.isNotEmpty()) TunnelPorts(ports)
-                }
+                Text(device.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                LabelAndState(device.label, state = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stateText,
+                            fontSize = 13.sp,
+                            color = colors.muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (ports.isNotEmpty()) TunnelPorts(ports)
+                    }
+                })
             }
             if (device.disabled) Chip(stringResource(R.string.device_disabled), colors.errorContainer, colors.onErrorContainer)
         }
@@ -423,9 +435,7 @@ private fun DeviceItem(device: DeviceRow, ports: List<Int>, onClick: () -> Unit,
 private fun TunnelPorts(ports: List<Int>) {
     val colors = AppTheme.colors
     val (shown, more) = portsShown(ports)
-    val spoken = stringResource(R.string.device_tunnels_open, ports.joinToString(", "))
     Row(
-        Modifier.clearAndSetSemantics { contentDescription = spoken },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(" · ", fontSize = 13.sp, color = colors.muted)
@@ -437,31 +447,6 @@ private fun TunnelPorts(ports: List<Int>) {
             color = colors.accent,
             maxLines = 1,
             softWrap = false,
-        )
-    }
-}
-
-/** A device glyph on a tile, its state as a dot in the corner. */
-@Composable
-private fun DeviceTile(dot: Color) {
-    val colors = AppTheme.colors
-    Box(Modifier.size(40.dp)) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .background(colors.tile, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(DeviceGlyph, contentDescription = null, tint = colors.ink, modifier = Modifier.size(22.dp))
-        }
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 2.dp, y = 2.dp)
-                .size(14.dp)
-                .border(2.dp, colors.card, CircleShape)
-                .padding(2.dp)
-                .background(dot, CircleShape),
         )
     }
 }

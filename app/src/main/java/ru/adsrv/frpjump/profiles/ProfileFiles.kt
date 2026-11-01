@@ -13,6 +13,9 @@ internal object ProfileFiles {
 
     const val ENROLLMENT = "enrollment.json"
     const val DEVICE_LIST = "device_list.json"
+
+    /** The server's last `features` answer, kept beside [DEVICE_LIST]. */
+    const val SERVER_FEATURES = "server_features.json"
     const val DEVICE_PORTS = "device_ports.json"
     const val HOST_KEYS = "ssh_host_keys.json"
     const val SSH_LOGINS = "ssh_logins.json"

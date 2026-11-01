@@ -397,9 +397,11 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   version does not know, the generic device glyph used today is shown.
 - **Is the feature there?** The app asks the server's
   `GET /api/agent/version` for its `features` list once per profile at
-  start and on pull to refresh. It keeps the last answer stored per
-  profile, next to the cached device list, so the feature survives a
-  restart while offline. "device-display" in the list turns the feature on.
+  start and on pull to refresh. Until it has answered once in this run
+  (offline at start, or enrolled since), it is asked again after each good
+  device-list refresh, without holding up the poll. It keeps the last
+  answer stored per profile, next to the cached device list, so the
+  feature survives a restart while offline. "device-display" in the list turns the feature on.
   An old server has no such list, and the app treats that as "not
   supported". A failed `/version` keeps the last stored value. A profile
   with no stored answer yet counts as "not supported" until the first one
@@ -474,8 +476,8 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   so offline the list, the card and the Connections tab show them as last
   known.
 - **Plain text.** A label is plain text everywhere: no links, no markup. It
-  takes one line in the list row and wraps on the card and the Connections
-  header.
+  is never cut: it wraps in the list row (scenario 3), on the card and in
+  the Connections header.
 
 ## Wire behaviour the app must match
 
