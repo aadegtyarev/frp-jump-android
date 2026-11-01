@@ -1,6 +1,9 @@
 package ru.adsrv.frpjump.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,7 +31,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,9 +74,11 @@ fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, actions: @Co
 /**
  * A thin bar for screens where every pixel goes to the content (the web
  * page): 44 dp, back, one line of title, actions; under the status bar.
+ * With [onClose], a long press on back closes at once (TalkBack: "Close"
+ * among the arrow's actions), as back itself may step inside the screen.
  */
 @Composable
-fun CompactTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+fun CompactTopBar(title: String, onBack: () -> Unit, onClose: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val colors = AppTheme.colors
     Row(
         Modifier
@@ -77,8 +89,12 @@ fun CompactTopBar(title: String, onBack: () -> Unit, actions: @Composable RowSco
             .height(44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = colors.ink)
+        if (onClose == null) {
+            IconButton(onClick = onBack, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back), tint = colors.ink)
+            }
+        } else {
+            BackOrClose(onBack, onClose)
         }
         Text(
             title,
@@ -90,5 +106,26 @@ fun CompactTopBar(title: String, onBack: () -> Unit, actions: @Composable RowSco
             modifier = Modifier.weight(1f),
         )
         CompositionLocalProvider(LocalContentColor provides colors.muted) { actions() }
+    }
+}
+
+/** The bar's back arrow that also closes: tap is [onBack], long press (and TalkBack's "Close" action) is [onClose]. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BackOrClose(onBack: () -> Unit, onClose: () -> Unit) {
+    val back = stringResource(R.string.back)
+    val close = stringResource(R.string.close)
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .combinedClickable(role = Role.Button, onClick = onBack, onLongClickLabel = close, onLongClick = onClose)
+            .semantics {
+                contentDescription = back
+                customActions = listOf(CustomAccessibilityAction(close) { onClose(); true })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = AppTheme.colors.ink)
     }
 }

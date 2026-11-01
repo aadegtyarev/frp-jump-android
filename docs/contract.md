@@ -162,6 +162,15 @@ re-enroll.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
   told as such, with "Open over HTTP". SSH → built-in terminal. TCP → shows and copies the local address.
+- Back in the web view, system Back and the bar's arrow alike: full screen is
+  left first, then the page's history is walked (in-page routes of single-page
+  UIs too), and only with no page to go back to does the screen close. An
+  entry that sends the page straight forward again (homeui's `/`, which
+  pushes its dashboard) is stepped over, so Back never loops on it. With
+  the page hidden (tunnel closed, renderer crashed) Back closes. A long press
+  on the arrow closes at once (TalkBack: the arrow's "Close" action). The ⋮
+  menu has Back and Forward (enabled when there is a page to go to), Reload,
+  Start page, Open in browser and Close.
 - A connection the device has not opened yet (its agent is still setting up
   a new tunnel) is "Waiting for the device…", not an error; a terminal,
   explorer or file screen opened with it waits too. Still not open 30 s
