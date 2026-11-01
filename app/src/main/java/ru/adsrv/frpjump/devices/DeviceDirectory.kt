@@ -77,9 +77,14 @@ class DeviceDirectory(
     @Volatile
     private var last: CachedDeviceList? = null
 
-    /** Set while the device list is visible: only then does the poller fetch it. */
-    @Volatile
-    var wanted = false
+    /** The screens showing this list now (Devices, Connections). */
+    private val wantedBy = ScreenMarks()
+
+    /** Set while a screen shows the list: only then does the poller fetch it. */
+    val wanted: Boolean get() = wantedBy.any
+
+    /** [screen] shows the list now, or no longer ([ScreenMarks]). */
+    fun want(screen: Any, on: Boolean) = wantedBy.set(screen, on)
 
     /** Shows the cached list, unless the server has answered already. Reads storage: call off the main thread. */
     suspend fun restore() = fetching.withLock {

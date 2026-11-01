@@ -185,6 +185,10 @@
     <!-- Connection kinds and states -->
     <string name="kind_web">Веб</string>
     <string name="state_not_connected">Не подключено</string>
+    <string name="state_device_offline">Устройство не в сети</string>
+    <string name="connections_search">Поиск подключений</string>
+    <string name="connections_search_hint">Устройство или подключение</string>
+    <string name="connections_no_match">Нет подключений по запросу «%s».</string>
     <string name="state_connecting">Подключение…</string>
     <string name="state_disconnecting">Отключение…</string>
     <string name="state_trying_direct">Пробую напрямую…</string>
@@ -195,14 +199,13 @@
     <string name="state_failed">Ошибка</string>
 
     <!-- Connection rows and their actions -->
-    <string name="connection_sub">%1$s · порт %2$d</string>
-    <string name="connection_sub_https">%1$s · порт %2$d · HTTPS</string>
-    <string name="connection_sub_ssh_key">%1$s · порт %2$d · %3$s · ключ телефона</string>
-    <string name="connection_sub_ssh_password">%1$s · порт %2$d · %3$s · пароль</string>
+    <string name="connection_details">Порт %1$d</string>
+    <string name="connection_details_https">Порт %1$d · HTTPS</string>
+    <string name="connection_details_ssh_key">Порт %1$d · %2$s · ключ телефона</string>
+    <string name="connection_details_ssh_password">Порт %1$d · %2$s · пароль</string>
     <string name="connection_unsaved">Порт %d</string>
     <string name="connection_actions">Действия с «%s»</string>
     <string name="connect">Подключить</string>
-    <string name="connect_named">Подключить «%s»</string>
     <string name="connect_and_open">Подключить и открыть</string>
     <string name="disconnect_named">Отключить «%s»</string>
     <string name="disconnect">Отключить</string>
@@ -278,9 +281,7 @@
     <string name="save_failed">Не удалось сохранить (%s). Попробуйте ещё раз.</string>
 
     <!-- Connections tab -->
-    <string name="connections_active">Активные · %d</string>
-    <string name="connections_saved">Сохранённые</string>
-    <string name="connections_empty">Сохранённых подключений пока нет. Откройте устройство и добавьте его кнопкой «Подключение».</string>
+    <string name="connections_empty">Сохранённых подключений пока нет. Откройте устройство на вкладке «Устройства» и нажмите «Подключение».</string>
 
     <!-- Sessions tab -->
     <string name="sessions_empty">Открытых сессий нет. Нажмите «Терминал» или «MQTT» у подключения.</string>

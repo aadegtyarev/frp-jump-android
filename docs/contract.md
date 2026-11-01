@@ -175,7 +175,8 @@ re-enroll.
   same (TCP: connects and copies the address). SSH with no login to use at
   once opens the login dialog first. Taps while it is coming up open it
   once. Leaving the screen before it is up cancels the open (the tunnel
-  stays). The disconnect button, "⋮" and the other buttons keep their own
+  stays). On a device offline now, a connection that is down has no tap
+  action and its Connect is off (scenario 5); "⋮" and a long press work. The disconnect button, "⋮" and the other buttons keep their own
   actions, and so does the state when it offers a choice ("Through the
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
@@ -183,9 +184,43 @@ re-enroll.
 
 ### 5. Connections tab
 
-- All saved connections of all profiles; active ones on top with their state
-  and local address, the rest below with a connect button.
-- "Disconnect all".
+Quick access to the saved connections of every device, active ones first.
+
+- Grouped by device. A group's header is the device's whole name (wrapped,
+  never cut) after its state as a dot in the Devices list's colours (online,
+  online as of an old list, offline; none while its profile's list is not
+  read). With more than one profile on the tab, the header also shows the
+  profile's colour; devices of the same name in two profiles are two groups.
+- Order: devices with an active connection first, then online ones, then the
+  rest (offline, or not in the list); within each part by device name.
+  Within a group the connections keep their stored order; a tunnel up that
+  no saved connection names is listed after them, under its device.
+- Each connection is the same card as on the device card: kind tile, its own
+  name only when it has one other than the kind (a default "SSH" is not
+  repeated), port (and the SSH user and login method), state, the main
+  button ("Connect" / "Terminal" / "Explore" / "Open" / "Copy"),
+  Disconnect while up, and "⋮". A tap on the card does its main action
+  (scenario 4).
+- On a device offline as of a fresh answer of the server, a connection that
+  is down is dimmed: its Connect and the tap on its card are off, and its
+  state says "Device offline" instead of "Not connected". Its "⋮" and a long
+  press still work. An active one stays as it is, so it can be disconnected.
+  An old list (the server not answering, or not checked yet since the start)
+  blocks nothing: the device may be back. The device card does the same.
+- While the tab shows, every profile's device list is kept fresh: each is
+  asked when the tab shows, the shown profile's is polled as on Devices,
+  the others are asked again every 10 s; pull to refresh asks them all.
+  Dots and buttons follow at once. The order of the devices is fixed for
+  the visit once the lists were asked (answered or not), so a device that
+  connects or comes online does not jump under the finger; it is sorted
+  again on the next visit or after a pull.
+- From 6 connections, a magnifier in the title opens search, as on Devices:
+  it matches the device name (all its connections) or a connection's name;
+  nothing found says so.
+- While any tunnel is up (or being restored), the title has the Devices
+  bar's power button: it disconnects every profile's tunnels, with Undo.
+- Nothing saved: "No saved connections yet. Open a device on Devices and tap
+  “Connection”."
 
 ### 6. Direct or through the server
 
