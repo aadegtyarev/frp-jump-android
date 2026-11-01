@@ -127,9 +127,11 @@ re-enroll.
   (scenario 11). The phone itself is not listed.
 - A row shows the device's icon on its tile (the state dot stays in the
   corner) and the name. The second line puts the label in front of the state:
-  «Щиток, гараж · Онлайн · ⛓ 22». When the line does not fit, the label is
-  cut with an ellipsis first, so the state and the tunnel ports always stay
-  visible. A device without a label shows the line as before.
+  «Щиток, гараж · Онлайн · ⛓ 22». The label is never cut, because it is what
+  tells similar devices apart. When the label and the state do not fit on
+  one line, the label takes its own line or lines, wrapped, and the state
+  and the tunnel ports go on the line below. A device without a label shows
+  the line as before.
 - A magnifier in the title opens search. It matches the device name or its
   label, ignoring the spaces around the query. Both sides are normalised to
   NFC and compared without case, whatever the phone's language (Locale.ROOT
@@ -214,13 +216,15 @@ re-enroll.
 
 Quick access to the saved connections of every device, active ones first.
 
-- Grouped by device. A group's header is the device's whole name (wrapped,
-  never cut) after its state as a dot in the Devices list's colours (online,
-  online as of an old list, offline; none while its profile's list is not
-  read). Under the name, a muted line shows the device's label, whole and
-  wrapped, taken from the profile's last device list. No label, or a list not
-  read yet, means no line. The header has no icon: the dot already marks the
-  device. With more than one profile on the tab, the header also shows the
+- Grouped by device. A group's header starts with the device tile from the
+  Devices list, the same component in a smaller size: the device's icon,
+  with its state as a dot in the corner in the Devices list's colours
+  (online, online as of an old list, offline; no dot while its profile's
+  list is not read, and then the generic glyph). After it comes the
+  device's whole name, wrapped and never cut. Under the name, a muted line
+  shows the device's label, whole and wrapped, taken from the profile's
+  last device list. No label, or a list not read yet, means no line. With
+  more than one profile on the tab, the header also shows the
   profile's colour; devices of the same name in two profiles are two groups.
 - Order: devices with an active connection first, then online ones, then the
   rest (offline, or not in the list); within each part by device name.
@@ -393,10 +397,14 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   version does not know, the generic device glyph used today is shown.
 - **Is the feature there?** The app asks the server's
   `GET /api/agent/version` for its `features` list once per profile at
-  start and on pull to refresh, and keeps the answer per profile.
-  "device-display" in the list turns the feature on. An old server has no
-  such list, and the app treats that as "not supported". The feature is
-  never guessed from the shape of the device list or from a 404.
+  start and on pull to refresh. It keeps the last answer stored per
+  profile, next to the cached device list, so the feature survives a
+  restart while offline. "device-display" in the list turns the feature on.
+  An old server has no such list, and the app treats that as "not
+  supported". A failed `/version` keeps the last stored value. A profile
+  with no stored answer yet counts as "not supported" until the first one
+  arrives. The feature is never guessed from the shape of the device list
+  or from a 404.
 - **Where to edit.** The device card's "⋮" has «Подпись…» and «Значок…».
   Both open the same bottom sheet, «Подпись и значок», with the ✕ in its
   header. «Подпись…» opens it with the keyboard up in the text field;
@@ -407,17 +415,25 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   - A single-line field «Подпись» holding the current label, with the
     placeholder «Например, Щиток, гараж» and a counter up to 64. The counter
     counts code points after NFC, as the server does. Pasted line breaks and
-    tabs become spaces. Nothing can be typed past 64. Any other character
-    the server refuses is reported under the field in the server's words.
-  - A grid of icon tiles, three per row, each with a caption. The first tile
-    is «Авто». It shows the detected glyph and its name («Авто: Wiren
+    tabs become spaces. Nothing can be typed past 64. A longer paste is cut
+    at 64 code points, and the counter, at 64/64, stays in view so the cut is
+    seen. Any other character the server refuses is reported under the
+    field (see Saving).
+  - A grid of icon tiles, three per row, each with a caption. The captions
+    (ru / en) are: «Авто» / "Auto", Linux, Wiren Board, «Сервер» /
+    "Server", «Компьютер» / "Computer", «Ноутбук» / "Laptop", «Роутер» /
+    "Router", «Одноплатный ПК» / "Single-board computer", «Камера» /
+    "Camera", «Дом» / "Home", «Телефон» / "Phone", and «Другой» / "Other"
+    (below). The first tile is «Авто». It shows the detected glyph and its name («Авто: Wiren
     Board»), or the generic glyph when the device reports nothing or a value
     this app does not know. The current choice has the accent border.
     TalkBack reads each tile as its caption plus "selected".
   - If the owner's choice on the server is a value this app does not know,
     an extra tile «Другой» with the generic glyph is shown selected. It
     stays as it is unless the owner picks another tile.
-  - «Сохранить», enabled once something differs from what was loaded.
+  - «Сохранить», enabled once something differs from what was loaded. For
+    the label, «differs» compares the field after NFC and trimming with the
+    current label, so a trailing space alone changes nothing.
 - **Saving.** «Сохранить» sends one call,
   `POST /api/agent/devices/{name}/display`, carrying only the fields the
   owner changed, so an edit made meanwhile on another phone to the other
@@ -426,7 +442,11 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   values at once, taken from the server's answer rather than guessed. On
   failure the sheet stays open with the typed text kept, and the button
   offers to try again. The reason appears where it belongs:
-  - a refused label: the server's reason, under the field;
+  - a refused label: under the field. The server's known reasons (too long,
+    a line break or control character, a forbidden character, no visible
+    characters; the exact texts are in frp-jump's plan) are shown as the
+    app's own Russian or English strings. A reason the app does not know is
+    shown as the server's text;
   - this profile's phone disabled on the server (403): «Этот телефон
     отключён на сервере — изменить нельзя», under the button;
   - anything else: the reason, under the button.
@@ -435,6 +455,9 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   until «Сохранить», and the next edit brings it back if needed, as with
   renaming a connection. The Undo rule covers actions that remove something
   at once; here nothing goes before an explicit save.
+- **Closing without saving.** ✕, a swipe down, a tap outside or Back closes
+  the sheet and drops the draft without asking. This is accepted: nothing
+  was saved yet, and typing up to 64 characters again is cheap.
 - **No connection to the server.** The sheet opens with the last known
   values. «Сохранить» fails with «Нет связи с сервером — не сохранено» and
   the retry described above. Edits are not queued for later, because
@@ -478,6 +501,7 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
 | --- | --- |
 | Per profile: device token, cert, key, CA | app-private files, encrypted with a Keystore key |
 | SSH private key, remembered passwords | same |
+| Per profile: the server's last `features` answer, next to its cached device list (labels and icons included) | app-private storage |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
 
 Nothing leaves the phone except calls to the frp-jump servers, the tunnels and
