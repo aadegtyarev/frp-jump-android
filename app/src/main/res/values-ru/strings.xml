@@ -203,6 +203,7 @@
     <string name="connection_actions">Действия с «%s»</string>
     <string name="connect">Подключить</string>
     <string name="connect_named">Подключить «%s»</string>
+    <string name="connect_and_open">Подключить и открыть</string>
     <string name="disconnect_named">Отключить «%s»</string>
     <string name="disconnect">Отключить</string>
     <string name="disconnect_all_tunnels">Отключить все туннели</string>

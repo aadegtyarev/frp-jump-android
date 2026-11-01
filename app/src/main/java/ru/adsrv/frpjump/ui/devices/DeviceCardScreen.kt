@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -74,6 +75,9 @@ import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.ui.connections.kindLabel
 import ru.adsrv.frpjump.ui.connections.mainActionLabel
+import ru.adsrv.frpjump.ui.connections.CardTap
+import ru.adsrv.frpjump.ui.connections.cardTap
+import ru.adsrv.frpjump.ui.connections.cardTapLabel
 import ru.adsrv.frpjump.ui.connections.problemOf
 import ru.adsrv.frpjump.ui.connections.rememberLocalPortContext
 import ru.adsrv.frpjump.ui.connections.rememberNotificationsFirst
@@ -289,7 +293,15 @@ private fun ConnectionCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .combinedClickable(onClick = {}, onLongClick = { onMenu(true) }),
+            .clip(RoundedCornerShape(18.dp))
+            // Anywhere but its buttons: its main action, as the button labels it (connecting first when down);
+            // being disconnected, no action of its own, for touch or TalkBack.
+            .combinedClickable(
+                enabled = cardTap(row) != CardTap.NONE,
+                onClickLabel = cardTapLabel(row, sessions),
+                onClick = { actions.tap(row) },
+                onLongClick = { onMenu(true) },
+            ),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

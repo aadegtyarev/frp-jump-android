@@ -172,7 +172,14 @@ private fun Line(row: ConnectionRow, profileColor: String?, sessions: SessionCou
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .combinedClickable(onClick = {}, onLongClick = { if (hasMenu(row)) ui.menu = row.key }),
+                // Anywhere but its buttons: its main action, as the button labels it (connecting first when down).
+                .combinedClickable(
+                    // Being disconnected: no action of its own, for touch or TalkBack.
+                    enabled = cardTap(row) != CardTap.NONE,
+                    onClickLabel = cardTapLabel(row, sessions),
+                    onClick = { actions.tap(row) },
+                    onLongClick = { if (hasMenu(row)) ui.menu = row.key },
+                ),
         ) {
             Column(Modifier.padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
