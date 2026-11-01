@@ -992,7 +992,7 @@
     <string name="plugin_rule_edit">Изменить</string>
     <string name="plugin_rule_except_line">Исключение %1$d: %2$s</string>
     <string name="plugin_wirenboard">Wiren Board</string>
-    <string name="plugin_wirenboard_hint">Вкладка «Устройства WB»: устройства, значения с единицами, переключатели</string>
+    <string name="plugin_wirenboard_hint">Вкладка «WB»: устройства, значения с единицами, переключатели</string>
     <string name="wb_reading_devices">Читаю устройства…</string>
     <string name="wb_no_devices">Устройств Wiren Board не видно</string>
     <string name="wb_has_errors">есть ошибки</string>

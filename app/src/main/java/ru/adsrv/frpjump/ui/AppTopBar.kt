@@ -29,6 +29,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,10 +48,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 
-/** The bar of a screen opened from a card (web page): back, a title with a muted line under it, actions. */
+/**
+ * The bar of a screen opened from a card (web page): back, a title with a
+ * muted line under it, actions. With [wrapTitle] the title is identifying
+ * text that is never cut: it takes up to two lines, and a name longer than
+ * that is drawn smaller until it fits.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, wrapTitle: Boolean = false, actions: @Composable RowScope.() -> Unit = {}) {
     val colors = AppTheme.colors
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -58,7 +67,7 @@ fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, actions: @Co
         ),
         title = {
             Column {
-                Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (wrapTitle) WrappedTitle(title) else Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 subtitle?.let { Text(it, fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         },
@@ -68,6 +77,24 @@ fun AppTopBar(title: String, subtitle: String?, onBack: () -> Unit, actions: @Co
             }
         },
         actions = actions,
+    )
+}
+
+/** Smallest size a [WrappedTitle] shrinks to. */
+private const val MIN_TITLE_SP = 11
+
+/** The title on up to two lines; when it would need more, a step smaller each layout until it fits (no ellipsis). */
+@Composable
+private fun WrappedTitle(title: String) {
+    var size by remember(title) { mutableIntStateOf(17) }
+    Text(
+        title,
+        fontSize = size.sp,
+        lineHeight = (size + 3).sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 2,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { if (it.hasVisualOverflow && size > MIN_TITLE_SP) size-- },
     )
 }
 

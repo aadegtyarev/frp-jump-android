@@ -203,9 +203,9 @@ neither option; see "Retained topics" for what that changes.
 
 ## Subscriptions tab
 
-The explorer's top bar has the device as its title and "Port <n> · <MQTT
-version or state>" under it, so a long device name is not cut by the
-port. Under it two tabs, **Tree · Subscriptions**, drawn as
+The explorer's top bar has the device as its title, on up to two lines
+and drawn smaller rather than cut when longer, and "Port <n> · <MQTT
+version or state>" under it. Under it two tabs, **Tree · Subscriptions**, drawn as
 the app's segmented switch; the Wiren Board plugin adds a third, **WB**
 (see "Payload views (plugins)"). The tab is kept
 across rotation; Back on Subscriptions returns to Tree; the search (a mode
@@ -627,8 +627,8 @@ live controller; where they differ, both are read.
   stay one line and one height) as soon as the session
   sees a control's meta (below); before that, and on a broker without the
   convention, there is no third tab. The three tabs share the segmented
-  switch's width equally; at large font sizes a label wraps to two lines
-  rather than being cut. Turning the plugin off, in Settings or for the
+  switch's width equally; «WB» never wraps, and only at very large font
+  sizes may another label wrap to two lines rather than being cut. Turning the plugin off, in Settings or for the
   connection (`docs/contract.md` scenario 12), removes the tab. The tab stays away wherever the
   plugin is off, until it is turned on again.
 - **Opening on it.** A connection whose last session showed the tab (kept

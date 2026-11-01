@@ -946,7 +946,7 @@
     <string name="plugin_rule_edit">Change</string>
     <string name="plugin_rule_except_line">Exclusion %1$d: %2$s</string>
     <string name="plugin_wirenboard">Wiren Board</string>
-    <string name="plugin_wirenboard_hint">The WB devices tab: devices, values with units, switches</string>
+    <string name="plugin_wirenboard_hint">The WB tab: devices, values with units, switches</string>
     <string name="wb_tab_devices" translatable="false">WB</string>
     <string name="wb_reading_devices">Reading devices…</string>
     <string name="wb_no_devices">No Wiren Board devices seen</string>

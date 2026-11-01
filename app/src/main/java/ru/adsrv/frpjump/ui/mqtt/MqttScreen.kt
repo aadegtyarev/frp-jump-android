@@ -213,6 +213,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     title = session?.device ?: stringResource(R.string.kind_mqtt),
                     subtitle = session?.let { stringResource(R.string.connection_details, it.port) + " · " + status } ?: status,
                     onBack = leave,
+                    wrapTitle = true,
                     actions = {
                         IconButton(onClick = {
                             // Search looks in the tree.
