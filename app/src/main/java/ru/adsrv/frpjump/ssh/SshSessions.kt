@@ -63,6 +63,9 @@ class SshSessions(
     val sessions: StateFlow<List<SshSession>> = _sessions
     private var nextId = 1
 
+    /** Session-bound text composers; never written to disk or saved Android state. */
+    val drafts = TerminalDrafts()
+
     /** Sessions closed because their tunnel went away (ids are never reused); main thread. */
     private val closedByTunnel = mutableSetOf<Int>()
 
@@ -121,6 +124,7 @@ class SshSessions(
             nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number,
             onReattached = ::sayReattached, pickUp = if (first) ::pickUp else null,
         )
+        drafts.open(session.id)
         _sessions.update { it + session }
         session.connect()
         return session
@@ -145,6 +149,8 @@ class SshSessions(
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
             pickUp = if (pickUpStill) ::pickUp else null,
         )
+        drafts.close(old.id)
+        drafts.open(fresh.id)
         _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
         // After the tries of a drop ran out, the same login tries again the same way.
         fresh.connect(retrying = old.gaveUp && user == null && auth == null)
@@ -178,6 +184,7 @@ class SshSessions(
     fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed), endTmux: Boolean = false) {
         val session = _sessions.value.firstOrNull { it.id == id } ?: return
         session.close(reason, endTmux)
+        drafts.close(id)
         _sessions.update { list -> list.filter { it.id != id } }
     }
 
@@ -234,6 +241,7 @@ class SshSessions(
                 nextId++, from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, env, scope, ClientForScreen(), number,
                 tmuxName = name, onReattached = ::sayReattached, quietAttach = true,
             )
+            drafts.open(tab.id)
             val anchor = after
             _sessions.update { list ->
                 val at = list.indexOfFirst { it.id == anchor }
