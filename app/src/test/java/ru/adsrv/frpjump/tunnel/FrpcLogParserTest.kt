@@ -254,6 +254,92 @@ class FrpcLogParserTest {
     }
 
     @Test
+    fun `a listener's own successful retry clears its previous bind failure`() {
+        val parser = parser(g1)
+        parser.feed(login)
+        parser.feed(startSuccess)
+        parser.feed("start error: listen tcp 127.0.0.1:40000: bind: address already in use")
+        assertEquals(TunnelStatus.FAILED, parser.status())
+        parser.feed("try to start visitor [g1-xtcp-visitor]")
+        parser.feed(startSuccess)
+        assertEquals(VisitorState(TunnelStatus.TRYING), parser.state())
+    }
+
+    @Test
+    fun `a server-only listener recovers after its own retry`() {
+        val parser = parser(g1.copy(direct = false))
+        parser.feed(login)
+        parser.feed("start error: listen tcp 127.0.0.1:40000: bind: address already in use")
+        parser.feed("try to start visitor [g1-stcp-visitor]")
+        parser.feed(startSuccess)
+        assertEquals(VisitorState(TunnelStatus.RELAYED), parser.state())
+    }
+
+    @Test
+    fun `listener recovery does not hide an unresolved fallback startup error`() {
+        val parser = parser(g1)
+        parser.feed(login)
+        parser.feed("start error: fallback unavailable")
+        parser.feed("start error: bind: address already in use")
+        parser.feed("try to start visitor [g1-xtcp-visitor]")
+        parser.feed(startSuccess)
+        assertEquals(VisitorState(TunnelStatus.FAILED, "start error: fallback unavailable"), parser.state())
+        parser.feed("try to start visitor [g1-stcp-visitor]")
+        parser.feed(startSuccess)
+        assertEquals(VisitorState(TunnelStatus.TRYING), parser.state())
+    }
+
+    @Test
+    fun `retry success does not erase a later runtime authentication failure`() {
+        val parser = parser(g1)
+        parser.feed(login)
+        parser.feed(startSuccess)
+        parser.feed("start error: bind: address already in use")
+        parser.feed(warn("[g1-stcp-visitor] dialRawVisitorConn error: authentication failed"))
+        val runtimeFailure = parser.state()
+        parser.feed("try to start visitor [g1-xtcp-visitor]")
+        parser.feed(startSuccess)
+        assertEquals(runtimeFailure, parser.state())
+    }
+
+    @Test
+    fun `a listener still failing its retry remains failed`() {
+        val parser = parser(g1)
+        parser.feed(login)
+        parser.feed(startSuccess)
+        parser.feed("start error: bind: address already in use")
+        parser.feed("try to start visitor [g1-xtcp-visitor]")
+        parser.feed("start error: bind: address already in use again")
+        assertEquals(VisitorState(TunnelStatus.FAILED, "start error: bind: address already in use again"), parser.state())
+    }
+
+    @Test
+    fun `retry recovery affects only its own tunnel`() {
+        val parser = parser(g1, g2)
+        parser.feed(login)
+        parser.feed(startSuccess)
+        parser.feed("start error: bind: address already in use")
+        parser.feed(startSuccess)
+        parser.feed(startSuccess)
+        parser.feed("try to start visitor [g1-xtcp-visitor]")
+        parser.feed(startSuccess)
+        assertEquals(TunnelStatus.TRYING, parser.status("g1"))
+        assertEquals(TunnelStatus.TRYING, parser.status("g2"))
+    }
+
+    @Test
+    fun `a reload discards startup facts for replaced and removed visitors`() {
+        val parser = parser(g1, g2)
+        parser.feed(login)
+        repeat(4) { parser.feed("start error: previous attempt") }
+        parser.reconfigure(listOf(g1.copy(attempt = 1)), listOf("g1-stcp-visitor", "g1-xtcp-visitor-1"))
+        parser.feed(startSuccess)
+        parser.feed(startSuccess)
+        assertEquals(setOf("g1"), parser.snapshot().keys)
+        assertEquals(TunnelStatus.TRYING, parser.status())
+    }
+
+    @Test
     fun `a relay error inside a visitor line fails only that tunnel`() {
         val parser = parser(g1, g2)
         parser.feed(warn("[g1-stcp-visitor] dialRawVisitorConn error: connect to server error: EOF"))
