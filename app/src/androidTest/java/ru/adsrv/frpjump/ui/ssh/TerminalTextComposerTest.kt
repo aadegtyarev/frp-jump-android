@@ -31,6 +31,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -217,9 +218,11 @@ class TerminalTextComposerTest {
         compose.onNodeWithTag("terminal_text_editor").performTextInput("Привет мир")
         compose.onNodeWithTag("terminal_text_editor").performTextInputSelection(TextRange(2, 5))
         orient(!initiallyLandscape)
+        compose.onNodeWithTag("terminal_text_editor").assertIsFocused()
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("Привет мир")
         compose.onNodeWithTag("terminal_text_editor").assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange(2, 5)))
         orient(initiallyLandscape)
+        compose.onNodeWithTag("terminal_text_editor").assertIsFocused()
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("Привет мир")
         compose.onNodeWithTag("terminal_text_editor").assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange(2, 5)))
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
