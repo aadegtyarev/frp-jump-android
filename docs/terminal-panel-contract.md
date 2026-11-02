@@ -10,8 +10,10 @@ Enter, keyboard) and the draft/paste guarantees in
 Remove the dedicated Keys/Text selector row.
 
 - A short tap on the keyboard button keeps its current show/hide behavior.
-- A long press opens the Text composer once, without also triggering a
-  short click. Expose a labelled accessibility long-click action.
+- A long press opens the selected tab's Text composer once, without also
+  triggering a short click. Rebind the action when the selected session
+  changes; do not remove the stale-session guard to make it work.
+  Expose a labelled accessibility long-click action.
 - Terminal ⋮ → Text input opens or focuses the same editor as an explicit
   alternative to the gesture. Settings → Terminal explains the gesture
   and the menu entry; no new persisted setting is needed.
@@ -85,6 +87,22 @@ Remove the dedicated Keys/Text selector row.
   viewport. Existing short/long actions, draft, IME and paste component
   checks remain green. Physical-phone and vendor-IME behavior remains
   unverified.
+
+### 0.3.40 multi-session action binding
+
+- Real TerminalScreen integration tests cover three synthetic sessions,
+  initial selection on the first or second tab, A/B/C round trips, and
+  independent drafts while switching between already-open editors.
+- All three integration tests passed at portrait 100%, actual landscape
+  100% and portrait 200% font. Together with the existing 18 component
+  tests this is 63 UI checks; 28 lifecycle/queue/history/draw checks and
+  1,213 JVM tests also passed. Fixtures use in-memory data and a canceled
+  transport scope; no sockets, production profiles or credentials.
+- A native IME transition made a coordinate return-to-Keys tap unreliable
+  in an intermediate landscape run. The integration fixture now waits for
+  native idle before long presses and invokes the real accessibility
+  action to return, asserting that Text mode ended. The keyboard gesture
+  remains an actual long touch; the complete matrix was rerun.
 
 Environment: Pi.
 Model: openai/gpt-6.1-sol.

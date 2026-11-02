@@ -646,7 +646,8 @@ fun TerminalScreen(
                 ExtraKeys(
                     modifiers = modifiers,
                     textMode = draft.textMode,
-                    onTextMode = ::setTextMode,
+                    // Refresh the remembered long-click capture on tab changes; a local function reference can stay stale.
+                    onTextMode = { enabled -> setTextMode(enabled) },
                     textEditor = {
                         if (!draft.expanded) TerminalTextComposer(
                             sessionId = selected.id,
