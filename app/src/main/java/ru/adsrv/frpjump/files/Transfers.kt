@@ -164,10 +164,16 @@ class TransferJobs {
         return job
     }
 
-    suspend fun cancelAndJoin() {
+    /** Cancel now; a later join must wait for this snapshot, not cancel newly registered work. */
+    fun cancelCurrent(): List<Job> {
         val running = synchronized(jobs) { jobs.toList() }
+        // Cancellation can invoke completion handlers: never do it while holding the registry lock.
         running.forEach { it.cancel() }
-        running.joinAll()
+        return running
+    }
+
+    suspend fun cancelAndJoin() {
+        cancelCurrent().joinAll()
     }
 
     companion object {
