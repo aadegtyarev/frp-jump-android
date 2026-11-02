@@ -8,6 +8,8 @@ import java.io.PipedOutputStream
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +28,122 @@ class TerminalMetricsIoTest {
     private fun client() = Proxy.newProxyInstance(
         TerminalSessionClient::class.java.classLoader, arrayOf(TerminalSessionClient::class.java),
     ) { _, method, _ -> when (method.name) { "hashCode" -> 0; "equals" -> false; "toString" -> "MetricsTestClient"; else -> null } } as TerminalSessionClient
+
+    @Test fun queuedInputCannotMoveToAReplacementOutput() {
+        val oldInput = PipedInputStream()
+        val oldPeer = PipedOutputStream(oldInput)
+        val newInput = PipedInputStream()
+        val newPeer = PipedOutputStream(newInput)
+        val oldOutput = ByteArrayOutputStream()
+        val newOutput = ByteArrayOutputStream()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        try {
+            main {
+                terminal = RemoteTerminal(client())
+                terminal.beforeWrite = { _, _ -> entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+                terminal.pump(oldInput, oldOutput) { }
+                terminal.session.write("stale\r")
+            }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            main {
+                terminal.session.write("backlog\r")
+                terminal.pause()
+                terminal.pump(newInput, newOutput) { }
+            }
+            release.countDown()
+            main { terminal.session.write("fresh\r") }
+            await { newOutput.toString("UTF-8").contains("fresh") }
+            assertEquals("fresh\r", newOutput.toString("UTF-8"))
+        } finally {
+            release.countDown()
+            oldPeer.close(); newPeer.close(); oldInput.close(); newInput.close()
+            if (::terminal.isInitialized) main { terminal.finish() }
+        }
+    }
+
+    @Test fun idleWriterWakesOnNewConnectionInputAndTerminatesOnClose() {
+        val inputs = listOf(PipedInputStream(), PipedInputStream())
+        val peers = inputs.map(::PipedOutputStream)
+        val outputs = listOf(ByteArrayOutputStream(), ByteArrayOutputStream())
+        val writer = AtomicReference<Thread>()
+        try {
+            main {
+                terminal = RemoteTerminal(client())
+                terminal.beforeWrite = { _, _ -> writer.set(Thread.currentThread()) }
+                terminal.pump(inputs[0], outputs[0]) { }
+                terminal.session.write("a")
+            }
+            await { outputs[0].size() == 1 && writer.get()?.state == Thread.State.WAITING }
+            writer.get().interrupt()
+            main {
+                terminal.pause()
+                terminal.pump(inputs[1], outputs[1]) { }
+                terminal.session.write("b")
+            }
+            await { outputs[1].size() == 1 }
+            assertEquals("a", outputs[0].toString("UTF-8"))
+            assertEquals("b", outputs[1].toString("UTF-8"))
+            main { terminal.finish() }
+            await { writer.get()?.state == Thread.State.TERMINATED }
+        } finally {
+            peers.forEach { it.close() }; inputs.forEach { it.close() }
+            if (::terminal.isInitialized) main { terminal.finish() }
+        }
+    }
+
+    @Test fun aLargePasteCannotBeSplitByConnectionHandover() {
+        val inputs = listOf(PipedInputStream(), PipedInputStream())
+        val peers = inputs.map(::PipedOutputStream)
+        val outputs = listOf(ByteArrayOutputStream(), ByteArrayOutputStream())
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val pasted = CountDownLatch(1)
+        val switching = CountDownLatch(1)
+        val switched = CountDownLatch(1)
+        val first = AtomicBoolean(true)
+        val accepted = AtomicBoolean(false)
+        var producer: Thread? = null
+        var handover: Thread? = null
+        try {
+            main {
+                terminal = RemoteTerminal(client())
+                terminal.beforeWrite = { _, _ ->
+                    if (first.getAndSet(false)) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+                }
+                terminal.pump(inputs[0], outputs[0]) { }
+            }
+            producer = Thread {
+                main { accepted.set(terminal.paste("x".repeat(16000))) }
+                pasted.countDown()
+            }.apply { isDaemon = true; start() }
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            handover = Thread {
+                switching.countDown()
+                terminal.pause()
+                terminal.pump(inputs[1], outputs[1]) { }
+                switched.countDown()
+            }.apply { isDaemon = true; start() }
+            assertTrue(switching.await(5, TimeUnit.SECONDS))
+            assertFalse("handover must wait for the paste enqueue", switched.await(50, TimeUnit.MILLISECONDS))
+            release.countDown()
+            assertTrue(pasted.await(5, TimeUnit.SECONDS))
+            assertTrue(switched.await(5, TimeUnit.SECONDS))
+            assertTrue(accepted.get())
+            main { terminal.session.write("fresh") }
+            await { outputs[1].toString("UTF-8").contains("fresh") }
+            assertEquals("fresh", outputs[1].toString("UTF-8"))
+            assertTrue(outputs[0].size() > 0)
+            assertTrue(outputs[0].toString("UTF-8").all { it == 'x' })
+        } finally {
+            release.countDown()
+            // Also unblock a failed test's producer if the worker died.
+            if (::terminal.isInitialized) terminal.session.mTerminalToProcessIOQueue.close()
+            producer?.join(5000); handover?.join(5000)
+            peers.forEach { it.close() }; inputs.forEach { it.close() }
+            if (::terminal.isInitialized) main { terminal.finish() }
+        }
+    }
 
     @Test fun recordsTrafficAndWriterWaitWithoutChangingBytesOrCountingLocalNotes() {
         val incoming = PipedInputStream()
