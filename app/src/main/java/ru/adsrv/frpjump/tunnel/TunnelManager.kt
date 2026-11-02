@@ -87,11 +87,16 @@ data class TunnelsState(
     fun withoutDark(dark: Set<String>): TunnelsState = if (dark.isEmpty()) this else copy(tunnels = tunnels.filter { it.key !in dark })
 }
 
+/** Identity belongs to one admitted operation, not merely its public kind. */
+private class PendingOperation(val kind: PendingOp)
+
 private data class Core(
+    /** Retained by copies, replaced on shutdown so an in-flight CAS cannot cross reset. */
+    val operationEpoch: Any = Any(),
     val planned: List<PlannedTunnel> = emptyList(),
     /** Per grant id, as last applied. */
     val modes: Map<String, DirectMode> = emptyMap(),
-    val pending: Map<String, PendingOp> = emptyMap(),
+    val pending: Map<String, PendingOperation> = emptyMap(),
     val errors: Map<String, String> = emptyMap(),
     val syncError: String? = null,
     val mismatch: String? = null,
@@ -204,7 +209,7 @@ class TunnelManager(
                     pinned = it.pinned,
                 )
             },
-            pending = c.pending,
+            pending = c.pending.mapValues { it.value.kind },
             errors = c.errors,
             syncError = c.syncError,
             mismatch = c.mismatch,
@@ -539,7 +544,7 @@ class TunnelManager(
     suspend fun connect(device: String, port: Int, kind: PortKind) {
         val key = localPortKey(device, port)
         val credentials = credentials() ?: return
-        if (!begin(key, PendingOp.CONNECTING)) return
+        val operation = begin(key, PendingOp.CONNECTING) ?: return
         try {
             val grant = api.connect(credentials, device, port, wireProtocolFor(kind, port))
             repeat(CONNECT_WAIT_SECONDS) { attempt ->
@@ -547,21 +552,21 @@ class TunnelManager(
                 val desired = sync()
                 if (desired != null && desired.consumed.any { it.grantId == grant.grantId }) return
             }
-            fail(key, Texts.get(R.string.tunnel_not_listed))
+            fail(key, operation, Texts.get(R.string.tunnel_not_listed))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             noteRemoval(e, credentials)
-            fail(key, e.userMessage())
+            fail(key, operation, e.userMessage())
         } finally {
-            end(key)
+            end(key, operation)
         }
     }
 
     suspend fun disconnect(device: String, port: Int) {
         val key = localPortKey(device, port)
         val credentials = credentials() ?: return
-        if (!begin(key, PendingOp.DISCONNECTING)) return
+        val operation = begin(key, PendingOp.DISCONNECTING) ?: return
         try {
             api.disconnect(credentials, device, port)
             sync()
@@ -569,9 +574,9 @@ class TunnelManager(
             throw e
         } catch (e: Exception) {
             noteRemoval(e, credentials)
-            fail(key, e.userMessage())
+            fail(key, operation, e.userMessage())
         } finally {
-            end(key)
+            end(key, operation)
         }
     }
 
@@ -714,17 +719,24 @@ class TunnelManager(
 
     private fun credentials(): Credentials? = (enrollment() as? StoredEnrollment.Enrolled)?.credentials
 
-    private fun begin(key: String, op: PendingOp): Boolean {
-        var started = false
-        core.update {
-            if (key in it.pending) it else it.copy(pending = it.pending + (key to op), errors = it.errors - key).also { started = true }
+    private fun begin(key: String, op: PendingOp): PendingOperation? {
+        val epoch = core.value.operationEpoch
+        val operation = PendingOperation(op)
+        while (true) {
+            val before = core.value
+            if (before.operationEpoch !== epoch || key in before.pending) return null
+            val after = before.copy(pending = before.pending + (key to operation), errors = before.errors - key)
+            if (core.compareAndSet(before, after)) return operation
         }
-        return started
     }
 
-    private fun end(key: String) = core.update { it.copy(pending = it.pending - key) }
+    private fun end(key: String, operation: PendingOperation) = core.update {
+        if (it.pending[key] !== operation) it else it.copy(pending = it.pending - key)
+    }
 
-    private fun fail(key: String, message: String) = core.update { it.copy(errors = it.errors + (key to message)) }
+    private fun fail(key: String, operation: PendingOperation, message: String) = core.update {
+        if (it.pending[key] !== operation) it else it.copy(errors = it.errors + (key to message))
+    }
 
     companion object {
         /** A pinned port another app holds is tried again this often. */

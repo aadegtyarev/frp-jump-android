@@ -99,6 +99,9 @@ class TunnelManagerTest {
         @Volatile var failure: Exception? = null
         @Volatile var consumed = listOf(grant)
         @Volatile var connectGate: CompletableDeferred<Unit>? = null
+        @Volatile var disconnectGate: CompletableDeferred<Unit>? = null
+        val connectCalls = java.util.concurrent.atomic.AtomicInteger()
+        val disconnectCalls = java.util.concurrent.atomic.AtomicInteger()
 
         override suspend fun heartbeat(c: Credentials) {
             gate?.await()
@@ -113,6 +116,7 @@ class TunnelManagerTest {
         }
 
         override suspend fun connect(c: Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse {
+            connectCalls.incrementAndGet()
             connectGate?.await()
             failure?.let { throw it }
             return ConnectResponse("g1", deviceName, targetPort, protocol)
@@ -120,6 +124,8 @@ class TunnelManagerTest {
 
         /** The server drops the grant, as it does. */
         override suspend fun disconnect(c: Credentials, deviceName: String, targetPort: Int): Boolean {
+            disconnectCalls.incrementAndGet()
+            disconnectGate?.await()
             failure?.let { throw it }
             disconnected += "$deviceName:$targetPort"
             consumed = consumed.filterNot { it.exposerDeviceName == deviceName && it.targetPort == targetPort }
@@ -161,6 +167,201 @@ class TunnelManagerTest {
 
     /** The profile's pinned local ports, as its connections give them. */
     @Volatile private var pins: Map<String, Int> = emptyMap()
+
+    private fun admit(key: String, kind: PendingOp, target: TunnelManager = manager): Any? =
+        TunnelManager::class.java.getDeclaredMethod("begin", String::class.java, PendingOp::class.java)
+            .apply { isAccessible = true }.invoke(target, key, kind)
+
+    private fun completeOperation(key: String, operation: Any) {
+        TunnelManager::class.java.declaredMethods.single { it.name == "end" }
+            .apply { isAccessible = true }.invoke(manager, key, operation)
+    }
+
+    private fun failOperation(key: String, operation: Any, message: String) {
+        TunnelManager::class.java.declaredMethods.single { it.name == "fail" }
+            .apply { isAccessible = true }.invoke(manager, key, operation, message)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun coreMap(name: String): Map<String, Any> {
+        val flow = TunnelManager::class.java.getDeclaredField("core").apply { isAccessible = true }.get(manager) as MutableStateFlow<*>
+        val value = flow.value!!
+        return value.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(value) as Map<String, Any>
+    }
+
+    @Test fun `completion and error belong to one operation even with the same public kind`() {
+        val old = admit("wb:80", PendingOp.CONNECTING)!!
+        completeOperation("wb:80", old)
+        val current = admit("wb:80", PendingOp.CONNECTING)!!
+        failOperation("wb:80", current, "current failure")
+        completeOperation("wb:80", old)
+        failOperation("wb:80", old, "stale failure")
+        assertTrue(coreMap("pending")["wb:80"] === current)
+        assertEquals("current failure", coreMap("errors")["wb:80"])
+        completeOperation("wb:80", current)
+        assertTrue(coreMap("pending").isEmpty())
+        manager.close()
+    }
+
+    @Test fun `reset invalidates old completion and error without clearing a new owner`() = runBlocking {
+        for (kind in PendingOp.entries) {
+            val old = admit("wb:80", kind)!!
+            manager.shutdown {}
+            val current = admit("wb:80", kind)!!
+            completeOperation("wb:80", old)
+            failOperation("wb:80", old, "stale failure")
+            assertTrue(coreMap("pending")["wb:80"] === current)
+            assertTrue(coreMap("errors").isEmpty())
+            completeOperation("wb:80", current)
+        }
+        manager.close()
+    }
+
+    @Test fun `reset without a new owner cannot acquire a late operation error`() = runBlocking {
+        val old = admit("wb:80", PendingOp.DISCONNECTING)!!
+        manager.shutdown {}
+        failOperation("wb:80", old, "stale failure")
+        completeOperation("wb:80", old)
+        assertTrue(coreMap("pending").isEmpty())
+        assertTrue(coreMap("errors").isEmpty())
+        manager.close()
+    }
+
+    @Test fun `different keys remain independently owned and project the existing public kinds`() = runBlocking {
+        val first = admit("wb:80", PendingOp.CONNECTING)!!
+        val other = admit("other:22", PendingOp.DISCONNECTING)!!
+        eventually("public pending kinds") {
+            manager.state.value.pending == mapOf("wb:80" to PendingOp.CONNECTING, "other:22" to PendingOp.DISCONNECTING)
+        }
+        completeOperation("wb:80", first)
+        assertTrue(coreMap("pending")["other:22"] === other)
+        assertEquals(1, coreMap("pending").size)
+        completeOperation("other:22", other)
+        manager.close()
+    }
+
+    @Test fun `different profile managers admit the same tunnel independently`() {
+        val other = TunnelManager("p2", { stored }, api, ProfileSession(), LocalPortStore(MemoryStorage()), FakeFrpc(), { true })
+        try {
+            val first = admit("wb:80", PendingOp.CONNECTING)!!
+            val second = admit("wb:80", PendingOp.CONNECTING, other)!!
+            assertFalse(first === second)
+            assertTrue(coreMap("pending")["wb:80"] === first)
+        } finally {
+            other.close()
+            manager.close()
+        }
+    }
+
+    @Test fun `CAS in flight before reset cannot admit into an empty new epoch`() = pausedAdmission(reset = true)
+
+    @Test fun `CAS retry after another key changes still admits within the same epoch`() = pausedAdmission(reset = false)
+
+    private fun pausedAdmission(reset: Boolean) = runBlocking {
+        val field = TunnelManager::class.java.getDeclaredField("core").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val original = field.get(manager) as MutableStateFlow<Any>
+        val reached = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val first = java.util.concurrent.atomic.AtomicBoolean(true)
+        field.set(manager, object : MutableStateFlow<Any> by original {
+            override fun compareAndSet(expect: Any, update: Any): Boolean {
+                if (first.getAndSet(false)) {
+                    reached.countDown()
+                    check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                }
+                return original.compareAndSet(expect, update)
+            }
+        })
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val result = pool.submit<Any?> { admit("wb:80", PendingOp.CONNECTING) }
+            assertTrue(reached.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            if (reset) manager.shutdown {} else admit("other:22", PendingOp.DISCONNECTING)
+            release.countDown()
+            val admitted = result.get(10, java.util.concurrent.TimeUnit.SECONDS)
+            if (reset) {
+                assertEquals(null, admitted)
+                assertTrue(coreMap("pending").isEmpty())
+            } else {
+                assertTrue(admitted != null)
+                assertEquals(setOf("wb:80", "other:22"), coreMap("pending").keys)
+            }
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+            manager.close()
+        }
+    }
+
+    @Test fun `public connect cannot duplicate an in-flight connect`() = assertPendingRequest(true, true)
+    @Test fun `public disconnect cannot duplicate an in-flight disconnect`() = assertPendingRequest(false, false)
+    @Test fun `public disconnect cannot overtake an in-flight connect`() = assertPendingRequest(true, false)
+    @Test fun `public connect cannot overtake an in-flight disconnect`() = assertPendingRequest(false, true)
+
+    private fun assertPendingRequest(firstConnect: Boolean, secondConnect: Boolean) = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        api.connectGate = gate
+        api.disconnectGate = gate
+        val first = async(kotlinx.coroutines.Dispatchers.Default) {
+            if (firstConnect) manager.connect("wb", 80, PortKind.WEB) else manager.disconnect("wb", 80)
+        }
+        try {
+            eventually("first API request entered") { api.connectCalls.get() + api.disconnectCalls.get() == 1 }
+            withTimeout(2_000) {
+                if (secondConnect) manager.connect("wb", 80, PortKind.WEB) else manager.disconnect("wb", 80)
+            }
+            assertEquals(1, api.connectCalls.get() + api.disconnectCalls.get())
+            gate.complete(Unit)
+            first.await()
+            eventually("owner completed") { manager.state.value.pending.isEmpty() }
+        } finally {
+            gate.complete(Unit)
+            first.cancel()
+            manager.close()
+        }
+    }
+
+    @Test fun `CAS retry admits only one of two connects for the same tunnel`() =
+        assertSingleAdmission(PendingOp.CONNECTING, PendingOp.CONNECTING)
+
+    @Test fun `CAS retry admits only one of two disconnects for the same tunnel`() =
+        assertSingleAdmission(PendingOp.DISCONNECTING, PendingOp.DISCONNECTING)
+
+    @Test fun `CAS retry admits only one connect versus disconnect for the same tunnel`() =
+        assertSingleAdmission(PendingOp.CONNECTING, PendingOp.DISCONNECTING)
+
+    @Test fun `CAS retry admits only one disconnect versus connect for the same tunnel`() =
+        assertSingleAdmission(PendingOp.DISCONNECTING, PendingOp.CONNECTING)
+
+    /** Force both contenders to compute their first update from the same state. */
+    private fun assertSingleAdmission(first: PendingOp, second: PendingOp) {
+        val field = TunnelManager::class.java.getDeclaredField("core").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val original = field.get(manager) as MutableStateFlow<Any>
+        val ready = java.util.concurrent.CountDownLatch(2)
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        val controlled = object : MutableStateFlow<Any> by original {
+            override fun compareAndSet(expect: Any, update: Any): Boolean {
+                if (attempts.incrementAndGet() <= 2) {
+                    ready.countDown()
+                    check(ready.await(5, java.util.concurrent.TimeUnit.SECONDS)) { "Both admission attempts must reach CAS" }
+                }
+                return original.compareAndSet(expect, update)
+            }
+        }
+        field.set(manager, controlled)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val results = listOf(first, second).map { op ->
+                pool.submit<Boolean> { admit("wb:80", op) != null }
+            }.map { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }
+            assertEquals("Only the successful CAS owns admission", 1, results.count { it })
+        } finally {
+            pool.shutdownNow()
+            manager.close()
+        }
+    }
 
     // A state not there yet (an empty list, say) is "not yet", not a failure; slow CI runners get time.
     private suspend fun eventually(what: String, check: () -> Boolean) {
