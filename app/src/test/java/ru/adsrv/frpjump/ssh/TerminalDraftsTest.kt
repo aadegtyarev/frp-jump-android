@@ -56,6 +56,40 @@ class TerminalDraftsTest {
         assertEquals("other", value(2).text)
     }
 
+    @Test fun `successful insertion closes compact and expanded editors and rejects late IME edits`() {
+        for (expanded in listOf(false, true)) {
+            drafts.textMode(1, true)
+            drafts.expand(1, expanded)
+            drafts.edit(1, "text", 4, 4)
+            assertTrue(drafts.inserted(drafts.submission(1)!!))
+            assertFalse(value().textMode)
+            assertFalse(value().expanded)
+            assertEquals("", value().text)
+            assertFalse(drafts.editFromSurface(1, "late IME text", 0, 0, expanded, 1))
+        }
+    }
+
+    @Test fun `stale success does not close a newer editor or alter another tab`() {
+        drafts.expand(1, true)
+        drafts.edit(1, "old", 3, 3)
+        val submitted = drafts.submission(1)!!
+        drafts.edit(1, "new", 1, 2)
+        drafts.expand(2, true)
+        val before = drafts.state.value
+        assertFalse(drafts.inserted(submitted))
+        assertEquals(before, drafts.state.value)
+    }
+
+    @Test fun `duplicate success cannot close an editor reopened after insertion`() {
+        drafts.textMode(1, true)
+        drafts.edit(1, "sent", 4, 4)
+        val submitted = drafts.submission(1)!!
+        assertTrue(drafts.inserted(submitted))
+        drafts.textMode(1, true)
+        assertFalse(drafts.inserted(submitted))
+        assertTrue(value().textMode)
+    }
+
     @Test fun `a canceled or failed submission does not mutate the draft`() {
         drafts.edit(1, "keep me", 3, 3)
         val before = value()

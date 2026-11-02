@@ -62,11 +62,15 @@ Use the existing `planPaste` / `PastePlan` decision path and
   existing confirmation explicitly permits that risk when the owner
   chooses to paste without bracketed paste.
 
-A successful insertion clears the submitted draft. Cancellation and failed
-insertion always retain it. If the draft was edited while confirmation was
-open, sending the captured text must not clear the newer draft. Success here
-means the local paste call completed, not proof that a remote application
-received or processed the text.
+A successful insertion clears the submitted draft and returns that tab to
+Keys: close compact/fullscreen editors, restore the main key row and leave
+additional rows collapsed. Return focus only if that tab is still selected;
+do not implicitly open a hidden IME or append Enter. Cancellation and failed
+insertion retain the draft and editor. If the draft was edited while
+confirmation was open, sending the captured text must neither clear the newer
+draft nor close its editor. Duplicate completion callbacks must not close an
+editor reopened after insertion. Success here means the local paste call
+completed, not proof that a remote application received or processed the text.
 
 ## Non-goals
 
