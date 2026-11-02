@@ -457,6 +457,13 @@ fun TerminalScreen(
                                 }
                             }
                             DropdownMenuItem(
+                                text = { Text(stringResource(R.string.terminal_text_input)) },
+                                onClick = {
+                                    barMenu = false
+                                    if (draft.textMode) input.showKeyboard(explicit = true) else setTextMode(true)
+                                },
+                            )
+                            DropdownMenuItem(
                                 text = { Text(stringResource(R.string.snippets)) },
                                 onClick = { barMenu = false; managing = true },
                             )
@@ -596,8 +603,8 @@ fun TerminalScreen(
                     }
                 }
                 HorizontalDivider(color = colors.termLine)
-                // In landscape Text mode, leave room for the editor instead of another command row.
-                if (!draft.textMode || !compact) SnippetsRow(
+                // Text mode is only the editor; saved commands remain in Keys and the menu.
+                if (!draft.textMode) SnippetsRow(
                     snippets = snippets,
                     onSend = { text, run ->
                         if (state != SshState.Open) {

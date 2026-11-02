@@ -296,8 +296,9 @@ blank lines dropped, joined by a single space; no shell syntax, so a trailing
 `\` continuation stays); the sheet's ✕ or a swipe down cancels. In a tmux
 session the bracketed flag is not trusted (tmux keeps it on toward the app
 whatever the pane asked), so several lines always show the sheet there; a
-multiplexer started by hand in a plain-shell tab can't be detected. While the
-keyboard is up, extra rows slide in above it: Esc, Tab, sticky Ctrl and
+multiplexer started by hand in a plain-shell tab can't be detected. Additional
+rows start collapsed; the small ⋯ above the main row explicitly toggles Esc,
+Tab, sticky Ctrl and
 Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
@@ -312,14 +313,17 @@ connection, not the SSH session. Hardware key events pass through in both
 modes. With direct input off, sticky Ctrl/Alt applies when the keyboard
 commits the text, not while it is still composing it.
 
-**Keys and Text.** Keys is the initial input surface. An explicit control
-switches to a visible multiline Text editor instead of the additional key
-rows above the common terminal-key row. This never guesses the remote
+**Keys and Text.** Keys is the initial input surface. Short ⌨ shows/hides
+the system keyboard; hold ⌨ or use ⋮ → Text input to open the visible
+multiline editor. Settings → Terminal explains the gesture. No separate
+Keys/Text selector row is shown. Text hides all terminal-key and command-chip
+rows; >_ returns to Keys without submitting or discarding the draft, with
+additional rows collapsed again. This never guesses the remote
 application or changes the saved direct-input preference. The editor uses
 ordinary IME composition and suggestions; typing and editor Enter remain
 local. Expand opens the same draft and selection full screen. Collapse or
 Back returns to compact Text; switching to Keys does not send or discard it.
-The common terminal-key buttons still address the terminal, not the draft.
+In Keys mode, terminal buttons address the terminal, not the retained draft.
 
 Insert captures the exact SSH session and draft revision, applies the same
 paste checks described above, and adds no Enter. Revalidate session identity,
@@ -331,8 +335,8 @@ acceptance is not proof of remote receipt or processing. Drafts, selection
 and surface state live with each SSH session only in memory, not saved-state
 bundles, settings, logs or clipboard; closing or replacing a session releases
 its draft. They survive screen/configuration changes while the session owner
-lives, not process death. In landscape Text mode, hide the snippets row to
-leave space for the editor and common keys. An empty snippet list never
+lives, not process death. Text mode contains only the editor; command chips
+remain available in Keys and the menu. An empty snippet list never
 shows the «+ Добавить команду» row; existing command chips remain, and
 ⋮ → Commands opens their manager even when there are none.
 

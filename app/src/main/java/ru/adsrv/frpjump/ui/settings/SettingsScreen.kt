@@ -227,6 +227,13 @@ fun SettingsScreen(
                 checked = settings.terminalDirectInput,
                 onChange = vm::setTerminalDirectInput,
             )
+            RowDivider()
+            SettingRow(
+                tile = { GlyphTile("⌨") },
+                label = stringResource(R.string.terminal_text_input),
+                hint = stringResource(R.string.terminal_text_input_hint),
+                onClick = null,
+            ) {}
         }
         Group(stringResource(R.string.settings_background)) {
             SettingRow(

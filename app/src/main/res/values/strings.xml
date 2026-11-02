@@ -1026,8 +1026,11 @@
     <string name="settings_terminal">Terminal</string>
     <string name="setting_terminal_direct_input">Direct input</string>
     <string name="setting_terminal_direct_input_hint">Send characters immediately, without keyboard composition. Off: the keyboard can buffer text and show suggestions.</string>
-    <string name="terminal_input_keys">Keys</string>
-    <string name="terminal_input_text">Text</string>
+    <string name="terminal_text_input">Text input</string>
+    <string name="terminal_text_input_hint">Hold ⌨ in the terminal to open the editor. Also available in ⋮ → Text input.</string>
+    <string name="terminal_return_keys">Return to terminal keys</string>
+    <string name="terminal_extra_keys_show">Show additional terminal keys</string>
+    <string name="terminal_extra_keys_hide">Hide additional terminal keys</string>
     <string name="terminal_text_draft">Text to insert</string>
     <string name="terminal_text_insert">Insert</string>
     <string name="terminal_text_expand">Expand text editor</string>

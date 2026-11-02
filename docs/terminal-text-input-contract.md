@@ -16,12 +16,13 @@ scenario 7. It does not replace the existing paste safety rules.
 
 - The terminal starts in Keys mode. Direct input remains on by default;
   this feature does not change an explicitly stored input preference.
-- An explicit Keys/Text control switches the input surface. Switching
-  never sends text, presses Enter or discards a draft.
-- Text replaces the additional keyboard rows above the Android keyboard;
-  it is not another panel stacked above those rows. The terminal remains
-  visible above the compact editor. Keep the existing common terminal-key
-  row available rather than stacking both sets of additional rows.
+- Hold ⌨ or choose terminal ⋮ → Text input to enter Text; >_ returns to
+  Keys. No separate Keys/Text selector row is shown. Switching never sends
+  text, presses Enter or discards a draft. The compact-panel follow-up is
+  specified in [terminal-panel-contract.md](terminal-panel-contract.md).
+- Text replaces all terminal key and command-chip rows, not another panel
+  stacked above them. The terminal remains visible above the compact editor.
+  Additional key rows in Keys mode start collapsed and open only via ⋯.
 - Operator-approved layout follow-up: an empty saved-command list must not
   show the «+ Добавить команду» row. Existing command chips remain; the
   terminal's ⋮ → Commands opens the manager even when the list is empty.
@@ -38,9 +39,9 @@ scenario 7. It does not replace the existing paste safety rules.
 - Drafts live only in process memory: no settings file, saved-state bundle,
   log or clipboard persistence. Configuration changes should retain drafts
   while the owning session model is alive; process death need not.
-- Available terminal Ctrl/Alt and service-key buttons address the terminal,
-  not the draft. A terminal action must not implicitly insert the draft or
-  apply its modifier to buffered editor text.
+- Return to Keys for terminal Ctrl/Alt and service-key actions. Those
+  actions address the terminal, not the retained draft. Returning must not
+  implicitly insert the draft or apply a modifier to buffered editor text.
 
 ## Paste safety and session binding
 
@@ -117,7 +118,10 @@ labels for mode, expand/collapse and insertion controls.
     implementation. Follow the repository's version and release procedure
     when the feature is ready to ship.
 
-## Recorded validation
+## Recorded validation (original editor, 0.3.29)
+
+The compact-panel follow-up and its gesture/layout checks are recorded in
+[terminal-panel-contract.md](terminal-panel-contract.md).
 
 - 1,146 JVM tests passed with no failures, errors or skips, including draft
   lifecycle/revision guards, paste dispatch results and existing paste plans.
