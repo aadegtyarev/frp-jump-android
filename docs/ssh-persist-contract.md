@@ -151,6 +151,17 @@ today, still with auto-reconnect.
 
 ### Closing
 
+- Closing or ending a session is final for that instance. Manual Reconnect
+  creates a fresh instance. A late host-key result, Trust/Forget completion,
+  login result or fallback must not return the old instance to Connecting,
+  Reconnecting or Open, or attach its streams after closure.
+- Each connection attempt owns its client and completion. State publication
+  and terminal handover serialize against close. Old EOF/failure callbacks
+  must not end, replace or reconnect a newer client. An unaccepted client
+  is disconnected, including when construction completed after close.
+- Transport cleanup still runs if the caller's coroutine scope was already
+  canceled. Blocking transport work and fresh-shell queue preparation stay
+  outside the lifetime commit; reconnect monitor calls also stay outside it.
 - Closing a tab with tmux runs `tmux kill-session -t <name>` on an exec
   channel of the tab's connection before it disconnects. When the
   connection is down at that moment the tab still closes and the session
@@ -264,6 +275,22 @@ On a Wiren Board reached over the tunnel, from the owner's phone:
 - The switch off: `tmux ls` shows no new session for that connection.
 - Disconnect the tunnel while reconnecting: the loop stops, the tab
   closes with "The tunnel was closed.", the tmux session stays.
+
+## Lifecycle validation — 0.3.39
+
+- Seventeen API 35 lifecycle tests use the real SshSession and Termux queues,
+  in-memory stores and synthetic SSHJ clients/channels that open no sockets.
+  They cover close/restart, late Trust/Forget, host-key results, client
+  construction, the last-check/Open race, active Trust/Forget, accepted
+  Open/paste/close, canceled scope cleanup, normal EOF,
+  reconnect/history/old callbacks, plain-shell
+  fallback and deterministic reconnect/lifetime monitor ordering.
+- The original eight cases failed before the fix. A separate cancellation
+  cleanup regression also failed before atomic cleanup entry was added.
+- Together with real queue/history/draw checks, the local native suite passed
+  28 checks. JVM tests, builds and Lint passed. This is not a live SSH,
+  physical-phone or vendor-IME verification; wire authentication is not
+  exercised by the synthetic lifecycle clients.
 
 ## Open risks
 

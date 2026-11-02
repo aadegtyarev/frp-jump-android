@@ -34,7 +34,8 @@ class SshConnector(
     private val env: SshEnvironment,
 ) {
     /** A client with keep-alives and the app's connect timeout, not connected yet. */
-    fun newClient(): SSHClient = SSHClient(DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE }).apply {
+    fun newClient(): SSHClient = (env.clientFactory?.invoke()
+        ?: SSHClient(DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE })).apply {
         connectTimeout = CONNECT_TIMEOUT_MS
     }
 

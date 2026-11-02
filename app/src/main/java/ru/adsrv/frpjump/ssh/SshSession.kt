@@ -7,6 +7,7 @@ import com.termux.terminal.RemoteTerminal
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -72,6 +73,8 @@ class SshEnvironment(
     /** Read only when a new terminal is constructed, never on automatic reconnect. */
     val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
     val visible: StateFlow<Boolean> = MutableStateFlow(false),
+    /** Optional transport construction seam; production keeps the standard SSHJ configuration. */
+    internal val clientFactory: (() -> SSHClient)? = null,
 )
 
 /**
@@ -160,7 +163,7 @@ class SshSession(
      * the remote side asked for it. Main thread.
      */
     fun paste(text: String): Boolean {
-        if (_state.value != SshState.Open || !terminal.session.isRunning) return false
+        if (closedByUser || _state.value != SshState.Open || !terminal.session.isRunning) return false
         typed()
         return terminal.paste(text)
     }
@@ -178,6 +181,18 @@ class SshSession(
         if (openClient() !== destination.client) return false
         typed()
         return terminal.paste(text, destination.input, enter)
+    }
+
+    /** State publication and terminal handover serialize against close, never blocking transport work. */
+    private val lifecycle = Any()
+    private var currentAttempt: Any? = null
+
+    private fun current(attempt: Any): Boolean = synchronized(lifecycle) {
+        !closedByUser && currentAttempt === attempt && _state.value !is SshState.Ended
+    }
+
+    private fun commit(attempt: Any, action: () -> Unit): Boolean = synchronized(lifecycle) {
+        if (!current(attempt)) false else { action(); true }
     }
 
     @Volatile
@@ -239,16 +254,25 @@ class SshSession(
      * Starts connecting. [retrying]: Reconnect after the tries of a dropped
      * session ran out, so a failure to connect keeps trying as after a drop.
      */
-    fun connect(retrying: Boolean = false) {
-        terminal.note(Texts.get(R.string.ssh_note_connecting, "$user@$device:$port", "127.0.0.1:$localPort") + "\r\n")
-        if (retrying) {
-            dropReason = Texts.get(R.string.ssh_connection_closed)
-            _state.value = SshState.Reconnecting(1, trying = false)
-            reconnect.start()
-            return
+    fun connect(retrying: Boolean = false) = connectOwned(retrying, expected = null)
+
+    /** Only a decision's own storage completion may advance its Connecting step. */
+    private fun connectOwned(retrying: Boolean, expected: Any?) {
+        val attempt = synchronized(lifecycle) {
+            if (closedByUser || _state.value is SshState.Ended) return
+            if (expected != null) {
+                if (currentAttempt !== expected) return
+            } else if (currentAttempt != null || _state.value is SshState.Reconnecting) return
+            val next = Any().also { currentAttempt = it }
+            terminal.note(Texts.get(R.string.ssh_note_connecting, "$user@$device:$port", "127.0.0.1:$localPort") + "\r\n")
+            if (retrying) {
+                dropReason = Texts.get(R.string.ssh_connection_closed)
+                _state.value = SshState.Reconnecting(1, trying = false)
+            } else _state.value = SshState.Connecting
+            next
         }
-        _state.value = SshState.Connecting
-        scope.launch(Dispatchers.IO) { run(retrying = false) }
+        // Reconnect invokes its callbacks under its own monitor: never call it while holding lifecycle.
+        if (retrying) reconnect.start() else scope.launch(Dispatchers.IO) { run(attempt, retrying = false) }
     }
 
     /** The tries after a drop ran out ([RECONNECT_GIVE_UP_MS]): Reconnect starts them again. */
@@ -269,45 +293,51 @@ class SshSession(
     /** The default network came back or changed: a reconnecting session tries at once. */
     fun networkReturned() = reconnect.networkReturned()
 
-    private fun retry(attempt: Int) {
-        // Ended (or closed) meanwhile: no try, and the loop has nothing more to do.
-        if (closedByUser || !whileReconnecting { SshState.Reconnecting(attempt, trying = true) }) {
-            reconnect.stop()
-            return
+    private fun retry(number: Int) {
+        val attempt = synchronized(lifecycle) {
+            if (closedByUser || _state.value !is SshState.Reconnecting) null else {
+                _state.value = SshState.Reconnecting(number, trying = true)
+                Any().also { currentAttempt = it }
+            }
         }
-        scope.launch(Dispatchers.IO) { run(retrying = true) }
-    }
-
-    /** Sets the state to [next] of the current one only while it is [SshState.Reconnecting]: never over Ended. */
-    private fun whileReconnecting(next: (SshState.Reconnecting) -> SshState): Boolean {
-        while (true) {
-            val now = _state.value as? SshState.Reconnecting ?: return false
-            if (_state.compareAndSet(now, next(now))) return true
-        }
+        if (attempt == null) reconnect.stop()
+        else scope.launch(Dispatchers.IO) { run(attempt, retrying = true) }
     }
 
     private fun onGiveUp() {
-        gaveUp = true
-        end(dropReason)
+        synchronized(lifecycle) {
+            if (closedByUser || _state.value !is SshState.Reconnecting) return
+            gaveUp = true
+            endLocked(dropReason)
+        }
+        reconnect.stop()
     }
 
     /** "Trust": pin the key shown at first use and connect again. */
     fun trustHostKey() {
-        val unknown = _state.value as? SshState.HostKeyUnknown ?: return
-        _state.value = SshState.Connecting
+        val (decision, presented) = synchronized(lifecycle) {
+            if (closedByUser) return
+            val unknown = _state.value as? SshState.HostKeyUnknown ?: return
+            val decision = Any().also { currentAttempt = it }
+            _state.value = SshState.Connecting
+            decision to unknown.presented
+        }
         scope.launch(Dispatchers.IO) {
-            hostKeys.pin(device, port, unknown.presented)
-            connect()
+            hostKeys.pin(device, port, presented)
+            connectOwned(retrying = false, expected = decision)
         }
     }
 
     /** "Forget the old key": drop the pin and connect again, which asks about the new key. */
     fun forgetOldHostKey() {
-        if (_state.value !is SshState.HostKeyChanged) return
-        _state.value = SshState.Connecting
+        val decision = synchronized(lifecycle) {
+            if (closedByUser || _state.value !is SshState.HostKeyChanged) return
+            _state.value = SshState.Connecting
+            Any().also { currentAttempt = it }
+        }
         scope.launch(Dispatchers.IO) {
             hostKeys.forget(device, port)
-            connect()
+            connectOwned(retrying = false, expected = decision)
         }
     }
 
@@ -328,7 +358,7 @@ class SshSession(
      * on it ("Use key login" runs its command there); null otherwise.
      */
     fun openClient(): SSHClient? =
-        client?.takeIf { _state.value == SshState.Open && it.isConnected && it.isAuthenticated }
+        client?.takeIf { !closedByUser && _state.value == SshState.Open && it.isConnected && it.isAuthenticated }
 
     /**
      * Closes the tab's connection. [endTmux]: the owner closed the tab for
@@ -336,15 +366,22 @@ class SshSession(
      * connection is up to say so; otherwise (a tunnel closed, a dropped
      * connection) the session stays on the device.
      */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun close(reason: String = Texts.get(R.string.ssh_closed), endTmux: Boolean = false) {
-        diagnosticJob?.cancel()
-        val wasOpen = _state.value == SshState.Open
-        closedByUser = true
+        val closing = synchronized(lifecycle) {
+            if (closedByUser) return
+            val wasOpen = _state.value == SshState.Open
+            closedByUser = true
+            val c = client
+            val kill = tmuxToKill(endTmux, wasOpen && c?.isConnected == true && c.isAuthenticated, tmux.inUse, tmux.assigned)
+            endLocked(reason)
+            client = null
+            c?.let { it to kill }
+        }
         reconnect.stop()
-        end(reason)
-        val c = client ?: return
-        val kill = tmuxToKill(endTmux, wasOpen && c.isConnected && c.isAuthenticated, tmux.inUse, tmux.assigned)
-        scope.launch(Dispatchers.IO) {
+        // Cleanup has no suspension points: even an already-canceled owner must enter and dispose it.
+        if (closing != null) scope.launch(Dispatchers.IO, start = CoroutineStart.ATOMIC) {
+            val (c, kill) = closing
             if (kill != null) killTmux(c, kill)
             runCatching { c.disconnect() }
         }
@@ -440,46 +477,25 @@ class SshSession(
      * the reconnect loop, which a failure answers instead of ending the tab;
      * a refused login or a host key to decide still stops it.
      */
-    private suspend fun run(retrying: Boolean) {
+    private suspend fun run(attempt: Any, retrying: Boolean) {
+        if (!current(attempt)) return
         // The login as it is now: "Use key login" may have switched it to the key.
         val connector = SshConnector(profile, hostKeys, device, port, localPort, user, auth, env)
         val ssh = connector.newClient()
-        client = ssh
+        var attached = false
         try {
-            connector.connect(ssh)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: HostKeyRejected) {
-            if (retrying && e.check != HostKeyCheck.Trusted) reconnect.stop()
-            when (val check = e.check) {
-                HostKeyCheck.Unknown -> {
-                    _state.value = SshState.HostKeyUnknown(e.presented)
-                    terminal.note(Texts.get(R.string.ssh_note_host_key_unknown, "$device:$port") + "\r\n")
-                }
-                is HostKeyCheck.Changed -> {
-                    _state.value = SshState.HostKeyChanged(check.pinned, e.presented)
-                    terminal.note("\r\n" + Texts.get(R.string.ssh_note_host_key_changed, "$device:$port") + "\r\n")
-                }
-                HostKeyCheck.Trusted -> fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName), retrying)
-            }
-            return
-        } catch (e: Exception) {
-            fail(Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName), retrying)
-            return
-        }
-        if (closedByUser) {
-            runCatching { ssh.disconnect() }
-            return
-        }
-        try {
+            if (!commit(attempt) { client = ssh }) return
+            if (!connectTransport(attempt, connector, ssh, retrying) || !current(attempt)) return
             connector.authenticate(ssh)
-            pickUp?.let { pick ->
-                if (!tmux.disabled && tmux.assigned == null) {
-                    val found = listOwnTmux(ssh)
-                    if (pick(this, found) != null) quietAttach = true
-                }
-                pickUp = null
+            val pick = synchronized(lifecycle) { if (current(attempt)) pickUp else null }
+            if (pick != null) {
+                val found = if (!tmux.disabled && tmux.assigned == null) listOwnTmux(ssh) else null
+                if (!commit(attempt) {
+                    if (found != null && pick(this, found) != null) quietAttach = true
+                    pickUp = null
+                }) return
             }
+            if (!current(attempt)) return
             // One short exec first: with tmux the tab's channel attaches to (or creates) its session.
             val name = tmux.name()
             val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name)
@@ -488,60 +504,103 @@ class SshSession(
             val rows = terminal.rows
             channel.allocatePTY(TERM, columns, rows, 0, 0, emptyMap())
             if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name))
-            if (closedByUser) {
-                runCatching { ssh.disconnect() }
-                return
+            val resumeKind = synchronized(lifecycle) {
+                if (!current(attempt)) return
+                resumed(dropped, probe)
             }
-            tmux.inUse = probe != TmuxProbe.ABSENT
-            channelStartedAt = System.nanoTime()
-            copyMode.active = tmux.inUse
-            shell = channel
-            when (resumed(dropped, probe)) {
-                // Nothing pretends to continue: back to the normal screen, a line under the old text.
-                Resumed.NEW_SHELL -> {
-                    terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_new_shell) + "]\r\n")
-                    _newShell.value = true
-                }
-                // tmux redraws the screen as it is now: no text of the app's in it.
-                Resumed.REATTACHED -> if (!quietAttach) onReattached()
-                Resumed.FIRST -> Unit
+            // Queue backpressure may need Main to render: never hold lifecycle or run this on Main.
+            if (resumeKind == Resumed.NEW_SHELL) {
+                terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_new_shell) + "]\r\n")
             }
-            quietAttach = false
-            dropped = false
+            if (!current(attempt)) return
+            // Stop the old retry loop BEFORE the new pump can report EOF, outside lifecycle.
             reconnect.succeeded()
-            _state.value = SshState.Open
-            // The screen may have resized the terminal while the PTY was being set up.
-            if (terminal.columns != columns || terminal.rows != rows) resize(terminal.columns, terminal.rows)
-            terminal.pump(channel.inputStream, channel.outputStream) { error -> onShellEnded(ssh, channel, error) }
-            observeResponse(ssh)
+            attached = commit(attempt) {
+                tmux.inUse = probe != TmuxProbe.ABSENT
+                channelStartedAt = System.nanoTime()
+                copyMode.active = tmux.inUse
+                shell = channel
+                when (resumeKind) {
+                    Resumed.NEW_SHELL -> _newShell.value = true
+                    Resumed.REATTACHED -> if (!quietAttach) onReattached()
+                    Resumed.FIRST -> Unit
+                }
+                quietAttach = false
+                dropped = false
+                // The screen may have resized the terminal while the PTY was being set up.
+                if (terminal.columns != columns || terminal.rows != rows) resize(terminal.columns, terminal.rows)
+                terminal.pump(channel.inputStream, channel.outputStream) { error -> onShellEnded(attempt, ssh, channel, error) }
+                _state.value = SshState.Open
+                observeResponse(ssh)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: UserAuthException) {
             if (authFailedByTransport(e)) {
                 // The connection went during the login: not a refusal, a failed try.
-                runCatching { ssh.disconnect() }
-                fail(Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName), retrying)
+                fail(attempt, Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName), retrying)
                 return
             }
-            authRefused = true
-            // Refused now: another try would only be refused again; Change login, as on a first connect.
-            reconnect.stop()
-            runCatching { ssh.disconnect() }
-            fail(connector.authFailure())
+            if (commit(attempt) { authRefused = true }) {
+                // Refused now: another try would only be refused again; Change login.
+                reconnect.stop()
+                fail(attempt, connector.authFailure())
+            }
         } catch (e: Exception) {
-            runCatching { ssh.disconnect() }
-            fail(Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName), retrying)
+            fail(attempt, Texts.get(R.string.ssh_failed, e.message ?: e.javaClass.simpleName), retrying)
+        } finally {
+            if (!attached) {
+                synchronized(lifecycle) { if (client === ssh) client = null }
+                runCatching { ssh.disconnect() }
+            }
         }
     }
 
-    private fun onShellEnded(ssh: SSHClient, channel: SessionChannel, error: IOException?) {
+    /** Blocking connection/trust work stays outside lifecycle; only its accepted result is published. */
+    private fun connectTransport(attempt: Any, connector: SshConnector, ssh: SSHClient, retrying: Boolean): Boolean {
+        try {
+            connector.connect(ssh)
+            return true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: HostKeyRejected) {
+            if (e.check == HostKeyCheck.Trusted) {
+                fail(attempt, Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName), retrying)
+            } else {
+                if (!current(attempt)) return false
+                // Stop before publishing a prompt: Trust may already start the next attempt.
+                if (retrying) reconnect.stop()
+                commit(attempt) {
+                    when (val check = e.check) {
+                        HostKeyCheck.Unknown -> {
+                            _state.value = SshState.HostKeyUnknown(e.presented)
+                            terminal.note(Texts.get(R.string.ssh_note_host_key_unknown, "$device:$port") + "\r\n")
+                        }
+                        is HostKeyCheck.Changed -> {
+                            _state.value = SshState.HostKeyChanged(check.pinned, e.presented)
+                            terminal.note("\r\n" + Texts.get(R.string.ssh_note_host_key_changed, "$device:$port") + "\r\n")
+                        }
+                        HostKeyCheck.Trusted -> Unit
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            fail(attempt, Texts.get(R.string.ssh_cannot_connect, e.message ?: e.javaClass.simpleName), retrying)
+        }
+        return false
+    }
+
+    private fun onShellEnded(attempt: Any, ssh: SSHClient, channel: SessionChannel, error: IOException?) {
         val status = channel.exitStatus
         val signal = channel.exitSignal != null
         runCatching { ssh.disconnect() }
-        if (closedByUser) return
-        val ranMs = (System.nanoTime() - channelStartedAt) / 1_000_000
-        if (tmuxFailedToStart(tmux.inUse && !tmux.disabled, status, ranMs) && status != null) {
-            fallBackToPlainShell(status)
+        val fallback = synchronized(lifecycle) {
+            if (!current(attempt) || client !== ssh || shell !== channel) return
+            val ranMs = (System.nanoTime() - channelStartedAt) / 1_000_000
+            tmuxFailedToStart(tmux.inUse && !tmux.disabled, status, ranMs) && status != null
+        }
+        if (fallback) {
+            fallBackToPlainShell(attempt, status!!)
             return
         }
         val reason = when {
@@ -549,54 +608,77 @@ class SshSession(
             status != null -> Texts.get(R.string.ssh_logged_out, status)
             else -> Texts.get(R.string.ssh_connection_closed)
         }
-        if (shellDropped(status, signal)) drop(reason) else end(reason)
+        if (shellDropped(status, signal)) drop(attempt, reason) else {
+            if (commit(attempt) { endLocked(reason) }) reconnect.stop()
+        }
     }
 
     /** tmux could not start here: say so, and open a plain shell in the tab at once, for good. */
-    private fun fallBackToPlainShell(status: Int) {
-        if (!_state.compareAndSet(SshState.Open, SshState.Connecting)) return
-        tmux.disabled = true
-        tmux.inUse = false
-        copyMode.active = false
-        shell = null
-        diagnosticJob?.cancel()
-        terminal.pause()
-        terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_tmux_failed, status) + "]\r\n")
-        scope.launch(Dispatchers.IO) { run(retrying = false) }
+    private fun fallBackToPlainShell(attempt: Any, status: Int) {
+        val next = synchronized(lifecycle) {
+            if (!current(attempt) || _state.value != SshState.Open) return
+            _state.value = SshState.Connecting
+            val next = Any().also { currentAttempt = it }
+            tmux.disabled = true
+            tmux.inUse = false
+            copyMode.active = false
+            shell = null
+            client = null
+            diagnosticJob?.cancel()
+            terminal.pause()
+            next
+        }
+        scope.launch(Dispatchers.IO) {
+            if (!current(next)) return@launch
+            terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_tmux_failed, status) + "]\r\n")
+            run(next, retrying = false)
+        }
     }
 
     /** The connection went under the shell: keep the tab and its text, take no keys, and try again. */
-    private fun drop(reason: String) {
-        if (reconnect.running || !_state.compareAndSet(SshState.Open, SshState.Reconnecting(1, trying = false))) return
-        shell = null
-        _newShell.value = false
-        dropReason = reason
-        dropped = true
-        diagnosticJob?.cancel()
-        terminal.pause()
-        terminal.note("\r\n[$reason]\r\n")
+    private fun drop(attempt: Any, reason: String) {
+        synchronized(lifecycle) {
+            if (!current(attempt) || _state.value != SshState.Open) return
+            currentAttempt = null
+            _state.value = SshState.Reconnecting(1, trying = false)
+            shell = null
+            client = null
+            _newShell.value = false
+            dropReason = reason
+            dropped = true
+            diagnosticJob?.cancel()
+            terminal.pause()
+            terminal.note("\r\n[$reason]\r\n")
+        }
         reconnect.start()
     }
 
     /** A failure to connect or log in: during a reconnect, one more failed try; otherwise the end. */
-    private fun fail(message: String, retrying: Boolean = false) {
-        if (retrying && reconnect.running && !closedByUser) {
-            dropReason = message
-            whileReconnecting { it.copy(trying = false) }
-            reconnect.failed()
-        } else {
-            end(message)
+    private fun fail(attempt: Any, message: String, retrying: Boolean = false) {
+        val retry = synchronized(lifecycle) {
+            if (!current(attempt)) return
+            val now = _state.value
+            if (retrying && now is SshState.Reconnecting) {
+                dropReason = message
+                _state.value = now.copy(trying = false)
+                true
+            } else {
+                endLocked(message)
+                false
+            }
         }
+        if (retry) reconnect.failed() else reconnect.stop()
     }
 
-    private fun end(message: String) {
+    /** Caller holds lifecycle. Reconnect methods and transport cleanup belong OUTSIDE this monitor. */
+    private fun endLocked(message: String) {
+        currentAttempt = null
         if (_state.value is SshState.Ended) return
-        _state.value = SshState.Ended(message)
-        reconnect.stop()
         _newShell.value = false
         shell = null
         diagnosticJob?.cancel()
         terminal.finish()
+        _state.value = SshState.Ended(message)
         terminal.note("\r\n[$message]\r\n")
     }
 
