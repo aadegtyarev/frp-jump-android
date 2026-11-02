@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -194,70 +195,79 @@ fun ExtraKeys(
         Box(Modifier.fillMaxWidth().background(colors.termBar).padding(horizontal = 8.dp, vertical = 4.dp)) { textEditor() }
         return
     }
-    val disclosureOffset = with(LocalDensity.current) { 48.dp.roundToPx() }
     val disclosureLabel = stringResource(if (expanded) R.string.terminal_extra_keys_hide else R.string.terminal_extra_keys_show)
     val textLabel = stringResource(R.string.terminal_text_input)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.termBar)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().background(colors.termBar).padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-            exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
-        ) {
-            // The disclosure stays anchored above the main row. Reserve its full target
-            // here so opening the extra rows never puts a terminal key behind it.
-            ExtraRows(modifiers, onKey, Modifier.padding(end = 48.dp, bottom = ROW_GAP).testTag("terminal_extra_rows"))
-        }
-        Box(Modifier.fillMaxWidth()) {
-            Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-                Key(ExtraKey.CTRL_C, modifiers, onKey)
-                PasteKey(onPaste)
-                ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
-                val label = stringResource(R.string.terminal_keyboard)
-                KeyBox(
-                    Modifier.testTag("terminal_keyboard").semantics { contentDescription = label }
-                        .combinedClickable(
-                            role = Role.Button,
-                            onClick = { onKeyboard(!keyboard) },
-                            onLongClickLabel = textLabel,
-                            onLongClick = { expanded = false; onTextMode(true) },
-                        ),
-                    if (keyboard) colors.accent else colors.termKey,
-                ) {
-                    val tint = if (keyboard) colors.onAccent else colors.onTerm
-                    Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
-                        Canvas(Modifier.size(20.dp).align(Alignment.BottomStart)) {
-                            val u = size.width / 24f
-                            drawRoundRect(tint, Offset(u, 4*u), Size(22*u, 16*u), CornerRadius(2*u), style = Stroke(1.5f*u))
-                            for (row in 0..1) for (column in 0..4) {
-                                drawRect(tint, Offset((4+3.5f*column)*u, (8+3.5f*row)*u), Size(1.6f*u, 1.6f*u))
+        // Nine main cells define the shared tracks. Extra rows use full cells,
+        // half-cells on wide screens, or whole-cell multiples when wrapping.
+        val cell = (maxWidth - ROW_GAP * 8) / 9
+        // At narrow widths use all the available space up to the window edge,
+        // rather than allowing part of the target to protrude off-screen.
+        val targetWidth = minOf(48.dp, cell + ROW_GAP + 8.dp)
+        val idealOffset = (targetWidth - cell) / 2
+        // Keep the complete disclosure target outside the preceding key.
+        val targetOffset = maxOf(idealOffset, targetWidth - cell - ROW_GAP)
+        val disclosureOffset = with(LocalDensity.current) { IntOffset(targetOffset.roundToPx(), -48.dp.roundToPx()) }
+        Column {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
+            ) {
+                // Reserve the last visual cell for the independent disclosure.
+                ExtraRows(modifiers, onKey, Modifier.padding(end = cell + ROW_GAP, bottom = ROW_GAP).testTag("terminal_extra_rows"))
+            }
+            Box(Modifier.fillMaxWidth()) {
+                Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                    Key(ExtraKey.CTRL_C, modifiers, onKey)
+                    PasteKey(onPaste)
+                    ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
+                    val label = stringResource(R.string.terminal_keyboard)
+                    KeyBox(
+                        Modifier.testTag("terminal_keyboard").semantics { contentDescription = label }
+                            .combinedClickable(
+                                role = Role.Button,
+                                onClick = { onKeyboard(!keyboard) },
+                                onLongClickLabel = textLabel,
+                                onLongClick = { expanded = false; onTextMode(true) },
+                            ),
+                        if (keyboard) colors.accent else colors.termKey,
+                    ) {
+                        val tint = if (keyboard) colors.onAccent else colors.onTerm
+                        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+                            Canvas(Modifier.size(20.dp).align(Alignment.BottomStart)) {
+                                val u = size.width / 24f
+                                drawRoundRect(tint, Offset(u, 4*u), Size(22*u, 16*u), CornerRadius(2*u), style = Stroke(1.5f*u))
+                                for (row in 0..1) for (column in 0..4) {
+                                    drawRect(tint, Offset((4+3.5f*column)*u, (8+3.5f*row)*u), Size(1.6f*u, 1.6f*u))
+                                }
+                                drawLine(tint, Offset(8*u, 16*u), Offset(16*u, 16*u), 1.5f*u)
                             }
-                            drawLine(tint, Offset(8*u, 16*u), Offset(16*u, 16*u), 1.5f*u)
+                            Icon(Icons.Filled.Edit, contentDescription = null,
+                                modifier = Modifier.size(10.dp).align(Alignment.TopEnd), tint = tint)
                         }
-                        Icon(Icons.Filled.Edit, contentDescription = null,
-                            modifier = Modifier.size(10.dp).align(Alignment.TopEnd), tint = tint)
                     }
                 }
-            }
-            // A non-focusable popup keeps the 48 dp target inside a real window without
-            // reserving a header row or overlapping the main row's keyboard button.
-            Popup(
-                alignment = Alignment.TopEnd,
-                offset = IntOffset(0, -disclosureOffset),
-                properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false, clippingEnabled = false),
-            ) {
-                IconButton(
-                    onClick = { expanded = !expanded },
-                    modifier = Modifier.size(48.dp).testTag("terminal_more_keys").semantics { contentDescription = disclosureLabel },
+                // The independent popup target ends above the main row. Its
+                // symbol, not the larger touch rectangle, follows the grid.
+                Popup(
+                    alignment = Alignment.TopEnd,
+                    offset = disclosureOffset,
+                    properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false, clippingEnabled = false),
                 ) {
-                    Box(
-                        Modifier.size(width = 32.dp, height = 24.dp).clip(RoundedCornerShape(8.dp)).background(if (expanded) colors.accent else colors.termKey),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Filled.MoreVert, contentDescription = null, tint = if (expanded) colors.onAccent else colors.onTerm, modifier = Modifier.size(20.dp).rotate(90f)) }
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.size(width = targetWidth, height = 48.dp).testTag("terminal_more_keys").semantics { contentDescription = disclosureLabel },
+                    ) {
+                        Box(
+                            Modifier.offset(x = idealOffset - targetOffset, y = 24.dp - EXTRA_KEY_HEIGHT / 2 - ROW_GAP)
+                                .size(width = 32.dp, height = 24.dp).testTag("terminal_more_keys_symbol")
+                                .clip(RoundedCornerShape(8.dp)).background(if (expanded) colors.accent else colors.termKey),
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(Icons.Filled.MoreVert, contentDescription = null, tint = if (expanded) colors.onAccent else colors.onTerm, modifier = Modifier.size(20.dp).rotate(90f)) }
+                    }
                 }
             }
         }
@@ -271,7 +281,11 @@ fun ExtraKeys(
 @Composable
 private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier: Modifier) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val perLine = ((maxWidth + ROW_GAP) / (EXTRA_KEY_MIN + ROW_GAP)).toInt()
+        val minWidth = EXTRA_KEY_MIN * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val fit = ((maxWidth + ROW_GAP) / (minWidth + ROW_GAP)).toInt()
+        // Divisors of the eight-column extra area keep every wrapped edge on
+        // the same tracks instead of independently stretching arbitrary rows.
+        val perLine = listOf(16, 8, 4, 2, 1).first { it <= fit.coerceAtLeast(1) }
         val all = COMBO_SLOTS + NAV_SLOTS
         val groups = if (all.size <= perLine) listOf(all) else listOf(COMBO_SLOTS, NAV_SLOTS)
         Column(verticalArrangement = Arrangement.spacedBy(ROW_GAP)) {
@@ -318,7 +332,8 @@ private fun RowScope.PasteKey(onPaste: () -> Unit) {
 @Composable
 private fun RowScope.Key(key: ExtraKey, modifiers: Modifiers, onKey: (ExtraKey) -> Unit, small: Boolean = false) {
     val description = key.description?.let { stringResource(it) }
-    val described = if (description != null) Modifier.semantics { contentDescription = description } else Modifier
+    val tagged = Modifier.testTag("terminal_key_${key.name}")
+    val described = if (description != null) tagged.semantics { contentDescription = description } else tagged
     if (key.repeats) {
         RepeatKey(key.label, described, small) {
             // Ctrl / Alt held when the key went down apply to every repeat of it.

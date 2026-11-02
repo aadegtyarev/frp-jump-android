@@ -8,6 +8,8 @@ import android.os.SystemClock
 import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -193,6 +197,67 @@ class TerminalTextComposerTest {
             assertEquals(emptyList<ExtraKey>(), terminalKeys)
             assertEquals(emptyList<Boolean>(), keyboardRequests)
             assertEquals(emptyList<String>(), inserted)
+        }
+    }
+
+    @Test fun extraKeysShareColumnTracksAndDisclosureNeverOverlapsKeys() {
+        start()
+        checkSharedGrid("panel-shared-grid")
+    }
+
+    @Test fun narrowGridKeepsCompleteDisclosureInsideItsViewport() {
+        compose.setContent {
+            FrpJumpTheme {
+                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    Spacer(Modifier.weight(1f))
+                    Box(Modifier.width(320.dp)) {
+                        ExtraKeys(remember { Modifiers() }, onKeyboard = { keyboardRequests += it },
+                            onPaste = {}, onKey = { terminalKeys += it }, textMode = false,
+                            onTextMode = {}, textEditor = {})
+                    }
+                }
+            }
+        }
+        checkSharedGrid("panel-shared-grid-320dp")
+    }
+
+    private fun checkSharedGrid(screenshot: String) {
+        compose.onNodeWithTag("terminal_more_keys").performClick()
+        compose.waitForIdle()
+        fun bounds(tag: String, unmerged: Boolean = false): Rect {
+            val node = compose.onNodeWithTag(tag, useUnmergedTree = unmerged).fetchSemanticsNode()
+            return Rect(node.positionOnScreen, node.boundsInRoot.size)
+        }
+        val first = bounds("terminal_key_CTRL_C")
+        val keyboard = bounds("terminal_keyboard")
+        val step = (keyboard.left - first.left) / 8
+        val gap = step - first.width
+        val halfStep = step / 2
+        val keys = listOf(ExtraKey.ESC, ExtraKey.TAB, ExtraKey.CTRL_D, ExtraKey.CTRL_Z,
+            ExtraKey.CTRL_R, ExtraKey.CTRL_L, ExtraKey.HOME, ExtraKey.END, ExtraKey.PAGE_UP,
+            ExtraKey.PAGE_DOWN, ExtraKey.PIPE, ExtraKey.TILDE, ExtraKey.SLASH, ExtraKey.DASH)
+        val target = bounds("terminal_more_keys")
+        keys.forEach { key ->
+            val b = bounds("terminal_key_${key.name}")
+            val track = kotlin.math.round((b.left - first.left) / halfStep)
+            val span = kotlin.math.round((b.width + gap) / halfStep)
+            assertEquals("$key left track", first.left + track * halfStep, b.left, 2f)
+            assertEquals("$key cell span", span * halfStep - gap, b.width, 2f)
+            org.junit.Assert.assertFalse("Disclosure must not cover $key", target.overlaps(b))
+        }
+        val symbol = bounds("terminal_more_keys_symbol", unmerged = true)
+        val dash = bounds("terminal_key_DASH")
+        assertEquals(keyboard.center.x, symbol.center.x, 2f)
+        assertEquals(dash.center.y, symbol.center.y, 2f)
+        org.junit.Assert.assertTrue("Disclosure must end above main keys", target.bottom <= keyboard.top + 1f)
+        val padding = 8 * compose.activity.resources.displayMetrics.density
+        org.junit.Assert.assertTrue("Complete target must stay inside viewport", target.right <= keyboard.right + padding + 1f)
+        org.junit.Assert.assertTrue("Complete target must stay inside viewport", target.left >= first.left - padding - 1f)
+        capture(screenshot)
+        compose.onNodeWithTag("terminal_more_keys").performClick()
+        compose.runOnIdle {
+            assertEquals(emptyList<ExtraKey>(), terminalKeys)
+            assertEquals(emptyList<Boolean>(), keyboardRequests)
         }
     }
 
