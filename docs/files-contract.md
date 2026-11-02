@@ -42,6 +42,12 @@ transfers that resume and run in the background.
   tunnel with it). With no terminal open, leaving closes it. Transfers do
   not outlive the screen: leaving with transfers going asks first and
   cancels them, as without a terminal.
+- Cancellation belongs to the visit that ended. It revokes that visit's
+  progress updates and cancels its current job snapshot before returning;
+  asynchronous cleanup only waits for that snapshot. Returning to the kept
+  session starts a fresh visit whose transfers are not cancelled by the old
+  cleanup. Upload metadata preparation and batch completion notifications
+  belong to the visit too. A closed session cannot be resumed.
 
 ## Scenarios
 
@@ -279,6 +285,24 @@ device, then a build for the owner's phone.
 - In `/etc`, type `wb-`: the folder's matching rows show at once;
   "Search subfolders" lists `wb-rules/…` hits as they come; Stop ends it
   and the `find` on the device is gone (`pgrep find`).
+
+## Visit ownership checks (0.3.41)
+
+Five deterministic failures were reproduced before the fix: delayed leave
+cleanup cancelled a new visit's job; late upload metadata queued work after
+leave or return; late IO progress restored a cleared row in both cases.
+The same cases pass with synchronous cancellation snapshots and visit-owned
+progress commits.
+
+`FilesSessionVisitTest` exercises the actual leave/resume/upload entry
+points and the actual IO progress reporter. Its ten cases include current
+visit controls, a new upload while old metadata/cleanup remain blocked,
+old/new progress, and final close. Fixtures have no target/runtime and
+seed only transfer eligibility. Metadata and cleanup are controlled at
+narrow IO seams; there are no sockets, credentials, real profiles or phone
+provider queries. These are lifecycle tests, not live SFTP verification.
+`TransferSnapshotsTest` separately checks immediate cancellation, delayed
+joins, and waiting for previously cancelled work still cleaning up.
 
 ## Open questions
 

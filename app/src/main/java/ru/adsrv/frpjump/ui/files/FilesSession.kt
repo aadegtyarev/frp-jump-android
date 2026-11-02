@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui.files
 
 import android.net.Uri
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,6 +35,7 @@ import ru.adsrv.frpjump.files.CommandsRefused
 import ru.adsrv.frpjump.files.FilesTarget
 import ru.adsrv.frpjump.files.Found
 import ru.adsrv.frpjump.files.PhoneFiles
+import ru.adsrv.frpjump.files.PickedFile
 import ru.adsrv.frpjump.files.PhoneSideException
 import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.files.RowJobs
@@ -239,7 +241,13 @@ sealed interface FilesEvent {
  * [FilesKeeper] keeps it past the screen while a terminal is open on the
  * tunnel.
  */
-class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : FilesKeeper.Session {
+class FilesSession(
+    private val app: FrpJumpApp,
+    private val targetId: Int,
+    // Narrow scheduling/metadata seams; normal callers keep the same IO and phone-provider behavior.
+    private val cleanupDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val pickFile: (Uri) -> PickedFile = { PhoneFiles.picked(app, it) },
+) : FilesKeeper.Session {
     var target: FilesTarget? = app.fileTargets.get(targetId)
         private set
     private val runtime = target?.let { app.profiles.runtime(it.profile) }
@@ -285,6 +293,29 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** Transfers in flight: the connection closes only after they have cleaned up. */
     private val transfers = TransferJobs()
+
+    // Lifecycle/admission is Main-thread owned. Only IO progress also enters this short commit gate.
+    private val transferLifetime = Any()
+    private var transferVisit: Any? = Any()
+    private var closed = false
+
+    private fun currentVisit(): Any? = synchronized(transferLifetime) { transferVisit }
+    private fun ownsVisit(visit: Any): Boolean = synchronized(transferLifetime) { transferVisit === visit }
+
+    /** Include preparation and aggregate notifications, not only the byte-copy jobs. Main thread. */
+    private fun transferWork(block: suspend CoroutineScope.() -> Unit): Job? {
+        if (currentVisit() == null) return null
+        return transfers.track(scope.launch(start = TransferJobs.START, block = block))
+    }
+
+    /** Revoke IO commits before clearing rows; cancellation/handlers and waiting stay outside the gate. */
+    private fun stopTransferVisit(): List<Job> {
+        synchronized(transferLifetime) {
+            transferVisit = null
+            _state.update { it.copy(downloads = emptyMap(), uploads = emptyList(), selection = FileSelection()) }
+        }
+        return transfers.cancelCurrent()
+    }
 
     /** One upload at a time from this screen. */
     private val uploadLock = Mutex()
@@ -445,11 +476,11 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** The folder picker's answer: kept for the next downloads; [then] is downloaded into it. */
     fun setDownloadFolder(tree: Uri, then: List<RemoteEntry>) {
-        scope.launch {
+        transferWork {
             val kept = withContext(Dispatchers.IO) {
                 PhoneFiles.keep(app, tree) && runCatching { app.settings.update { it.copy(filesDownloadFolder = tree.toString()) } }.isSuccess
             }
-            if (!kept) return@launch toast(Texts.get(R.string.files_folder_not_kept), NoticeKind.WARN)
+            if (!kept) return@transferWork toast(Texts.get(R.string.files_folder_not_kept), NoticeKind.WARN)
             // The selection asked for the folder: it ends now that its files go.
             if (then.isNotEmpty()) clearSelection()
             downloadAll(then)
@@ -522,7 +553,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         val lost = Collections.synchronizedList(mutableListOf<RemoteEntry>())
         val jobs = startable(entries).mapNotNull { e -> download(e, onDone = { names += it }, onFolderLost = { lost += it }) }
         if (jobs.isEmpty()) return
-        scope.launch {
+        transferWork {
             jobs.joinAll()
             when (names.size) {
                 0 -> Unit
@@ -581,11 +612,11 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         val started = startable(files)
         val jobs = started.mapNotNull { e -> transfer(e, TransferKind.SHARE) { b, progress -> got[e.path] = toCache(b, e, progress) to e.name } }
         if (jobs.isEmpty()) return
-        scope.launch {
+        transferWork {
             jobs.joinAll()
             // What arrived, in the list's order; a failed one stays on its row with Retry.
             val ready = started.mapNotNull { got[it.path] }
-            if (ready.isEmpty()) return@launch
+            if (ready.isEmpty()) return@transferWork
             if (ready.size < started.size) toast(Texts.get(R.string.files_shared_some, ready.size, started.size))
             _events.send(FilesEvent.ShareMany(ready))
         }
@@ -641,12 +672,12 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      */
     fun handOverViewed(viewed: ViewedFile, share: Boolean) {
         val profile = target?.profile ?: return
-        scope.launch {
+        transferWork {
             val copy = try {
                 withContext(Dispatchers.IO) { PhoneFiles.copyToOpenCache(app, profile, File(viewed.local)) }
             } catch (e: IOException) {
                 toast(Texts.get(R.string.viewer_hand_over_failed, fileProblem(PhoneSideException(e))), NoticeKind.WARN)
-                return@launch
+                return@transferWork
             }
             _events.send(FilesEvent.Handover(viewed.path, copy, viewerType(viewed.name), viewed.name, share))
         }
@@ -718,6 +749,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         onFolderLost: ((RemoteEntry) -> Unit)? = null,
         block: suspend (SftpBrowser, (Long, Long) -> Unit) -> Unit,
     ): Job? {
+        val visit = currentVisit() ?: return null
         val now = _state.value.downloads[entry.path]
         if (now != null && now.failure == null) return null.also { toast(Texts.get(R.string.files_busy, entry.name)) }
         val port = localPort
@@ -729,11 +761,12 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         val job = scope.launch(start = TransferJobs.START) {
             val me = currentCoroutineContext().job
             // A cancelled one leaves the row alone: it may show a new transfer of the same file by now.
-            val mine = { downloadJobs.owns(entry.path, me) }
+            val mine = { ownsVisit(visit) && downloadJobs.owns(entry.path, me) }
             try {
+                val progress = downloadProgress(entry, kind, mine)
                 slots.run(onStart = { if (mine()) setDownload(entry.path, Transfer(entry.name, 0, entry.size, kind)) }) {
                     val b = connected(port)
-                    block(b, throttled { done, total -> if (mine()) setDownload(entry.path, Transfer(entry.name, done, total, kind)) })
+                    block(b, progress)
                 }
                 if (mine()) _state.update { it.copy(downloads = it.downloads - entry.path) }
             } catch (e: CancellationException) {
@@ -764,11 +797,13 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** Uploads [uris] one after another into the folder shown now, "Keep both" on a name clash. */
     fun upload(uris: List<Uri>) {
+        val visit = currentVisit() ?: return
         if (uris.isEmpty()) return
         val dir = _state.value.path
         if (!_state.value.online || dir == null || localPort == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
-        scope.launch {
-            val picked = withContext(Dispatchers.IO) { uris.map { PhoneFiles.picked(app, it) } }
+        transferWork {
+            val picked = withContext(Dispatchers.IO) { uris.map(pickFile) }
+            if (!ownsVisit(visit)) return@transferWork
             val queued = picked.map { Upload(uploadIds.getAndIncrement(), it.uri, dir, Transfer(it.name, 0, it.size)) }
             _state.update { it.copy(uploads = it.uploads + queued) }
             runUploads(queued)
@@ -777,6 +812,7 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     /** Retry of a failed upload, into the folder it was for. */
     fun retryUpload(id: Long) {
+        if (currentVisit() == null) return
         val failed = _state.value.uploads.firstOrNull { it.id == id && it.transfer.failure != null } ?: return
         if (!_state.value.online || localPort == null) return toast(Texts.get(R.string.files_needs_connection), NoticeKind.WARN)
         val again = failed.copy(transfer = failed.transfer.copy(done = 0, failure = null))
@@ -800,20 +836,18 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
 
     private fun runUploads(items: List<Upload>) {
         val t = target ?: return
-        transfers.track(
-            scope.launch(start = TransferJobs.START) {
-                // A row gone from the list was cancelled while it waited.
-                val uploaded = runOneByOne(
-                    items, uploadJobs, key = { it.id },
-                    wanted = { item -> _state.value.uploads.any { it.id == item.id } },
-                ) { item -> uploadLock.withLock { uploadOne(t, item) } }
-                when (uploaded.size) {
-                    0 -> Unit
-                    1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()), NoticeKind.DONE)
-                    else -> toast(Texts.plural(R.plurals.files_uploaded_many, uploaded.size, uploaded.size), NoticeKind.DONE)
-                }
-            },
-        )
+        transferWork {
+            // A row gone from the list was cancelled while it waited.
+            val uploaded = runOneByOne(
+                items, uploadJobs, key = { it.id },
+                wanted = { item -> _state.value.uploads.any { it.id == item.id } },
+            ) { item -> uploadLock.withLock { uploadOne(t, item) } }
+            when (uploaded.size) {
+                0 -> Unit
+                1 -> toast(Texts.get(R.string.files_uploaded, uploaded.single()), NoticeKind.DONE)
+                else -> toast(Texts.plural(R.plurals.files_uploaded_many, uploaded.size, uploaded.size), NoticeKind.DONE)
+            }
+        }
     }
 
     /** One upload; its row goes when it is done, stays with the reason and Retry when it fails. Returns the name it got. */
@@ -1079,6 +1113,18 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
         app.appScope.launch(Dispatchers.IO) { b.close() }
     }
 
+    /** IO reports may outlive cancellation; the visit check and row commit must be one transaction. */
+    private fun downloadProgress(entry: RemoteEntry, kind: TransferKind, mine: () -> Boolean): (Long, Long) -> Unit {
+        val visit = currentVisit()
+        return throttled { done, total ->
+            synchronized(transferLifetime) {
+                if (visit != null && transferVisit === visit && mine()) {
+                    setDownload(entry.path, Transfer(entry.name, done, total, kind))
+                }
+            }
+        }
+    }
+
     private fun setDownload(path: String, transfer: Transfer) {
         _state.update { it.copy(downloads = it.downloads + (path to transfer)) }
     }
@@ -1093,13 +1139,14 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      * connection, folder and listing stay for the screen's return.
      */
     override fun leave() {
+        if (closed) return
+        val stopping = stopTransferVisit()
         clearSearch()
         // A viewer open as the screen went goes with it, without a close of its own: its copy goes here.
         viewedCopy?.let(::deleteViewCopy)
         viewedCopy = null
         app.appScope.launch(Dispatchers.IO) { PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS) }
-        _state.update { it.copy(downloads = emptyMap(), uploads = emptyList(), selection = FileSelection()) }
-        app.appScope.launch(Dispatchers.IO) { withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() } }
+        app.appScope.launch(cleanupDispatcher) { withTimeoutOrNull(CLEANUP_WAIT_MS) { stopping.joinAll() } }
     }
 
     /**
@@ -1108,6 +1155,8 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      * was said while no screen listened is stale and goes.
      */
     override fun resume() {
+        if (closed) return
+        synchronized(transferLifetime) { if (transferVisit == null) transferVisit = Any() }
         while (_events.tryReceive().isSuccess) Unit
         if (localPort != null) load(_state.value.path, refresh = false)
     }
@@ -1121,12 +1170,15 @@ class FilesSession(private val app: FrpJumpApp, private val targetId: Int) : Fil
      * [HANDED_OVER_KEEP_MS] go.
      */
     override fun close() {
+        if (closed) return
+        closed = true
+        val stopping = stopTransferVisit()
         val b = browser
         browser = null
         viewedCopy?.let(::deleteViewCopy)
         viewedCopy = null
         app.appScope.launch(Dispatchers.IO) {
-            withTimeoutOrNull(CLEANUP_WAIT_MS) { transfers.cancelAndJoin() }
+            withTimeoutOrNull(CLEANUP_WAIT_MS) { stopping.joinAll() }
             b?.close()
             PhoneFiles.pruneOpenCache(app, HANDED_OVER_KEEP_MS)
             PhoneFiles.pruneViewCache(app, VIEW_LEFT_MS)
