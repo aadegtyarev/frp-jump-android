@@ -3,6 +3,8 @@ package ru.adsrv.frpjump.ui.ssh
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,11 +28,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -64,20 +69,20 @@ fun TerminalTextComposer(
         keyboard?.show()
     }
     val enabled = canInsert && value.text.isNotBlank()
+    val frame = Modifier.border(1.dp, AppTheme.colors.termLine, RoundedCornerShape(12.dp))
     if (landscape && !expanded) {
         // Share one row with the actions: stacking chrome would hide the whole terminal above the IME.
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().then(frame), verticalAlignment = Alignment.CenterVertically) {
             ComposerField(value, onValueChange, focus, Modifier.weight(1f).heightIn(min = 48.dp, max = 80.dp))
             ComposerActions(false, enabled, onKeys, onExpand, onInsert, Modifier.widthIn(min = 180.dp, max = 320.dp))
         }
     } else {
-        Column(if (expanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
-            if (expanded) Text(stringResource(R.string.terminal_text_draft), color = AppTheme.colors.termMuted, fontSize = 13.sp)
-            ComposerActions(expanded, enabled, onKeys, onExpand, onInsert, Modifier.fillMaxWidth())
+        Column((if (expanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).then(frame)) {
             ComposerField(
                 value, onValueChange, focus,
                 if (expanded) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 160.dp),
             )
+            ComposerActions(expanded, enabled, onKeys, onExpand, onInsert, Modifier.fillMaxWidth())
         }
     }
 }
@@ -92,9 +97,10 @@ private fun ComposerActions(
     modifier: Modifier,
 ) {
     val colors = AppTheme.colors
+    val keysLabel = stringResource(R.string.terminal_return_keys)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(onClick = onKeys, modifier = Modifier.testTag("terminal_mode_keys")) {
-            Text(stringResource(R.string.terminal_input_keys), color = colors.onTerm)
+        TextButton(onClick = onKeys, modifier = Modifier.testTag("terminal_mode_keys").semantics { contentDescription = keysLabel }) {
+            Text(">_", color = colors.onTerm)
         }
         Spacer(Modifier.weight(1f))
         IconButton(onClick = onExpand, modifier = Modifier.testTag("terminal_text_expand")) {
@@ -125,8 +131,8 @@ private fun ComposerField(value: TextFieldValue, onValueChange: (TextFieldValue)
             focusedTextColor = colors.onTerm,
             unfocusedTextColor = colors.onTerm,
             cursorColor = colors.onTerm,
-            focusedBorderColor = colors.termMuted,
-            unfocusedBorderColor = colors.termLine,
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
             focusedPlaceholderColor = colors.termMuted,
             unfocusedPlaceholderColor = colors.termMuted,
         ),

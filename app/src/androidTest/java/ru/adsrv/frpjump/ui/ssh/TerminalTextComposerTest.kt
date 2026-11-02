@@ -39,8 +39,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -67,6 +70,7 @@ class TerminalTextComposerTest {
     private val selected = mutableIntStateOf(1)
     private val inserted = mutableListOf<String>()
     private val terminalKeys = mutableListOf<ExtraKey>()
+    private val keyboardRequests = mutableListOf<Boolean>()
 
     @Before fun configureOrientation() {
         val arguments = InstrumentationRegistry.getArguments()
@@ -86,6 +90,8 @@ class TerminalTextComposerTest {
     }
 
     private fun start() = compose.setContent { FrpJumpTheme { Harness() } }
+
+    private fun enterText() = compose.onNodeWithTag("terminal_keyboard").performTouchInput { longClick() }
 
     private fun capture(name: String) {
         compose.waitForIdle()
@@ -125,7 +131,7 @@ class TerminalTextComposerTest {
         Column(Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding()) {
             Spacer(Modifier.weight(1f).fillMaxWidth().background(Color.Black))
             ExtraKeys(
-                modifiers, onKeyboard = {}, onPaste = {}, onKey = { terminalKeys += it },
+                modifiers, onKeyboard = { keyboardRequests += it }, onPaste = {}, onKey = { terminalKeys += it },
                 textMode = draft.textMode, onTextMode = { drafts.textMode(id, it) },
                 textEditor = {
                     if (!draft.expanded) TerminalTextComposer(
@@ -164,10 +170,61 @@ class TerminalTextComposerTest {
         }
     }
 
+    @Test fun additionalKeysAreCollapsedAndToggleWithoutTerminalInput() {
+        start()
+        compose.onNodeWithTag("terminal_main_keys").assertExists()
+        compose.onNodeWithTag("terminal_mode_text").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+        capture("panel-keys")
+        val keyboardBounds = compose.onNodeWithTag("terminal_keyboard").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("terminal_more_keys").performClick()
+        compose.onNodeWithTag("terminal_extra_rows").assertExists()
+        assertEquals(keyboardBounds, compose.onNodeWithTag("terminal_keyboard").fetchSemanticsNode().boundsInRoot)
+        capture("panel-expanded-keys")
+        compose.onNodeWithTag("terminal_more_keys").performClick()
+        compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(emptyList<ExtraKey>(), terminalKeys)
+            assertEquals(emptyList<Boolean>(), keyboardRequests)
+            assertEquals(emptyList<String>(), inserted)
+        }
+    }
+
+    @Test fun keyboardShortClickAndLongPressAreIndependent() {
+        start()
+        val expectedLabel = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.terminal_text_input)
+        assertEquals(expectedLabel, compose.onNodeWithTag("terminal_keyboard").fetchSemanticsNode().config[SemanticsActions.OnLongClick].label)
+        compose.onNodeWithTag("terminal_keyboard").performClick()
+        compose.runOnIdle {
+            assertEquals(1, keyboardRequests.size)
+            keyboardRequests.clear()
+        }
+        enterText()
+        compose.onNodeWithTag("terminal_text_editor").assertExists()
+        compose.runOnIdle { assertEquals(emptyList<Boolean>(), keyboardRequests) }
+    }
+
+    @Test fun textModeHasNoTerminalRowsAndReturningKeepsTheDraft() {
+        start()
+        compose.onNodeWithTag("terminal_more_keys").performClick()
+        compose.onNodeWithTag("terminal_extra_rows").assertExists()
+        enterText()
+        compose.onNodeWithTag("terminal_main_keys").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_more_keys").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_text_editor").performTextInput("kept draft")
+        compose.onNodeWithTag("terminal_mode_keys").performClick()
+        compose.onNodeWithTag("terminal_main_keys").assertExists()
+        compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+        enterText()
+        compose.onNodeWithTag("terminal_text_editor").assertTextContains("kept draft")
+        compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
+    }
+
     @Test fun typingAndNewlineStayLocalUntilExplicitInsertion() {
         start()
         compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_insert").assertIsNotEnabled()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("Привет\nмир")
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("Привет\nмир")
@@ -179,7 +236,7 @@ class TerminalTextComposerTest {
 
     @Test fun expandCollapseAndModeSwitchKeepTextAndSelection() {
         start()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("Привет мир")
         compose.onNodeWithTag("terminal_text_editor").performTextInputSelection(TextRange(2, 5))
         capture("composer-compact")
@@ -193,7 +250,7 @@ class TerminalTextComposerTest {
         compose.onNodeWithTag("terminal_text_editor").assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange(2, 5)))
         compose.onNodeWithTag("terminal_mode_keys").performClick()
         compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("Привет мир")
         compose.onNodeWithTag("terminal_text_editor").assert(SemanticsMatcher.expectValue(SemanticsProperties.TextSelectionRange, TextRange(2, 5)))
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
@@ -201,7 +258,7 @@ class TerminalTextComposerTest {
 
     @Test fun backCollapsesFullscreenWithoutSending() {
         start()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("keep this draft")
         compose.onNodeWithTag("terminal_text_expand").performClick()
         Espresso.closeSoftKeyboard()
@@ -214,7 +271,7 @@ class TerminalTextComposerTest {
     @Test fun rotatingTheCompactEditorKeepsDraftSelectionAndFocus() {
         start()
         val initiallyLandscape = compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("Привет мир")
         compose.onNodeWithTag("terminal_text_editor").performTextInputSelection(TextRange(2, 5))
         orient(!initiallyLandscape)
@@ -230,11 +287,11 @@ class TerminalTextComposerTest {
 
     @Test fun tabsHaveIndependentDraftsAndReturningRestoresTheEditor() {
         start()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("first tab")
         compose.runOnIdle { selected.intValue = 2 }
         compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("second tab")
         compose.runOnIdle { selected.intValue = 1 }
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("first tab")
@@ -243,10 +300,13 @@ class TerminalTextComposerTest {
 
     @Test fun terminalControlButtonDoesNotSendTheDraft() {
         start()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("unfinished prompt")
         val label = InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.terminal_key_ctrl_c)
+        compose.onNodeWithContentDescription(label).assertDoesNotExist()
+        compose.onNodeWithTag("terminal_mode_keys").performClick()
         compose.onNodeWithContentDescription(label).performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("unfinished prompt")
         compose.runOnIdle {
             assertEquals(listOf(ExtraKey.CTRL_C), terminalKeys)
@@ -256,7 +316,7 @@ class TerminalTextComposerTest {
 
     @Test fun nativeImeCompositionIsVisibleWithoutInsertion() {
         start()
-        compose.onNodeWithTag("terminal_mode_text").performClick()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performClick()
         compose.runOnIdle {
             val connection = compose.activity.currentFocus?.onCreateInputConnection(EditorInfo())

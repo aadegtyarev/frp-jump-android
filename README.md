@@ -620,8 +620,8 @@ filling in the user name leaves the saved password alone.
   lines are always asked about there. A multiplexer started by hand in a
   plain-shell tab (typing `tmux` or `screen`) can't be seen, so there the
   same caveat applies without the sheet. A clipboard of only spaces and line
-  breaks pastes nothing and says so. While the keyboard is up, extra rows
-  slide in above that row: Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
+  breaks pastes nothing and says so. Additional rows start collapsed; the
+  small ⋯ above the main row opens/closes Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
   and `| ~ / -` (one line when they all fit, as in landscape; even lines
   when narrow). Ctrl and Alt stay held, lit, until the next key, and apply
   to ⌫ ⏎ and the arrows as to a hardware keyboard; ^C ^D ^Z ^R ^L send
@@ -686,19 +686,21 @@ filling in the user name leaves the saved password alone.
   word and offer suggestions before sending it. The choice is saved
   for all terminals. With it off, sticky Ctrl/Alt applies when the keyboard
   commits text; hardware key events work in either mode.
-- The Keys/Text switch changes what sits above the common terminal-key row.
-  Text replaces the additional keys with a visible multiline editor, so
+- Short ⌨ shows/hides the system keyboard. Hold ⌨ or use ⋮ → Text input
+  to open the visible multiline editor; Settings → Terminal explains both.
+  There is no separate Keys/Text selector. Text hides all terminal-key and
+  command-chip rows, so
   the keyboard can compose words and offer corrections without sending
   anything to SSH. Expand opens the same draft full screen; collapse or
   Back returns to the compact editor. Enter in the editor adds a newline.
   Insert uses the normal paste checks and does not add terminal Enter;
   multiline text without bracketed paste still asks first. An accepted
   insertion clears only the submitted draft revision. Canceling or a
-  failed insertion keeps it. The common terminal-key buttons act on the
-  terminal without submitting the draft. Drafts and selections are separate
+  failed insertion keeps it. The >_ action returns to terminal keys without
+  submitting or discarding the draft; additional keys are collapsed again.
+  Drafts and selections are separate
   per SSH session, kept only in process memory, and released when the
   session is closed or replaced. They are not restored after process death.
-  In landscape Text mode the snippets row is hidden to leave editing room.
 - Snippets: a row of saved commands above the keys. Tap types a command
   without Enter (to finish it first), long press types it and presses
   Enter; the manager says so. An empty list shows no row. The last + chip

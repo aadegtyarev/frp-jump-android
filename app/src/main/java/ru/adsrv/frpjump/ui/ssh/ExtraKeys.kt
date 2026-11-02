@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -28,9 +30,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,19 +46,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.sp
 import com.termux.terminal.KeyHandler
 import com.termux.view.TerminalView
@@ -156,12 +165,11 @@ fun balancedLines(count: Int, perLine: Int): List<Int> {
 }
 
 /**
- * One row: ^C, Paste, ← ↑ ↓ → ⌫ ⏎ ⌨, where ⌨ shows and hides the keyboard.
- * While the keyboard is up the extra rows slide in above it: Esc, Tab, Ctrl, Alt,
- * ^D ^Z ^R ^L, Home End PgUp PgDn, | ~ / -. Ctrl and Alt stay held, lit,
- * until the next key.
+ * Keep the familiar main row. Additional keys open only by the independent ⋯
+ * disclosure. Short ⌨ toggles the IME; long ⌨ opens the local text editor.
+ * Text mode contains the editor only, without any terminal key rows.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun ExtraKeys(
     modifiers: Modifiers,
@@ -174,34 +182,64 @@ fun ExtraKeys(
 ) {
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
+    var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(textMode) { if (textMode) expanded = false }
+    if (textMode) {
+        Box(Modifier.fillMaxWidth().background(colors.termBar).padding(horizontal = 8.dp, vertical = 4.dp)) { textEditor() }
+        return
+    }
+    val disclosureOffset = with(LocalDensity.current) { 48.dp.roundToPx() }
+    val disclosureLabel = stringResource(if (expanded) R.string.terminal_extra_keys_hide else R.string.terminal_extra_keys_show)
+    val textLabel = stringResource(R.string.terminal_text_input)
     Column(
         Modifier
             .fillMaxWidth()
             .background(colors.termBar)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        if (!textMode) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { onTextMode(false) }, modifier = Modifier.testTag("terminal_mode_keys").semantics { selected = !textMode }) {
-                Text(stringResource(R.string.terminal_input_keys), color = if (!textMode) colors.onTerm else colors.termMuted)
-            }
-            TextButton(onClick = { onTextMode(true) }, modifier = Modifier.testTag("terminal_mode_text").semantics { selected = textMode }) {
-                Text(stringResource(R.string.terminal_input_text), color = if (textMode) colors.onTerm else colors.termMuted)
-            }
-        }
-        if (textMode) textEditor()
         AnimatedVisibility(
-            visible = keyboard && !textMode,
+            visible = expanded,
             enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
             exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
         ) {
-            ExtraRows(modifiers, onKey, Modifier.padding(bottom = ROW_GAP))
+            // The disclosure stays anchored above the main row. Reserve its full target
+            // here so opening the extra rows never puts a terminal key behind it.
+            ExtraRows(modifiers, onKey, Modifier.padding(end = 48.dp, bottom = ROW_GAP).testTag("terminal_extra_rows"))
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
-            Key(ExtraKey.CTRL_C, modifiers, onKey)
-            PasteKey(onPaste)
-            ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
-            val label = stringResource(R.string.terminal_keyboard)
-            Toggle("⌨", keyboard, Modifier.semantics { contentDescription = label }, onChange = onKeyboard)
+        Box(Modifier.fillMaxWidth()) {
+            Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
+                Key(ExtraKey.CTRL_C, modifiers, onKey)
+                PasteKey(onPaste)
+                ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
+                val label = stringResource(R.string.terminal_keyboard)
+                KeyBox(
+                    Modifier.testTag("terminal_keyboard").semantics { contentDescription = label }
+                        .combinedClickable(
+                            role = Role.Button,
+                            onClick = { onKeyboard(!keyboard) },
+                            onLongClickLabel = textLabel,
+                            onLongClick = { expanded = false; onTextMode(true) },
+                        ),
+                    if (keyboard) colors.accent else colors.termKey,
+                ) { Text("⌨", fontSize = 13.sp, color = if (keyboard) colors.onAccent else colors.onTerm) }
+            }
+            // A non-focusable popup keeps the 48 dp target inside a real window without
+            // reserving a header row or overlapping the main row's keyboard button.
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, -disclosureOffset),
+                properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false, clippingEnabled = false),
+            ) {
+                IconButton(
+                    onClick = { expanded = !expanded },
+                    modifier = Modifier.size(48.dp).testTag("terminal_more_keys").semantics { contentDescription = disclosureLabel },
+                ) {
+                    Box(
+                        Modifier.size(width = 32.dp, height = 24.dp).clip(RoundedCornerShape(8.dp)).background(if (expanded) colors.accent else colors.termKey),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.MoreVert, contentDescription = null, tint = if (expanded) colors.onAccent else colors.onTerm, modifier = Modifier.size(20.dp).rotate(90f)) }
+                }
+            }
         }
     }
 }
