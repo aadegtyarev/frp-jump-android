@@ -119,6 +119,15 @@ re-enroll.
   poll only while they have tunnels up, at the background interval.
 - "Connections" and the notification show tunnels of all profiles, each
   marked with its profile colour.
+- Loading prepares every runtime before publishing the batch. Polling,
+  startup cache/features work and runtime collectors start only after the
+  published state owns the runtimes. Failed or cancelled preparation closes
+  all candidates, including their tunnel managers' idle observers; a retry
+  must not leave an older owner running. Preparation finishes file IO before
+  allocating coroutine jobs. Duplicate ids in a damaged index are rejected
+  before opening any candidate. Transient preparation failure does not wipe
+  enrollments, port reservations or restore intent. This does not define
+  recovery of an enrollment saved before a later activation failure.
 
 ### 3. Device list and offline
 
