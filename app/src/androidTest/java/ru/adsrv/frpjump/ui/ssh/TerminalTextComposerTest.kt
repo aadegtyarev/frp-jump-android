@@ -231,7 +231,23 @@ class TerminalTextComposerTest {
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
         compose.onNodeWithTag("terminal_text_insert").performClick()
         compose.runOnIdle { assertEquals(listOf("Привет\nмир"), inserted) }
-        compose.onNodeWithTag("terminal_text_editor").assertTextContains("")
+        compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_main_keys").assertExists()
+        compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+    }
+
+    @Test fun insertingFromFullscreenReturnsMainKeysWithoutEnter() {
+        start()
+        enterText()
+        compose.onNodeWithTag("terminal_text_editor").performTextInput("echo test")
+        compose.onNodeWithTag("terminal_text_expand").performClick()
+        compose.onNodeWithTag("terminal_text_fullscreen").assertExists()
+        compose.onNodeWithTag("terminal_text_insert").performClick()
+        compose.onNodeWithTag("terminal_text_fullscreen").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_main_keys").assertExists()
+        compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(listOf("echo test"), inserted) }
     }
 
     @Test fun expandCollapseAndModeSwitchKeepTextAndSelection() {
@@ -330,6 +346,9 @@ class TerminalTextComposerTest {
             assertEquals(listOf("неподтверждённое"), inserted)
             assertEquals("", drafts.state.value.getValue(1).text)
         }
+        compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
+        compose.onNodeWithTag("terminal_main_keys").assertExists()
+        enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("следующее")
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("следующее")
         compose.runOnIdle { assertEquals(listOf("неподтверждённое"), inserted) }

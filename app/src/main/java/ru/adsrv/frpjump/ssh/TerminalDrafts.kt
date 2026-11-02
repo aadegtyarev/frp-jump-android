@@ -53,9 +53,15 @@ class TerminalDrafts {
 
     fun submission(id: Int): DraftSubmission? = values.value[id]?.let { DraftSubmission(id, it.revision, it.text) }
 
-    /** Never erase an edit made while a multiline confirmation was open. */
-    fun inserted(submission: DraftSubmission) = change(submission.sessionId) { old ->
-        if (old.revision != submission.revision) old else old.copy(text = "", selectionStart = 0, selectionEnd = 0, revision = nextRevision++)
+    /** Return to Keys only for the exact submitted revision; never close a newer editor. */
+    fun inserted(submission: DraftSubmission): Boolean {
+        val old = values.value[submission.sessionId] ?: return false
+        if (old.revision != submission.revision) return false
+        values.value = values.value + (submission.sessionId to old.copy(
+            text = "", selectionStart = 0, selectionEnd = 0,
+            textMode = false, expanded = false, revision = nextRevision++,
+        ))
+        return true
     }
 
     private fun change(id: Int, update: (TerminalDraft) -> TerminalDraft) {

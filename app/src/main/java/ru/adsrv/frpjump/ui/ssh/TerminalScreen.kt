@@ -312,9 +312,13 @@ fun TerminalScreen(
             PasteAttempt.UNAVAILABLE -> context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
             PasteAttempt.FAILED -> context.notice(context.getString(R.string.terminal_text_insert_failed), NoticeKind.WARN)
             PasteAttempt.INSERTED -> if (submission != null) {
-                sessions.drafts.inserted(submission)
-                if (selected.id == submission.sessionId && sessions.drafts.state.value[submission.sessionId]?.text == "") {
+                val consumed = sessions.drafts.inserted(submission)
+                if (consumed && current.value.id == submission.sessionId) {
                     editorValue = TextFieldValue()
+                    focusManager.clearFocus(force = true)
+                    input.onEditorKeyboard = null
+                    // Return control without implicitly showing a hidden IME or sending Enter.
+                    input.requestFocus()
                 }
             }
         }

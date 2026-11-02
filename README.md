@@ -704,8 +704,9 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   Back returns to the compact editor. Enter in the editor adds a newline.
   Insert uses the normal paste checks and does not add terminal Enter;
   multiline text without bracketed paste still asks first. An accepted
-  insertion clears only the submitted draft revision. Canceling or a
-  failed insertion keeps it. The >_ action returns to terminal keys without
+  insertion clears only the submitted draft revision, closes the editor
+  and restores the main terminal keys with additional rows collapsed.
+  Canceling or a failed insertion keeps the draft and editor. The >_ action returns to terminal keys without
   submitting or discarding the draft; additional keys are collapsed again.
   Drafts and selections are separate
   per SSH session, kept only in process memory, and released when the
