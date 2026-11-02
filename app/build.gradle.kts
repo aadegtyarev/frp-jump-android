@@ -167,4 +167,5 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.espresso.core)
     testImplementation(libs.junit)
+    testImplementation(libs.sshd.test.server)
 }
