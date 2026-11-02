@@ -165,6 +165,21 @@ class SshSession(
         return terminal.paste(text)
     }
 
+    /** No text, keys or credentials; exact authenticated client and terminal output generation. */
+    class PasteTarget internal constructor(internal val client: SSHClient, internal val input: RemoteTerminal.InputTarget)
+
+    fun capturePasteTarget(): PasteTarget? {
+        val client = openClient() ?: return null
+        val input = terminal.captureInputTarget() ?: return null
+        return if (openClient() === client) PasteTarget(client, input) else null
+    }
+
+    fun paste(text: String, destination: PasteTarget, enter: Boolean): Boolean {
+        if (openClient() !== destination.client) return false
+        typed()
+        return terminal.paste(text, destination.input, enter)
+    }
+
     @Volatile
     private var client: SSHClient? = null
 

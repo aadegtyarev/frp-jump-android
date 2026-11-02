@@ -1118,4 +1118,8 @@
     <string name="diagnostics_mib">МиБ</string>
     <string name="diagnostics_gib">ГиБ</string>
     <string name="diagnostics_buffer_unknown">Состояние текущего буфера недоступно.</string>
+    <string name="terminal_text_insert_enter">Вставить и нажать Enter</string>
+    <string name="terminal_paste_enter_warning">После вставки будет отправлен Enter, в том числе при склеивании строк.</string>
+    <string name="terminal_paste_run_enter">Вставить + Enter</string>
+    <string name="terminal_paste_join_enter">Склеить строки + Enter</string>
 </resources>

@@ -26,16 +26,17 @@ import ru.adsrv.frpjump.ui.MainButton
  * swipe down leaves it.
  */
 @Composable
-fun PasteSheet(ask: PastePlan.Ask, onPaste: (String) -> Unit, onDismiss: () -> Unit) {
+fun PasteSheet(ask: PastePlan.Ask, onPaste: (String) -> Unit, onDismiss: () -> Unit, execute: Boolean = false) {
     val colors = AppTheme.colors
     AppSheet(
         title = pluralStringResource(R.plurals.terminal_paste_lines_title, ask.lines, ask.lines),
-        subtitle = stringResource(R.string.terminal_paste_lines_text),
+        subtitle = stringResource(R.string.terminal_paste_lines_text) +
+            if (execute) "\n" + stringResource(R.string.terminal_paste_enter_warning) else "",
         onDismiss = onDismiss,
     ) {
         Column {
             MainButton(
-                text = stringResource(R.string.terminal_paste_run),
+                text = stringResource(if (execute) R.string.terminal_paste_run_enter else R.string.terminal_paste_run),
                 busy = false,
                 onClick = {
                     onPaste(ask.text)
@@ -49,7 +50,7 @@ fun PasteSheet(ask: PastePlan.Ask, onPaste: (String) -> Unit, onDismiss: () -> U
                 },
                 colors = ButtonDefaults.textButtonColors(contentColor = colors.accent),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-            ) { Text(stringResource(R.string.terminal_paste_join), fontSize = 16.sp) }
+            ) { Text(stringResource(if (execute) R.string.terminal_paste_join_enter else R.string.terminal_paste_join), fontSize = 16.sp) }
         }
     }
 }

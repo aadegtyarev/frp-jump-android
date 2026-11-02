@@ -8,8 +8,14 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -221,7 +227,21 @@ fun ExtraKeys(
                             onLongClick = { expanded = false; onTextMode(true) },
                         ),
                     if (keyboard) colors.accent else colors.termKey,
-                ) { Text("⌨", fontSize = 13.sp, color = if (keyboard) colors.onAccent else colors.onTerm) }
+                ) {
+                    val tint = if (keyboard) colors.onAccent else colors.onTerm
+                    Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+                        Canvas(Modifier.size(20.dp).align(Alignment.BottomStart)) {
+                            val u = size.width / 24f
+                            drawRoundRect(tint, Offset(u, 4*u), Size(22*u, 16*u), CornerRadius(2*u), style = Stroke(1.5f*u))
+                            for (row in 0..1) for (column in 0..4) {
+                                drawRect(tint, Offset((4+3.5f*column)*u, (8+3.5f*row)*u), Size(1.6f*u, 1.6f*u))
+                            }
+                            drawLine(tint, Offset(8*u, 16*u), Offset(16*u, 16*u), 1.5f*u)
+                        }
+                        Icon(Icons.Filled.Edit, contentDescription = null,
+                            modifier = Modifier.size(10.dp).align(Alignment.TopEnd), tint = tint)
+                    }
+                }
             }
             // A non-focusable popup keeps the 48 dp target inside a real window without
             // reserving a header row or overlapping the main row's keyboard button.

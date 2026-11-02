@@ -92,7 +92,11 @@ class TerminalMetricsIoTest {
         }
     }
 
-    @Test fun aLargePasteCannotBeSplitByConnectionHandover() {
+    @Test fun aLargePasteCannotBeSplitByConnectionHandover() = largePasteHandover(false)
+
+    @Test fun aLargePasteWithEnterCannotBeSplitByConnectionHandover() = largePasteHandover(true)
+
+    private fun largePasteHandover(enter: Boolean) {
         val inputs = listOf(PipedInputStream(), PipedInputStream())
         val peers = inputs.map(::PipedOutputStream)
         val outputs = listOf(ByteArrayOutputStream(), ByteArrayOutputStream())
@@ -114,7 +118,10 @@ class TerminalMetricsIoTest {
                 terminal.pump(inputs[0], outputs[0]) { }
             }
             producer = Thread {
-                main { accepted.set(terminal.paste("x".repeat(16000))) }
+                main {
+                    val captured = terminal.captureInputTarget()!!
+                    accepted.set(if (enter) terminal.paste("x".repeat(16000), captured, true) else terminal.paste("x".repeat(16000)))
+                }
                 pasted.countDown()
             }.apply { isDaemon = true; start() }
             assertTrue(entered.await(5, TimeUnit.SECONDS))
@@ -134,12 +141,93 @@ class TerminalMetricsIoTest {
             await { outputs[1].toString("UTF-8").contains("fresh") }
             assertEquals("fresh", outputs[1].toString("UTF-8"))
             assertTrue(outputs[0].size() > 0)
-            assertTrue(outputs[0].toString("UTF-8").all { it == 'x' })
+            val old = outputs[0].toString("UTF-8")
+            assertTrue(old.removeSuffix("\r").all { it == 'x' })
+            assertTrue(old.count { it == '\r' } <= if (enter) 1 else 0)
         } finally {
             release.countDown()
             // Also unblock a failed test's producer if the worker died.
             if (::terminal.isInitialized) terminal.session.mTerminalToProcessIOQueue.close()
             producer?.join(5000); handover?.join(5000)
+            peers.forEach { it.close() }; inputs.forEach { it.close() }
+            if (::terminal.isInitialized) main { terminal.finish() }
+        }
+    }
+
+    @Test fun capturedPasteAddsExactlyOneEnterAfterBracketedPayloadOnlyWhenRequested() {
+        val input = PipedInputStream()
+        val peer = PipedOutputStream(input)
+        val output = ByteArrayOutputStream()
+        try {
+            main {
+                terminal = RemoteTerminal(client())
+                terminal.pump(input, output) { }
+                val captured = terminal.captureInputTarget()!!
+                assertFalse(terminal.paste("", captured, true))
+                assertFalse(terminal.paste(" \u001b\u0080\u0008", captured, true))
+                assertTrue(terminal.paste("plain", captured, false))
+            }
+            await { output.size() == 5 }
+            assertEquals("plain", output.toString("UTF-8"))
+            output.reset()
+            main {
+                val mode = "\u001b[?2004h".toByteArray()
+                terminal.session.emulator.append(mode, mode.size)
+                assertTrue(terminal.paste("wrapped", terminal.captureInputTarget()!!, true))
+            }
+            await { output.toString("UTF-8").endsWith("\r") }
+            assertEquals("\u001b[200~wrapped\u001b[201~\r", output.toString("UTF-8"))
+        } finally {
+            peer.close(); input.close()
+            if (::terminal.isInitialized) main { terminal.finish() }
+        }
+    }
+
+    @Test fun capturedTargetCannotBeUsedByAnotherTerminalEvenWithSharedOutput() {
+        val inputs = listOf(PipedInputStream(), PipedInputStream())
+        val peers = inputs.map(::PipedOutputStream)
+        val output = ByteArrayOutputStream()
+        var other: RemoteTerminal? = null
+        try {
+            main {
+                terminal = RemoteTerminal(client())
+                val second = RemoteTerminal(client()).also { other = it }
+                terminal.pump(inputs[0], output) { }
+                second.pump(inputs[1], output) { }
+                assertFalse(second.paste("wrong terminal", terminal.captureInputTarget()!!, true))
+                assertTrue(second.paste("right", second.captureInputTarget()!!, true))
+            }
+            await { output.size() >= 6 }
+            assertEquals("right\r", output.toString("UTF-8"))
+        } finally {
+            peers.forEach { it.close() }; inputs.forEach { it.close() }
+            main { other?.finish(); if (::terminal.isInitialized) terminal.finish() }
+        }
+    }
+
+    @Test fun capturedTargetCannotSurviveReconnectEvenWhenOutputObjectIsReused() {
+        val inputs = listOf(PipedInputStream(), PipedInputStream())
+        val peers = inputs.map(::PipedOutputStream)
+        val output = ByteArrayOutputStream()
+        try {
+            main {
+                terminal = RemoteTerminal(client())
+                terminal.pump(inputs[0], output) { }
+                val old = terminal.captureInputTarget()!!
+                terminal.pause()
+                terminal.pump(inputs[1], output) { }
+                assertFalse(terminal.paste("must not execute", old, true))
+                assertTrue(terminal.paste("new", terminal.captureInputTarget()!!, true))
+            }
+            await { output.size() >= 4 }
+            assertEquals("new\r", output.toString("UTF-8"))
+            main {
+                val target = terminal.captureInputTarget()!!
+                terminal.finish()
+                assertNull(terminal.captureInputTarget())
+                assertFalse(terminal.paste("closed", target, true))
+            }
+        } finally {
             peers.forEach { it.close() }; inputs.forEach { it.close() }
             if (::terminal.isInitialized) main { terminal.finish() }
         }

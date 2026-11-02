@@ -17,7 +17,7 @@ Remove the dedicated Keys/Text selector row.
   and the menu entry; no new persisted setting is needed.
 - In Text mode, show only the editor: no main row, no additional key rows,
   and no additional-keys disclosure. The `>_` action returns to Keys and
-  keeps the draft. Preserve expand/collapse, Insert without Enter, and
+  keeps the draft. Preserve expand/collapse, short Insert without Enter, and
   the existing session-bound paste confirmation behavior.
 - Additional keys start collapsed. A small ⋯ disclosure above the main
   row toggles them explicitly, rather than opening automatically with
