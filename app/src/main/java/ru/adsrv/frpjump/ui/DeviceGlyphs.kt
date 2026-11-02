@@ -12,11 +12,12 @@ private val LinuxGlyph = pathGlyph(
         "M10 14.3c0-1.2.9-2.1 2-2.1s2 .9 2 2.1V17c0 .9-.9 1.5-2 1.5s-2-.6-2-1.5zM10.9 8.2l1.1.8 1.1-.8M6 20.5h4.5M13.5 20.5H18",
 )
 
-/** A DIN-rail module, as a Wiren Board controller: terminals top and bottom, the rail through it. */
+/** A simple WB monogram, legible without DIN-rail terminals or tiny board details. */
 private val WirenBoardGlyph = pathGlyph(
-    "WirenBoard",
-    "M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM3 12h3M18 12h3" +
-        "M9 6.5h.01M12 6.5h.01M15 6.5h.01M9 17.5h.01M12 17.5h.01M15 17.5h.01M9.5 10.5h5v3h-5z",
+    "WirenBoardMonogram",
+    "M2 5l1.5 14 3-8 3 8L11 5" +
+        "M14 5v14M14 5h3.5a3.5 3.5 0 0 1 0 7H14M14 12h4a3.5 3.5 0 0 1 0 7h-4",
+    width = 2f,
 )
 
 /** Two rack units with their lights. */
