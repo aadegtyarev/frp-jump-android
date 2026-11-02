@@ -54,17 +54,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,6 +97,12 @@ import ru.adsrv.frpjump.sessions.OpenSessions
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TerminalScreenListener
 import ru.adsrv.frpjump.ssh.PastePlan
+import ru.adsrv.frpjump.ssh.DraftSubmission
+import ru.adsrv.frpjump.ssh.TerminalDraft
+import ru.adsrv.frpjump.ssh.planPaste
+import ru.adsrv.frpjump.ssh.pasteBracketed
+import ru.adsrv.frpjump.ssh.PasteAttempt
+import ru.adsrv.frpjump.ssh.attemptPaste
 import ru.adsrv.frpjump.ssh.saysTunnelClosed
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.CollapseButton
@@ -107,6 +118,8 @@ import ru.adsrv.frpjump.sessions.SessionCloser
 import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.TunnelRef
+
+private data class PendingTerminalPaste(val session: SshSession, val ask: PastePlan.Ask, val submission: DraftSubmission? = null)
 
 /** The SSH sessions as tabs, the selected one in a Termux terminal view. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -250,6 +263,21 @@ fun TerminalScreen(
     )
     val state by selected.state.collectAsStateWithLifecycle()
     val newShell by selected.newShell.collectAsStateWithLifecycle()
+    val draftStates by sessions.drafts.state.collectAsStateWithLifecycle()
+    val draft = draftStates[selected.id] ?: TerminalDraft()
+    var editorValue by remember(selected.id) {
+        mutableStateOf(TextFieldValue(draft.text, TextRange(draft.selectionStart, draft.selectionEnd)))
+    }
+    LaunchedEffect(selected.id, draft.revision) {
+        // A keyboard callback can be newer than the StateFlow snapshot that scheduled this effect.
+        val latest = sessions.drafts.state.value[selected.id] ?: return@LaunchedEffect
+        if (editorValue.text != latest.text) editorValue = TextFieldValue(latest.text, TextRange(latest.selectionStart, latest.selectionEnd))
+    }
+    val editorSurface = remember(selected.id, draft.textMode, draft.expanded, LocalConfiguration.current.orientation) { Any() }
+    val currentEditorSurface = rememberUpdatedState(editorSurface)
+    val editorFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val modifiers = remember { Modifiers() }
     val current = rememberUpdatedState(selected)
     val input = remember {
@@ -259,12 +287,71 @@ fun TerminalScreen(
         }
     }
     val inputSettings by (context.applicationContext as FrpJumpApp).settings.settings.collectAsStateWithLifecycle()
-    SideEffect { input.directInput = inputSettings.terminalDirectInput }
+    SideEffect {
+        input.directInput = inputSettings.terminalDirectInput
+        input.onEditorKeyboard = if (draft.textMode) ({ editorFocus.requestFocus(); keyboard?.show(); Unit }) else null
+    }
     val view = input.terminal
-    // A multi-line paste waiting for the owner's answer (see PasteSheet).
-    var pasteAsk by remember { mutableStateOf<Pair<SshSession, PastePlan.Ask>?>(null) }
-    pasteAsk?.let { (session, ask) ->
-        PasteSheet(ask, onPaste = session::paste, onDismiss = { pasteAsk = null })
+    // Captured destination and draft revision survive changing the selected tab.
+    var pasteAsk by remember { mutableStateOf<PendingTerminalPaste?>(null) }
+    fun sendPaste(target: SshSession, text: String, submission: DraftSubmission? = null) {
+        val result = attemptPaste(
+            available = {
+                sessions.find(target.id) === target && target.state.value == SshState.Open &&
+                    !sessionHidden(pendingUndo.hidden.value, SessionKind.TERMINAL, target.id, TunnelRef(target.profile, target.device, target.port))
+            },
+            paste = {
+                // Paste is literal text, never a Ctrl/Alt combination or an implicit Enter.
+                modifiers.ctrl = false
+                modifiers.alt = false
+                target.paste(text)
+            },
+        )
+        when (result) {
+            PasteAttempt.UNAVAILABLE -> context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
+            PasteAttempt.FAILED -> context.notice(context.getString(R.string.terminal_text_insert_failed), NoticeKind.WARN)
+            PasteAttempt.INSERTED -> if (submission != null) {
+                sessions.drafts.inserted(submission)
+                if (selected.id == submission.sessionId && sessions.drafts.state.value[submission.sessionId]?.text == "") {
+                    editorValue = TextFieldValue()
+                }
+            }
+        }
+    }
+    fun insertDraft() {
+        if (pasteAsk != null || currentEditorSurface.value !== editorSurface || current.value.id != selected.id) return
+        val live = sessions.drafts.state.value[selected.id] ?: return
+        if (!live.textMode || live.expanded != draft.expanded) return
+        focusManager.clearFocus(force = true)
+        val submission = sessions.drafts.submission(selected.id) ?: return
+        when (val plan = planPaste(submission.text, pasteBracketed(selected.terminal.bracketedPaste, selected.tmux.inUse))) {
+            null -> Unit
+            is PastePlan.Paste -> sendPaste(selected, plan.text, submission)
+            is PastePlan.Ask -> pasteAsk = PendingTerminalPaste(selected, plan, submission)
+        }
+    }
+    fun setTextMode(enabled: Boolean) {
+        if (current.value.id != selected.id || enabled == draft.textMode) return
+        // Invalidate callbacks from the outgoing editor before moving focus.
+        sessions.drafts.textMode(selected.id, enabled)
+        focusManager.clearFocus(force = true)
+        if (enabled) {
+            input.finishComposition()
+            modifiers.ctrl = false
+            modifiers.alt = false
+            input.clearFocus()
+        }
+        if (!enabled) {
+            input.onEditorKeyboard = null
+            input.showKeyboard(explicit = true)
+        }
+    }
+    fun editDraft(value: TextFieldValue) {
+        if (currentEditorSurface.value !== editorSurface) return
+        if (sessions.drafts.editFromSurface(
+                selected.id, value.text, value.selection.start, value.selection.end, draft.expanded, current.value.id,
+            )
+        ) editorValue = value
     }
     DisposableEffect(view) {
         sessions.listener = object : TerminalScreenListener {
@@ -275,7 +362,7 @@ fun TerminalScreen(
             override fun onCursorStateChanged(visible: Boolean) = Unit
 
             override fun onPasteAsk(session: SshSession, ask: PastePlan.Ask) {
-                pasteAsk = session to ask
+                pasteAsk = PendingTerminalPaste(session, ask)
             }
         }
         onDispose { sessions.listener = null }
@@ -294,7 +381,7 @@ fun TerminalScreen(
     LaunchedEffect(selected.id) {
         view.attachSession(selected.terminal.session)
         view.onScreenUpdated()
-        input.requestFocus()
+        if (!draft.textMode) input.requestFocus()
     }
 
     // Landscape with the keyboard up leaves a sliver: give it all to the terminal.
@@ -369,6 +456,10 @@ fun TerminalScreen(
                                     sessions.fontSize.value = (fontSp + 1).coerceAtMost(MAX_FONT_SP)
                                 }
                             }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.snippets)) },
+                                onClick = { barMenu = false; managing = true },
+                            )
                             // Off while the device is being asked: a second tap would only ask again.
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.terminal_close_all, selected.device)) },
@@ -505,7 +596,8 @@ fun TerminalScreen(
                     }
                 }
                 HorizontalDivider(color = colors.termLine)
-                SnippetsRow(
+                // In landscape Text mode, leave room for the editor instead of another command row.
+                if (!draft.textMode || !compact) SnippetsRow(
                     snippets = snippets,
                     onSend = { text, run ->
                         if (state != SshState.Open) {
@@ -525,6 +617,20 @@ fun TerminalScreen(
                 )
                 ExtraKeys(
                     modifiers = modifiers,
+                    textMode = draft.textMode,
+                    onTextMode = ::setTextMode,
+                    textEditor = {
+                        if (!draft.expanded) TerminalTextComposer(
+                            sessionId = selected.id,
+                            value = editorValue,
+                            onValueChange = ::editDraft,
+                            focus = editorFocus,
+                            canInsert = state == SshState.Open && pasteAsk == null,
+                            onInsert = ::insertDraft,
+                            onExpand = { sessions.drafts.expand(selected.id, true); focusManager.clearFocus(force = true) },
+                            onKeys = { setTextMode(false) },
+                        )
+                    },
                     onKeyboard = { show -> if (show) input.showKeyboard(explicit = true) else input.hideKeyboard() },
                     // The same paste as the selection menu's: bracketed when the remote side asked for it.
                     onPaste = { view.currentSession?.onPasteTextFromClipboard() },
@@ -536,6 +642,34 @@ fun TerminalScreen(
             }
             if (fullscreen) CollapseButton { setFullscreen(false) }
         }
+    }
+    if (draft.textMode && draft.expanded) {
+        FullscreenTerminalText(onCollapse = { sessions.drafts.expand(selected.id, false) }) {
+            TerminalTextComposer(
+                sessionId = selected.id,
+                value = editorValue,
+                onValueChange = ::editDraft,
+                focus = editorFocus,
+                canInsert = state == SshState.Open && pasteAsk == null,
+                onInsert = ::insertDraft,
+                onExpand = { sessions.drafts.expand(selected.id, false) },
+                expanded = true,
+                onKeys = { setTextMode(false) },
+            )
+        }
+    }
+    // Compose after the full-screen editor so confirmation is always above it.
+    pasteAsk?.let { pending ->
+        PasteSheet(
+            pending.ask,
+            onPaste = {
+                if (pasteAsk === pending) {
+                    pasteAsk = null
+                    sendPaste(pending.session, it, pending.submission)
+                }
+            },
+            onDismiss = { if (pasteAsk === pending) pasteAsk = null },
+        )
     }
     if (managing) SnippetsSheet(snippets, snippetActions, onDismiss = { managing = false })
     // The session the dialog is for closed under it (its tunnel went): say so rather than vanish.

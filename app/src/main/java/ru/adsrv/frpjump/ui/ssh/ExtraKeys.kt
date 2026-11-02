@@ -29,6 +29,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -43,12 +44,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -160,7 +163,15 @@ fun balancedLines(count: Int, perLine: Int): List<Int> {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ExtraKeys(modifiers: Modifiers, onKeyboard: (show: Boolean) -> Unit, onPaste: () -> Unit, onKey: (ExtraKey) -> Unit) {
+fun ExtraKeys(
+    modifiers: Modifiers,
+    onKeyboard: (show: Boolean) -> Unit,
+    onPaste: () -> Unit,
+    onKey: (ExtraKey) -> Unit,
+    textMode: Boolean,
+    onTextMode: (Boolean) -> Unit,
+    textEditor: @Composable () -> Unit,
+) {
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
     Column(
@@ -169,8 +180,17 @@ fun ExtraKeys(modifiers: Modifiers, onKeyboard: (show: Boolean) -> Unit, onPaste
             .background(colors.termBar)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
+        if (!textMode) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { onTextMode(false) }, modifier = Modifier.testTag("terminal_mode_keys").semantics { selected = !textMode }) {
+                Text(stringResource(R.string.terminal_input_keys), color = if (!textMode) colors.onTerm else colors.termMuted)
+            }
+            TextButton(onClick = { onTextMode(true) }, modifier = Modifier.testTag("terminal_mode_text").semantics { selected = textMode }) {
+                Text(stringResource(R.string.terminal_input_text), color = if (textMode) colors.onTerm else colors.termMuted)
+            }
+        }
+        if (textMode) textEditor()
         AnimatedVisibility(
-            visible = keyboard,
+            visible = keyboard && !textMode,
             enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
             exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
         ) {

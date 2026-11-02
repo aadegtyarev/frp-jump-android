@@ -28,7 +28,9 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
         isFocusableInTouchMode = true
         descendantFocusability = FOCUS_BEFORE_DESCENDANTS
         addView(terminal, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        terminal.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) requestFocus() }
+        terminal.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) onEditorKeyboard?.invoke() ?: requestFocus()
+        }
     }
 
     /**
@@ -38,6 +40,9 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
      * taker shows the keyboard. See [TerminalTap].
      */
     var onTap: ((MotionEvent) -> Boolean)? = null
+
+    /** While Text mode owns the IME, terminal taps must return focus to that editor. */
+    var onEditorKeyboard: (() -> Unit)? = null
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var tapX = 0f
@@ -70,6 +75,7 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
      * for ⌨, so it shows after Back hid it and with a hardware keyboard too.
      */
     fun showKeyboard(explicit: Boolean = false) {
+        onEditorKeyboard?.let { it(); return }
         requestFocus()
         val flags = if (explicit) 0 else InputMethodManager.SHOW_IMPLICIT
         context.getSystemService(InputMethodManager::class.java).showSoftInput(this, flags)
@@ -81,6 +87,11 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
 
     private var activeConnection: InputConnection? = null
 
+    fun finishComposition() {
+        activeConnection?.finishComposingText()
+        activeConnection = null
+    }
+
     /** Switching mode finishes the old composition once, then asks the IME for a fresh connection. */
     var directInput: Boolean = true
         set(value) {
@@ -91,22 +102,26 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
             if (isFocused) context.getSystemService(InputMethodManager::class.java).restartInput(this)
         }
 
-    override fun onCheckIsTextEditor() = true
+    override fun onCheckIsTextEditor() = onEditorKeyboard == null
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        if (onEditorKeyboard != null) return null
         val connection = terminal.onCreateInputConnection(outAttrs) ?: return null
         outAttrs.inputType = terminalInputType(directInput)
         return (if (directInput) ComposingForwarder(connection) else connection).also { activeConnection = it }
     }
 
-    override fun onKeyPreIme(keyCode: Int, event: KeyEvent) = terminal.onKeyPreIme(keyCode, event)
+    override fun onKeyPreIme(keyCode: Int, event: KeyEvent) =
+        if (onEditorKeyboard == null) terminal.onKeyPreIme(keyCode, event) else super.onKeyPreIme(keyCode, event)
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent) = terminal.onKeyDown(keyCode, event)
+    override fun onKeyDown(keyCode: Int, event: KeyEvent) =
+        if (onEditorKeyboard == null) terminal.onKeyDown(keyCode, event) else super.onKeyDown(keyCode, event)
 
-    override fun onKeyUp(keyCode: Int, event: KeyEvent) = terminal.onKeyUp(keyCode, event)
+    override fun onKeyUp(keyCode: Int, event: KeyEvent) =
+        if (onEditorKeyboard == null) terminal.onKeyUp(keyCode, event) else super.onKeyUp(keyCode, event)
 
     override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent) =
-        terminal.onKeyMultiple(keyCode, repeatCount, event)
+        if (onEditorKeyboard == null) terminal.onKeyMultiple(keyCode, repeatCount, event) else super.onKeyMultiple(keyCode, repeatCount, event)
 
     /**
      * Keeps Termux's editable empty: composing text goes to the terminal as

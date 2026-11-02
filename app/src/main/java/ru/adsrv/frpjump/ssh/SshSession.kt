@@ -147,9 +147,10 @@ class SshSession(
      * it does not land in tmux's copy mode (see CopyModeGuard); bracketed if
      * the remote side asked for it. Main thread.
      */
-    fun paste(text: String) {
+    fun paste(text: String): Boolean {
+        if (_state.value != SshState.Open || !terminal.session.isRunning) return false
         typed()
-        terminal.paste(text)
+        return terminal.paste(text)
     }
 
     @Volatile

@@ -312,6 +312,30 @@ connection, not the SSH session. Hardware key events pass through in both
 modes. With direct input off, sticky Ctrl/Alt applies when the keyboard
 commits the text, not while it is still composing it.
 
+**Keys and Text.** Keys is the initial input surface. An explicit control
+switches to a visible multiline Text editor instead of the additional key
+rows above the common terminal-key row. This never guesses the remote
+application or changes the saved direct-input preference. The editor uses
+ordinary IME composition and suggestions; typing and editor Enter remain
+local. Expand opens the same draft and selection full screen. Collapse or
+Back returns to compact Text; switching to Keys does not send or discard it.
+The common terminal-key buttons still address the terminal, not the draft.
+
+Insert captures the exact SSH session and draft revision, applies the same
+paste checks described above, and adds no Enter. Revalidate session identity,
+open state and pending-close status before dispatch. A confirmation can never
+redirect insertion to a newly selected or replacement session. Accepted local
+paste clears only the captured revision, not newer edits. Cancellation,
+non-writable destination and failed local paste keep the draft. Local
+acceptance is not proof of remote receipt or processing. Drafts, selection
+and surface state live with each SSH session only in memory, not saved-state
+bundles, settings, logs or clipboard; closing or replacing a session releases
+its draft. They survive screen/configuration changes while the session owner
+lives, not process death. In landscape Text mode, hide the snippets row to
+leave space for the editor and common keys. An empty snippet list never
+shows the «+ Добавить команду» row; existing command chips remain, and
+⋮ → Commands opens their manager even when there are none.
+
 A tap on the command line moves the shell's cursor there: the app sends as
 many ← or → as there are characters between the cursor and the tapped cell
 (a wide character counts once, at most 1000, which stays under the terminal's 4 KB write queue), and the shell moves its

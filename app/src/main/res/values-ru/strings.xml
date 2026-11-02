@@ -622,7 +622,6 @@
     <string name="terminal_session_gone">Сессии уже нет</string>
     <string name="snippet_run">Выполнить</string>
     <string name="snippet_type">Ввести</string>
-    <string name="snippet_add_first">+ Добавить команду</string>
     <string name="snippets">Команды</string>
     <string name="snippets_hint">Нажатие вводит команду, долгое нажатие — вводит и сразу выполняет.</string>
     <string name="snippets_empty">Сохранённых команд пока нет. Они хранятся на телефоне и подходят для любого устройства.</string>
@@ -1075,4 +1074,11 @@
     <string name="settings_terminal">Терминал</string>
     <string name="setting_terminal_direct_input">Прямой ввод</string>
     <string name="setting_terminal_direct_input_hint">Отправлять символы сразу, без буферизации клавиатурой. Если выключено, клавиатура может накапливать текст и показывать подсказки.</string>
+    <string name="terminal_input_keys">Клавиши</string>
+    <string name="terminal_input_text">Текст</string>
+    <string name="terminal_text_draft">Текст для вставки</string>
+    <string name="terminal_text_insert">Вставить</string>
+    <string name="terminal_text_expand">Развернуть редактор текста</string>
+    <string name="terminal_text_collapse">Свернуть редактор текста</string>
+    <string name="terminal_text_insert_failed">Не удалось вставить текст. Черновик сохранён.</string>
 </resources>
