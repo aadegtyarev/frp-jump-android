@@ -1,6 +1,6 @@
 # Terminal text composer
 
-Status: operator-approved interaction model; implementation not started.
+Status: implemented; local validation completed for PR review.
 
 ## Goal
 
@@ -22,6 +22,9 @@ scenario 7. It does not replace the existing paste safety rules.
   it is not another panel stacked above those rows. The terminal remains
   visible above the compact editor. Keep the existing common terminal-key
   row available rather than stacking both sets of additional rows.
+- Operator-approved layout follow-up: an empty saved-command list must not
+  show the «+ Добавить команду» row. Existing command chips remain; the
+  terminal's ⋮ → Commands opens the manager even when the list is empty.
 - The compact editor is a visible multiline text field with ordinary IME
   composition. Provide actions to expand, insert and return to Keys.
   Suggestions and voice input depend on the installed keyboard.
@@ -114,5 +117,41 @@ labels for mode, expand/collapse and insertion controls.
     implementation. Follow the repository's version and release procedure
     when the feature is ready to ship.
 
-Environment for contract preparation: Pi.
+## Recorded validation
+
+- 1,146 JVM tests passed with no failures, errors or skips, including draft
+  lifecycle/revision guards, paste dispatch results and existing paste plans.
+- `assembleDebug`, `assembleDebugAndroidTest` and `lintDebug` passed.
+- Nine component/IME tests passed on a clean API 35 x86_64 emulator in each
+  configuration: portrait at 100%, portrait at 200% font, and landscape at
+  100%. Orientation and font scale are asserted inside the test activity.
+  The suite also rotates an active compact editor and checks text and
+  selection in both orientations.
+- The suite covers local typing/newlines, native InputConnection composition,
+  expand/collapse and Back, per-tab drafts, the common Ctrl+C button, and
+  removal of the empty command row while preserving existing commands.
+- Screenshots were inspected for compact/full-screen and large-font layouts.
+  Component tests do not establish end-to-end remote SSH delivery.
+- Physical phones, Gboard/Yandex-specific behavior, voice recognition and
+  TalkBack by ear have not been checked. No controller/broker writes were
+  made to validate this feature.
+
+To reproduce the component tests, use a clean emulator with no enrolled
+profiles or stored credentials. Build and run with the normal Android
+instrumentation runner:
+
+```sh
+./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
+./gradlew connectedDebugAndroidTest
+./gradlew connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.composerOrientation=landscape
+```
+
+For the 200% run, set that emulator's system font scale to `2.0` first and
+pass `-Pandroid.testInstrumentationRunnerArguments.composerFontScale=2.0`.
+Restore the emulator font scale to `1.0` afterwards. Tests use only the
+component host, but the real app Application starts; do not target a phone
+containing production profiles for these checks.
+
+Environment: Pi.
 Model: openai/gpt-6.1-sol.

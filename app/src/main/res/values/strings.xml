@@ -590,7 +590,6 @@
     <string name="terminal_session_gone">The session is gone</string>
     <string name="snippet_run">Run</string>
     <string name="snippet_type">Type</string>
-    <string name="snippet_add_first">+ Add command</string>
     <string name="snippets">Commands</string>
     <string name="snippets_hint">Tap a command to type it; long press types it and presses Enter.</string>
     <string name="snippets_empty">No saved commands yet. They are kept on this phone for every device.</string>
@@ -1027,4 +1026,11 @@
     <string name="settings_terminal">Terminal</string>
     <string name="setting_terminal_direct_input">Direct input</string>
     <string name="setting_terminal_direct_input_hint">Send characters immediately, without keyboard composition. Off: the keyboard can buffer text and show suggestions.</string>
+    <string name="terminal_input_keys">Keys</string>
+    <string name="terminal_input_text">Text</string>
+    <string name="terminal_text_draft">Text to insert</string>
+    <string name="terminal_text_insert">Insert</string>
+    <string name="terminal_text_expand">Expand text editor</string>
+    <string name="terminal_text_collapse">Collapse text editor</string>
+    <string name="terminal_text_insert_failed">Could not insert text. The draft was kept.</string>
 </resources>

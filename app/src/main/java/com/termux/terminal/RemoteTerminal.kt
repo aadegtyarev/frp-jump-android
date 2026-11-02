@@ -140,8 +140,10 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     private var closed = false
 
     /** Pastes [text] as typed input (bracketed if the remote side asked for it). */
-    fun paste(text: String) {
-        if (session.isRunning) session.mEmulator.paste(text)
+    fun paste(text: String): Boolean {
+        if (!session.isRunning) return false
+        session.mEmulator.paste(text)
+        return true
     }
 
     /** Whether the remote side turned bracketed paste on (see [bracketedPasteOn]). */

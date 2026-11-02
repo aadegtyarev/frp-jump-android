@@ -39,6 +39,14 @@ class TerminalDrafts {
         )
     }
 
+    /** Reject late callbacks from a disposed editor surface or a previously selected tab. */
+    fun editFromSurface(id: Int, text: String, selectionStart: Int, selectionEnd: Int, surfaceExpanded: Boolean, selectedId: Int): Boolean {
+        val live = values.value[id] ?: return false
+        if (selectedId != id || !live.textMode || live.expanded != surfaceExpanded) return false
+        edit(id, text, selectionStart, selectionEnd)
+        return true
+    }
+
     fun textMode(id: Int, enabled: Boolean) = change(id) { it.copy(textMode = enabled, expanded = if (enabled) it.expanded else false) }
 
     fun expand(id: Int, expanded: Boolean) = change(id) { it.copy(textMode = true, expanded = expanded) }

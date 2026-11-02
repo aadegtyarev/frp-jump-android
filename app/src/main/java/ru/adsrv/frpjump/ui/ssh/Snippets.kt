@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,12 +64,13 @@ class SnippetActions(
 
 /**
  * The saved commands above the extra keys. Tap types a command, long
- * press types it and presses Enter; the last chip ("+ Add command" while
- * there are none) opens the manager, which says so.
+ * press types it and presses Enter; the last + chip opens the manager.
+ * Empty lists take no room; the terminal's Commands menu still opens the manager.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SnippetsRow(snippets: List<Snippet>, onSend: (text: String, run: Boolean) -> Unit, onManage: () -> Unit) {
+    if (snippets.isEmpty()) return
     val colors = AppTheme.colors
     val haptics = LocalHapticFeedback.current
     val runLabel = stringResource(R.string.snippet_run)
@@ -77,7 +79,8 @@ fun SnippetsRow(snippets: List<Snippet>, onSend: (text: String, run: Boolean) ->
             .fillMaxWidth()
             .background(colors.termBar)
             .horizontalScroll(rememberScrollState())
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp),
+            .padding(start = 8.dp, end = 8.dp, top = 6.dp)
+            .testTag("terminal_snippets_row"),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         snippets.forEach { snippet ->
@@ -105,7 +108,7 @@ fun SnippetsRow(snippets: List<Snippet>, onSend: (text: String, run: Boolean) ->
         }
         Chip(Modifier.clickable(onClick = onManage)) {
             Text(
-                if (snippets.isEmpty()) stringResource(R.string.snippet_add_first) else "+",
+                "+",
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 color = colors.termMuted,

@@ -686,10 +686,24 @@ filling in the user name leaves the saved password alone.
   word and offer suggestions before sending it. The choice is saved
   for all terminals. With it off, sticky Ctrl/Alt applies when the keyboard
   commits text; hardware key events work in either mode.
+- The Keys/Text switch changes what sits above the common terminal-key row.
+  Text replaces the additional keys with a visible multiline editor, so
+  the keyboard can compose words and offer corrections without sending
+  anything to SSH. Expand opens the same draft full screen; collapse or
+  Back returns to the compact editor. Enter in the editor adds a newline.
+  Insert uses the normal paste checks and does not add terminal Enter;
+  multiline text without bracketed paste still asks first. An accepted
+  insertion clears only the submitted draft revision. Canceling or a
+  failed insertion keeps it. The common terminal-key buttons act on the
+  terminal without submitting the draft. Drafts and selections are separate
+  per SSH session, kept only in process memory, and released when the
+  session is closed or replaced. They are not restored after process death.
+  In landscape Text mode the snippets row is hidden to leave editing room.
 - Snippets: a row of saved commands above the keys. Tap types a command
   without Enter (to finish it first), long press types it and presses
-  Enter; the manager says so. The last chip ("+ Add command" while there
-  are none) opens it: add, change, delete (with Undo, as connections),
+  Enter; the manager says so. An empty list shows no row. The last + chip
+  or the terminal's ⋮ → Commands opens the manager: add, change, delete
+  (with Undo, as connections),
   ↑ / ↓ to reorder. One list per
   phone, for every profile and device, in `snippets.json`
   (`snippets/SnippetStore.kt`; a file that does not parse is kept as
