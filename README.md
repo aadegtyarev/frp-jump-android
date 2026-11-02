@@ -706,7 +706,12 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   multiline text without bracketed paste still asks first. An accepted
   insertion clears only the submitted draft revision, closes the editor
   and restores the main terminal keys with additional rows collapsed.
-  Canceling or a failed insertion keeps the draft and editor. The >_ action returns to terminal keys without
+  Canceling or a failed insertion keeps the draft and editor. Hold Insert to
+  explicitly paste and send one Enter. The return glyph marks this secondary
+  action, as the pencil on ⌨ marks the editor action. Unsafe multiline input
+  still asks, with Enter shown on both confirmation choices. Pending sends
+  retain the exact client/output generation; execute is canceled on tab change.
+  The >_ action returns to terminal keys without
   submitting or discarding the draft; additional keys are collapsed again.
   Drafts and selections are separate
   per SSH session, kept only in process memory, and released when the

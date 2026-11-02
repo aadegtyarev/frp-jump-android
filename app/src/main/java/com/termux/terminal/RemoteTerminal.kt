@@ -204,6 +204,23 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         true
     }
 
+    /** Opaque connection generation; retaining it never permits retargeting after reconnect. */
+    class InputTarget internal constructor(internal val owner: Any, internal val stream: OutputStream, internal val generation: Long)
+
+    fun captureInputTarget(): InputTarget? = synchronized(inputHandover) {
+        if (!session.isRunning) null else output?.let { InputTarget(inputHandover, it, inputGeneration) }
+    }
+
+    /** Literal paste plus optional explicit CR are enqueued in one handover-protected transaction. */
+    fun paste(text: String, target: InputTarget, enter: Boolean): Boolean = synchronized(inputHandover) {
+        if (target.owner !== inputHandover || !session.isRunning || output !== target.stream || inputGeneration != target.generation) return false
+        // Never turn an empty/sanitized-away or control-only payload into a bare Enter.
+        if (enter && text.none { !it.isWhitespace() && !it.isISOControl() }) return false
+        session.mEmulator.paste(text)
+        if (enter) session.write("\r")
+        true
+    }
+
     /** Whether the remote side turned bracketed paste on (see [bracketedPasteOn]). */
     val bracketedPaste: Boolean get() = bracketedPasteOn(session.mEmulator)
 

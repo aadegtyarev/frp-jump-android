@@ -31,7 +31,7 @@ scenario 7. It does not replace the existing paste safety rules.
   Suggestions and voice input depend on the installed keyboard.
 - Expand opens the same draft in a full-screen editor. Collapse and Back
   return to the compact editor without inserting or discarding anything.
-- Insert targets the exact current SSH tab. It inserts text, never an
+- Short Insert targets the exact current SSH tab. It inserts text, never an
   extra Enter. Terminal Enter remains a separate explicit action.
 - Drafts are independent per SSH session. Switching tabs or returning to
   Keys does not lose them. A closed tab releases its draft; a different
@@ -77,12 +77,36 @@ draft nor close its editor. Duplicate completion callbacks must not close an
 editor reopened after insertion. Success here means the local paste call
 completed, not proof that a remote application received or processed the text.
 
+## Explicit long-press execution
+
+- Short Insert remains paste-only. Holding Insert explicitly requests the
+  same paste followed by exactly one CR (Enter), outside bracketed-paste
+  framing. Use a standard combined short/long control: release after a long
+  press must not also trigger short insertion. Empty/unavailable controls
+  dispatch neither action.
+- A small pencil at the keyboard button's upper corner marks its existing
+  long-press editor action; a small return glyph marks Insert's long action.
+  These are decorative secondary symbols, not separate buttons or permanent
+  instruction rows. Short/long actions have explicit accessibility labels.
+- Capture the exact SSH client, terminal instance and output generation before
+  confirmation. Revalidate at dispatch; an execute intent is rejected after
+  selecting another tab. Never redirect a stale confirmation to a replacement
+  connection, even if it reuses an output object.
+- Paste and its explicit CR are enqueued under the same connection-handover
+  lock. Do not append CR later through the currently selected tab. Local
+  acceptance still does not acknowledge remote receipt or command execution.
+- The existing unsafe multiline confirmation is mandatory. In execute mode,
+  both raw-paste and join-lines choices explicitly include Enter and the sheet
+  warns that joining lines does not remove that final Enter. Cancel sends
+  nothing; failure keeps the editor/draft. The normal success/return-to-Keys
+  revision safeguards apply to both gestures.
+
 ## Non-goals
 
 - Automatic mode detection from screen contents, alternate-screen state,
   process names or escape sequences.
 - A new local shell, rich-text editor, persistent notes or draft sync.
-- Automatic prompt submission or a combined Insert-and-Enter action.
+- Automatic prompt submission on short Insert or any implicit Enter.
 - Shipping the paused standalone Ctrl/Alt prototype as an unrelated fix.
 - Replacing the existing paste warnings with an assumption that TUI input
   is always safe.

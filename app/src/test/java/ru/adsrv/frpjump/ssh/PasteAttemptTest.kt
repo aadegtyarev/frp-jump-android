@@ -4,6 +4,26 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PasteAttemptTest {
+    @Test fun `explicit execution requires the same selection token and destination`() {
+        val selection = Any()
+        assertEquals(true, pasteExecutionSelected(selection, selection, 1, 1))
+        assertEquals(false, pasteExecutionSelected(selection, selection, 1, 2))
+        assertEquals(false, pasteExecutionSelected(null, selection, 1, 1))
+    }
+
+    @Test fun `switching away and back cannot revive an old execute confirmation`() {
+        val captured = Pair("tab", 1)
+        val reselected = Pair("tab", 1)
+        assertEquals(captured, reselected)
+        var writes = 0
+        val drafts = TerminalDrafts().apply { open(1); textMode(1, true); edit(1, "keep", 4, 4) }
+        val before = drafts.state.value
+        val result = attemptPaste({ pasteExecutionSelected(captured, reselected, 1, 1) }) { writes++; true }
+        assertEquals(PasteAttempt.UNAVAILABLE, result)
+        assertEquals(0, writes)
+        assertEquals(before, drafts.state.value)
+    }
+
     @Test fun `changed selection does not retarget a captured paste`() {
         val captured = Any()
         val otherTab = Any()

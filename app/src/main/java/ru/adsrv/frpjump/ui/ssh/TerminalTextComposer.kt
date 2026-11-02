@@ -3,7 +3,15 @@ package ru.adsrv.frpjump.ui.ssh
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -61,6 +69,7 @@ fun TerminalTextComposer(
     onExpand: () -> Unit,
     expanded: Boolean = false,
     onKeys: () -> Unit,
+    onInsertAndEnter: () -> Unit,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -74,7 +83,7 @@ fun TerminalTextComposer(
         // Share one row with the actions: stacking chrome would hide the whole terminal above the IME.
         Row(Modifier.fillMaxWidth().then(frame), verticalAlignment = Alignment.CenterVertically) {
             ComposerField(value, onValueChange, focus, Modifier.weight(1f).heightIn(min = 48.dp, max = 80.dp))
-            ComposerActions(false, enabled, onKeys, onExpand, onInsert, Modifier.widthIn(min = 180.dp, max = 320.dp))
+            ComposerActions(false, enabled, onKeys, onExpand, onInsert, onInsertAndEnter, Modifier.widthIn(min = 180.dp, max = 320.dp))
         }
     } else {
         Column((if (expanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).then(frame)) {
@@ -82,11 +91,12 @@ fun TerminalTextComposer(
                 value, onValueChange, focus,
                 if (expanded) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 160.dp),
             )
-            ComposerActions(expanded, enabled, onKeys, onExpand, onInsert, Modifier.fillMaxWidth())
+            ComposerActions(expanded, enabled, onKeys, onExpand, onInsert, onInsertAndEnter, Modifier.fillMaxWidth())
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ComposerActions(
     expanded: Boolean,
@@ -94,6 +104,7 @@ private fun ComposerActions(
     onKeys: () -> Unit,
     onExpand: () -> Unit,
     onInsert: () -> Unit,
+    onInsertAndEnter: () -> Unit,
     modifier: Modifier,
 ) {
     val colors = AppTheme.colors
@@ -110,8 +121,29 @@ private fun ComposerActions(
                 tint = colors.onTerm,
             )
         }
-        TextButton(onClick = onInsert, enabled = enabled, modifier = Modifier.testTag("terminal_text_insert")) {
-            Text(stringResource(R.string.terminal_text_insert), color = if (enabled) colors.onTerm else colors.termMuted)
+        val insertLabel = stringResource(R.string.terminal_text_insert)
+        Box(
+            Modifier.testTag("terminal_text_insert").heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .combinedClickable(
+                    enabled = enabled, role = Role.Button,
+                    onClickLabel = insertLabel, onClick = onInsert,
+                    onLongClickLabel = stringResource(R.string.terminal_text_insert_enter),
+                    onLongClick = onInsertAndEnter,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                val tint = if (enabled) colors.onTerm else colors.termMuted
+                Text(insertLabel, color = tint, fontSize = 14.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
+                Canvas(Modifier.align(Alignment.Top).padding(start = 3.dp).size(11.dp)) {
+                    val u = size.width / 10f
+                    drawLine(tint, Offset(8*u, u), Offset(8*u, 6*u), 1.2f*u)
+                    drawLine(tint, Offset(8*u, 6*u), Offset(u, 6*u), 1.2f*u)
+                    drawLine(tint, Offset(u, 6*u), Offset(4*u, 3*u), 1.2f*u)
+                    drawLine(tint, Offset(u, 6*u), Offset(4*u, 9*u), 1.2f*u)
+                }
+            }
         }
     }
 }

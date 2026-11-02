@@ -31,6 +31,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -40,6 +41,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsDisplayed
+import ru.adsrv.frpjump.ssh.PastePlan
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -121,13 +125,15 @@ class TerminalTextComposerTest {
         val edit: (TextFieldValue) -> Unit = {
             if (currentSurface.value === surface && drafts.editFromSurface(id, it.text, it.selection.start, it.selection.end, draft.expanded, selected.intValue)) value = it
         }
-        val insert = {
+        val submit: (Boolean) -> Unit = { enter ->
             drafts.submission(id)?.let {
-                inserted += it.text
+                inserted += it.text + if (enter) "\r" else ""
                 drafts.inserted(it)
             }
             Unit
         }
+        val insert = { submit(false) }
+        val insertAndEnter = { submit(true) }
         Column(Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding()) {
             Spacer(Modifier.weight(1f).fillMaxWidth().background(Color.Black))
             ExtraKeys(
@@ -136,7 +142,7 @@ class TerminalTextComposerTest {
                 textEditor = {
                     if (!draft.expanded) TerminalTextComposer(
                         id, value, edit, focus, true, insert,
-                        onExpand = { drafts.expand(id, true) }, onKeys = { drafts.textMode(id, false) },
+                        onExpand = { drafts.expand(id, true) }, onKeys = { drafts.textMode(id, false) }, onInsertAndEnter = insertAndEnter,
                     )
                 },
             )
@@ -144,7 +150,7 @@ class TerminalTextComposerTest {
         if (draft.expanded) FullscreenTerminalText(onCollapse = { drafts.expand(id, false) }) {
             TerminalTextComposer(
                 id, value, edit, focus, true, insert,
-                onExpand = { drafts.expand(id, false) }, expanded = true, onKeys = { drafts.textMode(id, false) },
+                onExpand = { drafts.expand(id, false) }, expanded = true, onKeys = { drafts.textMode(id, false) }, onInsertAndEnter = insertAndEnter,
             )
         }
     }
@@ -234,6 +240,53 @@ class TerminalTextComposerTest {
         compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
         compose.onNodeWithTag("terminal_main_keys").assertExists()
         compose.onNodeWithTag("terminal_extra_rows").assertDoesNotExist()
+    }
+
+    @Test fun longInsertSendsOneExplicitEnterInBothEditorsWithoutShortClickOnRelease() {
+        start()
+        capture("keyboard-pencil")
+        for (expanded in listOf(false, true)) {
+            enterText()
+            val text = if (expanded) "expanded" else "compact"
+            compose.onNodeWithTag("terminal_text_editor").performTextInput(text)
+            if (expanded) compose.onNodeWithTag("terminal_text_expand").performClick()
+            val action = compose.onNodeWithTag("terminal_text_insert")
+            assertEquals(compose.activity.getString(R.string.terminal_text_insert_enter), action.fetchSemanticsNode().config[SemanticsActions.OnLongClick].label)
+            capture(if (expanded) "insert-enter-expanded" else "insert-enter-compact")
+            action.performTouchInput { longClick() }
+            compose.onNodeWithTag("terminal_text_editor").assertDoesNotExist()
+            compose.onNodeWithTag("terminal_text_fullscreen").assertDoesNotExist()
+            compose.onNodeWithTag("terminal_main_keys").assertExists()
+            compose.runOnIdle { assertEquals(if (expanded) listOf("compact\r", "expanded\r") else listOf("compact\r"), inserted) }
+        }
+    }
+
+    @Test fun longInsertIsDisabledForEmptyContent() {
+        start()
+        enterText()
+        compose.onNodeWithTag("terminal_text_insert").assertIsNotEnabled().performTouchInput { longClick() }
+        compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
+        compose.onNodeWithTag("terminal_text_editor").assertExists()
+    }
+
+    @Test fun executeConfirmationWarnsAndCancelDoesNothingWhileJoinIsExplicit() {
+        val open = mutableStateOf(true)
+        compose.setContent {
+            FrpJumpTheme {
+                if (open.value) PasteSheet(
+                    PastePlan.Ask("first\nsecond", 2),
+                    onPaste = { inserted += it + "\r" },
+                    onDismiss = { open.value = false }, execute = true,
+                )
+            }
+        }
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_paste_enter_warning), substring = true).assertExists()
+        compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
+        Espresso.pressBack()
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_paste_enter_warning), substring = true).assertDoesNotExist()
+        compose.runOnIdle { assertEquals(emptyList<String>(), inserted); open.value = true }
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_paste_join_enter)).performScrollTo().assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(listOf("first second\r"), inserted) }
     }
 
     @Test fun insertingFromFullscreenReturnsMainKeysWithoutEnter() {
@@ -341,8 +394,12 @@ class TerminalTextComposerTest {
         }
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("неподтверждённое")
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
-        compose.onNodeWithTag("terminal_text_insert").performClick()
+        // Composing via a native InputConnection also starts asynchronous IME/inset work.
+        // Wait for that platform layout before injecting a coordinate-based short tap.
+        capture("native-ime-before-insert")
+        compose.onNodeWithTag("terminal_text_insert").assertIsEnabled().performClick()
         compose.runOnIdle {
+            assertEquals("short insertion dispatch count", 1, inserted.size)
             assertEquals(listOf("неподтверждённое"), inserted)
             assertEquals("", drafts.state.value.getValue(1).text)
         }

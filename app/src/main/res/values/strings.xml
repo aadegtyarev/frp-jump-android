@@ -1070,4 +1070,8 @@
     <string name="diagnostics_mib">MiB</string>
     <string name="diagnostics_gib">GiB</string>
     <string name="diagnostics_buffer_unknown">Current buffer state unavailable.</string>
+    <string name="terminal_text_insert_enter">Insert and press Enter</string>
+    <string name="terminal_paste_enter_warning">This action also sends Enter after pasting, including when line breaks are removed.</string>
+    <string name="terminal_paste_run_enter">Paste + Enter</string>
+    <string name="terminal_paste_join_enter">Remove line breaks + Enter</string>
 </resources>
