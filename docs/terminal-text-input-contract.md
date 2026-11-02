@@ -54,6 +54,11 @@ Use the existing `planPaste` / `PastePlan` decision path and
   unavailable, including the conservative tmux handling.
 - Confirmation retains the exact destination session; switching tabs must
   not redirect a pending insertion. Revalidate the destination before send.
+- An outbound chunk belongs to the output/generation captured when it leaves
+  the terminal queue, not whichever output is current after a blocking tmux
+  guard. Connection handover discards old queued input. A paste cannot be
+  split by handover while it is waiting for queue space; keep the writer
+  free to drain it. Idle writers wait on the queue, without polling.
 - Canceling the confirmation leaves the draft intact and sends nothing.
 - A closed, disconnected or otherwise non-writable destination must not
   cause text to be sent to a replacement tab. Keep the draft and explain

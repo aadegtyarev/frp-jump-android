@@ -3,6 +3,7 @@ package com.termux.terminal
 import java.io.IOException
 import ru.adsrv.frpjump.settings.DEFAULT_TERMINAL_HISTORY_ROWS
 import ru.adsrv.frpjump.ssh.diagnostics.TerminalMetrics
+import ru.adsrv.frpjump.ssh.diagnostics.ObservationToken
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.LinkedBlockingQueue
@@ -47,6 +48,8 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     /** Where typed keys go: the open shell's stream, or null while there is none (keys are dropped). */
     @Volatile
     private var output: OutputStream? = null
+    private val inputHandover = Any()
+    @Volatile private var inputGeneration = 0L
 
     /**
      * Called on the writer thread with each chunk of keys before it goes to
@@ -60,11 +63,31 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         thread(name = "terminal-to-ssh", isDaemon = true) {
             val buffer = ByteArray(BUFFER)
             while (true) {
-                val count = session.mTerminalToProcessIOQueue.read(buffer, true)
+                val count: Int
+                val out: OutputStream?
+                val owner: Long
+                val epoch: Long
+                val token: ObservationToken?
+                val queue = session.mTerminalToProcessIOQueue
+                synchronized(queue) {
+                    // Read and bind to an output under the same monitor as pump's
+                    // queue drain/handover. Waiting releases it, with no polling.
+                    var read = queue.read(buffer, false)
+                    while (read == 0) {
+                        try {
+                            @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+                            (queue as java.lang.Object).wait()
+                        } catch (_: InterruptedException) { /* Same policy as ByteQueue.read(block=true). */ }
+                        read = queue.read(buffer, false)
+                    }
+                    count = read
+                    out = output
+                    owner = inputGeneration
+                    epoch = metrics.currentGeneration()
+                    token = metrics.token()
+                }
                 if (count < 0) break
-                if (output == null) continue
-                val epoch = metrics.currentGeneration()
-                val token = metrics.token()
+                if (out == null || inputGeneration != owner || output !== out) continue
                 val started = if (token != null) System.nanoTime() else 0L
                 // May hold the bytes for a round trip to the device (tmux copy mode); keys typed meanwhile wait in the queue.
                 try {
@@ -72,7 +95,7 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                 } finally {
                     if (token != null) metrics.beforeWriteFinished(token, System.nanoTime() - started)
                 }
-                val out = output ?: continue
+                if (inputGeneration != owner || output !== out) continue
                 try {
                     out.write(buffer, 0, count)
                     out.flush()
@@ -91,9 +114,19 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
      * with a new connection's streams.
      */
     fun pump(input: InputStream, output: OutputStream, onEnd: (IOException?) -> Unit) {
-        val epoch = metrics.connectionOpened()
-        this.output = output
-        synchronized(session) { if (!closed) session.mShellPid = Int.MAX_VALUE }
+        val epoch: Long
+        synchronized(inputHandover) {
+            if (closed) return
+            synchronized(session.mTerminalToProcessIOQueue) {
+                // Never replay the preceding shell's queued input into this one.
+                val discarded = ByteArray(BUFFER)
+                while (session.mTerminalToProcessIOQueue.read(discarded, false) > 0) { }
+                inputGeneration++
+                epoch = metrics.connectionOpened()
+                this.output = output
+            }
+            synchronized(session) { session.mShellPid = Int.MAX_VALUE }
+        }
         writer
         thread(name = "ssh-to-terminal", isDaemon = true) {
             val buffer = ByteArray(BUFFER)
@@ -118,9 +151,12 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
      * Between connections (reconnecting): typed keys are dropped, not kept
      * for the next shell; the screen stays. [pump] takes keys again.
      */
-    fun pause() {
-        output = null
-        metrics.connectionClosed()
+    fun pause() = synchronized(inputHandover) {
+        synchronized(session.mTerminalToProcessIOQueue) {
+            output = null
+            inputGeneration++
+            metrics.connectionClosed()
+        }
         synchronized(session) { session.mShellPid = -1 }
     }
 
@@ -143,9 +179,12 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     }
 
     /** Stops taking keys; the screen and its scrollback stay readable. */
-    fun finish() {
-        output = null
-        metrics.connectionClosed()
+    fun finish() = synchronized(inputHandover) {
+        synchronized(session.mTerminalToProcessIOQueue) {
+            output = null
+            inputGeneration++
+            metrics.connectionClosed()
+        }
         synchronized(session) {
             closed = true
             session.mShellPid = -1
@@ -157,10 +196,12 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     private var closed = false
 
     /** Pastes [text] as typed input (bracketed if the remote side asked for it). */
-    fun paste(text: String): Boolean {
-        if (!session.isRunning) return false
+    fun paste(text: String): Boolean = synchronized(inputHandover) {
+        if (output == null || !session.isRunning) return false
+        // ByteQueue.write may wait for space. Keep connection handover out of
+        // this whole paste, while the writer remains free to drain the queue.
         session.mEmulator.paste(text)
-        return true
+        true
     }
 
     /** Whether the remote side turned bracketed paste on (see [bracketedPasteOn]). */
