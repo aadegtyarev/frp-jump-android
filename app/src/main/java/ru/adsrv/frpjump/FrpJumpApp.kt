@@ -324,6 +324,7 @@ class FrpJumpApp : Application() {
             sshKeys, sshPasswords, keyComment = ::sshKeyComment,
             tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))),
             historyRows = { settings.settings.value.terminalHistoryRows },
+            visible = visible,
         )
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
         // Files handed to other apps a day ago or more (Open with, Share), and viewer copies

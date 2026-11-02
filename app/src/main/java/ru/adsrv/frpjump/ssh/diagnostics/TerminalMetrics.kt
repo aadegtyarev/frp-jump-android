@@ -138,6 +138,7 @@ class TerminalMetrics(val historyLimit: Int, private val now: () -> Long = Syste
         resetRates()
     }
 
+    @Synchronized fun isObserving(): Boolean = observing
     @Synchronized fun currentGeneration(): Long = generation
     @Synchronized fun token(): ObservationToken? = if (connected && observing) ObservationToken(generation, observation) else null
     private fun accepts(token: ObservationToken): Boolean = connected && observing && token.connection == generation && token.observation == observation
