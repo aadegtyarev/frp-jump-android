@@ -10,6 +10,11 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collectLatest
+import ru.adsrv.frpjump.ssh.diagnostics.TerminalSessionReport
+import ru.adsrv.frpjump.ssh.diagnostics.TerminalMetricsSnapshot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +66,8 @@ class SshSessions(
 ) {
     private val _sessions = MutableStateFlow<List<SshSession>>(emptyList())
     val sessions: StateFlow<List<SshSession>> = _sessions
+    private val _diagnostics = MutableStateFlow<Map<TunnelRef, List<TerminalSessionReport>>>(emptyMap())
+    val diagnostics: StateFlow<Map<TunnelRef, List<TerminalSessionReport>>> = _diagnostics
     private var nextId = 1
 
     /** Session-bound text composers; never written to disk or saved Android state. */
@@ -93,6 +100,48 @@ class SshSessions(
     var listener: TerminalScreenListener? = null
 
     init {
+        // Main-thread reads of Termux state; no StateFlow update per byte/frame.
+        // A hidden/removed tab releases markers, and hidden time is not a rate baseline.
+        scope.launch(Dispatchers.Main) {
+            var previous = emptyList<SshSession>()
+            var samples = emptyMap<Int, Pair<Long, TerminalMetricsSnapshot>>()
+            try {
+                combine(_sessions, env.visible, hidden) { list, shown, h ->
+                    list.filterNot { sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) } to shown
+                }.collectLatest { (list, shown) ->
+                    previous.filterNot { it in list }.forEach { it.terminal.metrics.setObserving(false) }
+                    previous = list
+                    list.forEach { it.terminal.metrics.setObserving(shown) }
+                    fun publish() {
+                        val at = System.nanoTime()
+                        val next = mutableMapOf<Int, Pair<Long, TerminalMetricsSnapshot>>()
+                        _diagnostics.value = list.groupBy { TunnelRef(it.profile, it.device, it.port) }.mapValues { (_, tabs) ->
+                            tabs.map { tab ->
+                                val metrics = tab.terminal.metrics
+                                val epoch = metrics.currentGeneration()
+                                // Opening another tab must not accelerate this tab's numeric sampling.
+                                val cached = samples[tab.id]?.takeIf {
+                                    it.first == epoch && it.second.observed == shown && at - it.second.atNs < 1_000_000_000L
+                                }
+                                val snapshot = cached?.second ?: run {
+                                    val emulator = tab.terminal.session.emulator
+                                    metrics.bufferState(emulator.screen.activeTranscriptRows, emulator.isAlternateBufferActive)
+                                    metrics.snapshot()
+                                }
+                                next[tab.id] = snapshot.connectionGeneration to snapshot
+                                TerminalSessionReport(tab.id, snapshot)
+                            }
+                        }
+                        samples = next
+                    }
+                    publish()
+                    if (shown && list.isNotEmpty()) while (isActive) { delay(1000); publish() }
+                }
+            } finally {
+                previous.forEach { it.terminal.metrics.setObserving(false) }
+                _diagnostics.value = emptyMap()
+            }
+        }
         scope.launch(Dispatchers.Main) {
             tunnelsUp.distinctUntilChanged().collect { up ->
                 _sessions.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }

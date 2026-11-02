@@ -1,6 +1,9 @@
 package ru.adsrv.frpjump.ui.ssh
 
 import android.content.Context
+import android.graphics.Canvas
+import android.os.Debug
+import ru.adsrv.frpjump.ssh.diagnostics.TerminalMetrics
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -43,6 +46,16 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
 
     /** While Text mode owns the IME, terminal taps must return focus to that editor. */
     var onEditorKeyboard: (() -> Unit)? = null
+
+    /** Only measures child draw CPU work; never invalidates or schedules a frame. */
+    var diagnostics: TerminalMetrics? = null
+
+    override fun dispatchDraw(canvas: Canvas) {
+        val metrics = diagnostics
+        if (metrics?.isObserving() != true) { super.dispatchDraw(canvas); return }
+        val started = Debug.threadCpuTimeNanos()
+        try { super.dispatchDraw(canvas) } finally { metrics.drawFinished(Debug.threadCpuTimeNanos() - started) }
+    }
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var tapX = 0f

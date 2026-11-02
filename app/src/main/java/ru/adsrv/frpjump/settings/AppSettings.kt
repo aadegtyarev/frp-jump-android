@@ -11,6 +11,8 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -83,6 +85,8 @@ data class AppSettings(
     @SerialName("terminal_fullscreen") val terminalFullscreen: Boolean = false,
     /** Send IME composing text immediately by default; an explicit saved choice takes precedence. */
     @SerialName("terminal_direct_input") val terminalDirectInput: Boolean = true,
+    /** Main terminal buffer rows (visible rows included), used only when a new terminal is created. */
+    @SerialName("terminal_history_rows") val terminalHistoryRows: Int = DEFAULT_TERMINAL_HISTORY_ROWS,
     /** Files › ⋮ › Show hidden files: names starting with a dot. */
     @SerialName("files_show_hidden") val filesShowHidden: Boolean = false,
     /** The phone folder downloads go to: a document tree URI with a persisted grant, chosen once. */
@@ -120,6 +124,7 @@ class SettingsStore(private val storage: TextStorage) {
     fun update(change: (AppSettings) -> AppSettings) {
         val next = change(_settings.value)
         require(portRangeProblem(next.localPortFirst, next.localPortLast) == null) { "invalid local port range" }
+        require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
         if (next == _settings.value) return
         storage.write(WireJson.encodeToString(next))
         _settings.value = next
@@ -136,7 +141,12 @@ class SettingsStore(private val storage: TextStorage) {
 
     private fun decode(text: String): AppSettings {
         val json = WireJson.parseToJsonElement(text).jsonObject
-        val settings = WireJson.decodeFromJsonElement<AppSettings>(json)
+        // Sanitize this field independently, so an unknown value/type does not reset unrelated settings.
+        val rawHistory = json["terminal_history_rows"] as? JsonPrimitive
+        val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
+            ?: DEFAULT_TERMINAL_HISTORY_ROWS
+        val normalized = JsonObject(json + ("terminal_history_rows" to JsonPrimitive(history)))
+        val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
         return if ("direct" !in json && relayOnly != null) settings.copy(direct = !relayOnly) else settings

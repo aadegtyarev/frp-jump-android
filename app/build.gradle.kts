@@ -27,8 +27,8 @@ android {
         minSdk = 29
         targetSdk = 35
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 42
-        versionName = "0.3.30"
+        versionCode = 43
+        versionName = "0.3.31"
         // Shown in Settings › App; the binary is built by scripts/build-frpc.sh (FRP_VERSION).
         buildConfigField("String", "FRPC_VERSION", "\"0.70.0\"")
         // Settings › Version looks for newer releases here (public GitHub Releases, no token).
@@ -167,4 +167,5 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.espresso.core)
     testImplementation(libs.junit)
+    testImplementation(libs.sshd.test.server)
 }

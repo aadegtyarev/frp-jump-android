@@ -288,6 +288,7 @@ fun TerminalScreen(
     }
     val inputSettings by (context.applicationContext as FrpJumpApp).settings.settings.collectAsStateWithLifecycle()
     SideEffect {
+        input.diagnostics = selected.terminal.metrics
         input.directInput = inputSettings.terminalDirectInput
         input.onEditorKeyboard = if (draft.textMode) ({ editorFocus.requestFocus(); keyboard?.show(); Unit }) else null
     }
@@ -365,7 +366,7 @@ fun TerminalScreen(
                 pasteAsk = PendingTerminalPaste(session, ask)
             }
         }
-        onDispose { sessions.listener = null }
+        onDispose { sessions.listener = null; input.diagnostics = null }
     }
     // The bars are dark in both themes: light status bar icons while the terminal shows.
     val root = LocalView.current
@@ -792,7 +793,7 @@ private class ViewClient(
 
     // The owner's own input (not the terminal's replies to the remote side) ends the "new shell" bar.
     override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
-        session().typed()
+        session().typed(measureInput = !KeyEvent.isModifierKey(keyCode))
         return false
     }
 

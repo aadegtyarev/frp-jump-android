@@ -42,6 +42,7 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.SessionCount
+import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.AppTheme
 
 /**
@@ -157,6 +158,9 @@ fun ConnectionCard(
                 } else {
                     ConnectButton(row, enabled = !unreachable) { actions.connect(row) }
                 }
+            }
+            if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {
+                LiveTerminalDiagnostics(TunnelRef(row.profile, c.device, c.port))
             }
             problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
         }

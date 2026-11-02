@@ -81,6 +81,7 @@ import ru.adsrv.frpjump.settings.MIN_LOCAL_PORT
 import ru.adsrv.frpjump.settings.MIN_LOCAL_PORTS
 import ru.adsrv.frpjump.settings.PortRangeProblem
 import ru.adsrv.frpjump.settings.ThemeMode
+import ru.adsrv.frpjump.settings.TERMINAL_HISTORY_CHOICES
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FileGlyph
@@ -107,7 +108,7 @@ import ru.adsrv.frpjump.update.UpdateState
 import java.time.Instant
 
 /** Which sheet or dialog of the settings is open. */
-private enum class Open { PORTS, POLL, SSH_KEY, LANGUAGE, THEME, FORGET, NEEDS_SCREEN_LOCK, UPDATE }
+private enum class Open { PORTS, POLL, SSH_KEY, LANGUAGE, THEME, HISTORY, FORGET, NEEDS_SCREEN_LOCK, UPDATE }
 
 /**
  * Settings as the mockup groups them: profile, tunnels, background,
@@ -220,6 +221,13 @@ fun SettingsScreen(
             ) { ValueChevron("${settings.localPortFirst}–${settings.localPortLast}") }
         }
         Group(stringResource(R.string.settings_terminal)) {
+            SettingRow(
+                tile = { GlyphTile("≡") },
+                label = stringResource(R.string.terminal_history_rows),
+                hint = stringResource(R.string.terminal_history_hint),
+                onClick = { open = Open.HISTORY },
+            ) { ValueChevron(settings.terminalHistoryRows.toString()) }
+            RowDivider()
             SwitchRow(
                 tile = { GlyphTile(">_") },
                 label = stringResource(R.string.setting_terminal_direct_input),
@@ -332,6 +340,15 @@ fun SettingsScreen(
                     color = colors.muted,
                 )
             },
+        )
+        Open.HISTORY -> ChoiceSheet(
+            title = stringResource(R.string.terminal_history_rows),
+            options = TERMINAL_HISTORY_CHOICES,
+            selected = settings.terminalHistoryRows,
+            label = { it.toString() },
+            onPick = vm::setTerminalHistoryRows,
+            onDismiss = { open = null },
+            footer = { Text(stringResource(R.string.terminal_history_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) },
         )
         Open.SSH_KEY -> SshKeySheet(state, vm, onDismiss = { open = null })
         Open.LANGUAGE -> ChoiceSheet(

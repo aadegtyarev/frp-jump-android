@@ -8,6 +8,13 @@ import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collectLatest
+import ru.adsrv.frpjump.ssh.diagnostics.probeVisibilityWhileCurrent
+import ru.adsrv.frpjump.ssh.diagnostics.SshResponseProbe
+import ru.adsrv.frpjump.ssh.diagnostics.SshjResponseProbe
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -15,6 +22,7 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.SessionChannel
 import net.schmizz.sshj.userauth.UserAuthException
 import java.io.IOException
+import ru.adsrv.frpjump.settings.DEFAULT_TERMINAL_HISTORY_ROWS
 import java.util.concurrent.TimeUnit
 
 /** How a session logs in. A password lives only in this object (and, if ticked, sealed on disk). */
@@ -61,6 +69,9 @@ class SshEnvironment(
     val refusals: LoginRefusals = LoginRefusals(),
     /** The timers of auto-reconnect. */
     val reconnectClock: ReconnectClock = ExecutorReconnectClock(),
+    /** Read only when a new terminal is constructed, never on automatic reconnect. */
+    val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
+    val visible: StateFlow<Boolean> = MutableStateFlow(false),
 )
 
 /**
@@ -98,7 +109,7 @@ class SshSession(
     /** Picked up after a kill: the first attach says nothing ("Restored N sessions" does). */
     quietAttach: Boolean = false,
 ) {
-    val terminal = RemoteTerminal(terminalClient)
+    val terminal = RemoteTerminal(terminalClient, historyRows = env.historyRows())
 
     /** The tab's tmux session; see [TabTmux]. */
     val tmux = TabTmux(env.tmuxNames, tmuxName, noTmux)
@@ -137,7 +148,8 @@ class SshSession(
      * "new shell" bar has said its part. Not called for the terminal's own
      * replies to the remote side. Main thread.
      */
-    fun typed() {
+    fun typed(measureInput: Boolean = true) {
+        if (measureInput) terminal.metrics.ownerInput()
         _newShell.value = false
         copyMode.ownerTyped()
     }
@@ -158,6 +170,26 @@ class SshSession(
 
     @Volatile
     private var shell: SessionChannel? = null
+
+    @Volatile private var diagnosticJob: Job? = null
+
+    private fun observeResponse(ssh: SSHClient) {
+        diagnosticJob?.cancel()
+        diagnosticJob = scope.launch(Dispatchers.IO) {
+            val probe = SshResponseProbe(terminal.metrics)
+            val sender = SshjResponseProbe(ssh)
+            // State also drives completion: an EOF before this job starts must
+            // not leave an ended/removed session collecting visibility forever.
+            probeVisibilityWhileCurrent(env.visible, state) { openClient() === ssh }
+                .collectLatest { shown ->
+                    if (!shown) return@collectLatest
+                    while (isActive && openClient() === ssh) {
+                        probe.sampleBlocking(sender) { env.visible.value && openClient() === ssh }
+                        delay(1000)
+                    }
+                }
+        }
+    }
 
     @Volatile
     private var closedByUser = false
@@ -290,6 +322,7 @@ class SshSession(
      * connection) the session stays on the device.
      */
     fun close(reason: String = Texts.get(R.string.ssh_closed), endTmux: Boolean = false) {
+        diagnosticJob?.cancel()
         val wasOpen = _state.value == SshState.Open
         closedByUser = true
         reconnect.stop()
@@ -465,6 +498,7 @@ class SshSession(
             // The screen may have resized the terminal while the PTY was being set up.
             if (terminal.columns != columns || terminal.rows != rows) resize(terminal.columns, terminal.rows)
             terminal.pump(channel.inputStream, channel.outputStream) { error -> onShellEnded(ssh, channel, error) }
+            observeResponse(ssh)
         } catch (e: CancellationException) {
             throw e
         } catch (e: UserAuthException) {
@@ -510,6 +544,7 @@ class SshSession(
         tmux.inUse = false
         copyMode.active = false
         shell = null
+        diagnosticJob?.cancel()
         terminal.pause()
         terminal.resetForNewShell("\r\n[" + Texts.get(R.string.ssh_tmux_failed, status) + "]\r\n")
         scope.launch(Dispatchers.IO) { run(retrying = false) }
@@ -522,6 +557,7 @@ class SshSession(
         _newShell.value = false
         dropReason = reason
         dropped = true
+        diagnosticJob?.cancel()
         terminal.pause()
         terminal.note("\r\n[$reason]\r\n")
         reconnect.start()
@@ -544,6 +580,7 @@ class SshSession(
         reconnect.stop()
         _newShell.value = false
         shell = null
+        diagnosticJob?.cancel()
         terminal.finish()
         terminal.note("\r\n[$message]\r\n")
     }

@@ -47,6 +47,52 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `terminal history defaults to 1000 for new and old settings`() {
+        assertEquals(1000, SettingsStore(MemoryStorage()).settings.value.terminalHistoryRows)
+        val old = SettingsStore(MemoryStorage("""{"direct":false,"terminal_fullscreen":true}""")).settings.value
+        assertEquals(1000, old.terminalHistoryRows)
+        assertEquals(false, old.direct)
+        assertEquals(true, old.terminalFullscreen)
+    }
+
+    @Test
+    fun `all supported terminal history choices persist`() {
+        assertEquals(listOf(500, 1000, 3000, 10000), TERMINAL_HISTORY_CHOICES)
+        val storage = MemoryStorage()
+        for (rows in TERMINAL_HISTORY_CHOICES) {
+            SettingsStore(storage).update { it.copy(terminalHistoryRows = rows, direct = false) }
+            val reread = SettingsStore(storage).settings.value
+            assertEquals(rows, reread.terminalHistoryRows)
+            assertEquals(false, reread.direct)
+        }
+    }
+
+    @Test
+    fun `invalid history values or types do not discard unrelated settings`() {
+        for (value in listOf("-1", "0", "99", "50001", "2147483648", "null", "true", "\"3000\"", "[]", "{}")) {
+            val storage = MemoryStorage("""{"terminal_history_rows":$value,"direct":false,"theme":"dark","local_port_first":41000,"local_port_last":41099}""")
+            val store = SettingsStore(storage)
+            assertEquals(1000, store.settings.value.terminalHistoryRows)
+            assertEquals(false, store.settings.value.direct)
+            assertEquals(ThemeMode.DARK, store.settings.value.theme)
+            assertEquals(41000..41099, store.settings.value.localPorts)
+            store.update { it.copy(terminalFullscreen = true) }
+            assertEquals(1000, SettingsStore(storage).settings.value.terminalHistoryRows)
+            assertEquals(ThemeMode.DARK, SettingsStore(storage).settings.value.theme)
+        }
+    }
+
+    @Test
+    fun `invalid history writes are rejected without changing memory or storage`() {
+        val storage = MemoryStorage()
+        val store = SettingsStore(storage)
+        val before = store.settings.value
+        assertEquals(true, runCatching { store.update { it.copy(terminalHistoryRows = 1234) } }.exceptionOrNull() is IllegalArgumentException)
+        assertEquals(before, store.settings.value)
+        assertNull(storage.text)
+    }
+
+    @Test
     fun `changes persist`() {
         val storage = MemoryStorage()
         SettingsStore(storage).update { it.copy(backgroundPoll = BackgroundPoll.SECONDS_30, direct = false, localPortFirst = 50000, localPortLast = 50009) }
