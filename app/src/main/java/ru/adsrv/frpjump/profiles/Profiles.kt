@@ -162,16 +162,22 @@ class Profiles(
     suspend fun load(): Boolean = changing.withLock {
         if (_state.value.loaded) return@withLock true
         withContext(Dispatchers.IO) {
-            try {
-                val index = store.load()
-                publish(index, index.profiles.associate { it.id to open(it, store, currentId) })
-                true
+            val prepared = linkedMapOf<String, ProfileRuntime>()
+            val index = try {
+                store.load().also { index ->
+                    require(index.profiles.map { it.id }.toSet().size == index.profiles.size) { "Duplicate profile ids" }
+                    for (profile in index.profiles) prepared[profile.id] = open(profile, store, currentId)
+                }
             } catch (e: Exception) {
+                // Nothing has started polling yet; closing candidates does not wipe restore intent.
+                prepared.values.forEach { it.close() }
                 if (e is CancellationException) throw e
                 Log.w(TAG, "profiles not loaded: ${e.javaClass.simpleName}")
                 _state.value = _state.value.copy(failure = e.javaClass.simpleName)
-                false
+                return@withContext false
             }
+            publish(index, prepared.toMap())
+            true
         }
     }
 
@@ -286,6 +292,8 @@ class Profiles(
         val enrollments = _state.value.enrollments.filterKeys { it in runtimes }.toMutableMap()
         changedEnrollment?.let { enrollments[it] = (enrollments[it] ?: 0) + 1 }
         _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes, enrollments = enrollments)
+        // Ownership is visible before any candidate can poll, restore tunnels, or check features.
+        runtimes.values.forEach { it.activate() }
     }
 
     private companion object {

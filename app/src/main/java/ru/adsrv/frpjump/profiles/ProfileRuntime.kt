@@ -5,13 +5,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.connections.ConnectionStore
@@ -65,17 +64,18 @@ class ProfileShared(
 
 /**
  * Everything one profile runs: its stores, device list, frpc and poller.
- * The constructor reads the profile's files: create it off the main thread.
+ * The constructor prepares the profile's files off Main. Polling, startup cache
+ * work and runtime collectors start after [Profiles] publishes ownership and
+ * calls [activate]. The prepared tunnel manager's idle observers close with it.
  */
 class ProfileRuntime(
     val id: String,
     val store: CredentialStore,
     dir: File,
     /** The id of the profile the app shows. */
-    currentId: StateFlow<String?>,
-    shared: ProfileShared,
+    private val currentId: StateFlow<String?>,
+    private val shared: ProfileShared,
 ) {
-    private val scope = CoroutineScope(shared.scope.coroutineContext + SupervisorJob(shared.scope.coroutineContext[Job]))
 
     val session = ProfileSession()
     val hostKeys = HostKeyStore(shared.storageFor(File(dir, ProfileFiles.HOST_KEYS)))
@@ -94,14 +94,17 @@ class ProfileRuntime(
         )
         ConnectionStore(file, corruptCopy = shared.storageFor(File(dir, ProfileFiles.CONNECTIONS_CORRUPT)))
     }
-    val devices = DeviceDirectory(
-        store,
-        shared.api,
-        session,
-        DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST))),
-        ServerFeaturesCache(shared.storageFor(File(dir, ProfileFiles.SERVER_FEATURES))),
-        scope,
-    )
+    // Finish fallible file preparation before allocating either runtime or tunnel jobs.
+    private val deviceCache = DeviceListCache(shared.storageFor(File(dir, ProfileFiles.DEVICE_LIST)))
+    private val featuresCache = ServerFeaturesCache(shared.storageFor(File(dir, ProfileFiles.SERVER_FEATURES)))
+    private val runner = FrpcRunner(shared.frpcBinary, File(shared.frpcRoot, id))
+    private val initialPortRange = shared.settings.value.localPorts
+    private val initiallyCurrent = currentId.value == id
+    private val scope = CoroutineScope(shared.scope.coroutineContext + SupervisorJob(shared.scope.coroutineContext[Job]))
+    private var activated = false
+    private var closed = false
+
+    val devices = DeviceDirectory(store, shared.api, session, deviceCache, featuresCache, scope)
     val tunnels = TunnelManager(
         profile = id,
         enrollment = store::state,
@@ -109,7 +112,7 @@ class ProfileRuntime(
         session = session,
         localPorts = shared.localPorts,
         // Shipped as a "native library": Android only allows exec from nativeLibraryDir.
-        runner = FrpcRunner(shared.frpcBinary, File(shared.frpcRoot, id)),
+        runner = runner,
         startService = shared.startService,
         directMode = { device ->
             when {
@@ -126,16 +129,30 @@ class ProfileRuntime(
     val localPorts: LocalPortStore = shared.localPorts
 
     /** Whether the app shows this profile. */
-    val current: StateFlow<Boolean> =
-        currentId.map { it == id }.stateIn(scope, SharingStarted.Eagerly, currentId.value == id)
+    private val _current = MutableStateFlow(initiallyCurrent)
+    val current: StateFlow<Boolean> = _current
 
     init {
+        tunnels.portRange = initialPortRange
+    }
+
+    /** Called after publication; repeated profile updates must not start duplicate collectors. */
+    @Synchronized
+    internal fun activate() {
+        if (closed || activated) return
+        activated = true
+        _current.value = currentId.value == id
         tunnels.portRange = shared.settings.value.localPorts
         scope.launch {
-            shared.settings.map { it.localPorts }.distinctUntilChanged().drop(1).collect {
-                tunnels.portRange = it
-                // Running tunnels pick the change up now; otherwise the next poll does.
-                if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.syncAsync()
+            currentId.map { it == id }.distinctUntilChanged().collect { _current.value = it }
+        }
+        scope.launch {
+            shared.settings.map { it.localPorts }.distinctUntilChanged().collect {
+                // Include the first value: settings may have changed while this batch was prepared.
+                if (tunnels.portRange != it) {
+                    tunnels.portRange = it
+                    if (tunnels.state.value.tunnels.isNotEmpty()) tunnels.syncAsync()
+                }
             }
         }
         // The setting or the network changed whether tunnels try direct: frpc reloads the
@@ -170,7 +187,10 @@ class ProfileRuntime(
     }
 
     /** Stops the poller and everything else this runtime runs; after "Forget profile". */
+    @Synchronized
     fun close() {
+        if (closed) return
+        closed = true
         scope.cancel()
         tunnels.close()
     }
