@@ -176,6 +176,11 @@ re-enroll.
   Two connections cannot pin the same port; connections to the same device
   and port share their tunnel and its pin; a port another tunnel uses now
   is refused. It cannot be changed while the tunnel is up.
+- A failed visitor start is cleared after frpc confirms that same visitor
+  successfully started on retry. A different visitor's success must not hide
+  the failure, nor overwrite a later authentication/transport/device error.
+  If another required visitor still has a startup failure, keep it visible.
+  Existing SSH tabs are not evidence of listener recovery and are not reset.
 - The card's header shows the device's icon on a tile, then the whole name and
   under it the whole label (wrapped, never cut). The top bar's "⋮" holds
   «Подпись…» and «Значок…» (scenario 11).

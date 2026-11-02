@@ -121,6 +121,9 @@ class FrpcLogParser(
     /** Windows of TRYING tunnels restarted by a reload, until they try again. */
     private val carried = mutableMapOf<String, Long>()
     private val startOrder = ArrayDeque<String>()
+    /** Current visitor starts only; retained failure objects identify the visible failure's owner. */
+    private val startFailures = mutableMapOf<String, VisitorState>()
+    private val startedVisitors = mutableSetOf<String>()
     /** When the device first refused, per grant, until a connection gets through or the visitor starts afresh. */
     private val refusedSince = mutableMapOf<String, Long>()
     /** Refused connections per grant, ever: [deviceReady] tells a probe that got through from one that did not. */
@@ -138,6 +141,9 @@ class FrpcLogParser(
     fun reconfigure(visitors: List<VisitorSpec>, restarted: List<String>) {
         specs = visitors.associateBy { it.grantId }
         order = visitors.map { it.grantId }
+        val keptNames = allNames().toSet() - restarted.toSet()
+        startFailures.keys.retainAll(keptNames)
+        startedVisitors.retainAll(keptNames)
         states.keys.retainAll(order.toSet())
         tryingSince.keys.retainAll(order.toSet())
         punchedAt.keys.retainAll(order.toSet())
@@ -178,6 +184,8 @@ class FrpcLogParser(
             // Visitor-prefixed lines first: their errors may quote "connect to server error".
             VISITOR.containsMatchIn(line) -> onVisitorLine(line)
             "login to server success" in line -> {
+                startFailures.clear()
+                startedVisitors.clear()
                 startOrder.clear()
                 startOrder.addAll(allNames())
                 refusedSince.clear()
@@ -187,7 +195,12 @@ class FrpcLogParser(
                 order.forEach { set(it, VisitorState(TunnelStatus.FAILED, Texts.get(R.string.frpc_login_failed, tail(line, "error")))) }
             "start visitor success" in line -> startOrder.removeFirstOrNull()?.let(::started)
             "start error:" in line -> startOrder.removeFirstOrNull()?.let { name ->
-                grantOf(name)?.let { set(it, VisitorState(TunnelStatus.FAILED, tail(line, "start error:"))) }
+                grantOf(name)?.let { grant ->
+                    val failure = VisitorState(TunnelStatus.FAILED, tail(line, "start error:"))
+                    startFailures[name] = failure
+                    startedVisitors.remove(name)
+                    set(grant, failure)
+                }
             }
         }
         return states != before
@@ -276,7 +289,19 @@ class FrpcLogParser(
     private fun started(name: String) {
         val grant = grantOf(name) ?: return
         val spec = specs.getValue(grant)
-        if (name == listeningName(spec) && states[grant]?.status != TunnelStatus.FAILED) {
+        startedVisitors += name
+        val recovered = startFailures.remove(name)
+        // Only this exact startup failure can be cleared by its retry. A later
+        // authentication/transport/device failure is a different observation,
+        // even if its message happens to be equal.
+        val ownsFailure = recovered != null && states[grant] === recovered
+        if (states[grant]?.status == TunnelStatus.FAILED && !ownsFailure) return
+        val remaining = namesOf(spec).firstNotNullOfOrNull { startFailures[it] }
+        if (remaining != null) {
+            if (ownsFailure || states[grant]?.status == TunnelStatus.CONNECTING) set(grant, remaining)
+            return
+        }
+        if (name == listeningName(spec) || ownsFailure && listeningName(spec) in startedVisitors) {
             refusedSince.remove(grant)
             set(grant, VisitorState(if (spec.direct) TunnelStatus.TRYING else TunnelStatus.RELAYED))
         }
