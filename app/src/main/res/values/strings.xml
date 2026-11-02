@@ -1036,4 +1036,6 @@
     <string name="terminal_text_expand">Expand text editor</string>
     <string name="terminal_text_collapse">Collapse text editor</string>
     <string name="terminal_text_insert_failed">Could not insert text. The draft was kept.</string>
+    <string name="terminal_history_rows">History rows</string>
+    <string name="terminal_history_hint">Buffer limit, including visible rows. Applies to new terminal tabs only; existing tabs keep their history.</string>
 </resources>

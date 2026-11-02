@@ -15,6 +15,7 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.SessionChannel
 import net.schmizz.sshj.userauth.UserAuthException
 import java.io.IOException
+import ru.adsrv.frpjump.settings.DEFAULT_TERMINAL_HISTORY_ROWS
 import java.util.concurrent.TimeUnit
 
 /** How a session logs in. A password lives only in this object (and, if ticked, sealed on disk). */
@@ -61,6 +62,8 @@ class SshEnvironment(
     val refusals: LoginRefusals = LoginRefusals(),
     /** The timers of auto-reconnect. */
     val reconnectClock: ReconnectClock = ExecutorReconnectClock(),
+    /** Read only when a new terminal is constructed, never on automatic reconnect. */
+    val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
 )
 
 /**
@@ -98,7 +101,7 @@ class SshSession(
     /** Picked up after a kill: the first attach says nothing ("Restored N sessions" does). */
     quietAttach: Boolean = false,
 ) {
-    val terminal = RemoteTerminal(terminalClient)
+    val terminal = RemoteTerminal(terminalClient, historyRows = env.historyRows())
 
     /** The tab's tmux session; see [TabTmux]. */
     val tmux = TabTmux(env.tmuxNames, tmuxName, noTmux)

@@ -1084,4 +1084,6 @@
     <string name="terminal_text_expand">Развернуть редактор текста</string>
     <string name="terminal_text_collapse">Свернуть редактор текста</string>
     <string name="terminal_text_insert_failed">Не удалось вставить текст. Черновик сохранён.</string>
+    <string name="terminal_history_rows">Строк истории</string>
+    <string name="terminal_history_hint">Лимит буфера, включая видимые строки. Только для новых вкладок терминала; история открытых вкладок сохраняется.</string>
 </resources>

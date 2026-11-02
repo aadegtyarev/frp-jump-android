@@ -1,6 +1,7 @@
 package com.termux.terminal
 
 import java.io.IOException
+import ru.adsrv.frpjump.settings.DEFAULT_TERMINAL_HISTORY_ROWS
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.LinkedBlockingQueue
@@ -20,8 +21,8 @@ import kotlin.concurrent.thread
  *
  * Construct on the main thread: the session's handler binds to its looper.
  */
-class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int = 24) {
-    val session = TerminalSession("/system/bin/false", "/", arrayOf(), arrayOf(), TRANSCRIPT_ROWS, client)
+class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int = 24, val historyRows: Int = DEFAULT_TERMINAL_HISTORY_ROWS) {
+    val session = TerminalSession("/system/bin/false", "/", arrayOf(), arrayOf(), historyRows, client)
     /**
      * Writes local notes in order. Its one thread is a daemon and ends after
      * a second idle, so an ended (or replaced, on Reconnect) session leaves
@@ -32,7 +33,7 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     }
 
     init {
-        session.mEmulator = TerminalEmulator(session, columns, rows, CELL_WIDTH, CELL_HEIGHT, TRANSCRIPT_ROWS, client)
+        session.mEmulator = TerminalEmulator(session, columns, rows, CELL_WIDTH, CELL_HEIGHT, historyRows, client)
         // write() only queues keys while the "process" runs. No pid is ever
         // signalled: finishIfRunning() is not called on a remote session.
         session.mShellPid = Int.MAX_VALUE
@@ -161,7 +162,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     }
 
     private companion object {
-        const val TRANSCRIPT_ROWS = 3000
         const val CELL_WIDTH = 12
         const val CELL_HEIGHT = 24
         const val BUFFER = 4096

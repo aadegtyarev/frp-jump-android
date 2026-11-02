@@ -313,6 +313,15 @@ connection, not the SSH session. Hardware key events pass through in both
 modes. With direct input off, sticky Ctrl/Alt applies when the keyboard
 commits the text, not while it is still composing it.
 
+**History limit.** Settings → Terminal → History rows offers 500, 1000,
+3000 and 10000, default 1000. This is the main Termux buffer limit including
+visible rows, not a guarantee of that many off-screen rows. Older files
+without the setting use 1000; invalid values/types are normalized without
+resetting unrelated settings. New terminal sessions capture the setting;
+changing it never trims or recreates an open terminal. Automatic reconnect
+keeps the same emulator and limit; a new or explicitly replaced session uses
+the current preference.
+
 **Keys and Text.** Keys is the initial input surface. Short ⌨ shows/hides
 the system keyboard; hold ⌨ or use ⋮ → Text input to open the visible
 multiline editor. Settings → Terminal explains the gesture. No separate

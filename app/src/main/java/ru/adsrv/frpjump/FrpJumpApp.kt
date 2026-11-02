@@ -320,7 +320,11 @@ class FrpJumpApp : Application() {
         sshKeys = SshKeyStore(AtomicTextFile(File(filesDir, "ssh_keys.json")), sshBox)
         sshPasswords = SshPasswords(AtomicTextFile(File(filesDir, "ssh_passwords.json")), sshBox)
         webSites = WebSiteMemory(AtomicTextFile(File(filesDir, "web_site.json")))
-        sshEnv = SshEnvironment(sshKeys, sshPasswords, keyComment = ::sshKeyComment, tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))))
+        sshEnv = SshEnvironment(
+            sshKeys, sshPasswords, keyComment = ::sshKeyComment,
+            tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))),
+            historyRows = { settings.settings.value.terminalHistoryRows },
+        )
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })
         // Files handed to other apps a day ago or more (Open with, Share), and viewer copies
         // left behind when the process went: older than a few minutes, no viewer is reading them.
