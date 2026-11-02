@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collectLatest
+import ru.adsrv.frpjump.ssh.diagnostics.probeVisibilityWhileCurrent
 import ru.adsrv.frpjump.ssh.diagnostics.SshResponseProbe
 import ru.adsrv.frpjump.ssh.diagnostics.SshjResponseProbe
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,8 +148,8 @@ class SshSession(
      * "new shell" bar has said its part. Not called for the terminal's own
      * replies to the remote side. Main thread.
      */
-    fun typed() {
-        terminal.metrics.ownerInput()
+    fun typed(measureInput: Boolean = true) {
+        if (measureInput) terminal.metrics.ownerInput()
         _newShell.value = false
         copyMode.ownerTyped()
     }
@@ -177,13 +178,16 @@ class SshSession(
         diagnosticJob = scope.launch(Dispatchers.IO) {
             val probe = SshResponseProbe(terminal.metrics)
             val sender = SshjResponseProbe(ssh)
-            env.visible.collectLatest { shown ->
-                if (!shown) return@collectLatest
-                while (isActive && openClient() === ssh) {
-                    probe.sampleBlocking(sender) { env.visible.value && openClient() === ssh }
-                    delay(1000)
+            // State also drives completion: an EOF before this job starts must
+            // not leave an ended/removed session collecting visibility forever.
+            probeVisibilityWhileCurrent(env.visible, state) { openClient() === ssh }
+                .collectLatest { shown ->
+                    if (!shown) return@collectLatest
+                    while (isActive && openClient() === ssh) {
+                        probe.sampleBlocking(sender) { env.visible.value && openClient() === ssh }
+                        delay(1000)
+                    }
                 }
-            }
         }
     }
 
@@ -318,6 +322,7 @@ class SshSession(
      * connection) the session stays on the device.
      */
     fun close(reason: String = Texts.get(R.string.ssh_closed), endTmux: Boolean = false) {
+        diagnosticJob?.cancel()
         val wasOpen = _state.value == SshState.Open
         closedByUser = true
         reconnect.stop()

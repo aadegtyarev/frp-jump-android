@@ -59,6 +59,7 @@ class TerminalMetricsTest {
         metrics.probeReplied(token, 10_000_000)
         assertNotEquals(old, fresh)
         val snapshot = metrics.snapshot()
+        assertEquals(fresh, snapshot.connectionGeneration)
         assertEquals(0L, snapshot.receivedBytes)
         assertEquals(0L, snapshot.sentBytes)
         assertEquals(0L, snapshot.response.count)

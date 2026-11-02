@@ -1,5 +1,13 @@
 package ru.adsrv.frpjump.ssh.diagnostics
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.takeWhile
+
+/** Also ends on state transitions, including an EOF before the worker starts collecting. */
+internal fun <T> probeVisibilityWhileCurrent(visible: Flow<Boolean>, states: Flow<T>, current: () -> Boolean): Flow<Boolean> =
+    combine(visible, states) { shown, _ -> shown }.takeWhile { current() }
+
 /** A negative protocol reply is still a reply; transport errors/timeouts are not. */
 enum class ProbeReply { REPLIED, TIMEOUT, FAILED }
 

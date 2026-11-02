@@ -541,6 +541,15 @@ on Connect, so before the login is known to work); Cancel saves nothing. A
 field showing a saved password takes a fill only once it is tapped, so
 filling in the user name leaves the saved password alone.
 
+Settings → Terminal → History rows selects 500, 1000 (default), 3000 or
+10000 total main-buffer rows, including the visible screen. Only new or
+explicitly replaced tabs take the new limit; existing tabs and automatic
+reconnects keep their buffer and text. The short SSH response/down/up line
+on the tunnel card opens per-tab diagnostics. These are terminal payload
+measurements, not all frpc/file/MQTT/web traffic or a local-listener health
+check. Details explain missing/stale values and local queue, writer and draw
+CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.md).
+
 - A dropped connection reconnects by itself (`ssh/SshReconnect.kt`): a
   shell gone without an exit status or signal (a read error, the
   connection closing, or the connection failing mid-login) keeps the

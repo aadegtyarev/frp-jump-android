@@ -793,7 +793,7 @@ private class ViewClient(
 
     // The owner's own input (not the terminal's replies to the remote side) ends the "new shell" bar.
     override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
-        session().typed()
+        session().typed(measureInput = !KeyEvent.isModifierKey(keyCode))
         return false
     }
 

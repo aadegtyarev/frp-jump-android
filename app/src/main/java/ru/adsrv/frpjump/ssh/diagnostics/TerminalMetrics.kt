@@ -81,6 +81,7 @@ data class TerminalMetricsSnapshot(
     val historyLimit: Int,
     val historyUsed: Int?,
     val alternateScreen: Boolean?,
+    val connectionGeneration: Long,
 )
 
 /** Thread-safe, O(1) event recording. Snapshots are sampled by the owner, never emitted per event. */
@@ -209,7 +210,7 @@ class TerminalMetrics(val historyLimit: Int, private val now: () -> Long = Syste
             rxRate.takeIf { connected && observing }, txRate.takeIf { connected && observing }, rateInterval.takeIf { connected && observing },
             responseSummary, connected && observing && responseSummary.lastAtNs?.let { at - it <= METRIC_FRESH_NS } == true,
             timeouts, failures, inputToSend.summary(at), beforeWrite.summary(at), incoming.summary(at), draw.summary(at),
-            historyLimit, historyUsed, alternate,
+            historyLimit, historyUsed, alternate, generation,
         )
     }
 

@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collectLatest
 import ru.adsrv.frpjump.ssh.diagnostics.TerminalSessionReport
+import ru.adsrv.frpjump.ssh.diagnostics.TerminalMetricsSnapshot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -103,6 +104,7 @@ class SshSessions(
         // A hidden/removed tab releases markers, and hidden time is not a rate baseline.
         scope.launch(Dispatchers.Main) {
             var previous = emptyList<SshSession>()
+            var samples = emptyMap<Int, Pair<Long, TerminalMetricsSnapshot>>()
             try {
                 combine(_sessions, env.visible, hidden) { list, shown, h ->
                     list.filterNot { sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) } to shown
@@ -111,13 +113,26 @@ class SshSessions(
                     previous = list
                     list.forEach { it.terminal.metrics.setObserving(shown) }
                     fun publish() {
+                        val at = System.nanoTime()
+                        val next = mutableMapOf<Int, Pair<Long, TerminalMetricsSnapshot>>()
                         _diagnostics.value = list.groupBy { TunnelRef(it.profile, it.device, it.port) }.mapValues { (_, tabs) ->
                             tabs.map { tab ->
-                                val emulator = tab.terminal.session.emulator
-                                tab.terminal.metrics.bufferState(emulator.screen.activeTranscriptRows, emulator.isAlternateBufferActive)
-                                TerminalSessionReport(tab.id, tab.terminal.metrics.snapshot())
+                                val metrics = tab.terminal.metrics
+                                val epoch = metrics.currentGeneration()
+                                // Opening another tab must not accelerate this tab's numeric sampling.
+                                val cached = samples[tab.id]?.takeIf {
+                                    it.first == epoch && it.second.observed == shown && at - it.second.atNs < 1_000_000_000L
+                                }
+                                val snapshot = cached?.second ?: run {
+                                    val emulator = tab.terminal.session.emulator
+                                    metrics.bufferState(emulator.screen.activeTranscriptRows, emulator.isAlternateBufferActive)
+                                    metrics.snapshot()
+                                }
+                                next[tab.id] = snapshot.connectionGeneration to snapshot
+                                TerminalSessionReport(tab.id, snapshot)
                             }
                         }
+                        samples = next
                     }
                     publish()
                     if (shown && list.isNotEmpty()) while (isActive) { delay(1000); publish() }

@@ -322,6 +322,20 @@ changing it never trims or recreates an open terminal. Automatic reconnect
 keeps the same emulator and limit; a new or explicitly replaced session uses
 the current preference.
 
+**Terminal diagnostics.** The SSH card's short response/down/up line opens
+per-tab numerical measurements. Traffic is terminal payload only, aggregated
+by profile/device/port; files, MQTT, web and SSH encryption overhead are not
+counted. Missing/stale measurements are unavailable, not a successful zero;
+a genuinely idle observed channel may show zero. Reports include recent
+response mean/max/last/age, probe failures, input-to-stream-write, the tmux
+before-write guard, incoming queue/emulator processing, draw CPU and buffer
+state. CPU time is not physical display latency; accepted writes are not
+remote acknowledgements. Numbers stay in memory, no text or credentials are
+recorded, and keepalive/reconnect policy is unchanged. See the
+[terminal diagnostics contract](terminal-diagnostics-contract.md) for probe,
+freshness, visibility and measurement boundaries. SSH metrics must not hide
+an independent tunnel/listener error.
+
 **Keys and Text.** Keys is the initial input surface. Short ⌨ shows/hides
 the system keyboard; hold ⌨ or use ⋮ → Text input to open the visible
 multiline editor. Settings → Terminal explains the gesture. No separate
