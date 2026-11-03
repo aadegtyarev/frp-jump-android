@@ -127,6 +127,7 @@ if (!releaseSigned && gradle.startParameter.taskNames.any { it.contains("Release
 }
 
 dependencies {
+    implementation(project(":agent-core"))
     implementation(libs.androidx.core.ktx)
     // Per-app language (Settings > Language) on API 29-32 as well: AppCompatDelegate.setApplicationLocales.
     implementation(libs.androidx.appcompat)

@@ -255,6 +255,9 @@ fun SettingsScreen(
                 onClick = null,
             ) {}
         }
+        Group(stringResource(R.string.assistant_title)) {
+            AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
+        }
         Group(stringResource(R.string.settings_background)) {
             SettingRow(
                 tile = { IconTile(RepeatGlyph) },
@@ -503,7 +506,7 @@ internal fun IconTile(icon: ImageVector) {
 
 /** A 34 dp tile with a glyph, as the mockup's rows start. */
 @Composable
-private fun GlyphTile(glyph: String, background: Color = AppTheme.colors.tile, ink: Color = AppTheme.colors.ink) {
+internal fun GlyphTile(glyph: String, background: Color = AppTheme.colors.tile, ink: Color = AppTheme.colors.ink) {
     Box(
         Modifier
             .size(34.dp)

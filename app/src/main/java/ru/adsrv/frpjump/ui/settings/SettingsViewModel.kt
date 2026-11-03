@@ -78,6 +78,20 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     fun setTerminalHistoryRows(rows: Int) = save { it.copy(terminalHistoryRows = rows) }
 
+    fun setAssistantEnabled(enabled: Boolean, complete: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { app.settings.update { it.copy(assistantEnabled = enabled) } }
+                app.assistant.setEnabled(app.settings.settings.value.assistantEnabled)
+                complete(null)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                complete(failure.userMessage())
+            }
+        }
+    }
+
     /** The limits form waits for the actual write instead of closing on a queued save. */
     fun setMqttIngress(limits: ru.adsrv.frpjump.settings.MqttIngressLimits, complete: (String?) -> Unit) {
         viewModelScope.launch {
