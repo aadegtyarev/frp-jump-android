@@ -27,6 +27,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
 
+/** Persistence succeeded. Retry this identity; never spend another enrollment token for this failure. */
+class SavedProfileActivationException(val profileId: String, cause: Exception, val enrollment: Int = 0) :
+    Exception("Saved connection could not start", cause)
+
 data class ProfilesState(
     /** False until [Profiles.load] has read (and, from v1, upgraded) the profiles. */
     val loaded: Boolean = false,
@@ -166,7 +170,9 @@ class Profiles(
             val index = try {
                 store.load().also { index ->
                     require(index.profiles.map { it.id }.toSet().size == index.profiles.size) { "Duplicate profile ids" }
-                    for (profile in index.profiles) prepared[profile.id] = open(profile, store, currentId)
+                    for (profile in index.profiles.filterNot { it.activationPending }) {
+                        prepared[profile.id] = open(profile, store, currentId)
+                    }
                 }
             } catch (e: Exception) {
                 // Nothing has started polling yet; closing candidates does not wipe restore intent.
@@ -205,18 +211,50 @@ class Profiles(
             val now = _state.value
             val current = now.current
             val profile = now.index.currentProfile
-            if (current != null && profile != null && current.store.state() is StoredEnrollment.NotEnrolled) {
+            if (profile != null && store.credentials(profile).state() is StoredEnrollment.NotEnrolled) {
                 store.fill(profile, credentials)
                 publish(store.index(), now.runtimes, changedEnrollment = profile.id)
-                current
+                current ?: activateSaved(profile)
             } else {
-                val added = store.add(credentials)
-                val runtime = open(added, store, currentId)
-                publish(store.index(), now.runtimes + (added.id to runtime))
-                runtime
+                // Persist the pending identity before fallible preparation. Do not switch a working profile yet.
+                val added = store.add(credentials, activationPending = true, makeCurrent = false)
+                publish(store.index(), now.runtimes)
+                activateSaved(added)
             }
         }
     }
+
+    /** Main mutation mutex held, on IO. Preparation and durable readiness precede runtime publication. */
+    private fun activateSaved(profile: Profile): ProfileRuntime {
+        var candidate: ProfileRuntime? = null
+        val index = try {
+            candidate = open(profile, store, currentId)
+            store.activate(profile.id)
+        } catch (e: Exception) {
+            candidate?.close()
+            // The durable pending entry and all existing runtime owners survive this attempt.
+            publish(store.index(), _state.value.runtimes)
+            if (e is CancellationException) throw e
+            throw SavedProfileActivationException(profile.id, e, _state.value.enrollments[profile.id] ?: 0)
+        }
+        val ready = checkNotNull(candidate)
+        publish(index, _state.value.runtimes + (profile.id to ready))
+        return ready
+    }
+
+    /** Retry a captured saved enrollment; stale/deleted requests never select a replacement. */
+    suspend fun retrySaved(id: String, enrollment: Int): Boolean = changing.withLock {
+        val now = _state.value
+        val profile = now.index.find(id) ?: return@withLock false
+        if ((now.enrollments[id] ?: 0) != enrollment) return@withLock false
+        // Already activated elsewhere: acknowledge without overriding the user's newer selection.
+        if (now.runtimes[id] == null) withContext(Dispatchers.IO) { activateSaved(profile) }
+        true
+    }
+
+    /** Reads even an unstarted connection's enrollment; storage/Keystore access belongs off Main. */
+    fun savedCredentials(id: String): ru.adsrv.frpjump.store.CredentialStore? =
+        _state.value.index.find(id)?.let(store::credentials)
 
     /**
      * "Forget profile" on this phone: stops its tunnels and, under the same
@@ -227,7 +265,15 @@ class Profiles(
      * dispatcher, before the profile leaves the list ([ProfileStore.remove]).
      */
     suspend fun forget(id: String, keepData: Boolean, beforeUnlisting: (last: Boolean) -> Unit = {}) = changing.withLock {
-        val runtime = _state.value.runtimes[id] ?: return@withLock
+        val profile = _state.value.index.find(id) ?: return@withLock
+        val runtime = _state.value.runtimes[id]
+        if (runtime == null) {
+            withContext(Dispatchers.IO) {
+                if (keepData) store.credentials(profile).wipe() else store.remove(id, beforeUnlisting)
+            }
+            publish(store.index(), _state.value.runtimes, changedEnrollment = id.takeIf { keepData })
+            return@withLock
+        }
         runtime.tunnels.shutdown {
             withContext(Dispatchers.IO) { if (keepData) runtime.store.wipe() else store.remove(id, beforeUnlisting) }
         }
@@ -244,7 +290,13 @@ class Profiles(
 
     /** Shows [id] from now on; its cached list at once, then its polls every 2 s. Storage: on the IO dispatcher. */
     suspend fun setCurrent(id: String) = changing.withLock {
-        if (_state.value.index.current == id || _state.value.index.find(id) == null) return@withLock
+        val now = _state.value
+        val profile = now.index.find(id) ?: return@withLock
+        if (now.runtimes[id] == null) {
+            withContext(Dispatchers.IO) { activateSaved(profile) }
+            return@withLock
+        }
+        if (now.index.current == id) return@withLock
         val index = withContext(Dispatchers.IO) {
             store.setCurrent(id)
             store.index()
@@ -289,7 +341,8 @@ class Profiles(
     /** [changedEnrollment]: a profile whose credentials were just filled in or wiped in place. */
     private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>, changedEnrollment: String? = null) {
         currentId.value = index.current
-        val enrollments = _state.value.enrollments.filterKeys { it in runtimes }.toMutableMap()
+        val listed = index.profiles.mapTo(HashSet()) { it.id }
+        val enrollments = _state.value.enrollments.filterKeys { it in listed }.toMutableMap()
         changedEnrollment?.let { enrollments[it] = (enrollments[it] ?: 0) + 1 }
         _state.value = ProfilesState(loaded = true, index = index, runtimes = runtimes, enrollments = enrollments)
         // Ownership is visible before any candidate can poll, restore tunnels, or check features.

@@ -1122,4 +1122,10 @@
     <string name="terminal_paste_enter_warning">После вставки будет отправлен Enter, в том числе при склеивании строк.</string>
     <string name="terminal_paste_run_enter">Вставить + Enter</string>
     <string name="terminal_paste_join_enter">Склеить строки + Enter</string>
+    <string name="connection_saved_title">Подключение сохранено</string>
+    <string name="connection_saved_inactive">%1$s сохранено, но не удалось запустить (%2$s). Повторите запуск — заново добавлять подключение не нужно.</string>
+    <string name="connection_saved_waiting">%1$s сохранено, но не запущено. Запустите его кнопкой ниже — новый QR-код или код добавления не нужен.</string>
+    <string name="connection_retry_start">Повторить запуск</string>
+    <string name="connection_pending">Сохранено · нажмите для запуска</string>
+    <string name="connection_no_longer_saved">Сохранённое подключение удалено или изменилось. Выберите его заново.</string>
 </resources>

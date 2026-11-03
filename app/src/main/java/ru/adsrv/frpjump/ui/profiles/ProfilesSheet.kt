@@ -101,7 +101,7 @@ fun ProfilesSheet(
                         canForget = forget?.busy != true && item.serverLoaded,
                         onClick = {
                             onDismiss()
-                            if (!item.current) vm.switchTo(item.id, onSwitched)
+                            if (!item.current || item.activationPending) vm.switchTo(item.id, onSwitched)
                         },
                         onEdit = {
                             onDismiss()
@@ -167,6 +167,7 @@ private fun ProfileRow(
                     Text(item.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     // Nothing until the server is read: no "not connected" flash.
                     val sub = when {
+                        item.activationPending -> stringResource(R.string.connection_pending)
                         item.removed -> stringResource(R.string.profile_removed_sub)
                         item.server != null -> stringResource(R.string.profile_server, item.server.host, item.server.deviceName)
                         item.serverLoaded -> stringResource(R.string.profile_not_enrolled)

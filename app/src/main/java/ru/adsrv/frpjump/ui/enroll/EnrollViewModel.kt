@@ -16,6 +16,9 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.api.ApiException
+import ru.adsrv.frpjump.api.FrpJumpApi
+import ru.adsrv.frpjump.profiles.Profiles
+import ru.adsrv.frpjump.profiles.SavedProfileActivationException
 import ru.adsrv.frpjump.enroll.EnrollLineParser
 import ru.adsrv.frpjump.enroll.EnrollLineResult
 import ru.adsrv.frpjump.profiles.defaultProfileName
@@ -45,6 +48,9 @@ data class EnrollUiState(
     val error: String? = null,
     val profileNameError: String? = null,
     val notice: String? = null,
+    /** Captured saved identity, not an invitation to spend the enroll token again. */
+    val pendingActivation: String? = null,
+    val pendingEnrollment: Int = 0,
 )
 
 /**
@@ -58,10 +64,12 @@ class EnrollViewModel(
     private val app: FrpJumpApp,
     /** The app's first screen (no profile to go back to): it shows notices posted for whoever lands next. */
     takesNotices: Boolean,
+    private val profiles: Profiles = app.profiles,
+    private val api: FrpJumpApi = app.api,
 ) : ViewModel() {
     private val _state = MutableStateFlow(
         EnrollUiState(
-            color = nextProfileColor(app.profiles.state.value.index.profiles),
+            color = nextProfileColor(profiles.state.value.index.profiles),
         ),
     )
     val state: StateFlow<EnrollUiState> = _state
@@ -75,10 +83,10 @@ class EnrollViewModel(
             }
         }
         viewModelScope.launch {
-            val profile = app.profiles.state.value.index.currentProfile ?: return@launch
+            val profile = profiles.state.value.index.currentProfile ?: return@launch
             // Storage and the Keystore: off the main thread.
             val empty = withContext(Dispatchers.IO) {
-                app.profiles.current?.store?.state() is StoredEnrollment.NotEnrolled
+                profiles.savedCredentials(profile.id)?.state() is StoredEnrollment.NotEnrolled
             }
             if (empty && profile.name.isNotBlank()) {
                 _state.update {
@@ -103,7 +111,7 @@ class EnrollViewModel(
      * enroll line. Returns false (the scanner says so and goes on) otherwise.
      */
     fun onScanned(text: String): Boolean {
-        if (_state.value.busy || EnrollLineParser.parse(text) !is EnrollLineResult.Ok) return false
+        if (_state.value.busy || _state.value.pendingActivation != null || EnrollLineParser.parse(text) !is EnrollLineResult.Ok) return false
         onText(text)
         return true
     }
@@ -117,7 +125,12 @@ class EnrollViewModel(
 
     fun submit(onEnrolled: () -> Unit) {
         val current = _state.value
-        if (current.busy) return
+        if (current.busy || completed || cleared) return
+        current.pendingActivation?.let { id ->
+            _state.update { it.copy(busy = true, error = null) }
+            observe(app.appScope.async { retry(id, current.pendingEnrollment) }, onEnrolled)
+            return
+        }
         val line = when (val parsed = EnrollLineParser.parse(current.text)) {
             is EnrollLineResult.Error -> return _state.update { it.copy(error = parsed.problem.text()) }
             is EnrollLineResult.Ok -> parsed.line
@@ -129,6 +142,10 @@ class EnrollViewModel(
         // The server spends the token as it answers: the call and the storing run in the app
         // scope, so leaving the screen cannot drop the credentials halfway.
         val work = app.appScope.async { enroll(line.controlUrl, line.token, name, profile, current.color) }
+        observe(work, onEnrolled)
+    }
+
+    private fun observe(work: Deferred<EnrollOutcome>, onEnrolled: () -> Unit) {
         val taken = AtomicBoolean(false)
         pending = Pending(work, taken)
         viewModelScope.launch {
@@ -138,11 +155,17 @@ class EnrollViewModel(
             pending = null
             when (outcome) {
                 is EnrollOutcome.Stored -> {
-                    _state.update { it.copy(busy = false) }
+                    completed = true
+                    _state.update { it.copy(busy = false, pendingActivation = null, error = null, notice = null) }
                     onEnrolled()
                 }
                 is EnrollOutcome.Refused -> _state.update {
-                    it.copy(busy = false, error = outcome.message, needsName = it.needsName || outcome.wantsName)
+                    it.copy(busy = false, error = outcome.message, notice = null, pendingActivation = null,
+                        text = if (it.pendingActivation != null) "" else it.text, needsName = it.needsName || outcome.wantsName)
+                }
+                is EnrollOutcome.SavedInactive -> _state.update {
+                    it.copy(busy = false, error = null, pendingActivation = outcome.id, pendingEnrollment = outcome.enrollment,
+                        notice = Texts.get(R.string.connection_saved_inactive, outcome.name, outcome.failure))
                 }
                 // The server has the device: say how to clean up.
                 is EnrollOutcome.NotStored -> _state.update {
@@ -159,6 +182,8 @@ class EnrollViewModel(
     private class Pending(val work: Deferred<EnrollOutcome>, val taken: AtomicBoolean)
 
     private var pending: Pending? = null
+    private var completed = false
+    private var cleared = false
 
     /**
      * Left before the answer: the token may be spent by now, so the outcome
@@ -167,6 +192,7 @@ class EnrollViewModel(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun onCleared() {
+        cleared = true
         val left = pending ?: return
         left.work.invokeOnCompletion { cause ->
             if (cause == null && left.taken.compareAndSet(false, true)) postOutcome(left.work.getCompleted())
@@ -176,15 +202,19 @@ class EnrollViewModel(
     private fun postOutcome(outcome: EnrollOutcome) {
         val text = when (outcome) {
             is EnrollOutcome.Stored -> Texts.get(R.string.profile_added, outcome.name)
+            is EnrollOutcome.SavedInactive -> Texts.get(R.string.connection_saved_inactive, outcome.name, outcome.failure)
             is EnrollOutcome.NotStored -> Texts.get(R.string.enroll_store_failed, outcome.device, outcome.failure, outcome.device)
             is EnrollOutcome.Refused -> return
         }
-        app.session.postNotice(text, forProfile = app.profiles.state.value.index.current)
+        app.session.postNotice(text, forProfile = profiles.state.value.index.current)
     }
 
     private sealed interface EnrollOutcome {
         /** Stored as the profile [name], now the one shown. */
         data class Stored(val name: String) : EnrollOutcome
+
+        /** Keys are durable; only activation of this captured enrollment may be retried. */
+        data class SavedInactive(val id: String, val enrollment: Int, val name: String, val failure: String) : EnrollOutcome
 
         /** The server said no (or could not be reached): nothing was spent. */
         data class Refused(val message: String, val wantsName: Boolean) : EnrollOutcome
@@ -195,7 +225,7 @@ class EnrollViewModel(
 
     private suspend fun enroll(url: String, token: String, requestedName: String?, profile: String, color: String): EnrollOutcome {
         val r = try {
-            app.api.enroll(url, token, requestedName)
+            api.enroll(url, token, requestedName)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -214,31 +244,57 @@ class EnrollViewModel(
             serverAddr = r.serverAddr,
             serverPort = r.serverPort,
         )
-        return store(credentials, profile, color)?.let { EnrollOutcome.NotStored(r.deviceName, it) } ?: EnrollOutcome.Stored(profile)
+        return store(credentials, profile, color)
     }
 
-    /**
-     * Stores a fresh enrollment as a profile named [name] in [color]. A name
-     * not saved only leaves the host as the name. Returns null when stored,
-     * else the failure's class name.
-     */
-    private suspend fun store(credentials: Credentials, name: String, color: String): String? {
-        val runtime = try {
-            app.profiles.enroll(credentials)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "credentials not stored: ${e.javaClass.simpleName}")
-            return e.javaClass.simpleName
-        }
+    /** Cosmetic failure never turns saved keys into a NotStored outcome. */
+    private suspend fun saveName(id: String, name: String, color: String) {
         try {
-            app.profiles.update(runtime.id, name, color)
+            profiles.update(id, name, color)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "profile name not saved: ${e.javaClass.simpleName}")
         }
-        return null
+    }
+
+    private fun inactive(id: String, enrollment: Int, failure: Throwable): EnrollOutcome {
+        val state = profiles.state.value
+        val profile = state.index.find(id)
+        if (profile == null || (state.enrollments[id] ?: 0) != enrollment) {
+            return EnrollOutcome.Refused(Texts.get(R.string.connection_no_longer_saved), false)
+        }
+        return EnrollOutcome.SavedInactive(id, enrollment, profile.name, failure.javaClass.simpleName)
+    }
+
+    private suspend fun retry(id: String, enrollment: Int): EnrollOutcome {
+        return try {
+            if (!profiles.retrySaved(id, enrollment)) {
+                EnrollOutcome.Refused(Texts.get(R.string.connection_no_longer_saved), false)
+            } else {
+                EnrollOutcome.Stored(profiles.state.value.index.find(id)?.name.orEmpty())
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            inactive(id, enrollment, e.cause ?: e)
+        }
+    }
+
+    private suspend fun store(credentials: Credentials, name: String, color: String): EnrollOutcome {
+        val runtime = try {
+            profiles.enroll(credentials)
+        } catch (e: SavedProfileActivationException) {
+            if ((profiles.state.value.enrollments[e.profileId] ?: 0) == e.enrollment) saveName(e.profileId, name, color)
+            return inactive(e.profileId, e.enrollment, e.cause ?: e)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "credentials not stored: ${e.javaClass.simpleName}")
+            return EnrollOutcome.NotStored(credentials.deviceName, e.javaClass.simpleName)
+        }
+        saveName(runtime.id, name, color)
+        return EnrollOutcome.Stored(name)
     }
 
     private companion object {

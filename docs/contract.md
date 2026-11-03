@@ -109,6 +109,14 @@ certificate and key. The owner may have several, for example "Work" and
 Errors shown as they are: bad or used token, unreachable server, protocol
 version mismatch.
 
+If the credentials were saved but starting the new connection fails, show
+"Connection saved, could not start" instead of claiming the keys were lost
+or suggesting server-side deletion. Keep its identity and keys, offer manual
+retry of that saved connection without another enrollment request, and keep
+working connections selected and running. A saved pending connection stays
+available after leaving the form or restarting the app; starting it remains
+an explicit action. Distinguish this from failure before credential storage.
+
 The single v1 enrollment becomes the first profile on upgrade, nothing to
 re-enroll.
 

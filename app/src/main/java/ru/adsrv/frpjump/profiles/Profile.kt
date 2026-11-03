@@ -16,6 +16,8 @@ data class Profile(
     /** A name from [PROFILE_COLORS]; each theme maps it to its own shade. */
     val color: String,
     @SerialName("key_alias") val keyAlias: String,
+    /** Saved credentials whose runtime has not committed yet; manual activation, including after restart. */
+    @SerialName("activation_pending") val activationPending: Boolean = false,
 )
 
 /** `profiles.json`: the profiles in the owner's order and which one the app shows. */
