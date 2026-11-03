@@ -66,13 +66,13 @@ jobs:
           ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" scripts/build-frpc.sh
 
       - name: Unit tests
-        run: ./gradlew -q :agent-core:test :app:testDebugUnitTest
+        run: ./gradlew -q :agent-core:test :agent-openai:test :app:testDebugUnitTest
 
       - name: Failed tests
         if: failure()
         run: |
           # -q hides which test failed; print each failure's test and message.
-          for f in agent-core/build/test-results/test/*.xml app/build/test-results/testDebugUnitTest/*.xml; do
+          for f in agent-core/build/test-results/test/*.xml agent-openai/build/test-results/test/*.xml app/build/test-results/testDebugUnitTest/*.xml; do
             if [ -f "$f" ] && grep -q '<failure' "$f"; then
               echo "::group::$f"
               grep -B1 -A15 '<failure' "$f"

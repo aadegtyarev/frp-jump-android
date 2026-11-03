@@ -929,12 +929,13 @@ and Docker for the frpc build.
 
 ```sh
 scripts/build-frpc.sh        # upstream frpc 0.70.0 -> app/src/main/jniLibs/<abi>/libfrpc.so
-./gradlew :agent-core:test :app:testDebugUnitTest :app:assembleDebug
+./gradlew :agent-core:test :agent-openai:test :app:testDebugUnitTest :app:assembleDebug
 ```
 
 The optional [LLM assistant kernel](docs/agent-contract.md) is a separate
-`agent-core` JVM module. Its Settings switch is off by default; chat,
-providers and real connection tools are not available in this first slice.
+`agent-core` JVM module, with an `agent-openai` protocol adapter. Its Settings
+switch is off by default; chat, provider configuration and real connection
+tools are not available yet.
 
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.
 If Gradle reports that the toolchain has no `JAVA_COMPILER`, point `JAVA_HOME`

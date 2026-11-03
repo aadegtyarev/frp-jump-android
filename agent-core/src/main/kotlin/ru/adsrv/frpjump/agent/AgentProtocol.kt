@@ -5,7 +5,9 @@ import kotlinx.serialization.json.JsonObject
 /** Provider-neutral values. No Android, credentials, HTTP, SSH or connection discovery here. */
 data class ToolSpec(val name: String, val description: String, val parameters: JsonObject)
 data class ToolCall(val id: String, val name: String, val arguments: JsonObject)
-data class AgentReply(val text: String = "", val calls: List<ToolCall> = emptyList())
+/** Opaque, provider-owned continuation state. Not UI text; implementations must redact toString(). */
+interface AgentContinuation { val estimatedTokens: Long; val sizeChars: Int }
+data class AgentReply(val text: String = "", val calls: List<ToolCall> = emptyList(), val continuation: AgentContinuation? = null)
 enum class ToolOutcome { SUCCESS, FAILED, TIMEOUT, UNKNOWN_TOOL }
 data class ToolOutput(val text: String, val outcome: ToolOutcome = ToolOutcome.SUCCESS)
 data class ToolResult(
@@ -44,7 +46,9 @@ object Utf8TokenEstimate : TokenCounter {
         request.turns.forEach { turn ->
             total += 64 + size(turn.user)
             turn.exchanges.forEach { exchange ->
-                total += 64 + size(exchange.reply.text)
+                val continuationCost = exchange.reply.continuation?.estimatedTokens ?: 0L
+                require(continuationCost in 0..1_000_000) { "Invalid continuation budget" }
+                total += 64 + size(exchange.reply.text) + continuationCost
                 exchange.reply.calls.forEach { total += 64 + size(it.id) + size(it.name) + size(it.arguments.toString()) }
                 exchange.results.forEach { total += 96 + size(it.callId) + size(it.name) + size(it.text) }
             }

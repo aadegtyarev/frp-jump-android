@@ -83,7 +83,8 @@ class AgentModule(initiallyEnabled: Boolean = false, private val allowedNow: () 
                 checkOwner()
                 if (received.calls.size > limits.maxCallsPerStep) return@coroutineScope finish(AgentFinish.INVALID_REPLY)
                 val reply = received.copy(calls = received.calls.toList())
-                val size = reply.text.length.toLong() + reply.calls.sumOf { it.id.length.toLong() + it.name.length + it.arguments.toString().length }
+                if (reply.continuation?.let { it.sizeChars < 0 || it.estimatedTokens !in 0..1_000_000 } == true) return@coroutineScope finish(AgentFinish.INVALID_REPLY)
+                val size = reply.text.length.toLong() + (reply.continuation?.sizeChars ?: 0) + reply.calls.sumOf { it.id.length.toLong() + it.name.length + it.arguments.toString().length }
                 if (size > limits.maxReplyChars ||
                     reply.calls.any { it.id.isBlank() || it.name.isBlank() || it.id in usedCalls } ||
                     reply.calls.map { it.id }.distinct().size != reply.calls.size ||

@@ -175,6 +175,20 @@ class AgentModuleTest {
         assertEquals(AgentFinish.DISABLED, module.run(final, emptyList(), "", "user").finish)
     }
 
+    @Test fun `opaque continuation counts against window and reply budgets without becoming UI text`() = runBlocking {
+        val opaque = object : AgentContinuation {
+            override val estimatedTokens = 1000L
+            override val sizeChars = 1000
+            override fun toString() = "<continuation>"
+        }
+        val reply = AgentReply("visible", continuation = opaque)
+        val window = selectAgentWindow("skill", emptyList(), emptyList(), AgentTurn("user", listOf(AgentExchange(reply))),
+            AgentLimits(contextTokens = 512, outputReserveTokens = 100))
+        assertNull(window.request)
+        val result = AgentModule(true).run(AgentProvider { reply }, emptyList(), "", "user", limits = AgentLimits(maxReplyChars = 32))
+        assertEquals(AgentFinish.INVALID_REPLY, result.finish)
+    }
+
     @Test fun `incomplete or mismatched protocol blocks and invalid limits are rejected`() {
         assertThrows(IllegalArgumentException::class.java) { AgentExchange(AgentReply(calls = listOf(call()))) }
         assertThrows(IllegalArgumentException::class.java) { AgentLimits(maxSteps = 0) }
