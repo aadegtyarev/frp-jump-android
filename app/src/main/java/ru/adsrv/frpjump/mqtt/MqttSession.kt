@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.security.SecureRandom
-import java.util.concurrent.atomic.AtomicInteger
+import ru.adsrv.frpjump.settings.MqttIngressLimits
 
 /** Where a session stands. */
 sealed interface MqttState {
@@ -33,6 +33,9 @@ enum class MqttFailure {
 
     /** Another CONNACK refusal; the state's detail names it. */
     REFUSED,
+
+    /** The operator-selected local ingress policy stopped this session; manual retry only. */
+    LOCAL_LIMIT,
 }
 
 enum class MqttLoginStorageAction { REMEMBER, FORGET }
@@ -59,6 +62,7 @@ class MqttEnvironment(
     val connector: MqttConnector,
     val scheduler: MqttScheduler,
     val topicLimit: Int = TopicTree.DEFAULT_LIMIT,
+    val ingressLimits: () -> MqttIngressLimits = { MqttIngressLimits() },
 )
 
 /** The delay before reconnect attempt [step] (0 first): 1, 2 and 5 s, then every 10 s. */
@@ -89,6 +93,9 @@ class MqttSession(
     private val env: MqttEnvironment,
 ) {
     val tree = TopicTree(env.topicLimit)
+    /** Snapshot for this explorer, including automatic reconnects; settings changes affect new explorers. */
+    val ingressLimits = env.ingressLimits()
+    private val ingress = MqttIngressBudget(ingressLimits)
 
     private val clientId = "frpjump-" + randomSuffix()
     private val scheduler = env.scheduler
@@ -118,14 +125,10 @@ class MqttSession(
     private val _dropped = MutableStateFlow(0L)
 
     /**
-     * Messages dropped because [MAX_PENDING_MESSAGES] were already waiting
-     * for the session's thread (a broker flooding faster than the phone
-     * takes them): the tree may then miss values; the screen can say so.
+     * Incoming messages rejected by this explorer's payload/count/accounted-byte limits.
+     * The tree may then miss values; no payload is truncated to make it fit.
      */
     val dropped: StateFlow<Long> = _dropped
-
-    /** Messages handed over by the client and not yet taken on the scheduler's thread. */
-    private val pending = AtomicInteger()
 
     private val _refused = MutableStateFlow<Set<String>>(emptySet())
 
@@ -302,6 +305,7 @@ class MqttSession(
     fun close() {
         scheduler.post {
             if (ended) return@post
+            ingress.invalidate()
             _state.value = MqttState.Ended
             generation++
             clearLoginStorage()
@@ -328,22 +332,16 @@ class MqttSession(
 
     private fun attempt(v: MqttVersion) {
         val gen = ++generation
+        val lease = ingress.newLease()
         awaitingSuback = 0
         link?.close()
         link = null
         val events = object : LinkEvents {
-            override fun message(topic: String, payload: ByteArray, retain: Boolean, qos: Int) {
-                // Past the cap the newest is dropped: the thread is behind, and the tree is not complete anyway.
-                if (pending.incrementAndGet() > MAX_PENDING_MESSAGES) {
-                    pending.decrementAndGet()
-                    _dropped.update { it + 1 }
-                    return
-                }
-                scheduler.post {
-                    pending.decrementAndGet()
-                    if (gen == generation) onMessage(topic, payload, retain, qos)
-                }
-            }
+            override fun message(topic: String, payload: ByteArray, retain: Boolean, qos: Int) =
+                receivePayload(lease, gen, topic, payload.size, { payload }, retain, qos)
+
+            override fun message(topic: String, payloadBytes: Int, payload: () -> ByteArray, retain: Boolean, qos: Int) =
+                receivePayload(lease, gen, topic, payloadBytes, payload, retain, qos)
 
             override fun lost() = scheduler.post { if (gen == generation) onLost() }
         }
@@ -360,6 +358,68 @@ class MqttSession(
             env.connector.connect(ConnectRequest(localPort, clientId, v, login), events, done)
         } catch (e: Exception) {
             done(ConnectOutcome.Refused(ConnectRefusal.OTHER, e.javaClass.simpleName))
+        }
+    }
+
+    private fun receivePayload(lease: MqttIngressBudget.Lease, gen: Int, topic: String, size: Int, payload: () -> ByteArray, retain: Boolean, qos: Int) {
+        val admission = ingress.reserve(lease, topic, size)
+        if (admission !is MqttIngressBudget.Admission.Accepted) {
+            rejectedPayload(lease, gen, admission)
+            return
+        }
+        val reservation = admission.reservation
+        if (!reservation.isCurrent()) { reservation.release(); return }
+        val bytes = try {
+            payload()
+        } catch (failure: Throwable) {
+            reservation.release()
+            if (failure !is Exception) throw failure
+            rejectedPayload(lease, gen, ingress.reject(lease))
+            return
+        }
+        if (bytes.size != size) {
+            reservation.release()
+            rejectedPayload(lease, gen, ingress.reject(lease))
+            return
+        }
+        try {
+            scheduler.post {
+                try {
+                    if (reservation.isCurrent() && gen == generation && !ended) onMessage(topic, bytes, retain, qos)
+                } finally { reservation.release() }
+            }
+        } catch (failure: Throwable) {
+            reservation.release()
+            if (failure !is Exception) throw failure
+            // The scheduler refused the handover: do not leak capacity or enqueue another failing task.
+            _dropped.update { it + 1 }
+        }
+    }
+
+    private fun rejectedPayload(lease: MqttIngressBudget.Lease, gen: Int, admission: MqttIngressBudget.Admission) {
+        if (admission !is MqttIngressBudget.Admission.Rejected) return
+        _dropped.update { it + 1 }
+        if (!admission.notifyStop) return
+        // Once per lease, not one queued control action per rejected flood message.
+        try {
+            scheduler.post {
+                if (!ingress.owns(lease) || gen != generation || ended) return@post
+                ingress.invalidate()
+                generation++
+                cancelReconnect?.invoke()
+                stopSnapshot()
+                subscribed.clear()
+                val old = link
+                link = null
+                _snapshot.value = SnapshotState.Idle
+                _state.value = MqttState.Failed(MqttFailure.LOCAL_LIMIT)
+                // A failing transport cleanup cannot leave a stopped producer labelled Open.
+                try { old?.close() } catch (_: Exception) { }
+            }
+        } catch (failure: Throwable) {
+            // Keep copying disabled; a later event may retry this one control handover.
+            ingress.stopPostFailed(lease)
+            if (failure !is Exception) throw failure
         }
     }
 
@@ -407,6 +467,7 @@ class MqttSession(
 
     private fun refused(v: MqttVersion, outcome: ConnectOutcome.Refused) {
         if (ended) return
+        ingress.invalidate()
         val reconnecting = _state.value == MqttState.Reconnecting
         when (outcome.refusal) {
             ConnectRefusal.BAD_LOGIN -> {
@@ -434,6 +495,7 @@ class MqttSession(
 
     private fun onLost() {
         if (ended || _state.value !is MqttState.Open) return
+        ingress.invalidate()
         link = null
         subscribed.clear()
         stopSnapshot()

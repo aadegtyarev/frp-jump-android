@@ -36,6 +36,11 @@ sealed interface ConnectOutcome {
 interface LinkEvents {
     fun message(topic: String, payload: ByteArray, retain: Boolean, qos: Int)
 
+    /** Size preflight before copying library-owned payload; supplier is consumed synchronously, never retained. */
+    fun message(topic: String, payloadBytes: Int, payload: () -> ByteArray, retain: Boolean, qos: Int) {
+        message(topic, payload(), retain, qos)
+    }
+
     /** The connection went away without [MqttLink.close]. */
     fun lost()
 }
