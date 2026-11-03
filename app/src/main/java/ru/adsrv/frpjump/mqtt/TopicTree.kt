@@ -220,58 +220,92 @@ class TopicTree(
     /**
      * Depth first with one level list and one lowercased path text, both
      * grown and cut back on the way; a path is copied only when it matches.
+     * Iterator frames live on the heap: MQTT level count must not consume the call stack.
      */
     private fun collect(node: Node, levels: ArrayList<String>, text: StringBuilder, needle: String, found: MutableList<MqttPath>) {
-        node.children.forEach { (level, child) ->
+        class Frame(val children: Iterator<Map.Entry<String, Node>>, val textMark: Int)
+        val stack = ArrayDeque<Frame>()
+        stack.addLast(Frame(node.children.entries.iterator(), text.length))
+        while (stack.isNotEmpty()) {
+            val frame = stack.last()
+            if (!frame.children.hasNext()) {
+                stack.removeLast()
+                if (stack.isNotEmpty()) {
+                    levels.removeAt(levels.lastIndex)
+                    text.setLength(frame.textMark)
+                }
+                continue
+            }
+            val (level, child) = frame.children.next()
             val mark = text.length
             if (levels.isNotEmpty()) text.append('/')
             text.append(level.lowercase(Locale.ROOT))
             levels.add(level)
             if (child.history.isNotEmpty() && text.indexOf(needle) >= 0) found += MqttPath(levels.toList())
-            collect(child, levels, text, needle, found)
-            levels.removeAt(levels.lastIndex)
-            text.setLength(mark)
+            stack.addLast(Frame(child.children.entries.iterator(), mark))
         }
     }
 
-    /** [node] is at [levels]; [k] is the pattern level its children are matched against. */
+    /** [node] is at [levels]; [k] is the pattern level its children are matched against. Heap frames, not recursion. */
     private fun walk(node: Node, atRoot: Boolean, pattern: List<LevelPattern>, ignoreCase: Boolean, k: Int, levels: ArrayList<String>, found: (ArrayList<String>, Node) -> Unit) {
-        val part = pattern[k]
-        if (part == LevelPattern.Rest) {
-            // `a/#` matches `a` as well, unless `a` is where the search started.
-            if (levels.isNotEmpty() && node.history.isNotEmpty()) found(levels, node)
-            collectAll(node, atRoot && levels.isEmpty(), levels, found)
-            return
+        class Frame(val node: Node, val index: Int) {
+            var children: Iterator<Map.Entry<String, Node>>? = null
         }
-        val last = k == pattern.lastIndex
-        val step = { level: String, child: Node ->
-            levels.add(level)
-            if (last) {
-                if (child.history.isNotEmpty()) found(levels, child)
-            } else {
-                walk(child, atRoot, pattern, ignoreCase, k + 1, levels, found)
+        val stack = ArrayDeque<Frame>()
+        stack.addLast(Frame(node, k))
+        fun leave() {
+            stack.removeLast()
+            if (stack.isNotEmpty()) levels.removeAt(levels.lastIndex)
+        }
+        while (stack.isNotEmpty()) {
+            val frame = stack.last()
+            val part = pattern[frame.index]
+            if (frame.children == null) {
+                if (part == LevelPattern.Rest) {
+                    // `a/#` matches `a` as well, unless `a` is where the search started.
+                    if (levels.isNotEmpty() && frame.node.history.isNotEmpty()) found(levels, frame.node)
+                    collectAll(frame.node, atRoot && levels.isEmpty(), levels, found)
+                    leave()
+                    continue
+                }
+                frame.children = if (part is LevelPattern.Exact && !ignoreCase) {
+                    // Keep exact lookup O(1) even at a wide level.
+                    val child = frame.node.children[part.text]
+                    (if (child == null) emptyMap() else mapOf(part.text to child)).entries.iterator()
+                } else frame.node.children.entries.iterator()
             }
-            levels.removeAt(levels.lastIndex)
-        }
-        if (part is LevelPattern.Exact && !ignoreCase) {
-            node.children[part.text]?.let { step(part.text, it) }
-            return
-        }
-        val noDollar = atRoot && levels.isEmpty() && skipsDollar(part)
-        node.children.forEach { (level, child) ->
-            if (noDollar && level.startsWith("$")) return@forEach
-            if (levelMatches(part, level, ignoreCase)) step(level, child)
+            val children = frame.children!!
+            if (!children.hasNext()) {
+                leave()
+                continue
+            }
+            val (level, child) = children.next()
+            if (atRoot && levels.isEmpty() && skipsDollar(part) && level.startsWith("$")) continue
+            if (!levelMatches(part, level, ignoreCase)) continue
+            levels.add(level)
+            if (frame.index == pattern.lastIndex) {
+                if (child.history.isNotEmpty()) found(levels, child)
+                levels.removeAt(levels.lastIndex)
+            } else stack.addLast(Frame(child, frame.index + 1))
         }
     }
 
     /** Every topic below [node]; [noDollar] skips its `$` children. */
     private fun collectAll(node: Node, noDollar: Boolean, levels: ArrayList<String>, found: (ArrayList<String>, Node) -> Unit) {
-        node.children.forEach { (level, child) ->
-            if (noDollar && level.startsWith("$")) return@forEach
+        val stack = ArrayDeque<Iterator<Map.Entry<String, Node>>>()
+        stack.addLast(node.children.entries.iterator())
+        while (stack.isNotEmpty()) {
+            val children = stack.last()
+            if (!children.hasNext()) {
+                stack.removeLast()
+                if (stack.isNotEmpty()) levels.removeAt(levels.lastIndex)
+                continue
+            }
+            val (level, child) = children.next()
+            if (stack.size == 1 && noDollar && level.startsWith("$")) continue
             levels.add(level)
             if (child.history.isNotEmpty()) found(levels, child)
-            collectAll(child, false, levels, found)
-            levels.removeAt(levels.lastIndex)
+            stack.addLast(child.children.entries.iterator())
         }
     }
 
