@@ -21,6 +21,7 @@ import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.MqttSession
+import ru.adsrv.frpjump.mqtt.MqttLoginStorageFailure
 import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.PinMask
 import ru.adsrv.frpjump.mqtt.PublishAnswer
@@ -164,6 +165,8 @@ data class MqttUiState(
     val wbAnswers: Map<String, WriteView> = emptyMap(),
     /** The last value sent to each `wo-switch` this session, by status topic. */
     val wbSent: Map<MqttPath, String> = emptyMap(),
+    /** Local login persistence failed; the broker may still be connected and usable. */
+    val loginStorageFailure: MqttLoginStorageFailure? = null,
 ) {
     /** The tabs in the row, in order. */
     val tabs: List<ExplorerTab> get() = if (wbTab) ExplorerTab.entries else listOf(ExplorerTab.TREE, ExplorerTab.SUBSCRIPTIONS)
@@ -236,7 +239,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             if (gone.isEmpty()) all else all.filter { it !in gone }
         }
         val wb = combine(plugins, language, wbDeviceId, openedOnWb, wbWrites) { p, lang, device, opened, _ -> WbAsk(p?.wirenBoardOn == true, lang, device, opened) }
-        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb) { values ->
+        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb, s.loginStorageFailure) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -251,6 +254,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[8] as Boolean,
                 values[9] as ExplorerTab,
                 values[10] as WbAsk,
+                values[11] as MqttLoginStorageFailure?,
             )
         }.flowOn(Dispatchers.Default)
     }.let { it ?: flowOf(MqttUiState(state = MqttState.Ended, closedByTunnel = app.mqtt.closedByTunnel(sessionId))) }
@@ -273,6 +277,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         whole: Boolean,
         tab: ExplorerTab,
         wb: WbAsk,
+        loginStorageFailure: MqttLoginStorageFailure?,
     ): MqttUiState {
         if (path != shownPath) {
             shownPath = path
@@ -292,6 +297,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         val hits = if (search.scope == searchAt) search else Search(searchAt, searchAt, search.query, emptyList(), 0, 0)
         return MqttUiState(
             state = state,
+            loginStorageFailure = loginStorageFailure,
             snapshot = snapshot,
             path = path,
             rows = rows,
@@ -677,6 +683,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     fun retry() = session?.retry()
 
     fun login(user: String, password: String, remember: Boolean) = session?.login(user, password, remember)
+
+    fun retryLoginStorage(expected: MqttLoginStorageFailure) = session?.retryLoginStorage(expected)
 
     /** "Close session": with Undo, as on the Sessions tab; it disconnects for good when that goes. The tunnel stays. */
     fun closeSession() = app.closeSessions.mqtt(sessionId)
