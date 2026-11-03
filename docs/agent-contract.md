@@ -1,6 +1,6 @@
 # Optional connection assistant
 
-## Current stage: kernel and external protocol adapter
+## Current stage: kernel, external adapter and provider setup
 
 Settings → LLM assistant enables or disables the experimental module. It is
 **off by default**, including upgrades from versions without this setting.
@@ -8,12 +8,13 @@ The preference is committed before the switch reports success. A failed
 write retains the previous preference and shows an error. A malformed new
 flag falls back to off without resetting unrelated settings.
 
-This slice is infrastructure, not a usable chat: **no provider, API key,
-network request or real connection tool is configured or started**. The
-settings row explicitly says so. Enabling the kernel does not perform work.
-The external protocol adapter exists as a separately tested module, but it
-is not wired into a user-facing provider configuration or chat. The approved
-follow-up slices are provider settings/chat, then minimal existing-connection/SSH tools. Web, Files, MQTT, TCP,
+Settings → LLM assistant → Assistant provider configures one external
+OpenAI-compatible provider. Chat and real connection tools are **not available
+yet**; the UI explicitly says so. Enabling the module, opening settings or
+saving a provider performs no network request. Fetch models is an explicit
+user action and is available during setup even while the agent module is off.
+The approved follow-up slices are chat/coordinator, then minimal
+existing-connection/SSH tools. Web, Files, MQTT, TCP,
 compression, evaluators, permission modes and subagents are later work.
 No tunnel creation/start/reconfiguration/deletion is granted to the agent.
 
@@ -30,6 +31,8 @@ No tunnel creation/start/reconfiguration/deletion is granted to the agent.
   the run before cancellation. Enabling again cannot revive it.
 - `agent-openai` implements non-streaming OpenAI-compatible Chat Completions
   and model discovery. It is not constructed or called by enabling the module.
+- `AssistantProviderStore` owns the app-private atomic provider document and
+  Keystore-backed credential; its observable snapshot contains metadata only.
 - Connection tools will be separate adapters. A tool must bind
   to its admitted connection identity; it must never resolve a replacement
   client after a disconnect. The kernel does not itself grant target access.
@@ -83,6 +86,41 @@ transport-buffer guarantee. Future stream-reading adapters must cap capture
 as data arrives. The full UI history/storage is the app coordinator's
 responsibility, not an unbounded background store in the kernel.
 
+## Provider settings and credentials
+
+The form accepts API root, model ID (manual or explicitly fetched), optional
+effort (provider default, presets or a manually entered value), model context
+window, output reserve and the output-token parameter spelling. The API key
+field is masked, never prefilled, and deliberately excluded from saved instance
+state. A restored form that lost a replacement key requires re-entry rather
+than silently falling back to the stored key. Draft metadata and the original
+revision survive recreation; an old draft cannot retarget newer settings.
+
+A blank key keeps the saved credential only for the same canonical API root.
+Changing the root requires explicit key entry, for both Save and Fetch models.
+The key and its canonical root are sealed together with AES-256-GCM through
+Android Keystore alias `frpjump-assistant-provider-v1`. Root binding is checked
+on unseal too, so changing plaintext metadata cannot redirect the saved key.
+One atomic file, `assistant_provider.json`, commits metadata plus sealed
+credential together. No plaintext key or sealed blob enters the public StateFlow.
+Unsealing happens only for explicit provider use; metadata-only saves keep the
+existing sealed bytes without decrypting them.
+
+Each commit has a new revision. Save, credential resolution and discovery
+completion check their originating revision, reading current storage rather
+than trusting an old UI snapshot. Read/decode failures are not treated as an
+empty profile and cannot overwrite unknown data; Retry reads again. This
+slice has no destructive reset UI for a corrupt provider document. An
+unreadable Keystore credential can be replaced by entering a new key.
+
+Save waits for commit and keeps the form/error on failure. Pending operations
+prevent duplicate input; disposed or duplicate callbacks cannot finish a newer
+operation. Leaving the form cancels model discovery. Failed discovery does not
+prevent a manual model ID. Errors use fixed messages/status codes, never raw
+server, crypto or storage exception content. No live credentials are required
+by tests. Deactivation stops agent work, not an explicitly requested settings
+inventory operation; saving/enabling never silently starts discovery or chat.
+
 ## External API adapter
 
 `OpenAiConfig` selects the API root (usually ending in `/v1`), model ID,
@@ -92,8 +130,9 @@ can run before model selection. No provider/model capability is inferred
 from an ID; unsupported options produce a status error, not an implicit retry
 with different semantics. This is Chat Completions, not the Responses API.
 
-`OpenAiAgentProvider` receives a key in memory; this stage adds no key storage
-or settings UI. It sends Bearer authorization only to the configured target.
+`OpenAiAgentProvider` receives a key in memory from the app-owned credential
+store; the transport itself performs no persistence. It sends Bearer
+authorization only to the configured target.
 Remote roots require HTTPS; HTTP is accepted only for loopback hosts. Roots
 with user information, query or fragment are rejected. Redirects and automatic
 connection retries are disabled. A transport guard also removes HTTP503 retry

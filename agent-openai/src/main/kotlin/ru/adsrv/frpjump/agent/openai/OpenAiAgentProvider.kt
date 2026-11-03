@@ -14,10 +14,13 @@ import ru.adsrv.frpjump.agent.AgentProvider
 import ru.adsrv.frpjump.agent.AgentReply
 import ru.adsrv.frpjump.agent.AgentRequest
 
+/** Shared by credential setup and the transport; never put invalid key values in exceptions. */
+fun validOpenAiApiKey(key: String): Boolean = key.isNotBlank() && key.length <= 16_384 && key.all { it.code in 33..126 }
+
 /** Non-streaming Chat Completions adapter. No key persistence, tracing, implicit retries or fallback. */
 class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: String) : AgentProvider {
     private val owner = Any()
-    init { require(apiKey.isNotBlank() && apiKey.length <= 16_384 && apiKey.all { it.code in 33..126 }) { "Invalid API key" } }
+    init { require(validOpenAiApiKey(apiKey)) { "Invalid API key" } }
 
     override suspend fun complete(request: AgentRequest): AgentReply {
         require(config.model.isNotBlank()) { "Select a provider model before running" }

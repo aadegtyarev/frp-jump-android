@@ -64,6 +64,31 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val assistantProvider = app.assistantProvider.state
+
+    fun reloadAssistantProvider() = viewModelScope.launch(Dispatchers.IO) { app.assistantProvider.reload() }
+
+    fun saveAssistantProvider(draft: ru.adsrv.frpjump.assistant.AssistantProviderDraft, complete: (String?) -> Unit) = viewModelScope.launch {
+        try {
+            withContext(Dispatchers.IO) { app.assistantProvider.save(draft) }
+            complete(null)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) { complete(assistantProviderError(failure)) }
+    }
+
+    fun assistantModels(draft: ru.adsrv.frpjump.assistant.AssistantProviderDraft, complete: (List<String>?, String?) -> Unit): () -> Unit {
+        val job = viewModelScope.launch {
+            try {
+                val provider = withContext(Dispatchers.IO) { app.assistantProvider.provider(draft) }
+                val models = provider.listModels().map { it.id }
+                withContext(Dispatchers.IO) { app.assistantProvider.requireRevision(draft.expectedRevision) }
+                complete(models, null)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) { complete(null, assistantProviderError(failure)) }
+        }
+        return { job.cancel() }
+    }
+
     fun checkForUpdates() = app.updater.check()
 
     fun downloadUpdate() = app.updater.download()

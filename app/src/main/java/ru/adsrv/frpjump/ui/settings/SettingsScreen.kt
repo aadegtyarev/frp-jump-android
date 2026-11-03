@@ -128,9 +128,16 @@ fun SettingsScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
+    val assistantProvider by vm.assistantProvider.collectAsStateWithLifecycle()
+    var providerSetup by rememberSaveable { mutableStateOf(false) }
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
     // Above the licenses' early return, so the settings come back scrolled where they were.
     val scroll = rememberScrollState()
+    if (providerSetup) {
+        AssistantProviderScreen(assistantProvider, onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
+            onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() }, onBack = { providerSetup = false })
+        return
+    }
     // Components and licenses: a screen of its own over the settings.
     var licenses by rememberSaveable { mutableStateOf(false) }
     if (licenses) {
@@ -257,6 +264,11 @@ fun SettingsScreen(
         }
         Group(stringResource(R.string.assistant_title)) {
             AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
+            RowDivider()
+            SettingRow(tile = { GlyphTile("API") }, label = stringResource(R.string.assistant_provider_title),
+                hint = if (assistantProvider.problem != null) stringResource(R.string.assistant_provider_read_failed)
+                    else assistantProvider.settings?.model?.takeIf { it.isNotBlank() } ?: stringResource(R.string.assistant_provider_not_selected),
+                onClick = { providerSetup = true }) { Chevron() }
         }
         Group(stringResource(R.string.settings_background)) {
             SettingRow(

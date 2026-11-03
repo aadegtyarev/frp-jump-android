@@ -1027,8 +1027,8 @@ phone once visible:
 ## Optional LLM assistant
 
 The assistant is a separate, opt-in module with a switch in Settings, off
-by default. The first slice is kernel infrastructure only: no working chat,
-provider or connection tools yet. Its current boundaries, window/cancellation
+by default. Provider setup (secure key storage, model discovery, effort and
+context limits) is available in Settings; no working chat or connection tools yet. Its current boundaries, window/cancellation
 rules and follow-up scope are in [the agent contract](agent-contract.md).
 
 ## Wire behaviour the app must match

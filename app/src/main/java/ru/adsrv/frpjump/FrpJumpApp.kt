@@ -159,6 +159,8 @@ class FrpJumpApp : Application() {
     /** Optional assistant kernel; no provider or transport is started by constructing it. */
     lateinit var assistant: ru.adsrv.frpjump.agent.AgentModule
         private set
+    lateinit var assistantProvider: ru.adsrv.frpjump.assistant.AssistantProviderStore
+        private set
     lateinit var directKept: DirectKeptStore
         private set
     lateinit var network: NetworkWatcher
@@ -254,6 +256,8 @@ class FrpJumpApp : Application() {
         installFullBouncyCastle()
         Texts.init(this)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
+        assistantProvider = ru.adsrv.frpjump.assistant.AssistantProviderStore(
+            AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"))
         assistant = ru.adsrv.frpjump.agent.AgentModule(settings.settings.value.assistantEnabled) {
             settings.settings.value.assistantEnabled
         }
