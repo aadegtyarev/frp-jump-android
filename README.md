@@ -934,7 +934,8 @@ scripts/build-frpc.sh        # upstream frpc 0.70.0 -> app/src/main/jniLibs/<abi
 
 The optional [LLM assistant kernel](docs/agent-contract.md) is a separate
 `agent-core` JVM module, with an `agent-openai` protocol adapter. Its Settings
-switch is off by default; chat, provider configuration and real connection
+switch is off by default. Provider setup is available in Settings, including
+secure key storage and explicit model discovery; chat and real connection
 tools are not available yet.
 
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.
