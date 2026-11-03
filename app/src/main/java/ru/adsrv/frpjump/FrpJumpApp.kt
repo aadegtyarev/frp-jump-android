@@ -41,6 +41,9 @@ import ru.adsrv.frpjump.mqtt.PublishMemory
 import ru.adsrv.frpjump.mqtt.plugins.PluginObserver
 import ru.adsrv.frpjump.mqtt.plugins.PluginStore
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.ports.PortReservations
+import ru.adsrv.frpjump.ports.profilePortPrefix
+import ru.adsrv.frpjump.connections.tunnelPins
 import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfileShared
 import ru.adsrv.frpjump.profiles.ProfileStore
@@ -268,6 +271,18 @@ class FrpJumpApp : Application() {
             directKept = directKept,
             network = network.id,
             restoreRecord = restoreRecord,
+            reservations = {
+                val all = profiles.state.value.runtimes
+                PortReservations(
+                    profiles = all.keys.toSet(),
+                    pinned = all.values.flatMap { runtime ->
+                        tunnelPins(runtime.connections.connections.value).map { (key, port) ->
+                            profilePortPrefix(runtime.id) + key to port
+                        }
+                    }.toMap(),
+                    held = all.values.flatMap { it.tunnels.heldReservations.toList() }.toMap(),
+                )
+            },
         )
         val store = ProfileStore(filesDir, boxFor = ::KeystoreSecretBox, storageFor = ::AtomicTextFile)
         // Tunnels whose disconnect waits for Undo are counted as down, but run on.

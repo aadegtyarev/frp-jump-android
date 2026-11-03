@@ -193,6 +193,15 @@ re-enroll.
   Two connections cannot pin the same port; connections to the same device
   and port share their tunnel and its pin; a port another tunnel uses now
   is refused. It cannot be changed while the tunnel is up.
+  Saved connections are the source of truth for pins. Before any profile
+  allocates Auto ports, restore all published profiles' pins, including off
+  connections, into the shared map. Preserve known held allocations; reject
+  conflicting reservations instead of moving a live Auto tunnel.
+  The connection and reservation map are not a crash-atomic two-file save:
+  if the connection was committed but the map write failed, report it as
+  saved with port repair pending, keeping its identity. The next planning
+  restores reservations before allocation; map I/O failure stops the new
+  plan rather than starting frpc with uncommitted allocations.
 - A failed visitor start is cleared after frpc confirms that same visitor
   successfully started on retry. A different visitor's success must not hide
   the failure, nor overwrite a later authentication/transport/device error.

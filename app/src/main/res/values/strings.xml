@@ -1100,6 +1100,7 @@
     <string name="terminal_paste_run_enter">Paste + Enter</string>
     <string name="terminal_paste_join_enter">Remove line breaks + Enter</string>
     <string name="connection_saved_title">Connection saved</string>
+    <string name="connection_saved_port_repair">Connection saved. Its local-port reservation will be restored before the next tunnel allocation; there is no need to add the connection again.</string>
     <string name="connection_saved_inactive">%1$s is saved, but could not start (%2$s). Retry starting it; do not add it again.</string>
     <string name="connection_saved_waiting">%1$s is saved but not started. Start it below; another QR code or enrollment token is not needed.</string>
     <string name="connection_retry_start">Retry start</string>

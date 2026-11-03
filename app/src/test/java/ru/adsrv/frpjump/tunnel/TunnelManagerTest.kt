@@ -165,6 +165,25 @@ class TunnelManagerTest {
         refusalSettleMs = 20,
     ).apply { portRange = 47100..47199 }
 
+    @Test fun `allocation reads the global recovery provider before invoking frpc`() = runBlocking {
+        val disk = MemoryStorage()
+        val runner = FakeFrpc()
+        val pinKey = ru.adsrv.frpjump.ports.profilePortKey("A", "off", 22)
+        val other = TunnelManager("B", { stored }, api, ProfileSession(), LocalPortStore(disk), runner, { true },
+            reservations = { ru.adsrv.frpjump.ports.PortReservations(setOf("A", "B"), mapOf(pinKey to 47100)) },
+            touchPort = { Touch.OPEN })
+        other.portRange = 47100..47199
+        try {
+            other.sync()
+            assertEquals(1, runner.applies)
+            assertEquals(47100, LocalPortStore(disk).load()[pinKey])
+            assertFalse(47100 in runner.heldPorts)
+            val allocated = runner.heldPorts.single()
+            assertTrue(allocated in 47101..47199)
+            assertEquals(mapOf(ru.adsrv.frpjump.ports.profilePortKey("B", "wb", 80) to allocated), other.heldReservations)
+        } finally { other.close(); manager.close() }
+    }
+
     /** The profile's pinned local ports, as its connections give them. */
     @Volatile private var pins: Map<String, Int> = emptyMap()
 

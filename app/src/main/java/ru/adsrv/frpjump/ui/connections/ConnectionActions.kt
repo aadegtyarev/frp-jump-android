@@ -17,6 +17,8 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.connections.Connection
+import ru.adsrv.frpjump.connections.ConnectionSaveResult
+import ru.adsrv.frpjump.connections.saveConnectionWithReservations
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.asMqtt
 import ru.adsrv.frpjump.connections.HeldPort
@@ -214,22 +216,24 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val runtime = runtime(profile) ?: return onDone(Texts.get(R.string.profile_gone))
         scope.launch {
             val before = runtime.connections.connections.value
+            var repairPending = false
             val failure = try {
-                withContext(Dispatchers.IO) {
-                    // Under the shared map's lock, so two saves (two profiles) cannot both take one port:
-                    // the pin is checked again against everything as it is now, and only then saved.
-                    runtime.localPorts.update { ports ->
-                        val now = localPortContext(profile)
-                        pinProblemOnSave(profile, connection, now.pins, now.held)?.let { throw PinRefused(it) }
-                        runtime.connections.save(connection)
-                        // A pin given up (back to Auto, or another port) is free for others again...
-                        pinToRelease(previous, runtime.connections.connections.value)?.let { (key, pin) ->
-                            releasePin(ports, profilePortPrefix(profile) + key, pin)
-                        }
-                        // ...and a new one is reserved at once in the map all profiles share, so no other tunnel gets it, even while this one is off.
-                        connection.localPort?.let { pin -> reservePins(ports, mapOf(profilePortKey(profile, connection.device, connection.port) to pin)) }
-                    }
+                val result = withContext(Dispatchers.IO) {
+                    saveConnectionWithReservations(
+                        runtime.connections, runtime.localPorts, connection,
+                        validate = {
+                            val now = localPortContext(profile)
+                            pinProblemOnSave(profile, connection, now.pins, now.held)?.let { throw PinRefused(it) }
+                        },
+                        reserve = { ports ->
+                            pinToRelease(previous, runtime.connections.connections.value)?.let { (key, pin) ->
+                                releasePin(ports, profilePortPrefix(profile) + key, pin)
+                            }
+                            connection.localPort?.let { pin -> reservePins(ports, mapOf(profilePortKey(profile, connection.device, connection.port) to pin)) }
+                        },
+                    )
                 }
+                repairPending = result == ConnectionSaveResult.SAVED_PORT_REPAIR_PENDING
                 null
             } catch (e: CancellationException) {
                 throw e
@@ -237,6 +241,9 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
                 localPortProblemWords(e.problem).let { (res, args) -> Texts.get(res, *args.toTypedArray()) }
             } catch (e: Exception) {
                 e.userMessage()
+            }
+            if (failure == null && repairPending) {
+                app.notices.show(Texts.get(R.string.connection_saved_port_repair), NoticeKind.WARN, long = true)
             }
             if (failure == null && connectNow) runtime.tunnels.connectAsync(connection.device, connection.port, connection.kind)
             // No question about sessions on the old tunnel: the sheet locks kind and port while
