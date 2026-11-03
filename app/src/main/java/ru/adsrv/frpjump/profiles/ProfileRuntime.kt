@@ -21,6 +21,7 @@ import ru.adsrv.frpjump.devices.DeviceListCache
 import ru.adsrv.frpjump.devices.ServerFeaturesCache
 import ru.adsrv.frpjump.direct.DirectKeptStore
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.ports.PortReservations
 import ru.adsrv.frpjump.restore.RestoreRecord
 import ru.adsrv.frpjump.session.Poller
 import ru.adsrv.frpjump.session.ProfileSession
@@ -60,6 +61,8 @@ class ProfileShared(
     val network: StateFlow<String?>,
     /** Which profiles had tunnels up, for a cold start; loaded before any runtime is made. */
     val restoreRecord: RestoreRecord,
+    /** Lazy: active work starts only after all prepared runtimes have published ownership. */
+    val reservations: () -> PortReservations? = { null },
 )
 
 /**
@@ -123,6 +126,7 @@ class ProfileRuntime(
         },
         recordTunnels = { shared.restoreRecord.set(id, it) },
         pins = { tunnelPins(connections.connections.value) },
+        reservations = shared.reservations,
     )
 
     /** The local port map shared by all profiles: a pin is written there when it is saved. */

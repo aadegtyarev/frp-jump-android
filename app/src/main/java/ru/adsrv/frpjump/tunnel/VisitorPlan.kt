@@ -6,6 +6,8 @@ import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.profilePortKey
 import ru.adsrv.frpjump.ports.profilePortPrefix
 import ru.adsrv.frpjump.ports.reservePins
+import ru.adsrv.frpjump.ports.PortReservations
+import ru.adsrv.frpjump.ports.restorePinReservations
 
 /** A consumed grant and the local port it is served on; [pinned]: the owner fixed it, it never moves. */
 data class PlannedTunnel(val grant: ConsumedGrant, val localPort: Int, val pinned: Boolean = false) {
@@ -30,12 +32,14 @@ fun planTunnels(
     allocator: LocalPortAllocator,
     heldByFrpc: Set<Int>,
     pinned: Map<String, Int> = emptyMap(),
+    reservations: PortReservations? = null,
 ): List<PlannedTunnel> {
-    reservePins(ports, pinned.mapKeys { (key, _) -> profilePortPrefix(profile) + key })
+    if (reservations != null) restorePinReservations(profile, ports, reservations)
+    else reservePins(ports, pinned.mapKeys { (key, _) -> profilePortPrefix(profile) + key })
     return consumed.map { grant ->
         val local = localPortKey(grant.exposerDeviceName, grant.targetPort)
         val key = profilePortKey(profile, grant.exposerDeviceName, grant.targetPort)
-        val pin = pinned[local]
+        val pin = if (reservations != null) reservations.pinned[key] else pinned[local]
         if (pin != null) {
             PlannedTunnel(grant, pin, pinned = true)
         } else {

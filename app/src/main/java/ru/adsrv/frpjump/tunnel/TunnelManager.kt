@@ -31,6 +31,8 @@ import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
 import ru.adsrv.frpjump.ports.LocalPortAllocator
 import ru.adsrv.frpjump.ports.LocalPortStore
+import ru.adsrv.frpjump.ports.PortReservations
+import ru.adsrv.frpjump.ports.profilePortKey
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ports.wireProtocolFor
@@ -153,7 +155,16 @@ class TunnelManager(
     private val listenWaitMs: Long = LISTEN_WAIT_MS,
     /** How long after a check a refusal may still be logged. */
     private val refusalSettleMs: Long = REFUSAL_SETTLE_MS,
+    /** All published profiles' authoritative pins and held allocations; read under the shared map gate. */
+    private val reservations: () -> PortReservations? = { null },
 ) {
+    /** A planning snapshot must not evict a live Auto allocation of another profile. */
+    val heldReservations: Map<String, Int> get() {
+        val held = runner.heldPorts
+        return core.value.planned.filter { it.localPort in held }
+            .associate { profilePortKey(profile, it.grant.exposerDeviceName, it.grant.targetPort) to it.localPort }
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val syncing = Mutex()
     private val core = MutableStateFlow(Core())
@@ -658,7 +669,7 @@ class TunnelManager(
         val (planned, modes) = withContext(Dispatchers.IO) {
             // Under the shared map's lock: two profiles planning at once never pick the same port.
             val plan = localPorts.update { ports ->
-                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe, pins())
+                planTunnels(profile, desired.consumed, ports, LocalPortAllocator(portRange), runner.heldPorts - probe, pins(), reservations())
             }
             val modes = plan.associate { it.grant.grantId to directMode(it.grant.exposerDeviceName) }
             // Direct again (kept or off until now): a new xtcp name, so lines its old
