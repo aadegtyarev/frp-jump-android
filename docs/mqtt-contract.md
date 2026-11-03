@@ -148,9 +148,52 @@ valid count and action preferences survive.
 
 This is an application handover budget, not a total-heap measurement or a
 packet-size guarantee for the HiveMQ decoder, which may have allocated a
-packet before the callback. It does not yet bound accumulated tree/history
-bytes. Those budgets are a separate slice. Outgoing Publish, plugin readonly
+packet before the callback. Accumulated tree/history bytes have a separate owned-storage budget below.
+Outgoing Publish, plugin readonly
 rules, SSH paste and clipboard policies are unchanged.
+
+## Stored-data limits
+
+Settings → MQTT storage configures the owned cache of each new explorer:
+
+| Limit | Default | Valid range |
+| --- | --- | --- |
+| Owned names, nodes and history | 33,554,432 bytes (32 MiB) | 4,096–268,435,456 bytes |
+| Seen topics | 100,000 | 1–1,000,000 |
+| Values kept per topic | 20 | 1–200 |
+
+The same form chooses **reject the new value and continue** (default) or
+**stop session; retry manually**. Settings are validated before the write;
+the form waits for commit and stays open on failure. Invalid new fields or
+unknown action values fall back independently without resetting unrelated
+preferences. Existing explorers retain their captured configuration, also
+on reconnect. Close a session and let its Undo window expire before opening
+a new one to apply changed settings; merely leaving the screen does not.
+
+Accounting charges 256 bytes for the root and each missing node, twice the
+UTF-16 length of each newly retained level name, and 64 bytes plus payload
+for each stored history value. A receive plans its final cost under the
+tree lock before copying payload or creating nodes. Normal history-count
+rotation credits entries that will leave the tail. If it does not fit, the
+whole incoming value is rejected: no new branches, changed current value,
+history eviction or ancestor statistics are committed. Equal retained
+refreshes are budget-neutral: original time and before-session status are
+preserved while retained/QoS marks refresh. Clear returns
+the cache to the root charge. No payload is truncated, no global LRU or
+extra history wipe is performed, and no depth limit is added.
+
+Storage-byte rejection is distinct from the topic-count limit. An active
+snapshot ends with a storage-limit reason, not a quiet/complete result;
+plugin discovery must not infer that all metadata was read. After a cache
+rejection, every explorer tab shows its count and current owned accounting. A cache-stop
+failure offers explicit Refresh tree before manual Retry; refresh is also
+enabled in that state, not in ended sessions or unrelated failures. Clear
+and Retry do not hide historical rejection counts. Drop keeps live/pinned
+subscriptions working, so smaller updates that fit can still arrive.
+
+These are logical per-session owned-data charges, not an exact heap bound.
+UI reader snapshots, transient copies and the MQTT library decoder are not
+covered by this counter; budgets of simultaneously open sessions add up.
 
 ## Subscriptions
 
@@ -214,10 +257,11 @@ neither option; see "Retained topics" for what that changes.
   retain, QoS), arriving before any other message for that topic, at most
   one fewer than the number of matching subscriptions. A copy is never
   shown, counted or kept in history.
-- **Limit.** One limit for the session: 100 000 topics, 20 values of
-  history each. At the limit new topics stop being added while the known
-  ones keep updating, and the tree says so ("Topic limit reached: 100 000;
-  new topics are not shown"); "Refresh tree" starts over.
+- **Limits.** Defaults are 100 000 topics and 20 history values each,
+  together with the owned-storage budget described above; all are
+  configurable. At the topic-count limit new topics stop being added while
+  known ones may update if their history fits. Count and byte rejection
+  have distinct snapshot reasons. "Refresh tree" clears the owned cache.
 
 ## Pins
 
@@ -1144,9 +1188,10 @@ On a Wiren Board on the tunnel unless said otherwise.
 
 ## Open risks
 
-- Memory: 100 000 topics with 20 values each is up to 2 million values; a
-  few large payloads per topic could exhaust a phone's memory before the
-  limit is reached.
+- Memory: ingress and owned-storage accounting are not an exact whole-app
+  heap cap. Reader snapshots and MQTT decoder allocations are excluded;
+  multiple sessions add their budgets, and high operator-selected limits
+  can still exhaust a phone's memory.
 - A busy broker over mobile data: the snapshot and large branches pull
   every message the broker sends, costing data and battery.
 - The tunnel is a TCP port on 127.0.0.1 open to every app on the phone

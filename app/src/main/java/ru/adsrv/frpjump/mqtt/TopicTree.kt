@@ -33,11 +33,14 @@ enum class Received {
 
     /** A new topic at the session's limit: not added. */
     OVER_LIMIT,
+
+    /** The complete incoming value would exceed owned tree/history accounting; no data was committed. */
+    STORAGE_LIMIT,
 }
 
 /**
  * The topics one session has seen, each with its last values (at most
- * [HISTORY] of them, newest first), and per branch the count of seen
+ * [historyLimit] of them, newest first), and per branch the count of seen
  * topics below it and the time of the newest change there. A node can hold
  * a value and children at once. At most [limit] topics: at the limit the
  * known ones keep updating and new ones are dropped ([limitReached]).
@@ -52,8 +55,18 @@ enum class Received {
  */
 class TopicTree(
     val limit: Int = DEFAULT_LIMIT,
+    val storageLimitBytes: Long = DEFAULT_STORAGE_BYTES,
+    val historyLimit: Int = HISTORY,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
+    // Keep the established TopicTree(limit) { clock } and positional (limit, clock) entry point.
+    constructor(limit: Int, now: () -> Long) : this(limit, DEFAULT_STORAGE_BYTES, HISTORY, now)
+
+    init {
+        require(storageLimitBytes >= NODE_CHARGE)
+        require(historyLimit > 0)
+    }
+
     private class Node {
         val children = HashMap<String, Node>()
 
@@ -67,6 +80,12 @@ class TopicTree(
     private var root = Node()
     private var topics = 0
     private var dropped = false
+    private var storageDropped = false
+    private var usedBytes = NODE_CHARGE
+
+    /** Owned structural/value charges only; reader snapshots and transient input copies are excluded. */
+    val storedBytes: Long get() = synchronized(lock) { usedBytes }
+    val storageLimitReached: Boolean get() = synchronized(lock) { storageDropped }
 
     val topicCount: Int get() = synchronized(lock) { topics }
 
@@ -100,9 +119,16 @@ class TopicTree(
                     dropped = true
                     return Received.OVER_LIMIT
                 }
-                val node = known ?: create(topic)
+                val charge = missingNodeCharge(topic) + VALUE_CHARGE + payload.size.toLong()
+                if (charge > storageLimitBytes - usedBytes) {
+                    storageDropped = true
+                    return Received.STORAGE_LIMIT
+                }
+                // Decide before copying or inserting nodes; a rejected input leaves all old data intact.
                 val value = TopicValue.of(payload, retain, qos, at, version, previous = null, beforeSession = onSubscribe && retain)
+                val node = known ?: create(topic)
                 node.history.addFirst(value)
+                usedBytes += charge
                 topics++
                 forEachOnPath(topic) { it, isTopic ->
                     if (!isTopic) it.topicsBelow++
@@ -115,8 +141,19 @@ class TopicTree(
                 known.history[0] = TopicValue.of(payload, retain, qos, current.receivedAt, version, previous = current, beforeSession = current.beforeSession)
                 return Received.UNCHANGED
             }
-            known.history.addFirst(TopicValue.of(payload, retain, qos, at, version, previous = current))
-            while (known.history.size > HISTORY) known.history.removeLast()
+            var credit = 0L
+            for (index in (historyLimit - 1) until known.history.size) {
+                credit += VALUE_CHARGE + known.history[index].payload.size.toLong()
+            }
+            val delta = VALUE_CHARGE + payload.size.toLong() - credit
+            if (delta > storageLimitBytes - usedBytes) {
+                storageDropped = true
+                return Received.STORAGE_LIMIT
+            }
+            val value = TopicValue.of(payload, retain, qos, at, version, previous = current)
+            known.history.addFirst(value)
+            while (known.history.size > historyLimit) known.history.removeLast()
+            usedBytes += delta
             forEachOnPath(topic) { it, _ -> it.newestChangeAt = maxOf(it.newestChangeAt, at) }
             return Received.CHANGED
         }
@@ -133,7 +170,7 @@ class TopicTree(
         return nodes.sortedWith(compareBy(NaturalOrder) { it.name })
     }
 
-    /** The last values of [path], newest first, at most [HISTORY]. */
+    /** The last values of [path], newest first, at most [historyLimit]. */
     fun history(path: MqttPath): List<TopicValue> = synchronized(lock) { find(path)?.history?.toList() ?: emptyList() }
 
     /**
@@ -215,6 +252,8 @@ class TopicTree(
         root = Node()
         topics = 0
         dropped = false
+        storageDropped = false
+        usedBytes = NODE_CHARGE
     }
 
     /**
@@ -318,6 +357,17 @@ class TopicTree(
         return node
     }
 
+    /** Only missing levels retain new names/nodes; do not allocate them until the plan fits. */
+    private fun missingNodeCharge(path: MqttPath): Long {
+        var node: Node? = root
+        var charge = 0L
+        for (level in path.levels) {
+            node = node?.children?.get(level)
+            if (node == null) charge += NODE_CHARGE + level.length.toLong() * 2
+        }
+        return charge
+    }
+
     private fun create(path: MqttPath): Node {
         var node = root
         path.levels.forEach { level -> node = node.children.getOrPut(level) { Node() } }
@@ -337,5 +387,8 @@ class TopicTree(
     companion object {
         const val DEFAULT_LIMIT = 100_000
         const val HISTORY = 20
+        const val DEFAULT_STORAGE_BYTES = 32L * 1024 * 1024
+        const val NODE_CHARGE = 256L
+        const val VALUE_CHARGE = 64L
     }
 }

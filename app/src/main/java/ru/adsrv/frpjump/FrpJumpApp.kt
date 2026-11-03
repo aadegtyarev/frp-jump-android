@@ -378,7 +378,8 @@ class FrpJumpApp : Application() {
         )
         mqtt = MqttSessions(
             env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler(),
-                ingressLimits = { settings.settings.value.mqttIngress }),
+                ingressLimits = { settings.settings.value.mqttIngress },
+                cacheLimits = { settings.settings.value.mqttCache }),
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )

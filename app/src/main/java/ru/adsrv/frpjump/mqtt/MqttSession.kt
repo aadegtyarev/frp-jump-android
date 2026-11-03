@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import java.security.SecureRandom
 import ru.adsrv.frpjump.settings.MqttIngressLimits
+import ru.adsrv.frpjump.settings.MqttCacheLimits
+import ru.adsrv.frpjump.settings.MqttOverflow
+import ru.adsrv.frpjump.settings.validMqttCacheLimits
 
 /** Where a session stands. */
 sealed interface MqttState {
@@ -36,6 +39,9 @@ enum class MqttFailure {
 
     /** The operator-selected local ingress policy stopped this session; manual retry only. */
     LOCAL_LIMIT,
+
+    /** The operator-selected owned-cache policy stopped this explorer. */
+    CACHE_LIMIT,
 }
 
 enum class MqttLoginStorageAction { REMEMBER, FORGET }
@@ -63,6 +69,7 @@ class MqttEnvironment(
     val scheduler: MqttScheduler,
     val topicLimit: Int = TopicTree.DEFAULT_LIMIT,
     val ingressLimits: () -> MqttIngressLimits = { MqttIngressLimits() },
+    val cacheLimits: () -> MqttCacheLimits = { MqttCacheLimits(topics = topicLimit) },
 )
 
 /** The delay before reconnect attempt [step] (0 first): 1, 2 and 5 s, then every 10 s. */
@@ -92,7 +99,8 @@ class MqttSession(
     val localPort: Int,
     private val env: MqttEnvironment,
 ) {
-    val tree = TopicTree(env.topicLimit)
+    val cacheLimits = env.cacheLimits().also { require(validMqttCacheLimits(it)) { "invalid MQTT cache limits" } }
+    val tree = TopicTree(cacheLimits.topics, cacheLimits.storageBytes.toLong(), cacheLimits.history)
     /** Snapshot for this explorer, including automatic reconnects; settings changes affect new explorers. */
     val ingressLimits = env.ingressLimits()
     private val ingress = MqttIngressBudget(ingressLimits)
@@ -129,6 +137,10 @@ class MqttSession(
      * The tree may then miss values; no payload is truncated to make it fit.
      */
     val dropped: StateFlow<Long> = _dropped
+
+    private val _cacheDropped = MutableStateFlow(0L)
+    /** Complete messages rejected by the owned cache, distinct from ingress/queue rejection. */
+    val cacheDropped: StateFlow<Long> = _cacheDropped
 
     private val _refused = MutableStateFlow<Set<String>>(emptySet())
 
@@ -404,23 +416,27 @@ class MqttSession(
         try {
             scheduler.post {
                 if (!ingress.owns(lease) || gen != generation || ended) return@post
-                ingress.invalidate()
-                generation++
-                cancelReconnect?.invoke()
-                stopSnapshot()
-                subscribed.clear()
-                val old = link
-                link = null
-                _snapshot.value = SnapshotState.Idle
-                _state.value = MqttState.Failed(MqttFailure.LOCAL_LIMIT)
-                // A failing transport cleanup cannot leave a stopped producer labelled Open.
-                try { old?.close() } catch (_: Exception) { }
+                stopLocal(MqttFailure.LOCAL_LIMIT)
             }
         } catch (failure: Throwable) {
             // Keep copying disabled; a later event may retry this one control handover.
             ingress.stopPostFailed(lease)
             if (failure !is Exception) throw failure
         }
+    }
+
+    /** Scheduler only. Commit truthful state before fallible transport cleanup; never auto-reconnect on a chosen stop. */
+    private fun stopLocal(reason: MqttFailure) {
+        ingress.invalidate()
+        generation++
+        cancelReconnect?.invoke()
+        stopSnapshot()
+        subscribed.clear()
+        val old = link
+        link = null
+        _snapshot.value = SnapshotState.Idle
+        _state.value = MqttState.Failed(reason)
+        try { old?.close() } catch (_: Exception) { }
     }
 
     private fun onOutcome(v: MqttVersion, outcome: ConnectOutcome) {
@@ -521,11 +537,23 @@ class MqttSession(
         val awaiting = awaitingSuback > 0 && now <= subscribeSentAt + SnapshotRule.MAX_MS
         val onSubscribe = snapshotOn || awaiting || now <= redeliveryUntil
         val received = tree.receive(path, payload, retain, qos, v, onSubscribe)
+        if (received == Received.STORAGE_LIMIT || received == Received.OVER_LIMIT) {
+            _cacheDropped.update { it + 1 }
+            if (cacheLimits.overflow == MqttOverflow.STOP_SESSION) {
+                stopLocal(MqttFailure.CACHE_LIMIT)
+            } else if (snapshotOn) {
+                if (received == Received.STORAGE_LIMIT) {
+                    stopSnapshot()
+                    _snapshot.value = SnapshotState.Done(SnapshotEnd.STORAGE_LIMIT)
+                    reconcile()
+                } else checkSnapshot(snapshotRun)
+            }
+            return
+        }
         if (onSubscribe && retain && received == Received.NEW_TOPIC) redeliveryUntil = now + SnapshotRule.QUIET_MS
         if (snapshotOn) {
             // Only what fills the tree keeps the snapshot going (see SnapshotRule), not live values of known topics.
             if (received == Received.NEW_TOPIC || received == Received.UNCHANGED) lastSnapshotMessageAt = scheduler.now()
-            if (received == Received.OVER_LIMIT) checkSnapshot(snapshotRun)
         }
     }
 

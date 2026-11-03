@@ -168,6 +168,9 @@ data class MqttUiState(
     /** Local login persistence failed; the broker may still be connected and usable. */
     val loginStorageFailure: MqttLoginStorageFailure? = null,
     val droppedIncoming: Long = 0,
+    val droppedCache: Long = 0,
+    val cacheStoredBytes: Long = 0,
+    val cacheLimitBytes: Long = 0,
 ) {
     /** The tabs in the row, in order. */
     val tabs: List<ExplorerTab> get() = if (wbTab) ExplorerTab.entries else listOf(ExplorerTab.TREE, ExplorerTab.SUBSCRIPTIONS)
@@ -240,7 +243,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             if (gone.isEmpty()) all else all.filter { it !in gone }
         }
         val wb = combine(plugins, language, wbDeviceId, openedOnWb, wbWrites) { p, lang, device, opened, _ -> WbAsk(p?.wirenBoardOn == true, lang, device, opened) }
-        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb, s.loginStorageFailure, s.dropped) { values ->
+        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb, s.loginStorageFailure, s.dropped, s.cacheDropped) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -257,6 +260,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[10] as WbAsk,
                 values[11] as MqttLoginStorageFailure?,
                 values[12] as Long,
+                values[13] as Long,
             )
         }.flowOn(Dispatchers.Default)
     }.let { it ?: flowOf(MqttUiState(state = MqttState.Ended, closedByTunnel = app.mqtt.closedByTunnel(sessionId))) }
@@ -281,6 +285,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         wb: WbAsk,
         loginStorageFailure: MqttLoginStorageFailure?,
         droppedIncoming: Long,
+        droppedCache: Long,
     ): MqttUiState {
         if (path != shownPath) {
             shownPath = path
@@ -302,6 +307,9 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             state = state,
             loginStorageFailure = loginStorageFailure,
             droppedIncoming = droppedIncoming,
+            droppedCache = droppedCache,
+            cacheStoredBytes = s.tree.storedBytes,
+            cacheLimitBytes = s.tree.storageLimitBytes,
             snapshot = snapshot,
             path = path,
             rows = rows,

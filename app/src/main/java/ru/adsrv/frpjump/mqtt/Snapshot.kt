@@ -10,6 +10,9 @@ enum class SnapshotEnd {
 
     /** The session's topic limit: a new topic was dropped ([TopicTree.limitReached]). */
     LIMIT,
+
+    /** Owned names/nodes/value-history accounting rejected a message; not a topic-count or quiet completion. */
+    STORAGE_LIMIT,
 }
 
 /**

@@ -253,7 +253,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.mqtt_refresh_tree)) },
-                                    enabled = state.state is MqttState.Open,
+                                    enabled = cacheCanRefresh(state.state),
                                     onClick = {
                                         menu = false
                                         vm.refreshTree()
@@ -310,6 +310,8 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
             }
             MqttLoginStorageBanner(state.state, state.loginStorageFailure, vm::retryLoginStorage)
             MqttIngressBanner(state.droppedIncoming)
+            MqttCacheBanner(state.state, state.droppedCache, state.cacheStoredBytes, state.cacheLimitBytes,
+                onRefresh = { vm.refreshTree() })
             if (state.shownTab == ExplorerTab.WB_DEVICES && !searching) {
                 Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
                 WbDevicesTab(
@@ -522,6 +524,23 @@ private fun SnapshotLine(state: MqttUiState) {
     }
 }
 
+internal fun cacheCanRefresh(state: MqttState): Boolean =
+    state is MqttState.Open || (state is MqttState.Failed && state.reason == MqttFailure.CACHE_LIMIT)
+
+/** Both live cache rejection and a locally stopped explorer can explicitly clear before retrying. */
+@Composable
+internal fun MqttCacheBanner(state: MqttState, rejected: Long, used: Long, limit: Long, onRefresh: () -> Unit) {
+    if (rejected <= 0) return
+    val refresh = cacheCanRefresh(state)
+    StatusBanner(
+        text = stringResource(R.string.mqtt_cache_missing, rejected),
+        detail = stringResource(R.string.mqtt_cache_usage, used, limit),
+        error = true,
+        action = if (refresh) stringResource(R.string.mqtt_refresh_tree) else null,
+        onAction = onRefresh,
+    )
+}
+
 /** A rejected input can leave stale values on any explorer tab, including a plugin view. */
 @Composable
 internal fun MqttIngressBanner(dropped: Long) {
@@ -555,6 +574,7 @@ internal fun Banners(state: MqttUiState, device: String, port: Int, subtitleShow
                 MqttFailure.NO_COMMON_VERSION -> stringResource(R.string.mqtt_no_common_version)
                 MqttFailure.REFUSED -> stringResource(R.string.mqtt_refused)
                 MqttFailure.LOCAL_LIMIT -> stringResource(R.string.mqtt_ingress_stopped)
+                MqttFailure.CACHE_LIMIT -> stringResource(R.string.mqtt_cache_stopped)
             },
             detail = s.detail,
             error = true,

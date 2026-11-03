@@ -95,6 +95,7 @@ data class AppSettings(
     @SerialName("files_download_folder") val filesDownloadFolder: String? = null,
     /** Inbound MQTT accounting limits, captured by newly created explorer sessions. */
     @SerialName("mqtt_ingress") val mqttIngress: MqttIngressLimits = MqttIngressLimits(),
+    @SerialName("mqtt_cache") val mqttCache: MqttCacheLimits = MqttCacheLimits(),
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -130,6 +131,7 @@ class SettingsStore(private val storage: TextStorage) {
         require(portRangeProblem(next.localPortFirst, next.localPortLast) == null) { "invalid local port range" }
         require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
         require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
+        require(validMqttCacheLimits(next.mqttCache)) { "invalid MQTT cache limits" }
         if (next == _settings.value) return
         storage.write(WireJson.encodeToString(next))
         _settings.value = next
@@ -151,7 +153,8 @@ class SettingsStore(private val storage: TextStorage) {
         val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
         val normalized = JsonObject(json + ("terminal_history_rows" to JsonPrimitive(history)) +
-            ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])))
+            ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
+            ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])))
         val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
@@ -176,6 +179,22 @@ class SettingsStore(private val storage: TextStorage) {
         )
         if (!validMqttIngressLimits(limits)) limits = limits.copy(payloadBytes = defaults.payloadBytes, queueBytes = defaults.queueBytes)
         return WireJson.encodeToJsonElement(limits)
+    }
+
+    private fun normalizeMqttCache(raw: JsonElement?): JsonElement {
+        val group = raw as? JsonObject
+        val defaults = MqttCacheLimits()
+        fun number(key: String, range: IntRange, fallback: Int): Int =
+            (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it in range } ?: fallback
+        val mode = when ((group?.get("overflow") as? JsonPrimitive)?.takeIf { it.isString }?.content) {
+            "stop_session" -> MqttOverflow.STOP_SESSION
+            else -> MqttOverflow.DROP_INCOMING
+        }
+        return WireJson.encodeToJsonElement(MqttCacheLimits(
+            number("storage_bytes", MqttCacheLimits.MIN_STORAGE_BYTES..MqttCacheLimits.MAX_STORAGE_BYTES, defaults.storageBytes),
+            number("topics", 1..MqttCacheLimits.MAX_TOPICS, defaults.topics),
+            number("history", 1..MqttCacheLimits.MAX_HISTORY, defaults.history), mode,
+        ))
     }
 
     private companion object {
