@@ -149,6 +149,12 @@ fun SettingsScreen(
             onBack = { mqttLimits = false })
         return
     }
+    var mqttCache by rememberSaveable { mutableStateOf(false) }
+    if (mqttCache) {
+        MqttCacheScreen(settings.mqttCache, onSave = { limits, complete -> vm.setMqttCache(limits, complete) },
+            onBack = { mqttCache = false })
+        return
+    }
     val pluginsSummary by vm.plugins.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val colors = AppTheme.colors
@@ -311,6 +317,13 @@ fun SettingsScreen(
                 label = stringResource(R.string.mqtt_ingress_title),
                 hint = stringResource(R.string.mqtt_ingress_row_hint),
                 onClick = { mqttLimits = true },
+            ) { Chevron() }
+            RowDivider()
+            SettingRow(
+                tile = { IconTile(PluginGlyph) },
+                label = stringResource(R.string.mqtt_cache_title),
+                hint = stringResource(R.string.mqtt_cache_row_hint),
+                onClick = { mqttCache = true },
             ) { Chevron() }
             RowDivider()
             SettingRow(

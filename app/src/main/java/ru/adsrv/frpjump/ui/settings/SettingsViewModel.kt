@@ -92,6 +92,19 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         }
     }
 
+    fun setMqttCache(limits: ru.adsrv.frpjump.settings.MqttCacheLimits, complete: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { app.settings.update { it.copy(mqttCache = limits) } }
+                complete(null)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                complete(failure.userMessage())
+            }
+        }
+    }
+
     /** Returns why the range was refused, or null once it is saved. */
     fun setLocalPorts(first: Int?, last: Int?): PortRangeProblem? {
         portRangeProblem(first, last)?.let { return it }
