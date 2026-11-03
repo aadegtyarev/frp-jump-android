@@ -35,6 +35,9 @@ enum class PublishFailure {
     /** No answer in [PUBLISH_TIMEOUT_MS]. */
     TIMEOUT,
 
+    /** WB plugin intent no longer matches a current writable control. Generic Publish never checks this. */
+    CONTROL_NOT_WRITABLE,
+
     /** Anything else; the answer's detail names it. */
     OTHER,
 }

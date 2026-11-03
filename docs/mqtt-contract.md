@@ -899,6 +899,16 @@ live controller; where they differ, both are read.
     no exponent, rounded to `precision` with its digits; an enum pick
     sends its key as written in the meta;
   - `text`, `w1-id`: the text as typed.
+- **Readonly boundary.** These checks apply only to WB plugin actions, not
+  the generic Publish sheet, even for the same control's `/on` topic. A
+  cached writable row does not authorize a send: the session actor rereads
+  meta immediately before publishing. Read-only, hidden, missing, unsupported
+  or changed meta rejects the old action. JSON/one-field precedence stays
+  as described above. This is a client-side plugin rule, not a broker ACL.
+  Editors and gestures are discarded when their accepted MQTT client or
+  control meta changes; an old callback cannot target a reconnect's client.
+  A late answer owns its exact write, not just an equal timestamp/payload,
+  before updating either its answer or the `wo-switch` sent value.
 - **The answer** shows on the control itself, nothing else moves:
   - while sending, the control shows the asked value muted with a spinner
     and is not tappable;

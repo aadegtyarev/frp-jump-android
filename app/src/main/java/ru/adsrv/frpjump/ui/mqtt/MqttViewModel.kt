@@ -68,6 +68,9 @@ import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbDevicePattern
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbDevices
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbSeenIn
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbTexts
+import ru.adsrv.frpjump.mqtt.WbWriteOwner
+import ru.adsrv.frpjump.mqtt.wbWritable
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWriteBook
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbControl
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWidget
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWrite
@@ -165,6 +168,8 @@ data class MqttUiState(
     val wbAnswers: Map<String, WriteView> = emptyMap(),
     /** The last value sent to each `wo-switch` this session, by status topic. */
     val wbSent: Map<MqttPath, String> = emptyMap(),
+    /** Exact accepted client that supplied these WB actions; never fetch a new one from an old callback. */
+    val wbWriteOwner: WbWriteOwner? = null,
     /** Local login persistence failed; the broker may still be connected and usable. */
     val loginStorageFailure: MqttLoginStorageFailure? = null,
     val droppedIncoming: Long = 0,
@@ -219,10 +224,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     private val openedOnWb = MutableStateFlow(false)
 
     /** Writes in flight or answered, by the control's status topic; one per control, the newest. */
-    private val wbWrites = MutableStateFlow<Map<MqttPath, WbWrite>>(emptyMap())
-
-    /** The last value sent to each `wo-switch` in this session, by its status topic. */
-    private val wbSent = MutableStateFlow<Map<MqttPath, String>>(emptyMap())
+    private val wbWrites = MutableStateFlow(WbWriteBook())
 
     val state: StateFlow<MqttUiState> = session?.let { s ->
         val ticks = flow {
@@ -355,13 +357,15 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         if (device == null) return ui.copy(wbTab = true, wbReading = reading, wbDevices = deviceList(s, wb.language))
         val view = wbDevice(device, wbTexts(s.tree.values(wbDevicePattern(device))), wb.language)
         val now = System.currentTimeMillis()
-        val writes = wbWrites.value
+        val owner = s.wbWriteOwner
+        val book = wbWrites.value
+        val writes = book.writes
         val answers = view?.controls?.mapNotNull { c ->
-            val write = writes[c.path] ?: return@mapNotNull null
+            val write = writes[c.path]?.takeIf { owner != null && it.owner === owner } ?: return@mapNotNull null
             c.id to writeView(write, c.meta, s.tree.history(c.path), now)
         }?.toMap().orEmpty()
         writeWaiting = answers.values.any { it is WriteView.Sending }
-        return ui.copy(wbTab = true, wbReading = reading, wbDeviceId = device, wbDevice = view, wbAnswers = answers, wbSent = wbSent.value)
+        return ui.copy(wbTab = true, wbReading = reading, wbDeviceId = device, wbDevice = view, wbAnswers = answers, wbSent = book.sent, wbWriteOwner = owner)
     }
 
     /** A control's meta is in the tree now. */
@@ -427,22 +431,24 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      * a double tap sends once. Whether an echo is awaited is decided on the
      * status topic's value now, not on the last read of the screen.
      */
-    fun writeWb(control: WbControl, payload: String) {
+    fun writeWb(owner: WbWriteOwner?, control: WbControl, payload: String) {
         val s = session ?: return
+        if (!s.ownsWbWrites(owner) || !wbWritable(s.tree, control)) return
         val now = System.currentTimeMillis()
         val history = s.tree.history(control.path)
-        if (writeBlocked(wbWrites.value[control.path], control.meta, history, now)) return
+        if (writeBlocked(wbWrites.value.writes[control.path]?.takeIf { it.owner === owner }, control.meta, history, now)) return
         val widget = widgetOf(control.meta)
-        val shown = if (widget == WbWidget.WO_SWITCH) wbSent.value[control.path] else currentValue(control.meta, history)
-        val write = WbWrite(control.path, payload, awaitsEcho(control.meta, widget, shown, payload), now)
-        wbWrites.update { it + (control.path to write) }
+        val shown = if (widget == WbWidget.WO_SWITCH) wbWrites.value.sent[control.path] else currentValue(control.meta, history)
+        val write = WbWrite(control.path, payload, awaitsEcho(control.meta, widget, shown, payload), now, owner = owner)
+        wbWrites.update { it.copy(writes = it.writes + (control.path to write)) }
         writeWaiting = true
-        s.publish(control.path.format() + "/on", payload.toByteArray(Charsets.UTF_8), qos = 1, retain = false) { answer ->
+        s.publishWb(owner, control, payload) { answer ->
+            if (!s.ownsWbWrites(owner)) return@publishWb
             val at = System.currentTimeMillis()
-            // A wo-switch shows what it was last sent: only what left for the device counts.
-            if (widget == WbWidget.WO_SWITCH && wasSent(answer)) wbSent.update { it + (control.path to payload) }
-            // A newer write to the control replaced this one: its answer is not shown.
-            wbWrites.update { all -> all[control.path]?.takeIf { it.sentAt == write.sentAt && it.asked == payload }?.let { all + (control.path to it.copy(answer = answer, answeredAt = at)) } ?: all }
+            // Pure CAS transform: exact-write identity owns both answer and wo-switch feedback.
+            wbWrites.update { book ->
+                if (s.ownsWbWrites(owner)) book.answered(write, answer, at, widget == WbWidget.WO_SWITCH) else book
+            }
         }
     }
 

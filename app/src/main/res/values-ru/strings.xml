@@ -1148,6 +1148,7 @@
     <string name="terminal_paste_run_enter">Вставить + Enter</string>
     <string name="terminal_paste_join_enter">Склеить строки + Enter</string>
     <string name="connection_saved_title">Подключение сохранено</string>
+    <string name="wb_control_not_writable">Контрол доступен только для чтения, исчез или его метаданные изменились. Перед отправкой откройте контрол заново.</string>
     <string name="connection_saved_port_repair">Подключение сохранено. Резерв локального порта будет восстановлен перед следующим распределением портов туннелей; заново добавлять подключение не нужно.</string>
     <string name="connection_saved_inactive">%1$s сохранено, но не удалось запустить (%2$s). Повторите запуск — заново добавлять подключение не нужно.</string>
     <string name="connection_saved_waiting">%1$s сохранено, но не запущено. Запустите его кнопкой ниже — новый QR-код или код добавления не нужен.</string>

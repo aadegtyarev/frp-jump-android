@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.mqtt
 
+import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbControl
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -168,6 +170,10 @@ class MqttSession(
 
     /** Bumped by every attempt and by close: callbacks of an older one are dropped. */
     private var generation = 0
+
+    @Volatile private var acceptedWbOwner: WbWriteOwner? = null
+    val wbWriteOwner: WbWriteOwner? get() = acceptedWbOwner.takeIf { _state.value is MqttState.Open }
+    fun ownsWbWrites(owner: WbWriteOwner?): Boolean = owner != null && owner === wbWriteOwner
     private var reconnectStep = 0
     private var cancelReconnect: (() -> Unit)? = null
 
@@ -282,8 +288,19 @@ class MqttSession(
      * [PUBLISH_TIMEOUT_MS] without one.
      */
     fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) = scheduler.post {
+        publishNow(topic, payload, qos, retain, done)
+    }
+
+    /** WB plugin only: exact client and current meta are checked in the SAME actor action as the send. */
+    fun publishWb(owner: WbWriteOwner?, control: WbControl, payload: String, done: (PublishAnswer) -> Unit) = scheduler.post {
+        if (!ownsWbWrites(owner)) return@post done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
+        if (!wbWritable(tree, control)) return@post done(PublishAnswer.Failed(PublishFailure.CONTROL_NOT_WRITABLE))
+        publishNow(control.path.format() + "/on", payload.toByteArray(Charsets.UTF_8), 1, false, done)
+    }
+
+    private fun publishNow(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) {
         val open = link
-        if (ended || open == null || _state.value !is MqttState.Open) return@post done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
+        if (ended || open == null || _state.value !is MqttState.Open) return done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
         var answered = false
         var cancelTimeout: (() -> Unit)? = null
         fun answer(a: PublishAnswer) {
@@ -456,6 +473,7 @@ class MqttSession(
             persistLogin(LoginStorageChoice(typed, rememberTyped))
         }
         loginTyped = false
+        acceptedWbOwner = WbWriteOwner()
         _state.value = MqttState.Open(v)
         subscribed.clear()
         _refused.value = emptySet()

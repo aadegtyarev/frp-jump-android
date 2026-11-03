@@ -314,6 +314,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 onRefresh = { vm.refreshTree() })
             if (state.shownTab == ExplorerTab.WB_DEVICES && !searching) {
                 Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
+                val writeOwner = state.wbWriteOwner
                 WbDevicesTab(
                     state,
                     language,
@@ -321,7 +322,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     onOpen = vm::openWbDevice,
                     // The ordinary card of the control's topic, over the tab.
                     onCard = { vm.openCard(it.path) },
-                    onWrite = vm::writeWb,
+                    onWrite = { control, payload -> vm.writeWb(writeOwner, control, payload) },
                 )
                 return@Column
             }
