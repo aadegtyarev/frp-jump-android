@@ -200,6 +200,10 @@ fun TerminalScreen(
     /** "Close all sessions of this phone" is asking the device. */
     var closingAll by remember { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf(initialId) }
+    fun selectSession(id: Int?) {
+        sessions.selectClipboardSource(id)
+        if (id != null) selectedId = id
+    }
     /** The session whose device and port the login dialog of a long press on "+" is for. */
     var loginLikeId by rememberSaveable { mutableStateOf<Int?>(null) }
     /** The dialog is "Change login" of an ended session: the new one takes its tab. */
@@ -209,6 +213,8 @@ fun TerminalScreen(
         loginLikeId = id
     }
     val selected = list.firstOrNull { it.id == selectedId } ?: list.firstOrNull()
+    // Initial/restored/fallback selection, not tied to listener lifetime or app visibility.
+    SideEffect { sessions.selectClipboardSource(selected?.id) }
     // The session shown went because its tunnel was closed (Disconnect, the notification): say so, not vanish silently.
     var shownId by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(selected?.id) {
@@ -230,24 +236,24 @@ fun TerminalScreen(
     val gone = stringResource(R.string.terminal_session_gone)
     // A new tab is selected; when the session to copy closed meanwhile, a toast says so.
     fun openedOrGone(opened: SshSession?) {
-        if (opened != null) selectedId = opened.id else context.notice(gone, NoticeKind.WARN)
+        if (opened != null) selectSession(opened.id) else context.notice(gone, NoticeKind.WARN)
     }
     // Closing the tab shown shows its neighbour, not the first tab.
     fun dropTab(id: Int) {
-        selectionAfterClose(list.map { it.id }, selected.id, id)?.let { selectedId = it }
+        selectSession(selectionAfterClose(list.map { it.id }, selected.id, id))
         sessions.close(id)
     }
     // No question: the tab goes at once, with Undo on the notice; its shell ends when that goes.
     // Undo brings it back, the same session, selected again.
     fun closeTab(id: Int) {
-        selectionAfterClose(list.map { it.id }, selected.id, id)?.let { selectedId = it }
-        closeSessions.terminal(id, undo = { selectedId = id })
+        selectSession(selectionAfterClose(list.map { it.id }, selected.id, id))
+        closeSessions.terminal(id, undo = { selectSession(id) })
     }
     fun reconnectTab(id: Int) {
-        sessions.reconnect(id)?.let { selectedId = it.id }
+        sessions.reconnect(id)?.let { selectSession(it.id) }
     }
     val tabActions = SessionTabActions(
-        select = { selectedId = it },
+        select = { selectSession(it) },
         close = ::closeTab,
         reconnect = ::reconnectTab,
         changeLogin = ::changeLogin,

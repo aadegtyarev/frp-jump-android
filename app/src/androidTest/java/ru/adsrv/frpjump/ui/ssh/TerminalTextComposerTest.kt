@@ -395,8 +395,11 @@ class TerminalTextComposerTest {
         enterText()
         compose.onNodeWithTag("terminal_text_editor").performTextInput("keep this draft")
         compose.onNodeWithTag("terminal_text_expand").performClick()
-        Espresso.closeSoftKeyboard()
-        Espresso.pressBack()
+        // Fullscreen lives in a Dialog: the Activity root is deliberately unfocused.
+        // Target the visible dialog for both real IME dismissal and Back dispatch.
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+            .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+            .perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard(), androidx.test.espresso.action.ViewActions.pressBack())
         compose.onNodeWithTag("terminal_text_fullscreen").assertDoesNotExist()
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("keep this draft")
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }

@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.util.Log
 import com.termux.terminal.TerminalSession
+import com.termux.terminal.RemoteClipboardClient
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +99,15 @@ class SshSessions(
 
     /** The terminal screen while it is shown; set and cleared on the main thread. */
     var listener: TerminalScreenListener? = null
+
+    // Main-thread authority, retained when the screen leaves or the app backgrounds.
+    // Keep only an id, not a removed terminal's history; verify exact identity at delivery.
+    private var clipboardSourceId: Int? = null
+
+    /** Record actual tab selection immediately, before another terminal input callback can run. */
+    fun selectClipboardSource(id: Int?) {
+        clipboardSourceId = id?.takeIf { picked -> _sessions.value.any { it.id == picked } }
+    }
 
     init {
         // Main-thread reads of Termux state; no StateFlow update per byte/frame.
@@ -341,7 +351,7 @@ class SshSessions(
     }
 
     /** Callbacks from one session's emulator, forwarded to the screen when it shows that session. */
-    private inner class ClientForScreen : TerminalSessionClient {
+    private inner class ClientForScreen : TerminalSessionClient, RemoteClipboardClient {
         override fun onTextChanged(changedSession: TerminalSession) {
             listener?.onScreenChanged(changedSession)
         }
@@ -350,11 +360,13 @@ class SshSessions(
 
         override fun onSessionFinished(finishedSession: TerminalSession) = Unit
 
-        /**
-         * The owner's own copy of a selection, and also a remote program's
-         * OSC 52, which writes the clipboard unasked: either way a notice
-         * shows what went there.
-         */
+        override fun onRemoteCopy(session: TerminalSession, text: String?) {
+            val selected = _sessions.value.firstOrNull { it.id == clipboardSourceId }?.terminal?.session
+            if (selected !== session) return
+            onCopyTextToClipboard(session, text)
+        }
+
+        /** Explicit selection Copy remains unrestricted; accepted OSC copies use this same writer. */
         override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
             if (text.isNullOrEmpty()) return
             val copied = text.take(MAX_COPY)

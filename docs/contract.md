@@ -306,6 +306,15 @@ commands, owner-defined) above the extra keys; the sessions as a row of tabs
 above the terminal, where "+" opens another session to the same device with
 the same login (long press: as another user).
 
+Automatic OSC 52 clipboard writes are accepted only from the selected SSH
+tab. Switching tabs revokes the previous tab's authority immediately; a
+removed or replaced terminal cannot copy through a late callback. Leaving
+the terminal screen or putting the app in the background does not revoke
+the last selected tab. Explicit selection Copy remains unchanged, including
+copying from an ended terminal. The existing shared clipboard writer cap
+of 64 × 1024 UTF-16 code units and copied-text notice remain unchanged; this adds no
+prompt, opt-in, foreground check or new limit for the selected tab.
+
 The extra keys under the terminal are one row: ^C, Paste, ← ↑ ↓ →, ⌫, ⏎
 and ⌨, which shows and hides the soft keyboard (the bar has no keyboard
 button). Paste works as the selection menu's paste and is disabled while the
