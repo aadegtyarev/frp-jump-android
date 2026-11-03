@@ -12,9 +12,14 @@ import ru.adsrv.frpjump.store.TextStorage
  */
 class LocalPortStore(private val storage: TextStorage) {
     @Synchronized
-    fun load(): MutableMap<String, Int> = runCatching {
-        storage.read()?.let { WireJson.decodeFromString<Map<String, Int>>(it).toMutableMap() }
-    }.getOrNull() ?: mutableMapOf()
+    fun load(): MutableMap<String, Int> = runCatching { readMap() }.getOrNull() ?: mutableMapOf()
+
+    /** IO failure is unknown state, not an empty map on which a mutation may commit. */
+    private fun readMap(): MutableMap<String, Int> {
+        val text = storage.read() ?: return mutableMapOf()
+        // Preserve the existing malformed-JSON fallback; do not swallow file-read failures here.
+        return runCatching { WireJson.decodeFromString<Map<String, Int>>(text).toMutableMap() }.getOrNull() ?: mutableMapOf()
+    }
 
     /**
      * Reads the map, lets [change] edit it in place and saves it if it did,
@@ -23,7 +28,7 @@ class LocalPortStore(private val storage: TextStorage) {
      */
     @Synchronized
     fun <T> update(change: (MutableMap<String, Int>) -> T): T {
-        val ports = load()
+        val ports = readMap()
         val before = ports.toMap()
         val result = change(ports)
         if (ports != before) storage.write(WireJson.encodeToString<Map<String, Int>>(ports))
