@@ -279,6 +279,15 @@ banners (log in, a failure with Retry, closed with the tunnel, refused
 
 ## The tree
 
+Search, pattern matching, subscription summaries and convention value
+collection traverse the tree with explicit iterator frames, not recursive
+calls per topic level. One working path is grown and restored during the
+walk; result paths are copied only for matches, and summaries count without
+building result paths. This adds no topic-depth limit and does not change
+the existing topic count or history limits. Case-sensitive exact pattern
+levels still use direct child lookup, and the root-only `$` wildcard rule
+and relative-path matching semantics are unchanged.
+
 - A path bar on top as in Files, but drawn as a plain breadcrumb on the
   ground (no field outline), shown below the root only (at the root it
   would hold the house alone), and its root is a house icon, read out
