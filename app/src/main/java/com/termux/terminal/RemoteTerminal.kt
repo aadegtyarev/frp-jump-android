@@ -36,7 +36,20 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     }
 
     init {
-        session.mEmulator = TerminalEmulator(session, columns, rows, CELL_WIDTH, CELL_HEIGHT, historyRows, client)
+        // The emulator's output is the remote/OSC route. Selection Copy goes
+        // directly through TerminalSession, and must not inherit remote policy.
+        val remoteOutput = object : TerminalOutput() {
+            override fun write(data: ByteArray, offset: Int, count: Int) = session.write(data, offset, count)
+            override fun titleChanged(oldTitle: String?, newTitle: String?) = session.titleChanged(oldTitle, newTitle)
+            override fun onCopyTextToClipboard(text: String?) {
+                if (client is RemoteClipboardClient) client.onRemoteCopy(session, text)
+                else session.onCopyTextToClipboard(text)
+            }
+            override fun onPasteTextFromClipboard() = session.onPasteTextFromClipboard()
+            override fun onBell() = session.onBell()
+            override fun onColorsChanged() = session.onColorsChanged()
+        }
+        session.mEmulator = TerminalEmulator(remoteOutput, columns, rows, CELL_WIDTH, CELL_HEIGHT, historyRows, client)
         // write() only queues keys while the "process" runs. No pid is ever
         // signalled: finishIfRunning() is not called on a remote session.
         session.mShellPid = Int.MAX_VALUE
@@ -259,6 +272,11 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         /** TerminalSession.MSG_NEW_INPUT. */
         const val MSG_NEW_INPUT = 1
     }
+}
+
+/** Distinguishes an emulator's OSC copy from the owner's explicit selection Copy. */
+interface RemoteClipboardClient {
+    fun onRemoteCopy(session: TerminalSession, text: String?)
 }
 
 /** v0.118.3 keeps DECSET flags private: `mCurrentDecSetFlags`, bracketed paste (2004) is bit 1024. */
