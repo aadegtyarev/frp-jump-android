@@ -7,6 +7,9 @@
     <string name="back">Назад</string>
     <string name="cancel">Отмена</string>
     <string name="save">Сохранить</string>
+    <string name="assistant_title">LLM-помощник</string>
+    <string name="assistant_enabled">Включить модуль помощника</string>
+    <string name="assistant_foundation_hint">Экспериментальное ядро. Чат, провайдер и инструменты подключений пока недоступны. По умолчанию выключено.</string>
     <string name="more">Ещё</string>
     <string name="settings">Настройки</string>
     <plurals name="tunnels">

@@ -6,6 +6,9 @@
     <string name="back">Back</string>
     <string name="cancel">Cancel</string>
     <string name="save">Save</string>
+    <string name="assistant_title">LLM assistant</string>
+    <string name="assistant_enabled">Enable assistant module</string>
+    <string name="assistant_foundation_hint">Experimental kernel only. Chat, provider and connection tools are not available yet. Disabled by default.</string>
     <string name="more">More</string>
     <string name="settings">Settings</string>
     <plurals name="tunnels">

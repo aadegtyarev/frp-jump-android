@@ -1024,6 +1024,13 @@ phone once visible:
 - 10e. Later, after a release or two: delete `mqtt_plugins.json` and
   the scrub of it.
 
+## Optional LLM assistant
+
+The assistant is a separate, opt-in module with a switch in Settings, off
+by default. The first slice is kernel infrastructure only: no working chat,
+provider or connection tools yet. Its current boundaries, window/cancellation
+rules and follow-up scope are in [the agent contract](agent-contract.md).
+
 ## Wire behaviour the app must match
 
 - Bearer token on every `/api/agent/*` call; `protocol_version` checked on

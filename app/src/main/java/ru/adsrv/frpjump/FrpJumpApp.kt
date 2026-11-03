@@ -156,6 +156,9 @@ class FrpJumpApp : Application() {
         private set
     lateinit var settings: SettingsStore
         private set
+    /** Optional assistant kernel; no provider or transport is started by constructing it. */
+    lateinit var assistant: ru.adsrv.frpjump.agent.AgentModule
+        private set
     lateinit var directKept: DirectKeptStore
         private set
     lateinit var network: NetworkWatcher
@@ -251,6 +254,12 @@ class FrpJumpApp : Application() {
         installFullBouncyCastle()
         Texts.init(this)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
+        assistant = ru.adsrv.frpjump.agent.AgentModule(settings.settings.value.assistantEnabled) {
+            settings.settings.value.assistantEnabled
+        }
+        appScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            settings.settings.map { it.assistantEnabled }.distinctUntilChanged().collect(assistant::setEnabled)
+        }
         restoreAppLanguage(settings.settings.value.language)
         applyTheme(settings.settings.value.theme)
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))

@@ -66,16 +66,18 @@ jobs:
           ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" scripts/build-frpc.sh
 
       - name: Unit tests
-        run: ./gradlew -q testDebugUnitTest
+        run: ./gradlew -q :agent-core:test :app:testDebugUnitTest
 
       - name: Failed tests
         if: failure()
         run: |
           # -q hides which test failed; print each failure's test and message.
-          grep -l '<failure' app/build/test-results/testDebugUnitTest/*.xml | while read -r f; do
-            echo "::group::$f"
-            grep -B1 -A15 '<failure' "$f"
-            echo "::endgroup::"
+          for f in agent-core/build/test-results/test/*.xml app/build/test-results/testDebugUnitTest/*.xml; do
+            if [ -f "$f" ] && grep -q '<failure' "$f"; then
+              echo "::group::$f"
+              grep -B1 -A15 '<failure' "$f"
+              echo "::endgroup::"
+            fi
           done
 
       - name: Release key

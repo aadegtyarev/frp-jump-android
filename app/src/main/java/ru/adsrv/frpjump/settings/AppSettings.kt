@@ -96,6 +96,8 @@ data class AppSettings(
     /** Inbound MQTT accounting limits, captured by newly created explorer sessions. */
     @SerialName("mqtt_ingress") val mqttIngress: MqttIngressLimits = MqttIngressLimits(),
     @SerialName("mqtt_cache") val mqttCache: MqttCacheLimits = MqttCacheLimits(),
+    /** Opt-in experimental assistant module; false also stops its active run. */
+    @SerialName("assistant_enabled") val assistantEnabled: Boolean = false,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -154,7 +156,8 @@ class SettingsStore(private val storage: TextStorage) {
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
         val normalized = JsonObject(json + ("terminal_history_rows" to JsonPrimitive(history)) +
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
-            ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])))
+            ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
+            ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))
         val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
