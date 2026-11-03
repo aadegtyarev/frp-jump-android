@@ -199,15 +199,17 @@ private fun WbDeviceControls(
             contentPadding = PaddingValues(bottom = padding.calculateBottomPadding() + 16.dp),
         ) {
             items(view.controls, key = { it.id }) { control ->
-                ControlRow(
-                    control,
-                    language,
-                    answer = state.wbAnswers[control.id],
-                    sent = state.wbSent[control.path],
-                    off = off,
-                    onCard = { onCard(control) },
-                    onWrite = { onWrite(control, it) },
-                )
+                androidx.compose.runtime.key(state.wbWriteOwner, control.meta) {
+                    ControlRow(
+                        control,
+                        language,
+                        answer = state.wbAnswers[control.id],
+                        sent = state.wbSent[control.path],
+                        off = off,
+                        onCard = { onCard(control) },
+                        onWrite = { onWrite(control, it) },
+                    )
+                }
                 HorizontalDivider(color = colors.divider, modifier = Modifier.padding(start = 16.dp))
             }
         }

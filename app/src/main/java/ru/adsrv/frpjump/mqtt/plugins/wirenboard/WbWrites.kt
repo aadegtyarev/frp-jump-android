@@ -3,6 +3,8 @@ package ru.adsrv.frpjump.mqtt.plugins.wirenboard
 import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.PublishAnswer
 import ru.adsrv.frpjump.mqtt.PublishFailure
+import ru.adsrv.frpjump.mqtt.wasSent
+import ru.adsrv.frpjump.mqtt.WbWriteOwner
 import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.decodeUtf8
 import java.math.BigDecimal
@@ -185,7 +187,25 @@ data class WbWrite(
     /** The broker's answer once it came, and when. */
     val answer: PublishAnswer? = null,
     val answeredAt: Long = 0,
+    /** The accepted client that owned this UI intent; null in standalone presentation fixtures. */
+    val owner: WbWriteOwner? = null,
+    /** Distinct intents must not be conflated by StateFlow even with identical millisecond/payload/owner. */
+    val requestIdentity: Any = Any(),
 )
+
+/** One atomic UI state: an old answer cannot change either a newer write or its wo-switch value. */
+data class WbWriteBook(
+    val writes: Map<MqttPath, WbWrite> = emptyMap(),
+    val sent: Map<MqttPath, String> = emptyMap(),
+) {
+    fun answered(expected: WbWrite, answer: PublishAnswer, at: Long, woSwitch: Boolean): WbWriteBook {
+        if (writes[expected.control] !== expected) return this
+        return copy(
+            writes = writes + (expected.control to expected.copy(answer = answer, answeredAt = at)),
+            sent = if (woSwitch && wasSent(answer)) sent + (expected.control to expected.asked) else sent,
+        )
+    }
+}
 
 /** What a control shows of its write. */
 sealed interface WriteView {

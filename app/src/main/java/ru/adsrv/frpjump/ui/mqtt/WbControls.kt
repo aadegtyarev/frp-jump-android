@@ -134,8 +134,8 @@ internal fun ControlRow(
     val copyTopicLabel = stringResource(R.string.wb_copy_topic)
     val cardLabel = stringResource(R.string.mqtt_open_card)
     val sending = answer as? WriteView.Sending
-    val canWrite = off == null && sending == null
-    var dialog by rememberSaveable { mutableStateOf<ControlDialog?>(null) }
+    val canWrite = off == null && sending == null && widget != WbWidget.READ_ONLY && widget != WbWidget.ALARM
+    var dialog by rememberSaveable(control.path, control.meta) { mutableStateOf<ControlDialog?>(null) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(
@@ -173,14 +173,14 @@ internal fun ControlRow(
         }
         if (widget == WbWidget.RANGE) RangeSlider(control, sending, canWrite, off, onWrite)
     }
-    when (dialog) {
+    when (dialog.takeIf { canWrite }) {
         ControlDialog.INPUT -> InputDialog(control, numeric = widget == WbWidget.NUMBER, onSend = { dialog = null; onWrite(it) }, onDismiss = { dialog = null })
         ControlDialog.ENUM -> EnumDialog(control, language, onPick = { dialog = null; onWrite(it) }, onDismiss = { dialog = null })
         ControlDialog.RGB -> RgbDialog(control, onSend = { dialog = null; onWrite(it) }, onDismiss = { dialog = null })
         null -> Unit
     }
     // The session closed or dropped while a dialog was open: nothing can be sent.
-    if (off != null && dialog != null) LaunchedEffect(Unit) { dialog = null }
+    if (!canWrite && dialog != null) LaunchedEffect(Unit) { dialog = null }
 }
 
 /** The answer of the last write in the error colours (refused, no answer), or a short one muted; read out as it comes. */

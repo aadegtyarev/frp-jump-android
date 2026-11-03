@@ -388,6 +388,7 @@ internal fun answerText(answer: PublishAnswer): String = when (answer) {
         PublishFailure.NOT_CONNECTED -> stringResource(R.string.mqtt_publish_not_connected)
         PublishFailure.LOST -> stringResource(R.string.mqtt_publish_lost)
         PublishFailure.TIMEOUT -> stringResource(R.string.mqtt_publish_timeout, (PUBLISH_TIMEOUT_MS / 1000).toInt())
+        PublishFailure.CONTROL_NOT_WRITABLE -> stringResource(R.string.wb_control_not_writable)
         PublishFailure.OTHER -> stringResource(R.string.mqtt_publish_failed, answer.detail.orEmpty())
     }
 }
