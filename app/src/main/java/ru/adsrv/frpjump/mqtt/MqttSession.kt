@@ -35,6 +35,11 @@ enum class MqttFailure {
     REFUSED,
 }
 
+enum class MqttLoginStorageAction { REMEMBER, FORGET }
+
+/** Local persistence failed, not broker authentication. Identity binds a retry to this accepted choice. */
+class MqttLoginStorageFailure(val action: MqttLoginStorageAction, val detail: String)
+
 /** The tree snapshot (`#`), as the bar under the path bar shows it. */
 sealed interface SnapshotState {
     data object Idle : SnapshotState
@@ -139,6 +144,11 @@ class MqttSession(
     private var loginTyped = false
     private var rememberTyped = false
 
+    private class LoginStorageChoice(val login: MqttLogin, val remember: Boolean)
+    private var pendingLoginStorage: LoginStorageChoice? = null
+    private val _loginStorageFailure = MutableStateFlow<MqttLoginStorageFailure?>(null)
+    val loginStorageFailure: StateFlow<MqttLoginStorageFailure?> = _loginStorageFailure
+
     private var link: MqttLink? = null
 
     /** Bumped by every attempt and by close: callbacks of an older one are dropped. */
@@ -184,11 +194,18 @@ class MqttSession(
     fun login(user: String, password: String, remember: Boolean) = scheduler.post {
         if (ended) return@post
         cancelReconnect?.invoke()
+        clearLoginStorage()
         login = MqttLogin(user, password)
         loginTyped = true
         rememberTyped = remember
         _state.value = MqttState.Connecting
         attempt(version ?: MqttVersion.V5)
+    }
+
+    /** Retry only phone storage for the captured accepted choice, never re-authenticate or resubscribe. */
+    fun retryLoginStorage(expected: MqttLoginStorageFailure) = scheduler.post {
+        if (ended || _state.value !is MqttState.Open || _loginStorageFailure.value !== expected) return@post
+        pendingLoginStorage?.let(::persistLogin)
     }
 
     /** Moves the live branch to [path]; the root has none. */
@@ -287,6 +304,7 @@ class MqttSession(
             if (ended) return@post
             _state.value = MqttState.Ended
             generation++
+            clearLoginStorage()
             cancelReconnect?.invoke()
             cancelSnapshotCheck?.invoke()
             link?.close()
@@ -298,6 +316,7 @@ class MqttSession(
 
     private fun begin() {
         if (ended) return
+        clearLoginStorage()
         cancelReconnect?.invoke()
         if (version == null) sawVersionRefusal = false
         login = env.logins.get(profile, connectionId)
@@ -358,13 +377,32 @@ class MqttSession(
         reconnectStep = 0
         val typed = login
         if (loginTyped && typed != null) {
-            if (rememberTyped) env.logins.remember(profile, connectionId, typed) else env.logins.forget(profile, connectionId)
+            persistLogin(LoginStorageChoice(typed, rememberTyped))
         }
         loginTyped = false
         _state.value = MqttState.Open(v)
         subscribed.clear()
         _refused.value = emptySet()
         startSnapshot()
+    }
+
+    private fun clearLoginStorage() {
+        pendingLoginStorage = null
+        _loginStorageFailure.value = null
+    }
+
+    private fun persistLogin(choice: LoginStorageChoice) {
+        try {
+            if (choice.remember) env.logins.remember(profile, connectionId, choice.login) else env.logins.forget(profile, connectionId)
+            clearLoginStorage()
+        } catch (e: Exception) {
+            // The accepted link and its in-memory login remain valid. Never expose password/error text.
+            pendingLoginStorage = choice
+            _loginStorageFailure.value = MqttLoginStorageFailure(
+                if (choice.remember) MqttLoginStorageAction.REMEMBER else MqttLoginStorageAction.FORGET,
+                e.javaClass.simpleName,
+            )
+        }
     }
 
     private fun refused(v: MqttVersion, outcome: ConnectOutcome.Refused) {

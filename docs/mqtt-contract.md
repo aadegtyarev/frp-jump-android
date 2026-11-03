@@ -96,7 +96,16 @@ The same thing is called the same way on every screen:
   SSH's asks for user and password, with **Remember** (per connection,
   sealed like SSH passwords). A remembered login is tried first; refused,
   the dialog opens again with the user filled in and "Wrong user or
-  password".
+  password". Broker acceptance is independent of saving or removing the
+  login on the phone: a local storage/Keystore error leaves the accepted
+  connection open and subscriptions active. A separate warning says that
+  saving was not confirmed or the previous login may still be stored.
+  Its Retry repeats only that captured storage choice, without reconnecting
+  or sending credentials to the broker again. A newer typed login or close
+  invalidates an older retry. Automatic reconnect keeps the in-memory login
+  and does not repeatedly retry a failed storage write. A file read IO error
+  is not cached as an empty map and must not erase other saved entries;
+  the existing malformed-JSON fallback is unchanged.
 - **TLS** (stage 5). On for 8883, or by a switch on the connection; the
   broker's certificate is pinned on first use, exactly as for web pages
   (the same "Trust this certificate?" and "The certificate has changed"

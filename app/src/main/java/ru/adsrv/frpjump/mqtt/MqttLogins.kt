@@ -25,11 +25,11 @@ class MqttLogins(private val storage: TextStorage, private val box: SecretBox) {
     /** The remembered login; null when none, or when its password cannot be unsealed. */
     @Synchronized
     fun get(profile: String, connectionId: String): MqttLogin? {
-        val stored = logins[connectionKey(profile, connectionId)] ?: return null
         return try {
+            val stored = logins[connectionKey(profile, connectionId)] ?: return null
             MqttLogin(stored.user, box.open(stored.passwordSealed))
         } catch (e: Exception) {
-            Log.w(TAG, "cannot unseal a broker password: ${e.javaClass.simpleName}")
+            Log.w(TAG, "cannot read a broker login: ${e.javaClass.simpleName}")
             null
         }
     }
@@ -58,8 +58,12 @@ class MqttLogins(private val storage: TextStorage, private val box: SecretBox) {
         loaded = emptyMap()
     }
 
-    private fun read(): Map<String, StoredLogin> =
-        runCatching { storage.read()?.let { WireJson.decodeFromString<Map<String, StoredLogin>>(it) } }.getOrNull().orEmpty()
+    private fun read(): Map<String, StoredLogin> {
+        // IO failure is not an empty file: never cache it or overwrite other saved entries.
+        val text = storage.read() ?: return emptyMap()
+        // Preserve the existing malformed-JSON fallback; this slice changes IO failure handling only.
+        return runCatching { WireJson.decodeFromString<Map<String, StoredLogin>>(text) }.getOrNull().orEmpty()
+    }
 
     private fun save(value: Map<String, StoredLogin>) {
         storage.write(WireJson.encodeToString(value))

@@ -1128,4 +1128,6 @@
     <string name="connection_retry_start">Повторить запуск</string>
     <string name="connection_pending">Сохранено · нажмите для запуска</string>
     <string name="connection_no_longer_saved">Сохранённое подключение удалено или изменилось. Выберите его заново.</string>
+    <string name="mqtt_login_not_saved">Не удалось сохранить данные входа. После повторного открытия сессии их может потребоваться ввести снова.</string>
+    <string name="mqtt_login_not_removed">Не удалось удалить сохранённые данные входа. Прежние данные могут оставаться на телефоне.</string>
 </resources>

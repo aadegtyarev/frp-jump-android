@@ -1080,4 +1080,6 @@
     <string name="connection_retry_start">Retry start</string>
     <string name="connection_pending">Saved · tap to start</string>
     <string name="connection_no_longer_saved">This saved connection was removed or changed. Choose it again.</string>
+    <string name="mqtt_login_not_saved">Could not save the login. You may need to enter it again after reopening this session.</string>
+    <string name="mqtt_login_not_removed">Could not remove the saved login. The previous login may still be stored on this phone.</string>
 </resources>

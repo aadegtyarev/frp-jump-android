@@ -65,6 +65,8 @@ import ru.adsrv.frpjump.mqtt.MqttPath
 import ru.adsrv.frpjump.mqtt.MqttState
 import ru.adsrv.frpjump.mqtt.MqttVersion
 import ru.adsrv.frpjump.mqtt.SnapshotEnd
+import ru.adsrv.frpjump.mqtt.MqttLoginStorageFailure
+import ru.adsrv.frpjump.mqtt.MqttLoginStorageAction
 import ru.adsrv.frpjump.mqtt.SnapshotState
 import ru.adsrv.frpjump.mqtt.MAX_TOPIC_BYTES
 import ru.adsrv.frpjump.mqtt.TopicNode
@@ -306,6 +308,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                     Segmented(state.tabs, state.shownTab, label = { tabLabel(it) }, onPick = { vm.tab.value = it })
                 }
             }
+            MqttLoginStorageBanner(state.state, state.loginStorageFailure, vm::retryLoginStorage)
             if (state.shownTab == ExplorerTab.WB_DEVICES && !searching) {
                 Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
                 WbDevicesTab(
@@ -516,6 +519,19 @@ private fun SnapshotLine(state: MqttUiState) {
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
     }
+}
+
+/** Phone storage is independent of broker acceptance; retry binds to this exact accepted choice. */
+@Composable
+internal fun MqttLoginStorageBanner(state: MqttState, issue: MqttLoginStorageFailure?, retry: (MqttLoginStorageFailure) -> Unit) {
+    if (state !is MqttState.Open || issue == null) return
+    StatusBanner(
+        text = stringResource(if (issue.action == MqttLoginStorageAction.REMEMBER) R.string.mqtt_login_not_saved else R.string.mqtt_login_not_removed),
+        detail = issue.detail,
+        error = true,
+        action = stringResource(R.string.retry),
+        onAction = { retry(issue) },
+    )
 }
 
 /** What the subtitle cannot say about the connection, and what the tree is missing, each with what may fix it. */
