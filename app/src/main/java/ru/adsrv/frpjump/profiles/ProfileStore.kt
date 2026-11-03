@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.profiles
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
 import ru.adsrv.frpjump.store.CredentialStore
@@ -75,15 +77,15 @@ class ProfileStore(
      * listing it fails they are wiped again.
      */
     @Synchronized
-    fun add(credentials: Credentials): Profile {
+    fun add(credentials: Credentials, activationPending: Boolean = false, makeCurrent: Boolean = true): Profile {
         val id = newId()
         val before = index()
-        val profile = Profile(id, defaultProfileName(credentials.controlUrl), nextProfileColor(before.profiles), profileKeyAlias(id))
+        val profile = Profile(id, defaultProfileName(credentials.controlUrl), nextProfileColor(before.profiles), profileKeyAlias(id), activationPending)
         dir(id).mkdirs()
         val store = credentials(profile)
         store.save(credentials)
         try {
-            save(before.plus(profile))
+            save(before.plus(profile, makeCurrent = makeCurrent))
         } catch (e: Exception) {
             store.wipe()
             stores.remove(id)
@@ -96,14 +98,31 @@ class ProfileStore(
     /**
      * Stores [credentials] in [profile], one without any (removed by its
      * server, or v1 data without an enrollment); a blank name becomes the
-     * server's host.
+     * server's host when its optional metadata write succeeds. A name failure
+     * after credential persistence must not report that the keys were lost.
      */
     @Synchronized
     fun fill(profile: Profile, credentials: Credentials): Profile {
         credentials(profile).save(credentials)
         val named = if (profile.name.isBlank()) profile.copy(name = defaultProfileName(credentials.controlUrl)) else profile
-        if (named != profile) save(index().plus(named, makeCurrent = false))
+        if (named != profile) {
+            try {
+                save(index().plus(named, makeCurrent = false))
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.w("ProfileStore", "profile name not saved: ${e.javaClass.simpleName}")
+                return profile
+            }
+        }
         return named
+    }
+
+    /** Commit successful preparation and selection together, without rewriting the saved credentials. */
+    @Synchronized
+    fun activate(id: String): ProfileIndex {
+        val profile = requireNotNull(index().find(id)) { "Profile no longer listed" }
+        val ready = profile.copy(activationPending = false)
+        return index().plus(ready).also(::save)
     }
 
     @Synchronized

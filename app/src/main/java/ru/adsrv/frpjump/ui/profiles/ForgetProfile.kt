@@ -24,10 +24,10 @@ private const val TAG = "ForgetProfile"
  * cannot stop it halfway.
  */
 suspend fun forgetProfile(app: FrpJumpApp, id: String): String? {
-    val runtime = app.profiles.runtime(id) ?: return null
+    val saved = withContext(Dispatchers.IO) { app.profiles.savedCredentials(id) } ?: return null
     val name = app.profiles.state.value.index.find(id)?.name.orEmpty()
     return try {
-        val credentials = withContext(Dispatchers.IO) { runtime.store.load() }
+        val credentials = withContext(Dispatchers.IO) { saved.load() }
         var notice = Texts.get(R.string.profile_forgotten, name)
         if (credentials != null) {
             val laptop = { e: Exception ->

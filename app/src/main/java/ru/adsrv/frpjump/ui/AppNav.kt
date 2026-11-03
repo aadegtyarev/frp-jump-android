@@ -179,12 +179,57 @@ fun AppNav() {
         }
         composable(Routes.STORAGE) {
             val scope = rememberCoroutineScope()
+            val vm = viewModel { ProfilesViewModel(app) }
+            val items by vm.items.collectAsStateWithLifecycle()
+            val state by app.profiles.state.collectAsStateWithLifecycle()
+            val pendingSaved = state.index.currentProfile?.takeIf { it.activationPending && it.id !in state.runtimes }
+            var busy by remember { mutableStateOf(false) }
+            var startingSaved by remember { mutableStateOf<ru.adsrv.frpjump.profiles.Profile?>(null) }
+            // Keep the saved-connection explanation while success is committed and navigation catches up.
+            val saved = pendingSaved ?: startingSaved.takeIf { busy }
+            var error by remember { mutableStateOf<String?>(null) }
+            var sheet by rememberSaveable { mutableStateOf(false) }
+            var notice by rememberSaveable { mutableStateOf<String?>(null) }
+            val pendingNotice by app.session.notice.collectAsStateWithLifecycle()
+            LaunchedEffect(pendingNotice) {
+                if (pendingNotice != null) app.session.takeAnyNotice()?.let { notice = it }
+            }
             MessageScreen(
-                title = stringResource(R.string.app_name),
-                text = stringResource(R.string.storage_unreadable),
-                action = stringResource(R.string.retry),
-                onAction = { scope.launch { routeFor(app).takeIf { it != Routes.STORAGE }?.let(nav::replaceAll) } },
+                title = stringResource(if (saved != null) R.string.connection_saved_title else R.string.app_name),
+                text = if (saved != null) stringResource(R.string.connection_saved_waiting, saved.name) else stringResource(R.string.storage_unreadable),
+                action = stringResource(if (saved != null) R.string.connection_retry_start else R.string.retry),
+                notice = notice, busy = busy, error = error,
+                secondary = stringResource(R.string.other_profiles).takeIf { items.size > 1 },
+                onSecondary = { sheet = true },
+                onAction = retryAction@{
+                    if (busy) return@retryAction
+                    startingSaved = pendingSaved
+                    busy = true
+                    error = null
+                    val id = saved?.id
+                    val enrollment = id?.let { state.enrollments[it] ?: 0 }
+                    val work = app.appScope.async {
+                        runCatching {
+                            if (id != null) check(app.profiles.retrySaved(id, checkNotNull(enrollment))) {
+                                Texts.get(R.string.connection_no_longer_saved)
+                            }
+                            routeFor(app)
+                        }
+                    }
+                    scope.launch {
+                        work.await().onSuccess { route ->
+                            busy = false
+                            if (route != Routes.STORAGE) nav.replaceAll(route)
+                        }.onFailure {
+                            busy = false
+                            error = if (it is ru.adsrv.frpjump.profiles.SavedProfileActivationException) {
+                                Texts.get(R.string.connection_saved_inactive, saved?.name.orEmpty(), (it.cause ?: it).javaClass.simpleName)
+                            } else it.userMessage()
+                        }
+                    }
+                },
             )
+            if (sheet) ProfileListSheet(vm, nav, app, onDismiss = { sheet = false })
         }
         composable(Routes.ENROLL) {
             val profilesVm = viewModel { ProfilesViewModel(app) }
@@ -429,10 +474,17 @@ private fun ProfileListSheet(vm: ProfilesViewModel, nav: NavHostController, app:
  * one, the "removed" screen when its server deleted it. Waits for the
  * profiles to load.
  */
-private suspend fun routeFor(app: FrpJumpApp): String = withContext(Dispatchers.IO) {
-    if (!app.profiles.load()) return@withContext Routes.STORAGE
-    if (app.profiles.current?.session?.removed?.value == true) return@withContext Routes.REMOVED
-    when (app.profiles.current?.store?.state() ?: StoredEnrollment.NotEnrolled) {
+private suspend fun routeFor(app: FrpJumpApp): String = profileRoute(app.profiles)
+
+/** Shared with lifecycle tests: a durable but unstarted connection is not a request to enroll again. */
+internal suspend fun profileRoute(profiles: ru.adsrv.frpjump.profiles.Profiles): String = withContext(Dispatchers.IO) {
+    if (!profiles.load()) return@withContext Routes.STORAGE
+    val saved = profiles.state.value.index.currentProfile
+    if (saved?.activationPending == true && profiles.runtime(saved.id) == null) {
+        return@withContext if (profiles.savedCredentials(saved.id)?.state() is StoredEnrollment.NotEnrolled) Routes.ENROLL else Routes.STORAGE
+    }
+    if (profiles.current?.session?.removed?.value == true) return@withContext Routes.REMOVED
+    when (profiles.current?.store?.state() ?: StoredEnrollment.NotEnrolled) {
         is StoredEnrollment.Enrolled -> Routes.DEVICES
         StoredEnrollment.NotEnrolled -> Routes.ENROLL
         is StoredEnrollment.Unavailable -> Routes.STORAGE

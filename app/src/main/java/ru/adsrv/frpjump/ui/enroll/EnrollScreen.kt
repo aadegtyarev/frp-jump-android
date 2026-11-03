@@ -76,19 +76,21 @@ fun EnrollScreen(vm: EnrollViewModel, onEnrolled: () -> Unit, onBack: (() -> Uni
         return
     }
     FormScreen(
-        title = stringResource(R.string.new_profile),
-        action = stringResource(R.string.enroll_submit),
+        title = stringResource(if (state.pendingActivation != null) R.string.connection_saved_title else R.string.new_profile),
+        action = stringResource(if (state.pendingActivation != null) R.string.connection_retry_start else R.string.enroll_submit),
         busy = state.busy,
         onAction = { vm.submit(onEnrolled) },
         onBack = onBack,
-        actionEnabled = state.text.isNotBlank(),
+        actionEnabled = state.pendingActivation != null || state.text.isNotBlank(),
     ) {
         state.notice?.let { Text(it, fontSize = 14.sp, color = AppTheme.colors.ink) }
-        InviteCard()
-        LineCard(state, vm, onScan = { scanning = true })
+        if (state.pendingActivation == null) {
+            InviteCard()
+            LineCard(state, vm, onScan = { scanning = true })
+        }
         FormCard(title = stringResource(R.string.enroll_step_name)) {
-            ProfileNameField(state.profileName, vm::onProfileName, state.profileNameError, enabled = !state.busy)
-            ProfileColorPicker(state.color, vm::onColor, enabled = !state.busy)
+            ProfileNameField(state.profileName, vm::onProfileName, state.profileNameError, enabled = !state.busy && state.pendingActivation == null)
+            ProfileColorPicker(state.color, vm::onColor, enabled = !state.busy && state.pendingActivation == null)
         }
         onOtherProfiles?.let {
             TextButton(onClick = it) { Text(stringResource(R.string.other_profiles)) }

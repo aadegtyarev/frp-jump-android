@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.profiles
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +20,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.profiles.ProfilesState
+import ru.adsrv.frpjump.profiles.Profiles
+import ru.adsrv.frpjump.profiles.SavedProfileActivationException
+import ru.adsrv.frpjump.ui.userMessage
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.profiles.defaultProfileName
 
 /** A "Forget profile" in progress or failed, for the row it was started from. */
@@ -28,10 +34,10 @@ data class ForgetState(val id: String, val error: String? = null) {
 
 /** The profiles for the switcher, the profile list and the profile group of Settings. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
+class ProfilesViewModel(private val app: FrpJumpApp, private val profiles: Profiles = app.profiles) : ViewModel() {
     private val servers = MutableStateFlow<Map<String, KnownServer>>(emptyMap())
 
-    private val removed = app.profiles.state.map { it.runtimes }.distinctUntilChanged().flatMapLatest { runtimes ->
+    private val removed = profiles.state.map { it.runtimes }.distinctUntilChanged().flatMapLatest { runtimes ->
         if (runtimes.isEmpty()) {
             flowOf(emptySet())
         } else {
@@ -42,7 +48,7 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     val items: StateFlow<List<ProfileItem>> =
-        combine(app.profiles.state, app.profiles.shownTunnelsByProfile, removed, servers) { state, tunnels, gone, known ->
+        combine(profiles.state, profiles.shownTunnelsByProfile, removed, servers) { state, tunnels, gone, known ->
             profileItems(state.index, tunnels, gone, currentServers(enrollmentsOf(state), known))
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -53,13 +59,13 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
         // Each profile's server and phone name: the Keystore, off the main thread. Read once
         // per enrollment of a profile, again only when it was read without one.
         viewModelScope.launch {
-            app.profiles.state.collectLatest { state ->
+            profiles.state.collectLatest { state ->
                 val enrollments = enrollmentsOf(state)
                 val known = servers.value.filterKeys { it in enrollments }
                 val load = serversToLoad(enrollments, known)
                 val read = withContext(Dispatchers.IO) {
                     load.associateWith { id ->
-                        val server = runCatching { state.runtimes.getValue(id).store.load() }.getOrNull()?.let {
+                        val server = runCatching { profiles.savedCredentials(id)?.load() }.getOrNull()?.let {
                             ProfileServer(defaultProfileName(it.controlUrl), it.deviceName)
                         }
                         KnownServer(enrollments.getValue(id), server)
@@ -71,13 +77,23 @@ class ProfilesViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     private fun enrollmentsOf(state: ProfilesState): Map<String, Int> =
-        state.runtimes.keys.associateWith { state.enrollments[it] ?: 0 }
+        state.index.profiles.associate { it.id to (state.enrollments[it.id] ?: 0) }
 
     /** Shows [id]; [then] once it is the current profile. */
     fun switchTo(id: String, then: () -> Unit) {
         viewModelScope.launch {
-            app.profiles.setCurrent(id)
-            then()
+            try {
+                profiles.setCurrent(id)
+                then()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val name = profiles.state.value.index.find(id)?.name.orEmpty()
+                val message = if (e is SavedProfileActivationException) {
+                    Texts.get(R.string.connection_saved_inactive, name, (e.cause ?: e).javaClass.simpleName)
+                } else e.userMessage()
+                app.session.postNotice(message, forProfile = profiles.state.value.index.current)
+            }
         }
     }
 

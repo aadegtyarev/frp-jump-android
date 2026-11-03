@@ -19,6 +19,8 @@ data class ProfileItem(
     val current: Boolean,
     /** Its server rejected its token (401): the phone was deleted there. */
     val removed: Boolean,
+    /** Credentials are saved, but this connection still needs an explicit start. */
+    val activationPending: Boolean = false,
 ) {
     /** The letter on its tile. */
     val letter: String get() = name.trim().take(1).uppercase().ifEmpty { "?" }
@@ -40,6 +42,7 @@ fun profileItems(
         tunnels = tunnels[it.id] ?: 0,
         current = it.id == index.current,
         removed = it.id in removed,
+        activationPending = it.activationPending,
     )
 }
 
