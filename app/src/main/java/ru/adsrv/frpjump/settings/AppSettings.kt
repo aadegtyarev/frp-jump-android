@@ -10,6 +10,8 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
@@ -91,6 +93,8 @@ data class AppSettings(
     @SerialName("files_show_hidden") val filesShowHidden: Boolean = false,
     /** The phone folder downloads go to: a document tree URI with a persisted grant, chosen once. */
     @SerialName("files_download_folder") val filesDownloadFolder: String? = null,
+    /** Inbound MQTT accounting limits, captured by newly created explorer sessions. */
+    @SerialName("mqtt_ingress") val mqttIngress: MqttIngressLimits = MqttIngressLimits(),
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -125,6 +129,7 @@ class SettingsStore(private val storage: TextStorage) {
         val next = change(_settings.value)
         require(portRangeProblem(next.localPortFirst, next.localPortLast) == null) { "invalid local port range" }
         require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
+        require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
         if (next == _settings.value) return
         storage.write(WireJson.encodeToString(next))
         _settings.value = next
@@ -145,11 +150,32 @@ class SettingsStore(private val storage: TextStorage) {
         val rawHistory = json["terminal_history_rows"] as? JsonPrimitive
         val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
-        val normalized = JsonObject(json + ("terminal_history_rows" to JsonPrimitive(history)))
+        val normalized = JsonObject(json + ("terminal_history_rows" to JsonPrimitive(history)) +
+            ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])))
         val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
         return if ("direct" !in json && relayOnly != null) settings.copy(direct = !relayOnly) else settings
+    }
+
+    /** Bad new fields never reset unrelated preferences; only an inconsistent byte pair resets together. */
+    private fun normalizeMqttIngress(raw: JsonElement?): JsonElement {
+        val group = raw as? JsonObject
+        val defaults = MqttIngressLimits()
+        fun number(key: String, range: IntRange, fallback: Int): Int =
+            (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it in range } ?: fallback
+        val mode = when ((group?.get("overflow") as? JsonPrimitive)?.takeIf { it.isString }?.content) {
+            "stop_session" -> MqttOverflow.STOP_SESSION
+            else -> MqttOverflow.DROP_INCOMING
+        }
+        var limits = MqttIngressLimits(
+            number("payload_bytes", MqttIngressLimits.MIN_PAYLOAD_BYTES..MqttIngressLimits.MAX_PAYLOAD_BYTES, defaults.payloadBytes),
+            number("queue_bytes", MqttIngressLimits.MIN_QUEUE_BYTES..MqttIngressLimits.MAX_QUEUE_BYTES, defaults.queueBytes),
+            number("queue_messages", 1..MqttIngressLimits.MAX_QUEUE_MESSAGES, defaults.queueMessages),
+            mode,
+        )
+        if (!validMqttIngressLimits(limits)) limits = limits.copy(payloadBytes = defaults.payloadBytes, queueBytes = defaults.queueBytes)
+        return WireJson.encodeToJsonElement(limits)
     }
 
     private companion object {

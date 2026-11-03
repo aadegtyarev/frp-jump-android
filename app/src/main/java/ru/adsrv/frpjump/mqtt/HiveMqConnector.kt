@@ -48,7 +48,10 @@ class HiveMqConnector(private val host: String = "127.0.0.1") : MqttConnector {
     }
 
     private fun connect5(client: Mqtt5AsyncClient, login: MqttLogin?, events: LinkEvents, flags: Flags, done: (ConnectOutcome) -> Unit) {
-        client.publishes(MqttGlobalPublishFilter.ALL) { events.message(it.topic.toString(), it.payloadAsBytes, it.isRetain, it.qos.code) }
+        client.publishes(MqttGlobalPublishFilter.ALL) { publish ->
+            events.message(publish.topic.toString(), publish.payload.orElse(null)?.remaining() ?: 0,
+                { publish.payloadAsBytes }, publish.isRetain, publish.qos.code)
+        }
         val connect = client.connectWith().cleanStart(true).sessionExpiryInterval(0).keepAlive(KEEP_ALIVE_S)
         val send = login?.let { connect.simpleAuth().username(it.user).password(it.password.toByteArray()).applySimpleAuth() } ?: connect
         send.send().whenComplete { _, error ->
@@ -59,7 +62,10 @@ class HiveMqConnector(private val host: String = "127.0.0.1") : MqttConnector {
     }
 
     private fun connect3(client: Mqtt3AsyncClient, login: MqttLogin?, events: LinkEvents, flags: Flags, done: (ConnectOutcome) -> Unit) {
-        client.publishes(MqttGlobalPublishFilter.ALL) { events.message(it.topic.toString(), it.payloadAsBytes, it.isRetain, it.qos.code) }
+        client.publishes(MqttGlobalPublishFilter.ALL) { publish ->
+            events.message(publish.topic.toString(), publish.payload.orElse(null)?.remaining() ?: 0,
+                { publish.payloadAsBytes }, publish.isRetain, publish.qos.code)
+        }
         val connect = client.connectWith().cleanSession(true).keepAlive(KEEP_ALIVE_S)
         val send = login?.let { connect.simpleAuth().username(it.user).password(it.password.toByteArray()).applySimpleAuth() } ?: connect
         send.send().whenComplete { _, error ->

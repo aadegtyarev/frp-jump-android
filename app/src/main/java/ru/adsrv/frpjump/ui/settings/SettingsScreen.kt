@@ -143,6 +143,12 @@ fun SettingsScreen(
         PluginsScreen(onBack = { plugins = false })
         return
     }
+    var mqttLimits by rememberSaveable { mutableStateOf(false) }
+    if (mqttLimits) {
+        MqttIngressScreen(settings.mqttIngress, onSave = { limits, complete -> vm.setMqttIngress(limits, complete) },
+            onBack = { mqttLimits = false })
+        return
+    }
     val pluginsSummary by vm.plugins.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val colors = AppTheme.colors
@@ -299,6 +305,13 @@ fun SettingsScreen(
             ) { ValueChevron(themeLabel(settings.theme)) }
             RowDivider()
             VersionRow(update, onCheck = vm::checkForUpdates, onUpdate = { open = Open.UPDATE })
+            RowDivider()
+            SettingRow(
+                tile = { IconTile(PluginGlyph) },
+                label = stringResource(R.string.mqtt_ingress_title),
+                hint = stringResource(R.string.mqtt_ingress_row_hint),
+                onClick = { mqttLimits = true },
+            ) { Chevron() }
             RowDivider()
             SettingRow(
                 tile = { IconTile(PluginGlyph) },

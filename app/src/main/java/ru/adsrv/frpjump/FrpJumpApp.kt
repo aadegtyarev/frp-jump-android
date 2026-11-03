@@ -377,7 +377,8 @@ class FrpJumpApp : Application() {
             legacyCorruptCopy = AtomicTextFile(File(filesDir, "mqtt_plugins.corrupt.json")),
         )
         mqtt = MqttSessions(
-            env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler()),
+            env = MqttEnvironment(mqttLogins, mqttPins, HiveMqConnector(), ExecutorScheduler(),
+                ingressLimits = { settings.settings.value.mqttIngress }),
             tunnelsUp = profiles.upTunnels,
             scope = appScope,
         )

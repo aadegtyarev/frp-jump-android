@@ -167,6 +167,7 @@ data class MqttUiState(
     val wbSent: Map<MqttPath, String> = emptyMap(),
     /** Local login persistence failed; the broker may still be connected and usable. */
     val loginStorageFailure: MqttLoginStorageFailure? = null,
+    val droppedIncoming: Long = 0,
 ) {
     /** The tabs in the row, in order. */
     val tabs: List<ExplorerTab> get() = if (wbTab) ExplorerTab.entries else listOf(ExplorerTab.TREE, ExplorerTab.SUBSCRIPTIONS)
@@ -239,7 +240,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
             if (gone.isEmpty()) all else all.filter { it !in gone }
         }
         val wb = combine(plugins, language, wbDeviceId, openedOnWb, wbWrites) { p, lang, device, opened, _ -> WbAsk(p?.wirenBoardOn == true, lang, device, opened) }
-        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb, s.loginStorageFailure) { values ->
+        combine(s.state, s.snapshot, s.branch, pins, s.refused, searches, card, ticks, searchWhole, tab, wb, s.loginStorageFailure, s.dropped) { values ->
             @Suppress("UNCHECKED_CAST")
             read(
                 s,
@@ -255,6 +256,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                 values[9] as ExplorerTab,
                 values[10] as WbAsk,
                 values[11] as MqttLoginStorageFailure?,
+                values[12] as Long,
             )
         }.flowOn(Dispatchers.Default)
     }.let { it ?: flowOf(MqttUiState(state = MqttState.Ended, closedByTunnel = app.mqtt.closedByTunnel(sessionId))) }
@@ -278,6 +280,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         tab: ExplorerTab,
         wb: WbAsk,
         loginStorageFailure: MqttLoginStorageFailure?,
+        droppedIncoming: Long,
     ): MqttUiState {
         if (path != shownPath) {
             shownPath = path
@@ -298,6 +301,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
         return MqttUiState(
             state = state,
             loginStorageFailure = loginStorageFailure,
+            droppedIncoming = droppedIncoming,
             snapshot = snapshot,
             path = path,
             rows = rows,

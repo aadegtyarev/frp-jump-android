@@ -111,6 +111,47 @@ The same thing is called the same way on every screen:
   (the same "Trust this certificate?" and "The certificate has changed"
   dialogs with both SHA-256 fingerprints).
 
+## Incoming-message limits
+
+Settings → MQTT incoming limits edits three per-explorer limits and the
+overflow action. Values are saved only after validation and a successful
+storage write; the form stays open on failure. Units in the form are bytes.
+
+| Limit | Default | Valid range |
+| --- | --- | --- |
+| Incoming payload | 1,048,576 bytes (1 MiB) | 1,024–16,777,216 bytes |
+| Waiting and processing data | 8,388,608 bytes (8 MiB) | Up to 268,435,456 bytes, at least payload limit +256 |
+| Waiting and processing messages | 10,000 | 1–100,000 |
+
+One message is charged its declared payload bytes, twice the UTF-16 length
+of its topic, and a fixed 256-byte charge. Topic text must also fit. Capacity
+is reserved before the adapter requests a payload byte-array copy and is
+held through processing, including rejection of stale queued work. Messages
+submitted with an already revoked producer lease are ignored before copying.
+Previously admitted work remains charged and is not committed after ownership
+changes. Reservations are not reset on reconnect while queued arrays still exist.
+
+**Drop incoming** is the default: reject the whole incoming message and keep
+receiving. **Stop session** stops that explorer and requires manual Retry;
+it does not start an overflow/reconnect loop. Rejected-message feedback is
+shown above every explorer tab: values may be missing or outdated. Payloads
+are never truncated. A failed scheduler handover releases its reservation;
+a failed stop notification keeps copying disabled and can be retried by a
+later event without queuing one control action per rejected message.
+
+Limits are captured when an explorer session is created. Automatic or manual
+reconnect does not change them. To apply settings to an existing explorer,
+close its session and create a new one; leaving the screen keeps the old
+session. Invalid new setting fields fall back independently of unrelated
+preferences. An inconsistent payload/queue pair falls back together while
+valid count and action preferences survive.
+
+This is an application handover budget, not a total-heap measurement or a
+packet-size guarantee for the HiveMQ decoder, which may have allocated a
+packet before the callback. It does not yet bound accumulated tree/history
+bytes. Those budgets are a separate slice. Outgoing Publish, plugin readonly
+rules, SSH paste and clipboard policies are unchanged.
+
 ## Subscriptions
 
 All the session's subscriptions, in MQTT 5, use Retain As Published (a

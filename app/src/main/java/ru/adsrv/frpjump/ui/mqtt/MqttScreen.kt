@@ -309,6 +309,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                 }
             }
             MqttLoginStorageBanner(state.state, state.loginStorageFailure, vm::retryLoginStorage)
+            MqttIngressBanner(state.droppedIncoming)
             if (state.shownTab == ExplorerTab.WB_DEVICES && !searching) {
                 Banners(state, session?.device.orEmpty(), session?.port ?: 0, subtitleShown = !searching, onRetry = vm::retry, onLogin = { loginDone = null }, onPinBranch = { pinning = true })
                 WbDevicesTab(
@@ -521,6 +522,12 @@ private fun SnapshotLine(state: MqttUiState) {
     }
 }
 
+/** A rejected input can leave stale values on any explorer tab, including a plugin view. */
+@Composable
+internal fun MqttIngressBanner(dropped: Long) {
+    if (dropped > 0) StatusBanner(stringResource(R.string.mqtt_ingress_missing, dropped), error = true)
+}
+
 /** Phone storage is independent of broker acceptance; retry binds to this exact accepted choice. */
 @Composable
 internal fun MqttLoginStorageBanner(state: MqttState, issue: MqttLoginStorageFailure?, retry: (MqttLoginStorageFailure) -> Unit) {
@@ -536,7 +543,7 @@ internal fun MqttLoginStorageBanner(state: MqttState, issue: MqttLoginStorageFai
 
 /** What the subtitle cannot say about the connection, and what the tree is missing, each with what may fix it. */
 @Composable
-private fun Banners(state: MqttUiState, device: String, port: Int, subtitleShown: Boolean, onRetry: () -> Unit, onLogin: () -> Unit, onPinBranch: () -> Unit) {
+internal fun Banners(state: MqttUiState, device: String, port: Int, subtitleShown: Boolean, onRetry: () -> Unit, onLogin: () -> Unit, onPinBranch: () -> Unit) {
     // The state is in the subtitle; a banner only adds an action or a reason (see stateNeedsBanner).
     if (stateNeedsBanner(state.state, state.closedByTunnel, subtitleShown)) when (val s = state.state) {
         MqttState.Connecting -> StatusBanner(stringResource(R.string.mqtt_connecting), busy = true)
@@ -547,6 +554,7 @@ private fun Banners(state: MqttUiState, device: String, port: Int, subtitleShown
                 MqttFailure.NO_BROKER -> stringResource(R.string.mqtt_no_broker, port, device)
                 MqttFailure.NO_COMMON_VERSION -> stringResource(R.string.mqtt_no_common_version)
                 MqttFailure.REFUSED -> stringResource(R.string.mqtt_refused)
+                MqttFailure.LOCAL_LIMIT -> stringResource(R.string.mqtt_ingress_stopped)
             },
             detail = s.detail,
             error = true,
