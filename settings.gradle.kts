@@ -17,4 +17,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "frp-jump-android"
-include(":app", ":agent-core")
+include(":app", ":agent-core", ":agent-openai")

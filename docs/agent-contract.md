@@ -1,6 +1,6 @@
 # Optional connection assistant
 
-## Current slice: kernel only
+## Current stage: kernel and external protocol adapter
 
 Settings → LLM assistant enables or disables the experimental module. It is
 **off by default**, including upgrades from versions without this setting.
@@ -11,8 +11,9 @@ flag falls back to off without resetting unrelated settings.
 This slice is infrastructure, not a usable chat: **no provider, API key,
 network request or real connection tool is configured or started**. The
 settings row explicitly says so. Enabling the kernel does not perform work.
-The approved follow-up slices are an external OpenAI-compatible provider,
-then chat and minimal existing-connection/SSH tools. Web, Files, MQTT, TCP,
+The external protocol adapter exists as a separately tested module, but it
+is not wired into a user-facing provider configuration or chat. The approved
+follow-up slices are provider settings/chat, then minimal existing-connection/SSH tools. Web, Files, MQTT, TCP,
 compression, evaluators, permission modes and subagents are later work.
 No tunnel creation/start/reconfiguration/deletion is granted to the agent.
 
@@ -27,7 +28,9 @@ No tunnel creation/start/reconfiguration/deletion is granted to the agent.
   setting prevents new runs immediately through the authoritative setting
   check; the settings observer cancels an active run. Disabling invalidates
   the run before cancellation. Enabling again cannot revive it.
-- Providers and connection tools will be separate adapters. A tool must bind
+- `agent-openai` implements non-streaming OpenAI-compatible Chat Completions
+  and model discovery. It is not constructed or called by enabling the module.
+- Connection tools will be separate adapters. A tool must bind
   to its admitted connection identity; it must never resolve a replacement
   client after a disconnect. The kernel does not itself grant target access.
 - The application skill is versioned in
@@ -79,6 +82,43 @@ already allocated: these are kernel-result bounds, not a total-heap or
 transport-buffer guarantee. Future stream-reading adapters must cap capture
 as data arrives. The full UI history/storage is the app coordinator's
 responsibility, not an unbounded background store in the kernel.
+
+## External API adapter
+
+`OpenAiConfig` selects the API root (usually ending in `/v1`), model ID,
+optional explicit `reasoning_effort`, output-token parameter spelling
+(`max_tokens` or `max_completion_tokens`) and finite byte bounds. Discovery
+can run before model selection. No provider/model capability is inferred
+from an ID; unsupported options produce a status error, not an implicit retry
+with different semantics. This is Chat Completions, not the Responses API.
+
+`OpenAiAgentProvider` receives a key in memory; this stage adds no key storage
+or settings UI. It sends Bearer authorization only to the configured target.
+Remote roots require HTTPS; HTTP is accepted only for loopback hosts. Roots
+with user information, query or fragment are rejected. Redirects and automatic
+connection retries are disabled. A transport guard also removes HTTP503 retry
+hints, because OkHttp4 otherwise replays `Retry-After: 0` despite its connection
+retry switch. No body/endpoint/key is included in adapter
+exceptions, and no external tracing or fallback is installed.
+
+Defaults: response body at most 1 MiB, request at most 2 MiB; configurable
+bounds 1 KiB–8 MiB. The response cap is enforced while reading, including
+chunked and transparently decompressed bodies. Requests are checked after
+JSON encoding, not claimed as a pre-allocation heap bound. JSON nesting is
+preflight-limited to 64 before parsing, including tool-argument JSON. Truncated,
+filtered, malformed or unsupported tool responses cannot authorize execution.
+Cancellation cancels the exact OkHttp Call; it does not cancel unrelated calls.
+
+Some compatible APIs require continuation state alongside assistant messages,
+including [DeepSeek reasoning tool calls](https://api-docs.deepseek.com/guides/thinking_mode/).
+Such returned state is opaque provider-owned data, not assistant UI text. It
+is budgeted with the reply and request, redacted in string representations,
+and returned only through the same provider instance. Changing providers must
+not silently forward/drop it; incompatible context is rejected locally. This
+stage does not persist or display that state. The future coordinator must reuse
+the provider for its conversation; changing provider/configuration starts a new
+active context rather than retargeting opaque history. This does not claim compatibility
+with every provider-specific thinking parameter.
 
 ## Verification and non-goals
 
