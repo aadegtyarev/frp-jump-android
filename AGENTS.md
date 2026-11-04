@@ -11,6 +11,38 @@
 - End every task with a concise user-facing report of what changed, checks and outcomes, and remaining risks or blockers. Do not finish with tool output alone or end silently; this rule requires no installed skills.
 <!-- END ad-pi-addons contract workflow -->
 
+## Whole-class review and correction
+
+- The parent preserves each finding's stable class ID, violated invariant,
+  original scope and closure criteria when delegating. Example lines do not
+  narrow a class. In particular, loss of conditional requirements is not merely
+  a Save-specific defect because Save was the first example.
+- Route a cross-document/class sweep to every affected owner. Each owner checks
+  its entire applicable diff and reports adjacent-owner cases; ownership remains
+  exclusive. The parent consolidates coverage before declaring global closure.
+- Before another review, require a per-class table:
+  `scope/case | inspected evidence | disposition/change | validation | remainder`.
+  Compare it with the actual diff and original requirements. Named examples
+  repaired, a green mechanical checker, or an unsupported "complete" claim is
+  insufficient. Record partial/unreviewed scope and unresolved decisions.
+- Reviewer reports class/invariant, applicable boundary, proven examples,
+  checked-case inventory, closure criteria and inspection limits. Worker fixes
+  all applicable owned cases in one pass, validates the blast radius, and
+  distinguishes complete-within-scope, partial and blocked outcomes.
+- For contract rewrites, account for old normative promises as retained, moved,
+  conditionally retained or removed with approved grounds. Removing a future
+  implementation plan must not remove its approved safety/data/compatibility
+  constraints; implementation behavior alone cannot authorize weaker promises.
+- A later analogous instance is a same-class coverage failure, not automatically
+  a new independent line-item finding. Reassess scope/root cause before another
+  fix loop. Review limits still apply; reaching a cap requires disposition,
+  not an automatic extra round or repetitive requests for tiny patches.
+- These project profiles live in `.pi/agents/worker.md` and
+  `.pi/agents/reviewer.md`. They retain native tool/role boundaries; no task or
+  class sweep grants extra mutation, policy, publication or delegation authority.
+  Retained runs keep their recorded contracts; use fresh launches for new
+  profiles or explicitly provide the protocol in an authorized retained follow-up.
+
 ## Project-specific commands and conventions
 
 - Android/Kotlin/Jetpack Compose, Java 17; modules `app`, `agent-core`,
