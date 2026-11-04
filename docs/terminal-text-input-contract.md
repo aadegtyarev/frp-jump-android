@@ -1,194 +1,196 @@
 # Terminal text composer
 
-Status: implemented; local validation completed for PR review.
+## Boundary and ownership
 
-## Goal
+The composer lets the owner prepare ordinary text locally with IME
+composition, suggestions, correction and voice input, then insert it into an
+exact SSH session. Keys remains the default surface for immediate terminal
+input. The app does not guess whether the remote application is a shell, vi
+or Pi.
 
-Let the owner prepare ordinary text with the keyboard's composition,
-suggestions, correction and voice input without hiding uncommitted text
-inside the terminal input connection. Keep immediate terminal keys as the
-default. Do not guess whether the remote application is a shell, vi or Pi.
+This surface inherits the [shared UI rules](contract.md#ui-rules) and
+supplements the [SSH console](contract.md#7-ssh-console). The
+[terminal panel](terminal-panel-contract.md) owns key-row geometry and
+keyboard gestures; [SSH persistence](ssh-persist-contract.md) owns connection
+lifecycle and tmux behavior. This contract owns local drafts, insertion
+intent, destination binding and the paste-safety path shared with clipboard
+input. It does not replace the existing paste warnings.
 
-This supplements the terminal behavior in [contract.md](contract.md),
-scenario 7. It does not replace the existing paste safety rules.
+Drafts belong to SSH sessions, not to a screen or terminal input connection.
+The terminal input connection must not receive the editor's composing text.
 
 ## Agreed interaction
 
-- The terminal starts in Keys mode. Direct input remains on by default;
-  this feature does not change an explicitly stored input preference.
-- Hold ⌨ or choose terminal ⋮ → Text input to enter Text; >_ returns to
-  Keys. No separate Keys/Text selector row is shown. Switching never sends
-  text, presses Enter or discards a draft. The compact-panel follow-up is
-  specified in [terminal-panel-contract.md](terminal-panel-contract.md).
-- Text replaces all terminal key and command-chip rows, not another panel
-  stacked above them. The terminal remains visible above the compact editor.
-  Additional key rows in Keys mode start collapsed and open only via ⋯.
-- Operator-approved layout follow-up: an empty saved-command list must not
-  show the «+ Добавить команду» row. Existing command chips remain; the
-  terminal's ⋮ → Commands opens the manager even when the list is empty.
-- The compact editor is a visible multiline text field with ordinary IME
-  composition. Provide actions to expand, insert and return to Keys.
-  Suggestions and voice input depend on the installed keyboard.
-- Expand opens the same draft in a full-screen editor. Collapse and Back
-  return to the compact editor without inserting or discarding anything.
-- Short Insert targets the exact current SSH tab. It inserts text, never an
-  extra Enter. Terminal Enter remains a separate explicit action.
-- Drafts are independent per SSH session. Switching tabs or returning to
-  Keys does not lose them. A closed tab releases its draft; a different
-  session, including one to the same device, does not inherit it.
-- Drafts live only in process memory: no settings file, saved-state bundle,
-  log or clipboard persistence. Configuration changes should retain drafts
-  while the owning session model is alive; process death need not.
+- A new session starts in Keys. Direct input is on by default; an explicitly
+  stored input preference is preserved. Entering Text never changes it.
+- Short ⌨ shows or hides the system keyboard. Hold ⌨ or choose terminal
+  ⋮ → Text input to open or focus Text; `>_` returns to Keys. There is no
+  separate Keys/Text selector row. Switching modes never inserts the draft,
+  presses Enter or discards text or selection.
+- Text replaces all terminal-key and command-chip rows, rather than stacking
+  above them. The terminal remains visible above the compact multiline
+  editor. Returning to Keys restores the main row with additional rows
+  collapsed; only ⋯ opens additional rows.
+- The compact editor offers expand, Insert and return to Keys. Typing,
+  composition and editor Enter stay local. Suggestions and voice input
+  depend on the installed keyboard.
+- Expand opens the same draft and selection full screen. Collapse and Back
+  return to compact Text without insertion or loss. Keyboard dismissal and
+  tab switching also retain the draft.
+- Existing command chips remain available in Keys. An empty saved-command
+  list shows no «+ Добавить команду» row; ⋮ → Commands still opens the
+  manager when the list is empty.
 - Return to Keys for terminal Ctrl/Alt and service-key actions. Those
-  actions address the terminal, not the retained draft. Returning must not
-  implicitly insert the draft or apply a modifier to buffered editor text.
+  actions address the terminal, not the retained draft; they never implicitly
+  submit it or apply a modifier to buffered editor text.
+- Provide Russian and English labels for mode, expand/collapse and insertion
+  controls, including explicit accessible short- and long-action labels.
+  The small pencil on ⌨ and return glyph on Insert are decorative hints,
+  not separate buttons or permanent instruction rows.
+
+## Draft lifetime and privacy
+
+Each session has independent text, selection and editor state. Switching tabs
+or returning to Keys retains them. A closed or replaced session releases its
+draft; another session, even to the same device, does not inherit it. Late
+callbacks from an outgoing editor or previously selected tab must not change
+the live draft or recreate a closed one.
+
+Drafts live only in process memory, not settings, saved-state bundles, logs
+or clipboard. Screen/configuration changes retain them while the owning
+session model lives; process death need not.
 
 ## Paste safety and session binding
 
-Use the existing `planPaste` / `PastePlan` decision path and
-`SshSession.paste`, not a new raw session-write path:
+Short Insert captures the current session and draft revision. It uses the
+existing `planPaste` / `PastePlan` decision path and `SshSession.paste`, not a
+new raw-write path, and never appends Enter:
 
-- Drop trailing line breaks and blank lines as existing paste does.
-- Do not insert whitespace-only content.
-- Preserve the existing multiline confirmation when bracketed paste is
-  unavailable, including the conservative tmux handling.
-- Confirmation retains the exact destination session; switching tabs must
-  not redirect a pending insertion. Revalidate the destination before send.
-- An outbound chunk belongs to the output/generation captured when it leaves
-  the terminal queue, not whichever output is current after a blocking tmux
-  guard. Connection handover discards old queued input. A paste cannot be
-  split by handover while it is waiting for queue space; keep the writer
-  free to drain it. Idle writers wait on the queue, without polling.
-- Canceling the confirmation leaves the draft intact and sends nothing.
-- A closed, disconnected or otherwise non-writable destination must not
-  cause text to be sent to a replacement tab. Keep the draft and explain
-  that insertion was not performed.
-- Do not claim that multiline insertion can never execute commands. The
-  existing confirmation explicitly permits that risk when the owner
-  chooses to paste without bracketed paste.
+1. Drop trailing line breaks and blank lines. Keep spaces at the end of the
+   last real line; whitespace-only content sends nothing.
+2. With remote bracketed paste enabled outside tmux, insert through terminal
+   paste framing. Without it, several lines require confirmation. Treat
+   CRLF, LF and CR as line breaks. If the bracketed flag cannot be read,
+   conservatively treat it as off.
+3. In an app-managed tmux session, do not trust the emulator's bracketed flag:
+   tmux can keep it enabled toward the app even when its pane did not ask.
+   Several lines therefore always require confirmation there. A multiplexer
+   started manually inside a plain-shell tab cannot be detected.
+4. The confirmation states that lines may run without bracketed paste. Offer
+   Paste as-is, Remove line breaks, or cancel. Joining trims each line,
+   removes blank lines and inserts one space between remaining lines; it
+   does not parse shell syntax or remove a trailing `\` continuation. The
+   sheet's ✕ or dismissal cancels without sending.
 
-A successful insertion clears the submitted draft and returns that tab to
-Keys: close compact/fullscreen editors, restore the main key row and leave
-additional rows collapsed. Return focus only if that tab is still selected;
-do not implicitly open a hidden IME or append Enter. Cancellation and failed
-insertion retain the draft and editor. If the draft was edited while
-confirmation was open, sending the captured text must neither clear the newer
-draft nor close its editor. Duplicate completion callbacks must not close an
-editor reopened after insertion. Success here means the local paste call
-completed, not proof that a remote application received or processed the text.
+Capture the exact SSH client, terminal instance and output generation before
+confirmation. Revalidate the session's identity, open/writable state,
+pending-close status and captured connection at dispatch. A normal pending
+insertion remains bound to its original destination when tabs change; it
+must never redirect to the newly selected or replacement session. A stale
+connection is rejected even if it reuses an output object. Do not retry or
+fall back to another tab.
+
+An outbound chunk belongs to the output/generation captured when it leaves
+the terminal queue, not whichever output is current after a blocking tmux
+guard. Connection handover discards old queued input. Handover cannot split
+a paste while it waits for queue space; the writer must remain free to drain
+it. Idle writers wait on the queue without polling. These are queue-ownership
+guarantees, not guarantees that every queued byte will reach the remote side.
+
+**Multiline insertion can execute commands.** The owner may explicitly accept
+that risk in the confirmation; do not replace the warning with an assumption
+that TUI input is safe.
 
 ## Explicit long-press execution
 
-- Short Insert remains paste-only. Holding Insert explicitly requests the
-  same paste followed by exactly one CR (Enter), outside bracketed-paste
-  framing. Use a standard combined short/long control: release after a long
-  press must not also trigger short insertion. Empty/unavailable controls
-  dispatch neither action.
-- A small pencil at the keyboard button's upper corner marks its existing
-  long-press editor action; a small return glyph marks Insert's long action.
-  These are decorative secondary symbols, not separate buttons or permanent
-  instruction rows. Short/long actions have explicit accessibility labels.
-- Capture the exact SSH client, terminal instance and output generation before
-  confirmation. Revalidate at dispatch; an execute intent is rejected after
-  selecting another tab. Never redirect a stale confirmation to a replacement
-  connection, even if it reuses an output object.
-- Paste and its explicit CR are enqueued under the same connection-handover
-  lock. Do not append CR later through the currently selected tab. Local
-  acceptance still does not acknowledge remote receipt or command execution.
-- The existing unsafe multiline confirmation is mandatory. In execute mode,
-  both raw-paste and join-lines choices explicitly include Enter and the sheet
-  warns that joining lines does not remove that final Enter. Cancel sends
-  nothing; failure keeps the editor/draft. The normal success/return-to-Keys
-  revision safeguards apply to both gestures.
+Holding Insert requests the same paste followed by exactly one CR (Enter),
+outside bracketed-paste framing. Releasing a long press must not also trigger
+short insertion. Empty or unavailable controls dispatch neither action; an
+empty or control-only payload must not become a bare Enter.
 
-## Non-goals
+Execute intent has a stricter selection guard than normal paste: selecting
+another tab invalidates it, even if the owner returns to the original tab
+before confirming. Paste and its explicit CR are enqueued under the same
+connection-handover lock, never by appending CR later through the currently
+selected tab.
 
-- Automatic mode detection from screen contents, alternate-screen state,
+Unsafe multiline confirmation remains mandatory. In execute mode both
+Paste and Remove line breaks explicitly include Enter, and the sheet warns
+that joining lines does not remove that final Enter. Cancellation sends
+nothing. The same draft-revision and success safeguards apply to both gestures.
+
+## Insertion results and recovery
+
+- Successful local insertion clears only the submitted revision and returns
+  that tab to Keys: close compact/fullscreen editors, restore the main key
+  row and leave additional rows collapsed. Return terminal focus only if
+  that tab is still selected; do not implicitly show a hidden IME or append
+  Enter (except for the explicit long action).
+- If the draft changed while confirmation was open, sending the captured
+  text must neither clear the newer draft nor close its editor. Duplicate
+  completion callbacks must not close an editor reopened after insertion.
+- Cancellation and failed insertion retain the draft and editor. A closed
+  session still follows the draft-release rule above. An unavailable,
+  disconnected or pending-close destination must not send to a replacement;
+  explain that insertion was not performed. A local paste failure reports
+  that the draft was kept.
+- Success means the local paste call completed, not proof that the remote
+  application received, processed or executed the text.
+
+## Clipboard compatibility
+
+Clipboard Paste uses the same planning and multiline safety rules. The Paste
+key is disabled when the clipboard has no text; availability checks inspect
+the clipboard description rather than repeatedly reading its contents.
+Whitespace-only clipboard text is rejected on use with feedback. If a
+multiline paste needs confirmation but no terminal screen can show it, send
+nothing.
+
+Automatic OSC 52 clipboard writes are accepted only from the selected SSH
+tab. Tab selection immediately revokes the old tab's authority. Removed or
+replaced terminals cannot copy through late callbacks. Leaving the terminal
+screen or backgrounding the app does not revoke the last selected tab;
+there is no new prompt, opt-in or foreground gate.
+
+Explicit selection Copy is unchanged, including copying from an ended
+terminal. Both accepted OSC copies and manual Copy use the existing writer:
+cap text at 64 × 1024 UTF-16 code units and show the copied-text notice.
+Successive copy notices replace one another. The notice preview strips
+control and bidi-control characters; this does not sanitize the copied
+payload itself. An Android clipboard write failure must not show success.
+
+## Non-goals and validation boundaries
+
+- No automatic mode detection from screen contents, alternate-screen state,
   process names or escape sequences.
-- A new local shell, rich-text editor, persistent notes or draft sync.
-- Automatic prompt submission on short Insert or any implicit Enter.
-- Shipping the paused standalone Ctrl/Alt prototype as an unrelated fix.
-- Replacing the existing paste warnings with an assumption that TUI input
-  is always safe.
+- No new local shell, rich-text editor, persistent notes or draft sync.
+- No automatic submission on short Insert or any other implicit Enter.
+- No unrelated standalone Ctrl/Alt prototype or replacement of paste warnings.
+- No promise of remote delivery from local acceptance, universal keyboard
+  suggestions/voice support, or device/vendor-IME conformance from component
+  tests alone.
 
-## Implementation boundaries
+## Implementation boundaries and checks
 
-Existing integration points, verified in source:
+Maintainer entry points are `TerminalDrafts` for per-session memory/revision
+ownership, `TerminalScreen` for selection/focus and pending insertion,
+`TerminalTextComposer` for local IME editing, `TerminalInput` for immediate
+terminal input, `PastePlan` / `PasteSheet` for safety decisions, and
+`SshSession` / `RemoteTerminal` for captured destination and queue ownership.
+`SshSessions` owns OSC selection authority and the shared clipboard writer.
 
-- `ui/ssh/ExtraKeys.kt`: common key row and additional rows.
-- `ui/ssh/TerminalScreen.kt`: selected session, terminal focus and paste
-  confirmation UI.
-- `ui/ssh/TerminalInput.kt`: direct terminal input; editor focus must not
-  accidentally send composition through this connection.
-- `ssh/PastePlan.kt`: trailing-break handling, multiline checks and joining.
-- `ssh/SshSession.kt`: `paste` marks owner input and uses terminal paste.
+Existing regression checks include `TerminalDraftsTest`, `PastePlanTest`,
+`PasteAttemptTest`, `BracketedPasteTest`, `TerminalTextComposerTest`,
+`TerminalMetricsIoTest`, `SshSessionLifecycleTest`,
+`RemoteClipboardRoutingTest` and `SshClipboardAuthorityTest`. Check per-tab
+routing, revision/stale-callback rejection, short/long gestures, local IME
+composition, compact/fullscreen selection and Back, queue handover and
+selected-tab versus manual Copy separately.
 
-Keep draft ownership separate from the terminal input connection and bind
-it to the session ID. Provide Russian and English strings and accessible
-labels for mode, expand/collapse and insertion controls.
-
-## Acceptance and checks
-
-1. Default Keys mode still sends ordinary terminal input immediately when
-   the persisted direct-input preference is on.
-2. In Text mode, a composing word is visible locally before commit; nothing
-   reaches SSH until Insert or an explicit terminal-key action.
-3. Switching Keys/Text, expanding/collapsing, keyboard dismissal and tab
-   switching do not insert text or lose a draft.
-4. Full-screen and compact editors share the same text and selection.
-5. Two tabs keep different drafts; closing one does not affect the other.
-6. Single-line insertion adds no Enter. Multiline insertion follows the
-   existing bracketed-paste and confirmation tests, including tmux.
-7. Canceling a paste, losing a connection or closing the destination never
-   redirects the text or silently discards the draft.
-8. Terminal Ctrl/Alt and service-key actions work independently of the draft
-   and never submit it implicitly.
-9. Review compact/full-screen focus, Russian and English IME composition,
-   keyboard suggestions, landscape, large font and accessibility labels.
-   Clearly report any real-device checks that could not be performed.
-10. Run unit tests, `assembleDebug`, `lintDebug`, documentation checks and
-    `git diff --check`. Update durable terminal documentation after verified
-    implementation. Follow the repository's version and release procedure
-    when the feature is ready to ship.
-
-## Recorded validation (original editor, 0.3.29)
-
-The compact-panel follow-up and its gesture/layout checks are recorded in
-[terminal-panel-contract.md](terminal-panel-contract.md).
-
-- 1,146 JVM tests passed with no failures, errors or skips, including draft
-  lifecycle/revision guards, paste dispatch results and existing paste plans.
-- `assembleDebug`, `assembleDebugAndroidTest` and `lintDebug` passed.
-- Nine component/IME tests passed on a clean API 35 x86_64 emulator in each
-  configuration: portrait at 100%, portrait at 200% font, and landscape at
-  100%. Orientation and font scale are asserted inside the test activity.
-  The suite also rotates an active compact editor and checks text and
-  selection in both orientations.
-- The suite covers local typing/newlines, native InputConnection composition,
-  expand/collapse and Back, per-tab drafts, the common Ctrl+C button, and
-  removal of the empty command row while preserving existing commands.
-- Screenshots were inspected for compact/full-screen and large-font layouts.
-  Component tests do not establish end-to-end remote SSH delivery.
-- Physical phones, Gboard/Yandex-specific behavior, voice recognition and
-  TalkBack by ear have not been checked. No controller/broker writes were
-  made to validate this feature.
-
-To reproduce the component tests, use a clean emulator with no enrolled
-profiles or stored credentials. Build and run with the normal Android
-instrumentation runner:
-
-```sh
-./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
-./gradlew connectedDebugAndroidTest
-./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.composerOrientation=landscape
-```
-
-For the 200% run, set that emulator's system font scale to `2.0` first and
-pass `-Pandroid.testInstrumentationRunnerArguments.composerFontScale=2.0`.
-Restore the emulator font scale to `1.0` afterwards. Tests use only the
-component host, but the real app Application starts; do not target a phone
-containing production profiles for these checks.
-
-Environment: Pi.
-Model: openai/gpt-6.1-sol.
+UI verification should cover Russian and English composition, suggestions,
+compact/fullscreen focus, landscape, large fonts and accessible labels.
+Report physical-device, vendor-keyboard, voice and TalkBack checks separately
+from synthetic component evidence. Use only synthetic sessions/credentials;
+Android component tests start the real Application, so do not target a device
+with production profiles. Follow repository checks for an approved behavior
+change; this reference is not a validation diary or a release claim.

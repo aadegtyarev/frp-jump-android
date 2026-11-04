@@ -1,108 +1,131 @@
 # Compact terminal input panel
 
-Status: compact panel released in 0.3.30; shared column geometry added in 0.3.37.
-
 ## Scope
 
-Keep the familiar main row (^C, Paste, left/up/down/right, Backspace,
-Enter, keyboard) and the draft/paste guarantees in
-[terminal-text-input-contract.md](terminal-text-input-contract.md).
-Remove the dedicated Keys/Text selector row.
+This surface owns the terminal panel's Keys/Text controls, additional-key
+layout, gestures and accessibility. It serves the owner using an SSH tab and
+maintainers changing terminal UI. It inherits the shared
+[UI rules](contract.md#ui-rules): keep common actions direct, copy concise,
+and waiting/error feedback and accessibility intact.
 
-- A short tap on the keyboard button keeps its current show/hide behavior.
-- A long press opens the selected tab's Text composer once, without also
-  triggering a short click. Rebind the action when the selected session
-  changes; do not remove the stale-session guard to make it work.
-  Expose a labelled accessibility long-click action.
-- Terminal ⋮ → Text input opens or focuses the same editor as an explicit
-  alternative to the gesture. Settings → Terminal explains the gesture
-  and the menu entry; no new persisted setting is needed.
-- In Text mode, show only the editor: no main row, no additional key rows,
-  and no additional-keys disclosure. The `>_` action returns to Keys and
-  keeps the draft. Preserve expand/collapse, short Insert without Enter, and
-  the existing session-bound paste confirmation behavior.
-- Additional keys start collapsed. A small ⋯ disclosure above the main
-  row toggles them explicitly, rather than opening automatically with
-  the system keyboard. No extra full-width header row is reserved.
-- Keep the disclosure's target independent from the keyboard button and
-  other terminal keys. Its full target must not overlap a real key when
-  the additional rows open; keep its position anchored to the main row.
-- All rows use the main row's nine column tracks. Eight extra keys use
-  the same cell widths; on wide screens sixteen use half-cells in one row.
-  Wrapped rows use whole-cell multiples, with a larger minimum width for
-  large fonts. Do not stretch each row to an unrelated set of columns.
-- The disclosure symbol is centred on the keyboard column and the last
-  extra row. Its independent touch target ends above the main row, does
-  not cover another key and stays within the panel's viewport. Its height
-  is 48 dp; width is up to 48 dp, limited by the available space on narrow
-  viewports. Keep the existing key order and compact row heights.
-- Entering Text collapses the additional rows. No automatic remote-program
-  detection or changes to the direct-input preference.
+The [text-input contract](terminal-text-input-contract.md) owns drafts,
+composition, insertion and paste safety. The panel must preserve those rules;
+it does not create a second input or session owner. SSH transport, reconnect
+and tmux lifetime belong to [SSH persistence](ssh-persist-contract.md).
+
+## Keys and Text flows
+
+Keys is the initial surface. There is no dedicated Keys/Text selector row.
+
+| Control or transition | Required result |
+| --- | --- |
+| Main row | Keep this order: ^C, Paste, left, up, down, right, Backspace, Enter, keyboard. |
+| Short keyboard tap | Request one system-keyboard visibility toggle. |
+| Hold keyboard | Open the selected tab's Text composer once; releasing must not also trigger the short tap. Expose a labelled accessibility long-click action. |
+| Terminal ⋮ → Text input | Open or focus the same editor as an explicit alternative to the gesture. |
+| Settings → Terminal | Explain the keyboard gesture and menu entry; no separate persisted panel setting is required. |
+| ⋯ above the main row | Explicitly open/close additional keys without sending terminal input or stealing IME focus. Opening the system keyboard alone does not open these rows. |
+| Enter Text | Collapse additional rows. Show only the editor in the input area: no main key row, additional rows, disclosure or command chips. |
+| `>_` in Text | Return to Keys without inserting or discarding the draft; additional rows remain collapsed. |
+
+Additional keys start collapsed. Keep their order: Esc, Tab, sticky Ctrl,
+Alt, ^D, ^Z, ^R, ^L, then Home, End, PgUp, PgDn, `|`, `~`, `/`, `-`.
+Keys address the terminal, not a retained draft. Paste retains the existing
+clipboard availability and session-bound confirmation behavior; panel
+compaction must not bypass it.
+
+Text retains compact/full-screen expand and collapse, Back to the compact
+editor, visible ordinary IME composition, and text/selection/focus through
+rotation while the owning session remains alive. Short Insert inserts
+without an extra Enter. Explicit long-Insert execution and its warnings are
+specified by the text-input contract, not a second panel policy.
+
+Keyboard long-click and menu actions must follow the selected session,
+including repeated tab switches and an initial selection other than the
+first tab. Refresh the action binding on selection changes without removing
+the stale-session guard. Switching surfaces must neither send text nor
+change the persisted direct-input preference.
+
+## Shared geometry and accessibility
+
+- All rows use the main row's nine column tracks. Reserve the last visual
+  cell above the keyboard for the independent disclosure, not another key.
+- Eight extra keys use the same cell widths; on wide screens sixteen use
+  half-cells in one row. Wrapped rows use whole-cell multiples, with a
+  larger minimum width for large fonts. Do not stretch each row onto an
+  unrelated set of columns.
+- Preserve compact heights: main keys are 44 dp high, extra keys 36 dp,
+  with 3 dp gaps. The extra-key minimum width is 36 dp scaled upward with
+  font scale, never downward below the normal-font minimum.
+- Anchor the disclosure to the main row. Centre its symbol horizontally on
+  the keyboard column and vertically on the last extra row. Do not reserve
+  a separate full-width header row.
+- Keep its full touch target independent of the keyboard and all real
+  keys, including when additional rows are open. The target ends above the
+  main row and stays inside the panel viewport. Its height is 48 dp; its
+  width is up to 48 dp, limited by available space on narrow viewports.
+- The disclosure does not take IME focus. Give it show/hide labels matching
+  its state. Provide Russian and English labels for the keyboard's
+  long-click action, the menu entry, Settings hint and editor controls.
+  Decorative gesture hints are not separate touch targets.
+
+## Session safety, failure and data ownership
+
+Mode changes, disclosure toggles and keyboard visibility changes are local
+UI operations, not remote writes. They must not submit a draft implicitly.
+A pending insertion remains bound to its captured destination; changing tabs
+must not redirect it. Cancellation or failed/unavailable insertion keeps the
+draft and editor and follows the text-input contract's feedback and revision
+guards. Successful local insertion is not proof of remote delivery.
+
+Drafts and editor state belong to each SSH session in process memory, not
+the panel, clipboard, settings, logs or saved-state bundles. Closing a session
+releases its draft; a replacement session does not inherit it. Configuration
+changes retain drafts while that owner lives; process death need not.
+See the text-input contract for the complete retention and paste constraints.
 
 ## Checks
 
-- Default Keys has only the existing main row; additional keys are absent.
-- Disclosure opens/closes additional keys without sending terminal input
-  and does not steal IME focus.
-- Keyboard short click requests one visibility toggle; long press opens
-  Text and never also toggles the keyboard.
-- Verify shared tracks and symbol centres in screen coordinates, including
-  the independent popup window. Check complete target bounds and no overlap
-  with real keys at normal and 320 dp widths, portrait/landscape and 200% font.
-- Text contains no terminal key rows or disclosure. Returning to Keys
-  keeps the draft and leaves additional rows collapsed.
-- Long-click accessibility action, explicit menu entry, and Settings hint
-  use Russian and English labels.
-- Existing composer tests remain green: per-session drafts, visible IME
-  composition, full-screen/Back, selection and focus through rotation,
-  and safe insertion.
-- Run JVM tests, debug and AndroidTest builds, Lint, documentation checks,
-  and the API 35 component suite in portrait, landscape and 200% font.
+Changes to this surface must preserve these observable conditions:
+
+- Default Keys contains the main row, not additional rows or a selector.
+  Toggling disclosure sends no input, requests no keyboard toggle and keeps
+  the keyboard button anchored.
+- Short/long keyboard actions remain independent, with a labelled
+  accessibility long-click. Test both the component and real TerminalScreen
+  selection across three synthetic sessions and already-open editors.
+- Check shared tracks, cell spans, symbol centres and full disclosure bounds
+  in screen coordinates, including the independent popup window. Check no
+  overlap with real keys at normal and 320 dp viewport widths, portrait,
+  landscape and 200% font.
+- Text has no terminal rows, disclosure or command chips. Returning to Keys
+  preserves the draft and leaves additional rows collapsed. Existing saved
+  commands and their manager remain available in Keys/the menu; an empty
+  command list adds no row.
+- Preserve composer checks for per-session drafts, native IME composition,
+  full-screen/Back, selection and focus through rotation, safe insertion
+  and stale callback/revision handling.
 
 ## Validation
 
-### 0.3.30 baseline
+Existing regression coverage is in `TerminalTextComposerTest`,
+`MultiSessionTextModeTest` and `TerminalDraftsTest`. Read coverage separately
+from executed evidence: a source assertion or this reference is not a passing
+runtime check. For panel implementation changes, run the focused JVM and
+API 35 component tests, debug/AndroidTest builds, Lint, documentation and
+whitespace checks. Include portrait, actual landscape and 200% font for the
+UI checks, and verify the requested configuration is actually applied.
 
-- 1,146 JVM tests passed; debug/AndroidTest APK builds and Lint passed.
-- Twelve API 35 component/IME tests passed in each of portrait, landscape
-  and 200% font configurations (36 executions). Tests assert orientation
-  and font scale, short/long keyboard actions, the accessibility long-click
-  label, stable keyboard-button bounds when additional rows open, and the
-  absence of all key rows in Text mode. Existing draft/selection/rotation,
-  native composition and paste-action component checks remain green.
-- Screenshots inspected for collapsed/expanded keys and the integrated
-  editor block. Documentation and whitespace checks passed.
-- No physical-phone, keyboard-vendor, TalkBack-by-ear or end-to-end SSH
-  performance claims follow from these component tests.
+Component tests do not establish physical-phone, keyboard-vendor,
+TalkBack-by-ear or end-to-end SSH performance/delivery guarantees. Report
+those limits rather than treating layout checks as device validation.
 
-### 0.3.37 shared grid
+## Non-goals and related surfaces
 
-- 1,198 JVM tests, debug/AndroidTest builds and Lint passed.
-- Eighteen API 35 composer/panel tests passed in each of portrait 100%,
-  actual landscape 100% and portrait 200% font (54 executions). Each
-  configuration includes normal and 320 dp viewport geometry checks:
-  shared tracks and spans, disclosure-symbol centres, full target bounds,
-  no target overlap with real keys, and no terminal input from toggling.
-- Screenshots reviewed for portrait, landscape, large fonts and the narrow
-  viewport. Existing short/long actions, draft, IME and paste component
-  checks remain green. Physical-phone and vendor-IME behavior remains
-  unverified.
+No automatic remote-program detection, replacement direct-input preference,
+persistent drafts or new transport/paste path is introduced by this panel.
 
-### 0.3.40 multi-session action binding
-
-- Real TerminalScreen integration tests cover three synthetic sessions,
-  initial selection on the first or second tab, A/B/C round trips, and
-  independent drafts while switching between already-open editors.
-- All three integration tests passed at portrait 100%, actual landscape
-  100% and portrait 200% font. Together with the existing 18 component
-  tests this is 63 UI checks; 28 lifecycle/queue/history/draw checks and
-  1,213 JVM tests also passed. Fixtures use in-memory data and a canceled
-  transport scope; no sockets, production profiles or credentials.
-- A native IME transition made a coordinate return-to-Keys tap unreliable
-  in an intermediate landscape run. The integration fixture now waits for
-  native idle before long presses and invokes the real accessibility
-  action to return, asserting that Text mode ended. The keyboard gesture
-  remains an actual long touch; the complete matrix was rerun.
-
-Environment: Pi.
-Model: openai/gpt-6.1-sol.
+- [App and shared UI rules](contract.md#ui-rules)
+- [Terminal text input](terminal-text-input-contract.md)
+- [SSH persistence](ssh-persist-contract.md)
+- [Terminal history and diagnostics](terminal-diagnostics-contract.md)

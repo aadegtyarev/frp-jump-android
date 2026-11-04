@@ -1,6 +1,20 @@
 # Optional connection assistant
 
-## Current stage: kernel, external adapter and provider setup
+## Boundary and availability
+
+This surface covers the optional assistant kernel, external API adapter and
+provider setup. The owner uses Settings to opt in and configure one provider;
+maintainers can supply provider/tool implementations to the kernel. Kernel
+execution is an interface guarantee, not an available chat or tool UI.
+
+Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
+understandable and functional screens, minimal necessary steps, direct common
+actions and short labels/messages. Keep accessibility, waiting/error feedback
+and safety warnings; visual minimalism must not remove them.
+
+<a id="current-stage-kernel-external-adapter-and-provider-setup"></a>
+
+### Settings flow
 
 Settings → LLM assistant enables or disables the experimental module. It is
 **off by default**, including upgrades from versions without this setting.
@@ -13,10 +27,9 @@ OpenAI-compatible provider. Chat and real connection tools are **not available
 yet**; the UI explicitly says so. Enabling the module, opening settings or
 saving a provider performs no network request. Fetch models is an explicit
 user action and is available during setup even while the agent module is off.
-The approved follow-up slices are chat/coordinator, then minimal
-existing-connection/SSH tools. Web, Files, MQTT, TCP,
-compression, evaluators, permission modes and subagents are later work.
-No tunnel creation/start/reconfiguration/deletion is granted to the agent.
+A saved provider is configuration, not evidence of a successful API call.
+See [provider settings and credentials](#provider-settings-and-credentials) for
+Save, Fetch models and recovery behavior.
 
 ## Separation
 
@@ -36,12 +49,12 @@ No tunnel creation/start/reconfiguration/deletion is granted to the agent.
   and model discovery. It is not constructed or called by enabling the module.
 - `AssistantProviderStore` owns the app-private atomic provider document and
   Keystore-backed credential; its observable snapshot contains metadata only.
-- Connection tools will be separate adapters. A tool must bind
-  to its admitted connection identity; it must never resolve a replacement
-  client after a disconnect. The kernel does not itself grant target access.
-- The application skill is versioned in
-  `app/src/main/assets/assistant/skill.md`; it is input to the future app
-  coordinator, not a permission system or an automatically executing script.
+- The kernel does not itself grant target access. Any connection-tool adapter
+  must bind to its admitted connection identity and must never resolve a
+  replacement client after a disconnect. No such real tools are available.
+- The versioned [application skill](../app/src/main/assets/assistant/skill.md)
+  is input for a coordinator, not a permission system or an automatically
+  executing script. No app chat/coordinator is wired into this surface.
 
 ## Minimal execution
 
@@ -57,12 +70,24 @@ responses are rejected. Unknown tools and tool failures are explicit results.
 Raw exception messages are not given to the model. There are no automatic
 provider/tool retries.
 
-Defaults: 12 model steps, at most 4 tool calls per step, 60 seconds per model
-request, 30 seconds per tool. Limits are finite, validated kernel parameters;
-this slice does not yet add their configuration UI. Timeouts and cancellation
-are cooperative: adapters must support cancellation of their own I/O. An
-already performed remote change is not rolled back by Stop. A timed-out tool
-may have an uncertain remote outcome and must not be blindly repeated.
+Execution defaults are finite, validated kernel parameters, not settings UI:
+
+| Limit | Default |
+| --- | --- |
+| Model steps per run | 12 |
+| Tool calls per step | 4 |
+| Model request timeout | 60 seconds |
+| Tool timeout | 30 seconds |
+
+Disabled and busy admission return without a provider/tool call. A run finishes
+with complete, context-full, step-limit, model-timeout, provider-failed or
+invalid-reply status; cancellation propagates to its caller. Tool outcomes are
+success, failed, timeout or unknown-tool, distinct from the run's finish status.
+
+Timeouts and cancellation are cooperative: adapters must support cancellation
+of their own I/O. An already performed remote change is not rolled back by
+Stop. A timed-out tool may have an uncertain remote outcome and must not be
+blindly repeated.
 
 ## Sliding window, not compression
 
@@ -78,18 +103,24 @@ Defaults: a 16,384-token estimated total budget with 2,048 tokens reserved for
 output. The default counter uses UTF-8 byte lengths plus framing allowances:
 **it is an estimate, not a provider tokenizer or a guarantee that every API
 accepts the request**. A provider-specific counter can replace it. Window
-omissions are events for the future UI; they are not fabricated summaries.
+omissions are observable kernel events, not fabricated summaries or an
+available chat UI.
 
 Tool result text is capped at 8,000 UTF-16 characters by default, preserving
 head/tail with a visible omission marker and an omitted-character count.
 Cuts never split a valid surrogate pair. Model reply text/call arguments are
 limited to 32,000 aggregate characters per response. A returned String is
 already allocated: these are kernel-result bounds, not a total-heap or
-transport-buffer guarantee. Future stream-reading adapters must cap capture
-as data arrives. The full UI history/storage is the app coordinator's
-responsibility, not an unbounded background store in the kernel.
+transport-buffer guarantee. Stream-reading adapters must cap capture as data
+arrives. The kernel does not own full UI history/storage or an unbounded
+background store; that responsibility belongs to an app coordinator, which is
+not wired here.
 
 ## Provider settings and credentials
+
+From Settings → LLM assistant → Assistant provider, enter the API root and key,
+then enter a model ID or use Fetch models and select one. Save commits the form;
+model discovery is not required to enter a manual model ID.
 
 The form accepts API root, model ID (manual or explicitly fetched), optional
 effort (provider default, presets or a manually entered value), model context
@@ -112,9 +143,13 @@ existing sealed bytes without decrypting them.
 Each commit has a new revision. Save, credential resolution and discovery
 completion check their originating revision, reading current storage rather
 than trusting an old UI snapshot. Read/decode failures are not treated as an
-empty profile and cannot overwrite unknown data; Retry reads again. This
-slice has no destructive reset UI for a corrupt provider document. An
-unreadable Keystore credential can be replaced by entering a new key.
+empty profile and cannot overwrite unknown data.
+
+### Failure and recovery
+
+Retry reads an unreadable provider document again; there is no destructive
+reset UI for it. An unreadable Keystore credential can be replaced by entering
+a new key without decrypting the old one.
 
 Save waits for commit and keeps the form/error on failure. Pending operations
 prevent duplicate input; disposed or duplicate callbacks cannot finish a newer
@@ -157,16 +192,41 @@ Such returned state is opaque provider-owned data, not assistant UI text. It
 is budgeted with the reply and request, redacted in string representations,
 and returned only through the same provider instance. Changing providers must
 not silently forward/drop it; incompatible context is rejected locally. This
-stage does not persist or display that state. The future coordinator must reuse
+surface does not persist or display that state. A coordinator must reuse
 the provider for its conversation; changing provider/configuration starts a new
-active context rather than retargeting opaque history. This does not claim compatibility
-with every provider-specific thinking parameter.
+active context rather than retargeting opaque history. This does not claim
+compatibility with every provider-specific thinking parameter.
 
 ## Verification and non-goals
 
-Kernel tests use fake providers/tools only. Settings tests cover persistence,
-failed writes and independent malformed-field fallback; scoped Compose tests
-cover committed/busy/error/disposed-callback switch states. This is not live
-LLM, SSH or broker validation. No permissions evaluator/full-access agent is
-shipped in this infrastructure slice. The first real tool-enabled prototype
-will need an explicit full-access warning until confirmation modes exist.
+The available app surface is provider setup only. Chat/coordinator and real
+connection/SSH tools are not available. Web, Files, MQTT, TCP tools,
+compression, evaluators, permission modes and subagents are outside this
+surface. No tunnel creation, start, reconfiguration or deletion is granted to
+the agent. No permissions evaluator/full-access agent is shipped. Any first
+real tool-enabled prototype still requires an explicit full-access warning
+until confirmation modes exist; this document does not authorize that work.
+
+Existing kernel tests use fake providers/tools. Adapter tests use synthetic
+loopback HTTP responses. Settings/store tests cover committed opt-in,
+malformed-field fallback, disable invalidation, credential/root binding,
+revisions and read/write/crypto failures. Compose test fixtures cover
+committed/busy/error/disposed-callback states, explicit discovery and restored
+drafts; a separate Android fixture exercises an ephemeral Keystore alias.
+These fixtures do not establish live LLM, SSH or broker compatibility, or
+physical-device/vendor behavior.
+
+## Related surfaces and implementation references
+
+- [App behavior and shared UI rules](contract.md#ui-rules) own common UX,
+  settings and tunnel behavior. This surface adds explicit external-provider
+  discovery; it is not a general permission to send app data off the phone.
+- [SSH persistence](ssh-persist-contract.md) owns SSH sessions; no assistant
+  SSH access is currently exposed.
+- [Kernel interfaces and limits](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentProtocol.kt),
+  [execution](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentModule.kt)
+  and [window selection](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentWindow.kt).
+- [External adapter](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiAgentProvider.kt)
+  and [provider configuration](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiConfig.kt).
+- [Provider store](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantProviderStore.kt)
+  and [settings form](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantProviderScreen.kt).
