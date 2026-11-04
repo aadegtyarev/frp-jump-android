@@ -1,6 +1,17 @@
 # Rewrite existing surface contracts
 
-Status: approved by the operator; documentation work not yet completed.
+Status: complete; documentation verified and accepted by the parent for final
+publication. The separate code-versus-contract audit has not started.
+
+Verification: all eight durable surfaces were reviewed against their original
+normative text. Parent whole-class coverage and exact-diff/scope checks passed;
+fresh independent Terra review returned **OK with limits / No issues found**
+for the complete eight-document preservation scope. Documentation/link and
+whitespace checks passed. Review limitations and unresolved policy/code gaps
+remain explicit; this is not certification of implementation conformance.
+No runtime, build, device, live-service or release verification was performed.
+This temporary feature is deleted after final verification; approval and this
+completion record remain in Git history.
 
 ## Goal and approval
 

@@ -4,38 +4,45 @@ An Android app that is a frp-jump device of its own: it lists the owner's other
 devices and opens their web UI, an SSH console or any TCP port through frp-jump
 tunnels. It only consumes ports; it never exposes anything of the phone.
 
-Status: v2 draft for the owner's review. v1 (0.1.x) is built and in use; this
-version describes 0.2. UX mockups are shared with the owner separately.
-
 ## Scope
 
-- One user: the owner. APK installed by hand, no Google Play. Android 10+ (API 29), arm64.
-- Works against the existing frp-jump server, wire protocol version 1, frp 0.70.0.
-  No server changes, except device labels and icons (scenario 11), which need
-  a newer server. Against an older server the app hides that feature and
-  everything else works.
-- All devices reached are the owner's own (the server only allows that).
-- UI in Russian and English.
+- One user: the owner, reaching only their own devices. APK installed by hand,
+  not through Google Play. Android 10+ (API 29); release APKs target arm64.
+- Existing frp-jump server, wire protocol version 1 and frp 0.70.0. Device
+  labels and icons require the server's `device-display` feature; an older
+  server hides that feature without blocking the other flows.
+- Russian and English UI; language and light/dark theme follow the system
+  unless overridden in Settings.
 
-Out of scope for v2: exposing phone ports, other people's devices, key-based
-enrollment, admin commands, Google Play, x86/armv7 builds, more UI languages.
+This contract owns enrollment, profiles, device discovery/display, saved
+connections, shared local ports, tunnel lifecycle, app settings, updates and
+universal UI rules. Users consume these through Devices, Connections, Sessions,
+Settings and the foreground notification. Profile runtimes own each profile's
+server/session work; the application owns shared ports, sessions, settings and
+pending Undo actions. Screens are not the lifetime owners of running tunnels.
 
-## What changes from v1
+Related surfaces own their specific behavior and inherit [UI rules](#ui-rules):
 
-| Area | v1 | v2 |
-| --- | --- | --- |
-| Accounts | one enrollment | profiles: several enrollments, tunnels from all at once |
-| Ports | presets Web/SSH + added ports | named connections to any port, a tab listing all of them |
-| Without network | empty screen | last known lists, marked "no connection" |
-| P2P | silent fallback to relay | try direct, then work through the server and offer a retry |
-| Direct tunnel | drops when idle | kept open while the connection is up |
-| Process killed / phone rebooted | tunnels gone until the app is opened | tunnels come back by themselves |
-| Enroll | paste the line | paste the line or scan a QR code of it |
-| Language | English | Russian and English, follows the system |
-| Builds | debug APK | signed release APK, update check in the app |
-| Look | default Material | redesign per the mockups |
+| Surface | Owner contract |
+| --- | --- |
+| SSH authentication, reconnect, tmux and session lifetime | [SSH persistence](ssh-persist-contract.md) |
+| Terminal keys, panel geometry and accessibility | [Terminal panel](terminal-panel-contract.md) |
+| Text drafts, insertion, execution gestures and paste safety | [Terminal text input](terminal-text-input-contract.md) |
+| Terminal history and numerical measurements | [Terminal diagnostics](terminal-diagnostics-contract.md) |
+| SFTP browsing, transfers and file viewing | [Files](files-contract.md) |
+| MQTT sessions, tree, publishing and plugin behavior | [MQTT](mqtt-contract.md) |
+| Optional kernel, provider setup and external adapter | [Assistant](agent-contract.md) |
+
+The numbered scenarios below are stable references, not delivery stages.
+Behavioral requirements are normative; this reference is not a runtime
+conformance or device-validation record.
 
 ## UI rules
+
+All UI surfaces must be concise, understandable and functional. Use the minimum
+necessary steps for the task, keep common actions directly accessible, and use
+short, clear labels and messages. Visual minimalism must not remove function,
+accessibility, truthful waiting/error feedback or required safety warnings.
 
 - Every action answers at once: the pressed control shows it was pressed, and
   then something visibly changes — a state, a progress indicator, a message.
@@ -117,8 +124,8 @@ working connections selected and running. A saved pending connection stays
 available after leaving the form or restarting the app; starting it remains
 an explicit action. Distinguish this from failure before credential storage.
 
-The single v1 enrollment becomes the first profile on upgrade, nothing to
-re-enroll.
+On upgrade from the single-profile app, its enrollment becomes the first
+profile without re-enrollment.
 
 ### 2. Switching profiles
 
@@ -174,11 +181,11 @@ re-enroll.
 
 ### 4. Device card and named connections
 
-- A connection is: device, port on the device, kind (web / SSH / TCP), name,
+- A connection is: device, port on the device, kind (web / SSH / TCP / MQTT), name,
   plus for web the HTTPS flag (not asked on 80, always HTTP, and 443, always
   HTTPS) and for SSH the user.
 - "New connection": pick kind, type a port or tap a preset (web: 80, 443,
-  8080, 1880, 3000; SSH: 22, 2222; TCP: 1883, 502, 5432), give a name, and
+  8080, 1880, 3000; SSH: 22, 2222; TCP: 502, 5432; MQTT: 1883), give a name, and
   optionally "connect now".
 - Several connections to the same device and port are allowed under different
   names (for example SSH as root and as another user).
@@ -213,7 +220,10 @@ re-enroll.
 - Rename, change and delete a connection from the card or the Connections tab.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
-  told as such, with "Open over HTTP". SSH → built-in terminal. TCP → shows and copies the local address.
+  told as such, with "Open over HTTP". SSH → built-in terminal. MQTT → explorer. TCP → shows and copies the local address.
+  Existing TCP connections, including port 1883, stay TCP; “Open as MQTT”
+  converts the kind and opens the explorer without changing the wire protocol
+  or requiring an active tunnel to stop. See the [MQTT contract](mqtt-contract.md).
 - Back in the web view, system Back and the bar's arrow alike: full screen is
   left first, then the page's history is walked (in-page routes of single-page
   UIs too), and only with no page to go back to does the screen close. An
@@ -308,9 +318,16 @@ Quick access to the saved connections of every device, active ones first.
 
 ### 7. SSH console
 
-As in v1: user + key or password, one generated ed25519 key per phone (shared
+The [SSH persistence](ssh-persist-contract.md),
+[terminal panel](terminal-panel-contract.md),
+[terminal text input](terminal-text-input-contract.md) and
+[diagnostics](terminal-diagnostics-contract.md) contracts own the detailed
+session, input and measurement guarantees. The entry points and common
+terminal behavior are summarized here.
+
+User + key or password, one generated ed25519 key per phone (shared
 by all profiles), host keys pinned per profile+device+port, passwords stored
-only on "remember", several sessions at once. New: a row of snippets (saved
+only on "remember", several sessions at once. A row of snippets (saved
 commands, owner-defined) above the extra keys; the sessions as a row of tabs
 above the terminal, where "+" opens another session to the same device with
 the same login (long press: as another user).
@@ -388,7 +405,7 @@ local. Expand opens the same draft and selection full screen. Collapse or
 Back returns to compact Text; switching to Keys does not send or discard it.
 In Keys mode, terminal buttons address the terminal, not the retained draft.
 
-Insert captures the exact SSH session and draft revision, applies the same
+Short Insert captures the exact SSH session and draft revision, applies the same
 paste checks described above, and adds no Enter. Revalidate session identity,
 open state and pending-close status before dispatch. A confirmation can never
 redirect insertion to a newly selected or replacement session. Accepted local
@@ -448,7 +465,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
   notification ("N tunnels in M profiles", "Open", "Disconnect all").
-- Background poll interval: off / 30 s / 1 min / 5 min / 15 min, as in v1.
+- Background poll interval: off / 30 s / 1 min / 5 min / 15 min.
 - If Android kills the process, or the phone reboots, while tunnels were up:
   the service starts again by itself and brings back the same connections on
   the same local ports. "Disconnect all" or disconnecting the last tunnel
@@ -458,7 +475,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 
 ### 9. Settings
 
-Grouped as in the mockup: profile (name and colour, forget profile); tunnels
+Settings are grouped by purpose: profile (name and colour, forget profile); tunnels
 (direct connection, local port range); background (poll interval, battery);
 security (phone SSH key, unlock with fingerprint); app (language, theme,
 version and update, MQTT plugins (scenario 12), components and licenses).
@@ -496,7 +513,7 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   computer, camera, home, phone. Each device reports a detected icon, and
   the owner's choice wins over it. This app reports "phone" for itself in
   every heartbeat. Where neither is set, or the value is one this app
-  version does not know, the generic device glyph used today is shown.
+  version does not know, the generic device glyph is shown.
 - **Is the feature there?** The app asks the server's
   `GET /api/agent/version` for its `features` list once per profile at
   start and on pull to refresh. Until it has answered once in this run
@@ -586,302 +603,117 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
 
 ### 12. MQTT plugins in Settings
 
-The MQTT explorer's plugins (`docs/mqtt-contract.md`, "Payload views
-(plugins)") are turned on and off, and set up, for the whole app in
-Settings. One MQTT connection can differ from that, for example Wiren
-Board on for the controllers and off for a home Mosquitto. This replaces
-the per-connection Plugins sheet of MQTT stage 6. Status and command
-topics and Wiren Board work as that contract describes; only where their
-on/off state and settings are kept changes.
+Plugin behavior belongs to [MQTT payload views](mqtt-contract.md#payload-views-plugins).
+This section owns app-level settings, connection overrides, their UI and stored
+compatibility. Plugins never change the generic Tree; with all plugins off,
+the plain explorer still works.
 
-**Plugins.** Ids are as stored today. Rows are listed in this order:
+#### Controls and common tasks
 
-| Id | Name (ru / en) | What it changes | Settings |
+Settings → Plugins opens app-level switches and exceptions. In order:
+
+| Stored id | Name | Purpose |
+| --- | --- | --- |
+| `wirenboard` | Wiren Board | WB devices tab |
+| `status-command` | Status and command topics | Publish-sheet topic selection by rules |
+
+- The Settings row is before Components and licenses. Its hint reports
+  “For MQTT · on: N of M”, adding “with exceptions” when any are stored.
+- The Plugins screen has a back arrow, the subtitle “For MQTT connections”,
+  one card of plugin rows and a hint that a connection can differ through
+  its explorer's ⋮ → Plugins. Back closes one level at a time.
+- A plugin row shows its whole wrapped name, purpose, a chevron and a switch.
+  The switch has its own pressed feedback and at least a 48 dp touch target;
+  tapping the rest opens that plugin's screen. Switching visibly updates it
+  immediately. Each plugin screen has an app-level On switch and, when
+  present, “Connections set on their own”.
+- Each exception names the device and connection in full, wrapped, with the
+  device tile, profile colour/name when there is more than one profile, and
+  “On here” / “Off here”. “As in Settings” removes the exception immediately,
+  without Undo: nothing is lost and the connection switch can restore it.
+- A connection's Plugins sheet opens from its explorer's ⋮ or its edit
+  sheet. The subtitle names the connection. Switches show the effective
+  value; hints say “As in Settings” or “Only for this connection”, with a
+  separate “As in Settings” reset button for an exception. Tapping a plugin
+  name opens its screen over the sheet; Back returns to it.
+- Status and command presets and own rules are currently edited in that
+  connection sheet while the plugin is on there. They are **app-wide**, not
+  specific to the connection used to open the sheet. Presets are switches;
+  own rules can be added, edited, reordered by drag and deleted with Undo.
+  Template validation and publish warnings follow the MQTT contract.
+- To disable WB everywhere, use Settings → Plugins → its switch. To disable
+  it for one broker, use that explorer's ⋮ → Plugins → its switch. To enable
+  it only for controllers, turn it off app-wide, then on for those
+  connections. Reset an exception in the sheet or the plugin's Settings
+  screen. No upgrade announcement interrupts these paths.
+- TalkBack exposes a labelled settings action on the row and a separate
+  switch focus. The purpose, exception count and connection-state source are
+  read with the row. Reset is both its own button and a custom row action;
+  exception rows identify device, connection, profile when needed and state.
+  Names must remain readable at 200% font, not truncated.
+
+Relocating preset/rule editing to the plugin's Settings screen, and exposing
+WB title-language and hidden-control settings there, are deferred UI work,
+not available controls promised by this reference. Their stored fields remain
+part of the compatibility format below. In the deferred Settings editors,
+plugin groups must stay visible, muted but editable while the plugin is Off,
+with “The plugin is off; its settings are kept”, so it can be set up before
+being enabled. Turning a plugin Off retains its settings; this does not make
+today's connection-sheet editor available while Off. These conditional
+requirements do not promise a delivery date. Bridged WB topic prefixes and
+per-connection own rules are also not provided; the WB prefix stays `/devices`.
+WB read-only controls remain visible as values, without a control to write them.
+
+#### Resolution and session ownership
+
+For plugin P and connection C, `resolve(app, own) = own ?: app`. An explicit
+connection On wins even if the app-level switch is Off. A stored own value
+is an **exception**, even when it happens to equal the app-level value now.
+Count exceptions by stored non-null value, split into On and Off:
+
+| App | Own | Effective | Exception |
 | --- | --- | --- | --- |
-| `wirenboard` | Wiren Board | the «WB» tab (WB devices) | title language, hidden controls |
-| `status-command` | «Топики статуса и команд» / "Status and command topics" | the topic switch in the publish sheet | presets, own rules |
-
-A plugin is either on or off. When it is off, nothing of it shows: no
-tab, no filters held, no switch in the publish sheet. Its topics stay in
-the Tree, which no plugin ever changes. The explorer with every plugin
-off is the plain explorer of MQTT stages 1–5.
-
-**The rule: where a plugin is on.** For a plugin P and an MQTT connection C:
-
-- C has its own setting for P (on or off): that setting applies.
-- Otherwise the app-level switch of P applies.
-
-This holds when the app level is off too: a connection set to "on"
-has the plugin on, and that is how "Wiren Board only on the
-controllers" works.
-
-The switch on C stores its own setting only when the new position
-differs from the app-level one. Moving it back to the app-level
-position removes that setting, and so does «Как в настройках». Changing
-the app-level switch never touches settings of connections. A
-connection set to "off" stays off when the app-level switch is turned
-off and on again. It changes only when the owner changes it there or
-resets it.
-
-A connection that has its own setting stored is an **exception**, even
-when that setting happens to equal the app level now. It is still
-listed as an exception on the plugin's screen and counted in the hints.
-That way the owner can see every stored setting that will matter the
-next time the app level changes. Settings (presets, rules, language,
-hidden controls) are only app-level. A connection overrides only on or
-off.
-
-Two pure functions, tested by table, hold this:
-
-- `resolve(app: Boolean, own: Boolean?): Boolean = own ?: app`
-- `exceptions(own: Map<connection, Boolean?>): (on: Int, off: Int)`
-  counts the connections with `own` not null, split by its value.
-
-| app | own | resolve | exception |
-| --- | --- | --- | --- |
-| on | none | on | no |
+| on | absent | on | no |
 | on | off | off | yes |
-| on | on | on | yes (left from before the app level was turned on) |
-| off | none | off | no |
+| on | on | on | yes |
+| off | absent | off | no |
 | off | on | on | yes |
 | off | off | off | yes |
 
-Switch on C moved to v, with the app level at a: `own = if (v == a) null
-else v`. «Как в настройках»: `own = null`.
+Moving the connection switch to `v` stores `own = if (v == app) null else v`.
+“As in Settings” stores null. Changing the app-level switch never edits
+connection overrides: an own Off survives app Off → On. Connections override
+only On/Off; presets, own rules and other plugin settings are app-level.
+A TCP connection opened as MQTT without its own setting follows the app level.
+New plugins default On with no connection overrides and show only when their
+topics are seen/matched, never by taking the screen automatically.
 
-**New plugins.** A plugin added in a later version is on at app level,
-and no connection has its own setting for it. It shows only once a
-session sees its topics, as the Wiren Board tab does today: the tab
-appears when the session sees a control's meta, never takes the screen
-by itself, and is absent on a broker without them. A plugin without a
-tab (Status and command topics) shows only when one of its rules
-matches the publish sheet's topic.
+The application owns one settings observer per live MQTT session, independent
+of explorer screens. It resolves settings and drops/takes plugin filters;
+screens write the store and decide what is shown. Changes reach sessions even
+with no explorer open. Turning a plugin off removes its tab/filters and its
+publish-sheet topic switch at once;
+an open WB tab returns to Tree at Tree's own path. A write already sent is not
+recalled, and its answer is no longer shown. Turning WB on uses meta already
+in the tree without selecting its tab. Retaken meta/error filters request
+retained data again (MQTT 5 Retain Handling 0, also re-sent under 3.1.1).
+While Off, meta outside open branches and pins can be stale until re-read.
+Presets and rules take effect immediately in every live session and re-match
+an open publish sheet without resubscribing. The retained conditional WB
+title-language and show-hidden semantics likewise require changes to redraw
+titles and lists immediately in every live session from the existing tree,
+without resubscribing, independently of the deferred Settings UI. Title language
+is app language (`auto`), Russian or English, applying to device, control and
+enum titles with the MQTT contract's fallback order. Show-hidden retains the
+MQTT contract's ordering, hidden marker, error counting and normal-operation
+constraints, not a bypass of readonly or exact owner/current-meta checks.
+The WB preset auto-enables once for the app when a connection first shows the
+WB tab with Status and command topics on there. Turning that preset off by
+hand afterwards keeps it off.
 
-**Scenarios** (taps counted from the screen named first):
+#### Storage, failure and migration
 
-1. *Wiren Board off everywhere.* Settings tab → «Плагины» → the switch on
-   the Wiren Board row. Three taps. Every open session drops the tab at
-   once (see edge cases).
-2. *Wiren Board off for the home broker only.* In that broker's explorer,
-   "⋮" → «Плагины…» → the Wiren Board switch. Three taps, no leaving the
-   explorer. The same sheet opens from the connection's "⋮" →
-   «Изменить» → «Плагины».
-3. *Wiren Board only on the controllers.* Off in Settings (scenario 1),
-   then on for each controller's connection (scenario 2). The rarer
-   case costs more taps.
-4. *Undo an exception.* In the connection's «Плагины» sheet, «Как в
-   настройках» under the switch. One tap. Or from Settings: «Плагины» →
-   the plugin → its row in «Свои настройки подключений» → «Как в
-   настройках».
-5. *An own rule for a non-Wiren Board device.* Settings → «Плагины» →
-   «Топики статуса и команд» → «Добавить правило» → templates → «Сохранить».
-   The rule applies to every connection with the plugin on. From the
-   explorer: "⋮" → «Плагины…» → a tap on the plugin's name opens the same
-   screen over the explorer, and Back returns to the sheet.
-6. *English titles on a Russian phone.* Settings → «Плагины» → Wiren
-   Board → «Язык названий» → English. Five taps. An open WB tab shows the
-   new titles at once.
-7. *Look at a hidden control.* Settings → «Плагины» → Wiren Board →
-   «Показывать скрытые». Four taps. Hidden controls appear in their
-   devices, marked.
-
-**Screens.**
-
-- **Settings, group «Приложение».** A row «Плагины» before «Компоненты и
-  лицензии», built the same way: a tile, the label, a hint line and a
-  chevron. The hint reads «Для MQTT · включено: 2 из 2». When a
-  connection has its own setting, the hint adds «· есть исключения».
-  A tap opens the plugins screen.
-- **«Плагины» (the plugins screen).** A full screen like «Компоненты и
-  лицензии»: AppTopBar with the title «Плагины», the subtitle «Для
-  MQTT-подключений» and the back arrow. Back closes one level at a time.
-  The body is one card of plugin rows with dividers, as in the licenses
-  list. Under the card, one muted line: «Отдельное подключение можно
-  настроить иначе: «⋮» → «Плагины…» в его обзоре».
-- **The plugin row.** It is one component used here and in the
-  connection's sheet (below). It shows the name (whole, wrapped, never
-  cut), a hint line and a switch on the right:
-  - the switch has a touch target of at least 48 dp, with its own
-    pressed ripple. A tap on it turns the plugin on or off, and the
-    switch moving at once is the feedback;
-  - a tap on the rest of the row opens the plugin's screen, with the
-    row's own ripple. Every plugin has a screen: at least its «Включён»
-    switch and its exceptions. A chevron between the text and the
-    switch shows that the row leads on;
-  - the hint is the plugin's purpose, as today («Вкладка «Устройства
-    WB»: устройства, значения с единицами, переключатели»). Under it, on
-    the plugins screen only, a muted line names the exceptions, for
-    example «Выключен для 1 подключения» or «Включён для 2 подключений».
-- **The plugin's screen.** It has the same top bar, with the plugin's
-  name as the title. It is made of groups as in Settings. The first
-  card holds one switch row, «Включён» («On»), with the hint «Для всех
-  MQTT-подключений, кроме исключений ниже». It is the same switch as on
-  the plugins screen. The plugin's own groups follow, and then the
-  exceptions. With the plugin off, its groups stay visible and can be
-  edited, muted, with the line «Плагин выключен — настройки сохранятся».
-  The owner can then set the plugin up before turning it on. This
-  differs from today's sheet, which hides the settings.
-  - *Status and command topics*: the groups «Готовые правила»
-    (the four presets as switch rows, the name with the first rule's
-    templates in monospace under it, as today) and «Свои правила» (the
-    rule list with drag, a tap to change it, the bin with Undo, and
-    «Добавить правило»). The rule sheet, its checks and its texts are
-    those of today's Plugins sheet, unchanged.
-  - *Wiren Board*: a group «Отображение» with:
-    - «Язык названий» with the value and a chevron. It opens the
-      ChoiceSheet of Settings with «Как в приложении» (default), «Русский»,
-      «English». "As in the app" is the app's language (Settings →
-      «Язык»), which today's code already uses. Russian and English pick
-      the `ru` or `en` key. When it is missing, the reading falls back as
-      the WB contract says: `en`, then the first key. The choice applies
-      to device and control titles and to enum titles;
-    - «Показывать скрытые» («Show hidden controls»), off by default,
-      with the hint «Элементы с hidden в meta. В дереве они видны
-      всегда». When it is on, a hidden control is listed in its device
-      in `order` like the others. Its title is followed by a muted
-      «скрытый» («hidden»), and its error counts toward the device's
-      "!". The control works as any other control.
-  - *Exceptions*: a group «Свои настройки подключений» («Connections
-    set on their own»). It shows only when there is at least one
-    exception (as defined above, equal to the app level or not). A row
-    per connection holds the device's tile (as in the Connections
-    header), the device name and the connection's name in full,
-    wrapped, the profile's colour when there is more than one profile,
-    and the state «Выключен здесь» / «Включён здесь». It ends with a
-    text button «Как в настройках». A tap on it removes the row at once,
-    with no Undo: tapping the switch in the connection's sheet brings it
-    back, and nothing is lost.
-- **The connection's «Плагины» sheet.** It opens from the explorer's "⋮"
-  and from the connection's edit sheet, as today. The title is «Плагины»
-  and the subtitle is the connection's label, as today. It holds the
-  plugin rows only, with the switch showing the state in force for this
-  connection. The hint line under each row says where that state comes
-  from:
-  - «Как в настройках» when the connection follows the app level;
-  - «Только для этого подключения» («Only for this connection») with a
-    text button «Как в настройках» after it when the connection has its
-    own setting. A tap on the button returns the switch to the
-    app-level state at once.
-
-  A tap on a plugin's name opens its screen (above) over the sheet, and
-  Back returns to the sheet. The presets and own rules leave this sheet,
-  since they are app-level now.
-- **Failures.** When writing a change fails, the notice «Не удалось
-  сохранить настройку: …» appears, as it does today. The switch keeps
-  the new state in memory for the rest of the run.
-- **No announcement.** The upgrade shows no one-time notice about the
-  move to Settings. The «Плагины…» sheet still opens from the same
-  places and says where its state comes from.
-
-**TalkBack.**
-
-- Plugin row: «Wiren Board, переключатель, включён, Вкладка «Устройства
-  WB»: …, выключен для 1 подключения». A row with settings has the
-  action «Настройки Wiren Board» («Wiren Board settings») on the row, and
-  the switch is a separate focus.
-- In the connection's sheet, the hint is read as part of the row
-  («…, только для этого подключения»). «Как в настройках» is a button of
-  its own and also the row's custom action «Как в настройках».
-- An exception row is read as the device, the connection, the profile
-  (when more than one) and the state, with the action «Как в настройках».
-- A hidden control: its title, then «скрытый».
-
-**Texts** (new strings; the rest exist).
-
-| Where | ru | en |
-| --- | --- | --- |
-| Settings row | Плагины | Plugins |
-| its hint | Для MQTT · включено: %1$d из %2$d | For MQTT · on: %1$d of %2$d |
-| its hint, exceptions | · есть исключения | · with exceptions |
-| plugins screen subtitle | Для MQTT-подключений | For MQTT connections |
-| plugins screen footer | Отдельное подключение можно настроить иначе: «⋮» → «Плагины…» в его обзоре | One connection can differ: "⋮" → "Plugins…" in its explorer |
-| exceptions line (plural) | Выключен для %d подключения / подключений | Off for %d connection(s) |
-| | Включён для %d подключения / подключений | On for %d connection(s) |
-| plugin screen switch | Включён | On |
-| its hint | Для всех MQTT-подключений, кроме исключений ниже | For every MQTT connection except those below |
-| settings while off | Плагин выключен — настройки сохранятся | The plugin is off; its settings are kept |
-| exceptions group | Свои настройки подключений | Connections set on their own |
-| exception state | Выключен здесь / Включён здесь | Off here / On here |
-| source: app level | Как в настройках | As in Settings |
-| source: own | Только для этого подключения | Only for this connection |
-| reset button and action | Как в настройках | As in Settings |
-| unreadable file line | Настройки плагинов не прочитались — действуют исходные | Plugin settings could not be read; the defaults apply |
-| settings action | Настройки %1$s | %1$s settings |
-| WB group | Отображение | Display |
-| WB language | Язык названий | Title language |
-| its values | Как в приложении · Русский · English | As in the app · Русский · English |
-| WB hidden | Показывать скрытые | Show hidden controls |
-| its hint | Элементы с hidden в meta. В дереве они видны всегда | Controls marked hidden in meta. The Tree always shows them |
-| hidden mark | скрытый | hidden |
-
-**Considered and left out.**
-
-- *Show read-only controls.* They are always shown with their value and
-  no control. Hiding them would hide most sensors, which defeats the
-  tab.
-- *Wiren Board topic prefix (`/devices`).* The prefix is fixed in the
-  plugin's filters and patterns (`WbDevices.kt`), its writes and the
-  Wiren Board preset. A different prefix only appears on a broker that
-  bridges one or more controllers under a prefix. There the tab would
-  also have to tell several controllers apart. That is a feature of its
-  own, deferred (Decided).
-- *Own rules per connection.* Rules are app-level, as the owner asked.
-  A rule matches only its own topics, so it does nothing on a broker
-  that does not have them. Where it does get in the way, that
-  connection can turn the plugin off. Rules stay when the connection
-  that was open while they were added is deleted.
-
-**Edge cases.**
-
-- *Plugin turned off while its tab is open.* This can happen from the
-  explorer's «Плагины…» sheet, or from Settings in split screen. The tab
-  goes, and the explorer shows Tree at the Tree's own path, as today.
-  The plugin's filters are dropped. A write already sent is not called
-  back, and its answer is no longer shown. Turned on again, the tab
-  comes back as soon as meta is seen and does not take the screen.
-- *Plugin turned on while connected.* The tab appears from the meta the
-  tree already holds, without switching to it.
-- *Settings changed while connected.* The language, hidden controls,
-  presets and rules apply at once to every open session: titles and
-  lists are redrawn from the tree with nothing subscribed again, and
-  the publish sheet matches its topic again, as it does today on a rule
-  change. A change to a connection's own setting reaches its session
-  even with no explorer screen open.
-- *Where the change is applied.* Today the session's plugin filters are
-  dropped and taken by `MqttViewModel` (with the screen) and by
-  `PluginsSheet` (off only). That moves to one app-level observer that
-  lives with each MQTT session, not with a screen. It watches the
-  store, resolves each plugin for the session's connection, and
-  drops the plugin's filters when the plugin is off. When the plugin
-  turns on, the observer takes the filters again under the rules of the
-  WB contract. Settings, the «Плагины» sheet and the explorer screen
-  only write the store. The screen still decides the tab and what is
-  shown.
-- *Stale meta in a session with no screen.* While a plugin is off, its
-  meta filters are not held. Meta outside the open branch and the pins
-  then stops updating in the session's tree. Turning the plugin on
-  takes the filters again. The broker then re-sends the retained meta
-  and errors (Retain Handling 0), so the tree is current again within
-  moments, before a screen opens on it. Under 3.1.1 it re-sends them
-  too.
-- *The Wiren Board preset that turns on by itself* (MQTT contract) is
-  now app-level: it turns on once, the first time any connection shows
-  the WB tab while Status and command topics is on there. Turned off by
-  hand afterwards, it stays off.
-- *Connection deleted.* Its own settings go with it, as today, but the
-  app-level rules stay. *Profile forgotten*: its connections' own
-  settings go. In both cases the same keys are also removed from the
-  old `mqtt_plugins.json` while it exists, so a downgrade does not bring
-  them back. *Last profile forgotten*: both files are deleted, app
-  level included, as the whole file is wiped today, since own rules name
-  the owner's topics.
-- *TCP connection opened as MQTT*: it has no own setting and follows the
-  app level.
-- *Own rule deleted and the app closed before Undo is gone*: the delete
-  completes (UI rules).
-
-**Stored.** The data is kept in `mqtt_plugins_v2.json`, in app-private
-storage:
+`mqtt_plugins_v2.json` is app-private. Its version and field names are retained:
 
 ```json
 {
@@ -906,136 +738,68 @@ storage:
 }
 ```
 
-- Plugin ids (`wirenboard`, `status-command`) and preset ids
-  (`wirenboard`, `zigbee2mqtt`, `tasmota`, `state-set`) are separate
-  namespaces. Preset ids appear only inside `status-command.presets`.
-  The shared word `wirenboard` names two different things.
-- Defaults: a plugin is on, the title language is `auto`, show hidden is
-  off, no presets, no rules. A plugin or field missing from the file has
-  its default. A connection entry with no own setting and the tab not
-  shown is not written.
-- `version` is 2. A file with an unknown higher version, or one that
-  does not parse, reads as the defaults. It is kept as
-  `mqtt_plugins_v2.corrupt.json` (the first one only, as snippets do) and
-  is not overwritten until the owner changes something. The plugins
-  screen then shows one muted warning line under its card: «Настройки
-  плагинов не прочитались — действуют исходные». The line goes with the
-  first saved change. There is no popup.
+This is a shape example, not the defaults: plugins default On, title language
+`auto`, hidden controls Off, no presets or rules. Missing plugins/fields use
+their defaults. Entries with no own setting and no previously shown WB tab
+are not written. Plugin ids (`wirenboard`, `status-command`) and preset ids
+(`wirenboard`, `zigbee2mqtt`, `tasmota`, `state-set`) are separate namespaces;
+preset ids occur only in `status-command.presets`.
 
-**Migration** from `mqtt_plugins.json` (per connection) runs once, at
-the store's first read, when `mqtt_plugins_v2.json` does not exist yet.
-The v2 file is written at once, before any session reads it.
+An unparsable or unknown higher-version file uses defaults, preserves the first
+`mqtt_plugins_v2.corrupt.json` copy and is not overwritten until the owner
+changes something. The Plugins screen shows “Plugin settings could not be
+read; the defaults apply”, without a popup; the warning goes with the first
+saved change. A failed setting write reports “Could not save setting: …”; the
+new value remains in memory for that run.
 
-- On/off is kept exactly. Both plugins are on at app level, as today's
-  defaults were. A connection with a plugin off gets its own "off". A
-  connection with it on has no own setting. Every connection then has
-  each plugin on or off as before.
-- Presets and own rules are merged, not kept per connection. Only
-  connections that had Status and command topics on contribute: a
-  connection with the plugin off had no rules in force, and its stored
-  presets and rules are dropped.
-  - Presets on: the union of the presets of those connections. A
-    preset on for one connection and off by hand for another is on for
-    both now. Only the publish sheet's default target changes, and its
-    switch still offers the status topic.
-  - Own rules: those of each contributing connection, connections taken
-    in the file's order (the JSON object's order, as the store's map
-    keeps it), rules in their order within each. A rule equal to one
-    already taken (same status, command and exclusions) is dropped. Two
-    rules with the same status template but different commands are both
-    kept in that order. The first one wins, so on the connection that
-    had the second one its command topic changes. The owner can reorder
-    them. A rule whose id is already taken by an earlier, different rule
-    gets a new id. Names are kept.
-- The Wiren Board preset that turns on by itself counts as done if any
-  connection had seen the WB tab. "The last session showed the tab" is
-  copied per connection.
-- An unreadable old file gives the defaults, as it does today.
-- The old file is left in place. It is updated only by removing keys of
-  deleted connections and forgotten profiles (above), so an older APK
-  installed again finds the settings as they were at the upgrade.
-  Changes made after the upgrade are lost to it. Upgrading again after
-  such a downgrade does not migrate again, because the v2 file exists,
-  so changes made in the older version are lost to the newer one.
-  `wipe` deletes both files. A later slice (10e) deletes the old file
-  once a release or two have shipped.
+On first read, if v2 is absent, migrate `mqtt_plugins.json` before sessions
+consume settings and write v2 immediately:
 
-**Acceptance.**
-
-- Upgrade with two MQTT connections, one with Wiren Board off and an own
-  rule, the other with the Zigbee2MQTT preset on (Status and command
-  topics on for both). After the upgrade:
-  Settings → «Плагины» shows both plugins on, and Wiren Board says
-  «Выключен для 1 подключения». The first connection has no WB tab. The
-  rule and the preset are on the Status and command topics screen and
-  work on both connections.
-- Settings → «Плагины» → Wiren Board off: an open explorer on WB devices
-  falls back to Tree at once. Turned on again, the tab returns without
-  taking the screen.
-- From a controller's explorer, «Плагины…» → Wiren Board off: only that
-  connection loses the tab. The sheet says «Только для этого
-  подключения», and «Как в настройках» brings the tab back. Turning the
-  app-level switch off and on again leaves a connection set to off still
-  off.
-- The app level is off and one connection is on: the tab shows only
-  there. The Settings row reads «Включён для 1 подключения», and the
-  exception is listed with «Как в настройках».
-- App level on, a connection set to off, then the app level turned off:
-  the connection's row stays an exception («Выключен здесь») although
-  it equals the app level now. The Settings hint keeps «есть
-  исключения». Turned on again at app level, the connection is still
-  off.
-- Migration: a connection with Status and command topics off and an own
-  rule; that rule is not on the app-level list. Two connections with the
-  same status template and different commands: both rules are listed,
-  in file order.
-- Forget a profile, then install the previous APK: that profile's
-  connections are not in its old plugin settings.
-- «Язык названий» English on a Russian phone: WB titles and enum titles
-  are English where the meta has `en`; a title with only `ru` stays
-  Russian.
-- «Показывать скрытые» on: a hidden control is listed with «скрытый»,
-  and its error marks the device with "!". Off: as today.
-- An own rule added in Settings works in an explorer already open.
-- Upgrade, then install the previous APK: its per-connection plugin
-  settings are as they were before the upgrade.
-- TalkBack reads the rows as above. At 200 % font size, plugin names,
-  device names and connection names wrap and are not cut.
-
-**Delivery** as small PRs, each reviewed, each a build for the owner's
-phone once visible:
-
-- 10a. The store: v2 format, `resolve` and `exceptions`, the migration,
-  and the scrub of the old file on delete and forget, with tests for
-  each migration case and for the table above. The app-level observer
-  that drops and takes a session's plugin filters replaces the code in
-  `MqttViewModel` and `PluginsSheet`. Today's Plugins sheet reads and
-  writes through the new store, so presets and rules become app-wide.
-  Its switches write the connection's own setting.
-- 10b1. Settings → «Плагины», the plugin rows, and each plugin's screen
-  with its «Включён» switch and the exceptions group. The connection's
-  sheet gets the source hints and «Как в настройках». The Settings hint
-  «есть исключения» and the exceptions line are in this slice too,
-  since own settings can be created here.
-- 10b2. The Status and command topics screen gets the presets and own
-  rules, which leave the connection's sheet.
-- 10c. Wiren Board «Язык названий».
-- 10d. Wiren Board «Показывать скрытые».
-- 10e. Later, after a release or two: delete `mqtt_plugins.json` and
-  the scrub of it.
+- Both plugins start On app-wide. Old Off becomes own Off; old On follows
+  the app. Every connection keeps its previous effective On/Off.
+- Only connections with Status and command topics On contribute presets
+  and rules. Presets are their union. Rules follow JSON connection order,
+  then each connection's rule order. Equal status/command/exclusions are
+  deduplicated, names retained, and colliding ids for different rules renewed.
+  Different commands for the same status template remain in order; first
+  match wins. This can change a connection's default command target; the
+  owner can reorder rules and the publish sheet still offers the status topic.
+- The preset auto-enable is marked done if any old connection had seen the
+  WB tab; the per-connection “tab shown” state is carried over. An unreadable
+  old file gives defaults.
+- The legacy file stays in place. Only deletion/forget scrubs its keys;
+  subsequent setting changes write v2 only. Downgrading sees pre-upgrade
+  settings, not newer edits. Upgrading again does not re-migrate while v2
+  exists, so changes made in the older APK are not imported again.
+- Deleting a connection removes its own settings in both files, not app
+  rules. Forgetting a profile removes its connections in both files.
+  Forgetting the last profile wipes both files and app-level rules because
+  those rules contain the owner's topics. Closing the app during a rule's
+  Undo interval still commits the delete under the shared UI rules.
 
 ## Optional LLM assistant
 
-The assistant is a separate, opt-in module with a switch in Settings, off
-by default. Provider setup (secure key storage, model discovery, effort and
-context limits) is available in Settings; no working chat or connection tools yet. Its current boundaries, window/cancellation
-rules and follow-up scope are in [the agent contract](agent-contract.md).
+The optional module is off by default. Settings exposes provider setup,
+secure key storage, model discovery, effort and context limits; working chat
+and real connection tools are not available. Enabling, opening settings and
+saving do not start provider requests. Fetch models is an explicit setup
+action, available even while the module is off. Its target-bound credentials,
+cancellation and current execution boundaries belong to the
+[assistant contract](agent-contract.md), not to tunnel permissions.
 
 ## Wire behaviour the app must match
 
-- Bearer token on every `/api/agent/*` call; `protocol_version` checked on
-  every response, a mismatch stops applying changes but leaves running tunnels
-  alone.
+- Saved device Bearer token on authenticated `/api/agent/*` operations.
+  `GET /api/agent/version` is unauthenticated; enrollment uses its one-use
+  token in the `POST /api/agent/enroll` body before device credentials exist.
+  Control-server calls require HTTPS, including stored URLs, and never follow
+  redirects that could forward either token.
+- `protocol_version` must be checked on every response; a mismatch stops
+  applying changes but leaves running tunnels alone. This remains a normative
+  compatibility requirement, not a claim that every current response type
+  carries the field. The breadth of “every response” versus the existing
+  wire shapes/check sites remains unresolved for the separate compatibility
+  audit; it is not relaxed by this rewrite.
 - One frpc process per profile with tunnels up (each has its own certificate).
 - frpc config as the Linux agent builds it (`driver/frp/config.py`): TLS block,
   `metadatas.frp_jump_device` / `frp_jump_token`, heartbeat 5 s / timeout
@@ -1064,84 +828,73 @@ rules and follow-up scope are in [the agent contract](agent-contract.md).
 | MQTT plugins: app-level on/off and settings, each connection's own on/off (scenario 12) | app-private storage |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
 
-Nothing leaves the phone except calls to the frp-jump servers, the tunnels and
-the update check.
-
-## Delivery
-
-Each stage is a separate PR, reviewed and checked on the emulator, then a
-build for the owner's phone.
-
-1. Profiles and the offline cache, with the v1 upgrade path.
-2. Named connections and the Connections tab.
-3. Direct/through-the-server behaviour, keepalive and its notifications.
-4. Restore after kill and reboot.
-5. QR enroll.
-6. Russian and English.
-7. Redesign of the remaining screens per the mockups, dark theme; fingerprint unlock; snippets.
-8. Release signing and in-app updates.
-9. Device labels and icons (scenario 11): the glyphs, the list row, search,
-   the card header and sheet, the Connections header. It can ship before the
-   server supports it, with the feature hidden until then.
-10. MQTT plugins in Settings (scenario 12), in slices 10a–10e.
-
-Screens touched by stages 1–5 get the new look in the same stage.
+Permitted app-originated network flows are calls to the configured frp-jump
+servers, traffic through the owner's tunnels, public GitHub update checks and
+requested APK/checksum downloads, and explicit provider model discovery.
+Discovery sends the provider credential only to its configured target under
+the [assistant contract](agent-contract.md); it does not send chat or grant
+connection tools. No provider request is implied by enabling the module,
+opening settings or saving, and setup discovery does not require the module
+switch to be on. These flows do not authorize telemetry or other background
+provider traffic. Explicit sharing/opening in another app is governed by the
+[Files contract](files-contract.md).
 
 ## Acceptance
 
-- Upgrade from 0.1.1 keeps the enrollment, ports and SSH key.
-- Two profiles on ikar (two device names); tunnels from both up at once.
-- Airplane mode, open the app: both lists shown with the offline banner.
-- From mobile data: direct fails, the connection works through the server,
-  the notification appears; "Retry direct" retries.
-- An SSH session left idle for 10 minutes on a direct tunnel is still alive.
-- `adb shell am kill` and a reboot with tunnels up: they come back on the
-  same local ports.
-- Scan a QR code from the laptop screen and enroll.
-- System language English → English UI; Russian → Russian.
-- Install 0.2.0, publish 0.2.1: the app offers and installs the update.
-- Labels: set «Щиток, гараж» on wb01 from the card. The row reads
-  «Щиток, гараж · Онлайн», the Connections header shows it under wb01, and
-  search for «гараж» finds wb01. A second phone and `frp-jump-client devices
-  list` show the same label after their next refresh. Pick "router", then
-  «Авто»: the detected Wiren Board icon is back.
-- This phone shows with the phone icon in another phone's list and in
-  `frp-jump-client devices list` (`phone (auto)`).
-- Against a server without labels: no «Подпись…»/«Значок…», no labels, and no
-  errors. In airplane mode the sheet's «Сохранить» says it was not saved and
-  keeps the text.
-- MQTT plugins in Settings: the checks of scenario 12.
+These are review scenarios, not a record of tests run or releases published:
 
-## Decided
+- An upgrade from the single-profile app preserves enrollment, ports and the
+  shared SSH key; no re-enrollment is required. Two profiles can keep tunnels
+  open concurrently, identified in Connections and the notification.
+- On an offline start, cached lists remain visible with checking/stale state
+  and truthful feedback. A stale list does not block Connect; a fresh Offline
+  answer disables only down connections. Refresh clears a recovered error.
+- Enrollment storage success followed by activation failure keeps a durable
+  pending identity and manual retry without another enrollment request.
+  Failed batch preparation cannot leave candidate runtimes alive.
+- Connections open through their whole-card primary action without stealing
+  child controls. Repeated taps during startup open once; leaving cancels
+  the pending open, not the tunnel. Saved pins are restored for all profiles
+  before any Auto allocation; storage failure is not reported as lost identity.
+- Failed direct access falls back to relay with Retry direct / Keep through
+  the server. An SSH session left idle for 10 minutes on a direct tunnel
+  stays alive. Kill/reboot restores intended
+  tunnels on the same local ports; Disconnect clears that intent.
+- QR enrollment works from a light or inverted terminal image and the gallery;
+  invalid QR feedback keeps scanning. Russian/English and theme preferences
+  apply without losing access to common actions or accessible labels.
+- Updates are offered with notes, downloaded on request and installed only
+  through the owner's system-installer action after all integrity, identity,
+  version and signing checks pass. A failed check explains the refusal.
+- Labels/icons update from the server answer across list, card and Connections;
+  search finds labels with NFC/case normalization. Another client sees saved
+  values on refresh. Unknown icons remain compatible. An old server hides
+  editing; offline failures keep the draft, never queue uncertain writes.
+- Plugin override resolution follows all six table rows, including own On
+  over app Off and exceptions equal to the app level. Changes reach live
+  sessions without screens. Migration preserves effective switches, rule
+  ordering/deduplication and downgrade cleanup; failures remain visible.
+- Review shared UI feedback, Undo, non-truncated names, TalkBack actions,
+  portrait/landscape and large fonts. Component evidence does not establish
+  vendor-IME, physical-device or live-service guarantees.
 
-- Where release APKs live: GitHub Releases of this repository, now public;
-  no token in the app.
-- Device labels and icons (2026-11-01): a label is at most 64 characters. The
-  icon set has `phone`, which the app reports for itself. Support is detected
-  through the server's `features` list.
-- MQTT plugins (2026-11-01): turned on and off and set up at app level
-  in Settings → «Плагины»; a connection may turn a plugin on or off for
-  itself, and that wins over the app level; a plugin off has no tab and
-  its topics stay in the Tree; new plugins are on and show only once
-  their topics are seen.
-- MQTT plugins, the owner's answers (2026-11-01): presets and own rules
-  are app-wide, not per connection; a connection's own "on" wins even
-  with the app level off; the Wiren Board topic prefix is deferred,
-  since it needs the tab to tell several bridged controllers apart.
+## Non-goals
 
-## Open decisions
-
-- frp-jump release tag: the hot-reload change for exposing devices is in
-  master but not released; until devices update, their tunnels still restart
-  when a grant changes.
+The phone does not expose ports, reach other people's devices, perform admin
+commands or enroll by a key. Google Play distribution, armv7 release builds
+and additional UI languages are not promised. x86_64 builds are for local
+debug/minified validation, not the arm64 release target. There is no working
+assistant chat or tool-enabled connection control. Deferred plugin UI is
+identified in scenario 12; it is not an implementation plan in this contract.
 
 ## Open risks
 
-- Aggressive vendor firmware may still kill the foreground service; the restart
-  covers it but adds a gap of seconds.
-- Mobile carriers' NAT usually blocks P2P, so on mobile data most connections
-  will go through the server.
-- A tunnel is a TCP port on 127.0.0.1, open to every app on the phone while
-  it is up; device web UIs need a password of their own.
-- WebView cannot filter WebSockets: a compromised device's page can reach
-  the other tunnels that are up.
+- Aggressive vendor firmware may still kill the foreground service; restarting
+  introduces a gap and is not an uninterrupted-availability guarantee.
+- Carrier NAT commonly prevents P2P, so mobile connections often use the relay.
+- A tunnel is a TCP port on `127.0.0.1`, open to every app on the phone while
+  it is up. Device web UIs and brokers need their own authentication.
+- WebView cannot filter WebSockets: a compromised device page can reach the
+  other tunnels that are up.
+- Remote agents without hot reload can restart their tunnels when grants
+  change. Phone-side hot reload does not upgrade or control those agents.

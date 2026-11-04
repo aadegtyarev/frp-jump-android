@@ -1,326 +1,279 @@
-# frp-jump for Android — SSH sessions that survive a dropped connection
+# SSH session persistence
 
-Status: Approved by the owner 2026-10-31. The UI rules of
-`docs/contract.md` apply unchanged.
+SSH tabs reconnect after a transport drop. With a surviving remote tmux
+session they reattach to the running shell; without one they announce a new
+shell instead of pretending that commands continued.
 
-On mobile data the tunnel drops often, and today a drop ends the shell:
-whatever ran in it stops, the screen is lost, and the owner taps Reconnect
-to get an empty prompt. This contract makes a dropped connection a pause,
-not an end: the app reconnects by itself, and where the device has tmux the
-shell never stopped and comes back as it was. Mosh is out: the tunnels are
-TCP.
+## Boundary and ownership
 
-## Today (what the code does)
+This surface owns terminal SSH connection lifetime, reconnect, remote tmux
+identity, recovery and closing. It serves the owner through Terminal and the
+Sessions list. `SshSessions` owns in-memory tabs beyond the terminal screen;
+`SshSession` owns each tab's transport attempts and emulator. A committed tunnel
+close or profile forget closes its tabs. Process death loses local tabs and
+text, not necessarily remote tmux sessions.
 
-- `SshSession` opens one sshj connection to `127.0.0.1:<local port>`, logs
-  in, allocates a PTY (`xterm-256color`, the terminal's size) and starts a
-  **shell channel** (`startShell`). Keep-alive every 20 s, connect timeout
-  20 s (`SshConnector`).
-- Any end of the shell (read error, exit status, close) makes it
-  `SshState.Ended(message)`: the terminal keeps its text and gets a
-  `[message]` line, and the bar above the snippets shows the reason with
-  **Reconnect** and **Change login**. Reconnect (`SshSessions.reconnect`)
-  builds a fresh session with the same login in the same tab: a new shell.
-- Sessions live in `SshSessions`, in memory, as long as the process and
-  their tunnel: a tunnel that goes away (Disconnect, Forget) closes its
-  sessions. Nothing about tabs is stored; a killed process loses them.
-- The terminal is Termux `terminal-emulator`/`terminal-view` v0.118.3 with a
-  3000-row scrollback of its own (`RemoteTerminal`). A swipe scrolls that
-  scrollback, or, when the remote program turned on mouse reporting, is sent
-  as mouse-wheel events; a tap is sent as a click then too. Long press
-  selects text from what is on the screen.
+UI inherits the [shared UI rules](contract.md#ui-rules): common actions stay
+directly accessible, waiting and failures are visible, and concise controls
+must not remove functionality, accessibility or safety warnings. Terminal input,
+clipboard and paste behavior remain governed by [SSH console](contract.md#7-ssh-console),
+[text input](terminal-text-input-contract.md) and the
+[terminal panel](terminal-panel-contract.md). [Files](files-contract.md) uses
+the shared connector/login/host-key rules but owns a separate SFTP connection
+and lifetime. [Diagnostics](terminal-diagnostics-contract.md) owns measurements,
+not reconnect policy or proof that a tunnel listener recovered.
 
-## Scenarios
-
-### 1. The network blinks (tmux on the device)
-
-Running `apt upgrade` in a tab, the phone changes cell or loses signal for
-a minute. The bar shows "Connection lost · reconnecting…"; the owner does
-nothing. When the network is back the tab re-attaches: the screen is
-redrawn as it is now, `apt` kept running the whole time.
-
-### 2. The same without tmux
-
-The bar says the same while it reconnects. Back, the tab gets a fresh shell
-and says so plainly: a line in the terminal and the bar "New shell: the
-previous one ended with the connection". Nothing pretends to continue.
-
-### 3. The app was killed
-
-Android or the owner killed the app while two tabs ran `top` and a long
-build. Later the owner opens Terminal on that connection: two tabs open and
-attach to the two tmux sessions still alive, the build still going.
-
-### 4. Done with a tab
-
-Closing a tab ends its tmux session on the device when the close's Undo
-is gone (UI rules); Undo brings the tab back with its session. Nothing is left behind that the owner forgot.
-
-### 5. tmux missing
-
-The first time a terminal opens on a connection whose device has no tmux,
-a top notice says once: "No tmux on <device>: a dropped connection will
-stop running commands. Install it: `apt install tmux`". After that the
-terminal works as today plus auto-reconnect, silently.
-
-### 6. tmux not wanted
-
-The owner turns off **Keep sessions on the device (tmux)** on an SSH
-connection (its edit sheet). Its terminals then open a plain shell, as
-today, still with auto-reconnect.
+The approved opt-out and missing-tmux notice requirements remain binding but
+are not currently available; see [Required controls and notice](#required-controls-and-notice).
+This reference does not certify runtime conformance to those requirements.
 
 ## Behaviour
 
 ### Opening a terminal
 
-- After login the app runs one probe on an exec channel: `command -v tmux`.
-  Found and the connection's switch on: the tab's channel is an **exec** of
-  one command with the PTY (below) instead of `startShell`. Not found, or
-  the switch off: `startShell` as today. The result is kept for the
-  session; every reconnect probes again (tmux may get installed).
-- The command:
+- Connect through the tunnel at `127.0.0.1:<local port>` with SSHJ. Connect
+  timeout is 20 s; keep-alive interval is 20 s. Authenticate with the tab's
+  user and key or password. Allocate an `xterm-256color` PTY at the terminal's
+  size and send window changes on resize.
+- With tmux enabled, probe on an exec channel at each connect/reconnect:
 
+  ```sh
+  command -v tmux >/dev/null && echo frpjump-tmux && tmux has-session -t '=<name>' && echo frpjump-attach
   ```
+
+  Only the probe's marker lines distinguish absent, fresh and existing
+  sessions. The exec environment's PATH applies, not an interactive login
+  profile's PATH. An exec refusal/timeout while transport remains up falls
+  back to a plain shell; lost transport fails the connection attempt.
+- Found: open a PTY exec channel, not a command typed into a login shell:
+
+  ```sh
   exec tmux -u new-session -A -D -s 'frpjump-<install>-<n>' ';' set-option -t '=frpjump-<install>-<n>:' status off ';' set-option -t '=frpjump-<install>-<n>:' mouse on
   ```
 
-  `-A` attaches when the session exists and creates it otherwise, so the
-  first open, a reconnect and the pick-up after a kill are the same command.
-  `-D` detaches other clients of the session, such as the one left from the
-  dropped connection that sshd has not noticed yet.
-  `-u`: UTF-8 even when the non-login exec has no `LANG`. Targets are exact
-  (`=name` for a session, `=name:` for a pane), so `-1` never matches
-  `-10`. Every argument is single-quoted and the separator is `';'`, which
-  reads the same in sh, bash, zsh and fish (checked with each). `tmux` is found on the exec's
-  PATH, the same one the probe used. The probe is
-  `command -v tmux >/dev/null && echo frpjump-tmux && tmux has-session -t '=<name>' && echo frpjump-attach`:
-  only its own markers count, and it also tells whether the session still
-  runs, so a re-attach is told apart from a fresh session.
-- Each tab is one tmux session with one window. The tab bar of the app is
-  the only list of sessions the owner sees.
+  `-A` creates or attaches; `-D` detaches other clients, including a stale
+  mobile connection or a laptop; `-u` requests UTF-8 without relying on LANG.
+  Missing tmux or disabled persistence uses `startShell` instead.
+- Each app tab is one remote tmux session with one window. Within Terminal,
+  the app's tab bar is the only session list.
+- If tmux exits nonzero within the first 5 s, announce that tmux failed and
+  immediately open a plain shell. This tab, including manual replacement,
+  then keeps to plain shells. A drop without exit status, normal detach/exit
+  or failure after that window is not this startup fallback.
 
 ### Dropped connection and auto-reconnect
 
-- What counts as a drop: the shell ends with a read error, or the SSH
-  connection closes without an exit status, or connect fails while the tab
-  is reconnecting. A normal end (exit status: `exit`, tmux session killed
-  or detached from inside) stays `Ended` with Reconnect, as today.
-- Also not retried: login refused (Change login, as today), host key
-  unknown or changed (the dialogs, as today).
-- New state `Reconnecting(attempt)` between `Open` and `Ended`. The
-  terminal keeps its text; keys and snippets are not sent ("Not connected"
-  notice, as today for a closed session).
-- Timing: first try at once, then after 2, 4, 8, 15 s, then every 30 s.
-  The network coming back (the default network callback the app already
-  has) tries at once and resets the pause to 2 s.
-- Gives up after 10 minutes without success: `Ended` with the last reason
-  and Reconnect, as today. A tap on Reconnect starts the same loop again.
-- Tunnel gone vs network gone: while the tunnel is up but frpc cannot reach
-  the server, connect fails and the loop keeps trying, nothing else to do.
-  A tunnel the owner disconnected (Disconnect, Disconnect all, Forget)
-  closes its tabs as today, with no retry; their tmux sessions stay on the
-  device and are picked up next time (scenario 3).
-- Login on reconnect is the tab's own: the key, the password it holds in
-  memory, or the remembered one. Nothing is asked unless the device refuses.
+| Event | Result |
+| --- | --- |
+| Shell ends without exit status or signal, including transport EOF/read failure | Keep tab and text; enter `Reconnecting(attempt, trying)` |
+| Shell has an exit status or signal (`exit`, logout, killed/detached tmux) | `Ended(message)`; no automatic retry |
+| Connect/transport failure during a reconnect, including transport loss during authentication | Another failed try, not a login refusal |
+| Device refuses login | Stop retrying; explain refusal and offer Change login |
+| Unknown or changed host key | Stop retrying; require the owner's host-key decision |
+| Owner commits tunnel Disconnect, Disconnect all or Forget | Close tabs, stop retries; keep remote tmux sessions |
+
+- Try immediately, then pause 2, 4, 8, 15 s, then 30 s between failures.
+  The default network returning/changing triggers an immediate try and resets
+  the next pause to 2 s. **Now** tries immediately unless a try is in flight.
+- Give up after 10 minutes without success, ending with the last reason and
+  **Reconnect**. Manual Reconnect after give-up starts the loop again with
+  the same login.
+- During reconnect, keys/snippets/paste are not sent or saved for replay.
+  Input explains that the tab is not connected. A tab or tunnel hidden behind
+  pending Undo starts no further retries; Undo resumes an active loop at once
+  with short pauses. A committed close stops it permanently.
+- Login belongs to the tab: key, typed password still held in memory, or the
+  remembered password. Reconnect does not silently change user or bypass
+  authentication/host-key decisions.
+- A tunnel still up while frpc cannot reach the server leaves the loop trying.
+  An existing SSH connection does not prove a new local listener can start.
 
 ### What the owner sees
 
-- The existing bar above the snippets, in the tab that dropped:
-  "Connection lost · reconnecting (try 3)…" with **Now** (try at once) and
-  **Close**. The top bar's status line says "Reconnecting".
-- Tabs not shown get a muted state mark like the existing Ended one.
-- Back with tmux on the same session: the bar goes, a short top notice
-  "Session restored" (only while the app is on screen). No text is written
-  into the terminal: tmux redraws the screen on attach. tmux there but the
-  session gone (the device rebooted): told as without tmux, a new shell.
-- Back without tmux: the emulator is reset to the normal screen (it may
-  have been inside `vim` or `htop`), a line `[New shell: the previous one
-  ended with the connection]` is written, and the bar shows the same words
-  until the owner types. The old text stays in the scrollback above.
+- The affected tab keeps its terminal text. Its bar above the snippets shows
+  “Connection lost · reconnecting (try N)…” with **Now** and **Close**;
+  the top status says “Reconnecting”. Other tabs carry a muted state mark.
+- Reattached to the same tmux session: remove the reconnect bar, show a short
+  “Session restored” notice only while the app is on screen, and let tmux
+  redraw. Do not inject a restoration line into the terminal.
+- No surviving session, including tmux present after a device reboot: reset
+  the emulator to its normal screen and input modes, retain preceding
+  scrollback, and write `[New shell: the previous one ended with the connection]`.
+  The same warning stays in the bar until owner input. Without tmux the old
+  commands are not preserved by the app.
+- An ended tab retains readable text and a `[reason]` line, with the reason,
+  **Reconnect** and **Change login** in the bar. Manual Reconnect replaces
+  the session instance in the same tab, using the same login unless changed;
+  it retains the assigned tmux name so a surviving remote session can attach.
 
 ### Pick-up after a kill
 
-- Opening Terminal on a connection with no tab of its own in the app:
-  after login (no extra prompt beyond today's), if tmux is used, the app
-  lists `tmux list-sessions -F '#{session_name}'` on an exec channel and
-  takes the names starting with `frpjump-<install>-`. None: one new tab, as
-  today. Some: one tab per session in name order, each attaching, the first
-  selected; a top notice "Restored N sessions".
-- The device knows only the SSH user's sessions, so sessions of another
-  user of the same device stay with that user's connection.
+When opening Terminal with no local tab for that profile/device/port, log in
+normally and, when tmux is enabled, list the SSH user's remote sessions:
+
+```sh
+tmux list-sessions -F '#{session_name}'
+```
+
+Take only valid `frpjump-<this install>-<n>` names, once each, in session-name
+order. Skip names already held or claimed by another tab. Reserve
+the counter beyond recovered names. With none, open one new tab. Otherwise
+attach one tab per available session, first selected, and show “Restored N
+sessions”. A failed listing while transport remains up is treated as no
+sessions found; a transport loss fails the attempt. Tabs themselves are not
+persisted, and remote sessions belong to the SSH user, not all users on a device.
 
 ### Closing
 
-- Closing or ending a session is final for that instance. Manual Reconnect
-  creates a fresh instance. A late host-key result, Trust/Forget completion,
-  login result or fallback must not return the old instance to Connecting,
-  Reconnecting or Open, or attach its streams after closure.
-- Each connection attempt owns its client and completion. State publication
-  and terminal handover serialize against close. Old EOF/failure callbacks
-  must not end, replace or reconnect a newer client. An unaccepted client
-  is disconnected, including when construction completed after close.
-- Transport cleanup still runs if the caller's coroutine scope was already
-  canceled. Blocking transport work and fresh-shell queue preparation stay
-  outside the lifetime commit; reconnect monitor calls also stay outside it.
-- Closing a tab with tmux runs `tmux kill-session -t <name>` on an exec
-  channel of the tab's connection before it disconnects. When the
-  connection is down at that moment the tab still closes and the session
-  stays; the owner can clear it with the action below.
-- In the terminal's "⋮": **Close all sessions of this phone on <device>**.
-  Undo instead of confirm, as every destructive action (`docs/contract.md`,
-  UI rules): the app first lists the device's `frpjump-<install>-*` of that
-  user (read only; a "Looking for…" notice meanwhile), then the app's tabs
-  to that device and port leave the screen at once and the shared notice
-  counts them with the sessions no tab holds ("Closed: N · Undo", about
-  6 s). Only when it goes are the tabs closed and the sessions found ended,
-  in one exec, checked by listing again; a session still listed is
-  reported. Undo brings the tabs back and ends nothing. Sessions held by a
-  tab that stays (the same device and user through another port or
-  profile) are not ended. Nothing found: "No sessions of this phone on
-  <device>". The device cannot be reached: the tabs still close the same
-  way and the notice says the sessions there keep running.
+- **Close kills; drop keeps.** Closing a tab hides it immediately and commits
+  only after shared Undo expires (about 6 s). Undo restores the same live
+  session and ends nothing. Closing the app during pending Undo must not
+  cancel the committed destructive action under the shared rules.
+- On committed tab Close, if its authenticated tmux connection is still open,
+  end its assigned remote tmux session by running `tmux kill-session -t '=<name>'`
+  before disconnecting. Successful Close requires that remote session to end,
+  not merely that the command was attempted. If the connection is down at
+  commit, still close the tab and leave the remote session for close-all.
+  Tunnel close/profile forget/manual replacement do not kill it.
+- Terminal ⋮ → **Close all sessions of this phone on <device>** first lists
+  this install's sessions read-only, with a “Looking for…” notice. Then tabs
+  to that profile/device/port leave the screen, and the shared “Closed: N ·
+  Undo” counts tabs plus discovered sessions no tab holds. Nothing remote
+  ends until Undo expires; Undo restores tabs and ends nothing.
+- On commit, close the tabs and end the discovered sessions in one exec,
+  then list again. Report any still listed. Do not end sessions held by tabs
+  that stay, including another port/profile reaching that device and user.
+  Nothing found: say so. If unreachable, tabs still close with Undo and a
+  warning that remote sessions remain running. Kill failures are visible.
+
+The current single-tab kill path is best effort and logs failures. This is an
+implementation limitation, not a waiver of the required remote-end outcome.
+Logging does not prove termination; a failed or unknown outcome must not be
+presented as successful remote termination. The shared truthful failure-feedback
+rules still apply. Close-all can later clear a session left running; that
+recovery does not make the earlier Close successful.
+
+Closing or ending is final for that instance. Each attempt owns its client
+and completion. State publication and terminal handover serialize against
+close: late Trust/Forget writes, host-key/login results, EOF, failure and
+fallback callbacks must not revive a closed instance or end/replace/reconnect
+a newer client. Disconnect every unaccepted client, including construction
+completed after close. Transport cleanup must run even with an already canceled
+caller scope. Blocking transport work, fresh-shell queue preparation and
+reconnect-monitor calls stay outside the lifetime commit.
 
 ### Scrollback and copying inside tmux
 
-- tmux runs on the alternate screen, so the app's own 3000 rows do not fill
-  while it is attached; the history lives in tmux (its `history-limit`, 2000
-  lines unless the owner's config says otherwise).
-- `mouse on` makes the Termux view send a swipe as wheel events: tmux
-  enters copy mode and scrolls its history; scrolling back to the bottom
-  leaves it. A tap is a click for tmux (harmless with one pane).
-- Copying stays the app's long press: it copies what is on the screen,
-  including a part of tmux history scrolled into view. tmux's own drag
-  selection is not used on a phone.
+The terminal uses pinned Termux `terminal-emulator`/`terminal-view` v0.118.3.
+History is configurable at 500, 1000, 3000 or 10000 rows, default 1000, including
+older settings without a value. It is the total main-buffer limit including
+visible rows, not that many off-screen rows. A new terminal captures the
+setting; changes do not trim/recreate existing terminals. Automatic reconnect
+keeps its emulator and original limit; manual replacement/new tabs capture the
+current choice. See [history setting](terminal-diagnostics-contract.md#history-setting).
 
-## Decided
+While tmux uses the alternate screen, that local main-buffer history does not
+fill; remote history follows tmux's `history-limit` (normally 2000 lines unless
+the owner's config changes it). With mouse reporting, swipes become wheel
+events and taps clicks. `mouse on` lets tmux enter copy mode to scroll history
+and leave it at the bottom. Long press still selects/copies visible text,
+including history scrolled into view; phone copying does not use tmux drag
+selection. Tap-to-cursor exceptions belong to the shared SSH-console rules.
 
-- **Name `frpjump-<install>-<n>`.** `<install>`: 6 random hex characters
-  made once per app install and stored; `<n>`: a counter that only grows.
-  Two phones and the owner's own sessions (`0`, `work`) never collide, and
-  `tmux ls` on a laptop shows plainly which are the phone's.
-- **The owner's default tmux server, not a private socket.** The owner can
-  `tmux attach -t frpjump-…` from a laptop to continue a phone session; one
-  server to reason about.
-- **Never touch `~/.tmux.conf` or global options.** Only `set-option -t
-  <session>`: `status off` (the app has tabs), `mouse on` (swipe scrolls
-  history). The rest of the owner's config applies as is.
-- **Detect with `command -v tmux` per connect.** One cheap exec, no version
-  parsing; `new-session -A` exists since tmux 1.8, Debian 11 ships 3.1.
-- **Exec instead of a typed command.** Typing `tmux …` into a shell would
-  echo it and race the login scripts; an exec channel with the PTY starts
-  tmux directly.
-- **Auto-reconnect for every SSH tab, tmux or not.** The drop is the pain
-  either way; without tmux the fresh shell is announced, never hidden.
-- **Backoff 0/2/4/8/15/30 s, give up at 10 min.** Fast after a short blink,
-  little battery on a long outage, and an end the owner can see.
-- **A tunnel the owner disconnected does not retry.** Disconnect means
-  stop; the tmux sessions wait on the device for the next Terminal.
-- **Close kills, drop keeps.** Only the owner's Close or "Close all
-  sessions of this phone" ends a tmux session; nothing ends them on a
-  timer.
-- **The missing-tmux notice once per connection.** It is advice, not an
-  error; repeating it would be noise.
+After an observed outgoing wheel-up, hold the next owner input (key, extra
+key, snippet or paste) until one exec asks tmux to cancel pane mode:
 
-## Stored on the phone
+```sh
+tmux if-shell -F -t '=<name>:' '#{pane_in_mode}' 'send-keys -t =<name>: -X cancel'
+```
 
-| What | Where |
-| --- | --- |
-| Install id for session names, the session counter | app-private settings |
-| Per SSH connection: "Keep sessions on the device (tmux)", default on | the connection (a new field, absent = on) |
-| Per connection: the missing-tmux notice was shown | app-private settings |
+No global binding changes. Only the first owner input after scrolling incurs
+that round trip; copy mode entered by another route is not detected. The
+original requirement that stalled keys proceed after at most 10 s remains
+unverified as a total-wait bound: implementation joins the command for 10 s
+**plus channel-opening time**, then proceeds even on failure. Do not present
+that join timeout as a proven end-to-end maximum or remove the protection;
+[diagnostics](terminal-diagnostics-contract.md#local-measurements) measures it.
 
-Tabs themselves are not stored: the device's `tmux list-sessions` is the
-list to pick up from.
+## Compatibility and remote ownership
 
-## Delivery
+- Names are `frpjump-<install>-<n>`: six random lower-case hex characters
+  generated once per install and an increasing persisted counter. Keep names
+  stable across reconnect/replacement and distinct from other phone installs
+  and the owner's own sessions. Recovery advances the counter, not reuses a
+  recovered name.
+- Use the owner's default tmux server, not a private socket; the owner may
+  attach from a laptop. Never modify `~/.tmux.conf` or global options. Apply
+  only per-session `status off` and `mouse on`; other config remains in force.
+- Quote command arguments and the `';'` separator for sh, bash, zsh and fish.
+  Use exact session targets `=name` and pane targets `=name:` so `-1` cannot
+  match `-10`. Only validated app session names enter tmux commands.
+- tmux 2.4 or later is needed for the full behavior (`=` targets and
+  `send-keys -X`), even though `new-session -A` alone is older. Do not infer
+  compatibility from the probe alone; early failure uses the plain-shell path.
+- The owner's config can conflict (hooks, `mouse off`, `destroy-unattached`).
+  Options override only what the app explicitly sets. `mouse on` also affects
+  a laptop attached to these sessions, and phone reattach detaches it (`-D`).
 
-Each slice a separate PR, reviewed, checked on the emulator against a test
-device, then a build for the owner's phone.
+## Security, privacy and stored data
 
-1. **Auto-reconnect for all SSH tabs.** `Reconnecting` state, backoff,
-   network-callback trigger, 10-minute give-up, the bar and the "New
-   shell" line. No tmux yet.
-2. **tmux attach and naming.** Install id and counter, the probe, the exec
-   command with per-session options, re-attach on reconnect, kill on Close.
-3. **Pick-up after a kill.** `list-sessions` on opening Terminal, one tab
-   per session, "Restored N sessions"; "Close all sessions of this phone"
-   (with Undo, see Closing)
-   in "⋮".
-4. **The switch and the notice.** The connection field and its row in the
-   SSH edit sheet; the once-per-connection notice. `SshSession` gets the
-   flag from the connection it was opened from.
+- Host keys are pinned per profile/device/target port, never the shared
+  loopback address. First use requires explicit Trust of the presented
+  algorithm/SHA256 fingerprint. Changed keys block login and show old/new
+  keys; forgetting the old key leads to a new first-use decision, not silent
+  acceptance. Terminal and Files share those decisions.
+- Use the phone's generated ed25519 key across profiles, with optional imported
+  identity tried first. Private keys, import passphrases and remembered
+  passwords are encrypted in app-private storage with the Keystore-backed
+  SSH secret box. Public keys and host fingerprints are not secrets.
+- Typed passwords remain in the tab's login object for reconnect; persist
+  only on Remember. Remembered passwords are scoped to profile/device/port/user.
+  A refusal is not permission to erase a remembered password or to keep
+  offering it silently; distinguish missing/unreadable credentials from wrong
+  credentials and offer Change login. Transport loss is not a credential refusal.
+- Local tabs/emulator text and per-tab text drafts are process-memory state,
+  not a stored tab list. Install id and counter are app-private persisted
+  naming data. Saved login choices and host pins follow the shared app rules.
+- Preserve selected-tab-only automatic OSC 52 writes, exact terminal identity
+  checks on late callbacks, explicit selection Copy (including ended terminals),
+  the common 64 × 1024 UTF-16-code-unit cap and copied-text notice. Leaving the
+  screen/backgrounding does not revoke the last selected tab. No new prompt,
+  opt-in or foreground restriction is introduced here.
+- Preserve paste confirmation and session/output-generation binding. Dropped
+  input is never replayed into the next shell; stale queued chunks cannot
+  cross handover after the copy-mode guard. Local write/paste acceptance is
+  not acknowledgement of remote receipt or command execution.
 
-Outside this repo: **frp-jump** (`aadegtyarev/frp-jump`, `packaging/`):
-the `frp-jump-client` Debian package gains `Depends: tmux`. Devices set up
-with pip or a venv do not get it; they fall under scenario 5.
+### Required controls and notice
 
-## Acceptance
+These already approved requirements are **not implemented in the current
+connection UI/persistence/notice path**; startup-failure fallback is not their
+substitute:
 
-On a Wiren Board reached over the tunnel, from the owner's phone:
+- An SSH connection's edit sheet must offer **Keep sessions on the device
+  (tmux)**, default on, including when the stored field is absent. Off opens
+  plain shells while keeping automatic reconnect.
+- The first terminal on a connection without tmux must show once:
+  “No tmux on <device>: a dropped connection will stop running commands.
+  Install it: `apt install tmux`”. Subsequent opens work without repeated
+  advice. Persist the per-connection shown flag in app-private settings.
 
-- Run `ping -i 1 127.0.0.1` in a tab, airplane mode for 1 minute, off: the
-  tab re-attaches by itself, the ping counter has kept going without a gap
-  of lines.
-- Same with Wi-Fi to mobile data and back: no tap needed.
-- `apt remove tmux`, repeat: the notice shows once; after the blink the tab
-  says "New shell", the ping is gone.
-- Two tabs with `top` and `sleep 600`, `adb shell am kill`, open Terminal on
-  the connection: two tabs come back attached, `sleep` still running.
-- Close one tab: `tmux ls` on the device no longer has it. "Close all
-  sessions of this phone": the tabs go at once with "Closed: N · Undo";
-  Undo brings them back and `tmux ls` is unchanged; once the notice goes,
-  no `frpjump-<install>-*` left; the owner's own tmux session is untouched.
-- In a tmux tab: `seq 5000`, swipe down: tmux history scrolls; long press
-  copies a line from it.
-- The switch off: `tmux ls` shows no new session for that connection.
-- Disconnect the tunnel while reconnecting: the loop stops, the tab
-  closes with "The tunnel was closed.", the tmux session stays.
+The current path probes unless that tab disabled tmux after startup failure;
+there is no available per-connection opt-out or missing-tmux advice. This
+implementation gap does not withdraw the requirements or define a new schema.
 
-## Lifecycle validation — 0.3.39
+## Intentional limits
 
-- Seventeen API 35 lifecycle tests use the real SshSession and Termux queues,
-  in-memory stores and synthetic SSHJ clients/channels that open no sockets.
-  They cover close/restart, late Trust/Forget, host-key results, client
-  construction, the last-check/Open race, active Trust/Forget, accepted
-  Open/paste/close, canceled scope cleanup, normal EOF,
-  reconnect/history/old callbacks, plain-shell
-  fallback and deterministic reconnect/lifetime monitor ordering.
-- The original eight cases failed before the fix. A separate cancellation
-  cleanup regression also failed before atomic cleanup entry was added.
-- Together with real queue/history/draw checks, the local native suite passed
-  28 checks. JVM tests, builds and Lint passed. This is not a live SSH,
-  physical-phone or vendor-IME verification; wire authentication is not
-  exercised by the synthetic lifecycle clients.
-
-## Open risks
-
-- **Copy mode eats keys.** After scrolling up, tmux is in copy mode and
-  typed keys would be its commands. The app watches its own outgoing bytes
-  for a wheel-up report; the owner's next input (key, extra key, snippet,
-  paste) is then held until one exec of
-  `tmux if-shell -F -t '=<name>:' '#{pane_in_mode}' 'send-keys -t =<name>: -X cancel'`
-  has run, and then sent. Costs one round trip on the first key after a
-  scroll; nothing global is bound. A copy mode entered another way (the
-  owner's own key binding) is not noticed.
-- **Sessions of a lost or reinstalled phone stay** on the devices until
-  killed by hand (`tmux ls | grep frpjump-`); a new install has a new id and
-  does not see them.
-- **The owner's tmux config can disagree** (another prefix, `mouse off` in a
-  hook, a `destroy-unattached` setting); per-session options win only for
-  what they set.
-- **Writer stall on a hung copy-mode exit.** The owner's first key after a
-  scroll waits for that exec; if the device does not answer, keys wait up to
-  10 s, then go anyway.
-- **tmux 2.4 or later needed** (`=` exact targets need 2.1, `send-keys -X`
-  2.4). An older or broken tmux that exits with an error within 5 s makes
-  the tab fall back to a plain shell at once, with a line saying so, and the
-  tab keeps to plain shells.
-- **`mouse on` overrides the owner's mouse setting** for the app's sessions
-  only; a laptop attached to one of them gets the mouse on too, and is
-  detached when the phone re-attaches (`-D`).
-- **A tmux session alive but its tab gone** (Close while the connection was
-  down) lingers until "Close all sessions of this phone".
-- **Long drops** past 10 minutes need one tap on Reconnect; the commands
-  keep running under tmux regardless.
-- **Without tmux nothing survives**; the package dependency covers devices
-  installed from the .deb only.
+- No mosh: tunnels are TCP. No local shell or automatic tmux installation by
+  this app. The companion `frp-jump-client` Debian package is required to
+  depend on tmux; that packaging belongs to `aadegtyarev/frp-jump`, outside
+  this repository. Pip/venv/manual installations may lack tmux.
+- No survival guarantee without tmux, after remote reboot/session destruction,
+  or against conflicting remote config. Process death does not preserve local
+  screen text/drafts. The recovery source is the remote session listing.
+- No timer kills remote sessions. Lost/reinstalled phones leave sessions until
+  ended manually; a new install id cannot discover the old install's sessions.
+  Close while disconnected can leave the same kind of orphan until close-all.
+- After a drop longer than 10 minutes, Reconnect needs a tap; remote tmux work
+  can continue independently. Mobile/vendor process survival and live SSH
+  delivery are not certified by synthetic lifecycle or buffer tests.

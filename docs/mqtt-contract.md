@@ -1,35 +1,28 @@
 # frp-jump for Android — MQTT explorer contract
 
-Status: approved by the owner 2026-10-31; revised after review the same day;
-publishing reshaped to the owner's answers the same day (one Publish…,
-editable topic, slices 2a/2b); plugins reshaped to the owner's decisions
-of 2026-11-01 (two separate plugins: status and command topics, Wiren
-Board). The UI rules of `docs/contract.md` apply unchanged.
+## Boundary and ownership
 
-A generic MQTT explorer for a broker reached through a frp-jump tunnel: the
-topic tree browsed like folders, live values, publishing anywhere in the
-tree, retained topics handled, branches deleted. No vendor conventions are
-built in (the tree is the broker's tree as is); payload views are pluggable
-so a convention can be added later without touching the explorer.
+The MQTT explorer browses and publishes to a broker reached through a
+frp-jump TCP tunnel. It serves users inspecting topics, watching values,
+sending commands and copying paths or payloads. There is one app-owned
+explorer session per connection; screens read that session rather than
+owning the MQTT client or its cache.
 
-## What it is for
+The explorer owns generic topic, subscription, history and Publish behavior.
+The Status and command topics plugin owns rule-based publish targets; the
+Wiren Board plugin owns convention-specific devices, metadata and controls.
+Neither changes the broker's tree or imposes a vendor policy on generic
+Publish. Broker ACLs remain the authority for access.
 
-The owner's typical jobs on a controller (for example a Wiren Board):
+The [shared UI rules](contract.md#ui-rules) apply throughout: common actions
+stay direct, labels and feedback stay short, and progress, errors,
+accessibility and safety warnings must not be lost for visual minimalism.
+The normal path is connection → **Explore** → branch or topic card →
+**Publish…**; pins keep selected topics live while browsing elsewhere.
+The WB tab offers controls directly on a device's rows.
 
-1. **Look around.** Which devices and controls exist, what they hold now,
-   which change and how often. → the tree with values, counts and ages.
-2. **Check one thing live.** A sensor, a relay state, a rule's output:
-   watch one topic or a branch change in time. → a topic's history and the
-   branch feed.
-3. **Act.** Switch a relay, set a value, send a command or a JSON payload
-   to a topic, possibly one that does not exist yet under a known branch.
-   → publish at the selected topic or under it.
-4. **Clean up.** Stale retained topics of a removed device or a renamed
-   rule linger forever. → delete one retained topic or a whole branch.
-5. **Take it elsewhere.** A path for a script or a rule, a value for a
-   bug report. → copy path, copy value, paste a path to publish to.
-
-Anything that does not serve one of these is out.
+This reference describes available behavior except where explicitly marked
+unavailable below. It is not a release or runtime-conformance report.
 
 ## Words
 
@@ -40,7 +33,7 @@ The same thing is called the same way on every screen:
 - **Topic filter**: what MQTT subscribes to, a topic that may hold the
   wildcards `+` (one level) and `#` (this level and all below).
 - **Search**: a match on topic paths, never on values: a plain query is
-  a case-insensitive substring (in the tree and the feed); in the tree a
+  a case-insensitive substring; a
   query with `* ? + #` is a **search pattern**, matched level by level
   and exactly, case included (see "The tree"). Searching never
   subscribes; a pattern's filter is pinned only on request.
@@ -56,7 +49,7 @@ The same thing is called the same way on every screen:
 ## Where it lives
 
 - A fourth connection kind, **MQTT**, next to Web, SSH and TCP, with the
-  preset 1883 (8883, which turns TLS on, comes with TLS in stage 5). On the wire it is a plain TCP
+  preset 1883. On the wire it is a plain TCP
   port (`protocol` `tcp`), so the server sees no change. Its main action
   is **Explore** («Обзор», named for what it opens), which opens the
   explorer for that tunnel, bringing the tunnel up first, as Terminal
@@ -67,17 +60,17 @@ The same thing is called the same way on every screen:
   its kind to MQTT and opens the explorer. It works with the tunnel up:
   the wire protocol stays `tcp`, so the lock on changing the kind of a
   live connection does not apply.
-- The bottom bar stays four items. The "Terminals" tab becomes
-  **Sessions** and lists terminal and MQTT sessions together, each with its
-  connection's name and kind.
+- The bottom bar has four items. **Sessions** lists terminal and MQTT
+  sessions together, each with its connection's name and kind.
 - Like the terminal, an explorer session lives in the app, not the screen:
   leaving keeps it connected (the tree keeps filling), with the notice
   "N sessions keep running: Sessions tab"; "Explore" on the same connection
   returns to its one session; sessions close only deliberately, from the
   Sessions tab (✕ on its row) or the explorer's "⋮", with Undo (UI rules):
   the session ends when Undo is gone.
-- Counts of sessions include both kinds: the notification ("N sessions")
-  and the "keeps running" notice.
+- Counts of sessions include both kinds: the notification ("N sessions"),
+  the "keeps running" notice and Disconnect's "N sessions will close"
+  warning.
 
 ## Connecting
 
@@ -86,12 +79,10 @@ The same thing is called the same way on every screen:
 - **Version.** MQTT 5 first. The app falls back to 3.1.1 when the broker
   answers CONNECT with CONNACK "unsupported protocol version" or closes the
   connection before any CONNACK; the session then stays on 3.1.1 until it
-  closes and shows "MQTT 3.1.1" in its details. The Wiren Board firmware on
-  Debian 13 (trixie) ships Mosquitto 2.0.21, older controllers (Debian 11)
-  Mosquitto 2.0.20; both speak 5.
+  closes and shows "MQTT 3.1.1" in its details.
 - **Session state.** Nothing is kept on the broker: MQTT 5 with clean start
   and session expiry 0, 3.1.1 with clean session. Keep alive 30 s.
-- **Login** (stage 1). Anonymous by default. When the broker refuses with
+- **Login**. Anonymous by default. When the broker refuses with
   "not authorized" or "bad user name or password", a login dialog like
   SSH's asks for user and password, with **Remember** (per connection,
   sealed like SSH passwords). A remembered login is tried first; refused,
@@ -105,11 +96,7 @@ The same thing is called the same way on every screen:
   invalidates an older retry. Automatic reconnect keeps the in-memory login
   and does not repeatedly retry a failed storage write. A file read IO error
   is not cached as an empty map and must not erase other saved entries;
-  the existing malformed-JSON fallback is unchanged.
-- **TLS** (stage 5). On for 8883, or by a switch on the connection; the
-  broker's certificate is pinned on first use, exactly as for web pages
-  (the same "Trust this certificate?" and "The certificate has changed"
-  dialogs with both SHA-256 fingerprints).
+  malformed stored JSON falls back to no saved logins.
 
 ## Incoming-message limits
 
@@ -281,14 +268,15 @@ neither option; see "Retained topics" for what that changes.
   pinned (through <pin>)", the search's button is off with the same
   words, and the Subscriptions tab's "+" refuses it so.
   Also typed as a topic filter on the Subscriptions tab (see there).
-- A typed topic filter is checked before it is saved: not empty; `#` only
-  as a whole level and only the last one; `+` only as a whole level. The
+- A typed topic filter is checked before it is saved: not empty, no NUL,
+  at most 65,535 UTF-8 bytes; `#` only as a whole level and only the last
+  one; `+` only as a whole level. The
   field says which rule failed. The owner is told that a filter whose
   first level is a wildcard (`+/…`, `#`) never matches `$` topics.
 - Pins are kept per connection on the phone, also after the session and
   the tunnel are closed, and are subscribed whenever a session of that
-  connection opens. Pinned topics carry a pin mark in the tree and are
-  listed on top of the feed.
+  connection opens. Pinned topics carry a pin mark in the tree and remain
+  visible on the Subscriptions tab.
 - Unpinning changes only the phone's list, so it works in a closed
   session too (on a card, in the search, on the Subscriptions tab): the
   next session subscribes without it. Pinning and changing a mask need
@@ -491,14 +479,15 @@ Tapping a topic (or "⋮" on a branch) opens its card, a bottom sheet:
   object or array → JSON; else Text) and switchable by hand for this card;
 - the full path with a copy button; a branch's last change, only when it
   is not the value's own time;
-- the last values with times (up to 20), newest first;
-- actions, by stage:
-  - stage 1: copy path and copy value (the buttons next to them, labelled
-    for screen readers), **Open branch (N)** (a node with children),
-    **Pin…** / **Unpin**;
-  - stage 2: **Publish…**, the card's main (filled) button;
-  - stage 4: **Delete** (a retained topic) and **Delete branch** (a
-    branch), both in the card's "⋮".
+- the last values with times (default 20, configurable), newest first;
+- copy path and copy value, labelled for screen readers; **Open branch
+  (N)** for a node with children; **Pin…** / **Unpin**;
+- **Publish…**, the card's main filled button.
+
+Text and JSON copy the raw payload text, Hex copies hex pairs. A copy is
+limited to 65,536 characters, never splitting a surrogate or hex pair;
+truncation is reported. JSON card detection is limited to 65,536 bytes and
+64 levels of nesting; larger or deeper UTF-8 values remain Text.
 
 ## Publishing
 
@@ -515,16 +504,18 @@ no separate "publish under": the topic field is the way to any other topic.
 - **Payload:** a text field. From a topic with a value it starts with
   that value, selected whole (typing replaces it), when the value is
   UTF-8 and at most 2 KB, else empty; the focus is then on it. From a
-  branch without a value, or "Publish here…", the focus is on the topic. 2b adds a format switch Text / JSON (JSON is
-  validated and can be formatted) and the last payloads sent to this
-  topic, one tap away.
+  branch without a value, or "Publish here…", the focus is on the topic.
+  Text / JSON selects the input format; JSON is validated and can be formatted. Recent payloads sent to this topic are one tap away.
+  JSON validation accepts a single JSON value, including a scalar, up to
+  65,536 UTF-8 bytes and 64 nesting levels; outside those limits use Text.
 - **Retain** and **QoS** (0/1/2); with Retain on and an empty value the
-  sheet warns in one line that it deletes the topic's retained value; 2a starts each sheet at retain off,
-  QoS 1; 2b remembers them per topic.
-- From stage 6 only: the Status topic / Command topic switch when a rule
-  of the "Status and command topics" plugin matches (see there). Before
-  it, and with no rule matching, the value goes to the topic in the
-  field, nothing else.
+  sheet warns in one line that it deletes the topic's retained value.
+  Retain, QoS and format are remembered per topic after a successful or
+  unconfirmed send; without a remembered choice: retain off, QoS 1, Text.
+- When enabled, the Status and command topics plugin can offer a different
+  target, described below. Otherwise the value goes to the topic field.
+  Generic Publish does not enforce WB readonly or hidden metadata, even
+  for a control's `/on` topic.
 - Send answers on the button itself (its label becomes the answer,
   wrapping onto a second line rather than cut, in the error colours for a
   refusal or failure, read out by screen readers, until anything is
@@ -537,51 +528,24 @@ no separate "publish under": the topic field is the way to any other topic.
   If the topic is covered by a subscription its new value shows in the
   tree.
 
-## Feed
-
-The branch's live changes as a list, newest on top: time, path relative to
-the branch, value. Pause (the list stops, counting what arrives), filter by
-search, tap an entry to open its topic. Pinned topics are listed on top
-with their latest values. A retained value re-sent by the broker on a new
-subscribe, equal to the value already known, is not a change: not in the
-feed, not in history, no highlight. This is the "what is going on" view;
-the tree is the "what is there" view.
-
 ## Retained topics and deleting
 
-- **The mark.** Under MQTT 5 a message's retain flag is the publisher's
-  (Retain As Published): retain 1 sets the mark; an empty retained
-  message means the retained value was cleared, so the topic shows
-  "(cleared)" without the mark; an empty message that is not retained is
-  an ordinary value, `(empty value)`. Under 3.1.1 brokers deliver live
-  messages without the flag, so the mark is sticky: set by any message
-  delivered with retain 1 (on subscribe), cleared only by an empty message
-  or by Delete.
-- Moving the branch subscription re-delivers the branch's retained
-  values; this refreshes marks and is not shown as change (see "Feed").
-- **Delete** (a retained topic, card "⋮"): the topic goes from the tree at
-  once with **Undo** (UI rules); when Undo is gone, publishes an
-  empty retained message, QoS 1, to it (the MQTT way to remove it); the
-  answer as for Send.
-- **Delete branch** (a branch, card "⋮"):
-  1. The app re-reads the branch (subscribes `<p>/#` afresh, the snapshot's
-     stopping rule) and takes the topics delivered as retained.
-  2. No confirm: the app unsubscribes the branch and shows, for a few
-     seconds, how many it will delete with **Undo** ("Deleting 37
-     retained topics under /devices/wb-old · 4 not retained, untouched ·
-     Undo"). Undo puts the branch back; nothing was sent.
-  3. When Undo is gone it publishes an empty retained message, QoS 1, to
-     each, with progress ("12 of 37 deleted") and **Stop**, which stops
-     before the next one.
-  4. After the last one it re-reads the branch again, then sums up: "N
-     deleted, M refused, K came back". Refused: an MQTT 5 reason code on
-     the PUBACK. Came back: deleted topics delivered as retained again by
-     the re-read (under 3.1.1 a refused delete shows up here, as 3.1.1
-     reports no refusal).
+Under MQTT 5, Retain As Published preserves the publisher's flag. A
+non-empty retained message sets the retained mark; an empty retained
+message clears it and shows "(cleared)". An empty non-retained message is
+an ordinary `(empty value)`.
 
-  Only the topics the fresh re-read delivers as retained are published to,
-  not every seen topic: an empty message to a command topic such as
-  `.../on` could act on the device.
+Under 3.1.1 live delivery lacks the publisher's retain flag, so the mark is
+sticky: a non-empty retained delivery sets it, subsequent non-empty live
+values keep it, and an empty message clears it. An empty message counts as
+cleared when it carries retain or the topic was marked.
+
+An equal retained value re-delivered on subscribe refreshes retained/QoS
+marks but is not a change: no extra history entry or highlight. MQTT cannot
+distinguish that from an equal retained re-publish; both are treated alike.
+Moving branches and reconnecting can cause these refreshes. Dedicated
+Delete actions and a Feed UI are not available; see the retained constraints
+below. Generic Publish can send an empty retained message with its warning.
 
 ## A session's life
 
@@ -607,39 +571,48 @@ the tree is the "what is there" view.
 
 - Progress where tapped: the "Explore" button shows a spinner until the
   broker answers; the snapshot and "Refresh tree" show a bar under the
-  path bar with the count ("Reading the tree… 1 234 topics"); Delete
-  branch shows its progress in its dialog.
-- Rare actions live in "⋮": Delete, Delete branch, Refresh tree, Close
+  path bar with the count ("Reading the tree… 1 234 topics").
+- Rare actions live in "⋮": Plugins…, Refresh tree, Close
   session.
 - Failures, in place of the tree, each with **Retry**:
   - connect refused: "No broker answers on port 1883 of <device>";
   - login refused: the login dialog, as above;
-  - TLS: the certificate dialogs of web pages; not trusted, "Not
-    connected: the certificate was not trusted";
   - no common version: "The broker refused MQTT 5 and 3.1.1".
 
 ## Payload views (plugins)
 
-- A payload view turns a topic's raw bytes into what the card and the
-  tree row show. Built in: Text, JSON, Hex.
-- Views are chosen by topic filter (first match wins), so a later view for
-  a convention plugs in by declaring its filters and how it shows a value
-  and its metadata. The explorer never depends on a plugin: with every
-  plugin off it is the explorer of stages 1–5, and no plugin changes the
-  Tree.
-- Plugin form: declarative (a JSON description of filters and fields
-  shipped with the app or imported), not downloaded code: Android forbids
-  loading foreign code into an app of this kind safely.
-- Plugins are kept separate, each doing one job. Each is turned on and
-  off and set up for the whole app in Settings → «Плагины». A connection
-  can turn a plugin on or off for itself in its «Плагины» sheet, which
-  opens from the edit sheet or from the explorer's "⋮" → **Plugins…**.
-  The connection's own setting wins over the app level
-  (`docs/contract.md` scenario 12, which also has the storage and the migration from the earlier
-  per-connection settings). Two come first: **Status and command
-  topics** (any vendor, rules only) and **Wiren Board** (a devices view
-  of the Wiren Board convention). Both are on at app level until
-  turned off.
+Text, JSON and Hex are built-in payload views. The shipped plugins are
+**Status and command topics** (rules for any vendor) and **Wiren Board**
+(a devices view). Both default on at app level. With both off the generic
+explorer remains functional, and no plugin changes Tree.
+
+Settings → **Plugins** provides app-level on/off switches and lists
+connection exceptions. A connection's **Plugins…** sheet opens from its
+edit sheet or the explorer's "⋮"; its own on/off setting wins over the app
+setting. Resetting to **As in Settings** removes the exception. Presets and
+own rules are currently edited in that connection sheet while Status and
+command topics is on there, but those edits are **app-wide**, not local to
+that connection. The planned move of these editors to Settings and the WB
+title-language/show-hidden settings UI are not available.
+
+The app-owned plugin observer applies effective on/off settings to sessions
+with or without an explorer screen. Off drops plugin filters, not cached
+topics; on re-reads retained metadata as needed. Turning WB off returns its
+open tab to Tree; turning it on does not take the screen. Already-sent
+writes cannot be recalled. The shared [plugin settings and compatibility
+contract](contract.md#12-mqtt-plugins-in-settings) owns defaults, overrides,
+store schema, migration, downgrade limits and deletion scope, including
+conditional off-state Settings usability/retention and live-setting semantics.
+Stored WB language/hidden fields retain their compatibility meaning; their
+existence is not a claim that their settings UI has shipped.
+
+Plugin rule descriptions are declarative data, not downloaded executable
+code. Importing arbitrary plugin descriptions, filter-selected replacement
+payload renderers and moving Text/JSON/Hex onto common plugin plumbing are
+not available capabilities. If filter-selected payload views are introduced,
+the first matching topic filter must select the view for the card and tree
+row. Shipped or imported descriptions must remain declarative JSON data
+(filters and fields), not downloaded executable code.
 
 ### Status and command topics
 
@@ -692,11 +665,11 @@ else in this plugin.
      the rest of `stat/` are not matched;
   4. a generic "state/set" pair: `{x...}/state` → `{x...}/set`, except
      `zigbee2mqtt/bridge/state`.
-- **Presets on**: at first all presets are off. From stage 7 the Wiren
+- **Presets on**: at first all presets are off. The Wiren
   Board preset turns on by itself, once for the app, the first time any
   connection shows the WB tab (see below) while this plugin is on for
   that connection. Turned off by hand afterwards, it stays off. Presets
-  are app-level (`docs/contract.md` scenario 12).
+  are app-level ([plugin settings](contract.md#12-mqtt-plugins-in-settings)).
 - **In the publish sheet**: when a rule matches the sheet's topic, a
   switch **Status topic / Command topic** («Топик статуса / Командный
   топик») above Send, defaulting to Command topic, with the rule that
@@ -707,30 +680,27 @@ else in this plugin.
   the topic in the field. Editing the topic re-matches. With Command topic
   chosen and Retain on, one line warns: "A retained command is sent to
   the device again on every reconnect".
-- **Setting up**: in the plugin's screen, Settings → «Плагины» →
-  «Топики статуса и команд» (`docs/contract.md` scenario 12), the presets are switches, and
+- **Setting up**: in the connection's **Plugins…** sheet, the presets
+  are app-wide switches, and
   own rules are a list with **+** (status template, optional command
   template, optional exclusions, optional name; checked as above, the
   field saying which rule failed), reordered by drag, deleted with Undo. A
   new device kind needs a rule, not a plugin. Presets and own rules apply
   to every connection with the plugin on. Deleting the connection where
   a rule was added does not delete the rule.
-- Later, not in stage 6: a command topic shown under its status topic in
-  the tree.
-
-It is simple on purpose: it proves the plugin plumbing (description
-format, matching, on/off at app level with a per-connection setting
-(`docs/contract.md` scenario 12), override in the publish sheet)
-before the richer view below.
 
 ### Wiren Board
 
 A devices view of the Wiren Board MQTT convention
 (`/devices/<d>/controls/<c>` with meta), for the owner's daily jobs on a
 controller: see the devices, read values with their units, switch and set.
-Source: the Wiren Board MQTT conventions, `wirenboard/conventions`
-README, version 1.5.0 (2026-09-02), checked against a retained dump of a
-live controller; where they differ, both are read.
+The compatibility baseline is `wirenboard/conventions` README, version
+1.5.0 (2026-09-02), with the legacy one-field forms below. For `range`,
+the type section's default max 255 is used, not the meta section's 10^9.
+Current views use the app's language and omit hidden controls. The stored
+language/show-hidden settings below retain their required meaning for the
+deferred settings capability; this is not a claim that those overrides
+are currently applied.
 
 - **The tab.** With the plugin on, the explorer's tabs become **Tree ·
   Subscriptions · WB** (one short label in every language, so the three
@@ -738,9 +708,9 @@ live controller; where they differ, both are read.
   sees a control's meta (below); before that, and on a broker without the
   convention, there is no third tab. The three tabs share the segmented
   switch's width equally; «WB» never wraps, and only at very large font
-  sizes may another label wrap to two lines rather than being cut. Turning the plugin off, in Settings or for the
-  connection (`docs/contract.md` scenario 12), removes the tab. The tab stays away wherever the
-  plugin is off, until it is turned on again.
+  sizes may another label wrap to two lines rather than being cut. Turning
+  the plugin off, in Settings or for the connection, removes the tab until
+  it is turned on again.
 - **Opening on it.** A connection whose last session showed the tab (kept
   per connection) opens the explorer on WB devices, which reads "Reading
   devices…" until the snapshot ends. A first session opens on Tree and
@@ -763,7 +733,10 @@ live controller; where they differ, both are read.
   branch, `/devices/<d>/#`; going back to the list or to Tree subscribes
   the Tree's path again.
   In the dedupe order of "Subscriptions" the plugin's subscriptions come
-  after the pins.
+  after the pins. The app-owned observer holds metadata filters without a
+  screen once metadata is seen, or when a refused/incomplete snapshot may
+  have missed it. Only a quiet completed snapshot without metadata permits
+  treating the convention as absent; a storage limit does not.
 - **Meta.** A control's meta is one JSON topic `<control>/meta`: `type`,
   `units`, `min`, `max`, `precision`, `order`, `readonly` (default false),
   `hidden` (default false), `title`, `enum`. For backward compatibility
@@ -784,8 +757,8 @@ live controller; where they differ, both are read.
   Tree is unchanged.
 - **Titles.** A title is a string, taken as is, or an object of language
   keys (`{"en": "Lamp", "ru": "Лампа"}`). The key used is the one for
-  the language of the plugin's «Язык названий» setting
-  (`docs/contract.md` scenario 12), which defaults to the app's language
+  the language of the plugin's stored title-language setting, whose
+  required default is the app's language
   (`ru-RU` → `ru`). Without that key, `en` is used, and without `en`,
   the first key in the JSON's order. An empty string counts as absent. No title: for a device
   `meta/name`, then the id; for a control the id. Enum titles follow the
@@ -797,11 +770,18 @@ live controller; where they differ, both are read.
   скрытые» is on. A tap opens the device.
 - **A device.** Its controls by `order` (no order: after the rest, by id
   in natural order). A control with `hidden` true is not shown unless
-  the plugin's «Показывать скрытые» is on (`docs/contract.md` scenario 12). When it is on, the
-  control is listed and marked «скрытый», and its error counts toward
-  the device's "!". This changes earlier behaviour, where hidden
-  controls never showed and their errors never counted. The setting is
-  off by default, which keeps the earlier behaviour. A row:
+  stored show-hidden setting is on. When it is on, the control must be
+  listed and marked «скрытый», and its error must count toward the device's
+  "!". A hidden control exposed by supported show-hidden must work as any
+  other control, respecting readonly and the normal exact client-owner and
+  current-meta checks. This conditional requirement covers every supported
+  writable type: `switch`, `wo-switch`, `pushbutton`, `range`, `rgb`, enum,
+  numeric (`value`, typed controls and `local_time`) and text (`text`,
+  `w1-id`) inputs. Hidden is not an additional permanent write prohibition
+  for such an exposed control; read-only and non-writable types remain so.
+  The stored setting defaults off. The language/show-hidden UI is deferred;
+  these remain required settings semantics, not a claim that their controls
+  or hidden-control writes are currently available. A row:
   - the title;
   - the value, with units and digits (below), or its enum title;
   - the control by type, on the right;
@@ -843,10 +823,6 @@ live controller; where they differ, both are read.
   "Copy value" («Копировать значение», `wb_copy_value`), the long press
   "Copy topic".
 
-  Decided (2026-11-01, the operator): the copy notice carries Card in place
-  of the title opening the card; the value copied is the raw published
-  payload, not the shown text; writable widgets keep tap = their own
-  action, identically for all of them, with no value copy.
 - **Value display.**
   - Digits: with `precision`, the value rounded to the nearest multiple
     of it (half away from zero), computed in decimal arithmetic, never
@@ -902,9 +878,17 @@ live controller; where they differ, both are read.
 - **Readonly boundary.** These checks apply only to WB plugin actions, not
   the generic Publish sheet, even for the same control's `/on` topic. A
   cached writable row does not authorize a send: the session actor rereads
-  meta immediately before publishing. Read-only, hidden, missing, unsupported
-  or changed meta rejects the old action. JSON/one-field precedence stays
-  as described above. This is a client-side plugin rule, not a broker ACL.
+  meta immediately before publishing. Read-only, missing, unsupported or
+  changed meta rejects the old action. The current actor also rejects
+  hidden meta, while the show-hidden override is unavailable. That current
+  guard does not supersede the conditional normal-operation requirement
+  for exposed hidden controls above. Supporting show-hidden therefore has
+  an implementation/conditional-policy gap: its approved feature and
+  code-audit decision must reconcile exposure with the guard, without
+  bypassing readonly, exact owner/meta checks or stale-action invalidation.
+  This reference neither loosens the current guard nor chooses a new ACL
+  or permission policy. JSON/one-field precedence stays as described above.
+  These are client-side plugin rules, not broker ACLs.
   Editors and gestures are discarded when their accepted MQTT client or
   control meta changes; an old callback cannot target a reconnect's client.
   A late answer owns its exact write, not just an equal timestamp/payload,
@@ -947,256 +931,79 @@ live controller; where they differ, both are read.
 
 ### Later plugins
 
-Tasmota, Zigbee2MQTT and Home Assistant discovery views, each a plugin of
-its own beside these two; not part of the delivery stages or the
-acceptance.
+Tasmota, Zigbee2MQTT and Home Assistant discovery **views** are not
+available. The shipped Status and command presets are rules, not such views.
 
 ## Later: charts
 
-Not part of the delivery stages 1–7 or of the acceptance; the data model
-keeps room for it: numeric values of chosen topics are collected while the
-session runs and drawn as charts over time, several on one chart with their
-own scales, to see how parameters depend on each other (a room's
-temperature against a valve's position, a current against a relay). The
-topic history then needs a longer, numeric-only buffer per charted topic;
-nothing else in the explorer changes for it.
+Charts and longer numeric-only chart history are not available. Topic
+history remains the bounded session history described above.
+
+## Unavailable capabilities and retained constraints
+
+Feed UI, dedicated retained Delete/Delete branch actions and broker TLS
+were specified as staged delivery, but are not available now. Their
+introduction needs a separate approved feature; the following previously
+decided constraints are not revoked:
+
+- **Feed:** branch changes newest first, relative path/time/value, pause
+  with incoming count, search, topic-card navigation and latest pinned
+  values. Equal retained re-delivery is not a change; the current history
+  and highlight rules already preserve this distinction.
+- **Delete:** remove the topic on screen with shared Undo, no extra
+  confirmation, nothing sent before Undo expires; then an empty retained
+  QoS 1 publish, answered as for Send. Branch deletion must take only topics
+  delivered as retained by a fresh `<p>/#` re-read using the snapshot
+  stopping rule, never arbitrary seen topics or command topics. Unsubscribe
+  the branch during Undo and show the retained count to delete and the
+  non-retained count left untouched. Undo restores it without a send.
+  Progress and Stop must allow
+  stopping before the next publication. A final re-read must distinguish
+  deleted, MQTT 5 refusals and retained topics that came back; under 3.1.1
+  a refused deletion cannot be claimed confirmed and can appear as came
+  back. Partial or unknown outcomes must be reported truthfully.
+- **TLS:** the specified 8883 preset enables TLS, with a connection switch
+  for other ports; first-use trust and pinned broker identity follow the
+  web certificate flow. A changed certificate requires the changed-identity
+  dialog with both SHA-256 fingerprints; refusing trust leaves the broker
+  unconnected with Retry. Pinned broker certificates must retain the original
+  storage protection: sealed / app-private, as for SSH and web. These are
+  conditional requirements, not current TLS negotiation or pinned-certificate
+  storage.
 
 ## Stored on the phone
 
+Tree payloads and history are volatile, but pins, rules and recent outgoing
+payloads can contain private topic names and values and persist locally.
+Publish memory keeps at most 100 topics per connection and 10 distinct
+recent payloads per topic, with 65,536 payload characters in total per
+connection. Payloads over 4,096 UTF-8 bytes are sent but not remembered;
+topics over 1,024 UTF-8 bytes have no remembered entry. Oldest payloads of
+least-recent topics leave first. A failed persistence write does not undo a
+sent publish; its recent-send state can survive only in memory.
+
 | What | Where |
 | --- | --- |
-| Pins with their masks; retain/QoS per topic and last payloads sent (2b) (per connection) | app-private storage |
-| Plugins, app level: each plugin on or off; Status and command presets and own rules, and whether the Wiren Board preset was already turned on by itself; Wiren Board title language and show hidden (`docs/contract.md` scenario 12) | app-private storage, `mqtt_plugins_v2.json` |
-| Plugins, per connection: each plugin's own on or off, if set; whether the WB tab was shown before (to open on it) (`docs/contract.md` scenario 12) | same file |
-| Broker logins (only with Remember), pinned broker certificates | sealed / app-private, as for SSH and web |
+| Pins with their masks; retain/QoS/format per topic and last payloads sent (per connection) | app-private storage |
+| Plugins, app level: each plugin on or off; Status and command presets and own rules, and whether the Wiren Board preset was already turned on by itself; Wiren Board title language and show hidden ([plugin settings](contract.md#12-mqtt-plugins-in-settings)) | app-private storage, `mqtt_plugins_v2.json` |
+| Plugins, per connection: each plugin's own on or off, if set; whether the WB tab was shown before (to open on it) ([plugin settings](contract.md#12-mqtt-plugins-in-settings)) | same file |
+| Broker logins (only with Remember) | app-private storage; password sealed as for SSH |
 | The tree and history | memory only, for the session |
 
-## Delivery
+## Related contracts
 
-1. The MQTT connection kind (preset 1883), "Open as MQTT" for TCP
-   connections, and the Sessions tab; connect
-   (MQTT 5 with the 3.1.1 fallback, anonymous, then login), tree snapshot,
-   root and `$SYS`, the open branch live, path bar, search, topic card with
-   Text/JSON/Hex, Copy path, Copy value, Pin with masks, reconnect.
-2. Publish, in two slices:
-   - 2a: the sheet (topic, payload as text, retain, QoS), Send and the
-     broker's answer;
-   - 2b: Text/JSON with validation and formatting, recent payloads, retain
-     and QoS remembered per topic.
-3. Feed with pause, filter and pinned topics.
-4. Retained delete for a topic and a branch.
-5. TLS (preset 8883, pinned certificate); the Subscriptions tab: pins
-   listed, masks changed, typed topic filters (the tab came first).
-6. Plugin infrastructure (declarative descriptions, matching, enable per
-   connection, the connection's Plugins settings; superseded by app-level
-   settings, `docs/contract.md` scenario 12, stage 10) with the first plugin,
-   "Status and command topics": one- and two-template rules, the four
-   presets, own rules, the publish sheet's switch. Moving the Text/JSON/Hex
-   views onto the same plumbing has no visible effect and is left for a
-   later small step.
-7. The Wiren Board plugin: the WB devices tab (devices list, a device's
-   controls by type, writes to `/on` answered on the control, error
-   marks), both meta forms, on/off per connection (now app level with a
-   per-connection setting, `docs/contract.md` scenario 12); the Wiren Board
-   preset turning on with the tab, only while the first plugin is on.
-8. Later: charts of chosen numeric topics, overlaid; later plugins
-   (Tasmota, Zigbee2MQTT, Home Assistant).
-
-Each stage is delivered in small PRs, each reviewed; a stage's first
-build for the owner's phone goes out once something in it is visible, then
-after each visible PR. Checked on the emulator against a test broker.
-There is one explorer session per connection.
-
-## Acceptance
-
-On a Wiren Board on the tunnel unless said otherwise.
-
-1. Connect, tree, card, pins, login:
-   - A new MQTT connection on 1883 has the main action "Explore"; the
-     explorer opens with the tree; the root holds `/ (leading slash)` and `$SYS`,
-     is not subscribed live and shows what the session has seen;
-     an old TCP connection on 1883 becomes MQTT by "Open as MQTT";
-     `/devices/*/controls/*` and `/devices/*/meta` show live values;
-     `wb-mr6c_1/controls/K1` changes as the relay switches.
-   - `$SYS` opens and shows the broker's topics.
-   - On the Wiren Board, whose values change all the time, the snapshot
-     ends about 1 s after the last new topic and shows no banner. A test
-     broker that keeps publishing new topics: the snapshot stops at 10 s
-     and says so. The topic limit, lowered in a test build: "Topic
-     limit reached".
-   - `/devices/wb-mr6c_1/meta` shows as JSON, a binary payload as Hex; the
-     switch changes the view.
-   - Pin `K1` (topic only) and `controls` with "One level below": `K1` and
-     the controls update while another branch is open; close the tunnel
-     and open "Explore" again: both are subscribed again.
-   - A broker with a password: the login dialog; a wrong password says
-     "Wrong user or password"; with Remember the next session connects
-     without asking.
-   - A broker speaking only 3.1.1 (Mosquitto 1.5 or older; MQTT 5 came in
-     1.6), and a test server that closes the connection on an MQTT 5
-     CONNECT: both sessions connect on 3.1.1 and say so.
-   - Cut the tunnel for 20 s (airplane mode): "Reconnecting…", then the
-     same local port, the tree kept, pins and branch live again.
-   - Leaving and returning keeps the session; the tree is not rebuilt; the
-     Sessions tab lists it with the terminals; Disconnect warns "N sessions
-     will close" counting both.
-2. Publish:
-   - 2a: from the card of `/devices/wb-mr6c_1/controls/K1`, Publish…,
-     append `/on` to the prefilled path, send `1`: the relay switches and
-     the tree shows the new state. From a branch card, a new subtopic
-     reached by editing the path is created.
-   - 2b: invalid JSON is flagged before Send and Format pretty-prints
-     valid JSON; a payload sent before is one tap away on reopening the
-     sheet for that topic; retain and QoS come back as last set for it.
-   - Answers (2a): a test broker with an ACL denying a topic: QoS 1 under
-     MQTT 5 says "Refused: not authorized"; QoS 0 says "Sent, not
-     confirmed".
-3. The feed of `/devices/wb-msw-v3_21` shows temperature updates; pause
-   stops it and counts; pinned topics are on top; navigating away and
-   back adds no repeated entries.
-4. Retained:
-   - Publish retained `x` to a test topic: marked retained under MQTT 5
-     and 3.1.1; publish empty retained: "(cleared)"; an empty non-retained
-     message shows `(empty value)`.
-   - A retained branch of a removed device is deleted with one tap, the
-     notice counting the retained topics with Undo; the summary says "N deleted, 0
-     refused, 0 came back"; the branch is gone after a reconnect. A device
-     that republishes during the delete shows in "came back".
-5. TLS: a broker on 8883 asks to trust its certificate; after the
-   certificate is replaced, "The certificate has changed" with both
-   fingerprints; not trusted, "Not connected" with Retry. The Subscriptions
-   tab takes `$SYS/#` and refuses `a/#/b`.
-6. Status and command topics:
-   - With the Wiren Board preset on, the publish sheet for
-     `/devices/wb-mr6c_2/controls/K1` defaults to "Command topic"
-     (`…/K1/on`), shows the rule, and `1` switches the relay; switched to
-     "Status topic", the value goes to `K1` itself. Retain on with
-     Command topic shows the warning.
-   - With the generic preset on, `home/light/state` offers
-     `home/light/set`; an own rule `home/{x...}/state` →
-     `home/{x...}/cmd` above it gives `home/a/b/cmd` for
-     `home/a/b/state`.
-   - Zigbee2MQTT preset: `zigbee2mqtt/kitchen/lamp` offers
-     `zigbee2mqtt/kitchen/lamp/set`; `zigbee2mqtt/bridge/state` and
-     `zigbee2mqtt/kitchen/lamp/availability` offer no switch.
-   - Tasmota preset: `stat/plug/POWER` offers `cmnd/plug/POWER`,
-     `stat/plug/POWER1` offers `cmnd/plug/POWER1`; `stat/plug/RESULT`
-     offers no switch.
-   - Exclusions: an own rule `{x...}/state` → `{x...}/cmd` excluding
-     `home/{y...}/state` above the generic preset: `home/light/state`
-     falls through to the preset and offers `home/light/set`.
-   - An own one-template rule `home/{x...}/state` above the presets: the
-     sheet for `home/light/state` shows no switch and says the topic takes
-     commands itself; the value goes to `home/light/state`.
-   - All presets off and no own rule: the sheet is the one of stage 2.
-7. Wiren Board:
-   - On the Wiren Board the WB devices tab appears after the snapshot of
-     the first session without switching to it; the next session opens on
-     it. It lists the devices with their titles in the phone's language
-     (Russian on a Russian phone; on an English phone a title with only
-     `ru` shows the Russian one; a device with only `meta/name` shows
-     that), the id under each. A test broker without `/devices/…/meta`
-     shows no third tab. Turned off, in Settings or for the connection
-     (`docs/contract.md` scenario 12), the tab is gone in the next session too. With the tab shown the first time,
-     the Wiren Board preset of the first plugin is on.
-   - Inside a device Back (the top bar's arrow or the system's) returns to
-     the list, then to Tree, whose path is the one it had; the device's
-     header has no arrow of its own.
-   - `wb-mr6c_2`: its controls in meta order; toggling K1 switches the
-     relay, the toggle shows sending, then the state the status topic
-     brings; switching the relay from the controller's web UI moves the
-     toggle. A test broker that never echoes: "No answer from the device"
-     5 s after the PUBACK, the toggle back as it was; an ACL denying
-     `…/K1/on` (MQTT 5): "Refused: not authorized" on the control.
-   - A read-only temperature (`wb-msw-v3_21`) shows its value with °C and
-     no control; a `value` control shows its `units` and its value
-     rounded to its `precision` without trailing zeros (`76.50263` with
-     `1e-06` reads `76.50263`).
-   - A test device with a `range` (no `max`: the slider ends at 255), an
-     `rgb`, a `pushbutton`, an `alarm` and a `value` with `enum`: the
-     slider sends one integer on release and the echo ends it; the colour
-     is sent as `R;G;B`; the button answers "Accepted by the broker"; the
-     alarm turns red on `1` and offers no control; the enum value shows
-     its title and a tap offers the titles.
-   - A control whose JSON meta has no `readonly` but whose `meta/readonly`
-     topic is `1` shows no control.
-   - A control with `meta/error` `r` shows the red mark with "Read error"
-     and «—» for its value, and its device the "!" in the list; emptying
-     the error topic clears both and the value shows again.
-   - A device publishing only the older one-field meta topics, and one
-     publishing only the JSON meta, show alike.
-   - Tapping a control's title copies `fake-wb/Irms 1`, a long press
-     `/devices/fake-wb/controls/Irms 1`; tapping `PF 1` (published `0.50`,
-     shown `0.5`) copies `0.50`; tapping a «—» copies nothing and says why;
-     **Card** on the copy notice opens the topic card.
-   - A control with `hidden` true is not listed. With «Показывать
-     скрытые» on, it is listed with «скрытый», and its error marks the
-     device "!".
-   - A `wo-switch`: the toggle shows the value sent and answers on the
-     PUBACK, waiting for no echo.
-   - Toggling to the value already shown: the PUBACK ends the sending
-     state at once.
-   - A test broker that withholds the PUBACK: "No answer from the broker"
-     10 s after sending.
-   - A `pushbutton` on a 3.1.1 session answers "Sent, not confirmed".
-   - With the first plugin turned off, the tab appearing does not turn
-     the Wiren Board preset on.
-
-## Decided
-
-- MQTT 5 with a 3.1.1 fallback, after the brokers on the owner's
-  controllers (Mosquitto 2.0.20 and 2.0.21).
-- A fourth connection kind, MQTT, with the main action "Explore"
-  (first "MQTT"; renamed after the UX walkthrough to name what it opens,
-  as "Terminal" does for SSH).
-- The explorer stays generic: no vendor conventions (Wiren Board meta,
-  titles, units, `/on`, read-only controls) in the explorer itself; they
-  come as payload views (plugins).
-- The path bar's root is a house icon ("Root"); the empty first level is
-  `/` ("leading slash").
-- The bottom bar stays four items; "Terminals" becomes "Sessions" for
-  terminal and MQTT sessions.
-- One concept, the pin (a subscription with a mask); no separate "Watch".
-- Login in stage 1, TLS in stage 5.
-- The change highlight is the age label in the accent colour, nothing more.
-- The root is not subscribed live: it shows what the session has seen
-  (the snapshot plus open branches and pins), "Refresh tree" re-takes the
-  snapshot; live values start at the first level (economy of traffic and
-  phone load).
-- The snapshot's quiet second counts what fills the tree (new topics,
-  retained values re-sent unchanged, as on a reconnect or a branch
-  re-read), not new values of known topics, so a live controller does not
-  run it into the 10 s cap.
-- At the topic limit new topics stop being added, known ones keep
-  updating, and the screen says so.
-- Delete branch publishes only to topics a fresh re-read of the branch
-  delivers as retained, so no command topic gets an empty message.
-- Existing TCP connections on 1883 stay TCP; "Open as MQTT" in their "⋮"
-  converts them.
-- Plugin templates allow one `{name...}` at any position.
-- Two separate plugins (2026-11-01): "Status and command topics" for any
-  vendor by rules (a rule has one topic or two; presets are only rules),
-  and "Wiren Board" for the devices view; the explorer itself stays
-  generic. Both on by default; of the presets only Wiren Board, which
-  turns on with the WB devices tab.
-- The WB devices tab is the third, shown on its own once Wiren Board meta
-  is seen. It can be turned off at app level or for one connection
-  (`docs/contract.md` scenario 12, 2026-11-01). Once a connection has
-  shown it, its sessions open on it. The Tree never changes for it.
-- Wiren Board writes are answered on the control: sending until the
-  status topic confirms, a refusal or 5 s after the PUBACK without the
-  echo shown there.
-- Wiren Board errors in plain words: `r` "Read error", `w` "Write error",
-  `p` "Polled late"; a device-level error "The device does not answer".
-- Enum titles are shown instead of raw values, in the phone's language.
-- Wiren Board facts follow `wirenboard/conventions` 1.5.0: `readonly`
-  and `hidden` default false; `range` is integer, `min` 0, `max` 255
-  (the README's meta section says 10^9 for range, its type section 255;
-  the type section is followed); one-field meta topics only for `type`,
-  `min`, `max`, `order`, `readonly` (plus `precision` and `units`, seen on
-  live controllers); errors only in `meta/error` topics.
+- [App, shared UI, tunnels and plugin settings](contract.md), especially
+  [UI rules](contract.md#ui-rules) and
+  [plugin compatibility](contract.md#12-mqtt-plugins-in-settings).
+- [SSH persistence](ssh-persist-contract.md) for the related credential
+  storage and shared session lifetime boundary; MQTT does not restore a
+  broker session or its tree after process death.
 
 ## Open risks
+
+- Broker transport currently uses plain MQTT over the local tunnel. It is
+  not broker TLS, and a broker accepting anonymous clients provides no
+  broker-login protection.
 
 - Memory: ingress and owned-storage accounting are not an exact whole-app
   heap cap. Reader snapshots and MQTT decoder allocations are excluded;
