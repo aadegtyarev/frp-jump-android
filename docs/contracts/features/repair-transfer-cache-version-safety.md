@@ -18,6 +18,14 @@ no receiver-finished callback or arbitrary one-day grace period is required.
 The narrow settings field/UI and corresponding retention-policy updates are
 part of this approved feature, not a general settings or persistence refactor.
 
+The operator also approved one narrow test-only Gradle exception: expose the
+already resolved `androidx.emoji2:emoji2:1.4.0` API to Android-test compilation
+so the isolated test runner can install its synthetic non-provider loader.
+This does not approve a new application runtime dependency, a version change,
+production provider changes or additional libraries. Verify the application's
+resolved runtime graph remains unchanged; inspect the rebuilt test APK and
+initializers before independent safety review and any device authorization.
+
 Affected durable surfaces:
 
 - [Files](../../files-contract.md): visit/row ownership, transfers, viewer and
@@ -108,8 +116,11 @@ normative promises remain the authority; implementation absence is not a waiver.
   settings.
 - Preserve concise shared UI, accessibility, truthful waiting/errors, Undo,
   selected-tab OSC52/manual Copy and unrestricted generic MQTT Publish.
-- No dependency/CI/toolchain change or release/tag/version bump. Public version
-  remains 0.3.48/code60. Parent retains publication and acceptance authority.
+- No application-runtime dependency or dependency-version change. The only
+  dependency-declaration exception is the approved test-only visibility of the
+  already resolved EmojiCompat 1.4.0 API above; no other library is authorized.
+  No CI/toolchain change or release/tag/version bump. Public version remains
+  0.3.48/code60. Parent retains publication and acceptance authority.
 
 ## Acceptance and validation
 
