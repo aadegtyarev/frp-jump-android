@@ -65,10 +65,12 @@ class FrpJumpApi(
         .followSslRedirects(false)
         .build(),
 ) : AgentApi {
-    /** Unauthenticated `GET /api/agent/version`. */
+    /** Unauthenticated `GET /api/agent/version`; rejects incompatible protocols before exposing features. */
     suspend fun version(controlUrl: String): VersionResponse {
         val request = Request.Builder().url(endpoint(controlUrl, "version")).get().build()
-        return WireJson.decodeFromString(call(request))
+        val response = WireJson.decodeFromString<VersionResponse>(call(request))
+        if (response.protocolVersion != PROTOCOL_VERSION) throw ProtocolMismatchException(response.protocolVersion)
+        return response
     }
 
     /**
@@ -76,8 +78,7 @@ class FrpJumpApi(
      * it is only spent on a server this app can talk to.
      */
     suspend fun enroll(controlUrl: String, token: String, requestedName: String?): EnrollResponse {
-        val serverVersion = version(controlUrl).protocolVersion
-        if (serverVersion != PROTOCOL_VERSION) throw ProtocolMismatchException(serverVersion)
+        version(controlUrl)
         val body = WireJson.encodeToString(EnrollRequest(token, AGENT_VERSION, requestedName))
         val request = Request.Builder()
             .url(endpoint(controlUrl, "enroll"))

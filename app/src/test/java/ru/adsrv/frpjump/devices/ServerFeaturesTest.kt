@@ -54,6 +54,8 @@ class ServerFeaturesTest {
                 val body = when (chain.request().url.pathSegments.last()) {
                     "version" -> version
                     "devices" -> devices
+                    "heartbeat" -> ""
+                    "desired-state" -> """{"device_id":"phone","server_addr":"relay","server_port":7000,"consumed":[{"grant_id":"g1","secret":"synthetic","service_name":"svc","protocol":"tcp","exposer_device_name":"wb01","target_port":80}]}"""
                     else -> null
                 } ?: throw IOException("unreachable")
                 Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
@@ -99,6 +101,78 @@ class ServerFeaturesTest {
         again.restore()
         assertFalse(again.checkFeatures())
         assertTrue(again.state.value.display)
+    }
+
+    @Test
+    fun `incompatible version cannot enable disable or replace stored features`() = runBlocking {
+        for (prior in listOf<List<String>?>(null, emptyList(), listOf("device-display", "future-feature"))) {
+            for (version in listOf(Int.MIN_VALUE, -1, 0, 2, Int.MAX_VALUE)) {
+                for (features in listOf("", ",\"features\":[]", ",\"features\":[\"device-display\"]")) {
+                    ServerFeaturesCache(storage).wipe()
+                    if (prior != null) ServerFeaturesCache(storage).save(url, prior)
+                    val d = directory()
+                    d.restore()
+                    // Fetch rows without starting a background features check.
+                    server.version = """{"protocol_version":$version,"package_version":"synthetic"$features}"""
+                    d.pull()
+                    val before = d.state.value
+                    val bytes = storage.read()
+                    assertFalse("protocol=$version prior=$prior features=$features", d.checkFeatures())
+                    assertEquals(before, d.state.value)
+                    assertEquals(bytes, storage.read())
+                    assertEquals(prior, ServerFeaturesCache(storage).load(url))
+                    assertEquals(prior?.contains("device-display") == true, d.state.value.display)
+                    assertEquals(if (d.state.value.display) "Щиток" else null, d.state.value.devices!!.single().label)
+                    // A later compatible answer can still update the features.
+                    server.version = """{"protocol_version":1,"package_version":"synthetic","features":["device-display"]}"""
+                    assertTrue(d.checkFeatures())
+                    assertTrue(d.state.value.display)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `rejected feature check leaves the running tunnel manager and frpc untouched`() = runBlocking {
+        val session = ProfileSession()
+        val runner = object : ru.adsrv.frpjump.tunnel.FrpcControl {
+            override val states = kotlinx.coroutines.flow.MutableStateFlow<Map<String, ru.adsrv.frpjump.tunnel.VisitorState>>(emptyMap())
+            override var heldPorts: Set<Int> = emptySet()
+            var applies = 0
+            var stops = 0
+            override fun apply(launch: ru.adsrv.frpjump.tunnel.FrpcLaunch, ports: Set<Int>) { applies++; heldPorts = ports }
+            override fun stop() { stops++ }
+            override fun wipe() { stop() }
+            override fun expireTrying() = Unit
+            override fun refusalsOf(grant: String) = 0
+            override fun deviceReady(grant: String, refusalsBefore: Int) = Unit
+            override fun recentLog() = emptyList<String>()
+        }
+        val c = credentials("way.example")
+        val api = FrpJumpApi(server.http)
+        val manager = ru.adsrv.frpjump.tunnel.TunnelManager(
+            "p", { ru.adsrv.frpjump.store.StoredEnrollment.Enrolled(c) }, api, session,
+            ru.adsrv.frpjump.ports.LocalPortStore(MemoryStorage()), runner, { true },
+            touchPort = { ru.adsrv.frpjump.tunnel.Touch.OPEN },
+        )
+        val store = CredentialStore(MemoryStorage(), FakeKeystore().box("p")).apply { save(c) }
+        val d = DeviceDirectory(store, api, session, DeviceListCache(MemoryStorage()), ServerFeaturesCache(storage), this)
+        try {
+            manager.sync()
+            assertEquals(1, runner.applies)
+            val before = withTimeout(5_000) { manager.state.first { it.tunnels.size == 1 } }
+            assertEquals(1, before.tunnels.size)
+            val ports = runner.heldPorts
+            server.version = """{"protocol_version":2,"package_version":"synthetic","features":["device-display"]}"""
+            assertFalse(d.checkFeatures())
+            assertEquals(before, manager.state.value)
+            assertEquals(ports, runner.heldPorts)
+            assertEquals(1, runner.applies)
+            assertEquals(0, runner.stops)
+            assertFalse(session.removed.value)
+        } finally {
+            manager.close()
+        }
     }
 
     @Test
