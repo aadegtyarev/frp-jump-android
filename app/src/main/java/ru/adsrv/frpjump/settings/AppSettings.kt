@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.settings
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -122,21 +123,37 @@ fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
     else -> null
 }
 
+/** In-memory commit edge: the version advances only after a successfully persisted disable. */
+data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0)
+
 /** The app's settings in one JSON file; unreadable or invalid content falls back to the defaults. */
 class SettingsStore(private val storage: TextStorage) {
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<AppSettings> = _settings
+    @Volatile var assistantAvailability = AssistantAvailability(_settings.value.assistantEnabled)
+        private set
+    private val _assistantDisables = MutableStateFlow(0L)
+    val assistantDisables: StateFlow<Long> = _assistantDisables
 
-    @Synchronized
     fun update(change: (AppSettings) -> AppSettings) {
-        val next = change(_settings.value)
-        require(portRangeProblem(next.localPortFirst, next.localPortLast) == null) { "invalid local port range" }
-        require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
-        require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
-        require(validMqttCacheLimits(next.mqttCache)) { "invalid MQTT cache limits" }
-        if (next == _settings.value) return
-        storage.write(WireJson.encodeToString(next))
-        _settings.value = next
+        val version = synchronized(this) {
+            val next = change(_settings.value)
+            require(portRangeProblem(next.localPortFirst, next.localPortLast) == null) { "invalid local port range" }
+            require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
+            require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
+            require(validMqttCacheLimits(next.mqttCache)) { "invalid MQTT cache limits" }
+            if (next == _settings.value) return
+            storage.write(WireJson.encodeToString(next))
+            val previous = assistantAvailability
+            // Authority is published before the visible preference; no foreign cancellation here.
+            assistantAvailability = AssistantAvailability(next.assistantEnabled,
+                previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0)
+            _settings.value = next
+            assistantAvailability.disableVersion
+        }
+        // Outside the monitor, including for unconfined collectors. Concurrent writers can notify
+        // out of order, so the signal must never regress. The CAS transform has no side effects.
+        _assistantDisables.update { maxOf(it, version) }
     }
 
     private fun read(): AppSettings {

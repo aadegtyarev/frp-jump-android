@@ -258,12 +258,7 @@ class FrpJumpApp : Application() {
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         assistantProvider = ru.adsrv.frpjump.assistant.AssistantProviderStore(
             AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"))
-        assistant = ru.adsrv.frpjump.agent.AgentModule(settings.settings.value.assistantEnabled) {
-            settings.settings.value.assistantEnabled
-        }
-        appScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-            settings.settings.map { it.assistantEnabled }.distinctUntilChanged().collect(assistant::setEnabled)
-        }
+        assistant = ru.adsrv.frpjump.assistant.bindAssistantLifecycle(settings, appScope)
         restoreAppLanguage(settings.settings.value.language)
         applyTheme(settings.settings.value.theme)
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))

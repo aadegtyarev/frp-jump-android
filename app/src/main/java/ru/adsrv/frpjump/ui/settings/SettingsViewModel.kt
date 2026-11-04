@@ -107,7 +107,6 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { app.settings.update { it.copy(assistantEnabled = enabled) } }
-                app.assistant.setEnabled(app.settings.settings.value.assistantEnabled)
                 complete(null)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
