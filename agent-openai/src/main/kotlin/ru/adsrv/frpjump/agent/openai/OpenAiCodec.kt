@@ -98,7 +98,7 @@ internal object OpenAiCodec {
             if (id.isBlank() || id.length > 256 || name.isBlank() || name.length > 64) invalid()
             ToolCall(id, name, parse(function["arguments"].text()).obj())
         }
-        if (calls.map { it.id }.distinct().size != calls.size || (content.isBlank() && calls.isEmpty()) || (finish == "tool_calls" && calls.isEmpty())) invalid()
+        if (calls.map { it.id }.distinct().size != calls.size || (content.isBlank() && calls.isEmpty()) || ((finish == "tool_calls") != calls.isNotEmpty())) invalid()
         val continuation = when (val value = message["reasoning_content"]) {
             null, JsonNull -> null
             else -> Continuation(owner, value.text())
