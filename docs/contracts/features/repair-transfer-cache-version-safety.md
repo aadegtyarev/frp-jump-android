@@ -11,6 +11,13 @@ incompatible `/version` case of APP-VERSION-01. Correct these whole applicable
 classes through small checked PRs, not isolated illustrative lines. This is not
 approval to fix all audit findings or rewrite the application.
 
+The operator subsequently resolved the external-handover retention boundary:
+**10 minutes by default, configurable in Files settings**. This intentionally
+supersedes the former ambiguous handover cleanup wording “on exit and daily”;
+no receiver-finished callback or arbitrary one-day grace period is required.
+The narrow settings field/UI and corresponding retention-policy updates are
+part of this approved feature, not a general settings or persistence refactor.
+
 Affected durable surfaces:
 
 - [Files](../../files-contract.md): visit/row ownership, transfers, viewer and
@@ -44,17 +51,35 @@ normative promises remain the authority; implementation absence is not a waiver.
 
 - Normal viewer close releases/deletes its viewer copy. Share/Open with uses
   an independently owned handover copy and keeps narrow FileProvider access.
-- Exit, startup and daily cleanup enforce the existing Files retention rules
-  for app-owned viewer/handover copies, including copies abandoned by a lost
-  screen/process and a continuously running application.
+- Viewer/orphan cleanup retains the existing close/exit/start guarantees;
+  protect active viewer/transfer/copy-operation owners across screens/profiles.
+- A copy handed to an external application becomes eligible for cleanup
+  after the configured interval, **10 minutes by default**, counted from the
+  handover launch. Files route exit and application backgrounding do not
+  shorten that interval. Launch success is not proof the recipient has read
+  the file. Unlaunched/failed/abandoned handover copies retain explicit owner
+  cleanup rather than being treated as successfully delivered.
+- Run expiry cleanup while the application process is alive and on startup,
+  including after a suspended or dead process missed an expiry. Do not promise
+  exact Android scheduling or immediate deletion during process death. A daily
+  sweep alone must not make the ten-minute setting effectively a one-day delay.
+- Add a concise duration choice in Files settings, defaulting to ten minutes
+  for missing/invalid old values without resetting unrelated preferences.
+  Persist changes through the existing settings owner, report failed writes
+  truthfully and apply the chosen interval consistently to existing and new
+  handed copies, using their original handover age. Preserve live in-app owners.
+  No new service, dependency, receiver-completion tracking or broad grant.
 - Cleanup by one screen/profile must never delete another live owner's copy
   merely because it is old. Transfer creation, successful delivery, cancellation,
   disposal, handover and cleanup must agree on physical-copy ownership.
-- Preserve working external handover: no deletion before the receiving flow
-  has its required usable copy. This feature does not promise deletion of
-  another app's copy or control its grant lifetime. If original exit/retention
-  wording requires a new product choice or conflicts with delivery, report the
-  exact boundary before choosing a new grace period, scheduler or policy.
+- Before handover, preserve the required usable copy under its live owner.
+  After launch, the approved finite interval is the protection: expiry may
+  remove a copy a recipient has not yet opened or wants to reopen. This is an
+  accepted limitation, not a claim that launch proves reading completion.
+  An already open descriptor may continue reading after unlink. Do not promise
+  deletion of another app's independent copy or control its grant lifetime.
+  Do not silently extend retention because an external application might still
+  use the file, or shorten it merely because Files goes into the background.
 - Cleanup failure must not be claimed as successful deletion; do not introduce
   content/path/credential logging or broader cache exposure.
 
@@ -77,8 +102,10 @@ normative promises remain the authority; implementation absence is not a waiver.
   diagnostic behavior. Report newly discovered out-of-scope cases separately.
 - No editor/Save, remote management, Replace/Skip, archives, automatic retries,
   resume, service-owned transfer queue, new assistant features or A4 work.
-- No new security/privacy policy, unapproved retention relaxation, production
-  credentials/services, live SSH/provider/broker access or global settings.
+- No security/privacy change beyond the explicitly approved timed handover
+  retention and its narrow app-private setting. No other retention relaxation,
+  production credentials/services, live SSH/provider/broker access or global
+  settings.
 - Preserve concise shared UI, accessibility, truthful waiting/errors, Undo,
   selected-tab OSC52/manual Copy and unrestricted generic MQTT Publish.
 - No dependency/CI/toolchain change or release/tag/version bump. Public version
@@ -91,6 +118,9 @@ normative promises remain the authority; implementation absence is not a waiver.
    orphan copy cleanup, cross-owner/profile and expiry/lifecycle cases; explicit
    incompatible version through actual adapter and feature-cache consumer.
    Record RED assertions/results, then GREEN, not just tests added after edits.
+   Include default/missing/invalid duration settings, persisted choice and failed
+   write, expiry boundaries, changed duration, startup catch-up, background versus
+   route exit, live in-app copy protection and failed external launch.
 2. Per class provide `scope/case | inspected evidence | disposition/change |
    validation | remainder`, including all analogous entry/exit/error/replacement
    paths, existing safe cases and honest physical-provider/transport limits.
