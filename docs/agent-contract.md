@@ -25,10 +25,13 @@ No tunnel creation/start/reconfiguration/deletion is granted to the agent.
   results, cancellation and observable events. It has no Android, HTTP,
   SSH, connection-discovery or credential dependency. It uses Kotlin
   coroutines/JSON already used by the app, not an agent framework.
-- The app owns the opt-in setting and module lifetime. Disabling a committed
-  setting prevents new runs immediately through the authoritative setting
-  check; the settings observer cancels an active run. Disabling invalidates
-  the run before cancellation. Enabling again cannot revive it.
+- The app owns the opt-in setting and module lifetime. Every successfully
+  committed disable advances an in-memory invalidation version, even if a
+  conflated settings observer sees only the later enabled value. Admission and
+  run ownership check that authority directly; the observer cancels stale child
+  jobs outside the settings monitor. Failed writes do not invalidate work.
+  Enabling again cannot revive an old run. This version is process-local: no
+  execution survives process restart and no persistent journal is needed.
 - `agent-openai` implements non-streaming OpenAI-compatible Chat Completions
   and model discovery. It is not constructed or called by enabling the module.
 - `AssistantProviderStore` owns the app-private atomic provider document and

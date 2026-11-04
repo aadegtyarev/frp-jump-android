@@ -9,8 +9,12 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 
 /** Single-flight, opt-in module. Disabling invalidates the run BEFORE cancelling its child job. */
-class AgentModule(initiallyEnabled: Boolean = false, private val allowedNow: () -> Boolean = { true }) {
-    private class Active(val job: Job) { @Volatile var stopped: Boolean = false }
+class AgentModule(
+    initiallyEnabled: Boolean = false,
+    private val disableVersion: () -> Long = { 0 },
+    private val allowedNow: () -> Boolean = { true },
+) {
+    private class Active(val job: Job, val disableVersion: Long) { @Volatile var stopped: Boolean = false }
     private val gate = Any()
     @Volatile private var enabled = initiallyEnabled
     private var active: Active? = null
@@ -21,6 +25,17 @@ class AgentModule(initiallyEnabled: Boolean = false, private val allowedNow: () 
         val stopped = synchronized(gate) {
             enabled = value
             if (value) null else active?.also { it.stopped = true }
+        }
+        stopped?.job?.cancel(CancellationException("Assistant disabled"))
+    }
+
+    /** Cancel stale work after an app commit notification, even if off/on was conflated.
+     * [disableVersion] must advance on every committed disable and never move backwards.
+     * Ownership checks use it directly too, without waiting for this asynchronous notification.
+     */
+    fun refreshAvailability() {
+        val stopped = synchronized(gate) {
+            active?.takeIf { it.disableVersion != disableVersion() || !isEnabled }?.also { it.stopped = true }
         }
         stopped?.job?.cancel(CancellationException("Assistant disabled"))
     }
@@ -42,7 +57,7 @@ class AgentModule(initiallyEnabled: Boolean = false, private val allowedNow: () 
         onEvent: (AgentEvent) -> Unit = {},
     ): AgentRunResult = coroutineScope {
         val initial = AgentTurn(user)
-        val mine = Active(currentCoroutineContext()[Job]!!)
+        val mine = Active(currentCoroutineContext()[Job]!!, disableVersion())
         val rejection = synchronized(gate) {
             when {
                 !isEnabled -> AgentFinish.DISABLED
@@ -53,7 +68,7 @@ class AgentModule(initiallyEnabled: Boolean = false, private val allowedNow: () 
         if (rejection != null) return@coroutineScope AgentRunResult(initial, rejection)
         suspend fun checkOwner() {
             currentCoroutineContext().ensureActive()
-            if (mine.stopped || !isEnabled) throw CancellationException("Assistant run no longer active")
+            if (mine.stopped || mine.disableVersion != disableVersion() || !isEnabled) throw CancellationException("Assistant run no longer active")
         }
         try {
             val registry = tools.toList().associateBy { it.spec.name }
