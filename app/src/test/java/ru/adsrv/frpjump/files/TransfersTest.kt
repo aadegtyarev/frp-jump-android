@@ -37,6 +37,54 @@ class TransfersTest {
     private val big = "x".repeat(300 * 1024)
 
     @Test
+    fun `download close failures discard the exact sink and remain failures`() = runBlocking {
+        for (failInput in listOf(false, true)) {
+            var inputClosed = false
+            var outputClosed = false
+            var discards = 0
+            val fs = object : RemoteFs by FakeFs() {
+                override fun openRead(path: String): RemoteRead = RemoteRead(object : java.io.ByteArrayInputStream(byteArrayOf(42)) {
+                    override fun close() {
+                        inputClosed = true
+                        if (failInput) throw IOException("input close failed")
+                    }
+                }, 1)
+            }
+            val sink = object : DownloadSink {
+                override fun open(): OutputStream = object : ByteArrayOutputStream() {
+                    override fun close() {
+                        outputClosed = true
+                        if (!failInput) throw IOException("output close failed")
+                    }
+                }
+                override fun discard() { discards++ }
+            }
+            val failure = runCatching { downloadInto(fs, "/source", sink) { _, _ -> } }.exceptionOrNull()
+            assertTrue(failure is IOException)
+            assertTrue(inputClosed)
+            assertTrue(outputClosed)
+            assertEquals(1, discards)
+        }
+    }
+
+    @Test
+    fun `upload output close failure cannot rename and releases its reservation`() = runBlocking {
+        val base = FakeFs().dir("/d")
+        val names = UploadNames()
+        val fs = object : RemoteFs by base {
+            override fun createExclusive(path: String): OutputStream = object : java.io.FilterOutputStream(base.createExclusive(path)) {
+                override fun close() { super.close(); throw IOException("output close failed") }
+            }
+        }
+        val failure = runCatching {
+            uploadInto(fs, "data".byteInputStream(), 4, "/d", "a.txt", names, "dev") { _, _ -> }
+        }.exceptionOrNull()
+        assertTrue(failure is IOException)
+        assertEquals(emptyList<String>(), base.names("/d"))
+        assertEquals("a.txt", names.reserve("dev", "/d", "a.txt") { false })
+    }
+
+    @Test
     fun `a finished download is kept`() = runBlocking {
         val sink = Sink()
         downloadInto(FakeFs().file("/d/a.txt", "hello"), "/d/a.txt", sink) { _, _ -> }

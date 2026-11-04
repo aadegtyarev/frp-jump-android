@@ -32,10 +32,14 @@ interface DownloadSink {
  */
 suspend fun downloadInto(fs: RemoteFs, path: String, sink: DownloadSink, onProgress: (Long, Long) -> Unit) {
     try {
+        currentCoroutineContext().ensureActive()
         val read = fs.openRead(path)
         read.input.use { input ->
+            currentCoroutineContext().ensureActive()
             phoneSide(true) { sink.open() }.use { out -> copy(input, out, read.size, phoneIsInput = false, onProgress) }
         }
+        // Both blocking closes can return after cancellation. Keep this inside discard's boundary.
+        currentCoroutineContext().ensureActive()
     } catch (e: Throwable) {
         // Blocking and not a suspension point: it runs in a cancelled coroutine too.
         runCatching { sink.discard() }
@@ -91,6 +95,11 @@ const val STALE_PART_SECONDS = 10 * 60L
  * When the name was taken between the check and the rename, the next free
  * one is tried once. A failed or cancelled upload removes the part file it
  * made, never one it did not. Returns the name it got.
+ *
+ * Cancellation is checked before each rename request, not atomically with the
+ * server: an in-flight request may already have committed, even if it throws.
+ * Never roll back its final path. The caller owns [input]; closing it after this
+ * helper returns is after publication and cannot prevent that committed upload.
  */
 suspend fun uploadInto(
     fs: RemoteFs,
@@ -103,10 +112,23 @@ suspend fun uploadInto(
     nowSeconds: Long = System.currentTimeMillis() / 1000,
     onProgress: (Long, Long) -> Unit,
 ): String {
+    val context = currentCoroutineContext()
     val held = mutableListOf<String>()
     // Names whose part file someone else is writing.
     val busy = mutableSetOf<String>()
-    val reserve = { names.reserve(scope, dir, name) { fs.exists(it) || it.substringAfterLast('/') in busy }.also { held += it } }
+    val reserve = {
+        context.ensureActive()
+        names.reserve(scope, dir, name) {
+            context.ensureActive()
+            val exists = fs.exists(it)
+            context.ensureActive()
+            exists || it.substringAfterLast('/') in busy
+        }.also {
+            // Record ownership before observing cancellation so finally releases a late reservation.
+            held += it
+            context.ensureActive()
+        }
+    }
     try {
         var final: String
         var part: String
@@ -119,9 +141,11 @@ suspend fun uploadInto(
                 if (e.reason != Refusal.NO_SUCH) throw e
                 null
             }
+            context.ensureActive()
             if (existing == null) break
             if (nowSeconds - existing.modified >= STALE_PART_SECONDS) {
                 fs.remove(part)
+                context.ensureActive()
                 break
             }
             busy += final
@@ -131,11 +155,16 @@ suspend fun uploadInto(
             val out = fs.createExclusive(part)
             created = true
             out.use { copy(input, it, size, phoneIsInput = true, onProgress) }
+            context.ensureActive()
             try {
                 fs.rename(part, childOf(dir, final))
             } catch (e: RemoteRefusal) {
-                if (!fs.exists(childOf(dir, final))) throw e
+                context.ensureActive()
+                val taken = fs.exists(childOf(dir, final))
+                context.ensureActive()
+                if (!taken) throw e
                 final = reserve()
+                context.ensureActive()
                 fs.rename(part, childOf(dir, final))
             }
         } catch (e: Throwable) {
@@ -187,12 +216,15 @@ internal suspend fun copy(input: InputStream, out: OutputStream, total: Long, ph
     val buffer = ByteArray(BUFFER)
     var done = 0L
     var told = 0L
+    currentCoroutineContext().ensureActive()
     onProgress(0, total)
     while (true) {
         currentCoroutineContext().ensureActive()
         val n = phoneSide(phoneIsInput) { input.read(buffer) }
+        currentCoroutineContext().ensureActive()
         if (n < 0) break
         phoneSide(!phoneIsInput) { out.write(buffer, 0, n) }
+        currentCoroutineContext().ensureActive()
         done += n
         if (done - told >= PROGRESS_STEP) {
             told = done
@@ -200,7 +232,9 @@ internal suspend fun copy(input: InputStream, out: OutputStream, total: Long, ph
         }
     }
     phoneSide(!phoneIsInput) { out.flush() }
+    currentCoroutineContext().ensureActive()
     onProgress(done, total)
+    currentCoroutineContext().ensureActive()
 }
 
 private inline fun <T> phoneSide(phone: Boolean, block: () -> T): T = try {
