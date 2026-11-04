@@ -114,6 +114,100 @@ class OpenAiAgentProviderTest {
         }
     }
 
+    private fun toolResponse(finish: String, content: JsonElement?, count: Int): String = buildJsonObject {
+        putJsonArray("choices") { add(buildJsonObject {
+            put("finish_reason", finish)
+            putJsonObject("message") {
+                put("role", "assistant")
+                content?.let { put("content", it) }
+                putJsonArray("tool_calls") {
+                    repeat(count) { index -> add(buildJsonObject {
+                        put("id", "call-$index"); put("type", "function")
+                        putJsonObject("function") { put("name", "fake"); put("arguments", "{}") }
+                    }) }
+                }
+            }
+        }) }
+    }.toString()
+
+    private fun rejectsStopCalls(content: JsonElement?, count: Int): Unit = runBlocking {
+        Endpoint().use { e ->
+            val response = toolResponse("stop", content, count)
+            e.replies += Reply(response); e.replies += Reply(final)
+            var executions = 0
+            val tool = object : AgentTool {
+                override val spec = ToolSpec("fake", "synthetic", buildJsonObject { put("type", "object") })
+                override suspend fun execute(arguments: JsonObject): ToolOutput {
+                    executions++
+                    return ToolOutput("synthetic result")
+                }
+            }
+            val result = AgentModule(true).run(OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key), listOf(tool), "skill", "user")
+            assertEquals("Contradictory stop response must execute zero tools", 0, executions)
+            assertEquals(AgentFinish.PROVIDER_FAILED, result.finish)
+            assertTrue(result.turn.exchanges.isEmpty())
+            assertEquals("Malformed response must not be retried", 1, e.seen.size)
+            failure(ProviderFailure.INVALID_RESPONSE) { OpenAiCodec.decode(response) }
+        }
+    }
+
+    @Test fun `stop with one call and text never executes tools`() = rejectsStopCalls(JsonPrimitive("answer"), 1)
+    @Test fun `stop with multiple calls and text never executes tools`() = rejectsStopCalls(JsonPrimitive("answer"), 2)
+    @Test fun `stop with one call and no text never executes tools`() {
+        for (content in listOf(null, JsonNull, JsonPrimitive(""))) rejectsStopCalls(content, 1)
+    }
+    @Test fun `stop with multiple calls and no text never executes tools`() {
+        for (content in listOf(null, JsonNull, JsonPrimitive(""))) rejectsStopCalls(content, 2)
+    }
+
+    @Test fun `valid tool finish executes matching results through kernel with optional text`() = runBlocking {
+        for (content in listOf(null, JsonNull, JsonPrimitive(""), JsonPrimitive("working"))) {
+            for (count in listOf(1, 2)) Endpoint().use { e ->
+                e.replies += Reply(toolResponse("tool_calls", content, count)); e.replies += Reply(final)
+                var executions = 0
+                val tool = object : AgentTool {
+                    override val spec = ToolSpec("fake", "synthetic", buildJsonObject { put("type", "object") })
+                    override suspend fun execute(arguments: JsonObject): ToolOutput {
+                        executions++
+                        return ToolOutput("synthetic result")
+                    }
+                }
+                val result = AgentModule(true).run(OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key), listOf(tool), "skill", "user")
+                assertEquals(AgentFinish.COMPLETE, result.finish)
+                assertEquals(count, executions)
+                val exchange = result.turn.exchanges.first()
+                assertEquals(exchange.reply.calls.map { it.id }, exchange.results.map { it.callId })
+                assertTrue(exchange.results.all { it.outcome == ToolOutcome.SUCCESS && it.text == "synthetic result" })
+                assertEquals("done", result.turn.exchanges.last().reply.text)
+                assertEquals(2, e.seen.size)
+                e.seen.poll(2, TimeUnit.SECONDS)
+                val messages = Json.parseToJsonElement(e.seen.poll(2, TimeUnit.SECONDS)!!.body).jsonObject["messages"]!!.jsonArray
+                assertEquals(listOf("system", "user", "assistant") + List(count) { "tool" }, messages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
+                assertEquals(exchange.reply.calls.map { it.id }, messages.drop(3).map { it.jsonObject["tool_call_id"]!!.jsonPrimitive.content })
+            }
+        }
+    }
+
+    @Test fun `stop final text accepts absent null or empty calls while tool finish requires calls`() = runBlocking {
+        for (calls in listOf(null, JsonNull, JsonArray(emptyList()))) {
+            val response = buildJsonObject { putJsonArray("choices") { add(buildJsonObject {
+                put("finish_reason", "stop")
+                putJsonObject("message") {
+                    put("role", "assistant"); put("content", "done")
+                    calls?.let { put("tool_calls", it) }
+                }
+            }) } }.toString()
+            Endpoint().use { e ->
+                e.replies += Reply(response)
+                val result = AgentModule(true).run(OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key), emptyList(), "skill", "user")
+                assertEquals(AgentFinish.COMPLETE, result.finish)
+                assertEquals(AgentReply("done"), result.turn.exchanges.single().reply)
+                assertEquals(1, e.seen.size)
+            }
+            failure(ProviderFailure.INVALID_RESPONSE) { OpenAiCodec.decode(response.replace("\"stop\"", "\"tool_calls\"")) }
+        }
+    }
+
     @Test fun `provider continuation is private budgeted and returned only to the same provider instance`() = runBlocking {
         Endpoint().use { e ->
             val opaque = "synthetic-continuation"
