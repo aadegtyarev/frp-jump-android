@@ -79,6 +79,79 @@ class AssistantChatOwnershipTest {
         }
     }
 
+    @Test fun `actual adapter callback exit keeps app slot across completion cancellation and authority changes`() = runBlocking {
+        for (action in listOf("success", "error", "invalid", "oversize", "network", "stop", "body-stop", "exit", "disable", "revision", "timeout")) {
+            val server = java.net.ServerSocket(0, 10, java.net.InetAddress.getByName("127.0.0.1"))
+            val serverRelease = CountDownLatch(1)
+            val serverThread = Thread {
+                try {
+                    server.accept().use { socket ->
+                        val input = socket.getInputStream().bufferedReader()
+                        var length = 0
+                        while (true) {
+                            val line = input.readLine() ?: break
+                            if (line.isEmpty()) break
+                            if (line.startsWith("Content-Length:", true)) length = line.substringAfter(':').trim().toInt()
+                        }
+                        var left = length
+                        while (left > 0) { val n = input.read(CharArray(left)); if (n < 0) break; left -= n }
+                        if (action == "timeout") serverRelease.await(5, TimeUnit.SECONDS)
+                        else if (action != "network") {
+                            val text = if (action == "error") "failure" else if (action == "invalid") "not-json" else """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"old answer"}}]}"""
+                            val bytes = text.toByteArray()
+                            val status = if (action == "error") "500 Error" else "200 OK"
+                            socket.getOutputStream().apply {
+                                write("HTTP/1.1 $status\r\nContent-Length: ${if (action == "oversize") 1_048_577 else bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                                write(bytes); flush()
+                            }
+                        }
+                    }
+                } catch (_: java.io.IOException) { }
+            }.apply { isDaemon = true; start() }
+            val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
+            val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
+            store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "m"), null, "synthetic"))
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val unrelated = scope.launch { awaitCancellation() }
+            val entered = CountDownLatch(1); val release = CountDownLatch(1); val awaiting = CountDownLatch(1)
+            val adapter = ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider(
+                ru.adsrv.frpjump.agent.openai.OpenAiConfig("http://127.0.0.1:${server.localPort}/v1", "m"), "synthetic")
+            val probe = adapter.javaClass.getDeclaredField(if (action == "body-stop") "beforeResponseRead" else "beforeCallbackExit").apply { isAccessible = true }
+            probe.set(adapter, { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); Unit })
+            adapter.javaClass.getDeclaredField("beforeAwaitCallbackExit").apply { isAccessible = true }
+                .set(adapter, { awaiting.countDown(); Unit })
+            val old = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { adapter },
+                store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat)
+            var preparations = 0
+            val newer = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
+                preparations++; AgentProvider { AgentReply("new answer") }
+            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat)
+            try {
+                old.edit("old private input"); old.send()
+                assertTrue("callback $action", entered.await(4, TimeUnit.SECONDS))
+                when (action) {
+                    "stop", "body-stop" -> old.stop()
+                    "exit" -> old.close()
+                    "disable" -> { settings.update { it.copy(assistantEnabled = false) }; settings.update { it.copy(assistantEnabled = true) }; old.refresh() }
+                    "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "next"), store.currentSnapshot.revision)); old.refresh() }
+                }
+                assertTrue("coroutine reached callback-exit wait: $action", awaiting.await(4, TimeUnit.SECONDS))
+                newer.edit("new input"); newer.send()
+                assertEquals("$action must not start replacement", 0, preparations)
+                assertTrue("$action must retain slot", settings.assistantChat.busy.value)
+                assertTrue(newer.state.value.busy); assertNull(newer.state.value.pendingText)
+                assertTrue(newer.state.value.turns.isEmpty()); assertTrue(unrelated.isActive)
+                release.countDown(); serverRelease.countDown()
+                withTimeout(4000) { settings.assistantChat.busy.first { !it } }
+                assertEquals("no queued send", 0, preparations)
+                newer.send(); idle(newer)
+                assertEquals(1, preparations); assertEquals("new answer", newer.state.value.turns.single().answer)
+            } finally {
+                release.countDown(); serverRelease.countDown(); old.close(); newer.close(); scope.cancel(); server.close(); serverThread.join(2000)
+            }
+        }
+    }
+
     @Test fun `actual commits serialize with guarded admission dispatch and every publication category in both orders`() = runBlocking {
         for (change in listOf("disable", "off-on", "revision", "reload", "read-problem"))
             for (category in listOf("admission", "dispatch", "answer", "finish-error", "setup-error", "window"))

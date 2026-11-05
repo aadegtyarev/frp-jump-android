@@ -128,8 +128,10 @@ preparation and the HTTP request. Follow-ups reuse the same provider instance
 and only complete successful turns. Stop cancels that operation, not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
 Stopping until it exits. An app-lived, text-free admission token spans preparation,
-HTTP, post-kernel publication and actual job cleanup, even after pop/reopen; a new
-screen shows the occupied slot without restoring old text. No replacement send is queued. Failed/stopped input
+HTTP callback and response-body cleanup, post-kernel publication and actual job
+cleanup, even after pop/reopen; a new screen shows the occupied slot without
+restoring old text. Cancellation closes the exact call promptly, but the slot
+is held until both its callback execution and the coroutine have exited. No replacement send is queued. Failed/stopped input
 stays editable for explicit retry. Setup/read/key, timeout, context-full,
 invalid-answer and provider failures use fixed messages, never raw diagnostics.
 There is no automatic retry, streaming or provider/model fallback.
@@ -261,7 +263,9 @@ committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
 Chat tests exercise the production conversation owner with controlled preparation,
 providers and cancellation, plus the real credential-store → adapter loopback
-path. Synthetic navigation/Compose checks use the production Settings chat entry,
+path. Controlled loopback callback tests also hold real adapter cleanup across
+completion, failure, cancellation and authority changes before explicit retry.
+Synthetic navigation/Compose checks use the production Settings chat entry,
 chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
 setup recovery, recreation and pop. The explicit test-only plain-Application
 runner is selected by `-PassistantChatComponentTests=true` and an explicit chat
