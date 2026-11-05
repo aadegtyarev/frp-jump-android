@@ -1144,6 +1144,7 @@
     <string name="chat_disabled">The assistant is off. Enable it in Settings.</string>
     <string name="chat_setup">Set up a provider and select a model.</string>
     <string name="chat_omitted">Older messages were omitted from the active context.</string>
+    <string name="chat_assistant">Assistant</string>
     <string name="chat_you">You</string>
     <string name="chat_stopping">Stopping…</string>
     <string name="chat_waiting">Waiting for answer…</string>

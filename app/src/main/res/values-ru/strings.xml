@@ -1192,6 +1192,7 @@
     <string name="chat_disabled">Ассистент выключен. Включите его в настройках.</string>
     <string name="chat_setup">Настройте провайдера и выберите модель.</string>
     <string name="chat_omitted">Старые сообщения исключены из активного контекста.</string>
+    <string name="chat_assistant">Помощник</string>
     <string name="chat_you">Вы</string>
     <string name="chat_stopping">Остановка…</string>
     <string name="chat_waiting">Ожидание ответа…</string>
