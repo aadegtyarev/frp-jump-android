@@ -3,6 +3,11 @@ package ru.adsrv.frpjump.agent.openai
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -20,6 +25,10 @@ fun validOpenAiApiKey(key: String): Boolean = key.isNotBlank() && key.length <= 
 /** Non-streaming Chat Completions adapter. No key persistence, tracing, implicit retries or fallback. */
 class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: String) : AgentProvider {
     private val owner = Any()
+    // A deterministic test probe at the actual callback exit; null in production.
+    internal var beforeCallbackExit: (() -> Unit)? = null
+    internal var beforeResponseRead: (() -> Unit)? = null
+    internal var beforeAwaitCallbackExit: (() -> Unit)? = null
     init { require(validOpenAiApiKey(apiKey)) { "Invalid API key" } }
 
     override suspend fun complete(request: AgentRequest): AgentReply {
@@ -39,43 +48,96 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
         return OpenAiCodec.models(execute(Request.Builder().url(target).header("Authorization", "Bearer $apiKey").get().build()))
     }
 
-    private suspend fun execute(request: Request): String = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request)
-        continuation.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                continuation.resumeWithException(OpenAiProviderException(ProviderFailure.NETWORK))
-            }
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (!continuation.isActive) return
-                    val text = try {
-                        if (!response.isSuccessful) throw OpenAiProviderException(ProviderFailure.HTTP, response.code)
-                        val body = response.body ?: throw OpenAiProviderException(ProviderFailure.INVALID_RESPONSE)
-                        if (body.contentLength() > config.maxResponseBytes) throw OpenAiProviderException(ProviderFailure.RESPONSE_TOO_LARGE)
-                        val buffer = Buffer()
-                        val source = body.source()
-                        while (source.read(buffer, minOf(8192L, config.maxResponseBytes + 1L - buffer.size)) != -1L) {
-                            if (buffer.size > config.maxResponseBytes) throw OpenAiProviderException(ProviderFailure.RESPONSE_TOO_LARGE)
+    private suspend fun execute(request: Request): String {
+        val exited = CompletableDeferred<Unit>()
+        try {
+            return suspendCancellableCoroutine { continuation ->
+                val call = client.newCall(request)
+                continuation.invokeOnCancellation { call.cancel() }
+                var inlineCallback = false
+                try {
+                    call.enqueue(object : Callback {
+                        private fun callback(block: () -> Unit) {
+                            // Normally the dispatcher worker completes exited after the entire
+                            // AsyncCall.run returns, not merely after resuming the coroutine.
+                            if (!callbackExit.register(exited)) inlineCallback = true
+                            try { block() } finally { beforeCallbackExit?.invoke() }
                         }
-                        try { Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(buffer.readByteArray())).toString() }
-                        catch (_: Exception) { throw OpenAiProviderException(ProviderFailure.INVALID_RESPONSE) }
-                    } catch (failure: OpenAiProviderException) {
-                        continuation.resumeWithException(failure)
-                        return
-                    } catch (_: IOException) {
-                        continuation.resumeWithException(OpenAiProviderException(ProviderFailure.NETWORK))
-                        return
-                    }
-                    continuation.resume(text)
+                        override fun onFailure(call: Call, e: IOException) = callback {
+                            continuation.resumeWithException(ioFailure(e))
+                        }
+                        override fun onResponse(call: Call, response: Response) = callback {
+                            response.use {
+                                beforeResponseRead?.invoke()
+                                if (!continuation.isActive) return@callback
+                                val text = try {
+                                    if (!response.isSuccessful) throw OpenAiProviderException(ProviderFailure.HTTP, response.code)
+                                    val body = response.body ?: throw OpenAiProviderException(ProviderFailure.INVALID_RESPONSE)
+                                    if (body.contentLength() > config.maxResponseBytes) throw OpenAiProviderException(ProviderFailure.RESPONSE_TOO_LARGE)
+                                    val buffer = Buffer()
+                                    val source = body.source()
+                                    while (source.read(buffer, minOf(8192L, config.maxResponseBytes + 1L - buffer.size)) != -1L) {
+                                        if (buffer.size > config.maxResponseBytes) throw OpenAiProviderException(ProviderFailure.RESPONSE_TOO_LARGE)
+                                    }
+                                    try { Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(buffer.readByteArray())).toString() }
+                                    catch (_: Exception) { throw OpenAiProviderException(ProviderFailure.INVALID_RESPONSE) }
+                                } catch (failure: OpenAiProviderException) {
+                                    continuation.resumeWithException(failure)
+                                    return@callback
+                                } catch (failure: IOException) {
+                                    continuation.resumeWithException(ioFailure(failure))
+                                    return@callback
+                                }
+                                continuation.resume(text)
+                            }
+                        }
+                    })
+                } catch (failure: Throwable) {
+                    exited.complete(Unit) // enqueue failed without an owned callback
+                    throw failure
+                } finally {
+                    // OkHttp can report executor rejection synchronously from enqueue.
+                    if (inlineCallback) exited.complete(Unit)
                 }
             }
-        })
+        } finally {
+            // Cancellation must cancel the Call promptly, but not release its caller's
+            // admission until callback/body cleanup and dispatcher execution have exited.
+            beforeAwaitCallbackExit?.invoke()
+            withContext(NonCancellable) { exited.await() }
+        }
     }
 
     private companion object {
+        fun ioFailure(error: IOException) = OpenAiProviderException(
+            if (error is java.io.InterruptedIOException) ProviderFailure.TIMEOUT else ProviderFailure.NETWORK)
+
+        private class CallbackExitExecutor : ThreadPoolExecutor(
+            0, Int.MAX_VALUE, 60, TimeUnit.SECONDS, SynchronousQueue(),
+            { task -> Thread(task, "assistant-http").apply { isDaemon = true } },
+        ) {
+            private val completion = ThreadLocal<MutableList<CompletableDeferred<Unit>>>()
+            private val worker = ThreadLocal<Boolean>()
+            override fun beforeExecute(thread: Thread, task: Runnable) {
+                super.beforeExecute(thread, task)
+                worker.set(true)
+            }
+            fun register(exited: CompletableDeferred<Unit>): Boolean {
+                if (worker.get() != true) return false
+                val pending = completion.get() ?: mutableListOf<CompletableDeferred<Unit>>().also { completion.set(it) }
+                pending.add(exited)
+                return true
+            }
+            override fun afterExecute(task: Runnable, failure: Throwable?) {
+                val exited = completion.get()
+                completion.remove()
+                worker.remove()
+                try { super.afterExecute(task, failure) } finally { exited?.forEach { it.complete(Unit) } }
+            }
+        }
+        val callbackExit = CallbackExitExecutor()
         // No logging interceptors, cookies, authenticator or cache. Never retarget/replay keyed calls.
-        val client = OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
+        val client = OkHttpClient.Builder().dispatcher(Dispatcher(callbackExit)).retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
             .addNetworkInterceptor { chain ->
                 val response = chain.proceed(chain.request())
                 // OkHttp 4 retries 503 + Retry-After:0 even when retryOnConnectionFailure is false.

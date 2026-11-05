@@ -9,9 +9,9 @@
     <string name="save">Сохранить</string>
     <string name="assistant_title">LLM-помощник</string>
     <string name="assistant_enabled">Включить модуль помощника</string>
-    <string name="assistant_foundation_hint">Экспериментальный модуль, по умолчанию выключен. Настройте провайдера ниже. Чат и инструменты подключений пока недоступны.</string>
+    <string name="assistant_foundation_hint">Текстовый чат · без инструментов подключений</string>
     <string name="assistant_provider_title">Провайдер помощника</string>
-    <string name="assistant_provider_stage_hint">Пока доступна только настройка OpenAI-совместимого API, без чата. Запрос списка моделей отправляется только по нажатию кнопки.</string>
+    <string name="assistant_provider_stage_hint">Запросы — только по кнопкам «Отправить» и «Получить модели».</string>
     <string name="assistant_provider_root">Корневой адрес API (обычно с /v1 в конце)</string>
     <string name="assistant_provider_key">API-ключ</string>
     <string name="assistant_provider_key_keep">Ключ сохранён защищённо. Оставьте поле пустым, чтобы использовать его с этим адресом API.</string>
@@ -1188,4 +1188,20 @@
     <string name="connection_no_longer_saved">Сохранённое подключение удалено или изменилось. Выберите его заново.</string>
     <string name="mqtt_login_not_saved">Не удалось сохранить данные входа. После повторного открытия сессии их может потребоваться ввести снова.</string>
     <string name="mqtt_login_not_removed">Не удалось удалить сохранённые данные входа. Прежние данные могут оставаться на телефоне.</string>
+    <string name="chat_title">Чат</string>
+    <string name="chat_disabled">Ассистент выключен. Включите его в настройках.</string>
+    <string name="chat_setup">Настройте провайдера и выберите модель.</string>
+    <string name="chat_omitted">Старые сообщения исключены из активного контекста.</string>
+    <string name="chat_you">Вы</string>
+    <string name="chat_stopping">Остановка…</string>
+    <string name="chat_waiting">Ожидание ответа…</string>
+    <string name="chat_key">Не удалось прочитать ключ. Замените его в настройках провайдера.</string>
+    <string name="chat_timeout">Провайдер не ответил вовремя. Можно повторить.</string>
+    <string name="chat_context_full">Сообщение не помещается в контекст. Сократите его или увеличьте лимит.</string>
+    <string name="chat_invalid_reply">Нет полного текстового ответа. Можно повторить.</string>
+    <string name="chat_provider_failed">Запрос к провайдеру не выполнен. Можно повторить.</string>
+    <string name="chat_too_long">Лимит сообщения: 8 000 символов. Предыдущий текст сохранён.</string>
+    <string name="chat_message">Сообщение</string>
+    <string name="chat_stop">Остановить</string>
+    <string name="chat_send">Отправить</string>
 </resources>

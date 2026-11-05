@@ -62,7 +62,7 @@ class MqttIngressSettingsUiTest {
             models.put("mqtt-settings-test", vm)
         }
         compose.setContent {
-            FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null) }
+            FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) }
         }
         compose.onNodeWithText(text(R.string.mqtt_ingress_title)).performScrollTo().performClick()
         edit("mqtt_limit_payload", "2048")

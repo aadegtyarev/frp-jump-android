@@ -26,7 +26,9 @@ android {
         applicationId = "ru.adsrv.frpjump"
         minSdk = 29
         targetSdk = 35
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Explicit synthetic chat component entry: plain Application, never production startup.
+        testInstrumentationRunner = if (providers.gradleProperty("assistantChatComponentTests").orNull == "true")
+            "ru.adsrv.frpjump.ui.settings.AssistantChatTestRunner" else "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 60
         versionName = "0.3.48"
         // Shown in Settings › App; the binary is built by scripts/build-frpc.sh (FRP_VERSION).

@@ -3,9 +3,10 @@
 ## Boundary and availability
 
 This surface covers the optional assistant kernel, external API adapter and
-provider setup. The owner uses Settings to opt in and configure one provider;
-maintainers can supply provider/tool implementations to the kernel. Kernel
-execution is an interface guarantee, not an available chat or tool UI.
+provider setup and memory-only text chat. The owner uses Settings to opt in,
+configure one provider and open Chat; maintainers can supply provider/tool
+implementations to the kernel. Tool execution remains a kernel interface
+guarantee, not an available connection-tool UI.
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -23,8 +24,8 @@ write retains the previous preference and shows an error. A malformed new
 flag falls back to off without resetting unrelated settings.
 
 Settings → LLM assistant → Assistant provider configures one external
-OpenAI-compatible provider. Chat and real connection tools are **not available
-yet**; the UI explicitly says so. Enabling the module, opening settings or
+OpenAI-compatible provider. Chat is available next to provider setup; real
+connection tools are **not available**. Enabling the module, opening settings or
 saving a provider performs no network request. Fetch models is an explicit
 user action and is available during setup even while the agent module is off.
 A saved provider is configuration, not evidence of a successful API call.
@@ -54,7 +55,7 @@ Save, Fetch models and recovery behavior.
   replacement client after a disconnect. No such real tools are available.
 - The versioned [application skill](../app/src/main/assets/assistant/skill.md)
   is input for a coordinator, not a permission system or an automatically
-  executing script. No app chat/coordinator is wired into this surface.
+  executing script. Text chat does not attach it or any automatic app context.
 
 ## Minimal execution
 
@@ -103,8 +104,8 @@ Defaults: a 16,384-token estimated total budget with 2,048 tokens reserved for
 output. The default counter uses UTF-8 byte lengths plus framing allowances:
 **it is an estimate, not a provider tokenizer or a guarantee that every API
 accepts the request**. A provider-specific counter can replace it. Window
-omissions are observable kernel events, not fabricated summaries or an
-available chat UI.
+omissions are observable kernel events, not fabricated summaries. Text chat
+shows an omission indication when earlier history is left out.
 
 Tool result text is capped at 8,000 UTF-16 characters by default, preserving
 head/tail with a visible omission marker and an omitted-character count.
@@ -113,8 +114,55 @@ limited to 32,000 aggregate characters per response. A returned String is
 already allocated: these are kernel-result bounds, not a total-heap or
 transport-buffer guarantee. Stream-reading adapters must cap capture as data
 arrives. The kernel does not own full UI history/storage or an unbounded
-background store; that responsibility belongs to an app coordinator, which is
-not wired here.
+background store; text chat owns its small in-memory history separately.
+
+## Text chat
+
+Settings → LLM assistant → Chat opens a normal back-stack screen. Opening it
+neither unseals credentials nor contacts the provider. Disabled, missing-model
+and unreadable setup explain the problem and link directly to Settings or
+provider setup. Recovery re-reads provider metadata without unsealing a key.
+
+Send explicitly owns one pending operation, including off-Main credential
+preparation and the HTTP request. Follow-ups reuse the same provider instance
+and only complete successful turns. Stop cancels that operation, not unrelated
+app work; a noncooperative preparation/request keeps the slot and shows
+Stopping until it exits. An app-lived, text-free admission token spans preparation,
+HTTP callback and response-body cleanup, post-kernel publication and actual job
+cleanup, even after pop/reopen; a new screen shows the occupied slot without
+restoring old text. Cancellation closes the exact call promptly, but the slot
+is held until both its callback execution and the coroutine have exited. No replacement send is queued. Failed/stopped input
+stays editable for explicit retry. Setup/read/key, timeout, context-full,
+invalid-answer and provider failures use fixed messages, never raw diagnostics.
+There is no automatic retry, streaming or provider/model fallback.
+
+The back-stack ViewModel retains the conversation and draft across configuration
+recreation. Pop/actual exit cancels and discards them; process death does not
+restore them. Chat text, drafts and opaque continuation never enter persistent
+storage or saved-instance state. The active context is bound to the saved
+provider revision and committed-disable version. A saved revision change or
+committed disable (including rapid off/on) cancels old work and clears successful
+context; failed settings writes retain prior authority. Admission and publication
+recheck current authority, including after the kernel returns. Successful settings
+and provider snapshot commits serialize with admission, nonblocking provider-call
+start and every guarded answer/draft/error/window publication on a shared guard.
+Store IO/credential work happens outside that guard; state notifications and
+cancellation run outside store commit monitors. An old completion
+cannot publish an answer/error or release another owner's pending slot.
+
+At most 32 complete successful turns are retained. Oldest complete turns are
+dropped together with a visible omission indication; request-window omissions
+are indicated too, including on a failed request. Input is limited to 8,000
+UTF-16 characters: excess edits are rejected with feedback and the previous
+text kept. Current input/answers are never silently truncated or split. Saved
+context/output settings feed the existing whole-turn window. Opaque continuation
+stays internal, bounded and attached to the same provider instance, never UI text.
+
+Requests contain only explicit chat text/history and fixed text-chat instructions.
+No profiles, connection data, files, credentials, diagnostics or application skill
+are automatically attached. No tools are offered or executed. Unexpected tool
+proposals fail the request before a tool-driven extra model call can occur.
+Existing endpoint, redirect, retry, payload and sanitized-error protections apply.
 
 ## Provider settings and credentials
 
@@ -199,7 +247,7 @@ compatibility with every provider-specific thinking parameter.
 
 ## Verification and non-goals
 
-The available app surface is provider setup only. Chat/coordinator and real
+The app surface includes provider setup and text-only chat. Real
 connection/SSH tools are not available. Web, Files, MQTT, TCP tools,
 compression, evaluators, permission modes and subagents are outside this
 surface. No tunnel creation, start, reconfiguration or deletion is granted to
@@ -213,8 +261,18 @@ malformed-field fallback, disable invalidation, credential/root binding,
 revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
-These fixtures do not establish live LLM, SSH or broker compatibility, or
-physical-device/vendor behavior.
+Chat tests exercise the production conversation owner with controlled preparation,
+providers and cancellation, plus the real credential-store → adapter loopback
+path. Controlled loopback callback tests also hold real adapter cleanup across
+completion, failure, cancellation and authority changes before explicit retry.
+Synthetic navigation/Compose checks use the production Settings chat entry,
+chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
+setup recovery, recreation and pop. The explicit test-only plain-Application
+runner is selected by `-PassistantChatComponentTests=true` and an explicit chat
+class filter; ordinary discovery keeps the default runner. Scoped API35 component
+checks cover representative EN/RU, light/dark, portrait/landscape and 200% font
+configurations; font scale is restored afterwards. These fixtures do not establish
+live LLM, SSH or broker compatibility, or physical-device/vendor behavior.
 
 ## Related surfaces and implementation references
 
@@ -228,5 +286,7 @@ physical-device/vendor behavior.
   and [window selection](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentWindow.kt).
 - [External adapter](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiAgentProvider.kt)
   and [provider configuration](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiConfig.kt).
+- [Conversation owner](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantConversation.kt)
+  and [chat screen](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantChatScreen.kt).
 - [Provider store](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantProviderStore.kt)
   and [settings form](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantProviderScreen.kt).
