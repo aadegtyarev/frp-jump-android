@@ -72,16 +72,27 @@ CI change. No new framework or future-facing abstraction.
 ## Ownership, resource and publication
 
 One whole feature, branch, final PR and acceptance. Same Terra writer and Sol
-reviewer; no additional planning/scout/implementation lanes. The writer returns
-a frozen handoff without waiting for parent tests. Review may overlap parent
-validation, but a positive verdict must use actual matching new gate evidence.
+reviewer. The operator now requires a read-only scout before any further coder
+work: inspect the existing component integration and recommend the minimum
+necessary plan, including an explicit no-code-change result when appropriate.
+One file has one responsibility; cohesion and clarity matter more than line count.
+Do not invent a rewrite or rerun passing tests merely to fill a workflow stage.
 
-Latest go-ahead restarts implementation under the revised scope. Parent applies
-a conservative execution stop at **2026-11-05T19:17:42Z**, 40 minutes from the
-first observed go-ahead at 18:37:42Z; this is a safety cap, not an hour-long coding
-estimate or a claim that the operator prescribed that number. No automatic
-extension or short forced-verdict phase windows. Stop and report a real blocker.
-Earlier expired custom-parser plans are superseded; their failures remain history.
+The operator explicitly restarted this goal as an active bounded task on
+2026-11-05 (first observed 20:29 UTC), with the configured limit of 40 automatic
+continuations. This renews work on the same feature, not a new review campaign.
+Finish the interrupted same Sol R4; do not launch an automatic R5. Native children
+receive normal uninterrupted run limits, not short forced-verdict windows tied
+to the expired parent timer. Stop at the task limit or an unresolved decision.
+Earlier expired timers and failed native runs remain historical evidence.
+
+The existing candidate already has full JVM, APK, Lint and 36 component results.
+If production/test bytes remain identical, verify their identities and consume
+those results rather than rerunning them. If scout establishes a necessary code
+change, parent first dispositions its plan; the same writer returns a frozen
+handoff without waiting for parent gates. Validate the changed candidate before
+positive final review or acceptance. Documentation-only authorization amendments
+must be distinguished from the tested source and checked separately.
 
 Parent owns commits, acceptance, Gitleaks, one checked PR and matched-head merge.
 No release. After verified acceptance, update the durable contract, mark this
