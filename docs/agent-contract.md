@@ -118,6 +118,19 @@ background store; text chat owns its small in-memory history separately.
 
 ## Text chat
 
+The conversation is a quiet, left-aligned text dialogue on one background, not
+message bubbles or cards. Localized “You” and “Assistant” labels distinguish
+roles as well as the theme's accent for user text and normal ink for answers;
+pending user text uses the same presentation. Text remains selectable. Answers
+have display-only basic bold, italic, unordered/ordered lists and monospaced
+inline/fenced code through a Compose Markdown component. The library owns
+Markdown parsing, including malformed or nested input. HTML, links and images
+are shown as inert text and have no execution, opening or loading behavior.
+If parsing fails, the original answer remains selectable. User text is literal.
+Formatting changes neither the stored in-memory turns nor provider requests or
+continuation, and never truncates an answer. Display is not a source-Markdown
+round trip or an HTML implementation.
+
 Settings → LLM assistant → Chat opens a normal back-stack screen. Opening it
 neither unseals credentials nor contacts the provider. Disabled, missing-model
 and unreadable setup explain the problem and link directly to Settings or

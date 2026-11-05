@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui.settings
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -48,7 +49,7 @@ internal fun AssistantChatContent(
         provider.settings?.model.isNullOrBlank() -> R.string.chat_setup
         else -> null
     }
-    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         val compact = maxHeight < 400.dp
         Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -65,18 +66,21 @@ internal fun AssistantChatContent(
                 }
             }
             if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
-            LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(state.turns) { turn ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(stringResource(R.string.chat_you), style = MaterialTheme.typography.labelLarge)
-                        SelectionContainer { Text(turn.user) }
-                        Text(stringResource(R.string.assistant_title), style = MaterialTheme.typography.labelLarge)
-                        SelectionContainer { Text(turn.answer) }
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ChatUserMessage(turn.user)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
+                            SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
+                        }
                     }
                 }
                 state.pendingText?.let { text -> item {
-                    Text(text)
-                    Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_waiting))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ChatUserMessage(text)
+                        Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_waiting), color = AppTheme.colors.muted)
+                    }
                 } }
             }
             state.problem?.let { problem -> Text(stringResource(when (problem) {
@@ -101,5 +105,13 @@ internal fun AssistantChatContent(
             } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
         }
+    }
+}
+
+@Composable
+private fun ChatUserMessage(text: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(R.string.chat_you), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accent)
+        SelectionContainer { Text(text, color = AppTheme.colors.accent) }
     }
 }

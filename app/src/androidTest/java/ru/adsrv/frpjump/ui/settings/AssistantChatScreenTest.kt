@@ -8,6 +8,11 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import java.util.Locale
@@ -49,6 +54,19 @@ class AssistantChatScreenTest {
     }, settings.assistantChat).apply { save(AssistantProviderDraft(AssistantProviderSettings(model = "synthetic"), null, "synthetic-key")) }
     private val prepEntered = java.util.concurrent.CountDownLatch(1)
     private val prepRelease = java.util.concurrent.CountDownLatch(1)
+    private val formattedAnswer = "A **bold** year and *quiet* detail.\n\n- First item\n- Второй пункт\n\n`val answer = 42`\n\n```\n  code stays\n```"
+    private val resourceAnswer = "[link](https://example.test) ![image](https://example.test/image) <b>literal</b>\n\n<img src=\"https://example.test/img\">"
+    private val codeAnswer = "`C:\\`\n\n```\n  command \\ path\n    next\n```"
+    private val longAnswer = (1..120).joinToString("\n") { "Line $it — длинный synthetic answer 🌍" }
+    private var copySelection: (() -> Unit)? = null
+    private val selectionToolbar = object : TextToolbar {
+        override val status: TextToolbarStatus get() = if (copySelection == null) TextToolbarStatus.Hidden else TextToolbarStatus.Shown
+        override fun hide() { copySelection = null }
+        override fun showMenu(rect: Rect, onCopyRequested: (() -> Unit)?, onPasteRequested: (() -> Unit)?,
+                              onCutRequested: (() -> Unit)?, onSelectAllRequested: (() -> Unit)?) {
+            copySelection = onCopyRequested
+        }
+    }
     private var mode = "answer"
     private var calls = 0
     private val requests = mutableListOf<AgentRequest>()
@@ -61,6 +79,10 @@ class AssistantChatScreenTest {
             when (mode) {
                 "wait" -> awaitCancellation()
                 "error" -> error("synthetic-private-error")
+                "formatted" -> AgentReply(formattedAnswer)
+                "long" -> AgentReply(longAnswer)
+                "resources" -> AgentReply(resourceAnswer)
+                "code" -> AgentReply(codeAnswer)
                 else -> AgentReply("Complete answer $calls")
             }
         }
@@ -84,7 +106,7 @@ class AssistantChatScreenTest {
             setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en"))
         }
         val localized = context.createConfigurationContext(configuration)
-        CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides configuration) {
+        CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides configuration, LocalTextToolbar provides selectionToolbar) {
         FrpJumpTheme(mode = if (args.getString("chatDark") == "true") ThemeMode.DARK else ThemeMode.LIGHT) {
             val nav = rememberNavController()
             NavHost(nav, "settings") {
@@ -118,6 +140,9 @@ class AssistantChatScreenTest {
         return node
     }
     private fun awaitIdle() { compose.waitUntil(5000) { owner?.state?.value?.busy == false } }
+    private fun awaitMarkdown() {
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_markdown_rendered").fetchSemanticsNodes().isNotEmpty() }
+    }
 
     @Test fun sendFollowupStopErrorAndRecovery() {
         install()
@@ -142,6 +167,102 @@ class AssistantChatScreenTest {
         compose.runOnIdle { mode = "answer" }
         button("chat_send").performClick(); awaitIdle()
         compose.runOnIdle { assertEquals(3, owner!!.state.value.turns.size); assertEquals(3, requests.last().turns.size) }
+    }
+
+    @Test fun formattedAndLongAnswersRemainSelectableAndOriginalHistoryIsUnchanged() {
+        mode = "formatted"
+        install()
+        input().performTextInput("Literal **question**")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle { assertEquals(formattedAnswer, owner!!.state.value.turns.single().answer) }
+        compose.activityRule.scenario.onActivity {
+            (it.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                .hideSoftInputFromWindow(it.window.decorView.windowToken, 0)
+        }
+        compose.waitForIdle(); awaitMarkdown()
+        button("chat_history").performScrollToNode(hasText("A bold year", substring = true))
+        compose.onNodeWithText("Literal **question**").assertExists()
+        val answer = compose.onNodeWithText("A bold year", substring = true)
+        answer.assertIsDisplayed().assertTextEquals("A bold year and quiet detail.")
+        compose.onNodeWithText("First item").assertExists()
+        compose.onNodeWithText("Второй пункт").assertExists()
+        compose.onNodeWithText("-").assertDoesNotExist()
+        compose.onNodeWithText("val answer = 42", substring = true).assertExists()
+        compose.onNodeWithText("  code stays\n", substring = true).assertExists()
+        if (args.getString("captureChatScreenshot") == "true") {
+            compose.waitForIdle()
+            val name = "chat-${args.getString("chatLocale") ?: "en"}-${args.getString("chatDark") ?: "false"}-${args.getString("composerOrientation") ?: "portrait"}-${args.getString("composerFontScale") ?: "1"}.png"
+            val target = java.io.File(compose.activity.getExternalFilesDir(null), name)
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().let { bitmap ->
+                target.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+            }
+        }
+        answer.performTouchInput { longClick(Offset(20f, 20f)) }
+        compose.waitUntil(5000) { copySelection != null }
+        compose.runOnIdle { assertNotNull(copySelection); mode = "long" }
+        input().performTextInput("Next")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertEquals(longAnswer, owner!!.state.value.turns.last().answer)
+            assertEquals(formattedAnswer, requests.last().turns.first().exchanges.last().reply.text)
+        }
+        button("chat_history").performScrollToNode(hasText("Line 120", substring = true))
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_markdown_loading").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText("Line 120", substring = true).assertExists().assertTextEquals(longAnswer)
+    }
+
+    @Test fun resourceMarkupIsVisibleAndHasNoClickAction() {
+        mode = "resources"
+        install()
+        input().performTextInput("Show resources")
+        button("chat_send").performClick(); awaitIdle(); awaitMarkdown()
+        button("chat_history").performScrollToNode(hasText("[link](https://example.test)", substring = true))
+        compose.onNodeWithText("[link](https://example.test)", substring = true)
+            .assertExists().assertHasNoClickAction()
+            .assertTextContains("![image](https://example.test/image)", substring = true)
+            .assertTextContains("<b>literal</b>", substring = true)
+        compose.onNodeWithText("<img src=\"https://example.test/img\">", substring = true)
+            .assertExists().assertHasNoClickAction()
+        compose.runOnIdle { assertEquals(resourceAnswer, owner!!.state.value.turns.single().answer) }
+    }
+
+    @Test fun codePayloadIsSelectableAndOriginalIsSentInFollowup() {
+        mode = "code"
+        install()
+        input().performTextInput("Code please")
+        button("chat_send").performClick(); awaitIdle(); awaitMarkdown()
+        button("chat_history").performScrollToNode(hasText("C:\\", substring = true))
+        val inline = compose.onNodeWithText("C:\\", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("  command \\ path\n    next\n", substring = true).assertExists()
+        inline.performTouchInput { longClick(Offset(20f, 20f)) }
+        compose.waitUntil(5000) { copySelection != null }
+        compose.runOnIdle { assertNotNull(copySelection); mode = "answer" }
+        input().performTextInput("Next")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertEquals(codeAnswer, owner!!.state.value.turns.first().answer)
+            assertEquals(codeAnswer, requests.last().turns.first().exchanges.last().reply.text)
+        }
+    }
+
+    @Test fun parsingFailureShowsSelectableOriginalAnswer() {
+        val original = "Raw **answer** with \\ and https://example.test"
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                CompositionLocalProvider(LocalTextToolbar provides selectionToolbar) {
+                    FrpJumpTheme(mode = ThemeMode.LIGHT) {
+                        androidx.compose.foundation.text.selection.SelectionContainer {
+                            AssistantAnswerMarkdown(original, com.mikepenz.markdown.model.State.Error(IllegalStateException("synthetic")))
+                        }
+                    }
+                }
+            }
+        }
+        val text = compose.onNodeWithText(original).assertIsDisplayed().assertHasNoClickAction()
+        text.performTouchInput { longClick(Offset(20f, 20f)) }
+        compose.waitUntil(5000) { copySelection != null }
+        compose.runOnIdle { assertNotNull(copySelection) }
     }
 
     @Test fun recreationRetainsActualBackStackOwnerAndPopDiscards() {
