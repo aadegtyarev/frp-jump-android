@@ -932,11 +932,11 @@ scripts/build-frpc.sh        # upstream frpc 0.70.0 -> app/src/main/jniLibs/<abi
 ./gradlew :agent-core:test :agent-openai:test :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The optional [LLM assistant kernel](docs/agent-contract.md) is a separate
-`agent-core` JVM module, with an `agent-openai` protocol adapter. Its Settings
-switch is off by default. Provider setup is available in Settings, including
-secure key storage and explicit model discovery; chat and real connection
-tools are not available yet.
+The optional [LLM assistant](docs/agent-contract.md) uses the separate
+`agent-core` JVM module and `agent-openai` protocol adapter. Its Settings
+switch is off by default. Settings provides secure provider setup, explicit
+model discovery and memory-only text chat. Requests start only with Send or
+Fetch models; connection tools and automatic app-data upload are not available.
 
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.
 If Gradle reports that the toolchain has no `JAVA_COMPILER`, point `JAVA_HOME`
