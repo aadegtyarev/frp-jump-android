@@ -46,13 +46,16 @@ class AssistantChatScreenTest {
         override fun seal(plain: String) = "synthetic-sealed"
         override fun open(sealed: String): String = error("Fake provider must not resolve credentials")
         override fun destroy() = Unit
-    }).apply { save(AssistantProviderDraft(AssistantProviderSettings(model = "synthetic"), null, "synthetic-key")) }
+    }, settings.assistantChat).apply { save(AssistantProviderDraft(AssistantProviderSettings(model = "synthetic"), null, "synthetic-key")) }
+    private val prepEntered = java.util.concurrent.CountDownLatch(1)
+    private val prepRelease = java.util.concurrent.CountDownLatch(1)
     private var mode = "answer"
     private var calls = 0
     private val requests = mutableListOf<AgentRequest>()
     private var owner: AssistantConversation? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
     private fun vm() = AssistantChatViewModel(settings, store, module) {
+        if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
             when (mode) {
@@ -153,7 +156,7 @@ class AssistantChatScreenTest {
         compose.waitForIdle()
         compose.runOnIdle { assertSame(before, owner); assertEquals(1, owner!!.state.value.turns.size) }
         input().assertTextContains("Draft only in memory")
-        compose.onNodeWithTag("chat_back").performClick()
+        button("chat_back").performClick()
         compose.onNodeWithText("Outside chat").assertExists()
         compose.waitUntil(5000) { before.state.value == ChatState() }
     }
@@ -172,6 +175,31 @@ class AssistantChatScreenTest {
         button("chat_setup").assertIsDisplayed().performClick()
         compose.onNodeWithText("Synthetic provider setup").assertExists()
         compose.runOnIdle { assertEquals(0, calls) }
+    }
+
+    @Test fun popDuringPreparationAndReopenKeepsGlobalSlotWithoutOldText() {
+        mode = "prepare"
+        install()
+        input().performTextInput("Private old draft")
+        button("chat_send").performClick()
+        assertTrue(prepEntered.await(3, java.util.concurrent.TimeUnit.SECONDS))
+        try {
+            button("chat_back").performClick()
+            compose.onNodeWithTag("assistant_chat_entry").performClick()
+            button("chat_stop").assertIsDisplayed().assertIsNotEnabled()
+            compose.onNodeWithText("Private old draft").assertDoesNotExist()
+            compose.runOnIdle { assertEquals(0, calls); assertTrue(owner!!.state.value.turns.isEmpty()) }
+        } finally { prepRelease.countDown() }
+        awaitIdle()
+        compose.runOnIdle { mode = "answer" }
+        input().performTextInput("New draft")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle { assertEquals(1, calls); assertEquals("New draft", owner!!.state.value.turns.single().user) }
+        val russian = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag("ru")) }
+        val resources = compose.activity.createConfigurationContext(russian).resources
+        val hint = resources.getString(ru.adsrv.frpjump.R.string.assistant_provider_stage_hint)
+        assertTrue(hint.contains(resources.getString(ru.adsrv.frpjump.R.string.assistant_provider_models)))
+        assertTrue(hint.contains(resources.getString(ru.adsrv.frpjump.R.string.chat_send)))
     }
 
 }

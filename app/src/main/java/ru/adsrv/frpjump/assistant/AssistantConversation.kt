@@ -27,8 +27,9 @@ class AssistantConversation(
     private val module: AgentModule,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val limits: (AssistantProviderSettings) -> AgentLimits = { it.limits() },
+    private val runtime: AssistantChatRuntime = AssistantChatRuntime(),
 ) {
-    private val gate = Any()
+    private val gate = runtime.gate
     private val mutable = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = mutable
     private var authority = availability()
@@ -50,7 +51,10 @@ class AssistantConversation(
     }
 
     /** Called by observers AND synchronously at admission/publication: conflation cannot revive work. */
-    fun refresh() = synchronized(gate) { refreshLocked() }
+    fun refresh() {
+        val cancel = synchronized(gate) { refreshLocked(); pending?.takeIf { it.stopped }?.job }
+        cancel?.cancel()
+    }
     private fun refreshLocked() {
         if (closed) return
         val now = availability()
@@ -61,18 +65,25 @@ class AssistantConversation(
             pending?.let { stopLocked(it) }
         }
         authority = now; revision = saved.revision
+        if (pending == null) mutable.value = mutable.value.copy(busy = runtime.occupied(), stopping = runtime.occupied())
     }
     private fun stopLocked(owner: Pending) {
         owner.stopped = true
         mutable.value = mutable.value.copy(stopping = true)
-        owner.job.cancel()
     }
-    fun stop() = synchronized(gate) { if (!closed) pending?.let(::stopLocked) }
-    fun close() = synchronized(gate) {
-        closed = true
-        pending?.let(::stopLocked)
-        history = emptyList(); provider = null
-        mutable.value = ChatState()
+    fun stop() {
+        val cancel = synchronized(gate) { if (closed) null else pending?.also(::stopLocked)?.job }
+        cancel?.cancel()
+    }
+    fun close() {
+        val cancel = synchronized(gate) {
+            closed = true
+            val old = pending?.also(::stopLocked)?.job
+            history = emptyList(); provider = null
+            mutable.value = ChatState()
+            old
+        }
+        cancel?.cancel()
     }
     private fun owns(owner: Pending): Boolean {
         refreshLocked()
@@ -80,9 +91,22 @@ class AssistantConversation(
             availability().disableVersion == owner.version && snapshot().revision == owner.revision && snapshot().problem == null
     }
 
-    fun send() = synchronized(gate) {
+    private fun <T> guarded(owner: Pending, category: String, action: () -> T): T? {
+        runtime.beforeAction?.invoke(category)
+        return synchronized(gate) {
+            if (!owns(owner)) null else {
+                runtime.checkedAction?.invoke(category)
+                action()
+            }
+        }
+    }
+
+    fun send() {
+      runtime.beforeAction?.invoke("admission")
+      var start: Job? = null
+      synchronized(gate) {
         refreshLocked()
-        if (closed || pending != null) return@synchronized
+        if (closed || pending != null || runtime.occupied()) return@synchronized
         val saved = snapshot()
         val settings = saved.settings
         val text = mutable.value.draft
@@ -92,9 +116,11 @@ class AssistantConversation(
         }
         if (text.length > MAX_INPUT) { mutable.value = mutable.value.copy(problem = ChatProblem.TOO_LONG); return@synchronized }
         if (text.isBlank()) return@synchronized
+        runtime.checkedAction?.invoke("admission")
         val owner = Pending(saved.revision, availability().disableVersion)
         val past = history
         val retainedProvider = provider
+        check(runtime.acquire(owner))
         pending = owner
         mutable.value = mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null)
         owner.job = scope.launch(start = CoroutineStart.LAZY) {
@@ -109,7 +135,14 @@ class AssistantConversation(
                 var transportTimeout = false
                 val textOnly = AgentProvider { request ->
                     try {
-                        activeProvider.complete(request).also {
+                        val received = coroutineScope {
+                            val call = guarded(owner, "dispatch") {
+                                // Start through the adapter's nonblocking enqueue before a commit can win.
+                                async(start = CoroutineStart.UNDISPATCHED) { activeProvider.complete(request) }
+                            } ?: throw CancellationException()
+                            call.await()
+                        }
+                        received.also {
                             if (it.calls.isNotEmpty()) { invalidReply = true; throw IllegalStateException() }
                         }
                     } catch (failure: ru.adsrv.frpjump.agent.openai.OpenAiProviderException) {
@@ -126,14 +159,11 @@ class AssistantConversation(
                 val result = module.run(textOnly, emptyList(), INSTRUCTIONS, text, past, limits(settings), onEvent = {
                     if (it is AgentEvent.Window && it.omittedTurns > 0) {
                         omitted = true
-                        synchronized(gate) {
-                            if (owns(owner)) mutable.value = mutable.value.copy(omitted = true)
-                        }
+                        guarded(owner, "window") { mutable.value = mutable.value.copy(omitted = true) }
                     }
                 })
                 withContext(io) { requireRevision(saved.revision) }
-                synchronized(gate) {
-                    if (owns(owner)) {
+                guarded(owner, if (result.finish == AgentFinish.COMPLETE) "answer" else "finish-error") {
                         if (result.finish == AgentFinish.COMPLETE) {
                             history = (history + result.turn).takeLast(MAX_TURNS)
                             mutable.value = mutable.value.copy(
@@ -150,12 +180,11 @@ class AssistantConversation(
                                 else -> ChatProblem.PROVIDER
                             }
                         })
-                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                synchronized(gate) { if (owns(owner)) mutable.value = mutable.value.copy(problem = when ((failure as? ProviderSetupException)?.problem) {
+                guarded(owner, "setup-error") { mutable.value = mutable.value.copy(problem = when ((failure as? ProviderSetupException)?.problem) {
                     ProviderSetupProblem.CRYPTO_FAILED, ProviderSetupProblem.ADDRESS_CHANGED, ProviderSetupProblem.INVALID_KEY -> ChatProblem.KEY
                     ProviderSetupProblem.READ_FAILED -> ChatProblem.READ
                     else -> ChatProblem.SETUP
@@ -167,11 +196,16 @@ class AssistantConversation(
             synchronized(gate) {
                 if (pending === owner) {
                     pending = null
+                    runtime.release(owner)
                     if (!closed) mutable.value = mutable.value.copy(busy = false, stopping = false, pendingText = null)
                 }
             }
+            runtime.notifyBusy()
         }
-        owner.job.start()
+        start = owner.job
+      }
+      runtime.notifyBusy()
+      start?.start()
     }
 
     companion object {

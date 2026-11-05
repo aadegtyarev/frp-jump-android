@@ -11,7 +11,7 @@
     <string name="assistant_enabled">Включить модуль помощника</string>
     <string name="assistant_foundation_hint">Текстовый чат · без инструментов подключений</string>
     <string name="assistant_provider_title">Провайдер помощника</string>
-    <string name="assistant_provider_stage_hint">Запросы — только по кнопкам «Отправить» и «Загрузить модели».</string>
+    <string name="assistant_provider_stage_hint">Запросы — только по кнопкам «Отправить» и «Получить модели».</string>
     <string name="assistant_provider_root">Корневой адрес API (обычно с /v1 в конце)</string>
     <string name="assistant_provider_key">API-ключ</string>
     <string name="assistant_provider_key_keep">Ключ сохранён защищённо. Оставьте поле пустым, чтобы использовать его с этим адресом API.</string>

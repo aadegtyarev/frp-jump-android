@@ -127,7 +127,9 @@ Send explicitly owns one pending operation, including off-Main credential
 preparation and the HTTP request. Follow-ups reuse the same provider instance
 and only complete successful turns. Stop cancels that operation, not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
-Stopping until it exits. No replacement send is queued. Failed/stopped input
+Stopping until it exits. An app-lived, text-free admission token spans preparation,
+HTTP, post-kernel publication and actual job cleanup, even after pop/reopen; a new
+screen shows the occupied slot without restoring old text. No replacement send is queued. Failed/stopped input
 stays editable for explicit retry. Setup/read/key, timeout, context-full,
 invalid-answer and provider failures use fixed messages, never raw diagnostics.
 There is no automatic retry, streaming or provider/model fallback.
@@ -139,7 +141,11 @@ storage or saved-instance state. The active context is bound to the saved
 provider revision and committed-disable version. A saved revision change or
 committed disable (including rapid off/on) cancels old work and clears successful
 context; failed settings writes retain prior authority. Admission and publication
-recheck current authority, including after the kernel returns; an old completion
+recheck current authority, including after the kernel returns. Successful settings
+and provider snapshot commits serialize with admission, nonblocking provider-call
+start and every guarded answer/draft/error/window publication on a shared guard.
+Store IO/credential work happens outside that guard; state notifications and
+cancellation run outside store commit monitors. An old completion
 cannot publish an answer/error or release another owner's pending slot.
 
 At most 32 complete successful turns are retained. Oldest complete turns are

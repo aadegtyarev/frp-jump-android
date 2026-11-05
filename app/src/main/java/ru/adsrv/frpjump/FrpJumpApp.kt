@@ -257,7 +257,7 @@ class FrpJumpApp : Application() {
         Texts.init(this)
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         assistantProvider = ru.adsrv.frpjump.assistant.AssistantProviderStore(
-            AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"))
+            AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"), settings.assistantChat)
         assistant = ru.adsrv.frpjump.assistant.bindAssistantLifecycle(settings, appScope)
         restoreAppLanguage(settings.settings.value.language)
         applyTheme(settings.settings.value.theme)

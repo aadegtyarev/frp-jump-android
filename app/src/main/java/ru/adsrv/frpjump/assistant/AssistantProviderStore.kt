@@ -43,19 +43,30 @@ class AssistantProviderDraft(val settings: AssistantProviderSettings, val expect
 }
 
 /** One atomic document owns metadata + sealed key, so endpoint/key changes cannot commit separately. */
-class AssistantProviderStore(private val file: TextStorage, private val box: SecretBox) {
+class AssistantProviderStore(private val file: TextStorage, private val box: SecretBox,
+    val chatRuntime: AssistantChatRuntime = AssistantChatRuntime(),
+) {
     @Serializable private data class Stored(val version: Int = 1, val revision: String, val settings: AssistantProviderSettings, val sealedKey: String)
     @Serializable private class Credential(val root: String, val key: String)
     private val json = Json { encodeDefaults = true }
     private val _state = MutableStateFlow(AssistantProviderSnapshot())
     val state: StateFlow<AssistantProviderSnapshot> = _state
+    @Volatile var currentSnapshot = AssistantProviderSnapshot()
+        private set
+    private val notifications = Any()
     init { reload() }
+    private fun notifySnapshot() = synchronized(notifications) { _state.value = currentSnapshot }
 
-    @Synchronized fun reload() {
-        _state.value = try { snapshot(read()) } catch (error: ProviderSetupException) { AssistantProviderSnapshot(problem = error.problem) }
+    fun reload() {
+        synchronized(this) {
+            val loaded = try { snapshot(read()) } catch (error: ProviderSetupException) { AssistantProviderSnapshot(problem = error.problem) }
+            synchronized(chatRuntime.gate) { currentSnapshot = loaded }
+        }
+        notifySnapshot()
     }
 
-    @Synchronized fun save(draft: AssistantProviderDraft) {
+    fun save(draft: AssistantProviderDraft) {
+      synchronized(this) {
         val previous = current(draft.expectedRevision)
         val settings = normalize(draft.settings)
         val replacement = draft.newKey()
@@ -69,7 +80,9 @@ class AssistantProviderStore(private val file: TextStorage, private val box: Sec
         if (sealed.isBlank() || sealed.length > 32_768) throw ProviderSetupException(ProviderSetupProblem.CRYPTO_FAILED)
         val next = Stored(revision = UUID.randomUUID().toString(), settings = settings, sealedKey = sealed)
         try { file.write(json.encodeToString(next)) } catch (_: Exception) { throw ProviderSetupException(ProviderSetupProblem.WRITE_FAILED) }
-        _state.value = snapshot(next)
+        synchronized(chatRuntime.gate) { currentSnapshot = snapshot(next) }
+      }
+      notifySnapshot()
     }
 
     /** Build only on explicit discovery/chat request. Saved key is NEVER reused for a changed API root. */
