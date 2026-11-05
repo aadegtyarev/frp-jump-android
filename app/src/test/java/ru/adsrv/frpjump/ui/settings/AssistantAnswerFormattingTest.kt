@@ -58,6 +58,52 @@ class AssistantAnswerFormattingTest {
         literals.forEach { assertEquals(it, formatAssistantAnswer(it).text) }
         assertEquals("one then ``two`` and three", formatAssistantAnswer("`one` then ``two`` and `three`").text)
         assertEquals("`escaped`` literal", formatAssistantAnswer("\\`escaped`` literal").text)
+        val wrapped = "before ``\n**literal**\n- item\n`` after **bold**"
+        assertEquals("before ``\n**literal**\n- item\n`` after bold", formatAssistantAnswer(wrapped).text)
+    }
+
+    @Test fun `inline code retains trailing and repeated backslashes`() {
+        listOf("C:\\", "one\\\\", "**x**\\", "🌍\\").forEach { payload ->
+            val original = "before `" + payload + "` after **bold**"
+            val result = formatAssistantAnswer(original)
+            assertEquals("before " + payload + " after bold", result.text)
+            assertTrue(result.spanStyles.any { it.item.fontFamily == FontFamily.Monospace && result.text.substring(it.start, it.end) == payload })
+            assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        }
+    }
+
+    @Test fun `unsupported tick wrappers protect their complete payload`() {
+        listOf("``**x** \\*y\\*``", "```**x**```", "``**x**`", "`**x**``",
+            "``**x**````", "\\``**x**\\*y\\*``", "``**x**`` ``_y_``").forEach { literal ->
+            val result = formatAssistantAnswer("**before** " + literal + " **after**")
+            // Unequal runs conservatively protect to end of line, including the suffix.
+            val expected = if (literal in listOf("``**x**`", "`**x**``", "``**x**````"))
+                "before " + literal + " **after**" else "before " + literal + " after"
+            assertEquals(expected, result.text)
+            assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold && it.start == 0 })
+        }
+    }
+
+    @Test fun `unsupported and mismatched fences protect body lists and escapes`() {
+        listOf("````\n**x**\n- item\n\\*escaped\\*\n````", "`````lang\n*italics*\n+ item\n`````", "``\n**x**\n- item\n``", "`\n**x**\n- item\n`",
+            "```lang\n**x**\n- item\n````", "````\n**x**\n```\n````").forEach {
+            assertEquals(it, formatAssistantAnswer(it).text)
+        }
+        val result = formatAssistantAnswer("**before**\n````\n**x**\n- item\n````\n**after**")
+        assertEquals("before\n````\n**x**\n- item\n````\nafter", result.text)
+        assertEquals(2, result.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
+    }
+
+    @Test fun `multiline unsupported html link and image keep body literal`() {
+        listOf("<b>\n**x**\n- item\n\\*escape\\*\n</b>", "<b><b>\n**x**\n</b>\n*still literal*\n</b>",
+            "[link](\n**y**\n- item\n(nested)\\*x\\*)", "![image](\n**y**\n+ item\n\\*x\\*)",
+            "<b>\n**unfinished**", "[link](\n**unfinished**\n- item").forEach {
+            assertEquals(it, formatAssistantAnswer(it).text)
+        }
+        assertEquals("[ordinary] before bold [link](url)", formatAssistantAnswer("[ordinary] before **bold** [link](url)").text)
+        val result = formatAssistantAnswer("**before** <b>\n**x**\n</b> **after**")
+        assertEquals("before <b>\n**x**\n</b> after", result.text)
+        assertEquals(2, result.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
     }
 
     @Test fun `long text and repeated malformed openers remain complete`() {
