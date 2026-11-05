@@ -87,12 +87,39 @@ bump, tag, APK release, signing/CI changes or real-provider/device-data probes.
 ## Resource, ownership and publication
 
 One complete slice, one branch/PR/acceptance. Terra implements, Sol independently
-reviews: one stable pair, **one review round**, no automatic additional round.
+reviews: one stable pair. The original **one review round** returned BLOCK;
+only the explicitly approved second round below may follow. No automatic R3.
 Parent owns scope, actual gate/finding disposition, acceptance and publication.
 Total **45 minutes including preparation, implementation, validation, review
 and reporting**, first recorded start `2026-11-05T08:54:09Z`, hard stop
 `2026-11-05T09:39:09Z`. Runs/resume/tool changes never extend it. Save partial
 state and stop at a blocker/deadline; no hidden scope or budget extensions.
+
+After that limit expired, the operator explicitly approved **10 more minutes**
+(`2026-11-05T10:22:08Z`–`2026-11-05T10:32:08Z`) only to finish the same
+interrupted Sol review and, if successful, perform parent acceptance and the
+single PR/merge. No production edits, test reruns, additional review round or
+release are authorized. The frozen production candidate remains
+`81ac3f590a75dd433df06a046d219428e999e8d7`; this amendment changes resources only.
+
+After the completed first review returned BLOCK, the operator explicitly
+approved **30 more minutes** (`2026-11-05T14:35:37Z`–`2026-11-05T15:05:37Z`)
+to close the entire `ACP-LITERAL-01` preservation class with the same Terra
+writer, run the affected required checks, and obtain **one second review by the
+same Sol reviewer**. This remains the same whole feature, branch and final PR.
+No third review, resource extension or release is authorized automatically.
+
+The correction must protect code payload and unsupported/malformed literal
+regions before removing escapes, emphasis or list syntax. Cover supported inline
+code ending in backslashes; unsupported equal/unequal/repeated/escaped tick runs
+with formatting/escape payloads; non-triple/mismatched fenced regions; and
+multiline HTML/link/image regions, including their supported-formatting and list
+contents. Preserve ordinary formatting, code whitespace, inertness, Unicode,
+long answers, selection and unchanged original history. Fix the shared mechanism,
+not only the review's examples; do not weaken literal preservation or remove
+formatting to obtain a pass. See the complete first-review packet retained by
+the parent. Existing full gates and four-configuration component validation
+apply to the corrected source; earlier green results do not validate it.
 
 Operator authorized one checked PR and acceptance/merge, not a release/version
 change. On success, update the durable surface contract, mark this contract
