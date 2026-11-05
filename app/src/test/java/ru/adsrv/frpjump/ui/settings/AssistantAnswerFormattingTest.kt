@@ -76,7 +76,7 @@ class AssistantAnswerFormattingTest {
         listOf("``**x** \\*y\\*``", "```**x**```", "``**x**`", "`**x**``",
             "``**x**````", "\\``**x**\\*y\\*``", "``**x**`` ``_y_``").forEach { literal ->
             val result = formatAssistantAnswer("**before** " + literal + " **after**")
-            // Unequal runs conservatively protect to end of line, including the suffix.
+            // Unequal runs conservatively protect the remainder, including the suffix.
             val expected = if (literal in listOf("``**x**`", "`**x**``", "``**x**````"))
                 "before " + literal + " **after**" else "before " + literal + " after"
             assertEquals(expected, result.text)
@@ -104,6 +104,69 @@ class AssistantAnswerFormattingTest {
         val result = formatAssistantAnswer("**before** <b>\n**x**\n</b> **after**")
         assertEquals("before <b>\n**x**\n</b> after", result.text)
         assertEquals(2, result.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
+    }
+
+    @Test fun `quoted html attribute delimiters do not expose literal payload`() {
+        val literals = listOf(
+            "<img alt=\"/> \\*x\\* **y**\" />",
+            "<img alt='/> \\*x\\* **y**' />",
+            "<img alt=\"one > two / > **x**\" title='> \\*z\\*' />",
+            "<div title=\"/> **attribute**\">\n**body**\n- item\n\\*escape\\*\n</div>",
+            "<div title='/> **attribute**'>\n**body**\n- item\n</div>",
+            "<div title=\"</div> >\"><div title='/> x'>**inner**</div> **body**</div>",
+            "<img alt=\"unterminated > **literal**\n- item"
+        )
+        literals.forEachIndexed { index, literal ->
+            val isUnclosed = index == literals.lastIndex
+            val result = formatAssistantAnswer("**before** " + literal + " **after**")
+            assertEquals("case $index", "before " + literal + if (isUnclosed) " **after**" else " after", result.text)
+            assertEquals(if (isUnclosed) 1 else 2, result.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
+        }
+    }
+
+    @Test fun `links and images keep opaque bracket bearing labels literal`() {
+        val labels = listOf("`[`", "`]`", "`[[]`", "<span>[</span>", "<span>]</span>",
+            "<span title=\"[ ] >\">**[**</span>", "[nested] `[`", "\\[escaped\\] `]`",
+            "`[`\n**label**\n- item", "<span title=']'>\n[ **literal**\n</span>",
+            "\\``[**literal**``", "``] **literal**``", "<span title=\"/> ]\">[</span>",
+            "\\`[\\`", "\\`]\\`", "\\<span title='['/>",
+            "\n```lang\n`\n] **literal**\n``\n[\n```\n")
+        for (prefix in listOf("", "!")) for (label in labels) {
+            val literal = prefix + "[" + label + "](https://example.test/(a)\\*x\\*)"
+            val result = formatAssistantAnswer("**before** " + literal + " **after**")
+            assertEquals(literal, "before " + literal + " after", result.text)
+            assertEquals(literal, 2, result.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
+            assertTrue(result.getStringAnnotations(0, result.length).isEmpty())
+        }
+    }
+
+    @Test fun `malformed opaque labels and destination payload stay literal`() {
+        for (prefix in listOf("", "!")) {
+            val malformed = prefix + "[`[` <img title=\"unterminated ](url)\n- **body**"
+            assertEquals(malformed, formatAssistantAnswer(malformed).text)
+            val destinations = listOf("url \"title ) **literal**\"", "<span title=')'>**literal**</span>",
+                "`)`**literal**", "url(foo\\)bar)")
+            for (destination in destinations) {
+                val literal = prefix + "[label](" + destination + ")"
+                val rendered = formatAssistantAnswer("**before** " + literal + " **after**")
+                assertEquals("before " + literal + " after", rendered.text)
+                assertEquals(2, rendered.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
+            }
+        }
+    }
+
+    @Test fun `short tick-only lines are payload in supported triple fences`() {
+        for (language in listOf("", "kotlin")) for (payload in listOf("`", "``", "  `  ", "\t``\t")) {
+            val original = "**before**\n```" + language + "\n" + payload + "\n```\n**after**"
+            val result = formatAssistantAnswer(original)
+            assertEquals("before\n" + payload + "\nafter", result.text)
+            assertTrue(result.spanStyles.any { it.item.fontFamily == FontFamily.Monospace && result.text.substring(it.start, it.end) == payload + "\n" })
+            assertEquals(2, result.spanStyles.count { it.item.fontWeight == FontWeight.Bold })
+        }
+        val mixed = "```lang\n`\n  ``  \n🌍 **literal**\n```"
+        val result = formatAssistantAnswer(mixed)
+        assertEquals("`\n  ``  \n🌍 **literal**\n", result.text)
+        assertEquals(1, result.spanStyles.count { it.item.fontFamily == FontFamily.Monospace && it.start == 0 && it.end == result.length })
     }
 
     @Test fun `long text and repeated malformed openers remain complete`() {

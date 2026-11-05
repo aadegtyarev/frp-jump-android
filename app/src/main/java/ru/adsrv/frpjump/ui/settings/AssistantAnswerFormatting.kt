@@ -44,16 +44,129 @@ internal fun formatAssistantAnswer(source: String): AnnotatedString {
     return out.toAnnotatedString()
 }
 
+/** End of a tag, ignoring angle brackets in quoted attributes. Unterminated tags stay literal. */
+private fun htmlTagEnd(text: String, start: Int): Int {
+    var quote: Char? = null
+    var p = start + 1
+    while (p < text.length) {
+        val c = text[p++]
+        if (quote != null) {
+            if (c == quote) quote = null
+        } else when (c) {
+            '\'', '"' -> quote = c
+            '>' -> return p
+        }
+    }
+    return text.length
+}
+
+/** Returns the complete inert HTML-shaped region, including nested same-name containers. */
+private fun htmlLiteralEnd(text: String, start: Int): Int {
+    if (text.startsWith("<!--", start)) {
+        val close = text.indexOf("-->", start + 4)
+        return if (close < 0) text.length else close + 3
+    }
+    val firstEnd = htmlTagEnd(text, start)
+    val first = text.substring(start, firstEnd)
+    val tag = htmlName.find(first)
+    if (tag == null || tag.groupValues[1].isNotEmpty() || first.trimEnd().endsWith("/>")) return firstEnd
+    val name = tag.groupValues[2]
+    var depth = 1
+    var scan = firstEnd
+    while (scan < text.length) {
+        val open = text.indexOf('<', scan)
+        if (open < 0) break
+        if (text.startsWith("<!--", open)) {
+            val close = text.indexOf("-->", open + 4)
+            if (close < 0) return text.length
+            scan = close + 3
+            continue
+        }
+        val end = htmlTagEnd(text, open)
+        val candidate = text.substring(open, end)
+        val nextTag = htmlName.find(candidate)
+        if (nextTag != null && nextTag.groupValues[2].equals(name, true)) {
+            if (nextTag.groupValues[1] == "/") depth--
+            else if (!candidate.trimEnd().endsWith("/>")) depth++
+            if (depth == 0) return end
+        }
+        scan = end
+    }
+    return text.length
+}
+
+private fun startsHtml(text: String, i: Int) = text[i] == '<' && i + 1 < text.length &&
+    (text[i + 1].isLetter() || text[i + 1] in "/!?")
+
 /** Nonrecursive, forward-only classification. Unknown constructs remain literal, never executable. */
 private fun answerRegions(text: String): IntArray {
     val kind = IntArray(text.length)
     fun mark(start: Int, end: Int, value: Int) { for (p in start until end) kind[p] = value }
     fun lineEnd(start: Int) = text.indexOf('\n', start).let { if (it < 0) text.length else it }
+    // A malformed opaque fragment can hide the label's closing bracket. In that
+    // ambiguous case retain the candidate link instead of formatting its prefix.
+    val nextLinkEnd = IntArray(text.length + 1) { -1 }
+    val nextOpaque = IntArray(text.length + 1) { -1 }
+    for (p in text.indices.reversed()) {
+        nextLinkEnd[p] = if (text[p] == ']' && p + 1 < text.length && text[p + 1] == '(') p else nextLinkEnd[p + 1]
+        nextOpaque[p] = if (text[p] == '`' || startsHtml(text, p)) p else nextOpaque[p + 1]
+    }
     val linkClose = IntArray(text.length) { -1 }
     val brackets = ArrayDeque<Int>()
     var bracketScan = 0
     while (bracketScan < text.length) {
-        if (text[bracketScan] == '\\' && bracketScan + 1 < text.length) { bracketScan += 2; continue }
+        if (text[bracketScan] == '\\' && bracketScan + 1 < text.length) {
+            if (startsHtml(text, bracketScan + 1)) {
+                bracketScan = htmlLiteralEnd(text, bracketScan + 1)
+                continue
+            }
+            if (text[bracketScan + 1] == '`' &&
+                (bracketScan + 2 >= text.length || text[bracketScan + 2] != '`')) {
+                // Escaped ticks in a label can themselves enclose bracket text.
+                val endOfLine = lineEnd(bracketScan)
+                val closing = text.indexOf("\\`", bracketScan + 2)
+                bracketScan = if (closing >= 0 && closing < endOfLine) closing + 2 else bracketScan + 2
+                continue
+            }
+            if (text[bracketScan + 1] != '`') { bracketScan += 2; continue }
+            bracketScan++ // Escaped multi-tick wrappers are opaque too.
+        }
+        if (startsHtml(text, bracketScan)) {
+            bracketScan = htmlLiteralEnd(text, bracketScan)
+            continue
+        }
+        if (text[bracketScan] == '`') {
+            var runEnd = bracketScan + 1
+            while (runEnd < text.length && text[runEnd] == '`') runEnd++
+            val count = runEnd - bracketScan
+            val lineEnd = lineEnd(runEnd)
+            val atLineStart = bracketScan == 0 || text[bracketScan - 1] == '\n'
+            val fence = atLineStart && lineEnd < text.length &&
+                ((count >= 3 && text.substring(runEnd, lineEnd).none { it == '`' }) ||
+                    (count < 3 && text.substring(runEnd, lineEnd).isBlank()))
+            if (fence) {
+                var scan = lineEnd + 1
+                var end = text.length
+                while (scan < text.length) {
+                    val e = lineEnd(scan)
+                    val trimmed = text.substring(scan, e).trim()
+                    if (trimmed.length == count && trimmed.all { it == '`' }) { end = e; break }
+                    scan = if (e < text.length) e + 1 else e
+                }
+                bracketScan = end
+                continue
+            }
+            val close = text.indexOf('`', runEnd)
+            if (count == 1 && (close < 0 || close >= lineEnd)) {
+                bracketScan = lineEnd
+            } else if (close < 0) {
+                bracketScan = text.length
+            } else {
+                bracketScan = close + 1
+                while (bracketScan < text.length && text[bracketScan] == '`') bracketScan++
+            }
+            continue
+        }
         if (text[bracketScan] == '[') brackets.addLast(bracketScan)
         if (text[bracketScan] == ']' && brackets.isNotEmpty()) linkClose[brackets.removeLast()] = bracketScan
         bracketScan++
@@ -76,7 +189,7 @@ private fun answerRegions(text: String): IntArray {
                     val trimmed = text.substring(scan, e).trim()
                     if (trimmed.isNotEmpty() && trimmed.all { it == '`' }) {
                         if (trimmed.length == count) { close = scan; break }
-                        mismatch = true
+                        if (count != 3 || trimmed.length >= 3) mismatch = true
                     }
                     scan = if (e < text.length) e + 1 else e
                 }
@@ -129,43 +242,45 @@ private fun answerRegions(text: String): IntArray {
             while (e < text.length && !text[e].isWhitespace() && text[e] != '`') e++
             mark(i, e, LITERAL); i = e; continue
         }
-        if (text[i] == '<' && i + 1 < text.length && (text[i + 1].isLetter() || text[i + 1] in "/!?")) {
-            val firstEnd = text.indexOf('>', i + 1)
-            if (firstEnd < 0) { mark(i, text.length, LITERAL); break }
-            val first = text.substring(i, firstEnd + 1)
-            val tag = htmlName.find(first)
-            var end = firstEnd + 1
-            if (first.startsWith("<!--")) {
-                val close = text.indexOf("-->", i + 4)
-                end = if (close < 0) text.length else close + 3
-            } else if (tag != null && tag.groupValues[1].isEmpty() && !first.trimEnd().endsWith("/>")) {
-                val name = tag.groupValues[2]
-                var depth = 1
-                var scan = end
-                while (scan < text.length && depth > 0) {
-                    val open = text.indexOf('<', scan)
-                    if (open < 0) break
-                    val close = text.indexOf('>', open + 1)
-                    if (close < 0) break
-                    val candidate = text.substring(open, close + 1)
-                    val nextTag = htmlName.find(candidate)
-                    if (nextTag != null && nextTag.groupValues[2].equals(name, true)) {
-                        if (nextTag.groupValues[1] == "/") depth-- else if (!candidate.trimEnd().endsWith("/>")) depth++
-                    }
-                    scan = close + 1
-                }
-                end = if (depth == 0) scan else text.length
-            }
+        if (startsHtml(text, i)) {
+            val end = htmlLiteralEnd(text, i)
             mark(i, end, LITERAL); i = end; continue
         }
         if (text[i] == '[' || (text[i] == '!' && i + 1 < text.length && text[i + 1] == '[')) {
             val bracket = if (text[i] == '!') i + 1 else i
-            val close = linkClose[bracket]
+            val matched = linkClose[bracket]
+            val ambiguous = nextLinkEnd[bracket + 1]
+            val opaque = nextOpaque[bracket + 1]
+            if (matched < 0 && ambiguous >= 0 && opaque in (bracket + 1) until ambiguous) {
+                // The opaque fragment's end is ambiguous too, so don't expose
+                // any following lines to list/escape/emphasis transformations.
+                mark(i, text.length, LITERAL); break
+            }
+            val close = matched
             if (close >= 0 && close + 1 < text.length && text[close + 1] == '(') {
                 var depth = 1
                 var p = close + 2
                 while (p < text.length && depth > 0) {
                     if (text[p] == '\\' && p + 1 < text.length) { p += 2; continue }
+                    if (startsHtml(text, p)) { p = htmlLiteralEnd(text, p); continue }
+                    if (text[p] == '\'' || text[p] == '"') {
+                        val quote = text[p++]
+                        while (p < text.length && text[p] != quote) {
+                            if (text[p] == '\\' && p + 1 < text.length) p++
+                            p++
+                        }
+                        if (p < text.length) p++
+                        continue
+                    }
+                    if (text[p] == '`') {
+                        var e = p + 1
+                        while (e < text.length && text[e] == '`') e++
+                        val end = text.indexOf('`', e)
+                        if (end < 0) { p = text.length; continue }
+                        p = end + 1
+                        while (p < text.length && text[p] == '`') p++
+                        continue
+                    }
                     if (text[p] == '(') depth++ else if (text[p] == ')') depth--
                     p++
                 }
