@@ -113,10 +113,24 @@ Existing tunnels, manual Copy/OSC52 and generic MQTT behavior remain unchanged.
 
 ## Resource and delivery boundary
 
-The operator approved a **120-minute total bound** covering implementation,
-checks, review, at most one consolidated correction and final acceptance work.
-Use one executor/reviewer pair and at most two review rounds. Resumes/new
-processes do not reset the bound; no autonomous extension, extra scope or
-partial delivery. If the whole slice cannot finish, preserve it as unfinished
-and stop for operator disposition. Publication remains parent-controlled;
-public version stays 0.3.48/code60 unless separately authorized.
+The original approval allowed **120 minutes total**, one executor/reviewer pair,
+one consolidated correction and at most two review rounds. Work stopped after
+R2 remained BLOCK; those elapsed resources and results are not reset or erased.
+
+The operator subsequently requested completion, explicitly swapped the coder
+and reviewer, and approved **up to 45 additional minutes and one final third
+review round** with “Запускай”. This continuation starts at
+2026-11-05T06:18:22Z and ends at **2026-11-05T07:03:22Z**. The additional bound
+includes preparation, one cohesive correction of the remaining callback/cleanup
+ownership class, mandatory checks, the parent whole-feature gate, final review
+and acceptance/publication. It does not authorize another feature or partial PR.
+
+For this continuation, **Terra implements and Sol reviews in a fresh read-only
+context**, using the appropriate existing worker/reviewer tool contracts rather
+than escalating a retained read-only session. Record the actual writer model in
+commit attribution. Preserve the full original class scope, connected lifecycle,
+all existing guarantees and the same branch/one final PR. A remaining BLOCK or
+expired bound means STOP; no fourth review, extra correction or autonomous
+extension. Publication and feature-contract completion/deletion remain
+parent-controlled; no release/tag/version bump is authorized and the public
+version stays 0.3.48/code60.
