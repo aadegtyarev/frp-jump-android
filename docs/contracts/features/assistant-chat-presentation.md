@@ -87,8 +87,8 @@ bump, tag, APK release, signing/CI changes or real-provider/device-data probes.
 ## Resource, ownership and publication
 
 One complete slice, one branch/PR/acceptance. Terra implements, Sol independently
-reviews: one stable pair. The original **one review round** returned BLOCK;
-only the explicitly approved second round below may follow. No automatic R3.
+reviews: one stable pair. Completed R1 and R2 returned BLOCK; only the
+explicitly approved R3 below may follow. No automatic R4.
 Parent owns scope, actual gate/finding disposition, acceptance and publication.
 Total **45 minutes including preparation, implementation, validation, review
 and reporting**, first recorded start `2026-11-05T08:54:09Z`, hard stop
@@ -120,6 +120,30 @@ not only the review's examples; do not weaken literal preservation or remove
 formatting to obtain a pass. See the complete first-review packet retained by
 the parent. Existing full gates and four-configuration component validation
 apply to the corrected source; earlier green results do not validate it.
+
+After R2 was interrupted, the operator explicitly instructed the parent to let
+the same reviewer work normally, without short phase cutoffs. Continue that same
+retained, read-only R2 in one uninterrupted session with the normal native
+30-minute review safeguard; expired earlier phase clocks do not apply to this
+continuation. No production changes, test reruns, new reviewer/round, acceptance
+waiver or release are authorized by this instruction.
+
+After completed R2 returned BLOCK, the operator explicitly approved **60 more
+minutes** (`2026-11-05T16:06:28Z`–`2026-11-05T17:06:28Z`) for the same Terra
+writer to close the remaining `ACP-LITERAL-01` HTML/link/image boundary cases
+and `ACP-CODE-02` supported-fence regression, required checks, and **one R3 by the
+same Sol reviewer**, followed by conditional acceptance/PR/merge, without release.
+Both receive uninterrupted working sessions, not short phase cutoffs. The writer
+returns a frozen candidate without waiting for parent validation; parent checks
+may run alongside read-only R3 inspection, but no positive final verdict or
+acceptance may precede actual gate evidence. No automatic R4 or budget extension.
+
+Fix each class across quoted HTML attributes, self-closing/container and multiline
+variants, opaque bracket-bearing code/HTML in link and image labels, and short
+tick-only payload lines in supported triple fences. Preserve earlier literal,
+formatting, inertness, Unicode/long-content and unchanged-history guarantees;
+new exact-output/style regressions must cover the mechanisms, not only examples.
+Dependencies, broader Markdown support and unrelated changes remain out of scope.
 
 Operator authorized one checked PR and acceptance/merge, not a release/version
 change. On success, update the durable surface contract, mark this contract
