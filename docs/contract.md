@@ -31,7 +31,7 @@ Related surfaces own their specific behavior and inherit [UI rules](#ui-rules):
 | Terminal history and numerical measurements | [Terminal diagnostics](terminal-diagnostics-contract.md) |
 | SFTP browsing, transfers and file viewing | [Files](files-contract.md) |
 | MQTT sessions, tree, publishing and plugin behavior | [MQTT](mqtt-contract.md) |
-| Optional kernel, provider setup and external adapter | [Assistant](agent-contract.md) |
+| Optional kernel, provider setup, text chat and external adapter | [Assistant](agent-contract.md) |
 
 The numbered scenarios below are stable references, not delivery stages.
 Behavioral requirements are normative; this reference is not a runtime
@@ -780,10 +780,10 @@ consume settings and write v2 immediately:
 ## Optional LLM assistant
 
 The optional module is off by default. Settings exposes provider setup,
-secure key storage, model discovery, effort and context limits; working chat
-and real connection tools are not available. Enabling, opening settings and
-saving do not start provider requests. Fetch models is an explicit setup
-action, available even while the module is off. Its target-bound credentials,
+secure key storage, model discovery, effort and context limits, plus a Chat
+entry for explicit text conversations. Real connection tools are not available.
+Enabling, opening settings and saving do not start provider requests. Fetch models
+is an explicit setup action, available even while the module is off. Its target-bound credentials,
 cancellation and current execution boundaries belong to the
 [assistant contract](agent-contract.md), not to tunnel permissions.
 
@@ -826,14 +826,18 @@ cancellation and current execution boundaries belong to the
 | SSH private key, remembered passwords | same |
 | Per profile: the server's last `features` answer, next to its cached device list (labels and icons included) | app-private storage |
 | MQTT plugins: app-level on/off and settings, each connection's own on/off (scenario 12) | app-private storage |
+| Assistant provider metadata and root-bound sealed credential | app-private atomic document; no plaintext key |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
 
 Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and
-requested APK/checksum downloads, and explicit provider model discovery.
-Discovery sends the provider credential only to its configured target under
-the [assistant contract](agent-contract.md); it does not send chat or grant
-connection tools. No provider request is implied by enabling the module,
+requested APK/checksum downloads, and explicit provider model discovery and
+text chat.
+Discovery and explicit chat send the provider credential only to its configured
+target under the [assistant contract](agent-contract.md). Discovery does not send
+chat; Chat sends only explicit text/history and fixed instructions, never automatic
+app/connection data. Neither grants connection tools. No provider request is
+implied by enabling the module,
 opening settings or saving, and setup discovery does not require the module
 switch to be on. These flows do not authorize telemetry or other background
 provider traffic. Explicit sharing/opening in another app is governed by the
@@ -883,9 +887,9 @@ These are review scenarios, not a record of tests run or releases published:
 The phone does not expose ports, reach other people's devices, perform admin
 commands or enroll by a key. Google Play distribution, armv7 release builds
 and additional UI languages are not promised. x86_64 builds are for local
-debug/minified validation, not the arm64 release target. There is no working
-assistant chat or tool-enabled connection control. Deferred plugin UI is
-identified in scenario 12; it is not an implementation plan in this contract.
+debug/minified validation, not the arm64 release target. Assistant chat is
+text-only, with no tool-enabled connection control or durable history. Deferred
+plugin UI is identified in scenario 12; it is not an implementation plan in this contract.
 
 ## Open risks
 

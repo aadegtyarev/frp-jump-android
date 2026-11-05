@@ -85,6 +85,8 @@ private object Routes {
     const val SESSIONS = "sessions"
     const val DEVICE = "device/{name}"
     const val SETTINGS = "settings"
+    const val CHAT = "assistant/chat"
+    const val PROVIDER = "assistant/provider"
     const val STORAGE = "storage"
     const val REMOVED = "removed"
     const val WEB = "web/{profile}/{name}/{port}/{target}/{https}"
@@ -367,6 +369,24 @@ fun AppNav() {
                 onBack = { nav.popBackStack() },
             )
         }
+        composable(Routes.CHAT) {
+            val vm = viewModel { ru.adsrv.frpjump.ui.settings.AssistantChatViewModel(app) }
+            ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
+                if (!app.settings.assistantAvailability.enabled) nav.popBackStack()
+                else nav.navigate(Routes.PROVIDER)
+            })
+        }
+        composable(Routes.PROVIDER) { entry ->
+            val settingsEntry = remember(entry) { nav.getBackStackEntry(Routes.SETTINGS) }
+            val vm = viewModel<SettingsViewModel>(settingsEntry) { SettingsViewModel(app) }
+            // Recovery re-reads metadata, never unseals the credential or starts provider traffic.
+            LaunchedEffect(Unit) { vm.reloadAssistantProvider().join() }
+            val provider by vm.assistantProvider.collectAsStateWithLifecycle()
+            ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider,
+                onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
+                onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
+                onBack = { nav.popBackStack() })
+        }
         composable(Routes.SETTINGS) {
             val profilesVm = viewModel { ProfilesViewModel(app) }
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
@@ -381,6 +401,7 @@ fun AppNav() {
                     // The next profile, if any; else enroll.
                     onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
                     onBack = null,
+                    onChat = { nav.navigate(Routes.CHAT) },
                 )
             }
         }

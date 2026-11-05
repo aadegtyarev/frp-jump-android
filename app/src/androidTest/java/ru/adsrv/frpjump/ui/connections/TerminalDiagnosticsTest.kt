@@ -101,7 +101,7 @@ class TerminalDiagnosticsTest {
                 vm = ViewModelProvider(activity, viewModelFactory { initializer { SettingsViewModel(app) } })[SettingsViewModel::class.java]
             }
             compose.setContent {
-                FrpJumpTheme { SettingsScreen(vm, profile = null, forget = null, onEditProfile = {}, onForget = {}, onBack = null) }
+                FrpJumpTheme { SettingsScreen(vm, profile = null, forget = null, onEditProfile = {}, onForget = {}, onBack = null, onChat = {}) }
             }
             compose.onNodeWithText(text(R.string.terminal_history_rows)).performScrollTo().performClick()
             for (rows in listOf(500, 1000, 3000, 10000)) {

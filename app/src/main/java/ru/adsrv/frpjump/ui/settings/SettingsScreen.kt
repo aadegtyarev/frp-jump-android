@@ -54,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -124,6 +125,7 @@ fun SettingsScreen(
     onForget: (id: String) -> Unit,
     /** Null when Settings is a tab: no back arrow. */
     onBack: (() -> Unit)?,
+    onChat: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -263,6 +265,8 @@ fun SettingsScreen(
             ) {}
         }
         Group(stringResource(R.string.assistant_title)) {
+            AssistantChatEntry(onChat)
+            RowDivider()
             AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
             RowDivider()
             SettingRow(tile = { GlyphTile("API") }, label = stringResource(R.string.assistant_provider_title),
@@ -442,6 +446,13 @@ fun SettingsScreen(
         }
         null -> Unit
     }
+}
+
+/** Shared entry used by Settings and the isolated navigation component check. */
+@Composable
+internal fun AssistantChatEntry(onChat: () -> Unit) {
+    SettingRow(tile = { GlyphTile("LLM") }, label = stringResource(R.string.chat_title),
+        modifier = Modifier.testTag("assistant_chat_entry"), onClick = onChat) { Chevron() }
 }
 
 /**

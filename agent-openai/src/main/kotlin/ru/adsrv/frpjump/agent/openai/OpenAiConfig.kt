@@ -26,7 +26,7 @@ class OpenAiConfig(
     }
 }
 enum class OutputLimitField(val wire: String) { MAX_TOKENS("max_tokens"), MAX_COMPLETION_TOKENS("max_completion_tokens") }
-enum class ProviderFailure { HTTP, NETWORK, INCOMPATIBLE_CONTEXT, RESPONSE_TOO_LARGE, REQUEST_TOO_LARGE, INVALID_RESPONSE, INCOMPLETE_RESPONSE }
+enum class ProviderFailure { HTTP, NETWORK, TIMEOUT, INCOMPATIBLE_CONTEXT, RESPONSE_TOO_LARGE, REQUEST_TOO_LARGE, INVALID_RESPONSE, INCOMPLETE_RESPONSE }
 /** No response body, endpoint, key, exception cause or user-supplied arguments in diagnostics. */
 class OpenAiProviderException(val failure: ProviderFailure, val status: Int? = null) : Exception("Provider failure: $failure${status?.let { " ($it)" }.orEmpty()}")
 data class ProviderModel(val id: String)

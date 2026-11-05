@@ -1,0 +1,105 @@
+package ru.adsrv.frpjump.ui.settings
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.assistant.*
+import ru.adsrv.frpjump.ui.AppTheme
+
+@Composable
+fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val provider by vm.provider.collectAsStateWithLifecycle()
+    AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup)
+}
+
+/** Synthetic component tests use this same production owner and UI, not an alternative chat model. */
+@Composable
+internal fun AssistantChatContent(
+    conversation: AssistantConversation, enabled: Boolean, provider: AssistantProviderSnapshot,
+    onBack: () -> Unit, onSetup: () -> Unit,
+) {
+    val state by conversation.state.collectAsStateWithLifecycle()
+    val historyScroll = rememberLazyListState()
+    LaunchedEffect(state.turns.size, state.pendingText) {
+        val count = state.turns.size + if (state.pendingText != null) 1 else 0
+        if (count > 0) historyScroll.scrollToItem(count - 1)
+    }
+    BackHandler { conversation.close(); onBack() }
+    val setup = when {
+        !enabled -> R.string.chat_disabled
+        provider.problem != null -> R.string.assistant_provider_read_failed
+        provider.settings?.model.isNullOrBlank() -> R.string.chat_setup
+        else -> null
+    }
+    BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
+        val compact = maxHeight < 400.dp
+        Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { conversation.close(); onBack() }, modifier = Modifier.testTag("chat_back")) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
+                }
+                Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge)
+            }
+            if (setup != null) {
+                Text(stringResource(setup))
+                TextButton(onClick = onSetup, modifier = Modifier.testTag("chat_setup")) {
+                    Text(stringResource(if (!enabled) R.string.settings else R.string.assistant_provider_title))
+                }
+            }
+            if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
+            LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(state.turns) { turn ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(stringResource(R.string.chat_you), style = MaterialTheme.typography.labelLarge)
+                        SelectionContainer { Text(turn.user) }
+                        Text(stringResource(R.string.assistant_title), style = MaterialTheme.typography.labelLarge)
+                        SelectionContainer { Text(turn.answer) }
+                    }
+                }
+                state.pendingText?.let { text -> item {
+                    Text(text)
+                    Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_waiting))
+                } }
+            }
+            state.problem?.let { problem -> Text(stringResource(when (problem) {
+                ChatProblem.SETUP -> R.string.chat_setup
+                ChatProblem.READ -> R.string.assistant_provider_read_failed
+                ChatProblem.KEY -> R.string.chat_key
+                ChatProblem.TIMEOUT -> R.string.chat_timeout
+                ChatProblem.CONTEXT_FULL -> R.string.chat_context_full
+                ChatProblem.INVALID_REPLY -> R.string.chat_invalid_reply
+                ChatProblem.PROVIDER -> R.string.chat_provider_failed
+                ChatProblem.TOO_LONG -> R.string.chat_too_long
+            }), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
+            if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL)) {
+                TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
+            }
+            OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
+                label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy,
+                minLines = 1, maxLines = 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
+            if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
+                modifier = Modifier.fillMaxWidth().testTag("chat_stop")) {
+                Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
+            } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
+        }
+    }
+}

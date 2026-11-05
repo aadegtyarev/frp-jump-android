@@ -44,7 +44,7 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                continuation.resumeWithException(OpenAiProviderException(ProviderFailure.NETWORK))
+                continuation.resumeWithException(ioFailure(e))
             }
             override fun onResponse(call: Call, response: Response) {
                 response.use {
@@ -63,8 +63,8 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
                     } catch (failure: OpenAiProviderException) {
                         continuation.resumeWithException(failure)
                         return
-                    } catch (_: IOException) {
-                        continuation.resumeWithException(OpenAiProviderException(ProviderFailure.NETWORK))
+                    } catch (failure: IOException) {
+                        continuation.resumeWithException(ioFailure(failure))
                         return
                     }
                     continuation.resume(text)
@@ -74,6 +74,9 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
     }
 
     private companion object {
+        fun ioFailure(error: IOException) = OpenAiProviderException(
+            if (error is java.io.InterruptedIOException) ProviderFailure.TIMEOUT else ProviderFailure.NETWORK)
+
         // No logging interceptors, cookies, authenticator or cache. Never retarget/replay keyed calls.
         val client = OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
             .addNetworkInterceptor { chain ->

@@ -8,9 +8,9 @@
     <string name="save">Save</string>
     <string name="assistant_title">LLM assistant</string>
     <string name="assistant_enabled">Enable assistant module</string>
-    <string name="assistant_foundation_hint">Experimental module, disabled by default. Configure its provider below. Chat and connection tools are not available yet.</string>
+    <string name="assistant_foundation_hint">Text chat · no connection tools</string>
     <string name="assistant_provider_title">Assistant provider</string>
-    <string name="assistant_provider_stage_hint">OpenAI-compatible API setup only; chat is not available yet. Model discovery sends a request only when you tap its button.</string>
+    <string name="assistant_provider_stage_hint">Requests start only with Send or Fetch models.</string>
     <string name="assistant_provider_root">API root URL (usually ending in /v1)</string>
     <string name="assistant_provider_key">API key</string>
     <string name="assistant_provider_key_keep">Key saved securely. Leave empty to keep it for this API root.</string>
@@ -1140,4 +1140,20 @@
     <string name="connection_no_longer_saved">This saved connection was removed or changed. Choose it again.</string>
     <string name="mqtt_login_not_saved">Could not save the login. You may need to enter it again after reopening this session.</string>
     <string name="mqtt_login_not_removed">Could not remove the saved login. The previous login may still be stored on this phone.</string>
+    <string name="chat_title">Chat</string>
+    <string name="chat_disabled">The assistant is off. Enable it in Settings.</string>
+    <string name="chat_setup">Set up a provider and select a model.</string>
+    <string name="chat_omitted">Older messages were omitted from the active context.</string>
+    <string name="chat_you">You</string>
+    <string name="chat_stopping">Stopping…</string>
+    <string name="chat_waiting">Waiting for answer…</string>
+    <string name="chat_key">Could not read the key. Replace it in provider settings.</string>
+    <string name="chat_timeout">The provider timed out. You can retry.</string>
+    <string name="chat_context_full">Message does not fit the context. Shorten it or increase the context limit.</string>
+    <string name="chat_invalid_reply">No complete text answer. You can retry.</string>
+    <string name="chat_provider_failed">Provider request failed. You can retry.</string>
+    <string name="chat_too_long">Message limit: 8,000 characters. The previous text is kept.</string>
+    <string name="chat_message">Message</string>
+    <string name="chat_stop">Stop</string>
+    <string name="chat_send">Send</string>
 </resources>
