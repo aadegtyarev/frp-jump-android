@@ -72,8 +72,7 @@ internal fun AssistantChatContent(
                         ChatUserMessage(turn.user)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
-                            val answer = remember(turn.answer) { formatAssistantAnswer(turn.answer) }
-                            SelectionContainer { Text(answer, color = AppTheme.colors.ink) }
+                            SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
                         }
                     }
                 }
