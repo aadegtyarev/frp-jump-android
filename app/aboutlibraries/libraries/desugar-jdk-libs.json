@@ -1,0 +1,12 @@
+{
+  "uniqueId": "com.android.tools:desugar_jdk_libs",
+  "name": "desugar_jdk_libs (Android core-library support)",
+  "artifactVersion": "2.1.5",
+  "website": "https://github.com/google/desugar_jdk_libs/tree/73170c345e6a762fc6a1f0301bb15218850023ef",
+  "licenses": [
+    "GPL-2.0-with-Classpath-Exception",
+    "Desugar-Additional-License-Info",
+    "Desugar-Assembly-Exception",
+    "Apache-2.0"
+  ]
+}

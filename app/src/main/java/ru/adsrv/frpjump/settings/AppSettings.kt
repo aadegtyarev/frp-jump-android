@@ -99,6 +99,9 @@ data class AppSettings(
     @SerialName("mqtt_cache") val mqttCache: MqttCacheLimits = MqttCacheLimits(),
     /** Opt-in experimental assistant module; false also stops its active run. */
     @SerialName("assistant_enabled") val assistantEnabled: Boolean = false,
+    @SerialName("assistant_search") val assistantSearch: Boolean = false,
+    @SerialName("assistant_read_page") val assistantReadPage: Boolean = false,
+    @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -123,8 +126,12 @@ fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
     else -> null
 }
 
-/** In-memory commit edge: the version advances only after a successfully persisted disable. */
-data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0)
+/** Independent opt-ins; there is no model capability registry or support probe. */
+data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage)
+/** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
+data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
+    val tools: AssistantTools = AssistantTools())
 
 /** The app's settings in one JSON file; unreadable or invalid content falls back to the defaults. */
 class SettingsStore(private val storage: TextStorage) {
@@ -133,10 +140,20 @@ class SettingsStore(private val storage: TextStorage) {
     private var committedSettings = _settings.value
     private val notifications = Any()
     val settings: StateFlow<AppSettings> = _settings
-    @Volatile var assistantAvailability = AssistantAvailability(_settings.value.assistantEnabled)
+    @Volatile var assistantAvailability = AssistantAvailability(_settings.value.assistantEnabled, tools = _settings.value.assistantTools())
         private set
     private val _assistantDisables = MutableStateFlow(0L)
     val assistantDisables: StateFlow<Long> = _assistantDisables
+
+    /** Shared persisted tool operation used by Settings and the retained Chat owner. */
+    fun setAssistantTool(id: String, enabled: Boolean) = update {
+        when (id) {
+            "web_search" -> it.copy(assistantSearch = enabled)
+            "read_page" -> it.copy(assistantReadPage = enabled)
+            "inspect_image" -> it.copy(assistantInspectImage = enabled)
+            else -> error("Unknown assistant tool")
+        }
+    }
 
     fun update(change: (AppSettings) -> AppSettings) {
         val version = synchronized(this) {
@@ -150,7 +167,8 @@ class SettingsStore(private val storage: TextStorage) {
             synchronized(assistantChat.gate) {
                 val previous = assistantAvailability
                 assistantAvailability = AssistantAvailability(next.assistantEnabled,
-                    previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0)
+                    previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0,
+                    next.assistantTools())
                 committedSettings = next
                 assistantAvailability.disableVersion
             }
@@ -178,7 +196,10 @@ class SettingsStore(private val storage: TextStorage) {
         val rawHistory = json["terminal_history_rows"] as? JsonPrimitive
         val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
-        val normalized = JsonObject(json + ("terminal_history_rows" to JsonPrimitive(history)) +
+        val toolFields = listOf("assistant_search", "assistant_read_page", "assistant_inspect_image").associateWith { key ->
+            JsonPrimitive((json[key] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)
+        }
+        val normalized = JsonObject(json + toolFields + ("terminal_history_rows" to JsonPrimitive(history)) +
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
             ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
             ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))

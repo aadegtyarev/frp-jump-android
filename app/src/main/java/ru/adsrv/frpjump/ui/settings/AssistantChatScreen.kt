@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -27,14 +28,19 @@ import ru.adsrv.frpjump.ui.AppTheme
 fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val provider by vm.provider.collectAsStateWithLifecycle()
-    AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup)
+    var toolsOpen by rememberSaveable { mutableStateOf(false) }
+    if (toolsOpen) {
+        AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
+    } else {
+        AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true })
+    }
 }
 
 /** Synthetic component tests use this same production owner and UI, not an alternative chat model. */
 @Composable
 internal fun AssistantChatContent(
     conversation: AssistantConversation, enabled: Boolean, provider: AssistantProviderSnapshot,
-    onBack: () -> Unit, onSetup: () -> Unit,
+    onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null,
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -57,7 +63,8 @@ internal fun AssistantChatContent(
                 IconButton(onClick = { conversation.close(); onBack() }, modifier = Modifier.testTag("chat_back")) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                 }
-                Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                onTools?.let { action -> TextButton(onClick = action, modifier = Modifier.testTag("chat_tools")) { Text(stringResource(R.string.assistant_tools)) } }
             }
             if (setup != null) {
                 Text(stringResource(setup))
@@ -73,16 +80,27 @@ internal fun AssistantChatContent(
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
                             SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
+                            if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
+                            ChatSources(turn.sources)
                         }
                     }
                 }
                 state.pendingText?.let { text -> item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         ChatUserMessage(text)
-                        Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_waiting), color = AppTheme.colors.muted)
+                        Text(stringResource(if (state.stopping) R.string.chat_stopping else when (state.toolProgress) {
+                            ChatToolProgress.SEARCH -> R.string.tool_search_progress
+                            ChatToolProgress.READ -> R.string.tool_read_progress
+                            ChatToolProgress.IMAGE -> R.string.tool_image_progress
+                            ChatToolProgress.FAILED -> R.string.tool_failed
+                            null -> R.string.chat_waiting
+                        }), color = AppTheme.colors.muted)
+                        ChatSources(state.currentSources)
                     }
                 } }
+                if (state.pendingText == null && state.currentSources.isNotEmpty()) item { ChatSources(state.currentSources) }
             }
+            if (state.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_current_tool_failure"))
             state.problem?.let { problem -> Text(stringResource(when (problem) {
                 ChatProblem.SETUP -> R.string.chat_setup
                 ChatProblem.READ -> R.string.assistant_provider_read_failed
@@ -113,5 +131,13 @@ private fun ChatUserMessage(text: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.chat_you), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accent)
         SelectionContainer { Text(text, color = AppTheme.colors.accent) }
+    }
+}
+
+@Composable
+private fun ChatSources(sources: List<ChatSource>) {
+    if (sources.isNotEmpty()) Column(Modifier.testTag("chat_sources"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(R.string.chat_sources), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
+        sources.forEach { source -> SelectionContainer { Text("${source.title}\n${source.url}") } }
     }
 }

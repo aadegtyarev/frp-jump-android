@@ -1,10 +1,32 @@
 # Assistant public Web tools
 
-Status: approved scope, 2026-11-06. The operator accepted free DuckDuckGo search,
+Status: completed and verified, 2026-11-06. The operator accepted free DuckDuckGo search,
 static page reading/following links, same-model image inspection and simple
 per-tool switches, explicitly accepting no JavaScript execution for this slice.
 Separate read-only research into JS-agent browsers is authorized, not delivery
 of a browser or reader-backend selector. Base: `5f9b8176a78c9a657742100ef7c78100432b1a84`.
+
+## Completion verification
+
+The parent accepted the whole feature on frozen R5 after the same independent
+reviewer returned **OK with notes; no issues found**. The matching gate recorded
+1,548 JVM results with zero failures, errors or skips: 1,504 app tests executed;
+18 core and 26 adapter results were up-to-date. Both debug APKs, Lint, documentation,
+whitespace and cumulative-patch Gitleaks passed. The four-configuration synthetic
+API 35 matrix passed **60/60**, once per configuration without retries.
+
+R5 replaces the old split Tools autosave binding on both entry paths. Historical
+R1–R4 failures remain recorded; their exact runtime cause is not claimed known.
+The new path passed canonical-state, error, concurrency and lifetime checks.
+No physical-device, vendor-IME, API 29 runtime, live-service or visual-understanding
+certification is claimed. Blocking storage may commit after cancellation.
+
+The reviewed source is HEAD `27e06d9acbfb05192af3c37d36bdc8b65247c946` plus
+frozen uncommitted R5, with 713 source files. Its source-manifest SHA256 is
+`7d4a3b10b351920df0a65323d1bb4de7cbb82a44699a3209a9248cc9cd42c0f0`.
+Only completion metadata changes after this verification; durable behavior is in
+the affected surface contracts. Archive this completed contract and remove it
+from the final branch before the single feature PR. No release is authorized.
 
 ## Result and affected surfaces
 
@@ -20,8 +42,9 @@ Read [assistant behavior](../../agent-contract.md) and the full affected
 [application/shared UI contract](../../contract.md), plus the
 [meta-contract](../meta-contract.md). Their no-tools/text-only network promises
 are prospectively superseded **only** for these explicitly enabled public-read
-operations. All credential, owner, cancellation, memory-only, provider-continuation
-and unrelated connection restrictions remain. Replace the first-tool prototype's
+operations. All credential, owner, memory-only, provider-continuation and unrelated
+connection restrictions remain. Tool changes follow the next-Send snapshot policy
+below; Stop/pop, assistant disable and provider changes retain cancellation. Replace the first-tool prototype's
 inapplicable full-access wording with an accurate public-read/data-disclosure
 notice: these tools cannot operate connections or files. Enabling tools permits
 model-selected public requests during explicit Send, not background activity.
@@ -35,19 +58,37 @@ missing/malformed new values default independently. No content, URLs or image
 bytes enter persistent storage. Saving/enabling/opening Settings makes no request.
 A failed save keeps committed authority/switch state and shows an inline error.
 
-Advertise only enabled tools; independently enforce current authorization before
-actual execution. Commit tool configuration with a monotonic process-local
-invalidation version under the existing shared admission/publication gate.
-Rapid off/on cannot revive old work. A committed tool change stops an active
-send; retain already completed chat text/history, not erase it merely for toggling.
-New sends use current tools. Unknown/disabled calls produce explicit bounded
-results without network. Changed provider revision or assistant disable keeps
-existing stronger context reset behavior. Tools remain changeable while busy.
+Prospective operator rewrite approval (2026-11-06): keep ordinary per-switch
+**autosave**, consistent with the rest of Settings; do not add a Save button or
+accept a known stale displayed value. Rewrite the Tools presentation/save binding
+shared by the Settings and Chat entry paths. Use existing application patterns and
+one clear source of committed presentation state: successful storage completion
+must deliver the actual saved snapshot and the control must display it before
+reporting completion/re-enabling. Do not render the requested value as saved
+before commit. Pending and failed saves must be explicit; failed writes do not
+pretend success. Both entry paths use the same production binding, including in
+synthetic tests, not a synchronous test-only Store shortcut.
+
+Keep the rewrite local to assistant tool settings, its ViewModel/UI/save wiring
+and regression tests. Small tool-boolean operations/accessors in SettingsStore may
+be adjusted if necessary; do not rewrite the global store, persistence format,
+unrelated settings or create a general settings framework. Preserve disposal,
+duplicate-save/callback, navigation and recreation correctness. Replacement may
+retire the old independent checked-state/completion paths; validate the new
+binding end to end rather than inventing a cause for historical captures.
+
+Prospective operator simplification (2026-11-06): each Send captures the committed
+enabled-tool set at admission. It may finish using that fixed set even when a
+switch changes meanwhile; the next Send uses the newly committed settings.
+Changing tools neither cancels the current Send nor clears completed history or
+the draft. Tools remain changeable while busy. Remove tool-change epochs and
+revocation machinery used only to stop an admitted Send. Unknown or unavailable
+calls against that Send's captured set return bounded results without network.
 
 Every model, page/search/image dispatch and resulting source/progress/answer/error
-publication is bound to the admitted owner, provider revision, disable version
-and tool version. Stop, pop, revoke and provider changes cancel only their exact
-work. Hold the shared busy slot through callback/body/parser/coroutine cleanup,
+publication remains bound to the admitted owner, provider revision and committed
+assistant-disable version. Stop/pop, assistant disable and provider changes still
+cancel their exact work and retain their existing context/reset behavior. Hold the shared busy slot through callback/body/parser/coroutine cleanup,
 including pop/reopen; no queued replacement or late publication. Do blocking
 DNS/parsing/image/storage work off Main and outside commit guards. Reuse existing
 kernel execution/exchange window, not another coordinator/framework.
@@ -62,8 +103,10 @@ direct page reading remains available when search is blocked.
 
 App-lived monotonic search limits: 10 seconds between dispatches, at most
 3 searches per Send and 20 per process-hour; return at most 5 results for a
-query of at most 256 characters. Deduplicate normalized identical queries with
-bounded 60-second in-memory reuse. No cooldown queue; report the limit promptly.
+query of at most 256 characters. There is no cross-Send search-results cache or
+TTL/reuse promise. A repeated search is subject to the same limits and may spend
+another quota slot; previous conversation history is not a content cache. No
+cooldown queue; report the limit promptly.
 Count attempted dispatches, including failures. A block/CAPTCHA/403/429 stops
 search for the send and applies a shared minimum 15-minute cooldown, extended
 by a bounded Retry-After value. No silent resume. Process death resets these
@@ -75,9 +118,20 @@ Android support, add **desugar_jdk_libs 2.1.5** and core-library desugaring only
 no Kotlin/AGP/Gradle/BOM upgrade. Preserve useful heading/list/pre/code whitespace;
 return title/final URL/text and bounded resolved link/image URLs with alt labels.
 No JS execution, login, PDF, SVG, animation/video, interaction or recursive crawl.
-A client-only JS shell is not a successfully read full article; say when useful
-content could not be obtained. Static server-rendered content is supported even
-when the original website also uses JS.
+Prospective operator amendment (2026-11-06): return the bounded readable static
+text actually obtained, including JavaScript/login/enable-JS warnings and shell
+text, as untrusted data with title/final URL. Do not classify JS dependence,
+usefulness or warning-only pages, and apply no minimum text-length threshold.
+The model judges the available data. Fixed extraction metadata must state that
+JavaScript was not executed and static extraction may be incomplete; successful
+retrieval is not proof of a full article or rendered JS. Empty/script-only/no-
+readable-text results may report no content. HTTP/network/MIME/URL/byte/timeout
+failures remain truthful failures, not fabricated successful article text. This
+explicitly supersedes the earlier warning-only-shell rejection requirement;
+prior failed reviews/gates are not retroactively accepted. Static server-rendered
+content remains supported even when the original website also uses JS. Search
+CAPTCHA/block/rate handling is unchanged; image replies follow the simplified
+ordinary-response policy below.
 
 Use a dedicated stateless credential-free public client: HTTPS, port 443 only,
 no userinfo/local schemes, cookies, authenticator, client certificates, provider
@@ -95,7 +149,8 @@ per fetch, 1 MiB decoded page/search response, 8,000 returned text characters,
 100 link and 20 image references per page. Enforce byte caps while streaming,
 including decompression, before HTML parsing. Mark clipped results. Whole Send
 has a 120-second deadline including model/tool/image work; existing per-call
-kernel/transport limits still apply. Bound caches/source metadata as well as text.
+kernel/transport limits still apply. Bound anti-abuse state and source metadata
+as well as text.
 
 ## Optimistic image inspection
 
@@ -106,18 +161,30 @@ prepared provider transport and root-bound credential; tool code receives no key
 A narrow user-role text + inline image operation returning text avoids changing
 core message/tool protocols or retaining pixels in conversation history.
 
-No capability check or test request. Rejection, timeout, malformed response,
-oversize or other image failure becomes a sanitized explicit tool failure. The
-normal text loop may continue with available text and disclose the limitation.
-Never claim alt text is visual inspection, remove an image and report success,
-replay the turn, retry automatically or choose another model/provider.
+No capability check or test request. Return a bounded ordinary model response to
+the image request, with neutral labels: this is unverified model text, not proof
+that an image was seen or understood. An answer such as "I cannot process images"
+is valid returned data for the main dialogue. Do not require an observed/unavailable
+JSON envelope, exact response fields, or a refusal-language classifier. A usable
+textual refusal, including a standard structured refusal carrying text, is not a
+silent failure. This prospectively supersedes the image self-report requirement.
 
-At most 2 inspections per Send; download cap 1 MiB/image, 4 megapixels, question
-at most 1,000 characters, 512 output tokens and 4,000 observation characters.
+Technical HTTP/timeout/invalid or empty API response/oversize failures remain
+explicit sanitized tool failures. The normal text loop may continue and explain
+the limitation. Never present alt text as visual inspection, remove an image and
+claim success, replay the turn, retry automatically or change model/provider.
+
+At most 2 image attempts per Send; download cap 1 MiB/image, 4 megapixels, question
+at most 1,000 characters, 512 output tokens and 4,000 returned text characters.
 Validate actual MIME/image dimensions before decoding; bound and reject an
 encoded request exceeding the existing provider byte cap, including base64/JSON.
 Release transient image/base64/bitmap resources on every exit; retain only bounded
-observation/provenance text. Additional same-model token charges are disclosed.
+response/provenance text. Additional same-model token charges are disclosed.
+
+Tool failures must give a short understandable description of what failed, with a
+known status or limit when available, rather than an empty result or opaque enum.
+Keep current-attempt failure feedback visible and let the model explain it. Never
+expose raw server bodies, exception messages/stacks, credentials or private data.
 
 ## History, feedback and non-goals
 
@@ -143,20 +210,37 @@ is reviewed by the parent and handed to the writer. One stable writer and one
 fresh independent reviewer inspect the complete cumulative diff, full affected
 files and connected owners from the start. Cohesion over line counts.
 
-Overall work allowance is one implementation pass plus at most one consolidated
-correction pass, at most two independent review rounds, focused regression tests
-and one matching mandatory full gate per frozen candidate. No automatic extra
-review/fix campaign or repeated passing checks. Native run safeguards are normal
-uninterrupted windows, not short phase countdowns. On infrastructure failure,
-new scope decision or exhausted allowance, preserve evidence and stop for the
-operator. Parallel research is one bounded read-only report, not another coder.
+Initial R1/R2 and the separately approved R3 finish ended with BLOCK and remain
+failed history, not interrupted reviews or retrospectively accepted candidates.
+After a read-only simplicity report, the operator explicitly approved this
+smaller policy package: next-Send tool snapshots, no shared search-results cache,
+ordinary model image responses and understandable technical errors. Keep live
+sources, ready parsers and the existing safety limits; no general cleanup.
+
+That R4 allowance is exhausted: the approved simplifications passed final
+1538-result JVM and 56-case UI gates, but review remained BLOCK on earlier
+saved-versus-displayed switch captures without a demonstrated UI correction.
+Both positive and negative evidence remain history; no retrospective PASS.
+
+The operator then explicitly rejected replacing autosave with a Save button and
+requested a well-written replacement of the tool-settings binding. This request
+is bounded to **one read-only scout delta consumed by the parent, one coherent
+implementation pass, necessary focused checks, one matching full gate/matrix and
+one final same-reviewer round (R5)**. Keep the same writer/reviewer pair and the
+existing next-Send/cache/image/error policies. No automatic correction/R6, blind
+retry, general settings rewrite, new platform investigation or repetition of
+unchanged passing checks. A remaining blocker requires another operator decision.
+Native safeguards remain normal uninterrupted windows, not a shared countdown or
+hour estimate. Stop on infrastructure failure, new scope or exhausted allowance;
+preserve all evidence. Completed JS research is not another coder or delivery gate.
 
 Validate production seams with synthetic providers/DNS/HTTP and existing test
-fixtures: DDG fixtures/block/quota/dedup; safe DNS/redirect/IP and no credential
-leaks; streaming/MIME/HTML/image bounds; same-model image encoding and truthful
-failure continuation; committed-switch/revoke races, failed writes/off-on,
-Stop/pop/reopen and full cleanup; complete history/source eviction and no
-persistent content. Do not weaken production public-only rules for loopback tests.
+fixtures: DDG fixtures/block/quota without a shared content cache; safe DNS,
+redirect/IP and no credential leaks; streaming/MIME/HTML/image bounds; same-model
+image text/refusal and explicit technical errors; current-Send snapshots and
+next-Send settings, failed writes/off-on, Stop/pop/disable/provider revocation
+and full cleanup; actual saved/rendered switches, complete history/source eviction
+and no persistent content. Do not weaken production public-only rules for loopback tests.
 Run focused tests, full JVM suites, both debug APKs and Lint, documentation checker,
 whitespace and candidate-range Gitleaks. Reuse only emulator-5580/plain synthetic
 Application/explicit chat class; representative EN/RU/light/dark/portrait/landscape

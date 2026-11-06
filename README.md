@@ -871,12 +871,25 @@ Components and licenses.
 | [CameraX](https://developer.android.com/jetpack/androidx/releases/camera) camera-camera2 / camera-lifecycle / camera-view | 1.4.1 | Apache-2.0 |
 | [ZXing](https://github.com/zxing/zxing) core | 3.5.3 | Apache-2.0 |
 | [AboutLibraries](https://github.com/mikepenz/AboutLibraries) Gradle plugin (build time only) | 11.6.3 | Apache-2.0 |
+| [jsoup](https://jsoup.org/) static HTML parser | 1.24.1 | MIT |
+| [desugar_jdk_libs](https://github.com/google/desugar_jdk_libs) Android core-library support | 2.1.5 | GPL-2.0 with Classpath Exception; Apache-2.0 portions; OpenJDK licensing/assembly notices |
 | [Sora Editor](https://github.com/Rosemoe/sora-editor) editor / language-textmate ([sources of 0.24.6](https://github.com/Rosemoe/sora-editor/tree/0.24.6)) | 0.24.6 | LGPL-2.1 |
 | [Eclipse tm4e](https://github.com/eclipse/tm4e) core and language configuration, a copy inside language-textmate ([its sources in the Sora 0.24.6 tree](https://github.com/Rosemoe/sora-editor/tree/0.24.6/language-textmate/src/main/java/org/eclipse/tm4e)) | Sora's copy | EPL-2.0 |
 | [joni](https://github.com/jruby/joni), [jcodings](https://github.com/jruby/jcodings) (via language-textmate) | 2.2.7, 1.0.64 | MIT |
 | [snakeyaml-engine](https://bitbucket.org/snakeyaml/snakeyaml-engine), [Gson](https://github.com/google/gson) (via language-textmate) | 3.0.1, 2.13.2 | Apache-2.0 |
 | Eclipse JDT annotations (via language-textmate, compile-time annotations) | 2.4.100 | EPL-2.0 |
 | TextMate grammars from [VS Code](https://github.com/microsoft/vscode)'s built-in extensions, in `app/src/main/assets/textmate/` | 1.142.0 (YAML 1.90.0) | MIT, TextMate Bundle License, Apache-2.0 (Dockerfile): see `NOTICE.md` there |
+
+jsoup's exact MIT copyright/license and desugar_jdk_libs' GPL-2.0 + Classpath
+Exception, additional licensing information and assembly exception are bundled
+in `app/src/main/assets/licenses/` and shown in Components and licenses. The
+unmodified desugar dependency's [2.1.5 source revision](https://github.com/google/desugar_jdk_libs/tree/73170c345e6a762fc6a1f0301bb15218850023ef)
+contains `VERSION_JDK11.txt` = 2.1.5; Components links to that revision, not an
+unrelated tag. Its Apache-licensed portions retain the bundled Apache text.
+The desugaring configuration artifact is build-time data, not a separate runtime
+library in the APK. No upstream `NOTICE` file exists at that source revision;
+the two separately named OpenJDK notices above retain their text (trailing
+whitespace is normalized in the additional licensing information).
 
 termux-app as a whole is GPLv3, but its LICENSE.md lists terminal-emulator
 and terminal-view as Apache-2.0 (derived from Jack Palevich's Terminal
@@ -936,7 +949,12 @@ The optional [LLM assistant](docs/agent-contract.md) uses the separate
 `agent-core` JVM module and `agent-openai` protocol adapter. Its Settings
 switch is off by default. Settings provides secure provider setup, explicit
 model discovery and memory-only text chat. Requests start only with Send or
-Fetch models; connection tools and automatic app-data upload are not available.
+Fetch models. Tools has independent default-off switches for best-effort free
+DuckDuckGo search, static public HTTPS page reading and optimistic same-model
+JPEG/PNG inspection. No JavaScript/browser execution, connection tools or automatic
+app-data upload. Queries go to DuckDuckGo; selected public text/images go to the
+configured model, with normal token charges. See the assistant contract for
+limits, public-only URL policy and truthful failure/provenance behavior.
 
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.
 If Gradle reports that the toolchain has no `JAVA_COMPILER`, point `JAVA_HOME`

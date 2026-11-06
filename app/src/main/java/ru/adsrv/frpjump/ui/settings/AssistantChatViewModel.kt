@@ -11,7 +11,7 @@ import ru.adsrv.frpjump.settings.SettingsStore
 
 /** Back-stack scoped, without SavedStateHandle: recreation retains memory; pop releases it. */
 class AssistantChatViewModel(
-    settingsStore: SettingsStore,
+    private val settingsStore: SettingsStore,
     providerStore: AssistantProviderStore,
     module: AgentModule,
     prepare: (AssistantProviderSnapshot) -> AgentProvider = {
@@ -30,5 +30,6 @@ class AssistantChatViewModel(
         viewModelScope.launch { settingsStore.assistantChat.busy.collect { conversation.refresh() } }
         viewModelScope.launch { provider.collect { conversation.refresh() } }
     }
+    internal val tools = AssistantToolsBinding(settingsStore, viewModelScope)
     override fun onCleared() { conversation.close() }
 }

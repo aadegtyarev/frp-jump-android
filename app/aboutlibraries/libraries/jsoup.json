@@ -1,0 +1,7 @@
+{
+  "uniqueId": "org.jsoup:jsoup",
+  "licenses": [
+    "jsoup-MIT"
+  ],
+  "website": "https://github.com/jhy/jsoup/tree/jsoup-1.24.1"
+}

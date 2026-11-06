@@ -781,7 +781,24 @@ consume settings and write v2 immediately:
 
 The optional module is off by default. Settings exposes provider setup,
 secure key storage, model discovery, effort and context limits, plus a Chat
-entry for explicit text conversations. Real connection tools are not available.
+entry for explicit conversations. Tools offers independent, default-off Web
+search, Read page and Inspect image switches, with public-read/data-disclosure
+and model token-charge notices. These operate only during explicit Send; opening
+or saving makes no request. Switches autosave through the same Tools binding in
+Settings and Chat. Actual committed values, pending progress and inline failures
+come from one snapshot; no Save button or pre-commit checked value. Storage runs
+off Main; successful completion presents current canonical values with pending
+cleared together. Back/recreation retain parent-owned saves; actual parent pop
+cancels publication, without promising rollback of blocking storage.
+Each Send keeps its admitted tool snapshot and may
+finish with it; committed changes apply only to the next Send without clearing
+history or draft. Stop/pop, assistant disable and provider changes still revoke
+work. Search has no shared results cache; process quotas/cooldowns remain. Image
+requests return bounded unverified model text, including inability/refusal, not
+claims of visual understanding. Technical failures give understandable sanitized
+descriptions and known status/limits, never silent success or raw server errors. Chat also opens Tools without popping its conversation;
+returning from Tools keeps that owner/history, while actual Chat exit discards it.
+Real connection tools are not available.
 Enabling, opening settings and saving do not start provider requests. Fetch models
 is an explicit setup action, available even while the module is off. Its target-bound credentials,
 cancellation and current execution boundaries belong to the
@@ -832,11 +849,15 @@ cancellation and current execution boundaries belong to the
 Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and
 requested APK/checksum downloads, and explicit provider model discovery and
-text chat.
+chat, and explicitly enabled assistant public HTTPS read/search/image requests.
+These optional credential-free public requests and same-model image analysis
+follow the [assistant contract](agent-contract.md#optional-public-web-tools), not
+connection permissions. They cannot access local/tunnel/file targets and perform
+no background activity.
 Discovery and explicit chat send the provider credential only to its configured
 target under the [assistant contract](agent-contract.md). Discovery does not send
-chat; Chat sends only explicit text/history and fixed instructions, never automatic
-app/connection data. Neither grants connection tools. No provider request is
+chat; Chat sends explicit text/history, fixed instructions and enabled public-read
+tool schemas/results, never automatic app/connection data. Neither grants connection tools. No provider request is
 implied by enabling the module,
 opening settings or saving, and setup discovery does not require the module
 switch to be on. These flows do not authorize telemetry or other background
@@ -888,7 +909,14 @@ The phone does not expose ports, reach other people's devices, perform admin
 commands or enroll by a key. Google Play distribution, armv7 release builds
 and additional UI languages are not promised. x86_64 builds are for local
 debug/minified validation, not the arm64 release target. Assistant chat is
-text-only, with no tool-enabled connection control or durable history. Deferred
+memory-only, with optional public-read tools but no tool-enabled connection
+control or durable history. Public tools do not execute/render JavaScript or
+claim full client-only articles, and cannot read local files or private/tunnel
+addresses. The explicit 2026-11-06 amendment returns available bounded static text,
+including warning-only/shell text, without JS/usefulness detection; the model
+judges it. Fixed no-JS/incomplete-extraction metadata remains, and empty content or
+technical fetch failures are not fabricated successful articles. This supersedes
+the earlier warning-only rejection policy prospectively, not past failed gates. Deferred
 plugin UI is identified in scenario 12; it is not an implementation plan in this contract.
 
 ## Open risks

@@ -60,6 +60,7 @@
         <!-- After a reboot (once unlocked: the credentials need it), brings back tunnels that were up. -->
         <receiver
             android:name=".restore.BootReceiver"
+            android:enabled="${assistantBootReceiverEnabled}"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
