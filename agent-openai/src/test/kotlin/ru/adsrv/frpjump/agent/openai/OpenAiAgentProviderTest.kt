@@ -326,4 +326,86 @@ class OpenAiAgentProviderTest {
             assertTrue(e.seen.isEmpty())
         }
     }
+    private fun imageReply(content: String, refusal: JsonElement? = null): String = buildJsonObject {
+        putJsonArray("choices") { add(buildJsonObject {
+            put("finish_reason", "stop")
+            putJsonObject("message") { put("role", "assistant"); put("content", content); refusal?.let { put("refusal", it) } }
+        }) }
+    }.toString()
+
+    @Test fun `optimistic image uses same root model effort credential and one user image without tools`() = runBlocking {
+        Endpoint().use { e ->
+            e.replies += Reply(imageReply("done"))
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "same-model", "high", OutputLimitField.MAX_COMPLETION_TOKENS), key)
+            var starts = 0
+            assertEquals("done", provider.inspectImage("image/png", byteArrayOf(1, 2, 3), "What is visible?") { starts++; it() })
+            assertEquals(1, starts)
+            val seen = e.seen.poll(2, TimeUnit.SECONDS)!!
+            assertEquals("/v1/chat/completions", seen.path); assertEquals("Bearer $key", seen.authorization)
+            val body = Json.parseToJsonElement(seen.body).jsonObject
+            assertEquals("same-model", body["model"]!!.jsonPrimitive.content)
+            assertEquals("high", body["reasoning_effort"]!!.jsonPrimitive.content)
+            assertEquals(512, body["max_completion_tokens"]!!.jsonPrimitive.int); assertNull(body["tools"])
+            val message = body["messages"]!!.jsonArray.single().jsonObject
+            assertEquals("user", message["role"]!!.jsonPrimitive.content)
+            assertEquals("data:image/png;base64,AQID", message["content"]!!.jsonArray[1].jsonObject["image_url"]!!.jsonObject["url"]!!.jsonPrimitive.content)
+            assertFalse(seen.body.contains(key))
+        }
+    }
+
+    @Test fun `image rejection malformed tool output and payload overflow never retry strip image or fall back`() = runBlocking {
+        for (reply in listOf(Reply("private", 400), Reply("invalid"), Reply(toolResponse("tool_calls", null, 1)), Reply(final.replace("done", "x".repeat(4001))))) Endpoint().use { e ->
+            e.replies += reply
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "same"), key)
+            assertThrows(OpenAiProviderException::class.java) { runBlocking { provider.inspectImage("image/jpeg", byteArrayOf(1), "q") } }
+            assertEquals(1, e.seen.size)
+        }
+        Endpoint().use { e ->
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "same", maxRequestBytes = 1024), key)
+            failure(ProviderFailure.REQUEST_TOO_LARGE) { runBlocking { provider.inspectImage("image/png", ByteArray(1024), "q") } }
+            assertTrue(e.seen.isEmpty())
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { provider.inspectImage("image/png", byteArrayOf(1), "q") { throw kotlinx.coroutines.CancellationException() } } }
+            assertTrue(e.seen.isEmpty())
+        }
+    }
+
+    @Test fun `WEB-IMAGE-05 ordinary model text and structured textual refusal are unverified data`() = runBlocking {
+        for (mime in listOf("image/jpeg", "image/png")) {
+            for (text in listOf("Красный квадрат / red square", "I cannot process images", "Не могу видеть изображение", "[]", "x".repeat(4000))) {
+                Endpoint().use { e ->
+                    e.replies += Reply(imageReply(text))
+                    assertEquals(text, OpenAiAgentProvider(OpenAiConfig(e.url, "same"), key).inspectImage(mime, byteArrayOf(1), "q"))
+                    val encoded = e.seen.poll(2, TimeUnit.SECONDS)!!.body
+                    assertFalse(encoded.contains("response_format")); assertFalse(encoded.contains("observed"))
+                    assertFalse(encoded.contains("unavailable"))
+                }
+            }
+            Endpoint().use { e ->
+                val refusal = "I cannot process this image"
+                e.replies += Reply(imageReply("", JsonPrimitive(refusal)))
+                assertEquals(refusal, OpenAiAgentProvider(OpenAiConfig(e.url, "same"), key).inspectImage(mime, byteArrayOf(1), "q"))
+                assertEquals(1, e.seen.size)
+            }
+            for (response in listOf(imageReply(""), imageReply(" "), imageReply("x".repeat(4001)),
+                imageReply("", buildJsonObject { put("reason", "refused") }),
+                imageReply("partial").replace("\"stop\"", "\"length\""), imageReply("filtered").replace("\"stop\"", "\"content_filter\""))) Endpoint().use { e ->
+                e.replies += Reply(response)
+                assertThrows(OpenAiProviderException::class.java) { runBlocking { OpenAiAgentProvider(OpenAiConfig(e.url, "same"), key).inspectImage(mime, byteArrayOf(1), "q") } }
+                assertEquals(1, e.seen.size)
+            }
+        }
+    }
+
+    @Test fun `WEB-IMAGE-05 image timeout cancels exact call without retry or alternate request`() = runBlocking {
+        Endpoint().use { e ->
+            val release = CountDownLatch(1)
+            e.replies += Reply(imageReply("late"), gate = release)
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "same"), key)
+            val call = async(start = CoroutineStart.UNDISPATCHED) { withTimeout(1000) { provider.inspectImage("image/png", byteArrayOf(1), "q") } }
+            assertNotNull(withContext(Dispatchers.IO) { e.seen.poll(2, TimeUnit.SECONDS) })
+            try { call.await(); fail() } catch (_: TimeoutCancellationException) { }
+            release.countDown(); assertTrue(e.seen.isEmpty()) // The one original request was consumed above; no retry remained.
+        }
+    }
+
 }

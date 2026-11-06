@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class AssistantChatRuntime {
     internal val gate = Any()
+    internal val webSearch = WebSearchState()
+    internal var publicWeb: PublicFetcher = PublicWebTransport()
     // Narrow deterministic probes for the chat/store race regressions; absent in production.
     internal var beforeAction: ((String) -> Unit)? = null
     internal var checkedAction: ((String) -> Unit)? = null

@@ -103,6 +103,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     fun setTerminalHistoryRows(rows: Int) = save { it.copy(terminalHistoryRows = rows) }
 
+    internal val tools = AssistantToolsBinding(app.settings, viewModelScope)
+
     fun setAssistantEnabled(enabled: Boolean, complete: (String?) -> Unit) {
         viewModelScope.launch {
             try {

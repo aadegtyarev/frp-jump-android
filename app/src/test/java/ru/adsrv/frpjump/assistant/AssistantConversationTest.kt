@@ -137,12 +137,11 @@ class AssistantConversationTest {
         }
     }
 
-    @Test fun `timeout invalid empty excessive and unexpected tool replies are fixed recoverable failures without extra calls`() = runBlocking {
+    @Test fun `timeout invalid empty and excessive replies are fixed recoverable failures without extra calls`() = runBlocking {
         val variants = listOf<Pair<ChatProblem, suspend () -> AgentReply>>(
             ChatProblem.TIMEOUT to { awaitCancellation() },
             ChatProblem.INVALID_REPLY to { AgentReply("") },
             ChatProblem.INVALID_REPLY to { AgentReply("x".repeat(32_001)) },
-            ChatProblem.INVALID_REPLY to { AgentReply(calls = listOf(ToolCall("call", "unknown", buildJsonObject {}))) },
             ChatProblem.PROVIDER to { error("secret exception") },
         )
         for ((expected, reply) in variants) {
@@ -367,4 +366,47 @@ class AssistantConversationTest {
             chat.close()
         } finally { scope.cancel(); server.close(); thread.join(1000) }
     }
+    @Test fun `unknown and disabled proposals return bounded results then continue without public requests`() = runBlocking {
+        for (name in listOf("unknown", "web_search", "read_page", "inspect_image")) {
+            var calls = 0
+            Fixture(AgentProvider { request ->
+                if (++calls == 1) AgentReply(calls = listOf(ToolCall("one", name, buildJsonObject {})))
+                else {
+                    assertEquals(ToolOutcome.UNKNOWN_TOOL, request.turns.last().exchanges.single().results.single().outcome)
+                    assertTrue(request.tools.isEmpty()); AgentReply("Tool unavailable; answering from text")
+                }
+            }).use { f ->
+                val state = f.send(); assertNull(state.problem); assertTrue(state.turns.single().toolFailed)
+                assertEquals(2, calls); assertTrue(state.turns.single().sources.isEmpty())
+            }
+        }
+    }
+
+    @Test fun `tool off-on allows current completion and preserves history and prepared provider`() = runBlocking {
+        var calls = 0; val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        Fixture(AgentProvider {
+            calls++
+            if (calls == 2) { entered.complete(Unit); withContext(NonCancellable) { release.await() } }
+            AgentReply("answer $calls")
+        }).use { f ->
+            f.send("complete")
+            f.chat.edit("pending"); f.chat.send(); entered.await()
+            f.settings.update { it.copy(assistantSearch = true) }; f.settings.update { it.copy(assistantSearch = false) }
+            release.complete(Unit); f.idle()
+            assertEquals(listOf("complete", "pending"), f.chat.state.value.turns.map { it.user })
+            assertEquals("", f.chat.state.value.draft); assertNull(f.chat.state.value.problem)
+            f.send("next"); assertEquals(3, f.chat.state.value.turns.size)
+            assertEquals(1, f.preparations)
+        }
+    }
+
+    @Test fun `aggregate retained history evicts complete turns visibly before the turn count limit`() = runBlocking {
+        Fixture(AgentProvider { AgentReply("x".repeat(30_000)) }, limit = AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100)).use { f ->
+            repeat(20) { f.send("q$it") }
+            val state = f.chat.state.value
+            assertEquals(17, state.turns.size); assertEquals("q3", state.turns.first().user)
+            assertTrue(state.omitted); assertTrue(state.turns.all { it.answer.length == 30_000 })
+        }
+    }
+
 }

@@ -1191,7 +1191,7 @@
     <string name="chat_title">Чат</string>
     <string name="chat_disabled">Ассистент выключен. Включите его в настройках.</string>
     <string name="chat_setup">Настройте провайдера и выберите модель.</string>
-    <string name="chat_omitted">Старые сообщения исключены из активного контекста.</string>
+    <string name="chat_omitted">Часть контекста разговора пропущена.</string>
     <string name="chat_assistant">Помощник</string>
     <string name="chat_you">Вы</string>
     <string name="chat_stopping">Остановка…</string>
@@ -1205,4 +1205,18 @@
     <string name="chat_message">Сообщение</string>
     <string name="chat_stop">Остановить</string>
     <string name="chat_send">Отправить</string>
+    <string name="assistant_tools">Инструменты</string>
+    <string name="assistant_tools_notice">Только публичное чтение — без подключений и файлов. Запросы идут в DuckDuckGo; выбранные публичные тексты и изображения — настроенной модели. Токены модели, включая анализ изображений, оплачиваются. Изменения — для следующего запроса; текущий может завершиться с прежними инструментами. История сохраняется. Здесь сеть не используется.</string>
+    <string name="tool_search">Поиск в интернете</string>
+    <string name="tool_search_hint">Бесплатный неофициальный поиск DuckDuckGo; возможны блокировки.</string>
+    <string name="tool_read">Прочитать страницу</string>
+    <string name="tool_read_hint">Публичные HTTPS-страницы, текст и Markdown. Без JavaScript.</string>
+    <string name="tool_image">Рассмотреть изображение</string>
+    <string name="tool_image_hint">Публичные JPEG/PNG той же моделью. Поддержка не гарантирована.</string>
+    <string name="assistant_tool_save_failed">Не удалось сохранить настройку. Повторите попытку.</string>
+    <string name="tool_search_progress">Поиск…</string>
+    <string name="tool_read_progress">Чтение страницы…</string>
+    <string name="tool_image_progress">Анализ изображения…</string>
+    <string name="tool_failed">Инструмент не сработал. Ответ может быть неполным.</string>
+    <string name="chat_sources">Полученные источники · загрузка не доказывает утверждение</string>
 </resources>

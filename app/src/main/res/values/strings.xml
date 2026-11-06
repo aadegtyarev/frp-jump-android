@@ -1143,7 +1143,7 @@
     <string name="chat_title">Chat</string>
     <string name="chat_disabled">The assistant is off. Enable it in Settings.</string>
     <string name="chat_setup">Set up a provider and select a model.</string>
-    <string name="chat_omitted">Older messages were omitted from the active context.</string>
+    <string name="chat_omitted">Some conversation context was omitted.</string>
     <string name="chat_assistant">Assistant</string>
     <string name="chat_you">You</string>
     <string name="chat_stopping">Stopping…</string>
@@ -1157,4 +1157,18 @@
     <string name="chat_message">Message</string>
     <string name="chat_stop">Stop</string>
     <string name="chat_send">Send</string>
+    <string name="assistant_tools">Tools</string>
+    <string name="assistant_tools_notice">Public read only — no connections or files. Queries go to DuckDuckGo; selected public text and images go to your configured model. Model token charges, including image analysis, still apply. Changes apply to the next send; the current send may finish using its original tools. History is kept. No requests are made here.</string>
+    <string name="tool_search">Web search</string>
+    <string name="tool_search_hint">Free, unofficial DuckDuckGo search; may be blocked.</string>
+    <string name="tool_read">Read page</string>
+    <string name="tool_read_hint">Public HTTPS HTML, text and Markdown. No JavaScript.</string>
+    <string name="tool_image">Inspect image</string>
+    <string name="tool_image_hint">Public JPEG/PNG with the same model. Support is not guaranteed.</string>
+    <string name="assistant_tool_save_failed">Could not save tool setting. Try again.</string>
+    <string name="tool_search_progress">Searching…</string>
+    <string name="tool_read_progress">Reading page…</string>
+    <string name="tool_image_progress">Inspecting image…</string>
+    <string name="tool_failed">A tool failed. The answer may be limited.</string>
+    <string name="chat_sources">Fetched sources · retrieval is not proof of a claim</string>
 </resources>

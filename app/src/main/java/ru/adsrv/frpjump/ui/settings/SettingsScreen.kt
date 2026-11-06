@@ -131,10 +131,15 @@ fun SettingsScreen(
     val settings by vm.settings.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
     val assistantProvider by vm.assistantProvider.collectAsStateWithLifecycle()
+    var toolsSetup by rememberSaveable { mutableStateOf(false) }
     var providerSetup by rememberSaveable { mutableStateOf(false) }
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
     // Above the licenses' early return, so the settings come back scrolled where they were.
     val scroll = rememberScrollState()
+    if (toolsSetup) {
+        AssistantToolsRoute(vm.tools, onBack = { toolsSetup = false })
+        return
+    }
     if (providerSetup) {
         AssistantProviderScreen(assistantProvider, onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
             onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() }, onBack = { providerSetup = false })
@@ -266,6 +271,8 @@ fun SettingsScreen(
         }
         Group(stringResource(R.string.assistant_title)) {
             AssistantChatEntry(onChat)
+            RowDivider()
+            AssistantToolsEntry { toolsSetup = true }
             RowDivider()
             AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
             RowDivider()

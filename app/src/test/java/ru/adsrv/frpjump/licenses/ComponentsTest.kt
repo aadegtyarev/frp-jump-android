@@ -200,4 +200,19 @@ class ComponentsTest {
         assertTrue(verbatim.size > 15)
         assertEquals(emptyList<String>(), verbatim.filterNot { it in kept })
     }
+    @Test fun `web parser and desugared runtime include exact licenses copyright and matching source`() {
+        val components = componentsFrom(json).associateBy { it.id }
+        val jsoup = components.getValue("org.jsoup:jsoup")
+        assertEquals("1.24.1", jsoup.version)
+        assertTrue(jsoup.licenses.any { it.asset == "licenses/jsoup-MIT.txt" })
+        assertTrue(File(assets, "licenses/jsoup-MIT.txt").readText().contains("2009-2026 Jonathan Hedley"))
+        val desugar = components.getValue("com.android.tools:desugar_jdk_libs")
+        assertEquals("2.1.5", desugar.version)
+        assertEquals("https://github.com/google/desugar_jdk_libs/tree/73170c345e6a762fc6a1f0301bb15218850023ef", desugar.source)
+        assertTrue(desugar.licenses.any { it.asset == "licenses/GPL-2.0-with-Classpath-Exception.txt" })
+        assertTrue(File(assets, "licenses/GPL-2.0-with-Classpath-Exception.txt").readText().contains("CLASSPATH"))
+        assertTrue(desugar.licenses.any { it.asset == "licenses/desugar-ADDITIONAL_LICENSE_INFO.txt" })
+        assertTrue(desugar.licenses.any { it.asset == "licenses/desugar-ASSEMBLY_EXCEPTION.txt" })
+    }
+
 }

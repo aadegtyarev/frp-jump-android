@@ -3,10 +3,9 @@
 ## Boundary and availability
 
 This surface covers the optional assistant kernel, external API adapter and
-provider setup and memory-only text chat. The owner uses Settings to opt in,
+provider setup and memory-only chat with optional public-read tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Tool execution remains a kernel interface
-guarantee, not an available connection-tool UI.
+implementations to the kernel. Connection tools remain unavailable; public-read tools are described below.
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -104,7 +103,7 @@ Defaults: a 16,384-token estimated total budget with 2,048 tokens reserved for
 output. The default counter uses UTF-8 byte lengths plus framing allowances:
 **it is an estimate, not a provider tokenizer or a guarantee that every API
 accepts the request**. A provider-specific counter can replace it. Window
-omissions are observable kernel events, not fabricated summaries. Text chat
+omissions are observable kernel events, not fabricated summaries. Chat
 shows an omission indication when earlier history is left out.
 
 Tool result text is capped at 8,000 UTF-16 characters by default, preserving
@@ -163,19 +162,185 @@ Store IO/credential work happens outside that guard; state notifications and
 cancellation run outside store commit monitors. An old completion
 cannot publish an answer/error or release another owner's pending slot.
 
-At most 32 complete successful turns are retained. Oldest complete turns are
+At most 32 complete successful turns and 512,000 aggregate UTF-16 characters of
+history/source metadata are retained, counting tool arguments/results, identifiers
+and opaque state. Oldest complete turns are
 dropped together with a visible omission indication; request-window omissions
-are indicated too, including on a failed request. Input is limited to 8,000
+are indicated too, including current-turn exchange omissions and failed requests. Input is limited to 8,000
 UTF-16 characters: excess edits are rejected with feedback and the previous
 text kept. Current input/answers are never silently truncated or split. Saved
 context/output settings feed the existing whole-turn window. Opaque continuation
 stays internal, bounded and attached to the same provider instance, never UI text.
 
-Requests contain only explicit chat text/history and fixed text-chat instructions.
-No profiles, connection data, files, credentials, diagnostics or application skill
-are automatically attached. No tools are offered or executed. Unexpected tool
-proposals fail the request before a tool-driven extra model call can occur.
-Existing endpoint, redirect, retry, payload and sanitized-error protections apply.
+Requests contain explicit chat text/history, fixed instructions and only enabled
+public-read tool schemas. No profiles, connection data, files, credentials,
+diagnostics or application skill are automatically attached. Proposals unavailable in that Send's captured set
+return bounded explicit unknown-tool results without network; they do
+not grant authority. Existing endpoint, redirect, retry, payload and sanitized-error
+protections remain. Public content is acquired only through explicitly enabled
+operations below; completed conversation history remains after tools change.
+
+## Optional public Web tools
+
+Settings → LLM assistant → Tools has three independent persisted switches:
+Web search (`web_search`), Read page (`read_page`) and Inspect image
+(`inspect_image`). They default off on new installs/upgrades; malformed new
+values default independently without resetting unrelated preferences. Saving
+only booleans, opening this screen or enabling a tool makes no request. Failed
+writes keep committed switches/authority and show an inline error. Tools remain
+changeable while Chat is busy. Chat's Tools action opens the same three switches
+without popping the conversation. The Tools arrow and system Back return to that
+same owner, draft and completed history, including across recreation; actual Chat
+pop still cancels work and discards conversation memory. The notice explains public read only (no files or
+connections), DuckDuckGo query disclosure, selected public text/images sent to
+the configured LLM and ordinary model token charges, including image analysis.
+Public GET is not guaranteed free of remote effects.
+
+Tools autosaves each switch; there is no Save button or optimistic checked value.
+Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
+One immutable presentation snapshot contains the actual committed three booleans,
+pending IDs and fixed inline save failures. Checked, progress/enabled and failure
+are rendered from that same snapshot, not independent checked/completion channels.
+Real storage work runs off Main. On completion, Main reads the latest canonical
+Store tools and publishes them together with clearing that operation's pending
+state and setting/clearing its error. It never assumes requested equals committed.
+Store notifications also read current canonical tools, not captured old emissions,
+while preserving pending/errors. External/concurrent writes cannot be rolled back
+by a delayed acknowledgement. Same-ID pending actions are ignored without a queue;
+different IDs may save independently, preserving unrelated settings.
+
+Back hides Tools without cancelling the parent-owned save; reopen and recreation
+retain that binding and pending/error state. Actual parent pop/clear cancels child
+operations and prevents old UI publication. Already executing blocking storage may
+still commit: cancellation does not promise rollback. A new owner reads actual Store
+state and notifications. There are no save completion/navigation callbacks or
+persistent copies of presentation state. Construction/opening does no storage IO,
+credential unseal or network operation. Current-Send admission still reads Store
+authority, never presentation; pending UI acknowledgement is not network authority.
+
+Each Send captures the committed tool booleans atomically at admission and keeps
+that fixed set throughout the run, including calls dispatched after a switch
+changes. Changes apply only to the next Send; the current Send may finish with
+its original tools. They neither cancel work nor clear history, provider or draft.
+There is no tool-change epoch/revocation signal. Failed saves retain prior settings.
+Admission, every model/public/image dispatch and source/progress/answer/error
+publication still check the captured owner, provider revision and disable version.
+Stop/pop, assistant disable (including off/on), provider revision/read failures
+cancel exact work; the shared slot remains occupied through DNS, callback/body,
+parser and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
+image preparation and settings IO run off Main and outside commit guards. The
+whole Send deadline is 120 seconds; existing kernel per-call limits also apply.
+
+### Search and static documents
+
+Search uses one unofficial, free, best-effort DuckDuckGo HTML endpoint. No API
+key/account, paid Search/Fetch, provider-search fallback, endpoint rotation,
+proxy, CAPTCHA bypass or automatic retries. Block, markup drift, empty results,
+rate limit or failure is explicit feedback, never fabricated success. Direct
+reading remains available when search is blocked. Process-local monotonic limits:
+10 seconds between attempted dispatches, 3 searches per Send and 20 per hour,
+query at most 256 characters, at most 5 results. There is no shared successful-
+search payload cache, TTL or cross-Send reuse. Repeats are ordinary attempts under
+the same quotas; completed history is retained, not used as a content cache. Both
+attempt admission before DNS and actual HTTP spacing after DNS are enforced.
+Already charged attempts and mandatory block cooldowns are not rolled back by
+Stop/pop or real revocation. There is no cooldown queue. Attempts include failures;
+403/429/CAPTCHA blocks search for that
+Send and applies a shared minimum 15-minute cooldown, extended by Retry-After
+bounded to 24 hours. No silent resume. Process death resets these limits; this
+is not durable anti-abuse enforcement. Search targets are links, not evidence
+that those target pages were fetched.
+
+Read page accepts public HTTPS HTML, plain text and Markdown. HTML uses pinned
+jsoup 1.24.1 with desugar_jdk_libs 2.1.5/core-library desugaring for Android 29.
+Useful headings/lists/pre/code whitespace, title/final URL and resolved links/
+image URLs with labels are returned. At most 8,000 text characters, 100 links and
+20 image references per page; clipped text/results are marked. Under the explicit
+2026-11-06 operator amendment, return whatever readable static text was obtained,
+including warning-only JavaScript/login/enable-JS and shell text. The model judges
+usefulness; the reader performs no JS/usefulness classification, phrase detection
+or minimum-length filtering. Fixed metadata says JavaScript was not executed and
+static extraction may be incomplete. Retrieval of static data is not proof of a
+full article or rendered JavaScript. Empty/script-only/no-readable-text results
+may report no content; HTTP/network/MIME/URL/byte/timeout failures remain failures.
+This prospectively replaces the earlier warning-only-shell rejection promise,
+without changing previous failed acceptance history or search anti-abuse requirements. Static server-rendered content remains supported.
+No JavaScript, login, PDF, SVG, animation/video, interaction or recursive crawl.
+Following a selected link uses the same reader. Short meaningful static HTML
+(such as a version/configuration value) is supported; text length alone does not
+make a page an empty shell. Declared charset names are bounded to 64 characters
+and resolved through platform Charset support; unsupported declared headers fail
+explicitly. Plain text/Markdown default to strict UTF-8 when no charset is declared;
+HTML uses jsoup's byte-stream charset/BOM/meta handling. No custom encoding parser
+or execution is involved. Markdown reference extraction reuses the existing pinned
+JetBrains parser: common inline/reference links and images (with alt labels) are
+resolved against the final URL through the same public URL policy, while code is
+not treated as a link. The original Markdown text and existing reference caps/
+clipping indicators remain.
+
+The dedicated stateless credential-free client allows HTTPS port 443 only, no
+userinfo or local schemes. It has no provider headers/credentials, cookies,
+authenticator, client certificate, persistent cache, WebView state, proxy or
+request/body logging. Public address policy rejects local aliases and all
+private/loopback/link-local/multicast/unspecified/special IPv4/IPv6 destinations,
+including unsafe mapped forms. Every manually followed redirect and actual
+connection uses the validated DNS address set, without a resolve/check/connect
+gap or pool coalescing bypass. Unsafe resolutions fail closed. Per Send: 12
+public HTTP requests including redirect hops, at most 3 redirects per fetch,
+1 MiB decoded page/search/image response. Streaming caps precede parsing,
+including transparently decompressed/chunked bodies. No automatic retries,
+including OkHttp's HTTP503 Retry-After:0 replay. Fetched content is untrusted
+evidence, never instructions/tool authority; prompts supplement, not replace,
+URL/dispatch guards.
+
+### Optimistic same-model images and provenance
+
+Inspect image accepts an explicitly selected public JPEG/PNG under the same
+transport/authority/request budgets. At most 2 inspections per Send, 1 MiB per
+image, 4 megapixels, question at most 1,000 characters. Actual MIME/encoding and
+dimensions are checked using bounds-only decode; animation is rejected, with no
+retained bitmap. A narrow adapter operation uses the same prepared provider,
+root-bound key, model and effort for one non-streaming user-role text + base64
+image request, with no tools. It requests 512 output tokens, accepts at most
+4,000 model-response characters and checks the encoded JSON/base64 request against
+the existing provider byte cap. The image request returns bounded ordinary model
+text, including an inability/refusal such as "I cannot process images" or a usable
+standard structured textual refusal. No nested observed/unavailable JSON envelope
+or refusal-language classifier is required. Source/result labels say "model response
+to image request, unverified", never claim pixels were seen or understood. This
+prospectively supersedes the previous image self-report/plain-refusal-as-failure
+policy, not past failed reviews. The normal outer API schema, complete finish,
+no-tools reply, nonempty text and response/request byte bounds still apply.
+No core multimodal protocol is added.
+
+No support probe, capability registry, model-name heuristic, separate vision
+switch or compatibility guarantee. Rejection, timeout, malformed/oversize image
+or response and other failures produce a sanitized explicit failed tool result;
+the text loop may continue, disclosing limitations. Never strip the image and
+claim success, present alt text as visual inspection, replay the turn, retry
+implicitly, or choose another provider/model. Release transient bytes/base64 on
+every exit; only bounded model-response/provenance text enters history.
+
+Tool failures use short fixed understandable descriptions, with known numeric
+HTTP status/limits when available: public-address refusal, network/HTTP failure,
+unsupported/empty/oversized content, request/rate budget and image API failure.
+They remain explicit tool results and visible current-attempt failure feedback;
+normal dialogue may explain them. No raw body, exception message/stack, credential
+or private app context is disclosed. Nonempty model inability text is data, not a
+client-classified technical failure.
+
+Chat shows localized tool progress/failure and selectable fetched titles/URLs,
+separately from arbitrary model Markdown. Retrieval is not proof of generated
+claims. A generic omission label covers both older turns and current exchanges;
+current-attempt failure feedback is independent of any prior completed turn's
+failure indicator. Links/images in answers remain inert: no automatic opening/loading.
+Source metadata follows complete retained/current turns and the 512,000-character
+history bound, with visible whole-turn eviction, not an unbounded page registry.
+Current mandatory input/answer/exchanges that cannot fit fail context-full rather
+than silently clipping user input/answers or keeping half exchanges. Chat,
+queries, URLs, content and pixels are never written to files, logs or saved state.
+There is no background fetching, uploads, RAG/vector database, browser framework,
+reader selector or connection/file authority.
 
 ## Provider settings and credentials
 
@@ -260,13 +425,14 @@ compatibility with every provider-specific thinking parameter.
 
 ## Verification and non-goals
 
-The app surface includes provider setup and text-only chat. Real
-connection/SSH tools are not available. Web, Files, MQTT, TCP tools,
-compression, evaluators, permission modes and subagents are outside this
-surface. No tunnel creation, start, reconfiguration or deletion is granted to
-the agent. No permissions evaluator/full-access agent is shipped. Any first
-real tool-enabled prototype still requires an explicit full-access warning
-until confirmation modes exist; this document does not authorize that work.
+The app surface includes provider setup, chat and optional public-read tools.
+Connection/SSH/Files/MQTT/TCP tools, compression, evaluators, permission modes and
+subagents remain outside this surface. No tunnel creation, start, reconfiguration
+or deletion is granted to the agent. No permissions evaluator/full-access agent
+is shipped. Public tools carry the public-read/data-disclosure notice above, not
+a misleading full-access warning. Any future connection-tool prototype requires
+separate approval and an explicit full-access warning until confirmation modes
+exist; availability does not waive that conditional safety requirement.
 
 Existing kernel tests use fake providers/tools. Adapter tests use synthetic
 loopback HTTP responses. Settings/store tests cover committed opt-in,
@@ -282,7 +448,10 @@ Synthetic navigation/Compose checks use the production Settings chat entry,
 chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
 setup recovery, recreation and pop. The explicit test-only plain-Application
 runner is selected by `-PassistantChatComponentTests=true` and an explicit chat
-class filter; ordinary discovery keeps the default runner. Scoped API35 component
+class filter; ordinary discovery keeps the default runner. Only that explicit
+debug fixture disables BootReceiver in the merged manifest, preventing boot
+restoration from targeting the plain Application. Ordinary debug and release
+keep BootReceiver enabled, including release builds with the test property. Scoped API35 component
 checks cover representative EN/RU, light/dark, portrait/landscape and 200% font
 configurations; font scale is restored afterwards. These fixtures do not establish
 live LLM, SSH or broker compatibility, or physical-device/vendor behavior.

@@ -22,8 +22,15 @@ import ru.adsrv.frpjump.agent.AgentRequest
 /** Shared by credential setup and the transport; never put invalid key values in exceptions. */
 fun validOpenAiApiKey(key: String): Boolean = key.isNotBlank() && key.length <= 16_384 && key.all { it.code in 33..126 }
 
+/** Optional same-instance image operation; pixels never enter the kernel/history protocol.
+ * Returned ordinary model text, including inability/refusal, is unverified and not proof of vision.
+ */
+interface ImageInspector {
+    suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit = { it() }): String
+}
+
 /** Non-streaming Chat Completions adapter. No key persistence, tracing, implicit retries or fallback. */
-class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: String) : AgentProvider {
+class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: String) : AgentProvider, ImageInspector {
     private val owner = Any()
     // A deterministic test probe at the actual callback exit; null in production.
     internal var beforeCallbackExit: (() -> Unit)? = null
@@ -31,15 +38,29 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
     internal var beforeAwaitCallbackExit: (() -> Unit)? = null
     init { require(validOpenAiApiKey(apiKey)) { "Invalid API key" } }
 
-    override suspend fun complete(request: AgentRequest): AgentReply {
+    override suspend fun complete(request: AgentRequest): AgentReply = complete(request) { it() }
+
+    /** Encoding happens before the app's short guarded enqueue; no blocking work under that guard. */
+    suspend fun complete(request: AgentRequest, dispatch: (() -> Unit) -> Unit): AgentReply {
         require(config.model.isNotBlank()) { "Select a provider model before running" }
         require(request.maxOutputTokens in 1..1_000_000) { "Invalid model output limit" }
         val body = OpenAiCodec.encode(request, config, owner).toByteArray(Charsets.UTF_8)
         if (body.size > config.maxRequestBytes) throw OpenAiProviderException(ProviderFailure.REQUEST_TOO_LARGE)
+        return OpenAiCodec.decode(executeChat(body, dispatch), owner)
+    }
+
+    override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit): String {
+        require(config.model.isNotBlank() && mime in setOf("image/jpeg", "image/png") && bytes.size <= 1_048_576 && question.length in 1..1000)
+        val body = OpenAiCodec.encodeImage(config, mime, bytes, question).toByteArray(Charsets.UTF_8)
+        return OpenAiCodec.decodeImage(executeChat(body, dispatch), owner)
+    }
+
+    private suspend fun executeChat(body: ByteArray, dispatch: (() -> Unit) -> Unit = { it() }): String {
+        if (body.size > config.maxRequestBytes) throw OpenAiProviderException(ProviderFailure.REQUEST_TOO_LARGE)
         val target = config.baseUrl.newBuilder().addPathSegment("chat").addPathSegment("completions").build()
         val http = Request.Builder().url(target).header("Authorization", "Bearer $apiKey")
             .post(body.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-        return OpenAiCodec.decode(execute(http), owner)
+        return execute(http, dispatch)
     }
 
     /** Called explicitly by the future settings UI; a model ID can also be entered without discovery. */
@@ -48,7 +69,7 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
         return OpenAiCodec.models(execute(Request.Builder().url(target).header("Authorization", "Bearer $apiKey").get().build()))
     }
 
-    private suspend fun execute(request: Request): String {
+    private suspend fun execute(request: Request, dispatch: (() -> Unit) -> Unit = { it() }): String {
         val exited = CompletableDeferred<Unit>()
         try {
             return suspendCancellableCoroutine { continuation ->
@@ -56,7 +77,7 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
                 continuation.invokeOnCancellation { call.cancel() }
                 var inlineCallback = false
                 try {
-                    call.enqueue(object : Callback {
+                    dispatch { call.enqueue(object : Callback {
                         private fun callback(block: () -> Unit) {
                             // Normally the dispatcher worker completes exited after the entire
                             // AsyncCall.run returns, not merely after resuming the coroutine.
@@ -91,7 +112,7 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
                                 continuation.resume(text)
                             }
                         }
-                    })
+                    }) }
                 } catch (failure: Throwable) {
                     exited.complete(Unit) // enqueue failed without an owned callback
                     throw failure

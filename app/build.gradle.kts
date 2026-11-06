@@ -27,6 +27,7 @@ android {
         minSdk = 29
         targetSdk = 35
         // Explicit synthetic chat component entry: plain Application, never production startup.
+        manifestPlaceholders["assistantBootReceiverEnabled"] = "true"
         testInstrumentationRunner = if (providers.gradleProperty("assistantChatComponentTests").orNull == "true")
             "ru.adsrv.frpjump.ui.settings.AssistantChatTestRunner" else "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 62
@@ -50,6 +51,10 @@ android {
 
     buildTypes {
         debug {
+            // Plain-Application chat fixture cannot receive production boot restoration broadcasts.
+            if (providers.gradleProperty("assistantChatComponentTests").orNull == "true") {
+                manifestPlaceholders["assistantBootReceiverEnabled"] = "false"
+            }
             // x86_64 too, for the emulator.
             ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
@@ -73,6 +78,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -129,6 +135,8 @@ if (!releaseSigned && gradle.startParameter.taskNames.any { it.contains("Release
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar)
+    implementation(libs.jsoup)
     implementation(project(":agent-core"))
     implementation(project(":agent-openai"))
     implementation(libs.androidx.core.ktx)
