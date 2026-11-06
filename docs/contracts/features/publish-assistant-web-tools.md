@@ -1,7 +1,25 @@
 # Publish the assistant Web-tools release
 
-Status: approved by the operator's explicit release instruction, 2026-11-06.
+Status: metadata complete and verified, 2026-11-06; final publication acceptance pending.
 Base: `7681bbdf17fcc59115268fda6c954d16219ec939` (accepted Web-tools PR183).
+
+## Metadata verification
+
+The parent consumed the complete mandatory scout plan before editing and accepted
+the two-file metadata implementation after a fresh independent Terra review found
+no issues. Matching checks recorded 1,548 JVM results without failures, errors or
+skips: 1,504 app executed, 18 core and 26 adapter up-to-date. Both debug APKs,
+Lint, 77-document check, whitespace and frozen-patch Gitleaks passed. Historical
+60/60 synthetic API 35 UI evidence remains unchanged-source evidence, not a new
+release-APK execution. All 711 other accepted source files are unchanged.
+
+The reviewed 714-file candidate is contract-only HEAD
+`7bb9263cd475566c771a95bc7012316640a45a82` plus frozen metadata, manifest SHA256
+`d516a5cf11b90ab4840fdd3ec1364d05083ce5b38cd9552e3fa7e23b1a056aba`.
+Archive this completed metadata contract and remove it before the one release PR.
+Only lifecycle metadata may change after review. Final release acceptance still
+requires the exact-tag signed workflow and independent public APK verification
+specified below; neither is claimed complete here.
 
 ## Result and scope
 
