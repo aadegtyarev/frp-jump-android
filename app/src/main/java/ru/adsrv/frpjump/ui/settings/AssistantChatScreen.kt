@@ -92,6 +92,7 @@ internal fun AssistantChatContent(
                             ChatToolProgress.SEARCH -> R.string.tool_search_progress
                             ChatToolProgress.READ -> R.string.tool_read_progress
                             ChatToolProgress.IMAGE -> R.string.tool_image_progress
+                            ChatToolProgress.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
                             ChatToolProgress.FAILED -> R.string.tool_failed
                             null -> R.string.chat_waiting
                         }), color = AppTheme.colors.muted)

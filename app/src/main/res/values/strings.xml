@@ -8,7 +8,7 @@
     <string name="save">Save</string>
     <string name="assistant_title">LLM assistant</string>
     <string name="assistant_enabled">Enable assistant module</string>
-    <string name="assistant_foundation_hint">Text chat · no connection tools</string>
+    <string name="assistant_foundation_hint">Text chat · optional profile information</string>
     <string name="assistant_provider_title">Assistant provider</string>
     <string name="assistant_provider_stage_hint">Requests start only with Send or Fetch models.</string>
     <string name="assistant_provider_root">API root URL (usually ending in /v1)</string>
@@ -1158,7 +1158,7 @@
     <string name="chat_stop">Stop</string>
     <string name="chat_send">Send</string>
     <string name="assistant_tools">Tools</string>
-    <string name="assistant_tools_notice">Public read only — no connections or files. Queries go to DuckDuckGo; selected public text and images go to your configured model. Model token charges, including image analysis, still apply. Changes apply to the next send; the current send may finish using its original tools. History is kept. No requests are made here.</string>
+    <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and connection information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. No connection control or file access. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
     <string name="tool_search">Web search</string>
     <string name="tool_search_hint">Free, unofficial DuckDuckGo search; may be blocked.</string>
     <string name="tool_read">Read page</string>
@@ -1171,4 +1171,7 @@
     <string name="tool_image_progress">Inspecting image…</string>
     <string name="tool_failed">A tool failed. The answer may be limited.</string>
     <string name="chat_sources">Fetched sources · retrieval is not proof of a claim</string>
+    <string name="tool_profile_information">Profile information</string>
+    <string name="tool_profile_information_hint">Devices, connections and tunnels across all profiles</string>
+    <string name="tool_profile_information_progress">Refreshing profile information…</string>
 </resources>

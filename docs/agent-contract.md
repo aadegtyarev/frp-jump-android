@@ -3,9 +3,9 @@
 ## Boundary and availability
 
 This surface covers the optional assistant kernel, external API adapter and
-provider setup and memory-only chat with optional public-read tools. The owner uses Settings to opt in,
+provider setup and memory-only chat with optional public-read and profile-information tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Connection tools remain unavailable; public-read tools are described below.
+implementations to the kernel. Connection-control tools remain unavailable; the informational exception and public-read tools are described below.
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -23,8 +23,8 @@ write retains the previous preference and shows an error. A malformed new
 flag falls back to off without resetting unrelated settings.
 
 Settings → LLM assistant → Assistant provider configures one external
-OpenAI-compatible provider. Chat is available next to provider setup; real
-connection tools are **not available**. Enabling the module, opening settings or
+OpenAI-compatible provider. Chat is available next to provider setup; connection-control
+tools are **not available**. Enabling the module, opening settings or
 saving a provider performs no network request. Fetch models is an explicit
 user action and is available during setup even while the agent module is off.
 A saved provider is configuration, not evidence of a successful API call.
@@ -51,7 +51,7 @@ Save, Fetch models and recovery behavior.
   Keystore-backed credential; its observable snapshot contains metadata only.
 - The kernel does not itself grant target access. Any connection-tool adapter
   must bind to its admitted connection identity and must never resolve a
-  replacement client after a disconnect. No such real tools are available.
+  replacement client after a disconnect. No connection-control adapters are available; the information tool below reads shared application state.
 - The versioned [application skill](../app/src/main/assets/assistant/skill.md)
   is input for a coordinator, not a permission system or an automatically
   executing script. Text chat does not attach it or any automatic app context.
@@ -173,32 +173,76 @@ context/output settings feed the existing whole-turn window. Opaque continuation
 stays internal, bounded and attached to the same provider instance, never UI text.
 
 Requests contain explicit chat text/history, fixed instructions and only enabled
-public-read tool schemas. No profiles, connection data, files, credentials,
+tool schemas. No profiles, connection data, files, credentials,
 diagnostics or application skill are automatically attached. Proposals unavailable in that Send's captured set
 return bounded explicit unknown-tool results without network; they do
 not grant authority. Existing endpoint, redirect, retry, payload and sanitized-error
 protections remain. Public content is acquired only through explicitly enabled
 operations below; completed conversation history remains after tools change.
 
+## Optional profile information
+
+The independent default-off `profile_information` tool takes no arguments. Only
+an actual enabled invocation transfers information; opening Chat/Tools, enabling
+or saving does not invoke it or automatically attach an inventory to a prompt.
+Each invocation performs one ordinary all-profile device-list pull, the same
+operation as Connections refresh, then reads the application's known state.
+Normal authenticated server requests, feature checks and cache writes still
+apply. Each information-owned request's actual nonblocking enqueue is serialized
+with the existing Chat authority guard; credential/storage work, body reading and
+cleanup remain outside it. Cancellation signals only those owned calls and keeps
+the shared Chat slot until their callback/body and full HTTP worker execution
+have exited. Ordinary UI/background requests retain their existing path and
+lifetime. It starts no extra tunnel poll, probe, connection or control operation.
+
+Devices, Connections and the tool consume the same derived application API over
+existing profile/device/connection/tunnel/Undo owners. Complete device lists are
+separate from connection rows, including devices without saved connections.
+Profile IDs distinguish repeated device names. UI selection, grouping/order,
+authentication decoration, actions, visibility and polling lifetimes stay with
+the existing screens/runtime; the API introduces no inventory cache or mirror.
+
+Results include profile availability, device list age/stale/checking states,
+saved and unnamed connection rows, local tunnel addresses and existing typed
+pending/waiting/tunnel states. Missing sources remain unknown, not empty success.
+An ordinary refresh failure retains the existing app-known stale/error state;
+reading it successfully does not claim a successful refresh, atomic live
+inventory or remote service readiness. Error fields convey fixed descriptions
+by source field (profile loading, device refresh, connection operation, tunnel
+synchronization or protocol mismatch), not raw UI/server/exception/frpc strings.
+Typed facts such as relay after direct failure, waiting and device-missing remain
+separate; diagnostic text alone is not classified as a failure. Credentials,
+keys, tokens, certificates and runtime/store objects are never serialized.
+
+The tool uses the existing captured-per-Send set, progress/failure feedback,
+result/context/history bounds, omission, cancellation, slot and module ownership
+rules. Information retained in successful chat exchanges follows the same
+memory-only history lifecycle; a later switch change does not erase that history.
+This explicit informational exception does not authorize connection control,
+SSH, device HTTP, Files or MQTT tools. It has an accurate private-data disclosure,
+not a full-access claim. Other future connection-tool prototypes still require
+separate approval and the full-access warning described below.
+
 ## Optional public Web tools
 
-Settings → LLM assistant → Tools has three independent persisted switches:
+Settings → LLM assistant → Tools has four independent persisted switches:
 Web search (`web_search`), Read page (`read_page`) and Inspect image
-(`inspect_image`). They default off on new installs/upgrades; malformed new
+(`inspect_image`), and Profile information (`profile_information`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
 only booleans, opening this screen or enabling a tool makes no request. Failed
 writes keep committed switches/authority and show an inline error. Tools remain
-changeable while Chat is busy. Chat's Tools action opens the same three switches
+changeable while Chat is busy. Chat's Tools action opens the same four switches
 without popping the conversation. The Tools arrow and system Back return to that
 same owner, draft and completed history, including across recreation; actual Chat
-pop still cancels work and discards conversation memory. The notice explains public read only (no files or
-connections), DuckDuckGo query disclosure, selected public text/images sent to
-the configured LLM and ordinary model token charges, including image analysis.
+pop still cancels work and discards conversation memory. The notice explains DuckDuckGo query disclosure, selected public text/images and
+private profile/device/connection information sent to the configured LLM when
+tools are used, and ordinary model token charges, including image analysis.
+It grants neither file access nor connection control.
 Public GET is not guaranteed free of remote effects.
 
 Tools autosaves each switch; there is no Save button or optimistic checked value.
 Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
-One immutable presentation snapshot contains the actual committed three booleans,
+One immutable presentation snapshot contains the actual committed four booleans,
 pending IDs and fixed inline save failures. Checked, progress/enabled and failure
 are rendered from that same snapshot, not independent checked/completion channels.
 Real storage work runs off Main. On completion, Main reads the latest canonical
@@ -340,7 +384,7 @@ Current mandatory input/answer/exchanges that cannot fit fail context-full rathe
 than silently clipping user input/answers or keeping half exchanges. Chat,
 queries, URLs, content and pixels are never written to files, logs or saved state.
 There is no background fetching, uploads, RAG/vector database, browser framework,
-reader selector or connection/file authority.
+reader selector or connection-control/file authority.
 
 ## Provider settings and credentials
 
@@ -425,15 +469,24 @@ compatibility with every provider-specific thinking parameter.
 
 ## Verification and non-goals
 
-The app surface includes provider setup, chat and optional public-read tools.
-Connection/SSH/Files/MQTT/TCP tools, compression, evaluators, permission modes and
+The app surface includes provider setup, chat, optional public-read tools and
+the profile-information tool above. Connection-control/SSH/Files/MQTT/TCP tools, compression, evaluators, permission modes and
 subagents remain outside this surface. No tunnel creation, start, reconfiguration
 or deletion is granted to the agent. No permissions evaluator/full-access agent
 is shipped. Public tools carry the public-read/data-disclosure notice above, not
-a misleading full-access warning. Any future connection-tool prototype requires
+a misleading full-access warning. Any other future connection-tool prototype requires
 separate approval and an explicit full-access warning until confirmation modes
 exist; availability does not waive that conditional safety requirement.
 
+Synthetic shared-source/projection tests cover multiple profiles, repeated device
+names, devices without connection rows, saved/unnamed tunnels, Undo, unavailable
+sources and stale/error state. Fake-provider information-tool tests exercise
+captured admission, one ordinary refresh, typed facts and secret exclusion,
+result bounds and cancellation. Deterministic ownership tests cover both refresh
+endpoints across profiles, revoke/start ordering, held HTTP/body/callback exit,
+Stop/pop, module off/on and provider authority changes, without revoking a Send
+for tool-switch-only changes. The shared Tools binding and component fixtures
+include all four switches, save errors, retained owners and explicit invocation.
 Existing kernel tests use fake providers/tools. Adapter tests use synthetic
 loopback HTTP responses. Settings/store tests cover committed opt-in,
 malformed-field fallback, disable invalidation, credential/root binding,

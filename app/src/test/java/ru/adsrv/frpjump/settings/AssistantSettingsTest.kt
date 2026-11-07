@@ -63,16 +63,25 @@ class AssistantSettingsTest {
         assertTrue(store.settings.value.assistantSearch)
         assertTrue(SettingsStore(file).settings.value.assistantSearch)
     }
+    @Test fun `profile information defaults off and malformed values preserve siblings`() {
+        assertFalse(SettingsStore(MemoryStorage("""{"assistant_search":true}""")).assistantAvailability.tools.profileInformation)
+        for (bad in listOf("null", "1", "\"true\"", "{}", "[]")) {
+            val store = SettingsStore(MemoryStorage("""{"direct":false,"assistant_search":true,"assistant_profile_information":$bad}"""))
+            assertEquals(AssistantTools(search = true), store.assistantAvailability.tools)
+            assertFalse(store.settings.value.direct)
+        }
+    }
     @Test fun `each tool operation preserves sibling and unrelated committed fields without disable signal`() {
         val file = MemoryStorage()
         val store = SettingsStore(file).apply { update { it.copy(direct = false, assistantEnabled = true) } }
         var expected = AssistantTools()
-        for (id in listOf("web_search", "read_page", "inspect_image")) for (value in listOf(true, false)) {
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information")) for (value in listOf(true, false)) {
             store.setAssistantTool(id, value)
             expected = when (id) {
                 "web_search" -> expected.copy(search = value)
                 "read_page" -> expected.copy(readPage = value)
-                else -> expected.copy(inspectImage = value)
+                "inspect_image" -> expected.copy(inspectImage = value)
+                else -> expected.copy(profileInformation = value)
             }
             assertEquals(expected, store.assistantAvailability.tools)
             assertEquals(expected, SettingsStore(file).assistantAvailability.tools)

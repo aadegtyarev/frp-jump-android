@@ -85,11 +85,21 @@ class AssistantChatScreenTest {
     private val requests = mutableListOf<AgentRequest>()
     private var owner: AssistantConversation? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
-    private fun vm() = AssistantChatViewModel(settings, store, module) {
+    private val information = ru.adsrv.frpjump.profiles.ProfileInformation(
+        kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true,
+            index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
+        kotlinx.coroutines.flow.MutableStateFlow(emptySet()),
+    )
+    private fun vm() = AssistantChatViewModel(settings, store, module, information) {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
             when (mode) {
+                "tool-information" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("information-$calls", "profile_information", kotlinx.serialization.json.buildJsonObject { })))
+                    else if (request.turns.last().exchanges.single().results.single().outcome == ToolOutcome.UNKNOWN_TOOL)
+                        AgentReply("Profile information is disabled")
+                    else AgentReply("App reports an unavailable synthetic profile")
                 "wait" -> awaitCancellation()
                 "held-answer" -> { heldProviderReply.await(); AgentReply("late reply") }
                 "error" -> error("synthetic-private-error")
@@ -173,7 +183,7 @@ class AssistantChatScreenTest {
         return compose.activity.createConfigurationContext(config).getString(id)
     }
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
-        when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; else -> error("Unknown test tool") }
+        when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; else -> error("Unknown test tool") }
     }
     private fun awaitToolSaved(id: String, enabled: Boolean) {
         fun snapshot(): String {
@@ -388,7 +398,7 @@ class AssistantChatScreenTest {
         compose.activityRule.scenario.onActivity { install(it) }
         compose.onNodeWithTag("assistant_tools_entry").performClick()
         val retained = settingsBinding
-        for (id in listOf("web_search", "read_page", "inspect_image")) {
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information")) {
             toolToggle(id).assertIsOff().performClick(); awaitToolSaved(id, true)
             toolToggle(id).assertIsOn().assertIsEnabled()
             compose.runOnIdle { assertEquals(0, calls); settingsFile.failWrites = true }
@@ -403,8 +413,36 @@ class AssistantChatScreenTest {
         }
         compose.activityRule.scenario.recreate()
         compose.activityRule.scenario.onActivity { install(it) }
-        for (id in listOf("web_search", "read_page", "inspect_image")) toolToggle(id).assertIsOn().assertIsEnabled()
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information")) toolToggle(id).assertIsOn().assertIsEnabled()
         compose.runOnIdle { assertSame(retained, settingsBinding); assertEquals(0, calls) }
+    }
+
+    @Test fun profileInformationRequiresExplicitEnabledInvocationAndShowsKnownUnavailableResult() {
+        install()
+        compose.runOnIdle { mode = "tool-information"; assertEquals(0, calls) }
+        input().performTextInput("What does the app know?")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertTrue(requests.first().tools.isEmpty())
+            assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome)
+        }
+        button("chat_history").performScrollToNode(hasText("Profile information is disabled"))
+        compose.onNodeWithText("Profile information is disabled").assertIsDisplayed()
+        button("chat_tools").performClick()
+        toolToggle("profile_information").assertIsOff().performClick(); awaitToolSaved("profile_information", true)
+        compose.runOnIdle { assertEquals(2, calls) }
+        compose.onNodeWithTag("tools_back").performScrollTo().performClick()
+        input().performTextInput("Read profile information")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            val output = requests.last().turns.last().exchanges.single().results.single()
+            assertEquals(ToolOutcome.SUCCESS, output.outcome)
+            assertTrue(output.text.contains("synthetic-profile")); assertTrue(output.text.contains("\"available\":false"))
+            assertFalse(output.text.contains("never-export-alias"))
+            assertFalse(owner!!.state.value.turns.last().toolFailed)
+        }
+        button("chat_history").performScrollToNode(hasText("App reports an unavailable synthetic profile"))
+        compose.onNodeWithText("App reports an unavailable synthetic profile").assertIsDisplayed()
     }
 
     @Test fun toolsFlowShowsFetchedSourcesAndFailureWithoutMakingMarkdownActive() {
@@ -493,7 +531,7 @@ class AssistantChatScreenTest {
         install(); input().performTextInput("Completed first")
         button("chat_send").performClick(); awaitIdle()
         val retained = owner!!
-        val ids = listOf("web_search", "read_page", "inspect_image")
+        val ids = listOf("web_search", "read_page", "inspect_image", "profile_information")
         for ((index, id) in ids.withIndex()) {
             val completeCount = retained.state.value.turns.size
             compose.runOnIdle { heldProviderReply = CompletableDeferred(); mode = "held-answer" }
@@ -557,7 +595,7 @@ class AssistantChatScreenTest {
         compose.activityRule.scenario.onActivity { install(it) }
         toolToggle("web_search").assertIsOff().assertIsEnabled()
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.runOnIdle { assertSame(retained, owner); assertEquals(13, retained.state.value.turns.size) }
+        compose.runOnIdle { assertSame(retained, owner); assertEquals(1 + 4 * ids.size, retained.state.value.turns.size) }
         input().assertTextContains("Retained draft")
         button("chat_back").performClick()
         compose.waitUntil(5000) { retained.state.value == ChatState() }

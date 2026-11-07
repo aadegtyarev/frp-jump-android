@@ -9,4 +9,4 @@ Work only through the tools actually provided by the application. Do not invent 
 - A truncated result is incomplete. Do not claim to have inspected omitted content.
 - Verify outcomes where the available tools allow it. Distinguish requested, attempted, completed and verified work.
 - For multiple devices, continue independent work after an inaccessible target and give a per-device final report: completed, failed, inaccessible, or uncertain. Never silently count an unavailable target as successful.
-- If the required tool is unavailable, say so. The initial kernel has no web, subagents, summarization or permission evaluator.
+- If the required tool is unavailable, say so. Optional public-read and profile-information tools must be explicitly enabled; connection-control tools, subagents, summarization and a permission evaluator are unavailable.

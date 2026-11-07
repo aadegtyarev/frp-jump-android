@@ -951,9 +951,12 @@ switch is off by default. Settings provides secure provider setup, explicit
 model discovery and memory-only text chat. Requests start only with Send or
 Fetch models. Tools has independent default-off switches for best-effort free
 DuckDuckGo search, static public HTTPS page reading and optimistic same-model
-JPEG/PNG inspection. No JavaScript/browser execution, connection tools or automatic
-app-data upload. Queries go to DuckDuckGo; selected public text/images go to the
-configured model, with normal token charges. See the assistant contract for
+JPEG/PNG inspection, plus private profile/device/connection information across all
+profiles through the same API as Devices and Connections. That information tool
+performs one ordinary device-list refresh only when invoked. No JavaScript/browser
+execution, connection control or automatic app-data upload. Queries go to
+DuckDuckGo; selected public text/images and explicitly requested private profile
+information go to the configured model, with normal token charges. See the assistant contract for
 limits, public-only URL policy and truthful failure/provenance behavior.
 
 The APK builds without `libfrpc.so` too, but tunnels then cannot start.

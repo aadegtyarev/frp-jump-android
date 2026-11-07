@@ -88,6 +88,8 @@ data class OpenDevice(val profile: String, val device: String)
 
 class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
+    val profileInformation by lazy { ru.adsrv.frpjump.profiles.ProfileInformation(profiles.state, pendingUndo.hidden) }
+
     lateinit var profiles: Profiles
         private set
     lateinit var sshKeys: SshKeyStore
