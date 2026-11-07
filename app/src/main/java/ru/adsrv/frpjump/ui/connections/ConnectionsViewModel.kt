@@ -4,33 +4,26 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.DeviceGroup
-import ru.adsrv.frpjump.connections.connectionRows
 import ru.adsrv.frpjump.connections.groupByDevice
 import ru.adsrv.frpjump.connections.keepOrder
 import ru.adsrv.frpjump.devices.DeviceDirectory
-import ru.adsrv.frpjump.devices.DeviceRow
-import ru.adsrv.frpjump.ports.PortKind
-import ru.adsrv.frpjump.profiles.ProfilesState
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.Waiting
-import ru.adsrv.frpjump.undo.PendingUndo
 
 data class ConnectionsUiState(
     /**
@@ -58,14 +51,6 @@ data class ConnectionsUiState(
     val manyProfiles: Boolean get() = groups.map { it.profile }.distinct().size > 1
 }
 
-/** One profile's part of the tab. */
-private class ProfilePart(
-    val profile: String,
-    val rows: List<ConnectionRow>,
-    val devices: List<DeviceRow>?,
-    val sshMethods: Map<String, SshAuthMethod>,
-)
-
 /** Every profile's connections, grouped by device. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
@@ -87,39 +72,14 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
     private val visible = MutableStateFlow(false)
 
     /** As [groupByDevice] sorts them now. */
-    private val sorted: StateFlow<ConnectionsUiState> = app.profiles.state.flatMapLatest { profiles ->
-        val runtimes = profiles.index.profiles.mapNotNull { p -> profiles.runtimes[p.id] }
-        if (runtimes.isEmpty()) {
-            flowOf(uiState(profiles, emptyList()))
-        } else {
-            combine(
-                runtimes.map { r ->
-                    // A connection deleted while its Undo is on screen is not listed; a tunnel disconnected so shows down.
-                    // "Use key login" changes a method: the details follow.
-                    combine(r.connections.connections, r.tunnels.state, app.pendingUndo.hidden, r.devices.state, r.sshLogins.changes) { c, t, hidden, list, _ ->
-                        val rows = connectionRows(r.id, c, t.withoutDark(PendingUndo.darkTunnels(hidden, r.id)), hidden = PendingUndo.connectionIds(hidden, r.id))
-                        val methods = rows.filter { it.saved && it.connection.kind == PortKind.SSH }
-                            .associate { it.key to r.sshLogins.get(it.connection.device, it.connection.port).method }
-                        ProfilePart(r.id, rows, list.devices, methods)
-                    }
-                },
-            ) { parts ->
-                uiState(profiles, parts.toList())
-            }
-        }
+    private val sorted: StateFlow<ConnectionsUiState> = app.profileInformation.observe().map { information ->
+        connectionsUiState(information)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
 
     val state: StateFlow<ConnectionsUiState> =
         combine(sorted, app.profiles.restorePending, app.profiles.restoreWaiting, app.profiles.disconnectAllFailed, combine(refreshing, order, ::Pair)) { s, pending, waiting, failed, (busy, fixed) ->
             s.copy(groups = keepOrder(s.groups, fixed), restoring = pending, restoreWaiting = waiting, disconnectAllFailed = failed, refreshing = busy)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
-
-    private fun uiState(profiles: ProfilesState, parts: List<ProfilePart>) = ConnectionsUiState(
-        groups = groupByDevice(parts.flatMap { it.rows }, parts.associate { it.profile to it.devices }),
-        colors = profiles.index.profiles.associate { it.id to it.color },
-        sshMethods = parts.fold(emptyMap()) { all, part -> all + part.sshMethods },
-        loaded = profiles.loaded,
-    )
 
     /** The device lists this tab has asked the pollers to keep fresh. */
     private var wanted: Set<DeviceDirectory> = emptySet()
@@ -173,7 +133,7 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
         order.value = null
         refreshing.value = true
         viewModelScope.launch {
-            runtimes().map { r -> async { r.devices.pull() } }.awaitAll()
+            app.profileInformation.refreshAll()
             refreshing.value = false
         }
     }
@@ -203,3 +163,12 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
 /** How often the tab asks the device lists of the profiles not shown (the shown one is polled). */
 private const val OTHER_PROFILES_MS = 10_000L
+
+/** Presentation only; inventory and Undo rules belong to the shared API. */
+internal fun connectionsUiState(information: ru.adsrv.frpjump.profiles.ProfileInformationState) =
+    ConnectionsUiState(
+        groups = groupByDevice(information.profiles.flatMap { it.rows }, information.profiles.associate { it.id to it.devices?.devices }),
+        colors = information.profiles.associate { it.id to it.color },
+        sshMethods = information.profiles.fold(emptyMap()) { all, part -> all + part.sshMethods },
+        loaded = information.loaded,
+    )

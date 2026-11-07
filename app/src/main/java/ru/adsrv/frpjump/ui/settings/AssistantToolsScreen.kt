@@ -46,6 +46,8 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Strin
             ToolSwitch("read_page", R.string.tool_read, R.string.tool_read_hint, state.committed.readPage, state, onChange)
             RowDivider()
             ToolSwitch("inspect_image", R.string.tool_image, R.string.tool_image_hint, state.committed.inspectImage, state, onChange)
+            RowDivider()
+            ToolSwitch("profile_information", R.string.tool_profile_information, R.string.tool_profile_information_hint, state.committed.profileInformation, state, onChange)
         }
     }
 }

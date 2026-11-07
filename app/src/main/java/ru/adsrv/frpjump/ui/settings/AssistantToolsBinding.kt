@@ -39,7 +39,7 @@ internal class AssistantToolsBinding(
     }
 
     fun change(id: String, enabled: Boolean) {
-        require(id in setOf("web_search", "read_page", "inspect_image")) { "Unknown assistant tool" }
+        require(id in setOf("web_search", "read_page", "inspect_image", "profile_information")) { "Unknown assistant tool" }
         scope.launch {
             ensureActive()
             if (id in mutable.value.pending) return@launch

@@ -1,6 +1,11 @@
 package ru.adsrv.frpjump.api
 
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withContext
+import okhttp3.Dispatcher
 import kotlinx.serialization.encodeToString
 import okhttp3.Call
 import okhttp3.Callback
@@ -18,6 +23,7 @@ import ru.adsrv.frpjump.store.Credentials
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.resume
 
 /** The server answered with an error; [detail] is its `detail` text, shown as is. */
 class ApiException(val status: Int, val detail: String) : Exception(detail)
@@ -57,6 +63,7 @@ const val AGENT_VERSION = "android-${BuildConfig.VERSION_NAME}"
 
 class FrpJumpApi(
     private val http: OkHttpClient = OkHttpClient.Builder()
+        .dispatcher(Dispatcher(ApiCallbackExitExecutor()))
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         // A redirect would resend the bearer token or the enroll token to
@@ -65,10 +72,15 @@ class FrpJumpApi(
         .followSslRedirects(false)
         .build(),
 ) : AgentApi {
+    // Narrow callback-lifetime probes, matching the existing assistant transport tests.
+    internal var beforeOwnedCallbackExit: (() -> Unit)? = null
+    internal var beforeOwnedResponseRead: (() -> Unit)? = null
+    internal var beforeOwnedAwaitExit: (() -> Unit)? = null
+
     /** Unauthenticated `GET /api/agent/version`; rejects incompatible protocols before exposing features. */
-    suspend fun version(controlUrl: String): VersionResponse {
+    suspend fun version(controlUrl: String, dispatch: ApiRequestDispatch? = null): VersionResponse {
         val request = Request.Builder().url(endpoint(controlUrl, "version")).get().build()
-        val response = WireJson.decodeFromString<VersionResponse>(call(request))
+        val response = WireJson.decodeFromString<VersionResponse>(call(request, dispatch))
         if (response.protocolVersion != PROTOCOL_VERSION) throw ProtocolMismatchException(response.protocolVersion)
         return response
     }
@@ -89,9 +101,9 @@ class FrpJumpApi(
         return response
     }
 
-    suspend fun devices(c: Credentials): List<OwnedDevice> {
+    suspend fun devices(c: Credentials, dispatch: ApiRequestDispatch? = null): List<OwnedDevice> {
         val request = authorized(c, endpoint(c.controlUrl, "devices")).get().build()
-        return WireJson.decodeFromString(call(request))
+        return WireJson.decodeFromString(call(request, dispatch))
     }
 
     suspend fun deleteDevice(c: Credentials, name: String) {
@@ -158,21 +170,69 @@ class FrpJumpApi(
         return builder.build()
     }
 
-    private suspend fun call(request: Request): String {
-        val response = try {
-            http.newCall(request).await()
+    private suspend fun call(request: Request, dispatch: ApiRequestDispatch? = null): String {
+        try {
+            if (dispatch != null) return ownedCall(request, dispatch)
+            return http.newCall(request).await().use { readResponse(request, it) }
         } catch (e: IOException) {
             throw NetworkException(NetworkException.Reason.UNREACHABLE, request.url.host, e.message ?: e.javaClass.simpleName, e)
         }
-        response.use {
-            if (it.isRedirect) throw redirectException(request, it.header("Location"))
-            val text = try {
-                it.body?.string().orEmpty()
-            } catch (e: IOException) {
-                throw NetworkException(NetworkException.Reason.BROKE, request.url.host, e.message ?: e.javaClass.simpleName, e)
+    }
+
+    private fun readResponse(request: Request, response: Response): String {
+        if (response.isRedirect) throw redirectException(request, response.header("Location"))
+        val text = try {
+            response.body?.string().orEmpty()
+        } catch (e: IOException) {
+            throw NetworkException(NetworkException.Reason.BROKE, request.url.host, e.message ?: e.javaClass.simpleName, e)
+        }
+        if (!response.isSuccessful) throw ApiException(response.code, errorDetail(text).ifBlank { "HTTP ${response.code}" })
+        return text
+    }
+
+    /** Only an explicitly owned request uses guarded admission and waits for worker exit.
+     * The same client/auth/response handling serves normal UI and background calls.
+     */
+    private suspend fun ownedCall(request: Request, dispatch: ApiRequestDispatch): String {
+        val executor = http.dispatcher.executorService as? ApiCallbackExitExecutor
+            ?: error("Owned API requests require callback-exit dispatcher")
+        val exited = CompletableDeferred<Unit>()
+        try {
+            return suspendCancellableCoroutine { continuation ->
+                val call = http.newCall(request)
+                continuation.invokeOnCancellation { call.cancel() }
+                var inlineCallback = false
+                try {
+                    dispatch(request.url.pathSegments.last()) {
+                        if (!continuation.isActive) throw CancellationException()
+                        call.enqueue(object : Callback {
+                            private fun callback(block: () -> Unit) {
+                                if (!executor.register(exited)) inlineCallback = true
+                                try { block() } finally { beforeOwnedCallbackExit?.invoke() }
+                            }
+                            override fun onFailure(call: Call, e: IOException) = callback {
+                                continuation.resumeWithException(e)
+                            }
+                            override fun onResponse(call: Call, response: Response) = callback {
+                                response.use {
+                                    try {
+                                        beforeOwnedResponseRead?.invoke()
+                                        if (continuation.isActive) continuation.resume(readResponse(request, response))
+                                    } catch (failure: Exception) {
+                                        continuation.resumeWithException(failure)
+                                    }
+                                }
+                            }
+                        })
+                    }
+                } catch (failure: Throwable) {
+                    exited.complete(Unit) // Rejected admission/enqueue has no outstanding callback.
+                    throw failure
+                } finally { if (inlineCallback) exited.complete(Unit) }
             }
-            if (!it.isSuccessful) throw ApiException(it.code, errorDetail(text).ifBlank { "HTTP ${it.code}" })
-            return text
+        } finally {
+            beforeOwnedAwaitExit?.invoke()
+            withContext(NonCancellable) { exited.await() }
         }
     }
 

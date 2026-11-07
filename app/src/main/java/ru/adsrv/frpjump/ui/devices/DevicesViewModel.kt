@@ -2,14 +2,11 @@ package ru.adsrv.frpjump.ui.devices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -18,7 +15,6 @@ import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.tunnelPorts
-import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.devices.tunnelsFirst
 import ru.adsrv.frpjump.session.Notice
 import ru.adsrv.frpjump.ui.connections.ConnectionActions
@@ -43,7 +39,6 @@ data class DevicesUiState(
  * list itself is polled by the profile ([ru.adsrv.frpjump.session.Poller])
  * while it is shown.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     private val directory: StateFlow<DeviceDirectory?> = app.profiles.state.map { it.current?.devices }
         .distinctUntilChanged()
@@ -57,28 +52,9 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
     private var shown = false
 
     val state: StateFlow<DevicesUiState> =
-        combine(listAndTunnels(), refreshing) { (list, ports), busy ->
-            DevicesUiState(
-                devices = list.devices?.let { tunnelsFirst(it, ports) },
-                refreshing = busy,
-                error = list.error,
-                // A list restored at start is not a failure yet: no banner until a fetch fails.
-                staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
-                unreachable = list.unreachable,
-                tunnelPorts = ports,
-            )
+        combine(app.profileInformation.observe(), refreshing) { information, busy ->
+            devicesUiState(information, busy)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, DevicesUiState())
-
-    /** The current profile's list with its own tunnels' ports, so a switch never mixes two profiles. */
-    private fun listAndTunnels() = app.profiles.state.map { it.current }.distinctUntilChanged().flatMapLatest { runtime ->
-        runtime?.let { r ->
-            // A tunnel whose disconnect waits for Undo is not listed on its device.
-            combine(r.devices.state, r.tunnels.state, app.pendingUndo.hidden) { list, tunnels, hidden ->
-                list to tunnelPorts(tunnels.withoutDark(PendingUndo.darkTunnels(hidden, r.id)).tunnels)
-            }
-        }
-            ?: flowOf(DeviceList() to emptyMap())
-    }
 
     /** A message left by the screen before (e.g. after "Forget profile"); shown once. */
     val notice: StateFlow<Notice?> = app.session.notice
@@ -126,4 +102,20 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
             refreshing.value = false
         }
     }
+}
+
+/** Current-profile presentation; the shared source has already applied Undo. */
+internal fun devicesUiState(information: ru.adsrv.frpjump.profiles.ProfileInformationState, busy: Boolean): DevicesUiState {
+    val part = information.profiles.firstOrNull { it.id == information.current }
+    val list = part?.devices ?: DeviceList()
+    val ports = tunnelPorts(part?.tunnels?.tunnels.orEmpty())
+    return DevicesUiState(
+        devices = list.devices?.let { tunnelsFirst(it, ports) },
+        refreshing = busy,
+        error = list.error,
+        // A list restored at start is not a failure yet: no banner until a fetch fails.
+        staleSince = list.updatedAt.takeIf { list.stale && list.error != null },
+        unreachable = list.unreachable,
+        tunnelPorts = ports,
+    )
 }

@@ -42,9 +42,9 @@ class AssistantToolsBindingTest {
         }
         override fun close() { scope.cancel(); main.drain() }
     }
-    private val ids = listOf("web_search", "read_page", "inspect_image")
+    private val ids = listOf("web_search", "read_page", "inspect_image", "profile_information")
     private fun AssistantTools.checked(id: String) = when (id) {
-        "web_search" -> search; "read_page" -> readPage; else -> inspectImage
+        "web_search" -> search; "read_page" -> readPage; "inspect_image" -> inspectImage; else -> profileInformation
     }
 
     @Test fun `each tool both directions keeps old checked pending then acknowledges actual commit atomically`() {
@@ -63,20 +63,20 @@ class AssistantToolsBindingTest {
                 assertEquals(value, observed.last().committed.checked(id))
                 assertTrue(observed.last().pending.isEmpty())
             }
-            assertEquals(6, f.file.writes)
+            assertEquals(ids.size * 2, f.file.writes)
         }
     }
 
     @Test fun `same ID duplicate is dropped no queue while different IDs commit in reverse order`() {
         Fixture().use { f ->
             f.change(ids[0], true); f.change(ids[0], false)
-            f.change(ids[1], true); f.change(ids[2], true)
+            ids.drop(1).forEach { f.change(it, true) }
             assertEquals(ids.toSet(), f.binding.state.value.pending)
-            assertEquals(3, f.io.work.size)
+            assertEquals(ids.size, f.io.work.size)
             val jobs = f.io.work.toList(); f.io.work.clear()
             jobs.reversed().forEach { it.run(); f.main.drain(); f.canonical() }
-            assertEquals(AssistantTools(true, true, true), f.binding.state.value.committed)
-            assertTrue(f.binding.state.value.pending.isEmpty()); assertEquals(3, f.file.writes)
+            assertEquals(AssistantTools(true, true, true, true), f.binding.state.value.committed)
+            assertTrue(f.binding.state.value.pending.isEmpty()); assertEquals(ids.size, f.file.writes)
         }
     }
 
