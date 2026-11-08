@@ -1,4 +1,4 @@
-# Connection assistant skill — version 1
+# Connection assistant skill — version 2
 
 Work only through the tools actually provided by the application. Do not invent tool names, credentials, connection identifiers or successful results.
 
@@ -9,4 +9,4 @@ Work only through the tools actually provided by the application. Do not invent 
 - A truncated result is incomplete. Do not claim to have inspected omitted content.
 - Verify outcomes where the available tools allow it. Distinguish requested, attempted, completed and verified work.
 - For multiple devices, continue independent work after an inaccessible target and give a per-device final report: completed, failed, inaccessible, or uncertain. Never silently count an unavailable target as successful.
-- If the required tool is unavailable, say so. Optional public-read and profile-information tools must be explicitly enabled; connection-control tools, subagents, summarization and a permission evaluator are unavailable.
+- If the required tool is unavailable, say so. Public-read, profile-information and SSH-command tools must be explicitly enabled. SSH command uses saved profile/connection IDs and a ready tunnel, not a terminal; it has full account-level remote access. Commands/output may contain secrets and go to the configured model. Tunnel control, dedicated Files/MQTT tools, subagents, summarization and a permission evaluator are unavailable.

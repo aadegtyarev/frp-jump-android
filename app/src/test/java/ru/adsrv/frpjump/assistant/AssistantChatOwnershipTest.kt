@@ -41,11 +41,17 @@ class AssistantChatOwnershipTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val unrelated = scope.launch { awaitCancellation() }
             val hold = Gate(); var checks = 0; var preparations = 0
+            val httpUnderGuard = AtomicBoolean()
             val old = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
                 if (phase == "prep") hold.waitHere()
                 if (failure && phase == "prep") error("synthetic")
                 AgentProvider {
-                    if (phase == "http") withContext(NonCancellable + Dispatchers.IO) { hold.waitHere() }
+                    if (phase == "http") withContext(NonCancellable + Dispatchers.IO) {
+                        // The fake starts UNDISPATCHED under admission: suspend before blocking, even on the same IO dispatcher.
+                        yield()
+                        httpUnderGuard.set(Thread.holdsLock(settings.assistantChat.gate))
+                        hold.waitHere()
+                    }
                     if (failure && phase == "http") error("synthetic")
                     AgentReply("old answer")
                 }
@@ -59,6 +65,10 @@ class AssistantChatOwnershipTest {
             }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat)
             try {
                 old.edit("old private input"); old.send(); hold.entered()
+                if (phase == "http") {
+                    println("HTTP fixture $action/$failure blocking body holds Chat guard: ${httpUnderGuard.get()}")
+                    assertFalse("$phase/$action/$failure fake HTTP must suspend before blocking", httpUnderGuard.get())
+                }
                 when (action) {
                     "exit" -> old.close()
                     "stop" -> old.stop()
@@ -67,7 +77,7 @@ class AssistantChatOwnershipTest {
                 }
                 newer.edit("new input"); newer.send()
                 assertEquals("$phase/$action/$failure", 0, preparations)
-                assertTrue(newer.state.value.busy); assertTrue(newer.state.value.stopping)
+                assertTrue("$phase/$action/$failure busy", newer.state.value.busy); assertTrue("$phase/$action/$failure stopping", newer.state.value.stopping)
                 assertNull(newer.state.value.pendingText); assertTrue(newer.state.value.turns.isEmpty())
                 hold.release.countDown()
                 withTimeout(4000) { settings.assistantChat.busy.first { !it } }

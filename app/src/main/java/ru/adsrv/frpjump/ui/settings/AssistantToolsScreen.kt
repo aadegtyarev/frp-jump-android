@@ -48,6 +48,8 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Strin
             ToolSwitch("inspect_image", R.string.tool_image, R.string.tool_image_hint, state.committed.inspectImage, state, onChange)
             RowDivider()
             ToolSwitch("profile_information", R.string.tool_profile_information, R.string.tool_profile_information_hint, state.committed.profileInformation, state, onChange)
+            RowDivider()
+            ToolSwitch("ssh_command", R.string.tool_ssh_command, R.string.tool_ssh_command_hint, state.committed.sshCommand, state, onChange)
         }
     }
 }

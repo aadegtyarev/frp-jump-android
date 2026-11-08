@@ -228,6 +228,15 @@ class TunnelManager(
         )
     }.stateIn(scope, SharingStarted.Eagerly, TunnelsState())
 
+    /** Operation-local observation of the plan itself, before the UI's conflated projection.
+     * It is not a globally unique tunnel incarnation or an atomic inventory promise.
+     */
+    internal fun commandTargetPresent(target: Tunnel): kotlinx.coroutines.flow.Flow<Boolean> = core.map { c ->
+        c.pending[target.key] == null && c.planned.any {
+            it.key == target.key && it.grant.grantId == target.grantId && it.localPort == target.localPort
+        }
+    }
+
     init {
         // The server removed this phone (seen by any call, the device list too):
         // the REMOVED screen says tunnels are stopped, so stop them.

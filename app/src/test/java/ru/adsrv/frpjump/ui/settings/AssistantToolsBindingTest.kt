@@ -42,9 +42,9 @@ class AssistantToolsBindingTest {
         }
         override fun close() { scope.cancel(); main.drain() }
     }
-    private val ids = listOf("web_search", "read_page", "inspect_image", "profile_information")
+    private val ids = listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")
     private fun AssistantTools.checked(id: String) = when (id) {
-        "web_search" -> search; "read_page" -> readPage; "inspect_image" -> inspectImage; else -> profileInformation
+        "web_search" -> search; "read_page" -> readPage; "inspect_image" -> inspectImage; "profile_information" -> profileInformation; else -> sshCommand
     }
 
     @Test fun `each tool both directions keeps old checked pending then acknowledges actual commit atomically`() {
@@ -75,7 +75,7 @@ class AssistantToolsBindingTest {
             assertEquals(ids.size, f.io.work.size)
             val jobs = f.io.work.toList(); f.io.work.clear()
             jobs.reversed().forEach { it.run(); f.main.drain(); f.canonical() }
-            assertEquals(AssistantTools(true, true, true, true), f.binding.state.value.committed)
+            assertEquals(AssistantTools(true, true, true, true, true), f.binding.state.value.committed)
             assertTrue(f.binding.state.value.pending.isEmpty()); assertEquals(ids.size, f.file.writes)
         }
     }

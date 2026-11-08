@@ -21,7 +21,15 @@ clipboard and paste behavior remain governed by [SSH console](contract.md#7-ssh-
 [terminal panel](terminal-panel-contract.md). [Files](files-contract.md) uses
 the shared connector/login/host-key rules but owns a separate SFTP connection
 and lifetime. [Diagnostics](terminal-diagnostics-contract.md) owns measurements,
-not reconnect policy or proof that a tunnel listener recovered.
+not reconnect policy or proof that a tunnel listener recovered. The optional
+[assistant SSH command](agent-contract.md#optional-ssh-command) uses the same
+connector, stored login/refusal and host-key policy on its own per-operation
+client. It allocates no PTY/tmux session, does not reconnect/replay commands or
+change terminal/Files ownership, and never starts a tunnel. Stop/target loss
+cancels only that command’s client; the Chat slot waits for actual cleanup.
+Commands/output, potentially secret, are shared with the configured model only
+when that explicitly enabled tool is invoked. Unknown/refused login or host
+trust requires the ordinary SSH UI; the model cannot supply credentials or trust.
 
 The approved opt-out and missing-tmux notice requirements remain binding but
 are not currently available; see [Required controls and notice](#required-controls-and-notice).
