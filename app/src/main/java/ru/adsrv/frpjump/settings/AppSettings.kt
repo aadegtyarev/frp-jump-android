@@ -102,6 +102,7 @@ data class AppSettings(
     @SerialName("assistant_search") val assistantSearch: Boolean = false,
     @SerialName("assistant_read_page") val assistantReadPage: Boolean = false,
     @SerialName("assistant_profile_information") val assistantProfileInformation: Boolean = false,
+    @SerialName("assistant_ssh_command") val assistantSshCommand: Boolean = false,
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
@@ -128,8 +129,8 @@ fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
 }
 
 /** Independent opt-ins; there is no model capability registry or support probe. */
-data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false)
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation)
+data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false, val sshCommand: Boolean = false)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools())
@@ -152,6 +153,7 @@ class SettingsStore(private val storage: TextStorage) {
             "web_search" -> it.copy(assistantSearch = enabled)
             "read_page" -> it.copy(assistantReadPage = enabled)
             "profile_information" -> it.copy(assistantProfileInformation = enabled)
+            "ssh_command" -> it.copy(assistantSshCommand = enabled)
             "inspect_image" -> it.copy(assistantInspectImage = enabled)
             else -> error("Unknown assistant tool")
         }
@@ -198,7 +200,7 @@ class SettingsStore(private val storage: TextStorage) {
         val rawHistory = json["terminal_history_rows"] as? JsonPrimitive
         val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
-        val toolFields = listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information").associateWith { key ->
+        val toolFields = listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_ssh_command").associateWith { key ->
             JsonPrimitive((json[key] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)
         }
         val normalized = JsonObject(json + toolFields + ("terminal_history_rows" to JsonPrimitive(history)) +

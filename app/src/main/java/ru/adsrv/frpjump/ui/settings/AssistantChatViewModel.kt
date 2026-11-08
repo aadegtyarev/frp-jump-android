@@ -15,15 +15,16 @@ class AssistantChatViewModel(
     providerStore: AssistantProviderStore,
     module: AgentModule,
     profileInformation: ru.adsrv.frpjump.profiles.ProfileInformation? = null,
+    sshCommands: AssistantSshCommands? = null,
     prepare: (AssistantProviderSnapshot) -> AgentProvider = {
         providerStore.provider(AssistantProviderDraft(checkNotNull(it.settings), it.revision))
     },
 ) : ViewModel() {
-    constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistant, app.profileInformation)
+    constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistant, app.profileInformation, app.assistantSshCommands)
     init { require(settingsStore.assistantChat === providerStore.chatRuntime) }
     val conversation = AssistantConversation(viewModelScope,
         availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
-        prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation)
+        prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands)
     val settings = settingsStore.settings
     val provider = providerStore.state
     init {

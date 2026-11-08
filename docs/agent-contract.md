@@ -3,9 +3,9 @@
 ## Boundary and availability
 
 This surface covers the optional assistant kernel, external API adapter and
-provider setup and memory-only chat with optional public-read and profile-information tools. The owner uses Settings to opt in,
+provider setup and memory-only chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Connection-control tools remain unavailable; the informational exception and public-read tools are described below.
+implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below.
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -23,8 +23,7 @@ write retains the previous preference and shows an error. A malformed new
 flag falls back to off without resetting unrelated settings.
 
 Settings → LLM assistant → Assistant provider configures one external
-OpenAI-compatible provider. Chat is available next to provider setup; connection-control
-tools are **not available**. Enabling the module, opening settings or
+OpenAI-compatible provider. Chat is available next to provider setup. SSH commands require their own default-off tool switch; tunnel control is **not available**. Enabling the module, opening settings or
 saving a provider performs no network request. Fetch models is an explicit
 user action and is available during setup even while the agent module is off.
 A saved provider is configuration, not evidence of a successful API call.
@@ -51,7 +50,7 @@ Save, Fetch models and recovery behavior.
   Keystore-backed credential; its observable snapshot contains metadata only.
 - The kernel does not itself grant target access. Any connection-tool adapter
   must bind to its admitted connection identity and must never resolve a
-  replacement client after a disconnect. No connection-control adapters are available; the information tool below reads shared application state.
+  replacement client after a disconnect. The SSH adapter below owns one ordinary client; the information tool reads shared application state. Neither starts or controls tunnels.
 - The versioned [application skill](../app/src/main/assets/assistant/skill.md)
   is input for a coordinator, not a permission system or an automatically
   executing script. Text chat does not attach it or any automatic app context.
@@ -223,26 +222,74 @@ SSH, device HTTP, Files or MQTT tools. It has an accurate private-data disclosur
 not a full-access claim. Other future connection-tool prototypes still require
 separate approval and the full-access warning described below.
 
+## Optional SSH command
+
+The independent default-off `ssh_command` tool accepts exactly `profile_id`,
+`connection_id` and one nonempty `command` string. Discover saved IDs through
+`profile_information`; there is no additional catalogue or automatic attachment.
+One unambiguous saved SSH connection in any profile must already have a ready
+visible tunnel. Missing, non-SSH, hidden, removed, down or unavailable targets
+fail without starting/reviving a tunnel. No open terminal is required.
+
+Each invocation captures the saved connection, runtime, tunnel configuration and
+one operation-owned ordinary SSHJ client. It never substitutes a Terminal/Files
+client or re-resolves a replacement after target loss. Operation-local observers
+stop owned work on target removal, pending Undo, profile loss or tunnel-plan loss;
+Undo does not revive that operation. Target loss in a still-authorized Send returns
+an explicit failed tool result after actual cleanup: no command before exec, or an
+unknown remote outcome after possible exec unless an exit status/signal was already
+received. Known exit information is retained, but late stdout/stderr is withheld.
+This is distinct from Stop, timeout or owner revocation, whose cancellation and
+stale-publication suppression remain unchanged. This is not an atomic inventory/freshness promise
+or a claim that grant IDs/local ports are unique across lifetimes.
+
+The existing connector enforces stored login/refusal and pinned host-key policy.
+The saved connection’s user and the port’s stored auth method apply. Remembered
+password authentication preserves Remember. Missing/unreadable/refused login or
+unknown/changed host key executes no command and directs setup through ordinary
+SSH UI. No model credentials, automatic trust or new input dialogue are accepted.
+Normal credential reads, key generation and refusal bookkeeping still apply.
+
+Exec is noninteractive without PTY or tmux, with closed stdin. Stdout and stderr
+are drained concurrently, retaining at most 3,000 UTF-16 characters each as data
+arrives and visibly marking excess. They remain separately labelled, with actual
+nullable exit status/signal or explicit unknown. Only known exit 0 without a
+signal is success; EOF, local close/join, nonzero/missing status and failures are
+not invented remote success. Kernel/result/context limits continue to apply.
+
+Actual nonblocking worker admission uses the existing Chat authority guard.
+Client creation, credentials, connect/auth/exec/read and cleanup run off Main and
+outside that guard. Stop cancels only the owned client, including one constructed
+after cancellation, and retains the global slot through actual worker, readers
+and cleanup exit. Tool-only changes affect the next Send, not admitted work.
+Timeouts (30 s tool / 120 s Send by default) are cancellation thresholds, not
+remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
+an admitted command’s effects may remain uncertain. Commands/output enter the
+same bounded memory-only history and configured model requests, not app logs or
+persistent Chat storage. Arbitrary remote output can contain secrets and is not
+generically scrubbed. App-stored credentials/internal diagnostics are not tool
+arguments/results. Remote content remains untrusted data, never new authority.
+
 ## Optional public Web tools
 
-Settings → LLM assistant → Tools has four independent persisted switches:
+Settings → LLM assistant → Tools has five independent persisted switches:
 Web search (`web_search`), Read page (`read_page`) and Inspect image
-(`inspect_image`), and Profile information (`profile_information`). They default off on new installs/upgrades; malformed new
+(`inspect_image`), Profile information (`profile_information`) and SSH command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
 only booleans, opening this screen or enabling a tool makes no request. Failed
 writes keep committed switches/authority and show an inline error. Tools remain
-changeable while Chat is busy. Chat's Tools action opens the same four switches
+changeable while Chat is busy. Chat's Tools action opens the same five switches
 without popping the conversation. The Tools arrow and system Back return to that
 same owner, draft and completed history, including across recreation; actual Chat
 pop still cancels work and discards conversation memory. The notice explains DuckDuckGo query disclosure, selected public text/images and
 private profile/device/connection information sent to the configured LLM when
 tools are used, and ordinary model token charges, including image analysis.
-It grants neither file access nor connection control.
+The separate SSH switch warns of FULL SSH ACCESS: commands can read/change the remote system and files within the account’s rights. Commands and output may contain secrets and are sent to the configured model with ordinary token charges. It grants no tunnel control or phone-file access.
 Public GET is not guaranteed free of remote effects.
 
 Tools autosaves each switch; there is no Save button or optimistic checked value.
 Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
-One immutable presentation snapshot contains the actual committed four booleans,
+One immutable presentation snapshot contains the actual committed five booleans,
 pending IDs and fixed inline save failures. Checked, progress/enabled and failure
 are rendered from that same snapshot, not independent checked/completion channels.
 Real storage work runs off Main. On completion, Main reads the latest canonical
@@ -271,7 +318,7 @@ Admission, every model/public/image dispatch and source/progress/answer/error
 publication still check the captured owner, provider revision and disable version.
 Stop/pop, assistant disable (including off/on), provider revision/read failures
 cancel exact work; the shared slot remains occupied through DNS, callback/body,
-parser and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
+parser, owned SSH worker/readers and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
 image preparation and settings IO run off Main and outside commit guards. The
 whole Send deadline is 120 seconds; existing kernel per-call limits also apply.
 
@@ -384,7 +431,7 @@ Current mandatory input/answer/exchanges that cannot fit fail context-full rathe
 than silently clipping user input/answers or keeping half exchanges. Chat,
 queries, URLs, content and pixels are never written to files, logs or saved state.
 There is no background fetching, uploads, RAG/vector database, browser framework,
-reader selector or connection-control/file authority.
+reader selector or private/tunnel/file authority for these public Web tools.
 
 ## Provider settings and credentials
 
@@ -470,10 +517,9 @@ compatibility with every provider-specific thinking parameter.
 ## Verification and non-goals
 
 The app surface includes provider setup, chat, optional public-read tools and
-the profile-information tool above. Connection-control/SSH/Files/MQTT/TCP tools, compression, evaluators, permission modes and
+the profile-information and SSH-command tools above. Tunnel-control, dedicated Files/MQTT/TCP tools, compression, evaluators, permission modes and
 subagents remain outside this surface. No tunnel creation, start, reconfiguration
-or deletion is granted to the agent. No permissions evaluator/full-access agent
-is shipped. Public tools carry the public-read/data-disclosure notice above, not
+or deletion is granted to the agent. No permissions evaluator or confirmation modes are shipped. The enabled SSH tool has full access within the SSH account’s rights. Public tools carry the public-read/data-disclosure notice above, not
 a misleading full-access warning. Any other future connection-tool prototype requires
 separate approval and an explicit full-access warning until confirmation modes
 exist; availability does not waive that conditional safety requirement.
@@ -485,8 +531,8 @@ captured admission, one ordinary refresh, typed facts and secret exclusion,
 result bounds and cancellation. Deterministic ownership tests cover both refresh
 endpoints across profiles, revoke/start ordering, held HTTP/body/callback exit,
 Stop/pop, module off/on and provider authority changes, without revoking a Send
-for tool-switch-only changes. The shared Tools binding and component fixtures
-include all four switches, save errors, retained owners and explicit invocation.
+for tool-switch-only changes. Synthetic SSH client/owner tests cover saved target/auth/trust, bounded dual streams, honest status, target loss, guarded admission and actual cleanup under Stop/timeout/revocation. The shared Tools binding and component fixtures
+include all five switches, save errors, retained owners and explicit invocation.
 Existing kernel tests use fake providers/tools. Adapter tests use synthetic
 loopback HTTP responses. Settings/store tests cover committed opt-in,
 malformed-field fallback, disable invalidation, credential/root binding,
@@ -514,8 +560,7 @@ live LLM, SSH or broker compatibility, or physical-device/vendor behavior.
 - [App behavior and shared UI rules](contract.md#ui-rules) own common UX,
   settings and tunnel behavior. This surface adds explicit external-provider
   discovery; it is not a general permission to send app data off the phone.
-- [SSH persistence](ssh-persist-contract.md) owns SSH sessions; no assistant
-  SSH access is currently exposed.
+- [SSH persistence](ssh-persist-contract.md) owns terminal sessions and the shared connector/login/host-key policies also used by the assistant’s separate owned command client.
 - [Kernel interfaces and limits](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentProtocol.kt),
   [execution](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentModule.kt)
   and [window selection](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentWindow.kt).

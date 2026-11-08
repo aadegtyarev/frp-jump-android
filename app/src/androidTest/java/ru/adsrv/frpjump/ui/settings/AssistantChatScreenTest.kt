@@ -90,11 +90,32 @@ class AssistantChatScreenTest {
             index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
         kotlinx.coroutines.flow.MutableStateFlow(emptySet()),
     )
-    private fun vm() = AssistantChatViewModel(settings, store, module, information) {
+    private val sshCommands = AssistantSshCommands(
+        kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true)),
+        kotlinx.coroutines.flow.MutableStateFlow(emptySet()),
+        ru.adsrv.frpjump.ssh.SshEnvironment(
+            ru.adsrv.frpjump.ssh.SshKeyStore(Memory(), object : SecretBox {
+                override fun seal(plain: String): String = error("No SSH credentials")
+                override fun open(sealed: String): String = error("No SSH credentials")
+                override fun destroy() = Unit
+            }), ru.adsrv.frpjump.ssh.SshPasswords(Memory(), object : SecretBox {
+                override fun seal(plain: String): String = error("No SSH credentials")
+                override fun open(sealed: String): String = error("No SSH credentials")
+                override fun destroy() = Unit
+            }), { error("No SSH setup") }, ru.adsrv.frpjump.ssh.TmuxNames(Memory()),
+            clientFactory = { error("No actual SSH") }),
+    )
+    private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands) {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
             when (mode) {
+                "tool-ssh" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("ssh-$calls", "ssh_command", kotlinx.serialization.json.buildJsonObject {
+                        put("profile_id", kotlinx.serialization.json.JsonPrimitive("synthetic"))
+                        put("connection_id", kotlinx.serialization.json.JsonPrimitive("ssh"))
+                        put("command", kotlinx.serialization.json.JsonPrimitive("printf synthetic"))
+                    }))) else AgentReply("Synthetic SSH target unavailable")
                 "tool-information" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("information-$calls", "profile_information", kotlinx.serialization.json.buildJsonObject { })))
                     else if (request.turns.last().exchanges.single().results.single().outcome == ToolOutcome.UNKNOWN_TOOL)
@@ -183,7 +204,7 @@ class AssistantChatScreenTest {
         return compose.activity.createConfigurationContext(config).getString(id)
     }
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
-        when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; else -> error("Unknown test tool") }
+        when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
     }
     private fun awaitToolSaved(id: String, enabled: Boolean) {
         fun snapshot(): String {
@@ -398,7 +419,7 @@ class AssistantChatScreenTest {
         compose.activityRule.scenario.onActivity { install(it) }
         compose.onNodeWithTag("assistant_tools_entry").performClick()
         val retained = settingsBinding
-        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information")) {
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) {
             toolToggle(id).assertIsOff().performClick(); awaitToolSaved(id, true)
             toolToggle(id).assertIsOn().assertIsEnabled()
             compose.runOnIdle { assertEquals(0, calls); settingsFile.failWrites = true }
@@ -413,8 +434,34 @@ class AssistantChatScreenTest {
         }
         compose.activityRule.scenario.recreate()
         compose.activityRule.scenario.onActivity { install(it) }
-        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information")) toolToggle(id).assertIsOn().assertIsEnabled()
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) toolToggle(id).assertIsOn().assertIsEnabled()
         compose.runOnIdle { assertSame(retained, settingsBinding); assertEquals(0, calls) }
+    }
+
+    @Test fun sshCommandRequiresOptInAndDisclosesFullAccessAndPrivateOutput() {
+        install()
+        compose.runOnIdle { mode = "tool-ssh"; assertEquals(0, calls) }
+        input().performTextInput("Run synthetic command")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle { assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome) }
+        button("chat_tools").performClick()
+        toolToggle("ssh_command").assertIsOff()
+        val warning = localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command_hint)
+        compose.onNodeWithText(warning).performScrollTo().assertIsDisplayed()
+        assertTrue(warning.contains(if (args.getString("chatLocale") == "ru") "ПОЛНЫЙ ДОСТУП" else "FULL SSH ACCESS"))
+        toolToggle("ssh_command").performClick(); awaitToolSaved("ssh_command", true)
+        compose.runOnIdle { assertEquals(2, calls) }
+        compose.onNodeWithTag("tools_back").performScrollTo().performClick()
+        input().performTextInput("Try the saved synthetic target")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertEquals(listOf("ssh_command"), requests.last().tools.map { it.name })
+            val result = requests.last().turns.last().exchanges.single().results.single()
+            assertEquals(ToolOutcome.FAILED, result.outcome)
+            assertTrue(result.text.contains("unavailable")); assertTrue(owner!!.state.value.turns.last().toolFailed)
+        }
+        button("chat_history").performScrollToNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_failed)))
+        compose.onAllNodesWithText(localizedText(ru.adsrv.frpjump.R.string.tool_failed))[0].assertIsDisplayed()
     }
 
     @Test fun profileInformationRequiresExplicitEnabledInvocationAndShowsKnownUnavailableResult() {
@@ -531,7 +578,7 @@ class AssistantChatScreenTest {
         install(); input().performTextInput("Completed first")
         button("chat_send").performClick(); awaitIdle()
         val retained = owner!!
-        val ids = listOf("web_search", "read_page", "inspect_image", "profile_information")
+        val ids = listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")
         for ((index, id) in ids.withIndex()) {
             val completeCount = retained.state.value.turns.size
             compose.runOnIdle { heldProviderReply = CompletableDeferred(); mode = "held-answer" }

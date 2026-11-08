@@ -75,13 +75,14 @@ class AssistantSettingsTest {
         val file = MemoryStorage()
         val store = SettingsStore(file).apply { update { it.copy(direct = false, assistantEnabled = true) } }
         var expected = AssistantTools()
-        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information")) for (value in listOf(true, false)) {
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) for (value in listOf(true, false)) {
             store.setAssistantTool(id, value)
             expected = when (id) {
                 "web_search" -> expected.copy(search = value)
                 "read_page" -> expected.copy(readPage = value)
                 "inspect_image" -> expected.copy(inspectImage = value)
-                else -> expected.copy(profileInformation = value)
+                "profile_information" -> expected.copy(profileInformation = value)
+                else -> expected.copy(sshCommand = value)
             }
             assertEquals(expected, store.assistantAvailability.tools)
             assertEquals(expected, SettingsStore(file).assistantAvailability.tools)
@@ -90,6 +91,14 @@ class AssistantSettingsTest {
             assertTrue(store.assistantAvailability.enabled)
             assertEquals(0L, store.assistantAvailability.disableVersion)
             assertEquals(0L, store.assistantDisables.value)
+        }
+    }
+
+    @Test fun `SSH command defaults off and malformed values do not change siblings`() {
+        for (bad in listOf("null", "1", "\"true\"", "{}", "[]")) {
+            val store = SettingsStore(MemoryStorage("""{"direct":false,"assistant_profile_information":true,"assistant_ssh_command":$bad}"""))
+            assertEquals(AssistantTools(profileInformation = true), store.assistantAvailability.tools)
+            assertFalse(store.settings.value.direct)
         }
     }
 

@@ -782,8 +782,11 @@ consume settings and write v2 immediately:
 The optional module is off by default. Settings exposes provider setup,
 secure key storage, model discovery, effort and context limits, plus a Chat
 entry for explicit conversations. Tools offers independent, default-off Web
-search, Read page, Inspect image and Profile information switches, with
-public/private-data disclosure and model token-charge notices. These operate only during explicit Send; opening
+search, Read page, Inspect image, Profile information and SSH command switches, with
+public/private-data disclosure and model token-charge notices. SSH command carries
+an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
+files within account rights; commands and output may contain secrets and go to
+the configured model. These operate only during explicit Send; opening
 or saving makes no request. Switches autosave through the same Tools binding in
 Settings and Chat. Actual committed values, pending progress and inline failures
 come from one snapshot; no Save button or pre-commit checked value. Storage runs
@@ -808,7 +811,11 @@ through actual HTTP worker cleanup without cancelling unrelated UI/background
 requests. Missing information stays
 unknown. Fixed error descriptions and typed app states are sent, not raw
 UI/server/exception diagnostics or credentials. It is not an atomic live inventory
-or proof of remote service readiness. Connection-control tools are not available.
+or proof of remote service readiness. The separate SSH-command tool executes one noninteractive command on a saved SSH
+target from any profile over an already ready tunnel, with ordinary login/pinning,
+bounded separate stdout/stderr and honest exit/unknown status. It owns its client
+and cancellation/actual cleanup, not Terminal or Files clients. No tunnel-control
+tools are available.
 Enabling, opening settings and saving do not start provider requests. Fetch models
 is an explicit setup action, available even while the module is off. Its target-bound credentials,
 cancellation and current execution boundaries belong to the
@@ -859,7 +866,7 @@ cancellation and current execution boundaries belong to the
 Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and
 requested APK/checksum downloads, and explicit provider model discovery and
-chat (including explicitly invoked profile information), and explicitly enabled
+chat (including explicitly invoked profile information and SSH commands/output), and explicitly enabled
 assistant public HTTPS read/search/image requests.
 These optional credential-free public requests and same-model image analysis
 follow the [assistant contract](agent-contract.md#optional-public-web-tools), not
@@ -869,8 +876,9 @@ Discovery and explicit chat send the provider credential only to its configured
 target under the [assistant contract](agent-contract.md). Discovery does not send
 chat; Chat sends explicit text/history, fixed instructions and enabled
 tool schemas/results, including private profile/device/connection information only
-when the explicitly enabled information tool is invoked. App/connection data is
-never automatically attached. Neither grants connection-control tools. No provider request is
+when the explicitly enabled information tool is invoked, and commands/output when
+the SSH tool is invoked. App/connection data is never automatically attached.
+The SSH tool grants remote account-level access, not tunnel control. No provider request is
 implied by enabling the module,
 opening settings or saving, and setup discovery does not require the module
 switch to be on. These flows do not authorize telemetry or other background
@@ -918,12 +926,13 @@ These are review scenarios, not a record of tests run or releases published:
 
 ## Non-goals
 
-The phone does not expose ports, reach other people's devices, perform admin
-commands or enroll by a key. Google Play distribution, armv7 release builds
+The phone does not expose ports, reach other people's devices or enroll by a key.
+The separately enabled assistant SSH tool can run administrative commands within
+the SSH account’s rights; existing manual SSH and Files behavior is unchanged. Google Play distribution, armv7 release builds
 and additional UI languages are not promised. x86_64 builds are for local
 debug/minified validation, not the arm64 release target. Assistant chat is
-memory-only, with optional public-read and profile-information tools but no tool-enabled connection
-control or durable history. Public tools do not execute/render JavaScript or
+memory-only, with optional public-read, profile-information and SSH-command tools
+but no tunnel control or durable history. Public tools do not execute/render JavaScript or
 claim full client-only articles, and cannot read local files or private/tunnel
 addresses. The explicit 2026-11-06 amendment returns available bounded static text,
 including warning-only/shell text, without JS/usefulness detection; the model

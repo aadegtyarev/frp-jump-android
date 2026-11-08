@@ -1158,7 +1158,7 @@
     <string name="chat_stop">Stop</string>
     <string name="chat_send">Send</string>
     <string name="assistant_tools">Tools</string>
-    <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and connection information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. No connection control or file access. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
+    <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and connection information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
     <string name="tool_search">Web search</string>
     <string name="tool_search_hint">Free, unofficial DuckDuckGo search; may be blocked.</string>
     <string name="tool_read">Read page</string>
@@ -1174,4 +1174,8 @@
     <string name="tool_profile_information">Profile information</string>
     <string name="tool_profile_information_hint">Devices, connections and tunnels across all profiles</string>
     <string name="tool_profile_information_progress">Refreshing profile information…</string>
+
+    <string name="tool_ssh_command">SSH command</string>
+    <string name="tool_ssh_command_hint">FULL SSH ACCESS: commands can read and change the remote system and files within the SSH account’s rights. Commands and output may contain secrets and are shared with your configured model. Ordinary token charges apply.</string>
+    <string name="tool_ssh_command_progress">Running SSH command…</string>
 </resources>
