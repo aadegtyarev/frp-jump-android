@@ -60,7 +60,7 @@ internal object WebDocuments {
         if (response.mime != "text/html") webFail(WebFailure.TYPE)
         val doc = html(response)
         if (doc.select("form[action*=anomaly], #challenge-form, .anomaly-modal").isNotEmpty() ||
-            (doc.select("a.result__a").isEmpty() && doc.text().contains("captcha", true)) || doc.text().contains("Unfortunately, bots", true)) webFail(WebFailure.BLOCKED)
+            (doc.select("a.result__a").isEmpty() && doc.text().contains("captcha", true)) || doc.text().contains("Unfortunately, bots", true)) webFail(WebFailure.BLOCKED, response.status)
         val result = doc.select("a.result__a").mapNotNull { link ->
             val raw = link.absUrl("href")
             val parsed = runCatching { PublicWebPolicy.url(raw) }.getOrNull() ?: return@mapNotNull null

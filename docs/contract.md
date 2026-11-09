@@ -803,7 +803,12 @@ descriptions and known status/limits, never silent success or raw server errors.
 returning from Tools keeps that owner/history, while actual Chat exit discards it.
 The information tool reads the same derived application API as Devices and
 Connections, including devices without saved connections and distinct profiles.
-Each actual invocation makes one ordinary all-profile device-list pull, with
+Optional text/profile selection searches that complete available source before
+bounded whole-record paging. One or several suitable results are legitimate;
+profiles/connection identities remain distinct and larger sets expose continuation.
+Missing sources do not become a false “not found”. Received selected facts remain
+available in Chat if the subsequent model request fails, under the same memory,
+aggregate-history and authority lifecycle. Each actual invocation makes one ordinary all-profile device-list pull, with
 existing authentication, feature checks, cache writes and error/stale behavior;
 no extra tunnel polling/probing or control is started. Information-owned request
 starts use the existing Chat authority guard; cancellation retains its slot

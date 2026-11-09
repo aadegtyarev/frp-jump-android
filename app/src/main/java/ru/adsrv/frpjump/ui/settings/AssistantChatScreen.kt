@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.ui.AppTheme
 
@@ -44,8 +45,8 @@ internal fun AssistantChatContent(
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
-    LaunchedEffect(state.turns.size, state.pendingText) {
-        val count = state.turns.size + if (state.pendingText != null) 1 else 0
+    LaunchedEffect(state.turns.size, state.pendingText, state.toolFailures.size, state.information.size) {
+        val count = state.turns.size + if (state.pendingText != null || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.currentSources.isNotEmpty()) 1 else 0
         if (count > 0) historyScroll.scrollToItem(count - 1)
     }
     BackHandler { conversation.close(); onBack() }
@@ -80,7 +81,9 @@ internal fun AssistantChatContent(
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
                             SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
-                            if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
+                            if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
+                            else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
+                            ChatProfileInformationResults(turn.information)
                             ChatSources(turn.sources)
                         }
                     }
@@ -94,15 +97,22 @@ internal fun AssistantChatContent(
                             ChatToolProgress.IMAGE -> R.string.tool_image_progress
                             ChatToolProgress.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
                             ChatToolProgress.SSH_COMMAND -> R.string.tool_ssh_command_progress
-                            ChatToolProgress.FAILED -> R.string.tool_failed
+                            ChatToolProgress.FAILED -> if (state.toolFailures.isEmpty()) R.string.tool_failed else R.string.chat_waiting
                             null -> R.string.chat_waiting
                         }), color = AppTheme.colors.muted)
+                        ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
+                        ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
                     }
                 } }
-                if (state.pendingText == null && state.currentSources.isNotEmpty()) item { ChatSources(state.currentSources) }
+                if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty())) item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
+                        ChatProfileInformationResults(state.information, state.problem != null)
+                        ChatSources(state.currentSources)
+                    }
+                }
             }
-            if (state.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_current_tool_failure"))
             state.problem?.let { problem -> Text(stringResource(when (problem) {
                 ChatProblem.SETUP -> R.string.chat_setup
                 ChatProblem.READ -> R.string.assistant_provider_read_failed
@@ -133,6 +143,32 @@ private fun ChatUserMessage(text: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.chat_you), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accent)
         SelectionContainer { Text(text, color = AppTheme.colors.accent) }
+    }
+}
+
+@Composable
+private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier = Modifier) {
+    if (failures.isEmpty()) return
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        failures.forEach { failure ->
+            val tool = stringResource(when (failure.result.name) {
+                "web_search" -> R.string.tool_search
+                "read_page" -> R.string.tool_read
+                "inspect_image" -> R.string.tool_image
+                "profile_information" -> R.string.tool_profile_information
+                "ssh_command" -> R.string.tool_ssh_command
+                else -> R.string.tool_failure_unknown
+            })
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(when (failure.result.outcome) {
+                    ToolOutcome.TIMEOUT -> R.string.tool_failure_timeout
+                    ToolOutcome.UNKNOWN_TOOL -> R.string.tool_failure_unavailable
+                    else -> R.string.tool_failure_failed
+                }, tool), color = AppTheme.colors.error)
+                failure.query?.let { SelectionContainer { Text(stringResource(R.string.tool_failure_query, it)) } }
+                SelectionContainer { Text(failure.result.text, modifier = Modifier.testTag("chat_tool_failure_detail")) }
+            }
+        }
     }
 }
 

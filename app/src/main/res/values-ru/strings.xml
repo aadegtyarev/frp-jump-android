@@ -1218,6 +1218,11 @@
     <string name="tool_read_progress">Чтение страницы…</string>
     <string name="tool_image_progress">Анализ изображения…</string>
     <string name="tool_failed">Инструмент не сработал. Ответ может быть неполным.</string>
+    <string name="tool_failure_unknown">Инструмент</string>
+    <string name="tool_failure_failed">%1$s: ошибка</string>
+    <string name="tool_failure_timeout">%1$s: время ожидания истекло</string>
+    <string name="tool_failure_unavailable">%1$s: недоступен</string>
+    <string name="tool_failure_query">Поисковый запрос: %1$s</string>
     <string name="chat_sources">Полученные источники · загрузка не доказывает утверждение</string>
     <string name="tool_profile_information">Сведения о профилях</string>
     <string name="tool_profile_information_hint">Устройства, подключения и туннели всех профилей</string>
@@ -1226,4 +1231,19 @@
     <string name="tool_ssh_command">Команда SSH</string>
     <string name="tool_ssh_command_hint">ПОЛНЫЙ ДОСТУП ПО SSH: команды могут читать и изменять удалённую систему и файлы в пределах прав SSH-аккаунта. Команды и вывод могут содержать секреты и передаются настроенной модели. Токены оплачиваются.</string>
     <string name="tool_ssh_command_progress">Выполняется команда SSH…</string>
+    <string name="profile_information_received">Полученные сведения о профилях</string>
+    <string name="profile_information_query">Выборка: %1$s</string>
+    <string name="profile_information_count">Записей на странице: %1$d · всего: %2$s</string>
+    <string name="profile_information_partial">Часть источников недоступна, неизвестна или устарела. Результаты могут быть неполными.</string>
+    <string name="profile_information_no_known_matches">В доступных сведениях совпадений нет.</string>
+    <string name="profile_information_record_unavailable">Запись не поместилась; её идентификаторы для действий недоступны.</string>
+    <string name="profile_information_unavailable">Профиль недоступен</string>
+    <string name="profile_information_unknown">Состояние устройства неизвестно</string>
+    <string name="profile_information_stale">Последнее известное состояние · свежего подтверждения нет</string>
+    <string name="profile_information_online">Устройство сообщало, что в сети</string>
+    <string name="profile_information_offline">Устройство сообщало, что не в сети</string>
+    <string name="profile_information_disabled">Устройство отключено</string>
+    <string name="profile_information_operation_failed">Ошибка операции подключения</string>
+    <string name="profile_information_shortened">Некоторые необычно длинные поля сокращены.</string>
+    <string name="profile_information_more">Есть ещё записи · смещение для продолжения: %1$s</string>
 </resources>

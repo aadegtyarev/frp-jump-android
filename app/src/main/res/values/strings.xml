@@ -1170,6 +1170,11 @@
     <string name="tool_read_progress">Reading page…</string>
     <string name="tool_image_progress">Inspecting image…</string>
     <string name="tool_failed">A tool failed. The answer may be limited.</string>
+    <string name="tool_failure_unknown">Tool</string>
+    <string name="tool_failure_failed">%1$s: failed</string>
+    <string name="tool_failure_timeout">%1$s: timed out</string>
+    <string name="tool_failure_unavailable">%1$s: unavailable</string>
+    <string name="tool_failure_query">Search query: %1$s</string>
     <string name="chat_sources">Fetched sources · retrieval is not proof of a claim</string>
     <string name="tool_profile_information">Profile information</string>
     <string name="tool_profile_information_hint">Devices, connections and tunnels across all profiles</string>
@@ -1178,4 +1183,19 @@
     <string name="tool_ssh_command">SSH command</string>
     <string name="tool_ssh_command_hint">FULL SSH ACCESS: commands can read and change the remote system and files within the SSH account’s rights. Commands and output may contain secrets and are shared with your configured model. Ordinary token charges apply.</string>
     <string name="tool_ssh_command_progress">Running SSH command…</string>
+    <string name="profile_information_received">Received profile information</string>
+    <string name="profile_information_query">Selection: %1$s</string>
+    <string name="profile_information_count">Records on this page: %1$d · total: %2$s</string>
+    <string name="profile_information_partial">Some sources are unavailable, unknown or stale. These results may be incomplete.</string>
+    <string name="profile_information_no_known_matches">No matches in the available information.</string>
+    <string name="profile_information_record_unavailable">A record could not fit; its action identifiers are unavailable.</string>
+    <string name="profile_information_unavailable">Profile unavailable</string>
+    <string name="profile_information_unknown">Device state unknown</string>
+    <string name="profile_information_stale">Last known state · not freshly confirmed</string>
+    <string name="profile_information_online">Device reported online</string>
+    <string name="profile_information_offline">Device reported offline</string>
+    <string name="profile_information_disabled">Device disabled</string>
+    <string name="profile_information_operation_failed">Connection operation failed</string>
+    <string name="profile_information_shortened">Some unusually long fields were shortened.</string>
+    <string name="profile_information_more">More records are available · continuation offset: %1$s</string>
 </resources>

@@ -25,6 +25,7 @@ import androidx.navigation.compose.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -85,7 +86,9 @@ class AssistantChatScreenTest {
     private val requests = mutableListOf<AgentRequest>()
     private var owner: AssistantConversation? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
-    private val information = ru.adsrv.frpjump.profiles.ProfileInformation(
+    private var informationFixture: ProfileInformationFixture? = null
+    @org.junit.After fun closeInformationFixture() { informationFixture?.close() }
+    private var information = ru.adsrv.frpjump.profiles.ProfileInformation(
         kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true,
             index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
         kotlinx.coroutines.flow.MutableStateFlow(emptySet()),
@@ -116,11 +119,29 @@ class AssistantChatScreenTest {
                         put("connection_id", kotlinx.serialization.json.JsonPrimitive("ssh"))
                         put("command", kotlinx.serialization.json.JsonPrimitive("printf synthetic"))
                     }))) else AgentReply("Synthetic SSH target unavailable")
+                "profile-results", "profile-results-provider-fail" -> if (request.turns.last().exchanges.isEmpty())
+                    AgentReply(calls = listOf(ToolCall("profile-result-$calls", "profile_information", buildJsonObject { put("query", "board1500") })))
+                    else {
+                        val result = request.turns.last().exchanges.single().results.single()
+                        assertEquals(ToolOutcome.SUCCESS, result.outcome); assertEquals(0, result.omittedChars)
+                        val records = Json.parseToJsonElement(result.text).jsonObject["results"]!!.jsonArray.map { it.jsonObject }
+                        val matches = records.filter { it["connection"] is JsonObject }
+                        assertEquals(setOf("work-root", "work-admin", "home-root"), matches.map { it["connection"]!!.jsonObject["id"]!!.jsonPrimitive.content }.toSet())
+                        if (mode == "profile-results-provider-fail") error("synthetic provider failure after selected information")
+                        AgentReply(matches.joinToString("\n") { record ->
+                            val c = record["connection"]!!.jsonObject
+                            "${record["profile"]!!.jsonObject["name"]!!.jsonPrimitive.content} · ${c["device"]!!.jsonPrimitive.content} · ${c["name"]!!.jsonPrimitive.content} · ${c["kind"]!!.jsonPrimitive.content}:${c["port"]!!.jsonPrimitive.int} · ${c["user"]!!.jsonPrimitive.content}"
+                        })
+                    }
                 "tool-information" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("information-$calls", "profile_information", kotlinx.serialization.json.buildJsonObject { })))
                     else if (request.turns.last().exchanges.single().results.single().outcome == ToolOutcome.UNKNOWN_TOOL)
                         AgentReply("Profile information is disabled")
                     else AgentReply("App reports an unavailable synthetic profile")
+                "search-failure-provider-fail" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("search-$calls", "web_search", kotlinx.serialization.json.buildJsonObject {
+                        put("query", kotlinx.serialization.json.JsonPrimitive("synthetic generated documentation query"))
+                    }))) else error("synthetic provider failure after tool")
                 "wait" -> awaitCancellation()
                 "held-answer" -> { heldProviderReply.await(); AgentReply("late reply") }
                 "error" -> error("synthetic-private-error")
@@ -460,8 +481,9 @@ class AssistantChatScreenTest {
             assertEquals(ToolOutcome.FAILED, result.outcome)
             assertTrue(result.text.contains("unavailable")); assertTrue(owner!!.state.value.turns.last().toolFailed)
         }
-        button("chat_history").performScrollToNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_failed)))
-        compose.onAllNodesWithText(localizedText(ru.adsrv.frpjump.R.string.tool_failed))[0].assertIsDisplayed()
+        val targetFailure = hasTestTag("chat_tool_failure_detail") and hasText("SSH target unavailable", substring = true)
+        button("chat_history").performScrollToNode(targetFailure)
+        compose.onNode(targetFailure).assertIsDisplayed().assertTextContains("SSH target unavailable", substring = true)
     }
 
     @Test fun profileInformationRequiresExplicitEnabledInvocationAndShowsKnownUnavailableResult() {
@@ -490,6 +512,39 @@ class AssistantChatScreenTest {
         }
         button("chat_history").performScrollToNode(hasText("App reports an unavailable synthetic profile"))
         compose.onNodeWithText("App reports an unavailable synthetic profile").assertIsDisplayed()
+    }
+
+    @Test fun profileSearchShowsAllVariantsAndRetainsSelectedFactsAfterProviderFailure() {
+        informationFixture = ProfileInformationFixture()
+        information = informationFixture!!.information
+        mode = "profile-results"
+        settings.update { it.copy(assistantProfileInformation = true) }
+        install(); input().performTextInput("Найди подключения к board1500")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            val turn = owner!!.state.value.turns.single()
+            assertTrue(turn.answer.contains("Work · board1500 · Service root · SSH:22 · root"))
+            assertTrue(turn.answer.contains("Work · board1500 · Service admin · SSH:22 · admin"))
+            assertTrue(turn.answer.contains("Home · board1500 · Service root · SSH:22 · root"))
+            assertEquals(1, turn.information.size); assertTrue(owner!!.state.value.information.isEmpty())
+            mode = "profile-results-provider-fail"; informationFixture!!.fail = true
+        }
+        input().performTextInput("Проверь ещё раз board1500")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
+            val selected = owner!!.state.value.information.single()
+            assertSame(requests.last().turns.last().exchanges.single().results.single(), selected.result)
+            assertEquals(JsonPrimitive(false), selected.page!!["source_status"]!!.jsonObject["complete"])
+            assertFalse(selected.result.text.contains("synthetic-private-error"))
+        }
+        for (identity in listOf("work / work-root", "work / work-admin", "home / home-root")) {
+            val match = hasText(identity) and hasAnyAncestor(hasTestTag("chat_profile_information_facts"))
+            button("chat_history").performScrollToNode(match)
+            compose.onNode(match).performScrollTo().assertIsDisplayed()
+        }
+        button("chat_history").performScrollToNode(hasText(localizedText(ru.adsrv.frpjump.R.string.profile_information_partial)))
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.profile_information_partial)).performScrollTo().assertIsDisplayed()
     }
 
     @Test fun toolsFlowShowsFetchedSourcesAndFailureWithoutMakingMarkdownActive() {
@@ -522,7 +577,29 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
         }
-        button("chat_current_tool_failure").assertIsDisplayed().assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.tool_failed))
+        button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
+        button("chat_current_tool_failure").assertIsDisplayed()
+        compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
+    }
+
+    @Test fun toolFailureReasonSurvivesProviderFailureWithoutModelExplanation() {
+        mode = "search-failure-provider-fail"
+        settings.update { it.copy(assistantSearch = true) }
+        settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
+            dispatch("public-dispatch") { }
+            WebResponse(url, "text/html", "<form id='challenge-form'></form>".toByteArray(), 202, null)
+        }
+        install(); input().performTextInput("Find the documentation")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
+            assertTrue(owner!!.state.value.toolFailed)
+            assertTrue(owner!!.state.value.turns.isEmpty())
+        }
+        button("chat_history").performScrollToNode(hasText("HTTP 202", substring = true))
+        compose.onNodeWithText("HTTP 202", substring = true).assertIsDisplayed()
+        button("chat_history").performScrollToNode(hasText("synthetic generated documentation query", substring = true))
+        compose.onNodeWithText("synthetic generated documentation query", substring = true).assertIsDisplayed()
     }
 
     @Test fun actualAndroidImageBoundsAndOptimisticObservationReleasePixelsAndFailTruthfully() = runBlocking {

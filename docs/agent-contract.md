@@ -181,8 +181,10 @@ operations below; completed conversation history remains after tools change.
 
 ## Optional profile information
 
-The independent default-off `profile_information` tool takes no arguments. Only
-an actual enabled invocation transfers information; opening Chat/Tools, enabling
+The independent default-off `profile_information` tool accepts optional `query`
+(text up to 256 UTF-16 characters), exact `profile_id` (up to 256 characters) and
+nonnegative integer `offset`. Empty arguments browse the first page. Only an
+actual enabled invocation transfers information; opening Chat/Tools, enabling
 or saving does not invoke it or automatically attach an inventory to a prompt.
 Each invocation performs one ordinary all-profile device-list pull, the same
 operation as Connections refresh, then reads the application's known state.
@@ -201,9 +203,36 @@ Profile IDs distinguish repeated device names. UI selection, grouping/order,
 authentication decoration, actions, visibility and polling lifetimes stay with
 the existing screens/runtime; the API introduces no inventory cache or mirror.
 
-Results include profile availability, device list age/stale/checking states,
+Selection searches the complete available source before paging. It reuses the
+Devices/Connections NFC/Locale.ROOT substring comparison over device names/labels,
+connection names and profile names; exact profile/connection IDs also match.
+A matching profile includes its records, a matching device includes its connection
+variants. Several suitable results are legitimate: active tool guidance requests
+a concise answer distinguishing profiles/devices/connections, not a silent first
+choice or an unnecessary clarification. Exact saved action IDs remain available.
+
+Results are whole-record pages under the default 8,000-character kernel cap.
+The envelope contains `query`, `profile_id`, `offset`, `total_records`,
+`next_offset`, `source_status` and `results`. Records have a `record_type` of
+`profile`, `device`, `connection` or `tunnel_operation` and repeated safe profile
+context. Counts refer to records, not unique devices. Continue with the same
+selection and `next_offset`; null means no further known records. Offsets describe
+live data, not a cached/atomic snapshot: catalogue changes may require restarting
+at zero. Unchanged data can be traversed without lost/repeated records.
+Unknown, unavailable, stale and unreachable source counts and completeness are
+explicit, including when no known record matches. This is not a global absence
+claim when sources are incomplete. Display fields normally retain up to 256
+UTF-16 characters, with `shortened_fields` and surrogate-safe cuts; an unusually
+large first record may shorten them further to fit. Saved action IDs are never
+shortened. Unrepresentable identifiers produce an explicit unavailable record,
+not invented IDs or an endlessly non-progressing page. Smaller custom kernel
+caps can still apply their ordinary clipping indication.
+
+Records include profile availability, device list age/stale/checking states,
 saved and unnamed connection rows, local tunnel addresses and existing typed
-pending/waiting/tunnel states. Missing sources remain unknown, not empty success.
+pending/waiting/tunnel states. Profile summaries count pending/errors; individual
+`tunnel_operation` records preserve keys, pending enums and sanitized errors even
+without a connection row. Missing sources remain unknown, not empty success.
 An ordinary refresh failure retains the existing app-known stale/error state;
 reading it successfully does not claim a successful refresh, atomic live
 inventory or remote service readiness. Error fields convey fixed descriptions
@@ -215,8 +244,15 @@ keys, tokens, certificates and runtime/store objects are never serialized.
 
 The tool uses the existing captured-per-Send set, progress/failure feedback,
 result/context/history bounds, omission, cancellation, slot and module ownership
-rules. Information retained in successful chat exchanges follows the same
-memory-only history lifecycle; a later switch change does not erase that history.
+rules. Chat retains the same bounded received result with an off-Main parsed
+presentation charged separately to the aggregate history budget. A selectable
+localized facts view is available on demand with completed turns and opens
+automatically for an incomplete attempt's provider/context failure. Received
+facts therefore do not depend on another model explanation. They clear with
+the next current attempt, their whole-turn eviction, revocation or close; late
+unauthorized output is still withheld. Information retained in successful chat
+exchanges follows the same memory-only lifecycle; a later tool-switch change
+does not erase that history.
 This explicit informational exception does not authorize connection control,
 SSH, device HTTP, Files or MQTT tools. It has an accurate private-data disclosure,
 not a full-access claim. Other future connection-tool prototypes still require
@@ -369,8 +405,11 @@ resolved against the final URL through the same public URL policy, while code is
 not treated as a link. The original Markdown text and existing reference caps/
 clipping indicators remain.
 
-The dedicated stateless credential-free client allows HTTPS port 443 only, no
-userinfo or local schemes. It has no provider headers/credentials, cookies,
+The dedicated stateless credential-free client sends a stable browser-compatible
+User-Agent, an Accept header for supported formats and Accept-Language from the
+system locale (English when unspecified), including on validated redirect hops.
+These headers neither execute JavaScript nor guarantee search availability.
+It allows HTTPS port 443 only, no userinfo or local schemes. It has no provider headers/credentials, cookies,
 authenticator, client certificate, persistent cache, WebView state, proxy or
 request/body logging. Public address policy rejects local aliases and all
 private/loopback/link-local/multicast/unspecified/special IPv4/IPv6 destinations,
@@ -420,9 +459,17 @@ normal dialogue may explain them. No raw body, exception message/stack, credenti
 or private app context is disclosed. Nonempty model inability text is data, not a
 client-classified technical failure.
 
-Chat shows localized tool progress/failure and selectable fetched titles/URLs,
-separately from arbitrary model Markdown. Retrieval is not proof of generated
-claims. A generic omission label covers both older turns and current exchanges;
+Chat shows localized tool progress and tool/outcome failure labels. Each received
+failure retains the same bounded sanitized tool-result text and, for a valid
+search call, its generated query. These literal selectable details are shown
+directly, including while the next model reply is pending or after that provider
+request fails; an explanation from the model is not required. They accompany
+completed turns and are cleared with their owning turn, next current attempt,
+revocation or close under the existing memory/authority rules. They reference
+already budgeted call/result data, not a separate persistent diagnostic log.
+Raw internal exceptions, credentials and withheld late output are not added.
+Selectable fetched titles/URLs remain separate from arbitrary model Markdown.
+Retrieval is not proof of generated claims. A generic omission label covers both older turns and current exchanges;
 current-attempt failure feedback is independent of any prior completed turn's
 failure indicator. Links/images in answers remain inert: no automatic opening/loading.
 Source metadata follows complete retained/current turns and the 512,000-character
@@ -528,7 +575,14 @@ Synthetic shared-source/projection tests cover multiple profiles, repeated devic
 names, devices without connection rows, saved/unnamed tunnels, Undo, unavailable
 sources and stale/error state. Fake-provider information-tool tests exercise
 captured admission, one ordinary refresh, typed facts and secret exclusion,
-result bounds and cancellation. Deterministic ownership tests cover both refresh
+result bounds and cancellation. Catalogue task checks include thousands of
+entries, partial queries, all connection variants across repeated-name profiles,
+whole-record continuation, unknown sources, long Unicode fields, standalone
+operation facts and retained received data after provider failure/revision/eviction.
+The synthetic consumer derives its answer from actual received records, not an
+unconditional completion. The production-owner/API35 screen fixture also exercises
+these multiple-result and stale-data/provider-failure outcomes; this is not live
+LLM quality certification. Deterministic ownership tests cover both refresh
 endpoints across profiles, revoke/start ordering, held HTTP/body/callback exit,
 Stop/pop, module off/on and provider authority changes, without revoking a Send
 for tool-switch-only changes. Synthetic SSH client/owner tests cover saved target/auth/trust, bounded dual streams, honest status, target loss, guarded admission and actual cleanup under Stop/timeout/revocation. The shared Tools binding and component fixtures

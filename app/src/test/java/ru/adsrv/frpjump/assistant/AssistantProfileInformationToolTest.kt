@@ -83,13 +83,15 @@ class AssistantProfileInformationToolTest {
         assertFalse(text.contains(raw)); assertFalse(text.contains("secret-grant")); assertFalse(text.contains(p.keyAlias))
         assertFalse(text.contains("detail")); assertTrue(text.contains("Protocol mismatch")); assertTrue(text.contains("127.0.0.1:40001"))
         val result = Json.parseToJsonElement(text).jsonObject
-        val known = result["profiles"]!!.jsonArray[0].jsonObject
-        val tunnel = known["connections"]!!.jsonArray.single().jsonObject["tunnel"]!!.jsonObject
+        val records = result["results"]!!.jsonArray.map { it.jsonObject }
+        val known = records.first { it["connection"] is JsonObject }
+        val tunnel = known["connection"]!!.jsonObject["tunnel"]!!.jsonObject
         assertEquals("RELAYED", tunnel["status"]!!.jsonPrimitive.content)
         for (key in listOf("direct_failed", "waiting_for_peer", "confirming", "waiting_for_device")) assertTrue(tunnel[key]!!.jsonPrimitive.boolean)
         assertFalse(tunnel["device_missing"]!!.jsonPrimitive.boolean)
-        assertEquals(JsonNull, result["profiles"]!!.jsonArray[1].jsonObject["device_list"])
-        assertEquals(JsonNull, result["profiles"]!!.jsonArray[1].jsonObject["connections"])
+        val unavailable = records.last()
+        assertEquals(JsonNull, unavailable["profile"]!!.jsonObject["device_list"])
+        assertEquals(JsonNull, unavailable["connection"])
         assertEquals(raw, devicesUiState(state, false).error) // UI details are unchanged.
         assertEquals(raw, part.rows.single().error)
     }

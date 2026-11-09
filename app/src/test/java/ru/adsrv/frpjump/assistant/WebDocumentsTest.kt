@@ -30,8 +30,10 @@ class WebDocumentsTest {
     @Test fun `DuckDuckGo results block drift empty and rate failures use explicit dispositions`() {
         assertEquals(listOf(ChatSource("Documentation", "https://public.org/doc")), WebDocuments.search(html(normalSearch)))
         assertEquals("CAPTCHA guide", WebDocuments.search(html(normalSearch.replace("Documentation", "CAPTCHA guide"))).single().title)
-        for (response in listOf(html("CAPTCHA"), html("<form id=challenge-form></form>"), html("", 403), html("", 429))) {
-            assertEquals(WebFailure.BLOCKED, assertThrows(WebException::class.java) { WebDocuments.search(response) }.reason)
+        for (response in listOf(html("CAPTCHA"), html("<form id=challenge-form></form>"), html("<form id=challenge-form></form>", 202), html("", 403), html("", 429))) {
+            val failed = assertThrows(WebException::class.java) { WebDocuments.search(response) }
+            assertEquals(WebFailure.BLOCKED, failed.reason)
+            assertEquals(response.status, failed.status)
         }
         for (text in listOf("No results", "<a class=changed href='https://public.org'>drift</a>"))
             assertEquals(WebFailure.EMPTY, assertThrows(WebException::class.java) { WebDocuments.search(html(text)) }.reason)
