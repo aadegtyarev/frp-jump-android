@@ -38,6 +38,10 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
     internal var beforeAwaitCallbackExit: (() -> Unit)? = null
     init { require(validOpenAiApiKey(apiKey)) { "Invalid API key" } }
 
+    /** App-owned encrypted checkpoint; caller must enforce the original saved provider revision. */
+    fun saveContinuation(value: ru.adsrv.frpjump.agent.AgentContinuation): String = OpenAiCodec.saveContinuation(value, owner)
+    fun restoreContinuation(value: String): ru.adsrv.frpjump.agent.AgentContinuation = OpenAiCodec.restoreContinuation(value, owner)
+
     override suspend fun complete(request: AgentRequest): AgentReply = complete(request) { it() }
 
     /** Encoding happens before the app's short guarded enqueue; no blocking work under that guard. */

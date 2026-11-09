@@ -165,6 +165,10 @@ class FrpJumpApp : Application() {
         private set
     lateinit var assistantProvider: ru.adsrv.frpjump.assistant.AssistantProviderStore
         private set
+    val assistantHistory by lazy {
+        ru.adsrv.frpjump.assistant.AssistantChatHistory(AtomicTextFile(File(noBackupFilesDir, "assistant_chat.json")),
+            KeystoreSecretBox("frpjump-assistant-chat-v1"), appScope)
+    }
     lateinit var directKept: DirectKeptStore
         private set
     lateinit var network: NetworkWatcher

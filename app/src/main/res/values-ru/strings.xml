@@ -1246,4 +1246,13 @@
     <string name="profile_information_operation_failed">Ошибка операции подключения</string>
     <string name="profile_information_shortened">Некоторые необычно длинные поля сокращены.</string>
     <string name="profile_information_more">Есть ещё записи · смещение для продолжения: %1$s</string>
+    <string name="chat_history_actions">Действия с чатом</string>
+    <string name="chat_history_clear">Очистить историю</string>
+    <string name="chat_history_retry">Повторить</string>
+    <string name="chat_history_clear_failed">Не удалось очистить историю. Прежние данные сохранены; повторите очистку.</string>
+    <string name="chat_history_tool_results">Вызовы и результаты инструментов</string>
+    <string name="chat_history_read_failed">Не удалось восстановить историю. Повторите чтение или очистите её для нового разговора.</string>
+    <string name="chat_history_write_failed">Последние изменения не сохранены. Повторите сохранение перед выходом.</string>
+    <string name="chat_context_changed">Провайдер или модель изменены. Переписка сохранена; новые сообщения начнут новый контекст модели.</string>
+    <string name="chat_interrupted">Предыдущая попытка не завершена. Полученные результаты сохранены; исход остальных действий может быть неизвестен.</string>
 </resources>

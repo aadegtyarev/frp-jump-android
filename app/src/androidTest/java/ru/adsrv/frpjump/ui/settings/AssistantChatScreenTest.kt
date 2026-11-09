@@ -87,7 +87,9 @@ class AssistantChatScreenTest {
     private var owner: AssistantConversation? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
     private var informationFixture: ProfileInformationFixture? = null
-    @org.junit.After fun closeInformationFixture() { informationFixture?.close() }
+    private var history: AssistantChatHistory? = null
+    private var historyCleanup: (() -> Unit)? = null
+    @org.junit.After fun closeInformationFixture() { informationFixture?.close(); historyCleanup?.invoke() }
     private var information = ru.adsrv.frpjump.profiles.ProfileInformation(
         kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true,
             index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
@@ -108,11 +110,18 @@ class AssistantChatScreenTest {
             }), { error("No SSH setup") }, ru.adsrv.frpjump.ssh.TmuxNames(Memory()),
             clientFactory = { error("No actual SSH") }),
     )
-    private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands) {
+    private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands, historyStore = history) {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
             when (mode) {
+                "resume-history" -> {
+                    val previous = request.turns.first().exchanges.first().results.single()
+                    val records = Json.parseToJsonElement(previous.text).jsonObject.getValue("results").jsonArray.map { it.jsonObject }
+                    val chosen = records.first { it["profile"]!!.jsonObject["id"] == JsonPrimitive("work") &&
+                        (it["connection"] as? JsonObject)?.get("id") == JsonPrimitive("work-root") }
+                    AgentReply("Continued ${chosen["profile"]!!.jsonObject["id"]!!.jsonPrimitive.content} / ${chosen["connection"]!!.jsonObject["id"]!!.jsonPrimitive.content}")
+                }
                 "tool-ssh" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("ssh-$calls", "ssh_command", kotlinx.serialization.json.buildJsonObject {
                         put("profile_id", kotlinx.serialization.json.JsonPrimitive("synthetic"))
@@ -512,6 +521,51 @@ class AssistantChatScreenTest {
         }
         button("chat_history").performScrollToNode(hasText("App reports an unavailable synthetic profile"))
         compose.onNodeWithText("App reports an unavailable synthetic profile").assertIsDisplayed()
+    }
+
+    @Test fun encryptedHistoryRestoresSelectedTargetAndToolReceiptsWithoutReplay() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val id = java.util.UUID.randomUUID().toString()
+        val file = java.io.File(context.noBackupFilesDir, "test-chat-$id.json")
+        val box = ru.adsrv.frpjump.store.KeystoreSecretBox("frpjump-test-chat-$id")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        historyCleanup = { scope.cancel(); file.delete(); box.destroy() }
+        history = AssistantChatHistory(ru.adsrv.frpjump.store.AtomicTextFile(file), box, scope)
+        informationFixture = ProfileInformationFixture(); information = informationFixture!!.information
+        mode = "profile-results"; settings.update { it.copy(assistantProfileInformation = true) }
+        install()
+        compose.waitUntil(5000) { owner?.state?.value?.loading == false }
+        input().performTextInput("Найди подключения к board1500")
+        button("chat_send").performClick(); awaitIdle()
+        runBlocking(Dispatchers.IO) { history!!.load() }
+        val ciphertext = file.readText()
+        assertFalse(ciphertext.contains("board1500")); assertFalse(ciphertext.contains("work-root"))
+        val before = calls
+        button("chat_back").performClick()
+        runBlocking(Dispatchers.IO) { history!!.load() }
+        compose.runOnIdle {
+            history = AssistantChatHistory(ru.adsrv.frpjump.store.AtomicTextFile(file),
+                ru.adsrv.frpjump.store.KeystoreSecretBox("frpjump-test-chat-$id"), scope)
+            mode = "resume-history"
+        }
+        compose.onNodeWithTag("assistant_chat_entry").performClick()
+        compose.waitUntil(5000) { owner?.state?.value?.let { !it.loading && it.turns.size == 1 } == true }
+        compose.runOnIdle {
+            assertEquals(before, calls)
+            assertTrue(owner!!.state.value.turns.single().answer.contains("Work · board1500"))
+            assertEquals("profile_information", owner!!.state.value.turns.single().receipts.single().call.name)
+        }
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        button("chat_history").performScrollToNode(hasText("work-root", substring = true))
+        compose.onNode(hasText("work-root", substring = true) and hasText("profile_information", substring = true)).assertIsDisplayed()
+        input().performTextInput("Продолжай с рабочим root-подключением")
+        button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle {
+            assertEquals(before + 1, calls)
+            assertEquals("Continued work / work-root", owner!!.state.value.turns.last().answer)
+            assertTrue(requests.last().turns.last().exchanges.isEmpty())
+        }
     }
 
     @Test fun profileSearchShowsAllVariantsAndRetainsSelectedFactsAfterProviderFailure() {

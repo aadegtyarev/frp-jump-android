@@ -3,7 +3,7 @@
 ## Boundary and availability
 
 This surface covers the optional assistant kernel, external API adapter and
-provider setup and memory-only chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
+provider setup and a locally saved chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
 implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below.
 
@@ -112,7 +112,7 @@ limited to 32,000 aggregate characters per response. A returned String is
 already allocated: these are kernel-result bounds, not a total-heap or
 transport-buffer guarantee. Stream-reading adapters must cap capture as data
 arrives. The kernel does not own full UI history/storage or an unbounded
-background store; text chat owns its small in-memory history separately.
+background store; text chat owns its bounded encrypted history separately.
 
 ## Text chat
 
@@ -125,35 +125,62 @@ inline/fenced code through a Compose Markdown component. The library owns
 Markdown parsing, including malformed or nested input. HTML, links and images
 are shown as inert text and have no execution, opening or loading behavior.
 If parsing fails, the original answer remains selectable. User text is literal.
-Formatting changes neither the stored in-memory turns nor provider requests or
+Formatting changes neither the stored turns nor provider requests or
 continuation, and never truncates an answer. Display is not a source-Markdown
 round trip or an HTML implementation.
 
 Settings → LLM assistant → Chat opens a normal back-stack screen. Opening it
-neither unseals credentials nor contacts the provider. Disabled, missing-model
+restores local encrypted history off Main, without unsealing provider credentials
+or contacting the provider. Disabled, missing-model
 and unreadable setup explain the problem and link directly to Settings or
 provider setup. Recovery re-reads provider metadata without unsealing a key.
 
 Send explicitly owns one pending operation, including off-Main credential
 preparation and the HTTP request. Follow-ups reuse the same provider instance
-and only complete successful turns. Stop cancels that operation, not unrelated
+and complete historical protocol exchanges. Interrupted attempts retain received
+results and an explicit unknown-outcome note, never executable pending calls.
+Stop cancels that operation, not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
 Stopping until it exits. An app-lived, text-free admission token spans preparation,
 HTTP callback and response-body cleanup, post-kernel publication and actual job
-cleanup, even after pop/reopen; a new screen shows the occupied slot without
-restoring old text. Cancellation closes the exact call promptly, but the slot
+cleanup, even after pop/reopen; a new screen may restore saved text but cannot
+start a replacement while that slot is occupied. Cancellation closes the exact call promptly, but the slot
 is held until both its callback execution and the coroutine have exited. No replacement send is queued. Failed/stopped input
 stays editable for explicit retry. Setup/read/key, timeout, context-full,
 invalid-answer and provider failures use fixed messages, never raw diagnostics.
 There is no automatic retry, streaming or provider/model fallback.
 
-The back-stack ViewModel retains the conversation and draft across configuration
-recreation. Pop/actual exit cancels and discards them; process death does not
-restore them. Chat text, drafts and opaque continuation never enter persistent
-storage or saved-instance state. The active context is bound to the saved
-provider revision and committed-disable version. A saved revision change or
-committed disable (including rapid off/on) cancels old work and clears successful
-context; failed settings writes retain prior authority. Admission and publication
+The back-stack ViewModel retains the conversation across configuration changes.
+The app owns one canonical saved conversation: messages, observed protocol
+exchanges, turn outcomes, sources and draft. UI text, tool-detail panels and model
+requests are derived from those records, not separately persisted histories.
+It seals one atomic `noBackupFilesDir/assistant_chat.json` document using the
+existing AES-256-GCM Keystore box, alias `frpjump-assistant-chat-v1`. There is no
+cloud synchronization, Android backup, conversation Bundle or plaintext log.
+Encoding, crypto and file IO run off Main, outside the authority guard. Messages,
+received replies/results, outcomes and route exit trigger saving; editor keystrokes
+do not rewrite the conversation. Retry state contains data only, not a live API
+provider. Saves coalesce; accepted local saves may finish after route exit. Process restart
+restores the last committed snapshot, not an unfinished write or running action.
+
+Read/decryption failure is not an empty conversation and blocks overwriting it;
+Retry reads again. Write failure keeps the latest accepted snapshot in memory,
+including across route reopening, with an unsaved warning until Retry succeeds.
+That memory cannot survive process death. Chat's menu clears history through
+shared Undo; editing/sending waits while clearing/restoring. Undo restores the
+same data without a provider call. A committed clear outlives the original route;
+clear failure retains known data and offers retry. Only one load is admitted at a
+time, preventing duplicate reloads from replacing newer editor/model state.
+
+The active operation is bound to the provider revision and committed-disable
+version. A saved revision change or committed disable (including rapid off/on)
+cancels old work; enabling cannot revive it. Accepted saved history is retained
+when disabled. Execution revision is not conversation compatibility: changing
+context/output limits preserves the dialog and model history. Changing API root
+or model keeps old messages readable and starts a new active context, with an
+explicit notice; an index in the same document separates old records from new
+model input. No deletion is required and old opaque state is never retargeted.
+Failed settings writes retain prior authority. Admission and publication
 recheck current authority, including after the kernel returns. Successful settings
 and provider snapshot commits serialize with admission, nonblocking provider-call
 start and every guarded answer/draft/error/window publication on a shared guard.
@@ -161,17 +188,27 @@ Store IO/credential work happens outside that guard; state notifications and
 cancellation run outside store commit monitors. An old completion
 cannot publish an answer/error or release another owner's pending slot.
 
-At most 32 complete successful turns and 512,000 aggregate UTF-16 characters of
-history/source metadata are retained, counting tool arguments/results, identifiers
-and opaque state. Oldest complete turns are
+The canonical conversation retains at most 32 records with a 512,000-UTF-16-character
+data budget, counting user/reply text, tool arguments/results, identifiers,
+sources and opaque state once. Display projections are not additional stored
+histories. A received current record that exceeds the budget ends context-full;
+its bounded received data is retained rather than silently discarded. Oldest complete turns are
 dropped together with a visible omission indication; request-window omissions
 are indicated too, including current-turn exchange omissions and failed requests. Input is limited to 8,000
 UTF-16 characters: excess edits are rejected with feedback and the previous
 text kept. Current input/answers are never silently truncated or split. Saved
-context/output settings feed the existing whole-turn window. Opaque continuation
-stays internal, bounded and attached to the same provider instance, never UI text.
+context/output settings feed the existing whole-turn window. Tool calls/results
+are selectable through a per-turn details action and count toward canonical-data
+retention. Opaque continuation stays internal and bounded, never UI text. On
+explicit Send, it is rehydrated for the current adapter only for the same API
+root/model; changing window/output settings does not discard it. Opening history
+does not resolve the provider API key.
+The stored document is capped at 8,000,000 plaintext / 16,000,000 sealed characters,
+including JSON escaping. No independent UI-history fields are written. These are file-format
+bounds, not a heap guarantee or extra model context.
 
-Requests contain explicit chat text/history, fixed instructions and only enabled
+Requests contain explicit chat text/history, the canonical version-3 base prompt
+(`AssistantConversation.INSTRUCTIONS`) and only enabled
 tool schemas. No profiles, connection data, files, credentials,
 diagnostics or application skill are automatically attached. Proposals unavailable in that Send's captured set
 return bounded explicit unknown-tool results without network; they do
@@ -251,7 +288,7 @@ automatically for an incomplete attempt's provider/context failure. Received
 facts therefore do not depend on another model explanation. They clear with
 the next current attempt, their whole-turn eviction, revocation or close; late
 unauthorized output is still withheld. Information retained in successful chat
-exchanges follows the same memory-only lifecycle; a later tool-switch change
+exchanges follows the same bounded encrypted-history lifecycle; a later tool-switch change
 does not erase that history.
 This explicit informational exception does not authorize connection control,
 SSH, device HTTP, Files or MQTT tools. It has an accurate private-data disclosure,
@@ -301,8 +338,7 @@ and cleanup exit. Tool-only changes affect the next Send, not admitted work.
 Timeouts (30 s tool / 120 s Send by default) are cancellation thresholds, not
 remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
 an admitted command’s effects may remain uncertain. Commands/output enter the
-same bounded memory-only history and configured model requests, not app logs or
-persistent Chat storage. Arbitrary remote output can contain secrets and is not
+same bounded encrypted Chat history and configured model requests, not app logs. Arbitrary remote output can contain secrets and is not
 generically scrubbed. App-stored credentials/internal diagnostics are not tool
 arguments/results. Remote content remains untrusted data, never new authority.
 
@@ -317,7 +353,7 @@ writes keep committed switches/authority and show an inline error. Tools remain
 changeable while Chat is busy. Chat's Tools action opens the same five switches
 without popping the conversation. The Tools arrow and system Back return to that
 same owner, draft and completed history, including across recreation; actual Chat
-pop still cancels work and discards conversation memory. The notice explains DuckDuckGo query disclosure, selected public text/images and
+pop still cancels work and releases route memory; accepted history remains encrypted. The notice explains DuckDuckGo query disclosure, selected public text/images and
 private profile/device/connection information sent to the configured LLM when
 tools are used, and ordinary model token charges, including image analysis.
 The separate SSH switch warns of FULL SSH ACCESS: commands can read/change the remote system and files within the account’s rights. Commands and output may contain secrets and are sent to the configured model with ordinary token charges. It grants no tunnel control or phone-file access.
@@ -464,8 +500,9 @@ failure retains the same bounded sanitized tool-result text and, for a valid
 search call, its generated query. These literal selectable details are shown
 directly, including while the next model reply is pending or after that provider
 request fails; an explanation from the model is not required. They accompany
-completed turns and are cleared with their owning turn, next current attempt,
-revocation or close under the existing memory/authority rules. They reference
+completed turns and interrupted history entries. Current-attempt presentation
+advances with the next attempt; route exit releases its memory, not the accepted
+checkpoint. Late unauthorized output remains suppressed. These details reference
 already budgeted call/result data, not a separate persistent diagnostic log.
 Raw internal exceptions, credentials and withheld late output are not added.
 Selectable fetched titles/URLs remain separate from arbitrary model Markdown.
@@ -475,8 +512,9 @@ failure indicator. Links/images in answers remain inert: no automatic opening/lo
 Source metadata follows complete retained/current turns and the 512,000-character
 history bound, with visible whole-turn eviction, not an unbounded page registry.
 Current mandatory input/answer/exchanges that cannot fit fail context-full rather
-than silently clipping user input/answers or keeping half exchanges. Chat,
-queries, URLs, content and pixels are never written to files, logs or saved state.
+than silently clipping user input/answers or keeping half exchanges. Bounded
+Chat text, queries, URLs and tool results may enter the encrypted conversation
+checkpoint. Download buffers and image pixels do not; none enter logs or Bundles.
 There is no background fetching, uploads, RAG/vector database, browser framework,
 reader selector or private/tunnel/file authority for these public Web tools.
 
@@ -554,11 +592,12 @@ Some compatible APIs require continuation state alongside assistant messages,
 including [DeepSeek reasoning tool calls](https://api-docs.deepseek.com/guides/thinking_mode/).
 Such returned state is opaque provider-owned data, not assistant UI text. It
 is budgeted with the reply and request, redacted in string representations,
-and returned only through the same provider instance. Changing providers must
-not silently forward/drop it; incompatible context is rejected locally. This
-surface does not persist or display that state. A coordinator must reuse
-the provider for its conversation; changing provider/configuration starts a new
-active context rather than retargeting opaque history. This does not claim
+and returned through its owning provider instance. The app's encrypted checkpoint
+may export and rehydrate it for a new instance under the same API root/model,
+without displaying it or exposing credentials. Changing root/model starts a new
+active context while preserving readable history. Limit-only changes preserve
+continuation. Old state is not silently forwarded to another provider/model. Other callers must still reuse the
+provider or explicitly restore an appropriately bound checkpoint. This does not claim
 compatibility with every provider-specific thinking parameter.
 
 ## Verification and non-goals

@@ -16,15 +16,24 @@ class AssistantChatViewModel(
     module: AgentModule,
     profileInformation: ru.adsrv.frpjump.profiles.ProfileInformation? = null,
     sshCommands: AssistantSshCommands? = null,
+    historyStore: AssistantChatHistory? = null,
+    private val historyUndo: ru.adsrv.frpjump.undo.PendingUndo? = null,
     prepare: (AssistantProviderSnapshot) -> AgentProvider = {
         providerStore.provider(AssistantProviderDraft(checkNotNull(it.settings), it.revision))
     },
 ) : ViewModel() {
-    constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistant, app.profileInformation, app.assistantSshCommands)
+    constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistant, app.profileInformation, app.assistantSshCommands,
+        app.assistantHistory, app.pendingUndo)
     init { require(settingsStore.assistantChat === providerStore.chatRuntime) }
     val conversation = AssistantConversation(viewModelScope,
         availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
-        prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands)
+        prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands,
+        historyStore = historyStore, awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") })
+    fun clearHistory() {
+        if (!conversation.hideHistory()) return
+        if (historyUndo == null) viewModelScope.launch { conversation.deleteHistory() }
+        else historyUndo.enqueue("assistant-chat-history", commit = { conversation.deleteHistory() }, undo = { conversation.reloadHistory() })
+    }
     val settings = settingsStore.settings
     val provider = providerStore.state
     init {
