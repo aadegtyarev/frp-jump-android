@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,7 +34,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else {
-        AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true })
+        AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory)
     }
 }
 
@@ -41,7 +42,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
 @Composable
 internal fun AssistantChatContent(
     conversation: AssistantConversation, enabled: Boolean, provider: AssistantProviderSnapshot,
-    onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null,
+    onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null, onClear: (() -> Unit)? = null,
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -66,6 +67,17 @@ internal fun AssistantChatContent(
                 }
                 Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 onTools?.let { action -> TextButton(onClick = action, modifier = Modifier.testTag("chat_tools")) { Text(stringResource(R.string.assistant_tools)) } }
+                onClear?.let { clear ->
+                    var menu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { menu = true }, enabled = !state.busy && !state.loading) {
+                            Icon(Icons.Default.MoreVert, stringResource(R.string.chat_history_actions))
+                        }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.chat_history_clear)) }, onClick = { menu = false; clear() })
+                        }
+                    }
+                }
             }
             if (setup != null) {
                 Text(stringResource(setup))
@@ -73,6 +85,16 @@ internal fun AssistantChatContent(
                     Text(stringResource(if (!enabled) R.string.settings else R.string.assistant_provider_title))
                 }
             }
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            state.historyProblem?.let { problem ->
+                Text(stringResource(when (problem) {
+                    ChatHistoryProblem.READ -> R.string.chat_history_read_failed
+                    ChatHistoryProblem.WRITE -> R.string.chat_history_write_failed
+                    ChatHistoryProblem.CLEAR -> R.string.chat_history_clear_failed
+                }), color = AppTheme.colors.error)
+                TextButton(onClick = conversation::retryHistory, enabled = !state.loading && !state.busy) { Text(stringResource(R.string.chat_history_retry)) }
+            }
+            if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
             if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
             LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(state.turns) { turn ->
@@ -80,11 +102,13 @@ internal fun AssistantChatContent(
                         ChatUserMessage(turn.user)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
+                            if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
                             SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
                             if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
                             else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
                             ChatProfileInformationResults(turn.information)
                             ChatSources(turn.sources)
+                            ChatToolReceipts(turn.receipts)
                         }
                     }
                 }
@@ -103,13 +127,15 @@ internal fun AssistantChatContent(
                         ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
                         ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
+                        ChatToolReceipts(state.receipts)
                     }
                 } }
-                if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty())) item {
+                if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.receipts.isNotEmpty())) item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
                         ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
+                        ChatToolReceipts(state.receipts)
                     }
                 }
             }
@@ -122,17 +148,18 @@ internal fun AssistantChatContent(
                 ChatProblem.INVALID_REPLY -> R.string.chat_invalid_reply
                 ChatProblem.PROVIDER -> R.string.chat_provider_failed
                 ChatProblem.TOO_LONG -> R.string.chat_too_long
+                ChatProblem.INTERRUPTED -> R.string.chat_interrupted
             }), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
             OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
-                label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy,
+                label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
                 minLines = 1, maxLines = 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
             if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
                 modifier = Modifier.fillMaxWidth().testTag("chat_stop")) {
                 Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
-            } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank(),
+            } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank() && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
                 modifier = Modifier.fillMaxWidth().testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
         }
     }
@@ -169,6 +196,18 @@ private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier
                 SelectionContainer { Text(failure.result.text, modifier = Modifier.testTag("chat_tool_failure_detail")) }
             }
         }
+    }
+}
+
+@Composable
+private fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
+    if (receipts.isEmpty()) return
+    var expanded by remember { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("chat_tool_receipts")) {
+        Text(stringResource(R.string.chat_history_tool_results))
+    }
+    if (expanded) receipts.forEach { receipt ->
+        SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${receipt.result?.outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
     }
 }
 

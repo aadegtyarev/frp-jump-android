@@ -800,7 +800,14 @@ work. Search has no shared results cache; process quotas/cooldowns remain. Image
 requests return bounded unverified model text, including inability/refusal, not
 claims of visual understanding. Technical failures give understandable sanitized
 descriptions and known status/limits, never silent success or raw server errors. Chat also opens Tools without popping its conversation;
-returning from Tools keeps that owner/history, while actual Chat exit discards it.
+returning from Tools keeps that owner/history. Actual Chat exit cancels execution
+and releases route memory; one encrypted local conversation is restored on return.
+Restoring makes no provider/tool call. Chat's menu clears it with shared Undo;
+read/write failures stay visible and accepted unsaved data remains available in
+memory for retry. The file contains one canonical conversation, not separate UI
+and model histories. Context/output limit changes retain continuity; changing API
+root/model keeps previous messages readable but begins a new active context with
+a notice, without forwarding old private continuation or requiring deletion.
 The information tool reads the same derived application API as Devices and
 Connections, including devices without saved connections and distinct profiles.
 Optional text/profile selection searches that complete available source before
@@ -866,6 +873,7 @@ cancellation and current execution boundaries belong to the
 | Per profile: the server's last `features` answer, next to its cached device list (labels and icons included) | app-private storage |
 | MQTT plugins: app-level on/off and settings, each connection's own on/off (scenario 12) | app-private storage |
 | Assistant provider metadata and root-bound sealed credential | app-private atomic document; no plaintext key |
+| Current assistant conversation, draft, tool receipts and opaque continuation | encrypted atomic document in app-private no-backup storage; explicit clear with Undo |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
 
 Permitted app-originated network flows are calls to the configured frp-jump
@@ -936,8 +944,9 @@ The separately enabled assistant SSH tool can run administrative commands within
 the SSH account’s rights; existing manual SSH and Files behavior is unchanged. Google Play distribution, armv7 release builds
 and additional UI languages are not promised. x86_64 builds are for local
 debug/minified validation, not the arm64 release target. Assistant chat is
-memory-only, with optional public-read, profile-information and SSH-command tools
-but no tunnel control or durable history. Public tools do not execute/render JavaScript or
+locally saved and encrypted, with optional public-read, profile-information and
+SSH-command tools but no tunnel control, cloud synchronization or automatic action
+replay. Model context remains bounded; automatic summarization is not available. Public tools do not execute/render JavaScript or
 claim full client-only articles, and cannot read local files or private/tunnel
 addresses. The explicit 2026-11-06 amendment returns available bounded static text,
 including warning-only/shell text, without JS/usefulness detection; the model

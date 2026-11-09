@@ -26,6 +26,8 @@ class AssistantConversationTest {
         override fun open(sealed: String): String { opens++; return String(Base64.getDecoder().decode(sealed)) }
         override fun destroy() = Unit
     }
+    private fun windowLimits() = AgentLimits(contextTokens = Utf8TokenEstimate.count(
+        AgentRequest(AssistantConversation.INSTRUCTIONS, emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
     private class Fixture(
         val provider: AgentProvider = AgentProvider { AgentReply("answer") },
         val io: CoroutineDispatcher = Dispatchers.Unconfined,
@@ -165,7 +167,7 @@ class AssistantConversationTest {
             assertEquals(32, f.chat.state.value.turns.size); assertEquals("turn 2", f.chat.state.value.turns.first().user)
             assertTrue(f.chat.state.value.omitted)
         }
-        Fixture(AgentProvider { requests += it; AgentReply("answer".repeat(20)) }, limit = AgentLimits(contextTokens = 800, outputReserveTokens = 100)).use { f ->
+        Fixture(AgentProvider { requests += it; AgentReply("answer".repeat(20)) }, limit = windowLimits()).use { f ->
             f.send("first".repeat(20)); f.send("second".repeat(20)); f.send("third".repeat(20))
             assertTrue(f.chat.state.value.omitted); assertTrue(requests.last().turns.size < 3)
             val calls = requests.size; val state = f.send("x".repeat(8000))
@@ -177,7 +179,7 @@ class AssistantConversationTest {
     @Test fun `omission is visible even when an omitted-history request fails`() = runBlocking {
         var calls = 0
         Fixture(AgentProvider { calls++; if (calls == 3) error("fixed failure") else AgentReply("answer".repeat(20)) },
-            limit = AgentLimits(contextTokens = 800, outputReserveTokens = 100)).use { f ->
+            limit = windowLimits()).use { f ->
             f.send("first".repeat(20)); f.send("second".repeat(20)); val state = f.send("third".repeat(20))
             assertTrue(state.omitted); assertEquals(ChatProblem.PROVIDER, state.problem)
         }

@@ -14,6 +14,17 @@ internal object OpenAiCodec {
         override fun toString() = "<provider-continuation>"
     }
 
+    fun saveContinuation(value: AgentContinuation, owner: Any): String {
+        val state = value as? Continuation ?: throw OpenAiProviderException(ProviderFailure.INCOMPATIBLE_CONTEXT)
+        if (state.owner !== owner) throw OpenAiProviderException(ProviderFailure.INCOMPATIBLE_CONTEXT)
+        return state.reasoning
+    }
+
+    fun restoreContinuation(value: String, owner: Any): AgentContinuation {
+        require(value.length <= 512_000)
+        return Continuation(owner, value)
+    }
+
     fun encode(request: AgentRequest, config: OpenAiConfig, owner: Any? = null): String = buildJsonObject {
         put("model", config.model)
         put("stream", false)
