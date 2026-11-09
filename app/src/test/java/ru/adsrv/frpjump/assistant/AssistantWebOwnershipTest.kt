@@ -212,6 +212,80 @@ class AssistantWebOwnershipTest {
         }
     }
 
+    @Test fun `tool failure detail and generated query survive a missing model reply then clear for next Send`() = runBlocking {
+        val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true) } }
+        settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
+            dispatch("public-dispatch") { }
+            WebResponse(url, "text/html", "<form id='challenge-form'></form>".toByteArray(), 202, null)
+        }
+        val received = CompletableDeferred<ToolResult>(); val reply = CompletableDeferred<Unit>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { request ->
+            val turn = request.turns.last()
+            if (turn.user == "clean") AgentReply("Clean answer")
+            else if (turn.exchanges.isEmpty()) AgentReply(calls = listOf(ToolCall("search", "web_search", buildJsonObject { put("query", "generated documentation query") })))
+            else { received.complete(turn.exchanges.single().results.single()); reply.await(); error("private provider exception") }
+        } }, {}, AgentModule(true), runtime = settings.assistantChat)
+        try {
+            chat.edit("Find documentation"); chat.send()
+            val result = withTimeout(4000) { received.await() }
+            assertTrue(chat.state.value.busy)
+            val failure = chat.state.value.toolFailures.single()
+            assertSame(result, failure.result) // No second output copy or unbounded diagnostic store.
+            assertEquals("generated documentation query", failure.query)
+            assertTrue(failure.result.text.contains("HTTP 202"))
+            reply.complete(Unit); idle(chat)
+            assertEquals(ChatProblem.PROVIDER, chat.state.value.problem)
+            assertTrue(chat.state.value.turns.isEmpty())
+            assertSame(result, chat.state.value.toolFailures.single().result)
+            assertFalse(chat.state.value.toolFailures.toString().contains("private provider exception"))
+            chat.edit("clean"); chat.send(); idle(chat)
+            assertTrue(chat.state.value.toolFailures.isEmpty())
+            assertTrue(chat.state.value.turns.single().toolFailures.isEmpty())
+        } finally { reply.complete(Unit); chat.close(); scope.cancel() }
+    }
+
+    @Test fun `tool failure remains visible when context cannot admit the next model request`() = runBlocking {
+        val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { }; throw WebException(WebFailure.HTTP, 503) }
+        var calls = 0
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
+            calls++; AgentReply("x".repeat(4000), listOf(ToolCall("read", "read_page", buildJsonObject { put("url", "https://public.org/doc") })))
+        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 4096, outputReserveTokens = 100) }, runtime = settings.assistantChat)
+        try {
+            chat.edit("Read"); chat.send(); idle(chat)
+            assertEquals(1, calls)
+            assertEquals(ChatProblem.CONTEXT_FULL, chat.state.value.problem)
+            assertTrue(chat.state.value.turns.isEmpty())
+            assertTrue(chat.state.value.toolFailures.single().result.text.contains("HTTP 503"))
+        } finally { chat.close(); scope.cancel() }
+    }
+
+    @Test fun `completed tool details share bounded turns and leave with eviction and authority change`() = runBlocking {
+        val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { }; throw WebException(WebFailure.HTTP, 503) }
+        var snapshot = saved
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val chat = AssistantConversation(scope, { settings.assistantAvailability }, { snapshot }, { AgentProvider { request ->
+            val turn = request.turns.last()
+            if (turn.user == "failure" && turn.exchanges.isEmpty()) reply("read") else AgentReply("Available answer")
+        } }, {}, AgentModule(true), runtime = settings.assistantChat)
+        suspend fun send(text: String) { chat.edit(text); chat.send(); idle(chat) }
+        try {
+            send("failure")
+            assertTrue(chat.state.value.toolFailures.isEmpty())
+            assertTrue(chat.state.value.turns.single().toolFailures.single().result.text.contains("HTTP 503"))
+            repeat(32) { send("clean-$it") }
+            assertTrue(chat.state.value.omitted); assertEquals(32, chat.state.value.turns.size)
+            assertTrue(chat.state.value.turns.all { it.toolFailures.isEmpty() })
+            send("failure")
+            assertTrue(chat.state.value.turns.last().toolFailures.isNotEmpty())
+            snapshot = saved.copy(revision = "changed"); chat.refresh()
+            assertTrue(chat.state.value.turns.isEmpty()); assertTrue(chat.state.value.toolFailures.isEmpty())
+        } finally { chat.close(); scope.cancel() }
+    }
+
     @Test fun `WEB-AUTH-04 revoked blocked search still applies process cooldown`() = runBlocking {
         for (status in listOf(200, 403, 429)) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true) } }

@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.assistant
 import java.io.IOException
 import java.net.InetAddress
 import java.net.Proxy
+import java.util.Locale
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -88,7 +89,12 @@ internal class PublicWebTransport(
             currentCoroutineContext().ensureActive()
             val client = template.newBuilder().dispatcher(Dispatcher(executor)).connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
                 .dns(object : Dns { override fun lookup(hostname: String): List<InetAddress> = if (hostname != host) webFail(WebFailure.URL) else addresses }).build()
-            val request = Request.Builder().url(target).header("Accept", "text/html, text/plain, text/markdown, image/png, image/jpeg").get().build()
+            val language = Locale.getDefault().toLanguageTag().takeUnless { it == "und" } ?: "en"
+            val request = Request.Builder().url(target)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html, application/xhtml+xml, text/plain;q=0.9, text/markdown;q=0.9, image/png;q=0.8, image/jpeg;q=0.8")
+                .header("Accept-Language", language)
+                .get().build()
             val response = execute(client.newCall(request), dispatch) {
                 if (budget.requests >= 12) webFail(WebFailure.LIMIT)
                 budget.requests++
@@ -152,6 +158,7 @@ internal class PublicWebTransport(
     }
 
     private companion object {
+        const val USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
         const val MAX_BYTES = 1_048_576
         class ExitExecutor : ThreadPoolExecutor(0, Int.MAX_VALUE, 60, TimeUnit.SECONDS, SynchronousQueue(),
             { task -> Thread(task, "assistant-public-http").apply { isDaemon = true } }) {

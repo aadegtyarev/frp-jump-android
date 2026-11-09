@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.assistant
 
 import java.net.InetAddress
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
@@ -47,6 +48,33 @@ class PublicWebTransportTest {
         try { PublicWebTransport(rebinding, client).fetch("https://public.org", b, dispatch); fail() }
         catch (failure: WebException) { assertEquals(WebFailure.URL, failure.reason) }
         assertEquals(1, b.requests)
+    }
+
+    @Test fun `public requests use browser headers on every hop with system language and no credentials`() = runBlocking {
+        val previous = Locale.getDefault()
+        try {
+            for ((locale, language) in listOf(Locale.US to "en-US", Locale.forLanguageTag("ru-RU") to "ru-RU", Locale.ROOT to "en")) {
+                Locale.setDefault(locale)
+                val seen = mutableListOf<Request>()
+                val transport = PublicWebTransport(dns("8.8.8.8"), client { request ->
+                    seen += request
+                    if (seen.size == 1) response(request, 302, location = "https://other.org/document") else response(request)
+                })
+                transport.fetch("https://public.org/start", WebBudget(), dispatch)
+                assertEquals(2, seen.size)
+                seen.forEach { request ->
+                    val agent = request.header("User-Agent").orEmpty()
+                    assertTrue("Explicit browser-compatible User-Agent required", agent.startsWith("Mozilla/5.0 "))
+                    assertTrue(agent.contains("AppleWebKit/") && agent.contains("Chrome/") && agent.contains("Safari/"))
+                    val accept = request.header("Accept").orEmpty()
+                    assertTrue(accept.startsWith("text/html, application/xhtml+xml"))
+                    for (type in listOf("text/plain", "text/markdown", "image/png", "image/jpeg")) assertTrue(type, accept.contains(type))
+                    assertFalse(accept.contains("image/avif")); assertFalse(accept.contains("image/webp"))
+                    assertEquals(language, request.header("Accept-Language"))
+                    for (header in listOf("Authorization", "Cookie", "Referer")) assertNull(header, request.header(header))
+                }
+            }
+        } finally { Locale.setDefault(previous) }
     }
 
     @Test fun `decoded streaming body is capped before publication even with unknown length and releases body`() = runBlocking {
