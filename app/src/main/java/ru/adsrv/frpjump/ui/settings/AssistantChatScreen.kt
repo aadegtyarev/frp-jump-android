@@ -94,6 +94,7 @@ internal fun AssistantChatContent(
                 }), color = AppTheme.colors.error)
                 TextButton(onClick = conversation::retryHistory, enabled = !state.loading && !state.busy) { Text(stringResource(R.string.chat_history_retry)) }
             }
+            if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
             if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
             if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
             LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -121,6 +122,7 @@ internal fun AssistantChatContent(
                             ChatToolProgress.IMAGE -> R.string.tool_image_progress
                             ChatToolProgress.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
                             ChatToolProgress.SSH_COMMAND -> R.string.tool_ssh_command_progress
+                            ChatToolProgress.SUMMARY -> R.string.chat_summary_progress
                             ChatToolProgress.FAILED -> if (state.toolFailures.isEmpty()) R.string.tool_failed else R.string.chat_waiting
                             null -> R.string.chat_waiting
                         }), color = AppTheme.colors.muted)
@@ -149,8 +151,10 @@ internal fun AssistantChatContent(
                 ChatProblem.PROVIDER -> R.string.chat_provider_failed
                 ChatProblem.TOO_LONG -> R.string.chat_too_long
                 ChatProblem.INTERRUPTED -> R.string.chat_interrupted
-            }), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
-            if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL)) {
+                ChatProblem.SUMMARY -> R.string.chat_summary_failed
+                ChatProblem.HISTORY_FULL -> R.string.chat_history_full
+            }) + state.problemStatus?.takeIf { state.problem == ChatProblem.SUMMARY }?.let { " (HTTP $it)" }.orEmpty(), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
+            if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
             OutlinedTextField(value = state.draft, onValueChange = conversation::edit,

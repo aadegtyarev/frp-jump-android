@@ -55,6 +55,8 @@ private fun AssistantProviderForm(
     var context by rememberSaveable { mutableStateOf(initial.contextTokens.toString()) }
     var output by rememberSaveable { mutableStateOf(initial.outputTokens.toString()) }
     var completion by rememberSaveable { mutableStateOf(initial.completionTokenField) }
+    var summaryPercent by rememberSaveable { mutableStateOf(initial.summaryPercent.toString()) }
+    var summaryModel by rememberSaveable { mutableStateOf(initial.summaryModel.orEmpty()) }
     // Never save plaintext input in a Bundle/SavedState. Saved key is never rendered or prefilled.
     var key by remember { mutableStateOf("") }
     var pending by remember { mutableStateOf<Any?>(null) }
@@ -69,7 +71,8 @@ private fun AssistantProviderForm(
     val busy = pending != null
     val stale = snapshot.revision != boundRevision
     val candidate = context.toIntOrNull()?.let { c -> output.toIntOrNull()?.let { o ->
-        AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, o, completion)
+        AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, o, completion,
+            summaryPercent.toIntOrNull() ?: 0, summaryModel.takeIf { it.isNotBlank() })
     } }
     val normalized = candidate?.let { runCatching { it.normalized() }.getOrNull() }
     val reuse = bound.settings != null && normalized?.baseUrl == bound.settings.baseUrl
@@ -77,7 +80,8 @@ private fun AssistantProviderForm(
     fun draft(): AssistantProviderDraft? {
         val c = context.toIntOrNull() ?: return null
         val o = output.toIntOrNull() ?: return null
-        val now = runCatching { AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, o, completion).normalized() }.getOrNull() ?: return null
+        val now = runCatching { AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, o, completion,
+            summaryPercent.toIntOrNull() ?: 0, summaryModel.takeIf { it.isNotBlank() }).normalized() }.getOrNull() ?: return null
         val canReuse = bound.settings != null && now.baseUrl == bound.settings.baseUrl
         if (snapshot.revision != boundRevision || (if (key.isEmpty()) !canReuse || replacementRequired else !validOpenAiApiKey(key))) return null
         return AssistantProviderDraft(now, boundRevision, key.takeIf { it.isNotEmpty() })
@@ -138,6 +142,10 @@ private fun AssistantProviderForm(
         TextButton(enabled = !busy, onClick = { chooseEffort = true }) { Text(stringResource(R.string.assistant_provider_effort_presets)) }
         Field(stringResource(R.string.assistant_provider_context), context, { context = it.filter(Char::isDigit).take(8); edited() },
             Modifier.testTag("assistant_context"), enabled = !busy, keyboard = KeyboardType.Number)
+        Field(stringResource(R.string.assistant_summary_percent), summaryPercent, { summaryPercent = it.filter(Char::isDigit).take(4); edited() },
+            Modifier.testTag("assistant_summary_percent"), enabled = !busy, keyboard = KeyboardType.Number, note = stringResource(R.string.assistant_summary_hint))
+        Field(stringResource(R.string.assistant_summary_model), summaryModel, { summaryModel = it.take(257); edited() },
+            Modifier.testTag("assistant_summary_model"), enabled = !busy, note = stringResource(R.string.assistant_summary_model_hint))
         Field(stringResource(R.string.assistant_provider_output), output, { output = it.filter(Char::isDigit).take(8); edited() },
             Modifier.testTag("assistant_output"), enabled = !busy, keyboard = KeyboardType.Number,
             note = stringResource(R.string.assistant_provider_window_hint))

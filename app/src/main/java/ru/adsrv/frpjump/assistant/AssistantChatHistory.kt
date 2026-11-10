@@ -43,7 +43,7 @@ import ru.adsrv.frpjump.store.TextStorage
 @Serializable internal data class SavedSource(val title: String, val url: String)
 @Serializable internal enum class SavedTurnState { RUNNING, COMPLETE, FAILED, INTERRUPTED }
 @Serializable internal data class SavedTurn(val user: String, val exchanges: List<SavedExchange> = emptyList(),
-    val sources: List<SavedSource> = emptyList(), val status: SavedTurnState = SavedTurnState.RUNNING, val problem: String? = null) {
+    val sources: List<SavedSource> = emptyList(), val status: SavedTurnState = SavedTurnState.RUNNING, val problem: String? = null, val problemStatus: Int? = null) {
     @Transient val chars = user.length.toLong() + exchanges.sumOf { it.chars } + sources.sumOf { it.title.length.toLong() + it.url.length }
     fun model(provider: AgentProvider): AgentTurn {
         val blocks = exchanges.map { exchange ->
@@ -77,15 +77,18 @@ import ru.adsrv.frpjump.store.TextStorage
     }
 }
 
+@Serializable internal data class SavedSummary(val text: String, val turn: Int, val exchange: Int)
+
 /** The sole saved representation; UI and request windows are derived from these records. */
 @Serializable internal data class SavedChat(val version: Int = 1, val binding: ChatBinding? = null, val records: List<SavedTurn> = emptyList(),
-    val draft: String = "", val omitted: Boolean = false, val contextStart: Int = 0) {
+    val draft: String = "", val omitted: Boolean = false, val contextStart: Int = 0, val summary: SavedSummary? = null) {
     fun bind(settings: AssistantProviderSettings?): SavedChat {
         if (settings == null) return this
         val next = ChatBinding(settings.baseUrl, settings.model)
-        return if (binding == next) this else copy(binding = next, contextStart = if (binding == null) contextStart else records.size)
+        return if (binding == next) this else copy(binding = next, contextStart = if (binding == null) contextStart else records.size, summary = null)
     }
-    fun bounded(): SavedChat {
+    fun bounded(archive: Boolean = false): SavedChat {
+        if (archive) return this
         var drop = 0; var size = records.sumOf { it.chars }
         while (records.size - drop > 1 && (records.size - drop > AssistantConversation.MAX_TURNS || size > AssistantConversation.MAX_HISTORY_CHARS)) {
             size -= records[drop++].chars
@@ -94,8 +97,9 @@ import ru.adsrv.frpjump.store.TextStorage
     }
     fun restored(): SavedChat {
         require(version == 1 && draft.length <= AssistantConversation.MAX_INPUT && contextStart in 0..records.size)
-        require(records.size <= AssistantConversation.MAX_TURNS)
-        return copy(records = records.map { if (it.status == SavedTurnState.RUNNING) it.copy(status = SavedTurnState.INTERRUPTED) else it }).bounded()
+        require(records.size <= 1000)
+        summary?.let { require(it.text.isNotBlank() && it.text.length <= 4000 && it.turn in contextStart..records.lastIndex && it.exchange in 0..records[it.turn].exchanges.size) }
+        return copy(records = records.map { if (it.status == SavedTurnState.RUNNING) it.copy(status = SavedTurnState.INTERRUPTED) else it })
     }
 }
 

@@ -83,6 +83,7 @@ class AssistantChatScreenTest {
     private var heldProviderReply = CompletableDeferred<Unit>()
     private var mode = "answer"
     private var calls = 0
+    private var summaryCalls = 0
     private val requests = mutableListOf<AgentRequest>()
     private var owner: AssistantConversation? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
@@ -114,7 +115,12 @@ class AssistantChatScreenTest {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
+            if (mode == "summary" && request.instructions == AssistantSummary.PROMPT) {
+                summaryCalls++
+                return@AgentProvider AgentReply(summaryFacts(request.turns.single().user))
+            }
             when (mode) {
+                "summary" -> AgentReply(summaryFacts(request.turns.first().exchanges.first().reply.text))
                 "resume-history" -> {
                     val previous = request.turns.first().exchanges.first().results.single()
                     val records = Json.parseToJsonElement(previous.text).jsonObject.getValue("results").jsonArray.map { it.jsonObject }
@@ -167,6 +173,45 @@ class AssistantChatScreenTest {
             }
         }
     }
+    private fun summaryFacts(text: String) = listOf("target", "done", "unknown").joinToString("; ") { key ->
+        "$key=" + (Regex("$key=([a-z-]+)").find(text)?.groupValues?.get(1) ?: error("Missing observed $key"))
+    }
+    @Test fun automaticSummaryPreservesReadableHistoryAndSelectedTarget() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val id = java.util.UUID.randomUUID().toString()
+        val file = java.io.File(context.noBackupFilesDir, "test-summary-$id.json")
+        val box = ru.adsrv.frpjump.store.KeystoreSecretBox("frpjump-test-summary-$id")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        historyCleanup = { scope.cancel(); file.delete(); box.destroy() }
+        val snapshot = store.currentSnapshot
+        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=12_000,outputTokens=512),snapshot.revision))
+        history = AssistantChatHistory(ru.adsrv.frpjump.store.AtomicTextFile(file),box,scope)
+        val records = (0 until 40).map { i ->
+            val user = if (i==0) "target=work-root done=diagnostic unknown=upgrade" else "Progress $i"
+            val reply = AgentExchange(AgentReply("received $i " + "x".repeat(160)))
+            SavedTurn.of(AgentTurn(user,listOf(reply)))
+        }
+        history!!.save(SavedChat(records=records).bind(store.currentSnapshot.settings))
+        runBlocking(Dispatchers.IO) { history!!.load() }
+        mode="summary"; install(); compose.waitUntil(5000) { owner?.state?.value?.loading==false }
+        input().performTextInput("Continue selected target without repeating actions")
+        button("chat_send").performClick(); awaitIdle()
+        val answer="target=work-root; done=diagnostic; unknown=upgrade"
+        compose.runOnIdle {
+            assertTrue(summaryCalls in 1..2); assertEquals(summaryCalls+1,calls)
+            assertEquals(answer,owner!!.state.value.turns.last().answer)
+            assertEquals(41,owner!!.state.value.turns.size); assertTrue(owner!!.state.value.summarized)
+            assertEquals(records.first().user,owner!!.state.value.turns.first().user)
+        }
+        button("chat_back").performClick()
+        runBlocking(Dispatchers.IO) { assertNotNull(history!!.load()!!.summary) }
+        val previous=owner; val previousCalls=calls
+        compose.onNodeWithTag("assistant_chat_entry").performClick()
+        compose.waitUntil(5000) { owner !== previous && owner?.state?.value?.loading==false }
+        input().performTextInput("Продолжай"); button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle { assertEquals(previousCalls+1,calls); assertEquals(42,owner!!.state.value.turns.size); assertEquals(answer,owner!!.state.value.turns.last().answer) }
+    }
+
     @Before fun display() {
         // This suite is runnable with normal discovery too; the safe explicit runner is required
         // by the operator's device procedure, not by an unconditional wrong-runner test failure.

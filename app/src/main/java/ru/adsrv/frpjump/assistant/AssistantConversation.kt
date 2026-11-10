@@ -16,13 +16,14 @@ data class ChatToolReceipt(val call: ToolCall, val result: ToolResult? = null)
 data class ChatTurn(val user: String, val answer: String, val sources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
     val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList())
-enum class ChatToolProgress { SEARCH, READ, IMAGE, PROFILE_INFORMATION, SSH_COMMAND, FAILED }
-enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, INTERRUPTED }
+enum class ChatToolProgress { SEARCH, READ, IMAGE, PROFILE_INFORMATION, SSH_COMMAND, SUMMARY, FAILED }
+enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, INTERRUPTED, SUMMARY, HISTORY_FULL }
 data class ChatState(
     val turns: List<ChatTurn> = emptyList(), val draft: String = "", val pendingText: String? = null,
     val busy: Boolean = false, val stopping: Boolean = false, val omitted: Boolean = false,
     val problem: ChatProblem? = null, val toolProgress: ChatToolProgress? = null,
     val loading: Boolean = false, val historyProblem: ChatHistoryProblem? = null, val contextChanged: Boolean = false,
+    val summarized: Boolean = false, val problemStatus: Int? = null,
     val receipts: List<ChatToolReceipt> = emptyList(), val currentSources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
 )
@@ -79,6 +80,7 @@ class AssistantConversation(
                 else if (current == null) projected else projected.dropLast(1),
             draft = value.draft, pendingText = current?.takeIf { it.status == SavedTurnState.RUNNING && pending != null }?.user,
             problem = problem, omitted = value.omitted, contextChanged = value.contextStart > 0,
+            summarized = value.summary != null, problemStatus = last?.problemStatus,
             currentSources = currentView?.sources.orEmpty(), receipts = currentView?.receipts.orEmpty(),
             toolFailed = currentView?.toolFailed ?: false, toolFailures = currentView?.toolFailures.orEmpty(), information = currentView?.information.orEmpty())
     }
@@ -147,7 +149,7 @@ class AssistantConversation(
                     toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList())
             } else document = document.bind(saved.settings)
             pending?.let(::stopLocked)
-            mutable.value = mutable.value.copy(contextChanged = document.contextStart > 0)
+            mutable.value = mutable.value.copy(contextChanged = document.contextStart > 0, summarized = document.summary != null)
         }
         authority = now; revision = saved.revision
         if (pending == null) mutable.value = mutable.value.copy(busy = runtime.occupied(), stopping = runtime.occupied())
@@ -173,10 +175,17 @@ class AssistantConversation(
         runtime.beforeAction?.invoke(category)
         return synchronized(gate) { if (!owns(owner)) null else { runtime.checkedAction?.invoke(category); action() } }
     }
+    private suspend fun complete(owner: Pending, active: AgentProvider, request: AgentRequest): AgentReply =
+        if (active is ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider) active.complete(request) { action ->
+            guarded(owner, "dispatch") { action(); true } ?: throw CancellationException()
+        } else coroutineScope {
+            val call = guarded(owner, "dispatch") { async(start = CoroutineStart.UNDISPATCHED) { active.complete(request) } } ?: throw CancellationException()
+            call.await()
+        }
     private fun update(owner: Pending, change: (SavedTurn) -> SavedTurn): SavedChat {
         return guarded(owner, "history") {
             val record = change(document.records.last())
-            document = document.copy(records = document.records.dropLast(1) + record).bounded(); persist(); document
+            document = document.copy(records = document.records.dropLast(1) + record).bounded(historyStore != null); persist(); document
         } ?: throw CancellationException()
     }
     /** Kernel callbacks run on IO, so JSON projection never runs under the guard/Main. */
@@ -184,12 +193,12 @@ class AssistantConversation(
         val projected = views(value)
         guarded(owner, "presentation") { render(value, projected) }
     }
-    private fun finish(owner: Pending, problem: ChatProblem?, category: String = "finish-error") {
+    private fun finish(owner: Pending, problem: ChatProblem?, category: String = "finish-error", status: Int? = null) {
         val value = guarded(owner, category) {
             val last = document.records.last()
             document = document.copy(records = document.records.dropLast(1) + last.copy(
-                status = if (problem == null) SavedTurnState.COMPLETE else SavedTurnState.FAILED, problem = problem?.name),
-                draft = if (problem == null) "" else document.draft).bounded()
+                status = if (problem == null) SavedTurnState.COMPLETE else SavedTurnState.FAILED, problem = problem?.name, problemStatus = status),
+                draft = if (problem == null) "" else document.draft).bounded(historyStore != null)
             persist(); document
         } ?: return
         project(owner, value)
@@ -207,13 +216,16 @@ class AssistantConversation(
             }
             if (text.length > MAX_INPUT) { mutable.value = mutable.value.copy(problem = ChatProblem.TOO_LONG); return@synchronized }
             if (text.isBlank()) return@synchronized
+            if (historyStore != null && (document.records.size >= 1000 || document.records.sumOf { it.chars } >= 8_000_000)) {
+                mutable.value = mutable.value.copy(problem = ChatProblem.HISTORY_FULL); return@synchronized
+            }
             runtime.checkedAction?.invoke("admission")
             document = document.bind(settings)
             if (historyStore == null) document = document.copy(records = document.records.filter { it.status == SavedTurnState.COMPLETE })
             val pastRecords = document.records.drop(document.contextStart)
             val owner = Pending(saved.revision, availability().disableVersion); val enabledTools = availability().tools; val retainedProvider = provider
             check(runtime.acquire(owner)); pending = owner
-            document = document.copy(records = document.records + SavedTurn(text)).bounded(); persist()
+            document = document.copy(records = document.records + SavedTurn(text)).bounded(historyStore != null); persist()
             mutable.value = mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
                 currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList())
             owner.job = scope.launch(start = CoroutineStart.LAZY) {
@@ -229,7 +241,7 @@ class AssistantConversation(
                                 dispatch = { category, action -> guarded(owner, category) { action(); true } ?: throw CancellationException() },
                                 publish = { source ->
                                     val last = document.records.last()
-                                    document = document.copy(records = document.records.dropLast(1) + last.copy(sources = last.sources + SavedSource(source.title, source.url))).bounded()
+                                    document = document.copy(records = document.records.dropLast(1) + last.copy(sources = last.sources + SavedSource(source.title, source.url))).bounded(historyStore != null)
                                     mutable.value = mutable.value.copy(currentSources = webSources(last.sources) + source); persist()
                                 })
                             val tools = web.tools + (if (enabledTools.profileInformation && profileInformation != null) listOf(
@@ -238,16 +250,11 @@ class AssistantConversation(
                                     guarded(owner, category) { action(); true } ?: throw CancellationException() }) else emptyList())
                             val toolProvider = AgentProvider { request ->
                                 val retained = guarded(owner, "history") { document.records.toList() } ?: throw CancellationException()
-                                val included = request.turns.dropLast(1).filter { turn -> past.any { (record, model) -> model === turn && retained.any { it === record } } }
+                                val included = if (historyStore != null) request.turns.dropLast(1) else request.turns.dropLast(1).filter { turn -> past.any { (record, model) -> model === turn && retained.any { it === record } } }
                                 val bounded = request.copy(turns = included + request.turns.last())
                                 if (included.size != request.turns.size - 1) guarded(owner, "window") { document = document.copy(omitted = true); mutable.value = mutable.value.copy(omitted = true) }
                                 try {
-                                    if (active is ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider) active.complete(bounded) { action ->
-                                        guarded(owner, "dispatch") { action(); true } ?: throw CancellationException()
-                                    } else coroutineScope {
-                                        val call = guarded(owner, "dispatch") { async(start = CoroutineStart.UNDISPATCHED) { active.complete(bounded) } } ?: throw CancellationException()
-                                        call.await()
-                                    }
+                                    complete(owner, active, bounded)
                                 } catch (failure: ru.adsrv.frpjump.agent.openai.OpenAiProviderException) {
                                     transportTimeout = failure.failure == ru.adsrv.frpjump.agent.openai.ProviderFailure.TIMEOUT
                                     invalidReply = failure.failure in setOf(ru.adsrv.frpjump.agent.openai.ProviderFailure.INVALID_RESPONSE,
@@ -255,7 +262,33 @@ class AssistantConversation(
                                     throw failure
                                 }
                             }
-                            val result = module.run(toolProvider, tools, INSTRUCTIONS, text, past.map { it.second }, limits(settings), onEvent = { event ->
+                            var summaryProblem: ChatProblem? = null; var summaryStatus: Int? = null
+                            var summaryProvider: AgentProvider? = null
+                            val summary = AssistantSummary(settings, active,
+                                read = { guarded(owner, "history") { document } ?: throw CancellationException() },
+                                save = { value -> guarded(owner, "summary") {
+                                    document = document.copy(summary = value); persist()
+                                    mutable.value = mutable.value.copy(summarized = true, toolProgress = null)
+                                } ?: throw CancellationException() },
+                                complete = { request ->
+                                    guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = ChatToolProgress.SUMMARY) } ?: throw CancellationException()
+                                    val selected = summaryProvider ?: (settings.summaryModel?.let { model -> prepare(saved.copy(settings = settings.copy(model = model))) } ?: active).also { summaryProvider = it }
+                                    complete(owner, selected, request)
+                                })
+                            val result = module.run(toolProvider, tools, INSTRUCTIONS, text, past.map { it.second }, limits(settings),
+                                prepareRequest = { request ->
+                                    if (historyStore == null) request else try { summary.prepare(request) }
+                                    catch (cancelled: CancellationException) { throw cancelled }
+                                    catch (failure: Exception) {
+                                        summaryProblem = when ((failure as? ProviderSetupException)?.problem) {
+                                            ProviderSetupProblem.CRYPTO_FAILED, ProviderSetupProblem.ADDRESS_CHANGED, ProviderSetupProblem.INVALID_KEY -> ChatProblem.KEY
+                                            ProviderSetupProblem.READ_FAILED -> ChatProblem.READ
+                                            else -> ChatProblem.SUMMARY
+                                        }
+                                        summaryStatus = (failure as? ru.adsrv.frpjump.agent.openai.OpenAiProviderException)?.status
+                                        throw failure
+                                    }
+                                }, onEvent = { event ->
                                 when (event) {
                                     is AgentEvent.Replied -> {
                                         val reply = SavedReply.of(event.reply, active)
@@ -280,12 +313,12 @@ class AssistantConversation(
                                 }
                             })
                             requireRevision(saved.revision)
-                            val problem = when (result.finish) {
+                            val problem = summaryProblem ?: when (result.finish) {
                                 AgentFinish.COMPLETE -> null; AgentFinish.CONTEXT_FULL -> ChatProblem.CONTEXT_FULL; AgentFinish.MODEL_TIMEOUT -> ChatProblem.TIMEOUT
                                 AgentFinish.INVALID_REPLY, AgentFinish.STEP_LIMIT -> ChatProblem.INVALID_REPLY
                                 else -> if (transportTimeout) ChatProblem.TIMEOUT else if (invalidReply) ChatProblem.INVALID_REPLY else ChatProblem.PROVIDER
                             }
-                            finish(owner, problem, if (problem == null) "answer" else "finish-error")
+                            finish(owner, problem, if (problem == null) "answer" else "finish-error", summaryStatus)
                         }
                     }
                 } catch (_: HistoryFull) { withContext(NonCancellable + io) { finish(owner, ChatProblem.CONTEXT_FULL) } }

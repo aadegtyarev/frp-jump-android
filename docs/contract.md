@@ -781,7 +781,10 @@ consume settings and write v2 immediately:
 
 The optional module is off by default. Settings exposes provider setup,
 secure key storage, model discovery, effort and context limits, plus a Chat
-entry for explicit conversations. Tools offers independent, default-off Web
+entry for explicit conversations. Automatic working summaries use the chat model
+or an optional other model of the same provider. The configurable trigger defaults
+to 80% of estimated context use, including output reserve; summary calls have no
+tools and incur an additional model request. Tools offers independent, default-off Web
 search, Read page, Inspect image, Profile information and SSH command switches, with
 public/private-data disclosure and model token-charge notices. SSH command carries
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
@@ -808,6 +811,13 @@ memory for retry. The file contains one canonical conversation, not separate UI
 and model histories. Context/output limit changes retain continuity; changing API
 root/model keeps previous messages readable but begins a new active context with
 a notice, without forwarding old private continuation or requiring deletion.
+Before old context is evicted, Chat saves a working summary and its covered
+position in the same encrypted document, then uses it with recent complete
+exchanges. Original records remain readable within finite archive/file limits;
+they are not deleted by summarization. The summary preserves task/target facts,
+observed and uncertain outcomes, and remaining steps. Failure retains history
+and the last useful summary with recovery feedback; Stop suppresses late results
+under the existing actual-exit ownership. See [summary behavior and limits](agent-contract.md#automatic-working-summaries).
 The information tool reads the same derived application API as Devices and
 Connections, including devices without saved connections and distinct profiles.
 Optional text/profile selection searches that complete available source before
@@ -946,7 +956,9 @@ and additional UI languages are not promised. x86_64 builds are for local
 debug/minified validation, not the arm64 release target. Assistant chat is
 locally saved and encrypted, with optional public-read, profile-information and
 SSH-command tools but no tunnel control, cloud synchronization or automatic action
-replay. Model context remains bounded; automatic summarization is not available. Public tools do not execute/render JavaScript or
+replay. Model context remains bounded, with automatic working summaries rather
+than an unbounded window. Summaries are model-generated notes, not verified truth
+or independent background task/session management. Public tools do not execute/render JavaScript or
 claim full client-only articles, and cannot read local files or private/tunnel
 addresses. The explicit 2026-11-06 amendment returns available bounded static text,
 including warning-only/shell text, without JS/usefulness detection; the model
