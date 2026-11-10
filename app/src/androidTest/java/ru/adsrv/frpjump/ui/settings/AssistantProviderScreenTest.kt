@@ -38,6 +38,34 @@ class AssistantProviderScreenTest {
     private fun models() = compose.onNodeWithTag("assistant_models")
     private val configured = AssistantProviderSnapshot(AssistantProviderSettings("https://example.invalid/v1/", "existing"), "11111111-1111-1111-1111-111111111111")
 
+    @Test fun summaryFieldsSaveWithoutDiscoveryAndRejectInvalidThreshold() {
+        var saved: AssistantProviderDraft? = null
+        val args=InstrumentationRegistry.getArguments()
+        val config=Configuration(compose.activity.resources.configuration).apply { setLocale(java.util.Locale.forLanguageTag(args.getString("chatLocale")?:"en")) }
+        val context=compose.activity.createConfigurationContext(config)
+        fun save()=compose.onNodeWithText(context.getString(R.string.save))
+        compose.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalContext provides context,
+                androidx.compose.ui.platform.LocalConfiguration provides config) {
+                FrpJumpTheme(mode=if(args.getString("chatDark")=="true") ru.adsrv.frpjump.settings.ThemeMode.DARK else ru.adsrv.frpjump.settings.ThemeMode.LIGHT) {
+                    AssistantProviderScreen(configured, { draft,done -> saved=draft;done(null) }, { _,_ -> error("No implicit discovery") }, {}, {})
+                }
+            }
+        }
+        field("assistant_summary_percent").performScrollTo().assertTextContains("80")
+        field("assistant_summary_percent").performTextReplacement("0")
+        save().assertIsNotEnabled()
+        field("assistant_summary_percent").performTextReplacement("90")
+        field("assistant_summary_model").performScrollTo().performTextReplacement("summary-model")
+        save().assertIsEnabled().performClick()
+        compose.runOnIdle {
+            assertEquals(90,saved!!.settings.summaryPercent)
+            assertEquals("summary-model",saved!!.settings.summaryModel)
+            assertEquals(configured.settings!!.baseUrl,saved!!.settings.baseUrl)
+            assertEquals(configured.settings!!.model,saved!!.settings.model)
+        }
+    }
+
     @Test fun saveWaitsForCommitAndFailureKeepsExactDraftEditable() {
         var captured: AssistantProviderDraft? = null
         var complete: ((String?) -> Unit)? = null

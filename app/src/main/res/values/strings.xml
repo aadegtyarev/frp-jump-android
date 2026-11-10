@@ -1207,4 +1207,12 @@
     <string name="chat_history_write_failed">Recent changes were not saved. Retry saving before leaving.</string>
     <string name="chat_context_changed">Provider or model changed. Earlier messages are kept; new messages use a new model context.</string>
     <string name="chat_interrupted">Previous attempt did not finish. Received results are retained; other actions may have an unknown outcome.</string>
+    <string name="assistant_summary_percent">Summarize at % of context window</string>
+    <string name="assistant_summary_hint">1–100%, default 80. Includes output reserve. Makes an additional model request.</string>
+    <string name="assistant_summary_model">Summary model (optional)</string>
+    <string name="assistant_summary_model_hint">Blank uses the chat model. Same provider and key; the model must support the configured window.</string>
+    <string name="chat_summary_progress">Preparing a working summary…</string>
+    <string name="chat_summary_saved">Earlier context is summarized; original messages remain in history.</string>
+    <string name="chat_summary_failed">Could not prepare a useful summary. History is kept. Check the summary model or increase the context window.</string>
+    <string name="chat_history_full">Local history limit reached. Clear history to start a new conversation.</string>
 </resources>

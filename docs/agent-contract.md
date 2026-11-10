@@ -102,8 +102,12 @@ Defaults: a 16,384-token estimated total budget with 2,048 tokens reserved for
 output. The default counter uses UTF-8 byte lengths plus framing allowances:
 **it is an estimate, not a provider tokenizer or a guarantee that every API
 accepts the request**. A provider-specific counter can replace it. Window
-omissions are observable kernel events, not fabricated summaries. Chat
-shows an omission indication when earlier history is left out.
+omissions are observable kernel events, not fabricated summaries. Callers may
+prepare a request before window selection under the same cancellation and model
+timeout; fixed instructions, enabled schemas, output reserve and current user
+remain unchanged. Chat uses this point for the working summaries described below,
+rather than silently evicting unsummarized context. Other callers retain the
+ordinary sliding window. Chat still indicates any pre-existing omissions.
 
 Tool result text is capped at 8,000 UTF-16 characters by default, preserving
 head/tail with a visible omission marker and an omitted-character count.
@@ -188,24 +192,72 @@ Store IO/credential work happens outside that guard; state notifications and
 cancellation run outside store commit monitors. An old completion
 cannot publish an answer/error or release another owner's pending slot.
 
-The canonical conversation retains at most 32 records with a 512,000-UTF-16-character
-data budget, counting user/reply text, tool arguments/results, identifiers,
-sources and opaque state once. Display projections are not additional stored
-histories. A received current record that exceeds the budget ends context-full;
-its bounded received data is retained rather than silently discarded. Oldest complete turns are
-dropped together with a visible omission indication; request-window omissions
-are indicated too, including current-turn exchange omissions and failed requests. Input is limited to 8,000
-UTF-16 characters: excess edits are rejected with feedback and the previous
-text kept. Current input/answers are never silently truncated or split. Saved
-context/output settings feed the existing whole-turn window. Tool calls/results
-are selectable through a per-turn details action and count toward canonical-data
-retention. Opaque continuation stays internal and bounded, never UI text. On
-explicit Send, it is rehydrated for the current adapter only for the same API
-root/model; changing window/output settings does not discard it. Opening history
-does not resolve the provider API key.
-The stored document is capped at 8,000,000 plaintext / 16,000,000 sealed characters,
-including JSON escaping. No independent UI-history fields are written. These are file-format
-bounds, not a heap guarantee or extra model context.
+The saved conversation keeps original records until explicit clearing, not just
+the model's request window. It admits at most 1,000 records and blocks a new Send
+when existing canonical data reaches 8,000,000 UTF-16 characters. User/reply text,
+arguments/results, identifiers, sources and opaque state count toward this data
+size; display projections are not another history. A received current record over
+512,000 characters ends context-full and retains its bounded received data.
+Input remains limited to 8,000 UTF-16 characters: excess edits retain the previous
+text with feedback. Current input/answers are never silently truncated or split.
+Tool calls/results remain selectable through per-turn details.
+
+The encoded document is still capped at 8,000,000 plaintext / 16,000,000 sealed
+characters, including JSON escaping. Encoding can reach that limit before the
+logical admission bound; a failed write keeps the unsaved warning and retry data,
+not a false save or silent deletion of old records. These are finite storage
+bounds, not a heap guarantee or extra model context. Old omissions from earlier
+versions remain indicated; previously discarded text cannot be recovered.
+
+Opaque continuation stays internal and bounded, never UI text. On explicit Send,
+it is rehydrated for the current adapter only for the same API root/model.
+Changing window/output or summary settings preserves conversation continuity;
+opening history does not resolve the provider API key.
+
+### Automatic working summaries
+
+Before kernel window selection, Chat compares the estimated request size,
+including instructions, tool schemas and output reserve, with the configured
+window and trigger percentage. The percentage defaults to 80 and accepts 1–100.
+When eligible older data exists, an ordinary non-streaming provider request
+summarizes it before eviction. This also handles older complete exchanges inside
+one long current turn; the latest complete exchange and current user stay verbatim.
+No tool-call/result pair is split. A block that cannot fit is not silently dropped.
+
+Summary requests use the chat model by default. An optional manual summary model
+ID uses the same configured API root, credential, effort and output-parameter
+spelling, without changing the main model. There is no discovery, capability
+inference or hidden fallback. The selected model must support the configured
+window. Summary requests advertise no tools, and any returned tool proposal is
+rejected without execution. They contain observed transcript data, not private
+provider continuation. The short version-1 prompt (`AssistantSummary.PROMPT`)
+retains the goal, exact selected IDs, decisions, received results, completed and
+uncertain actions, source references and next steps, treating old text as
+untrusted data rather than new authority.
+
+The summary and its covered turn/exchange position are saved together in the
+same canonical encrypted document. Main requests derive a working summary plus
+recent unsummarized records/exchanges; original records remain readable. Changing
+API root or chat model clears this working summary and starts the ordinary new
+active context without deleting old messages. Restoring or clearing makes no
+provider/tool request and never resumes or repeats an action.
+
+At most two summary requests run per Send, within the existing model timeout and
+120-second whole-Send limit. A summary reserves at most 1,024 output tokens,
+never more than the configured output reserve, and accepts at most 4,000 text
+characters. Blank, oversized, tool-bearing or nonreducing replies are failures.
+If no eligible data exists, a fitting request proceeds unchanged; if the remaining
+context cannot fit within those bounds, Chat fails rather than evicting it.
+Failure retains the archive and last useful summary and offers provider settings;
+known HTTP status is shown safely. Setup/key failures retain their normal
+recovery, and timeout remains a timeout. There is no automatic retry.
+
+Chat shows summary progress and an indication that earlier context is summarized
+while originals remain in history. Summary preparation, dispatch and publication
+use the same revision-bound owner and actual-exit admission slot as ordinary
+requests: Stop/revocation suppress unauthorized late data and cannot release a
+replacement Send before real cleanup. Summary text is model-generated historical
+data, not verified truth or an owner/accounting source for SSH work.
 
 Requests contain explicit chat text/history, the canonical version-3 base prompt
 (`AssistantConversation.INSTRUCTIONS`) and only enabled
@@ -509,8 +561,9 @@ Selectable fetched titles/URLs remain separate from arbitrary model Markdown.
 Retrieval is not proof of generated claims. A generic omission label covers both older turns and current exchanges;
 current-attempt failure feedback is independent of any prior completed turn's
 failure indicator. Links/images in answers remain inert: no automatic opening/loading.
-Source metadata follows complete retained/current turns and the 512,000-character
-history bound, with visible whole-turn eviction, not an unbounded page registry.
+Source metadata follows the same complete canonical records, archive limits and
+512,000-character current-record bound, not an unbounded separate page registry.
+Summarization changes request context, not the original selectable sources.
 Current mandatory input/answer/exchanges that cannot fit fail context-full rather
 than silently clipping user input/answers or keeping half exchanges. Bounded
 Chat text, queries, URLs and tool results may enter the encrypted conversation
@@ -526,7 +579,10 @@ model discovery is not required to enter a manual model ID.
 
 The form accepts API root, model ID (manual or explicitly fetched), optional
 effort (provider default, presets or a manually entered value), model context
-window, output reserve and the output-token parameter spelling. The API key
+window, output reserve and the output-token parameter spelling. It also accepts
+the summary trigger percentage (default 80, range 1–100) and an optional summary
+model ID; blank uses the chat model. The form explains the additional model
+request and shared provider/key/window requirements. Saving makes no request. The API key
 field is masked, never prefilled, and deliberately excluded from saved instance
 state. A restored form that lost a replacement key requires re-entry rather
 than silently falling back to the stored key. Draft metadata and the original
@@ -603,7 +659,8 @@ compatibility with every provider-specific thinking parameter.
 ## Verification and non-goals
 
 The app surface includes provider setup, chat, optional public-read tools and
-the profile-information and SSH-command tools above. Tunnel-control, dedicated Files/MQTT/TCP tools, compression, evaluators, permission modes and
+the profile-information and SSH-command tools above, and bounded automatic
+working summaries. Tunnel-control, dedicated Files/MQTT/TCP tools, evaluators, permission modes and
 subagents remain outside this surface. No tunnel creation, start, reconfiguration
 or deletion is granted to the agent. No permissions evaluator or confirmation modes are shipped. The enabled SSH tool has full access within the SSH account’s rights. Public tools carry the public-read/data-disclosure notice above, not
 a misleading full-access warning. Any other future connection-tool prototype requires

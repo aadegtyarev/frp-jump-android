@@ -30,8 +30,11 @@ cancels only that command’s client; the Chat slot waits for actual cleanup.
 Commands/output, potentially secret, are shared with the configured model only
 when that explicitly enabled tool is invoked. Accepted commands and results may
 also enter the assistant's encrypted local conversation; restoring that history
-never reconnects or replays a command. This does not persist manual terminal
-text/tabs. Unknown/refused login or host
+never reconnects or replays a command. During explicit Send, working summaries
+may carry these historical facts to the same configured provider, using the chat
+model or an optional summary model. A summary is unverified model data, not proof
+of remote completion or authority to repeat work, and owns no SSH task/session.
+This does not persist manual terminal text/tabs. Unknown/refused login or host
 trust requires the ordinary SSH UI; the model cannot supply credentials or trust.
 
 The approved opt-out and missing-tmux notice requirements remain binding but

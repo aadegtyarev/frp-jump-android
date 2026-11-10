@@ -22,6 +22,8 @@ data class AssistantProviderSettings(
     val contextTokens: Int = 16_384,
     val outputTokens: Int = 2_048,
     val completionTokenField: Boolean = false,
+    val summaryPercent: Int = 80,
+    val summaryModel: String? = null,
 ) {
     fun config() = OpenAiConfig(baseUrl, model, effort,
         if (completionTokenField) OutputLimitField.MAX_COMPLETION_TOKENS else OutputLimitField.MAX_TOKENS)
@@ -29,6 +31,8 @@ data class AssistantProviderSettings(
     fun normalized(): AssistantProviderSettings {
         require(baseUrl.length <= 2048) { "Invalid provider settings" }
         limits()
+        require(summaryPercent in 1..100)
+        require(summaryModel == null || (summaryModel.isNotBlank() && summaryModel.length <= 256 && summaryModel.none { it.isISOControl() }))
         return copy(baseUrl = config().baseUrl.toString())
     }
 }

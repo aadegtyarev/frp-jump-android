@@ -54,6 +54,7 @@ class AgentModule(
         history: List<AgentTurn> = emptyList(),
         limits: AgentLimits = AgentLimits(),
         counter: TokenCounter = Utf8TokenEstimate,
+        prepareRequest: suspend (AgentRequest) -> AgentRequest = { it },
         onEvent: (AgentEvent) -> Unit = {},
     ): AgentRunResult = coroutineScope {
         val initial = AgentTurn(user)
@@ -80,7 +81,16 @@ class AgentModule(
             fun finish(reason: AgentFinish) = AgentRunResult(AgentTurn(user, exchanges.toList()), reason)
             repeat(limits.maxSteps) {
                 checkOwner()
-                val window = selectAgentWindow(instructions, specs, past, AgentTurn(user, exchanges.toList()), limits, counter)
+                val prepared = try {
+                    withTimeout(limits.modelTimeoutMs) {
+                        prepareRequest(AgentRequest(instructions, specs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens))
+                    }
+                } catch (timeout: TimeoutCancellationException) { checkOwner(); return@coroutineScope finish(AgentFinish.MODEL_TIMEOUT) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { checkOwner(); return@coroutineScope finish(AgentFinish.PROVIDER_FAILED) }
+                checkOwner()
+                require(prepared.instructions == instructions && prepared.tools == specs && prepared.maxOutputTokens == limits.outputReserveTokens && prepared.turns.last().user == user)
+                val window = selectAgentWindow(instructions, specs, prepared.turns.dropLast(1), prepared.turns.last(), limits, counter)
                 val request = window.request ?: return@coroutineScope finish(AgentFinish.CONTEXT_FULL)
                 onEvent(AgentEvent.Window(window.omittedTurns, window.omittedExchanges, window.estimatedTokens))
                 checkOwner()
