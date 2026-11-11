@@ -225,9 +225,29 @@ class AssistantSshCommandTest {
     }
     @Test fun `actual worker admission refusal performs no credential or client work`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val tool = AssistantSshCommandTool(f.service) { _, _ -> throw CancellationException() }
+            val tool = AssistantSshCommandTool(f.service) { category, start -> if (category == "ssh-dispatch") throw CancellationException() else start() }
             try { tool.execute(f.args); fail("must cancel") } catch (_: CancellationException) { }
             assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty())
+        }
+    }
+    @Test fun `refused tool-start on a ready target stops before worker admission credentials or client for valid and invalid arguments`() = runBlocking {
+        Fixture().use { f -> f.ready()
+            val categories = mutableListOf<String>()
+            val tool = AssistantSshCommandTool(f.service) { category, _ -> categories += category; throw CancellationException() }
+            for (arguments in listOf(f.args, buildJsonObject { put("profile_id", "home") })) {
+                try { tool.execute(arguments); fail("must cancel") } catch (_: CancellationException) { }
+            }
+            assertEquals(listOf("tool-start", "tool-start"), categories)
+            assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty())
+        }
+    }
+    @Test fun `an owned call dispatches tool-start once before the ssh worker`() = runBlocking {
+        Fixture().use { f -> f.ready()
+            val categories = mutableListOf<String>()
+            val result = AssistantSshCommandTool(f.service) { category, start -> categories += category; start() }.execute(f.args)
+            assertEquals(ToolOutcome.SUCCESS, result.outcome)
+            assertEquals("tool-start", categories.first()); assertEquals(1, categories.count { it == "tool-start" })
+            assertEquals(1, categories.count { it == "ssh-dispatch" })
         }
     }
     @Test fun `target hide then Undo during auth fails old operation without retargeting`() = runBlocking {

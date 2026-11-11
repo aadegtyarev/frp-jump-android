@@ -11,6 +11,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider
+import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
 
@@ -61,7 +62,7 @@ import ru.adsrv.frpjump.store.TextStorage
             ChatToolReceipt(call.value(), exchange.results.firstOrNull { it.callId == call.id }?.value())
         } }
         val failures = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.outcome != ToolOutcome.SUCCESS }?.let { result ->
-            ChatToolFailure(result, if (receipt.call.name == AssistantToolId.WEB_SEARCH.wire) (receipt.call.arguments["query"] as? JsonPrimitive)?.takeIf { it.isString && it.content.length <= 256 }?.content else null)
+            ChatToolFailure(result, if (receipt.call.name == AssistantToolId.WEB_SEARCH.wire) try { StrictArgs(receipt.call.arguments).optionalString("query", 256, allowBlank = true) } catch (_: InvalidArguments) { null } else null)
         } }
         val information = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.name == AssistantToolId.PROFILE_INFORMATION.wire && it.outcome == ToolOutcome.SUCCESS }?.let {
             ChatProfileInformation(it, runCatching { Json.parseToJsonElement(it.text) as? JsonObject }.getOrNull())
