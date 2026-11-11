@@ -7,6 +7,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.settings.AssistantTools
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.store.TextStorage
@@ -34,7 +35,7 @@ class AssistantToolsBindingTest {
         val scope = CoroutineScope(SupervisorJob() + main)
         val binding = AssistantToolsBinding(store, scope, io)
         init { main.drain() }
-        fun change(id: String, value: Boolean) { binding.change(id, value); main.drain() }
+        fun change(id: String, value: Boolean) { binding.change(AssistantToolId.fromWire(id)!!, value); main.drain() }
         fun finish() { io.drain(); main.drain() }
         fun canonical() {
             assertEquals(store.assistantAvailability.tools, binding.state.value.committed)
@@ -105,7 +106,7 @@ class AssistantToolsBindingTest {
             assertEquals(AssistantTools(false, true, false), f.binding.state.value.committed)
             assertTrue(f.binding.state.value.pending.isEmpty()); assertFalse(SettingsStore(f.file).settings.value.direct)
             // Another external change after an acknowledged result also refreshes without local action.
-            f.store.setAssistantTool("inspect_image", true); f.main.drain(); f.canonical()
+            f.store.setAssistantTool(AssistantToolId.INSPECT_IMAGE, true); f.main.drain(); f.canonical()
             assertEquals(AssistantTools(false, true, true), f.binding.state.value.committed)
         }
     }
@@ -114,7 +115,7 @@ class AssistantToolsBindingTest {
         Fixture().use { f ->
             f.file.fail = true; f.change("web_search", true); f.finish()
             f.file.fail = false; f.change("read_page", true)
-            f.store.setAssistantTool("inspect_image", true); f.main.drain()
+            f.store.setAssistantTool(AssistantToolId.INSPECT_IMAGE, true); f.main.drain()
             assertEquals(setOf("web_search"), f.binding.state.value.failed)
             assertEquals(setOf("read_page"), f.binding.state.value.pending)
             assertEquals(AssistantTools(false, false, true), f.binding.state.value.committed)
@@ -127,7 +128,7 @@ class AssistantToolsBindingTest {
     @Test fun `failed operation acknowledges later external commit without pretending rollback or success`() {
         Fixture().use { f ->
             f.file.fail = true; f.change("web_search", true); f.io.next()
-            f.file.fail = false; f.store.setAssistantTool("web_search", true)
+            f.file.fail = false; f.store.setAssistantTool(AssistantToolId.WEB_SEARCH, true)
             f.main.drain(); f.canonical()
             assertTrue(f.binding.state.value.committed.search)
             assertEquals(setOf("web_search"), f.binding.state.value.failed)
@@ -137,10 +138,10 @@ class AssistantToolsBindingTest {
 
     @Test fun `initial and reopened owners read canonical even when old notification has not been consumed`() {
         Fixture().use { f ->
-            f.store.setAssistantTool("web_search", true)
+            f.store.setAssistantTool(AssistantToolId.WEB_SEARCH, true)
             val newer = AssistantToolsBinding(f.store, f.scope, f.io)
             assertEquals(AssistantTools(true), newer.state.value.committed)
-            f.store.setAssistantTool("web_search", false); f.main.drain()
+            f.store.setAssistantTool(AssistantToolId.WEB_SEARCH, false); f.main.drain()
             assertEquals(AssistantTools(), newer.state.value.committed)
             f.canonical()
         }
@@ -164,16 +165,9 @@ class AssistantToolsBindingTest {
                 assertTrue(f.binding.state.value.failed.isEmpty())
                 assertTrue(newer.state.value.committed.search); assertTrue(newer.state.value.pending.isEmpty())
                 assertTrue(SettingsStore(f.file).assistantAvailability.tools.search)
-                f.binding.change("read_page", true); f.main.drain()
+                f.binding.change(AssistantToolId.READ_PAGE, true); f.main.drain()
                 assertEquals(oldState, f.binding.state.value); assertTrue(f.io.work.isEmpty())
             } finally { release.countDown(); writer.join(2000); newScope.cancel(); f.main.drain() }
-        }
-    }
-
-    @Test fun `unknown tool fails locally without pending or persistence`() {
-        Fixture().use { f ->
-            assertThrows(IllegalArgumentException::class.java) { f.binding.change("unknown", true) }
-            assertTrue(f.binding.state.value.pending.isEmpty()); assertEquals(0, f.file.writes)
         }
     }
 }

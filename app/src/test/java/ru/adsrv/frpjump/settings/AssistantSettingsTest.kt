@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.settings
 
 import org.junit.Assert.*
 import org.junit.Test
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.ssh.MemoryStorage
 import ru.adsrv.frpjump.store.TextStorage
 
@@ -76,7 +77,7 @@ class AssistantSettingsTest {
         val store = SettingsStore(file).apply { update { it.copy(direct = false, assistantEnabled = true) } }
         var expected = AssistantTools()
         for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) for (value in listOf(true, false)) {
-            store.setAssistantTool(id, value)
+            store.setAssistantTool(AssistantToolId.fromWire(id)!!, value)
             expected = when (id) {
                 "web_search" -> expected.copy(search = value)
                 "read_page" -> expected.copy(readPage = value)

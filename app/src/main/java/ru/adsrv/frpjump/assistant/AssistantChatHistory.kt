@@ -61,9 +61,9 @@ import ru.adsrv.frpjump.store.TextStorage
             ChatToolReceipt(call.value(), exchange.results.firstOrNull { it.callId == call.id }?.value())
         } }
         val failures = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.outcome != ToolOutcome.SUCCESS }?.let { result ->
-            ChatToolFailure(result, if (receipt.call.name == "web_search") (receipt.call.arguments["query"] as? JsonPrimitive)?.takeIf { it.isString && it.content.length <= 256 }?.content else null)
+            ChatToolFailure(result, if (receipt.call.name == AssistantToolId.WEB_SEARCH.wire) (receipt.call.arguments["query"] as? JsonPrimitive)?.takeIf { it.isString && it.content.length <= 256 }?.content else null)
         } }
-        val information = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.name == "profile_information" && it.outcome == ToolOutcome.SUCCESS }?.let {
+        val information = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.name == AssistantToolId.PROFILE_INFORMATION.wire && it.outcome == ToolOutcome.SUCCESS }?.let {
             ChatProfileInformation(it, runCatching { Json.parseToJsonElement(it.text) as? JsonObject }.getOrNull())
         } }
         return ChatTurn(user, if (status == SavedTurnState.COMPLETE) exchanges.lastOrNull()?.reply?.text.orEmpty() else "",

@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.settings.AssistantTools
 import ru.adsrv.frpjump.settings.SettingsStore
 
+/** [pending] and [failed] hold tool wire names (the Tools row test tags use them too). */
 internal data class AssistantToolsUiState(
     val committed: AssistantTools,
     val pending: Set<String> = emptySet(),
@@ -38,12 +40,12 @@ internal class AssistantToolsBinding(
         }
     }
 
-    fun change(id: String, enabled: Boolean) {
-        require(id in setOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) { "Unknown assistant tool" }
+    fun change(id: AssistantToolId, enabled: Boolean) {
+        val key = id.wire
         scope.launch {
             ensureActive()
-            if (id in mutable.value.pending) return@launch
-            mutable.value = mutable.value.copy(pending = mutable.value.pending + id, failed = mutable.value.failed - id)
+            if (key in mutable.value.pending) return@launch
+            mutable.value = mutable.value.copy(pending = mutable.value.pending + key, failed = mutable.value.failed - key)
             val failed = try {
                 withContext(io) { store.setAssistantTool(id, enabled) }
                 false
@@ -54,8 +56,8 @@ internal class AssistantToolsBinding(
             // Actual committed checked and completion are acknowledged in a single snapshot.
             mutable.value = mutable.value.copy(
                 committed = store.assistantAvailability.tools,
-                pending = mutable.value.pending - id,
-                failed = if (failed) mutable.value.failed + id else mutable.value.failed - id,
+                pending = mutable.value.pending - key,
+                failed = if (failed) mutable.value.failed + key else mutable.value.failed - key,
             )
         }
     }

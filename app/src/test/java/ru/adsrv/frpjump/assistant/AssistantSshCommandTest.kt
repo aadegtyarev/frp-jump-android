@@ -310,10 +310,10 @@ class AssistantSshCommandTest {
             assertEquals(ToolOutcome.UNKNOWN_TOOL, c.requests.last().turns.last().exchanges.single().results.single().outcome)
             assertEquals(0, f.factories.get()); assertTrue(c.requests.first().tools.isEmpty())
             f.client.beforeAuth = { assertFalse(Thread.holdsLock(c.settings.assistantChat.gate)) }
-            c.settings.setAssistantTool("ssh_command", true); assertEquals(0, f.factories.get())
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); assertEquals(0, f.factories.get())
             c.heldReply = CompletableDeferred(); c.send()
             withTimeout(5000) { while (c.requests.size < 3) delay(10) }
-            c.settings.setAssistantTool("ssh_command", false)
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, false)
             c.heldReply!!.complete(Unit); c.idle(); c.heldReply = null
             assertEquals(1, f.factories.get())
             assertEquals(ToolOutcome.SUCCESS, c.requests.last().turns.last().exchanges.single().results.single().outcome)
@@ -323,7 +323,7 @@ class AssistantSshCommandTest {
     }
     @Test fun `Chat guard revokes actual SSH admission before any worker starts`() = runBlocking {
         Fixture().use { f -> f.ready(); Chat(f).use { c ->
-            c.settings.setAssistantTool("ssh_command", true)
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
             c.settings.assistantChat.beforeAction = { category -> if (category == "ssh-dispatch") {
                 c.settings.update { it.copy(assistantEnabled = false) }
             } }
@@ -335,7 +335,7 @@ class AssistantSshCommandTest {
         for (revoke in listOf("stop", "pop", "disable", "provider")) Fixture().use { f -> f.ready(); Chat(f).use { c ->
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
             f.client.beforeDisconnect = { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
-            c.settings.setAssistantTool("ssh_command", true); c.send()
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
             var replacement: AssistantConversation? = null
             try {
                 assertTrue(entered.await(3, TimeUnit.SECONDS))
@@ -357,7 +357,7 @@ class AssistantSshCommandTest {
     @Test fun `Chat tool timeout retains slot through held readers and returns honest uncertain timeout`() = runBlocking {
         Fixture().use { f -> f.ready(); Chat(f, timeout = 100).use { c ->
             val release = CountDownLatch(1); f.client.heldRead = release
-            c.settings.setAssistantTool("ssh_command", true); c.send()
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
             try {
                 assertTrue(f.client.reading.await(3, TimeUnit.SECONDS))
                 withTimeout(5000) { while (f.client.disconnects.get() == 0) delay(10) }
@@ -400,7 +400,7 @@ class AssistantSshCommandTest {
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
             f.client.code = 7; f.client.out = "private-late-stdout"; f.client.err = "private-late-stderr"
             f.client.beforeDisconnect = { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
-            c.settings.setAssistantTool("ssh_command", true); c.send()
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
             try {
                 assertTrue(entered.await(3, TimeUnit.SECONDS))
                 f.profiles.hidden.value = setOf(PendingUndo.tunnelKey("home", "same", 22))
@@ -438,7 +438,7 @@ class AssistantSshCommandTest {
                 else -> { f.client.code = 7; f.client.beforeDisconnect = { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) } }
             }
             c.afterTool = CompletableDeferred()
-            c.settings.setAssistantTool("ssh_command", true); c.send()
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
             try {
                 assertTrue("$source/$phase entered", (if (phase == "read") f.client.reading else entered).await(3, TimeUnit.SECONDS))
                 f.loseTarget(source)
@@ -483,7 +483,7 @@ class AssistantSshCommandTest {
         for (revoke in listOf("stop", "pop", "disable", "off-on", "provider", "read-problem")) Fixture().use { f -> f.ready(); Chat(f).use { c ->
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
             f.client.beforeDisconnect = { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
-            c.settings.setAssistantTool("ssh_command", true); c.send()
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
             try {
                 assertTrue(entered.await(3, TimeUnit.SECONDS))
                 f.loseTarget("hidden-connection")
@@ -508,7 +508,7 @@ class AssistantSshCommandTest {
     @Test fun `SSH TARGET OUTCOME timeout racing target loss keeps timeout and actual reader exit`() = runBlocking {
         Fixture().use { f -> f.ready(); Chat(f, timeout = 100).use { c ->
             val release = CountDownLatch(1); f.client.heldRead = release
-            c.settings.setAssistantTool("ssh_command", true); c.send()
+            c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
             try {
                 assertTrue(f.client.reading.await(3, TimeUnit.SECONDS))
                 f.loseTarget("hidden-tunnel")

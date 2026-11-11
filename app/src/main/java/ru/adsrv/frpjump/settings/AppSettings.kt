@@ -20,6 +20,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import ru.adsrv.frpjump.api.WireJson
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.locale.AppLanguage
 import ru.adsrv.frpjump.store.TextStorage
 
@@ -129,8 +130,25 @@ fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
 }
 
 /** Independent opt-ins; there is no model capability registry or support probe. */
-data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false, val sshCommand: Boolean = false)
+data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false, val sshCommand: Boolean = false) {
+    operator fun get(id: AssistantToolId): Boolean = when (id) {
+        AssistantToolId.WEB_SEARCH -> search
+        AssistantToolId.READ_PAGE -> readPage
+        AssistantToolId.INSPECT_IMAGE -> inspectImage
+        AssistantToolId.PROFILE_INFORMATION -> profileInformation
+        AssistantToolId.SSH_COMMAND -> sshCommand
+    }
+    fun with(id: AssistantToolId, enabled: Boolean): AssistantTools = when (id) {
+        AssistantToolId.WEB_SEARCH -> copy(search = enabled)
+        AssistantToolId.READ_PAGE -> copy(readPage = enabled)
+        AssistantToolId.INSPECT_IMAGE -> copy(inspectImage = enabled)
+        AssistantToolId.PROFILE_INFORMATION -> copy(profileInformation = enabled)
+        AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
+    }
+}
 fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand)
+private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools())
@@ -148,16 +166,7 @@ class SettingsStore(private val storage: TextStorage) {
     val assistantDisables: StateFlow<Long> = _assistantDisables
 
     /** Shared persisted tool operation used by Settings and the retained Chat owner. */
-    fun setAssistantTool(id: String, enabled: Boolean) = update {
-        when (id) {
-            "web_search" -> it.copy(assistantSearch = enabled)
-            "read_page" -> it.copy(assistantReadPage = enabled)
-            "profile_information" -> it.copy(assistantProfileInformation = enabled)
-            "ssh_command" -> it.copy(assistantSshCommand = enabled)
-            "inspect_image" -> it.copy(assistantInspectImage = enabled)
-            else -> error("Unknown assistant tool")
-        }
-    }
+    fun setAssistantTool(id: AssistantToolId, enabled: Boolean) = update { it.withAssistantTools(it.assistantTools().with(id, enabled)) }
 
     fun update(change: (AppSettings) -> AppSettings) {
         val version = synchronized(this) {
@@ -200,7 +209,7 @@ class SettingsStore(private val storage: TextStorage) {
         val rawHistory = json["terminal_history_rows"] as? JsonPrimitive
         val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
-        val toolFields = listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_ssh_command").associateWith { key ->
+        val toolFields = AssistantToolId.entries.map { it.settingKey }.associateWith { key ->
             JsonPrimitive((json[key] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)
         }
         val normalized = JsonObject(json + toolFields + ("terminal_history_rows" to JsonPrimitive(history)) +

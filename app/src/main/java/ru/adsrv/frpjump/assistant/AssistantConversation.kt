@@ -16,7 +16,12 @@ data class ChatToolReceipt(val call: ToolCall, val result: ToolResult? = null)
 data class ChatTurn(val user: String, val answer: String, val sources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
     val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList())
-enum class ChatToolProgress { SEARCH, READ, IMAGE, PROFILE_INFORMATION, SSH_COMMAND, SUMMARY, FAILED }
+sealed interface ChatToolProgress {
+    /** A call of a known tool is running. */
+    data class Tool(val id: AssistantToolId) : ChatToolProgress
+    data object SUMMARY : ChatToolProgress
+    data object FAILED : ChatToolProgress
+}
 enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, INTERRUPTED, SUMMARY, HISTORY_FULL }
 data class ChatState(
     val turns: List<ChatTurn> = emptyList(), val draft: String = "", val pendingText: String? = null,
@@ -296,10 +301,8 @@ class AssistantConversation(
                                         project(owner, value)
                                         if (value.records.last().chars > MAX_HISTORY_CHARS) throw HistoryFull()
                                     }
-                                    is AgentEvent.Calling -> guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = when (event.call.name) {
-                                        "web_search" -> ChatToolProgress.SEARCH; "read_page" -> ChatToolProgress.READ; "inspect_image" -> ChatToolProgress.IMAGE
-                                        "profile_information" -> ChatToolProgress.PROFILE_INFORMATION; "ssh_command" -> ChatToolProgress.SSH_COMMAND; else -> ChatToolProgress.FAILED
-                                    }) }
+                                    is AgentEvent.Calling -> guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress =
+                                        AssistantToolId.fromWire(event.call.name)?.let { ChatToolProgress.Tool(it) } ?: ChatToolProgress.FAILED) }
                                     is AgentEvent.FinishedTool -> {
                                         val received = SavedResult.of(event.result)
                                         val value = update(owner) { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }

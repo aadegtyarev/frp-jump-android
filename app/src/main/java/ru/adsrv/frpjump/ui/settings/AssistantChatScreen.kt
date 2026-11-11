@@ -116,12 +116,8 @@ internal fun AssistantChatContent(
                 state.pendingText?.let { text -> item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         ChatUserMessage(text)
-                        Text(stringResource(if (state.stopping) R.string.chat_stopping else when (state.toolProgress) {
-                            ChatToolProgress.SEARCH -> R.string.tool_search_progress
-                            ChatToolProgress.READ -> R.string.tool_read_progress
-                            ChatToolProgress.IMAGE -> R.string.tool_image_progress
-                            ChatToolProgress.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
-                            ChatToolProgress.SSH_COMMAND -> R.string.tool_ssh_command_progress
+                        Text(stringResource(if (state.stopping) R.string.chat_stopping else when (val progress = state.toolProgress) {
+                            is ChatToolProgress.Tool -> progress.id.progress()
                             ChatToolProgress.SUMMARY -> R.string.chat_summary_progress
                             ChatToolProgress.FAILED -> if (state.toolFailures.isEmpty()) R.string.tool_failed else R.string.chat_waiting
                             null -> R.string.chat_waiting
@@ -182,14 +178,7 @@ private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier
     if (failures.isEmpty()) return
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         failures.forEach { failure ->
-            val tool = stringResource(when (failure.result.name) {
-                "web_search" -> R.string.tool_search
-                "read_page" -> R.string.tool_read
-                "inspect_image" -> R.string.tool_image
-                "profile_information" -> R.string.tool_profile_information
-                "ssh_command" -> R.string.tool_ssh_command
-                else -> R.string.tool_failure_unknown
-            })
+            val tool = stringResource(AssistantToolId.fromWire(failure.result.name)?.title() ?: R.string.tool_failure_unknown)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(when (failure.result.outcome) {
                     ToolOutcome.TIMEOUT -> R.string.tool_failure_timeout
