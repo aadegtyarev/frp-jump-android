@@ -640,7 +640,7 @@ fun TerminalScreen(
                             // Typed first: the snippet must not land in tmux's copy mode.
                             selected.typed()
                             selected.terminal.session.write(if (run) line + "\r" else line)
-                            // A snippet is typed as is, without a held Ctrl / Alt; it uses up the hold.
+                            // A snippet is typed as is, without a held Ctrl / Alt / Shift; it uses up the hold.
                             modifiers.clear()
                         }
                     },
@@ -830,17 +830,14 @@ private class ViewClient(
 
     override fun readControlKey() = modifiers.takeCtrl()
 
-    private val shiftHook = StickyShiftHook(modifiers) { codePoint, ctrl, alt -> input.terminal.inputCodePoint(codePoint, ctrl, alt) }
+    override fun readAltKey() = modifiers.takeAlt()
 
-    override fun readAltKey() = shiftHook.readAlt()
-
+    // Termux reads it per typed character of the soft keyboard (and for hardware keys), then upper-cases.
     override fun readShiftKey() = modifiers.takeShift()
 
     override fun readFnKey() = false
 
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
-        // Shift: see StickyShiftHook; the repeated call reaches here again and types.
-        if (shiftHook.onCodePoint(codePoint, ctrlDown)) return true
         session().typed()
         return false
     }

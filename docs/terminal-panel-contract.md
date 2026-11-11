@@ -31,11 +31,18 @@ Keys is the initial surface. There is no dedicated Keys/Text selector row.
 Additional keys start collapsed. Keep their order: Esc, Tab, sticky Ctrl,
 Alt, Shift, ^D, ^Z, ^R, then Home, End, PgUp, PgDn, `|`, `~`, `/`, `-`.
 Sticky Ctrl, Alt and Shift apply to the next key, then release; they combine.
-Shift sends key-code keys (arrows, Tab, Esc, Enter, Backspace, Home, End, PgUp,
-PgDn) with the Shift modifier as the terminal emulator encodes it (Shift+Tab is
-`ESC [ Z`), and uppercases the next typed letter; other typed characters pass
-unchanged and still release it. Ready combos (^C ^D ^Z ^R) release all three
-without applying them. Ctrl+L is sticky Ctrl then `l`.
+They are also released by ready combos (^C ^D ^Z ^R, unapplied), entering Text
+mode, snippet send and the confirmed multi-line paste; a direct paste leaves
+sticky modifiers as they are. Shift sends the arrows, Tab, Home and End with the
+Shift modifier as the terminal emulator encodes it (Shift+Tab is `ESC [ Z`,
+Shift+Up `ESC [ 1 ; 2 A`); Alt+Shift+Tab is also `ESC [ Z`. Esc, Enter and
+Backspace bytes do not change with Shift (it is used up). PgUp and PgDn are sent
+without Shift (it is used up), because Termux would turn Shift+PgUp/PgDn into a
+local scroll, or on the alternate screen without mouse tracking into a screenful
+of arrow keys. For soft-keyboard text Termux's own Shift handling applies: the
+next typed character goes through `Character.toUpperCase` (letters become
+uppercase; Termux also maps a few non-letters, such as circled letters). The
+`| ~ / -` keys are typed as is and release Shift. Ctrl+L is sticky Ctrl then `l`.
 Keys address the terminal, not a retained draft. Paste retains the existing
 clipboard availability and session-bound confirmation behavior; panel
 compaction must not bypass it.

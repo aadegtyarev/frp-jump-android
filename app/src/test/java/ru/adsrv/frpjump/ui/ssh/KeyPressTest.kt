@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import android.view.KeyEvent
 import com.termux.terminal.KeyHandler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -88,16 +89,13 @@ class KeyPressTest {
     }
 
     @Test
-    fun shiftArrowAndNavigationKeysUseTheEmulatorsEncoding() {
+    fun shiftArrowAndHomeUseTheEmulatorsEncoding() {
         modifiers.shift = true
         assertEquals("\u001b[1;2A", bytes(ExtraKey.UP))
         modifiers.shift = true
         assertEquals("\u001b[1;2D", bytes(ExtraKey.LEFT))
         modifiers.shift = true
         assertEquals("\u001b[1;2H", bytes(ExtraKey.HOME))
-        modifiers.shift = true
-        // The emulator's table has no Shift variant for PgUp: plain ESC [ 5 ~ (pinned as is).
-        assertEquals("\u001b[5~", bytes(ExtraKey.PAGE_UP))
         assertFalse(modifiers.shift)
     }
 
@@ -118,23 +116,6 @@ class KeyPressTest {
     }
 
     @Test
-    fun aCharacterKeyLeavesShiftForTheView() {
-        modifiers.shift = true
-        assertEquals(KeyPress.Typed('~'.code), pressFor(ExtraKey.TILDE, modifiers))
-        assertTrue(modifiers.shift)
-    }
-
-    @Test
-    fun shiftUppercasesLettersOnlyAndKeepsOtherCharacters() {
-        assertEquals('A'.code, shiftedCodePoint('a'.code))
-        assertEquals('Я'.code, shiftedCodePoint('я'.code))
-        assertEquals(0x10428 - 0x28, shiftedCodePoint(0x10428)) // Deseret small letter long I -> capital
-        assertEquals('1'.code, shiftedCodePoint('1'.code))
-        assertEquals('|'.code, shiftedCodePoint('|'.code))
-        assertEquals('-'.code, shiftedCodePoint('-'.code))
-    }
-
-    @Test
     fun modifiersClearReleasesAllThree() {
         modifiers.ctrl = true
         modifiers.alt = true
@@ -142,4 +123,58 @@ class KeyPressTest {
         modifiers.clear()
         assertFalse(modifiers.ctrl || modifiers.alt || modifiers.shift)
     }
+
+    @Test
+    fun shiftPageKeysAreSentWithoutShiftBecauseTermuxWouldScrollOrSendArrows() {
+        // handleKeyCodeAction turns KEYMOD_SHIFT + PgUp / PgDn (keyCode 92 / 93) into doScroll(rows).
+        for (key in listOf(ExtraKey.PAGE_UP, ExtraKey.PAGE_DOWN)) {
+            modifiers.shift = true
+            assertEquals(KeyPress.Code(key.keyCode!!, 0), pressFor(key, modifiers))
+            assertFalse(modifiers.shift)
+        }
+        modifiers.ctrl = true
+        modifiers.alt = true
+        modifiers.shift = true
+        assertEquals(KeyPress.Code(KeyEvent.KEYCODE_PAGE_UP, KeyHandler.KEYMOD_CTRL or KeyHandler.KEYMOD_ALT), pressFor(ExtraKey.PAGE_UP, modifiers))
+        assertFalse(modifiers.shift)
+    }
+
+    @Test
+    fun otherKeyCodeKeysCarryShiftToTheEmulator() {
+        val shifted = listOf(ExtraKey.TAB, ExtraKey.ESC, ExtraKey.ENTER, ExtraKey.BACKSPACE, ExtraKey.UP, ExtraKey.DOWN,
+            ExtraKey.LEFT, ExtraKey.RIGHT, ExtraKey.HOME, ExtraKey.END)
+        for (key in shifted) {
+            modifiers.shift = true
+            assertEquals("$key", KeyPress.Code(key.keyCode!!, KeyHandler.KEYMOD_SHIFT), pressFor(key, modifiers))
+            assertFalse(modifiers.shift)
+        }
+    }
+
+    @Test
+    fun shiftChangesNoBytesOfEscEnterAndBackspace() {
+        for (key in listOf(ExtraKey.ESC, ExtraKey.ENTER, ExtraKey.BACKSPACE)) {
+            val plain = bytes(key)
+            modifiers.shift = true
+            assertEquals("$key", plain, bytes(key))
+        }
+    }
+
+    @Test
+    fun altShiftTabIsBackTabAndShiftEndUsesTheEmulatorsEncoding() {
+        modifiers.alt = true
+        modifiers.shift = true
+        assertEquals("\u001b[Z", bytes(ExtraKey.TAB))
+        modifiers.shift = true
+        assertEquals("\u001b[1;2F", bytes(ExtraKey.END))
+    }
+
+    @Test
+    fun aSymbolKeyIsTypedAsIsAndReleasesShiftButNotCtrlOrAlt() {
+        modifiers.shift = true
+        modifiers.ctrl = true
+        assertEquals(KeyPress.Typed('~'.code), pressFor(ExtraKey.TILDE, modifiers))
+        assertFalse(modifiers.shift)
+        assertTrue(modifiers.ctrl)
+    }
+
 }

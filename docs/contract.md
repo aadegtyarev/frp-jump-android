@@ -367,7 +367,7 @@ to the terminal. On requests no suggestions and forwards composing changes
 immediately, as in earlier versions. The choice is app-wide and persisted;
 changing it finishes the old composition and restarts the keyboard input
 connection, not the SSH session. Hardware key events pass through in both
-modes. With direct input off, sticky Ctrl/Alt applies when the keyboard
+modes. With direct input off, sticky Ctrl/Alt/Shift applies when the keyboard
 commits the text, not while it is still composing it.
 
 **History limit.** Settings → Terminal → History rows offers 500, 1000,
@@ -429,7 +429,7 @@ the end of the text goes to its end. A row the shell broke with a real line
 break (a pasted multi-line command, a `for` loop's `>` lines), output above
 and the empty screen below keep the usual tap: it shows the keyboard (the
 tap on the command line shows it too). The arrows are plain keys: a held
-Ctrl / Alt stays held. Until their echo shows (at most 400 ms), another
+Ctrl / Alt / Shift stays held. Until their echo shows (at most 400 ms), another
 tap on the command line does nothing: it would count from where the
 cursor was. With TalkBack's touch exploration on, taps stay as
 they were.

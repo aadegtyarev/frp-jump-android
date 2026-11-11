@@ -20,7 +20,7 @@ import kotlin.math.abs
  * Holds a Termux view and owns its keyboard focus. Normally the keyboard
  * can compose text and Termux sends it on commit when Direct input is off.
  * Settings › Terminal › Direct input defaults to sending changes immediately, useful for shell
- * commands and sticky Ctrl/Alt. That mode also asks for no suggestions.
+ * commands and sticky Ctrl/Alt/Shift. That mode also asks for no suggestions.
  * [TerminalView] is final, so this parent supplies EditorInfo and optionally
  * wraps its connection. Hardware key events pass through in either mode.
  * The terminal stays focusable for selection but hands focus straight back.
@@ -140,7 +140,8 @@ class TerminalInput(context: Context, val terminal: TerminalView) : FrameLayout(
      * Keeps Termux's editable empty: composing text goes to the terminal as
      * it changes, and a later change or the commit sends only the difference.
      * Termux sends each character through its key path, which applies the
-     * sticky Ctrl / Alt from the extra keys.
+     * sticky Ctrl / Alt from the extra keys; the sticky Shift is read by
+     * Termux's text path, which upper-cases the next character.
      */
     private inner class ComposingForwarder(target: InputConnection) : InputConnectionWrapper(target, false) {
         private var sent = ""

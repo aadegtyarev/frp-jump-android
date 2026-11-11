@@ -8,11 +8,14 @@ Status: Approved by the operator on 2026-11-12 (request relayed: replace ^L with
 - Ctrl+L stays available as sticky Ctrl, then `l`.
 
 ## Scenarios
-- Shift, then a key-code key (arrows, Tab, Esc, Enter, Backspace, Home, End, PgUp, PgDn): sent with the Shift modifier through the emulator's own key table (Shift+Tab `ESC [ Z`, Shift+Up `ESC [ 1 ; 2 A`, Ctrl+Shift+Up `ESC [ 1 ; 6 A`); the emulator's table is authoritative (Shift+PgUp is plain `ESC [ 5 ~`).
-- Shift, then a typed character (soft keyboard or `| ~ / -`): a letter is uppercased, anything else is unchanged; Shift is released. Ctrl/Alt are still applied by Termux to the resulting character.
-- Shift, then a ready combo (^C ^D ^Z ^R): the control byte is sent; Shift (and Ctrl/Alt) are released unapplied.
-- Held-repeat keys (arrows, backspace) repeat with the Shift held at touch-down.
-- Paste, entering Text mode and snippet send release Shift with Ctrl/Alt.
+- Shift, then Tab/arrows/Home/End: sent with the Shift modifier through the emulator's key table (Shift+Tab `ESC [ Z`, Shift+Up `ESC [ 1 ; 2 A`, Ctrl+Shift+Up `ESC [ 1 ; 6 A`, Alt+Shift+Tab `ESC [ Z`).
+- Shift, then Esc/Enter/Backspace: bytes unchanged, Shift used up.
+- Shift, then PgUp/PgDn: sent without Shift (Termux's handleKeyCodeAction would scroll locally or send arrows); Shift used up. No other extra key is intercepted for Shift (checked in the bytecode: only key codes 92/93).
+- Shift, then soft-keyboard text: Termux's own handling (readShiftKey, then `Character.toUpperCase`, then Ctrl/Alt) uppercases the next typed character and releases Shift; Ctrl+Shift+a is `\u0001`, Alt+Shift+a is `ESC A`.
+- Shift, then `| ~ / -`: typed as is; Shift released.
+- Shift, then a ready combo (^C ^D ^Z ^R): control byte; all three released.
+- Held-repeat keys repeat with the Shift held at touch-down.
+- Released like Ctrl/Alt: by the next key or typed character, ready combos, entering Text mode, snippet send and the confirmed multi-line paste. A direct paste leaves sticky modifiers as they are (unchanged).
 - Hardware keyboard keys read the sticky Shift like Ctrl/Alt.
 
 ## Non-goals
@@ -24,7 +27,7 @@ Lock/double-tap, Shift for the Text editor, new key descriptions (Ctrl/Alt have 
 - [Terminal text input](../../terminal-text-input-contract.md) (only mentions Ctrl/Alt generically; no change)
 
 ## Interfaces and constraints
-- `Modifiers.shift`/`takeShift()`; `readShiftKey()` takes it; `ViewClient.onCodePoint` takes it, repeats `inputCodePoint` with the shifted character and the already-taken Ctrl/Alt flags, so Termux applies Ctrl/Alt itself.
+- `Modifiers.shift`/`takeShift()`; `ViewClient.readShiftKey()` returns `takeShift()`; `pressFor` adds `KEYMOD_SHIFT` except for PgUp/PgDn and consumes Shift for typed symbol keys. No hook in `onCodePoint`.
 - Remove `ExtraKey.CTRL_L` and `terminal_key_ctrl_l`.
 
 ## Acceptance criteria

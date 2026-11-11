@@ -630,20 +630,23 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   plain-shell tab (typing `tmux` or `screen`) can't be seen, so there the
   same caveat applies without the sheet. A clipboard of only spaces and line
   breaks pastes nothing and says so. Additional rows start collapsed; the
-  small ⋯ above the main row opens/closes Esc, Tab, Ctrl, Alt, ^D ^Z ^R ^L, Home End PgUp PgDn
+  small ⋯ above the main row opens/closes Esc, Tab, Ctrl, Alt, Shift, ^D ^Z ^R, Home End PgUp PgDn
   and `| ~ / -` (one line when they all fit, as in landscape; even lines
-  when narrow). Ctrl and Alt stay held, lit, until the next key, and apply
-  to ⌫ ⏎ and the arrows as to a hardware keyboard; ^C ^D ^Z ^R ^L send
-  their control byte as is and, like a snippet, use up a held Ctrl / Alt.
+  when narrow). Ctrl, Alt and Shift stay held, lit, until the next key, and apply
+  to ⌫ ⏎ and the arrows as to a hardware keyboard (Shift+Tab is back-tab; Shift
+  is used up, not sent, with PgUp / PgDn, so they never scroll the screen);
+  the next typed letter is upper-cased by Shift, other characters and `| ~ / -`
+  stay as they are; ^C ^D ^Z ^R send
+  their control byte as is and, like a snippet, use up a held Ctrl / Alt / Shift.
   The arrows and ⌫ repeat while held (after 400 ms, then about 15 a
-  second), with every repeat taking the Ctrl / Alt held at the press.
+  second), with every repeat taking the Ctrl / Alt / Shift held at the press.
   Long-press selects text (Copy / Paste), pinch or A− / A+ changes the font
   size.
 - Tap the command line to move the cursor there (`ui/ssh/TerminalTap.kt`,
   counting in `ui/ssh/TapToCursor.kt`, tmux answers in
   `ui/ssh/TmuxTapGate.kt`). The terminal cannot move the shell's cursor,
   so the app sends that many ← or → (the emulator's arrow codes for its
-  cursor-key mode, no Ctrl / Alt, at most 1000, written in pieces of 64
+  cursor-key mode, no Ctrl / Alt / Shift, at most 1000, written in pieces of 64
   whole arrows so a key typed meanwhile never lands inside one) and the
   line editor moves it. Until their echo changes the cursor's line (or
   400 ms pass), further taps on the command line are dropped
@@ -693,7 +696,7 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   choice is preserved. Direct input sends composing changes immediately
   and requests no suggestions. Turn it off to let the keyboard buffer a
   word and offer suggestions before sending it. The choice is saved
-  for all terminals. With it off, sticky Ctrl/Alt applies when the keyboard
+  for all terminals. With it off, sticky Ctrl/Alt/Shift applies when the keyboard
   commits text; hardware key events work in either mode.
 - Short ⌨ shows/hides the system keyboard. Hold ⌨ or use ⋮ → Text input
   to open the visible multiline editor; Settings → Terminal explains both.
@@ -726,7 +729,7 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   (`snippets/SnippetStore.kt`; a file that does not parse is kept as
   `snippets.corrupt.json`). Sent only into an open session; otherwise the
   app says the session is not open. Line breaks are sent as CR, as Enter
-  is. A held Ctrl / Alt does not apply to a snippet: it is typed as saved,
+  is. A held Ctrl / Alt / Shift does not apply to a snippet: it is typed as saved,
   and sending it releases the hold. A write that fails keeps the list as it
   was and says so (as a setting that cannot be saved does).
 - Sessions live in the app, not in the screen: several at once; the

@@ -448,14 +448,14 @@ sealed interface KeyPress {
     /** A key code with its Ctrl / Alt / Shift ([KeyHandler] KEYMOD_*), turned into bytes by the emulator. */
     data class Code(val keyCode: Int, val keyMod: Int) : KeyPress
 
-    /** A character typed as is; the view applies a held Ctrl / Alt / Shift itself. */
+    /** A character typed as is (Shift is released unused); the view applies a held Ctrl / Alt itself. */
     data class Typed(val codePoint: Int) : KeyPress
 }
 
 /**
  * The press for [key], taking up the held Ctrl / Alt / Shift where it applies them
  * (key codes) or drops them (ready combos, like a snippet). A character key
- * leaves them for the view, which reads them as it types.
+ * leaves Ctrl / Alt for the view, which reads them as it types, and releases Shift.
  */
 fun pressFor(key: ExtraKey, modifiers: Modifiers): KeyPress {
     val control = key.control
@@ -469,10 +469,20 @@ fun pressFor(key: ExtraKey, modifiers: Modifiers): KeyPress {
             var mod = 0
             if (modifiers.takeCtrl()) mod = mod or KeyHandler.KEYMOD_CTRL
             if (modifiers.takeAlt()) mod = mod or KeyHandler.KEYMOD_ALT
-            if (modifiers.takeShift()) mod = mod or KeyHandler.KEYMOD_SHIFT
+            // Termux turns Shift + PgUp / PgDn into a local scroll, or, on the alternate screen
+            // without mouse tracking, into about a screenful of arrow keys: Shift is used up, not sent.
+            val shift = modifiers.takeShift()
+            if (shift && keyCode != KeyEvent.KEYCODE_PAGE_UP && keyCode != KeyEvent.KEYCODE_PAGE_DOWN) {
+                mod = mod or KeyHandler.KEYMOD_SHIFT
+            }
             KeyPress.Code(keyCode, mod)
         }
-        else -> KeyPress.Typed(key.label.codePointAt(0))
+        else -> {
+            // A symbol is typed as is; Shift would change nothing, so it is released here.
+            // (Soft-keyboard text meets Shift in Termux itself: readShiftKey, then toUpperCase.)
+            modifiers.takeShift()
+            KeyPress.Typed(key.label.codePointAt(0))
+        }
     }
 }
 
@@ -482,40 +492,7 @@ fun sendExtraKey(view: TerminalView, key: ExtraKey, modifiers: Modifiers) {
     when (val press = pressFor(key, modifiers)) {
         is KeyPress.Control -> session.writeCodePoint(false, press.byte)
         is KeyPress.Code -> view.handleKeyCode(press.keyCode, press.keyMod)
-        // inputCodePoint reads (and releases) the sticky Ctrl / Alt itself; Shift is applied by ViewClient.onCodePoint.
+        // inputCodePoint reads (and releases) the sticky Ctrl / Alt itself.
         is KeyPress.Typed -> view.inputCodePoint(press.codePoint, false, false)
-    }
-}
-
-/** [codePoint] as typed with Shift held: a letter in upper case, anything else as is. */
-fun shiftedCodePoint(codePoint: Int): Int =
-    if (Character.isLetter(codePoint)) Character.toUpperCase(codePoint) else codePoint
-
-/**
- * Applies the sticky Shift to typed characters. Termux's character path
- * ([TerminalView.inputCodePoint]) reads Ctrl and Alt, then calls the client's
- * onCodePoint before using them, and never reads Shift. So the client sends
- * its Alt reads through [readAlt] and its onCodePoint to [onCodePoint]: with
- * Shift held, the call is repeated through [reenter] with the shifted
- * character and the Ctrl / Alt already taken, which Termux then applies as
- * usual; the repeat finds Shift released. The Alt read is kept for one
- * onCodePoint only, so it can never reach a later character.
- */
-class StickyShiftHook(
-    private val modifiers: Modifiers,
-    private val reenter: (codePoint: Int, ctrlDown: Boolean, altDown: Boolean) -> Unit,
-) {
-    private var altTaken = false
-
-    /** The client's readAltKey: takes the sticky Alt and remembers it for the next [onCodePoint]. */
-    fun readAlt() = modifiers.takeAlt().also { altTaken = it }
-
-    /** The client's onCodePoint: true when it repeated the call itself (Shift was held). */
-    fun onCodePoint(codePoint: Int, ctrlDown: Boolean): Boolean {
-        val alt = altTaken
-        altTaken = false
-        if (!modifiers.takeShift()) return false
-        reenter(shiftedCodePoint(codePoint), ctrlDown, alt)
-        return true
     }
 }
