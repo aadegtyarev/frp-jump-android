@@ -234,7 +234,7 @@ class TerminalTextComposerTest {
         val gap = step - first.width
         val halfStep = step / 2
         val keys = listOf(ExtraKey.ESC, ExtraKey.TAB, ExtraKey.CTRL_D, ExtraKey.CTRL_Z,
-            ExtraKey.CTRL_R, ExtraKey.CTRL_L, ExtraKey.HOME, ExtraKey.END, ExtraKey.PAGE_UP,
+            ExtraKey.CTRL_R, ExtraKey.HOME, ExtraKey.END, ExtraKey.PAGE_UP,
             ExtraKey.PAGE_DOWN, ExtraKey.PIPE, ExtraKey.TILDE, ExtraKey.SLASH, ExtraKey.DASH)
         val target = bounds("terminal_more_keys")
         keys.forEach { key ->

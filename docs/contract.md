@@ -356,7 +356,7 @@ whatever the pane asked), so several lines always show the sheet there; a
 multiplexer started by hand in a plain-shell tab can't be detected. Additional
 rows start collapsed; the small ⋯ above the main row explicitly toggles Esc,
 Tab, sticky Ctrl and
-Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
+Alt, Shift, ^D ^Z ^R, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
 Settings → Terminal → Direct input is on by default, including when an
@@ -367,7 +367,7 @@ to the terminal. On requests no suggestions and forwards composing changes
 immediately, as in earlier versions. The choice is app-wide and persisted;
 changing it finishes the old composition and restarts the keyboard input
 connection, not the SSH session. Hardware key events pass through in both
-modes. With direct input off, sticky Ctrl/Alt applies when the keyboard
+modes. With direct input off, sticky Ctrl/Alt/Shift applies when the keyboard
 commits the text, not while it is still composing it.
 
 **History limit.** Settings → Terminal → History rows offers 500, 1000,
@@ -429,7 +429,7 @@ the end of the text goes to its end. A row the shell broke with a real line
 break (a pasted multi-line command, a `for` loop's `>` lines), output above
 and the empty screen below keep the usual tap: it shows the keyboard (the
 tap on the command line shows it too). The arrows are plain keys: a held
-Ctrl / Alt stays held. Until their echo shows (at most 400 ms), another
+Ctrl / Alt / Shift stays held. Until their echo shows (at most 400 ms), another
 tap on the command line does nothing: it would count from where the
 cursor was. With TalkBack's touch exploration on, taps stay as
 they were.

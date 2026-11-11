@@ -319,8 +319,7 @@ fun TerminalScreen(
             paste = {
                 // Literal text; explicit long action appends CR inside the captured
                 // output transaction, never via whichever tab happens to be current.
-                modifiers.ctrl = false
-                modifiers.alt = false
+                modifiers.clear()
                 target.paste(text, connection, execute)
             },
         )
@@ -362,8 +361,7 @@ fun TerminalScreen(
         focusManager.clearFocus(force = true)
         if (enabled) {
             input.finishComposition()
-            modifiers.ctrl = false
-            modifiers.alt = false
+            modifiers.clear()
             input.clearFocus()
         }
         if (!enabled) {
@@ -642,9 +640,8 @@ fun TerminalScreen(
                             // Typed first: the snippet must not land in tmux's copy mode.
                             selected.typed()
                             selected.terminal.session.write(if (run) line + "\r" else line)
-                            // A snippet is typed as is, without a held Ctrl / Alt; it uses up the hold.
-                            modifiers.ctrl = false
-                            modifiers.alt = false
+                            // A snippet is typed as is, without a held Ctrl / Alt / Shift; it uses up the hold.
+                            modifiers.clear()
                         }
                     },
                     onManage = { managing = true },
@@ -835,7 +832,8 @@ private class ViewClient(
 
     override fun readAltKey() = modifiers.takeAlt()
 
-    override fun readShiftKey() = false
+    // Termux reads it per typed character of the soft keyboard (and for hardware keys), then upper-cases.
+    override fun readShiftKey() = modifiers.takeShift()
 
     override fun readFnKey() = false
 

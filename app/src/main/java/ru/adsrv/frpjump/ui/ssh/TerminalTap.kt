@@ -30,7 +30,7 @@ import kotlin.math.abs
  *   have had; no answer in time, nothing.
  * - With TalkBack's touch exploration on, taps stay as they were.
  *
- * The arrows go as plain keys (a held Ctrl / Alt is not used up), in
+ * The arrows go as plain keys (a held Ctrl / Alt / Shift is not used up), in
  * pieces of whole arrows ([arrowPieces]); until they have shown, taps on
  * the command line are dropped ([TapEchoHold]). The
  * keyboard shows as for any tap; under tmux once tmux has answered, as the

@@ -603,7 +603,6 @@
     <string name="terminal_key_ctrl_d">Ctrl+D — end of input</string>
     <string name="terminal_key_ctrl_z">Ctrl+Z — suspend</string>
     <string name="terminal_key_ctrl_r">Ctrl+R — search history</string>
-    <string name="terminal_key_ctrl_l">Ctrl+L — clear screen</string>
     <string name="terminal_paste">Paste</string>
     <string name="terminal_clipboard_empty">clipboard is empty</string>
     <string name="terminal_clipboard_empty_notice">Nothing to paste: the clipboard has no text</string>

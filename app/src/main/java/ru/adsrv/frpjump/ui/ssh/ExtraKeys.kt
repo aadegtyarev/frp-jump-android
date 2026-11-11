@@ -78,15 +78,25 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.PasteGlyph
 
-/** Sticky Ctrl / Alt from the extra rows: apply to the next key, then release. */
+/** Sticky Ctrl / Alt / Shift from the extra rows: apply to the next key, then release. */
 @Stable
 class Modifiers {
     var ctrl by mutableStateOf(false)
     var alt by mutableStateOf(false)
+    var shift by mutableStateOf(false)
 
     fun takeCtrl() = ctrl.also { ctrl = false }
 
     fun takeAlt() = alt.also { alt = false }
+
+    fun takeShift() = shift.also { shift = false }
+
+    /** Releases all three, as a ready combo, a paste or a snippet does. */
+    fun clear() {
+        ctrl = false
+        alt = false
+        shift = false
+    }
 }
 
 /**
@@ -116,7 +126,6 @@ enum class ExtraKey(
     CTRL_D("^D", null, R.string.terminal_key_ctrl_d, control = 0x04),
     CTRL_Z("^Z", null, R.string.terminal_key_ctrl_z, control = 0x1a),
     CTRL_R("^R", null, R.string.terminal_key_ctrl_r, control = 0x12),
-    CTRL_L("^L", null, R.string.terminal_key_ctrl_l, control = 0x0c),
     HOME("Home", KeyEvent.KEYCODE_MOVE_HOME),
     END("End", KeyEvent.KEYCODE_MOVE_END),
     PAGE_UP("PgUp", KeyEvent.KEYCODE_PAGE_UP),
@@ -133,16 +142,28 @@ private val ROW_KEYS = listOf(
     ExtraKey.BACKSPACE, ExtraKey.ENTER,
 )
 
-/** A place in the extra rows: a key to send, or the Ctrl / Alt toggle. */
+/** A place in the extra rows: a key to send, or the Ctrl / Alt / Shift toggle. */
 private sealed interface Slot {
     data class Send(val key: ExtraKey) : Slot
     data object Ctrl : Slot
     data object Alt : Slot
+    data object Shift : Slot
 }
 
 /** The extra rows' first group: Esc, Tab, the modifiers and the ready combos. */
-private val COMBO_SLOTS: List<Slot> = listOf(Slot.Send(ExtraKey.ESC), Slot.Send(ExtraKey.TAB), Slot.Ctrl, Slot.Alt) +
-    listOf(ExtraKey.CTRL_D, ExtraKey.CTRL_Z, ExtraKey.CTRL_R, ExtraKey.CTRL_L).map(Slot::Send)
+private val COMBO_SLOTS: List<Slot> =
+    listOf(Slot.Send(ExtraKey.ESC), Slot.Send(ExtraKey.TAB), Slot.Ctrl, Slot.Alt, Slot.Shift) +
+        listOf(ExtraKey.CTRL_D, ExtraKey.CTRL_Z, ExtraKey.CTRL_R).map(Slot::Send)
+
+/** The first group's keys in order, for tests: the toggles are named "Ctrl", "Alt" and "Shift". */
+internal fun comboSlotNames(): List<String> = COMBO_SLOTS.map {
+    when (it) {
+        is Slot.Send -> it.key.name
+        Slot.Ctrl -> "Ctrl"
+        Slot.Alt -> "Alt"
+        Slot.Shift -> "Shift"
+    }
+}
 
 /** The extra rows' second group: navigation keys and symbols. */
 private val NAV_SLOTS: List<Slot> = listOf(
@@ -298,6 +319,7 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
                                 is Slot.Send -> Key(slot.key, modifiers, onKey, small = true)
                                 Slot.Ctrl -> Toggle("Ctrl", modifiers.ctrl, small = true) { modifiers.ctrl = it }
                                 Slot.Alt -> Toggle("Alt", modifiers.alt, small = true) { modifiers.alt = it }
+                                Slot.Shift -> Toggle("Shift", modifiers.shift, small = true) { modifiers.shift = it }
                             }
                         }
                     }
@@ -336,12 +358,14 @@ private fun RowScope.Key(key: ExtraKey, modifiers: Modifiers, onKey: (ExtraKey) 
     val described = if (description != null) tagged.semantics { contentDescription = description } else tagged
     if (key.repeats) {
         RepeatKey(key.label, described, small) {
-            // Ctrl / Alt held when the key went down apply to every repeat of it.
+            // Ctrl / Alt / Shift held when the key went down apply to every repeat of it.
             val ctrl = modifiers.ctrl
             val alt = modifiers.alt
+            val shift = modifiers.shift
             return@RepeatKey {
                 modifiers.ctrl = ctrl
                 modifiers.alt = alt
+                modifiers.shift = shift
                 onKey(key)
             }
         }
@@ -421,38 +445,48 @@ sealed interface KeyPress {
     /** A control byte (^C ...) written as is. */
     data class Control(val byte: Int) : KeyPress
 
-    /** A key code with its Ctrl / Alt ([KeyHandler] KEYMOD_*), turned into bytes by the emulator. */
+    /** A key code with its Ctrl / Alt / Shift ([KeyHandler] KEYMOD_*), turned into bytes by the emulator. */
     data class Code(val keyCode: Int, val keyMod: Int) : KeyPress
 
-    /** A character typed as is; the view applies a held Ctrl / Alt itself. */
+    /** A character typed as is (Shift is released unused); the view applies a held Ctrl / Alt itself. */
     data class Typed(val codePoint: Int) : KeyPress
 }
 
 /**
- * The press for [key], taking up the held Ctrl / Alt where it applies them
+ * The press for [key], taking up the held Ctrl / Alt / Shift where it applies them
  * (key codes) or drops them (ready combos, like a snippet). A character key
- * leaves them for the view, which reads them as it types.
+ * leaves Ctrl / Alt for the view, which reads them as it types, and releases Shift.
  */
 fun pressFor(key: ExtraKey, modifiers: Modifiers): KeyPress {
     val control = key.control
     val keyCode = key.keyCode
     return when {
         control != null -> {
-            modifiers.ctrl = false
-            modifiers.alt = false
+            modifiers.clear()
             KeyPress.Control(control)
         }
         keyCode != null -> {
             var mod = 0
             if (modifiers.takeCtrl()) mod = mod or KeyHandler.KEYMOD_CTRL
             if (modifiers.takeAlt()) mod = mod or KeyHandler.KEYMOD_ALT
+            // Termux turns Shift + PgUp / PgDn into a local scroll, or, on the alternate screen,
+            // into a screenful of arrow keys (or wheel events with mouse tracking): Shift is used up, not sent.
+            val shift = modifiers.takeShift()
+            if (shift && keyCode != KeyEvent.KEYCODE_PAGE_UP && keyCode != KeyEvent.KEYCODE_PAGE_DOWN) {
+                mod = mod or KeyHandler.KEYMOD_SHIFT
+            }
             KeyPress.Code(keyCode, mod)
         }
-        else -> KeyPress.Typed(key.label.codePointAt(0))
+        else -> {
+            // A symbol is typed as is; Shift would change nothing, so it is released here.
+            // (Soft-keyboard text meets Shift in Termux itself: readShiftKey, then toUpperCase.)
+            modifiers.takeShift()
+            KeyPress.Typed(key.label.codePointAt(0))
+        }
     }
 }
 
-/** Sends [key] to the terminal, with Ctrl / Alt if held (and releases them); see [pressFor]. */
+/** Sends [key] to the terminal, with Ctrl / Alt / Shift if held (and releases them); see [pressFor]. */
 fun sendExtraKey(view: TerminalView, key: ExtraKey, modifiers: Modifiers) {
     val session = view.currentSession ?: return
     when (val press = pressFor(key, modifiers)) {
