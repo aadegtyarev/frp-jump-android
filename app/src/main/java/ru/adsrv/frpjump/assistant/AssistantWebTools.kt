@@ -15,6 +15,8 @@ internal class AssistantWebTools(
     private val searchState: WebSearchState,
     private val inspector: ImageInspector?,
     private val publish: (ChatSource) -> Unit,
+    // Test seam: the production check needs Android BitmapFactory.
+    private val validate: (String, ByteArray) -> Unit = ::validateImage,
 ) {
     private val budget = WebBudget()
     val sources = ArrayList<ChatSource>()
@@ -84,7 +86,7 @@ internal class AssistantWebTools(
         val operation = inspector ?: webFail(WebFailure.IMAGE)
         val response = fetcher.fetch(url, budget) { }
         if (response.status !in 200..299) webFail(WebFailure.HTTP, response.status)
-        validateImage(response.mime, response.bytes)
+        validate(response.mime, response.bytes)
         val modelText = try {
             admitSideEffect("image-dispatch")
             operation.inspectImage(response.mime, response.bytes, question)

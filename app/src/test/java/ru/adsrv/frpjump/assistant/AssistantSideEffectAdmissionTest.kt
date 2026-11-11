@@ -84,4 +84,26 @@ class AssistantSideEffectAdmissionTest {
             assertEquals(0, providerCalls.get()); assertTrue(chat.state.value.turns.isEmpty())
         } finally { chat.close(); scope.cancel() }
     }
+
+    @Test fun `image tool admits image-dispatch right before inspecting and a refusal inspects nothing`() = runBlocking {
+        var inspections = 0
+        val events = CopyOnWriteArrayList<String>()
+        val inspector = object : ImageInspector {
+            override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String): String { inspections++; events += "inspect"; return "unverified text" }
+        }
+        val fetcher = PublicFetcher { url, _, attempt ->
+            admitSideEffect("public-dispatch"); attempt("public-dispatch")
+            WebResponse(url, "image/png", byteArrayOf(1, 2, 3), 200, null)
+        }
+        fun tools() = AssistantWebTools(ru.adsrv.frpjump.settings.AssistantTools(inspectImage = true), fetcher, WebSearchState(), inspector, { }, { _, _ -> }).tools.single()
+        val arguments = buildJsonObject { put("url", "https://public.org/i.png"); put("question", "q") }
+        try { withContext(SideEffectAdmission { events += "admit:$it"; it != "image-dispatch" }) { tools().execute(arguments) }; fail("must cancel") }
+        catch (_: CancellationException) { }
+        assertEquals(0, inspections)
+        assertEquals(listOf("admit:tool-start", "admit:public-dispatch", "admit:image-dispatch"), events.toList())
+        events.clear()
+        val result = withContext(SideEffectAdmission { events += "admit:$it"; true }) { tools().execute(arguments) }
+        assertEquals(ToolOutcome.SUCCESS, result.outcome); assertEquals(1, inspections)
+        assertEquals(listOf("admit:tool-start", "admit:public-dispatch", "admit:image-dispatch", "inspect"), events.toList())
+    }
 }

@@ -3,7 +3,7 @@
 Status: Approved by the operator on 2026-11-12 (PR 4a of phase F4, decision R2,
 of `docs/reviews/assistant-architecture-review.md`; decisions D1-D6 below, with
 D2 and D3 explicitly approved by the operator as weakened wording). Prepared
-against `209b84b`; implement on `main` at `083af43` (0.3.59, same tree). PR 4b
+against `209b84b`; implemented on `main` at `5ef5d82` (0.3.60; the assistant tree is identical to `083af43`). PR 4b
 (domain API, device directory, profile information, SSH) is a separate contract.
 
 The plan was adjusted where the code showed it to be wrong or underspecified
@@ -127,15 +127,17 @@ obtain approval of a revised contract.
 ```kotlin
 /** Runs blocking [block] on Dispatchers.IO. If the caller is cancelled while [block] runs, calls
  *  [onCancel] promptly in an IO context (never on a non-IO caller thread such as Main). Returns or
- *  throws only after [block] has actually returned. [onCancel] runs at most once, never after [block]
- *  returned, and its failures are swallowed. If the caller was cancelled, the result of [block] is
- *  discarded and CancellationException is thrown (an exception from [block] becomes suppressed). */
+ *  throws only after [block] has actually returned. [onCancel] runs at most once and its failures are
+ *  swallowed; the decision to call it is closed once [block] returns, but a call already decided may
+ *  still be running and the caller waits for it. If the caller was cancelled, the result of [block] is
+ *  discarded and CancellationException is thrown; an exception from [block] is dropped (best effort
+ *  suppressed). */
 suspend fun <T> blockingCancellable(onCancel: () -> Unit, block: () -> T): T = coroutineScope {
     currentCoroutineContext().ensureActive()
     val finished = AtomicBoolean(false)
     val signal = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
         try { awaitCancellation() } finally {
-            if (!finished.get()) withContext(NonCancellable + Dispatchers.IO) { runCatching { onCancel() } }
+            if (!finished.get()) withContext(NonCancellable + Dispatchers.IO) { yield(); runCatching { onCancel() } } // yield: real hop off the caller thread
         }
     }
     try { withContext(Dispatchers.IO) { block() } } finally { finished.set(true); signal.cancel() }
@@ -290,6 +292,33 @@ Greps (run from the repository root; each must print nothing):
 6. `grep -rn "getDeclaredField" app/src/test/java/ru/adsrv/frpjump/assistant`
 7. `WebDispatch` appears only in the typealias file, `AssistantProfileInformationTool.kt`,
    `AssistantSshCommand.kt` (4b leftovers).
+
+Accepted non-empty output (the greps are broader than the invariant they protect):
+- Grep 3 matches only the contract's own category strings (`"dispatch"`, `"dns-dispatch"`, `"public-dispatch"`,
+  `"image-dispatch"`, `"ssh-dispatch"`, `"profile-x-dispatch"`), their doc comments, and two pre-existing words
+  in test names (`model dispatch` in `AgentModuleTest`, `network dispatch` in `OpenAiAgentProviderTest`);
+  no `dispatch` parameter remains. Matching files and lines at implementation time (file:text):
+```
+agent-core/src/test/kotlin/ru/adsrv/frpjump/agent/SideEffectAdmissionTest.kt:        admitSideEffect("dispatch")
+agent-core/src/test/kotlin/ru/adsrv/frpjump/agent/SideEffectAdmissionTest.kt:        try { withContext(SideEffectAdmission { false }) { admitSideEffec
+agent-core/src/test/kotlin/ru/adsrv/frpjump/agent/SideEffectAdmissionTest.kt:        catch (refused: CancellationException) { assertTrue(refused.messa
+agent-core/src/test/kotlin/ru/adsrv/frpjump/agent/SideEffectAdmissionTest.kt:                admitSideEffect("dispatch")
+agent-core/src/test/kotlin/ru/adsrv/frpjump/agent/SideEffectAdmissionTest.kt:        val categories = listOf("admission", "dispatch", "tool-start", "d
+agent-core/src/test/kotlin/ru/adsrv/frpjump/agent/AgentModuleTest.kt:    @Test fun `reply size and schema overhead are bounded before tools or model d
+agent-openai/src/test/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiAgentProviderTest.kt:    @Test fun `request cap fails before network dispatch`() {
+app/src/main/java/ru/adsrv/frpjump/assistant/PublicWebTransport.kt:/** [attempt] runs on the caller's coroutine once per admitted DNS lookup ("dns-dis
+app/src/main/java/ru/adsrv/frpjump/assistant/PublicWebTransport.kt:            admitSideEffect("dns-dispatch")
+app/src/main/java/ru/adsrv/frpjump/assistant/PublicWebTransport.kt:            attempt("dns-dispatch")
+app/src/main/java/ru/adsrv/frpjump/assistant/PublicWebTransport.kt:            admitSideEffect("public-dispatch")
+app/src/main/java/ru/adsrv/frpjump/assistant/PublicWebTransport.kt:            attempt("public-dispatch")
+app/src/main/java/ru/adsrv/frpjump/assistant/AssistantWebTools.kt:            if (category == "public-dispatch" && !httpStarted) { searchState.httpDis
+app/src/main/java/ru/adsrv/frpjump/assistant/AssistantWebTools.kt:            admitSideEffect("image-dispatch")
+```
+- Grep 6 matches only pre-existing reflection into `ProfileRuntime.tunnels` (unrelated to the adapter), counted per file:
+```
+1 app/src/test/java/ru/adsrv/frpjump/assistant/AssistantModelSurfaceTest.kt
+      1 app/src/test/java/ru/adsrv/frpjump/assistant/AssistantSshCommandTest.kt
+```
 
 Unchanged-policy check (review the diff, no hunk may touch): `PublicWebPolicy`,
 `MAX_BYTES`, `USER_AGENT`, the 10/20/30 s and 10/30/60 s timeouts, `retryOnConnectionFailure`,

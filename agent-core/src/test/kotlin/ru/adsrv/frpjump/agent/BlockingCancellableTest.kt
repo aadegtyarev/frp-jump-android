@@ -4,8 +4,11 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -62,19 +65,45 @@ class BlockingCancellableTest {
         assertTrue(thrown.get() is CancellationException); assertEquals(0, started.get()); assertEquals(0, cancels.get())
     }
 
+    /** Cancels [target] when a coroutine on Dispatchers.IO starts on this thread: exactly when the UNDISPATCHED signal begins, after the leading ensureActive(). */
+    private class CancelOnIoStart(val target: AtomicReference<Job?>) : ThreadContextElement<Unit> {
+        companion object Key : CoroutineContext.Key<CancelOnIoStart>
+        override val key: CoroutineContext.Key<*> get() = Key
+        private val armed = AtomicBoolean(true)
+        override fun updateThreadContext(context: CoroutineContext) {
+            if (context[ContinuationInterceptor] === Dispatchers.IO && armed.getAndSet(false)) target.get()?.cancel()
+        }
+        override fun restoreThreadContext(context: CoroutineContext, oldState: Unit) {}
+    }
+
+    @Test fun `onCancel never runs on a non IO caller thread even when cancel lands before the signal suspends`() = runBlocking {
+        val caller = callerDispatcher("blocking-caller-window")
+        try {
+            repeat(50) {
+                val target = AtomicReference<Job?>(); val cancelThread = AtomicReference<String?>(); val started = AtomicInteger()
+                val job = launch(caller + CancelOnIoStart(target), start = CoroutineStart.LAZY) {
+                    blockingCancellable({ cancelThread.set(Thread.currentThread().name) }) { started.incrementAndGet() }
+                }
+                target.set(job); job.start(); job.join()
+                assertEquals(0, started.get())
+                val name = cancelThread.get()
+                assertNotNull("onCancel must still run for a cancel in this window", name)
+                assertTrue("onCancel must run on an IO worker, not on the caller: $name", name!!.startsWith("DefaultDispatcher-worker"))
+            }
+        } finally { caller.close() }
+    }
+
     @Test fun `onCancel never runs on the caller thread even when the scope is already cancelled`() = runBlocking {
         val caller = callerDispatcher("blocking-caller-cancelled")
         try {
-            val callerThread = AtomicReference<Thread>(); val cancelThread = AtomicReference<Thread?>()
-            val started = AtomicInteger()
+            val cancelThread = AtomicReference<String?>(); val started = AtomicInteger()
             val job = launch(caller) {
-                callerThread.set(Thread.currentThread())
                 currentCoroutineContext().job.cancel()
-                blockingCancellable({ cancelThread.set(Thread.currentThread()) }) { started.incrementAndGet() }
+                blockingCancellable({ cancelThread.set(Thread.currentThread().name) }) { started.incrementAndGet() }
             }
             job.join()
             assertEquals(0, started.get())
-            cancelThread.get()?.let { assertNotSame(callerThread.get(), it) }; Unit
+            assertNull("an already cancelled caller needs no onCancel", cancelThread.get())
         } finally { caller.close() }
     }
 

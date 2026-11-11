@@ -195,7 +195,8 @@ Failed settings writes retain prior authority. Admission and publication
 recheck current authority, including after the kernel returns. Successful settings
 and provider snapshot commits serialize with admission, every provider/public/image
 start check and every guarded answer/draft/error/window publication on a shared guard.
-A start whose check passed before a commit may still begin; it is then cancelled.
+A start whose check passed before a commit may still begin; an HTTP exchange is then cancelled, while an
+uncancellable DNS lookup finishes and no HTTP request starts afterwards.
 Store IO/credential work happens outside that guard; state notifications and
 cancellation run outside store commit monitors. An old completion
 cannot publish an answer/error or release another owner's pending slot.
@@ -699,9 +700,11 @@ committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
 Chat tests exercise the production conversation owner with controlled preparation,
 providers and cancellation, plus the real credential-store → adapter loopback
-path. Controlled loopback and held-exchange tests (application-interceptor latch,
-stalled body, latched DNS) also hold real adapter and public-transport cleanup
-across completion, failure, cancellation and authority changes before explicit retry.
+path. Real-adapter loopback tests prove prompt cancellation (stalled response and
+body) and that an exchange held by an application-interceptor latch keeps the caller
+until it returns; held-exchange tests of the public transport (stalled body, latched
+DNS) do the same. Slot retention across completion, failure, cancellation and authority
+changes before explicit retry is proven with a fake provider built on `blockingCancellable`.
 Synthetic navigation/Compose checks use the production Settings chat entry,
 chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
 setup recovery, recreation and pop. The explicit test-only plain-Application
