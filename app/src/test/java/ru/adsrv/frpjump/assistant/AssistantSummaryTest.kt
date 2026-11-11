@@ -97,6 +97,22 @@ class AssistantSummaryTest {
         } finally { release.complete(Unit);chat.close();scope.cancel() }
     }
 
+    @Test fun `summary provider failure reports the provider status on the summary problem`() = runBlocking {
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
+        val history=AssistantChatHistory(Memory(),Box(),scope,Dispatchers.Unconfined)
+        val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
+        history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
+        val model=AgentProvider { request ->
+            if(request.instructions==AssistantSummary.PROMPT) throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP,400)
+            AgentReply("must not run")
+        }
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,historyStore=history)
+        try {
+            chat.ready();chat.edit("Continue");chat.send();chat.ready()
+            assertEquals(ChatProblem.SUMMARY,chat.state.value.problem);assertEquals(400,chat.state.value.problemStatus)
+        } finally { chat.close();scope.cancel() }
+    }
+
     @Test fun `real requests summarize then a fresh conversation continues exact target without replay`() = runBlocking {
         for (override in listOf(null,"summary-model")) {
             val seen = Collections.synchronizedList(mutableListOf<JsonObject>())

@@ -87,7 +87,7 @@ class AssistantToolPipelineTest {
         val probe = Probe(cancelAt = "tool-start")
         var fetches = 0; var inspections = 0
         val fetcher = PublicFetcher { url, _, dispatch -> fetches++; dispatch("public-dispatch") { }; WebResponse(url, "text/plain", ByteArray(0), 404, null) }
-        val inspector = object : ru.adsrv.frpjump.agent.openai.ImageInspector {
+        val inspector = object : ru.adsrv.frpjump.agent.ImageInspector {
             override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit): String { inspections++; return "x" }
         }
         val tools = AssistantWebTools(AssistantTools(search = true, readPage = true, inspectImage = true), fetcher, WebSearchState(), inspector, probe.dispatch, { }).tools

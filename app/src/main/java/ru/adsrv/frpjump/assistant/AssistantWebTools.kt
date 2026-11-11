@@ -5,7 +5,6 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import ru.adsrv.frpjump.agent.*
-import ru.adsrv.frpjump.agent.openai.ImageInspector
 import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.settings.AssistantTools
 
@@ -93,7 +92,7 @@ internal class AssistantWebTools(
         val modelText = try {
             operation.inspectImage(response.mime, response.bytes, question) { start -> dispatch("image-dispatch", start) }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: ru.adsrv.frpjump.agent.openai.OpenAiProviderException) { throw WebException(WebFailure.IMAGE, failure.status, failure.failure) }
+        catch (failure: ProviderException) { throw WebException(WebFailure.IMAGE, failure.status, failure.kind) }
         catch (_: Exception) { webFail(WebFailure.IMAGE) }
         if (modelText.isBlank() || modelText.length > 4000) webFail(WebFailure.IMAGE)
         source(ChatSource("Model response to image request (unverified)", response.url))
@@ -115,12 +114,12 @@ internal fun webFailureDescription(failure: Exception): String {
         WebFailure.BLOCKED -> "Search blocked or rate limited$status; cooldown is at least 15 minutes. Direct page reading remains available."
         WebFailure.ARGUMENTS -> "Invalid tool arguments: URL at most 2048, query 256, image question 1000 characters."
         WebFailure.IMAGE -> when (error?.imageFailure) {
-            ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP -> "Image API request failed$status."
-            ru.adsrv.frpjump.agent.openai.ProviderFailure.TIMEOUT -> "Image API request timed out."
-            ru.adsrv.frpjump.agent.openai.ProviderFailure.NETWORK -> "Image API network request failed."
-            ru.adsrv.frpjump.agent.openai.ProviderFailure.REQUEST_TOO_LARGE -> "Encoded image API request exceeds the configured provider byte limit."
-            ru.adsrv.frpjump.agent.openai.ProviderFailure.RESPONSE_TOO_LARGE -> "Image API response exceeds the configured provider byte limit."
-            ru.adsrv.frpjump.agent.openai.ProviderFailure.INCOMPLETE_RESPONSE -> "Image API response is incomplete or filtered."
+            ProviderErrorKind.HTTP -> "Image API request failed$status."
+            ProviderErrorKind.TIMEOUT -> "Image API request timed out."
+            ProviderErrorKind.NETWORK -> "Image API network request failed."
+            ProviderErrorKind.REQUEST_TOO_LARGE -> "Encoded image API request exceeds the configured provider byte limit."
+            ProviderErrorKind.RESPONSE_TOO_LARGE -> "Image API response exceeds the configured provider byte limit."
+            ProviderErrorKind.INCOMPLETE_RESPONSE -> "Image API response is incomplete or filtered."
             else -> "Invalid image or image API reply: require JPEG/PNG up to 1 MiB/4 megapixels and nonempty complete model text up to 4000 characters."
         }
     }

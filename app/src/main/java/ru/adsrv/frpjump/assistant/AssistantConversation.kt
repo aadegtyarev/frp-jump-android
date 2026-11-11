@@ -242,7 +242,7 @@ class AssistantConversation(
                             val past = pastRecords.map { it to it.model(active) }
                             var transportTimeout = false; var invalidReply = false
                             val web = AssistantWebTools(enabledTools, runtime.publicWeb, runtime.webSearch,
-                                active as? ru.adsrv.frpjump.agent.openai.ImageInspector,
+                                active as? ImageInspector,
                                 dispatch = { category, action -> guarded(owner, category) { action(); true } ?: throw CancellationException() },
                                 publish = { source ->
                                     val last = document.records.last()
@@ -260,10 +260,10 @@ class AssistantConversation(
                                 if (included.size != request.turns.size - 1) guarded(owner, "window") { document = document.copy(omitted = true); mutable.value = mutable.value.copy(omitted = true) }
                                 try {
                                     complete(owner, active, bounded)
-                                } catch (failure: ru.adsrv.frpjump.agent.openai.OpenAiProviderException) {
-                                    transportTimeout = failure.failure == ru.adsrv.frpjump.agent.openai.ProviderFailure.TIMEOUT
-                                    invalidReply = failure.failure in setOf(ru.adsrv.frpjump.agent.openai.ProviderFailure.INVALID_RESPONSE,
-                                        ru.adsrv.frpjump.agent.openai.ProviderFailure.INCOMPLETE_RESPONSE, ru.adsrv.frpjump.agent.openai.ProviderFailure.RESPONSE_TOO_LARGE)
+                                } catch (failure: ProviderException) {
+                                    transportTimeout = failure.kind == ProviderErrorKind.TIMEOUT
+                                    invalidReply = failure.kind in setOf(ProviderErrorKind.INVALID_RESPONSE,
+                                        ProviderErrorKind.INCOMPLETE_RESPONSE, ProviderErrorKind.RESPONSE_TOO_LARGE)
                                     throw failure
                                 }
                             }
@@ -290,7 +290,7 @@ class AssistantConversation(
                                             ProviderSetupProblem.READ_FAILED -> ChatProblem.READ
                                             else -> ChatProblem.SUMMARY
                                         }
-                                        summaryStatus = (failure as? ru.adsrv.frpjump.agent.openai.OpenAiProviderException)?.status
+                                        summaryStatus = (failure as? ProviderException)?.status
                                         throw failure
                                     }
                                 }, onEvent = { event ->

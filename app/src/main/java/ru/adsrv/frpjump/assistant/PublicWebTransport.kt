@@ -16,7 +16,7 @@ import okio.Buffer
 
 internal enum class WebFailure { URL, NETWORK, HTTP, TOO_LARGE, TYPE, EMPTY, LIMIT, BLOCKED, IMAGE, ARGUMENTS }
 internal class WebException(val reason: WebFailure, val status: Int? = null,
-    val imageFailure: ru.adsrv.frpjump.agent.openai.ProviderFailure? = null) : Exception("Public request failed: $reason")
+    val imageFailure: ru.adsrv.frpjump.agent.ProviderErrorKind? = null) : Exception("Public request failed: $reason")
 internal fun webFail(reason: WebFailure, status: Int? = null): Nothing = throw WebException(reason, status)
 
 /** Fail closed: IPv6 global unicast only, excluding transition/documentation/special allocations. */

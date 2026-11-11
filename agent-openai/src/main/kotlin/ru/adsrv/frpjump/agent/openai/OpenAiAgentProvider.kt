@@ -18,19 +18,14 @@ import okio.Buffer
 import ru.adsrv.frpjump.agent.AgentProvider
 import ru.adsrv.frpjump.agent.AgentReply
 import ru.adsrv.frpjump.agent.AgentRequest
+import ru.adsrv.frpjump.agent.ImageInspector
+import ru.adsrv.frpjump.agent.PersistentContinuations
 
 /** Shared by credential setup and the transport; never put invalid key values in exceptions. */
 fun validOpenAiApiKey(key: String): Boolean = key.isNotBlank() && key.length <= 16_384 && key.all { it.code in 33..126 }
 
-/** Optional same-instance image operation; pixels never enter the kernel/history protocol.
- * Returned ordinary model text, including inability/refusal, is unverified and not proof of vision.
- */
-interface ImageInspector {
-    suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit = { it() }): String
-}
-
 /** Non-streaming Chat Completions adapter. No key persistence, tracing, implicit retries or fallback. */
-class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: String) : AgentProvider, ImageInspector {
+class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: String) : AgentProvider, ImageInspector, PersistentContinuations {
     private val owner = Any()
     // A deterministic test probe at the actual callback exit; null in production.
     internal var beforeCallbackExit: (() -> Unit)? = null
@@ -39,8 +34,8 @@ class OpenAiAgentProvider(private val config: OpenAiConfig, private val apiKey: 
     init { require(validOpenAiApiKey(apiKey)) { "Invalid API key" } }
 
     /** App-owned encrypted checkpoint; caller must enforce the original saved provider revision. */
-    fun saveContinuation(value: ru.adsrv.frpjump.agent.AgentContinuation): String = OpenAiCodec.saveContinuation(value, owner)
-    fun restoreContinuation(value: String): ru.adsrv.frpjump.agent.AgentContinuation = OpenAiCodec.restoreContinuation(value, owner)
+    override fun saveContinuation(value: ru.adsrv.frpjump.agent.AgentContinuation): String = OpenAiCodec.saveContinuation(value, owner)
+    override fun restoreContinuation(saved: String): ru.adsrv.frpjump.agent.AgentContinuation = OpenAiCodec.restoreContinuation(saved, owner)
 
     override suspend fun complete(request: AgentRequest): AgentReply = complete(request) { it() }
 

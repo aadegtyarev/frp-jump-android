@@ -709,7 +709,7 @@ class AssistantChatScreenTest {
         assertThrows(WebException::class.java) { validateImage("image/jpeg", bytes) }
         assertThrows(WebException::class.java) { validateImage("image/png", byteArrayOf(1, 2, 3)) }
         val inspected = mutableListOf<String>()
-        val inspector = object : ru.adsrv.frpjump.agent.openai.ImageInspector {
+        val inspector = object : ru.adsrv.frpjump.agent.ImageInspector {
             override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit): String {
                 dispatch { inspected += question }; return "I cannot process images"
             }
@@ -730,7 +730,7 @@ class AssistantChatScreenTest {
         val bomb = java.io.ByteArrayOutputStream().also { large.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         large.recycle()
         assertThrows(WebException::class.java) { validateImage("image/png", bomb) }
-        val rejecting = object : ru.adsrv.frpjump.agent.openai.ImageInspector {
+        val rejecting = object : ru.adsrv.frpjump.agent.ImageInspector {
             override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit): String {
                 dispatch { }; throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP, 400)
             }
