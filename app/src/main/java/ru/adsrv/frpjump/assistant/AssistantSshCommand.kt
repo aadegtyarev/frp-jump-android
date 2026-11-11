@@ -75,7 +75,7 @@ private fun setup() = ToolOutput("SSH login or host trust needs setup. Open this
 internal class AssistantSshCommandTool(private val commands: AssistantSshCommands, private val dispatch: WebDispatch) : AppTool<SshCommandArgs>(
     AssistantToolId.SSH_COMMAND,
     "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.",
-    objectSchema { string("profile_id"); string("connection_id"); string("command") }, dispatch,
+    objectSchema { string("profile_id"); string("connection_id"); string("command") },
 ) {
     override fun parse(args: StrictArgs) = args.run {
         exactKeys("profile_id", "connection_id", "command")

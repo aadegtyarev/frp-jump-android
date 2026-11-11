@@ -28,7 +28,7 @@ class AssistantWebOwnershipTest {
         for (tool in listOf("web_search", "read_page", "inspect_image")) for (category in listOf("tool-start", "public-dispatch", "source", "progress")) for (commitFirst in listOf(false, true)) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
             var fetches = 0; var calls = 0
-            settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { fetches++ }; document() }
+            settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt -> admitSideEffect("public-dispatch"); attempt("public-dispatch"); fetches++; document() }
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
                 AgentProvider { if (++calls == 1) reply("call") else AgentReply("complete") }
@@ -61,7 +61,7 @@ class AssistantWebOwnershipTest {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true, assistantReadPage = true, assistantInspectImage = true) } }
             val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
             val requests = mutableListOf<AgentRequest>(); var fetches = 0
-            settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { fetches++ }; document() }
+            settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt -> admitSideEffect("public-dispatch"); attempt("public-dispatch"); fetches++; document() }
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { request ->
                 requests += request
@@ -86,8 +86,8 @@ class AssistantWebOwnershipTest {
     @Test fun `public cleanup spans pop reopen and revoked source cannot be published`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>(); var calls = 0
-        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch ->
-            dispatch("public-dispatch") { }; entered.complete(Unit)
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt ->
+            admitSideEffect("public-dispatch"); attempt("public-dispatch"); entered.complete(Unit)
             withContext(NonCancellable) { release.await() }; document()
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -105,7 +105,7 @@ class AssistantWebOwnershipTest {
 
     @Test fun `successful fetched sources follow retained turns and tool results count in aggregate history`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
-        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { }; document() }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt -> admitSideEffect("public-dispatch"); attempt("public-dispatch"); document() }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var calls = 0
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
@@ -124,8 +124,8 @@ class AssistantWebOwnershipTest {
     }
     @Test fun `oversize current tool history fails context full without truncating input or publishing answer`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
-        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch ->
-            dispatch("public-dispatch") { }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt ->
+            admitSideEffect("public-dispatch"); attempt("public-dispatch")
             WebResponse("https://public.org/doc", "text/plain", "x".repeat(8000).toByteArray(), 200, null)
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -156,8 +156,8 @@ class AssistantWebOwnershipTest {
             store.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic"))
             val originalFile = file.text
             var fetches = 0
-            settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
-                dispatch("public-dispatch") { fetches++ }
+            settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
+                admitSideEffect("public-dispatch"); attempt("public-dispatch"); fetches++
                 WebResponse(url, "text/html", "<a class=result__a href='https://public.org/doc'>Guide</a>".toByteArray(), 200, null)
             }
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -214,8 +214,8 @@ class AssistantWebOwnershipTest {
 
     @Test fun `tool failure detail and generated query survive a missing model reply then clear for next Send`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true) } }
-        settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
-            dispatch("public-dispatch") { }
+        settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
+            admitSideEffect("public-dispatch"); attempt("public-dispatch")
             WebResponse(url, "text/html", "<form id='challenge-form'></form>".toByteArray(), 202, null)
         }
         val received = CompletableDeferred<ToolResult>(); val reply = CompletableDeferred<Unit>()
@@ -247,7 +247,7 @@ class AssistantWebOwnershipTest {
 
     @Test fun `tool failure remains visible when context cannot admit the next model request`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
-        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { }; throw WebException(WebFailure.HTTP, 503) }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt -> admitSideEffect("public-dispatch"); attempt("public-dispatch"); throw WebException(WebFailure.HTTP, 503) }
         var calls = 0
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
@@ -264,7 +264,7 @@ class AssistantWebOwnershipTest {
 
     @Test fun `completed tool details share bounded turns and leave with eviction and authority change`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
-        settings.assistantChat.publicWeb = PublicFetcher { _, _, dispatch -> dispatch("public-dispatch") { }; throw WebException(WebFailure.HTTP, 503) }
+        settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt -> admitSideEffect("public-dispatch"); attempt("public-dispatch"); throw WebException(WebFailure.HTTP, 503) }
         var snapshot = saved
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { snapshot }, { AgentProvider { request ->
@@ -290,8 +290,8 @@ class AssistantWebOwnershipTest {
         for (status in listOf(200, 403, 429)) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true) } }
             val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
-            settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
-                dispatch("public-dispatch") { }; entered.complete(Unit)
+            settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
+                admitSideEffect("public-dispatch"); attempt("public-dispatch"); entered.complete(Unit)
                 withContext(NonCancellable) { release.await() }
                 WebResponse(url, "text/html", "CAPTCHA".toByteArray(), status, "900")
             }

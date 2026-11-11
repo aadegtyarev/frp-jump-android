@@ -649,8 +649,8 @@ class AssistantChatScreenTest {
     @Test fun toolsFlowShowsFetchedSourcesAndFailureWithoutMakingMarkdownActive() {
         mode = "tool-read"
         settings.update { it.copy(assistantReadPage = true) }
-        settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
-            dispatch("public-dispatch") { }
+        settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
+            ru.adsrv.frpjump.agent.admitSideEffect("public-dispatch"); attempt("public-dispatch")
             if (!url.startsWith("https://")) throw WebException(WebFailure.URL)
             WebResponse("https://public.org/doc", "text/html", "<title>Fetched guide</title><p>Useful static documentation with enough text to read.</p>".toByteArray(), 200, null)
         }
@@ -684,8 +684,8 @@ class AssistantChatScreenTest {
     @Test fun toolFailureReasonSurvivesProviderFailureWithoutModelExplanation() {
         mode = "search-failure-provider-fail"
         settings.update { it.copy(assistantSearch = true) }
-        settings.assistantChat.publicWeb = PublicFetcher { url, _, dispatch ->
-            dispatch("public-dispatch") { }
+        settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
+            ru.adsrv.frpjump.agent.admitSideEffect("public-dispatch"); attempt("public-dispatch")
             WebResponse(url, "text/html", "<form id='challenge-form'></form>".toByteArray(), 202, null)
         }
         install(); input().performTextInput("Find the documentation")
@@ -710,15 +710,17 @@ class AssistantChatScreenTest {
         assertThrows(WebException::class.java) { validateImage("image/png", byteArrayOf(1, 2, 3)) }
         val inspected = mutableListOf<String>()
         val inspector = object : ru.adsrv.frpjump.agent.ImageInspector {
-            override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit): String {
-                dispatch { inspected += question }; return "I cannot process images"
+            override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String): String {
+                inspected += question; return "I cannot process images"
             }
         }
-        val session = AssistantWebTools(ru.adsrv.frpjump.settings.AssistantTools(inspectImage = true), PublicFetcher { _, _, dispatch ->
-            dispatch("public-dispatch") { }; WebResponse("https://public.org/image.png", "image/png", bytes, 200, null)
-        }, WebSearchState(), inspector, { _, start -> start() }, {})
+        val session = AssistantWebTools(ru.adsrv.frpjump.settings.AssistantTools(inspectImage = true), PublicFetcher { _, _, attempt ->
+            ru.adsrv.frpjump.agent.admitSideEffect("public-dispatch"); attempt("public-dispatch"); WebResponse("https://public.org/image.png", "image/png", bytes, 200, null)
+        }, WebSearchState(), inspector, {})
         val arguments = kotlinx.serialization.json.buildJsonObject { put("url", kotlinx.serialization.json.JsonPrimitive("https://public.org/image.png")); put("question", kotlinx.serialization.json.JsonPrimitive("What is shown?")) }
-        session.tools.single().execute(arguments).also {
+        val admitted = mutableListOf<String>()
+        withContext(ru.adsrv.frpjump.agent.SideEffectAdmission { admitted += it; true }) { session.tools.single().execute(arguments) }.also {
+            assertEquals(listOf("tool-start", "public-dispatch", "image-dispatch"), admitted)
             assertEquals(ToolOutcome.SUCCESS, it.outcome)
             assertTrue(it.text.contains("I cannot process images")); assertTrue(it.text.contains("unverified"))
             assertFalse(it.text.contains("model-declared"))
@@ -731,13 +733,13 @@ class AssistantChatScreenTest {
         large.recycle()
         assertThrows(WebException::class.java) { validateImage("image/png", bomb) }
         val rejecting = object : ru.adsrv.frpjump.agent.ImageInspector {
-            override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit): String {
-                dispatch { }; throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP, 400)
+            override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String): String {
+                throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP, 400)
             }
         }
-        val rejected = AssistantWebTools(ru.adsrv.frpjump.settings.AssistantTools(inspectImage = true), PublicFetcher { _, _, dispatch ->
-            dispatch("public-dispatch") { }; WebResponse("https://public.org/image.png", "image/png", bytes, 200, null)
-        }, WebSearchState(), rejecting, { _, start -> start() }, {})
+        val rejected = AssistantWebTools(ru.adsrv.frpjump.settings.AssistantTools(inspectImage = true), PublicFetcher { _, _, attempt ->
+            ru.adsrv.frpjump.agent.admitSideEffect("public-dispatch"); attempt("public-dispatch"); WebResponse("https://public.org/image.png", "image/png", bytes, 200, null)
+        }, WebSearchState(), rejecting, {})
         var normalCalls = 0
         val result = AgentModule(true).run(AgentProvider { request ->
             if (++normalCalls == 1) AgentReply(calls = listOf(ToolCall("visual", "inspect_image", arguments)))

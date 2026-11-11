@@ -38,7 +38,7 @@ class AssistantModelSurfaceTest {
 
     private fun noFetch() = PublicFetcher { _, _, _ -> throw AssertionError("must not fetch") }
     private fun webTools(fetcher: PublicFetcher = noFetch()) =
-        AssistantWebTools(AssistantTools(search = true, readPage = true, inspectImage = true), fetcher, WebSearchState(), null, { _, start -> start() }, { }).tools
+        AssistantWebTools(AssistantTools(search = true, readPage = true, inspectImage = true), fetcher, WebSearchState(), null, { }).tools
     private fun profileTool(refreshes: AtomicInteger = AtomicInteger()) =
         AssistantProfileInformationTool({ refreshes.incrementAndGet() }, { ProfileInformationState() }) { _, action -> action() }
 

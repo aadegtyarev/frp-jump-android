@@ -89,47 +89,96 @@ class AssistantChatOwnershipTest {
         }
     }
 
-    @Test fun `actual adapter callback exit keeps app slot across completion cancellation and authority changes`() = runBlocking {
-        for (action in listOf("success", "error", "invalid", "oversize", "network", "stop", "body-stop", "exit", "disable", "revision", "timeout")) {
-            val server = java.net.ServerSocket(0, 10, java.net.InetAddress.getByName("127.0.0.1"))
-            val serverRelease = CountDownLatch(1)
-            val serverThread = Thread {
-                try {
-                    server.accept().use { socket ->
-                        val input = socket.getInputStream().bufferedReader()
-                        var length = 0
-                        while (true) {
-                            val line = input.readLine() ?: break
-                            if (line.isEmpty()) break
-                            if (line.startsWith("Content-Length:", true)) length = line.substringAfter(':').trim().toInt()
-                        }
-                        var left = length
-                        while (left > 0) { val n = input.read(CharArray(left)); if (n < 0) break; left -= n }
-                        if (action == "timeout") serverRelease.await(5, TimeUnit.SECONDS)
-                        else if (action != "network") {
-                            val text = if (action == "error") "failure" else if (action == "invalid") "not-json" else """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"old answer"}}]}"""
-                            val bytes = text.toByteArray()
-                            val status = if (action == "error") "500 Error" else "200 OK"
-                            socket.getOutputStream().apply {
-                                write("HTTP/1.1 $status\r\nContent-Length: ${if (action == "oversize") 1_048_577 else bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
-                                write(bytes); flush()
-                            }
-                        }
-                    }
-                } catch (_: java.io.IOException) { }
-            }.apply { isDaemon = true; start() }
+    @Test fun `transport exit keeps app slot across completion cancellation and authority changes`() = runBlocking {
+        for (action in listOf("success", "error", "stop", "exit", "disable", "revision", "timeout")) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
             val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
-            store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "m"), null, "synthetic"))
+            store.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic"))
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val unrelated = scope.launch { awaitCancellation() }
-            val entered = CountDownLatch(1); val release = CountDownLatch(1); val awaiting = CountDownLatch(1)
-            val adapter = ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider(
-                ru.adsrv.frpjump.agent.openai.OpenAiConfig("http://127.0.0.1:${server.localPort}/v1", "m"), "synthetic")
-            val probe = adapter.javaClass.getDeclaredField(if (action == "body-stop") "beforeResponseRead" else "beforeCallbackExit").apply { isAccessible = true }
-            probe.set(adapter, { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); Unit })
-            adapter.javaClass.getDeclaredField("beforeAwaitCallbackExit").apply { isAccessible = true }
-                .set(adapter, { awaiting.countDown(); Unit })
+            val inside = Gate(); val cancelled = CountDownLatch(1)
+            // The fake transport is the real primitive: the thread stays inside the blocking exchange until released.
+            val old = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { AgentProvider {
+                blockingCancellable({ cancelled.countDown() }) { inside.waitHere() }
+                if (action == "error") throw ProviderException(ProviderErrorKind.NETWORK, null, null)
+                AgentReply("old answer")
+            } }, store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat)
+            var preparations = 0
+            val newer = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
+                preparations++; AgentProvider { AgentReply("new answer") }
+            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat)
+            try {
+                old.edit("old private input"); old.send(); inside.entered()
+                when (action) {
+                    "stop" -> old.stop()
+                    "exit" -> old.close()
+                    "disable" -> { settings.update { it.copy(assistantEnabled = false) }; settings.update { it.copy(assistantEnabled = true) }; old.refresh() }
+                    "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings(model = "next"), store.currentSnapshot.revision)); old.refresh() }
+                }
+                if (action in listOf("success", "error")) assertEquals("$action must not cancel the exchange", 1L, cancelled.count)
+                else assertTrue("$action must cancel the exact exchange promptly", cancelled.await(2, TimeUnit.SECONDS))
+                // Negative observation: an owner that frees the slot before the blocking exchange returned would do so well inside this window.
+                assertNull("$action must keep the slot while the exchange is held", withTimeoutOrNull(300) { settings.assistantChat.busy.first { !it } })
+                newer.edit("new input"); newer.send()
+                assertEquals("$action must not start replacement", 0, preparations)
+                assertTrue("$action must retain slot", settings.assistantChat.busy.value)
+                assertTrue(newer.state.value.busy); assertNull(newer.state.value.pendingText)
+                assertTrue(newer.state.value.turns.isEmpty()); assertTrue(unrelated.isActive)
+                inside.release.countDown()
+                withTimeout(4000) { settings.assistantChat.busy.first { !it } }
+                assertEquals("no queued send", 0, preparations)
+                newer.send(); idle(newer)
+                assertEquals(1, preparations); assertEquals("new answer", newer.state.value.turns.single().answer)
+            } finally { inside.release.countDown(); old.close(); newer.close(); scope.cancel() }
+        }
+    }
+
+    /** One loopback HTTP/1.1 connection; [action] picks the reply, or a stall before the headers or in the middle of the body. */
+    private class Loopback(private val action: String) : AutoCloseable {
+        val server = java.net.ServerSocket(0, 10, java.net.InetAddress.getByName("127.0.0.1"))
+        val received = CountDownLatch(1); val release = CountDownLatch(1)
+        val url: String get() = "http://127.0.0.1:${server.localPort}/v1"
+        private val thread = Thread {
+            try {
+                server.accept().use { socket ->
+                    val input = socket.getInputStream().bufferedReader()
+                    var length = 0
+                    while (true) {
+                        val line = input.readLine() ?: break
+                        if (line.isEmpty()) break
+                        if (line.startsWith("Content-Length:", true)) length = line.substringAfter(':').trim().toInt()
+                    }
+                    var left = length
+                    while (left > 0) { val n = input.read(CharArray(left)); if (n < 0) break; left -= n }
+                    received.countDown()
+                    val out = socket.getOutputStream()
+                    when (action) {
+                        "network" -> Unit
+                        "body-stop" -> { out.write("HTTP/1.1 200 OK\r\nContent-Length: 100000\r\nConnection: close\r\n\r\n{\"choices\"".toByteArray()); out.flush(); release.await(5, TimeUnit.SECONDS) }
+                        "success", "error", "invalid", "oversize" -> {
+                            val text = if (action == "error") "failure" else if (action == "invalid") "not-json" else """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"old answer"}}]}"""
+                            val bytes = text.toByteArray()
+                            out.write("HTTP/1.1 ${if (action == "error") "500 Error" else "200 OK"}\r\nContent-Length: ${if (action == "oversize") 1_048_577 else bytes.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                            out.write(bytes); out.flush()
+                        }
+                        else -> release.await(5, TimeUnit.SECONDS)
+                    }
+                }
+            } catch (_: java.io.IOException) { }
+        }.apply { isDaemon = true; start() }
+        override fun close() { release.countDown(); server.close(); thread.join(2000) }
+    }
+
+    @Test fun `real adapter outcomes and cancellation release the slot only after exit`() = runBlocking {
+        val outcomes = mapOf("success" to null, "error" to ChatProblem.PROVIDER, "invalid" to ChatProblem.INVALID_REPLY,
+            "oversize" to ChatProblem.INVALID_REPLY, "network" to ChatProblem.PROVIDER, "timeout" to ChatProblem.TIMEOUT)
+        for (action in listOf("success", "error", "invalid", "oversize", "network", "timeout", "stop", "body-stop", "exit", "disable", "revision")) Loopback(action).use { loop ->
+            val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
+            val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
+            store.save(AssistantProviderDraft(AssistantProviderSettings(loop.url, "m"), null, "synthetic"))
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val unrelated = scope.launch { awaitCancellation() }
+            val adapter = ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider(ru.adsrv.frpjump.agent.openai.OpenAiConfig(loop.url, "m"), "synthetic")
             val old = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { adapter },
                 store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat)
             var preparations = 0
@@ -138,28 +187,78 @@ class AssistantChatOwnershipTest {
             }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat)
             try {
                 old.edit("old private input"); old.send()
-                assertTrue("callback $action", entered.await(4, TimeUnit.SECONDS))
+                assertTrue("request $action", loop.received.await(4, TimeUnit.SECONDS))
                 when (action) {
                     "stop", "body-stop" -> old.stop()
                     "exit" -> old.close()
                     "disable" -> { settings.update { it.copy(assistantEnabled = false) }; settings.update { it.copy(assistantEnabled = true) }; old.refresh() }
-                    "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "next"), store.currentSnapshot.revision)); old.refresh() }
+                    "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings(loop.url, "next"), store.currentSnapshot.revision)); old.refresh() }
                 }
-                assertTrue("coroutine reached callback-exit wait: $action", awaiting.await(4, TimeUnit.SECONDS))
-                newer.edit("new input"); newer.send()
-                assertEquals("$action must not start replacement", 0, preparations)
-                assertTrue("$action must retain slot", settings.assistantChat.busy.value)
-                assertTrue(newer.state.value.busy); assertNull(newer.state.value.pendingText)
-                assertTrue(newer.state.value.turns.isEmpty()); assertTrue(unrelated.isActive)
-                release.countDown(); serverRelease.countDown()
+                // The server never releases a stalled exchange: the slot is free only because Call.cancel() ended it, promptly.
                 withTimeout(4000) { settings.assistantChat.busy.first { !it } }
-                assertEquals("no queued send", 0, preparations)
-                newer.send(); idle(newer)
-                assertEquals(1, preparations); assertEquals("new answer", newer.state.value.turns.single().answer)
-            } finally {
-                release.countDown(); serverRelease.countDown(); old.close(); newer.close(); scope.cancel(); server.close(); serverThread.join(2000)
-            }
+                if (action in outcomes) {
+                    idle(old)
+                    assertEquals(action, outcomes.getValue(action), old.state.value.problem)
+                    if (action == "success") assertEquals("old answer", old.state.value.turns.single().answer)
+                }
+                assertEquals("$action must not start a queued replacement", 0, preparations)
+                newer.edit("new input"); newer.send(); idle(newer)
+                assertEquals(1, preparations); assertEquals("new answer", newer.state.value.turns.single().answer); assertTrue(unrelated.isActive)
+            } finally { loop.release.countDown(); old.close(); newer.close(); scope.cancel() }
         }
+    }
+
+    @Test fun `after a committed disable no second model request reaches the server`() = runBlocking {
+        val requests = java.util.concurrent.atomic.AtomicInteger()
+        val first = """{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"tool_calls":[{"id":"c1","type":"function","function":{"name":"read_page","arguments":"{\"url\":\"https://public.org/doc\"}"}}]}}]}"""
+        val server = java.net.ServerSocket(0, 10, java.net.InetAddress.getByName("127.0.0.1"))
+        val acceptor = Thread {
+            try {
+                while (true) {
+                    val socket = server.accept()
+                    Thread {
+                        try {
+                            socket.use {
+                                val input = it.getInputStream().bufferedReader()
+                                var length = 0
+                                while (true) {
+                                    val line = input.readLine() ?: break
+                                    if (line.isEmpty()) break
+                                    if (line.startsWith("Content-Length:", true)) length = line.substringAfter(':').trim().toInt()
+                                }
+                                var left = length
+                                while (left > 0) { val n = input.read(CharArray(left)); if (n < 0) break; left -= n }
+                                val bytes = (if (requests.incrementAndGet() == 1) first else """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"late"}}]}""").toByteArray()
+                                it.getOutputStream().apply { write("HTTP/1.1 200 OK\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray()); write(bytes); flush() }
+                            }
+                        } catch (_: java.io.IOException) { }
+                    }.apply { isDaemon = true; start() }
+                }
+            } catch (_: java.io.IOException) { }
+        }.apply { isDaemon = true; start() }
+        val url = "http://127.0.0.1:${server.localPort}/v1"
+        val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
+        settings.assistantChat.publicWeb = PublicFetcher { u, _, attempt ->
+            admitSideEffect("public-dispatch"); attempt("public-dispatch"); WebResponse(u, "text/plain", "Useful documentation text.".toByteArray(), 200, null)
+        }
+        val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
+        store.save(AssistantProviderDraft(AssistantProviderSettings(url, "m"), null, "synthetic"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val adapter = ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider(ru.adsrv.frpjump.agent.openai.OpenAiConfig(url, "m"), "synthetic")
+        val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { adapter }, store::requireRevision,
+            AgentModule(true), runtime = settings.assistantChat)
+        val hold = Gate(); val dispatches = java.util.concurrent.atomic.AtomicInteger()
+        // The second model request is held just before its start check; the disable commits first, so the check must refuse it.
+        settings.assistantChat.beforeAction = { category -> if (category == "dispatch" && dispatches.incrementAndGet() == 2) hold.waitHere() }
+        try {
+            chat.edit("q"); chat.send(); hold.entered()
+            assertEquals(1, requests.get())
+            settings.update { it.copy(assistantEnabled = false) }
+            hold.release.countDown()
+            idle(chat)
+            assertEquals(1, requests.get()); assertEquals(2, dispatches.get())
+            assertTrue(chat.state.value.turns.isEmpty())
+        } finally { hold.release.countDown(); chat.close(); scope.cancel(); server.close(); acceptor.join(2000) }
     }
 
     @Test fun `actual commits serialize with guarded admission dispatch and every publication category in both orders`() = runBlocking {

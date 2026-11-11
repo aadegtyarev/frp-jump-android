@@ -232,22 +232,26 @@ class AssistantSshCommandTest {
     }
     @Test fun `refused tool-start on a ready target stops before worker admission credentials or client for valid and invalid arguments`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val categories = mutableListOf<String>()
-            val tool = AssistantSshCommandTool(f.service) { category, _ -> categories += category; throw CancellationException() }
+            val admitted = mutableListOf<String>(); val dispatched = mutableListOf<String>()
+            val tool = AssistantSshCommandTool(f.service) { category, _ -> dispatched += category; throw CancellationException() }
             for (arguments in listOf(f.args, buildJsonObject { put("profile_id", "home") })) {
-                try { tool.execute(arguments); fail("must cancel") } catch (_: CancellationException) { }
+                try { withContext(SideEffectAdmission { admitted += it; false }) { tool.execute(arguments) }; fail("must cancel") } catch (_: CancellationException) { }
             }
-            assertEquals(listOf("tool-start", "tool-start"), categories)
+            assertEquals(listOf("tool-start", "tool-start"), admitted)
+            assertTrue("the worker dispatch must not be asked after a refused tool-start", dispatched.isEmpty())
             assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty())
         }
     }
-    @Test fun `an owned call dispatches tool-start once before the ssh worker`() = runBlocking {
+    @Test fun `an owned call admits tool-start once before the ssh worker`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val categories = mutableListOf<String>()
-            val result = AssistantSshCommandTool(f.service) { category, start -> categories += category; start() }.execute(f.args)
+            val events = mutableListOf<String>()
+            val result = withContext(SideEffectAdmission { events += "admit:$it"; true }) {
+                AssistantSshCommandTool(f.service) { category, start -> events += "dispatch:$category"; start() }.execute(f.args)
+            }
             assertEquals(ToolOutcome.SUCCESS, result.outcome)
-            assertEquals("tool-start", categories.first()); assertEquals(1, categories.count { it == "tool-start" })
-            assertEquals(1, categories.count { it == "ssh-dispatch" })
+            assertEquals("admit:tool-start", events.first()); assertEquals(1, events.count { it == "admit:tool-start" })
+            assertEquals(0, events.count { it == "dispatch:tool-start" })
+            assertEquals(1, events.count { it == "dispatch:ssh-dispatch" })
         }
     }
     @Test fun `target hide then Undo during auth fails old operation without retargeting`() = runBlocking {

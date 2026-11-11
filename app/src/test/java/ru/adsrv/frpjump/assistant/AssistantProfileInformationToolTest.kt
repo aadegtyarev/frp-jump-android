@@ -149,9 +149,9 @@ class AssistantProfileInformationToolTest {
             val tool = AssistantProfileInformationTool(f.information) { _, action ->
                 if (revoked) throw CancellationException("Revoked synthetic owner")
                 action()
-                revoked = true // Commit wins immediately after the first guarded action.
             }
-            try { tool.execute(empty) } catch (_: CancellationException) { }
+            // Commit wins immediately after the first admitted start (`tool-start`); the refresh start is still guarded by the 4b dispatch.
+            try { withContext(SideEffectAdmission { revoked = true; true }) { tool.execute(empty) } } catch (_: CancellationException) { }
             assertEquals("No device request after revocation", 0, f.deviceRequests.get())
             assertEquals("No version request after revocation", 0, f.versionRequests.get())
         }

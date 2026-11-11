@@ -180,13 +180,11 @@ class AssistantConversation(
         runtime.beforeAction?.invoke(category)
         return synchronized(gate) { if (!owns(owner)) null else { runtime.checkedAction?.invoke(category); action() } }
     }
-    private suspend fun complete(owner: Pending, active: AgentProvider, request: AgentRequest): AgentReply =
-        if (active is ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider) active.complete(request) { action ->
-            guarded(owner, "dispatch") { action(); true } ?: throw CancellationException()
-        } else coroutineScope {
-            val call = guarded(owner, "dispatch") { async(start = CoroutineStart.UNDISPATCHED) { active.complete(request) } } ?: throw CancellationException()
-            call.await()
-        }
+    /** The start check precedes every provider call, whatever the provider; the exchange itself runs outside the guard. */
+    private suspend fun complete(active: AgentProvider, request: AgentRequest): AgentReply {
+        admitSideEffect("dispatch")
+        return active.complete(request)
+    }
     private fun update(owner: Pending, change: (SavedTurn) -> SavedTurn): SavedChat {
         return guarded(owner, "history") {
             val record = change(document.records.last())
@@ -238,16 +236,17 @@ class AssistantConversation(
                     withTimeout(120_000) {
                         val active = withContext(io) { requireRevision(saved.revision); retainedProvider ?: prepare(saved) }
                         synchronized(gate) { if (!owns(owner)) throw CancellationException(); provider = active }
-                        withContext(io) {
+                        withContext(io + SideEffectAdmission { category -> guarded(owner, category) { true } ?: false }) {
                             val past = pastRecords.map { it to it.model(active) }
                             var transportTimeout = false; var invalidReply = false
                             val web = AssistantWebTools(enabledTools, runtime.publicWeb, runtime.webSearch,
                                 active as? ImageInspector,
-                                dispatch = { category, action -> guarded(owner, category) { action(); true } ?: throw CancellationException() },
                                 publish = { source ->
-                                    val last = document.records.last()
-                                    document = document.copy(records = document.records.dropLast(1) + last.copy(sources = last.sources + SavedSource(source.title, source.url))).bounded(historyStore != null)
-                                    mutable.value = mutable.value.copy(currentSources = webSources(last.sources) + source); persist()
+                                    guarded(owner, "source") {
+                                        val last = document.records.last()
+                                        document = document.copy(records = document.records.dropLast(1) + last.copy(sources = last.sources + SavedSource(source.title, source.url))).bounded(historyStore != null)
+                                        mutable.value = mutable.value.copy(currentSources = webSources(last.sources) + source); persist()
+                                    } ?: throw CancellationException()
                                 })
                             val tools = web.tools + (if (enabledTools.profileInformation && profileInformation != null) listOf(
                                 AssistantProfileInformationTool(profileInformation) { category, action -> guarded(owner, category) { action(); true } ?: throw CancellationException() }) else emptyList()) +
@@ -259,7 +258,7 @@ class AssistantConversation(
                                 val bounded = request.copy(turns = included + request.turns.last())
                                 if (included.size != request.turns.size - 1) guarded(owner, "window") { document = document.copy(omitted = true); mutable.value = mutable.value.copy(omitted = true) }
                                 try {
-                                    complete(owner, active, bounded)
+                                    complete(active, bounded)
                                 } catch (failure: ProviderException) {
                                     transportTimeout = failure.kind == ProviderErrorKind.TIMEOUT
                                     invalidReply = failure.kind in setOf(ProviderErrorKind.INVALID_RESPONSE,
@@ -278,7 +277,7 @@ class AssistantConversation(
                                 complete = { request ->
                                     guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = ChatToolProgress.SUMMARY) } ?: throw CancellationException()
                                     val selected = summaryProvider ?: (settings.summaryModel?.let { model -> prepare(saved.copy(settings = settings.copy(model = model))) } ?: active).also { summaryProvider = it }
-                                    complete(owner, selected, request)
+                                    complete(selected, request)
                                 })
                             val result = module.run(toolProvider, tools, INSTRUCTIONS, text, past.map { it.second }, limits(settings),
                                 prepareRequest = { request ->
