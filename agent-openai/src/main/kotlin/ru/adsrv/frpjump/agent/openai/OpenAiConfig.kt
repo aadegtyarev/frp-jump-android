@@ -2,6 +2,8 @@ package ru.adsrv.frpjump.agent.openai
 
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import ru.adsrv.frpjump.agent.ProviderErrorKind
+import ru.adsrv.frpjump.agent.ProviderException
 
 /** API root, e.g. https://api.openai.com/v1. Never a URL containing a key or user information. */
 class OpenAiConfig(
@@ -26,7 +28,10 @@ class OpenAiConfig(
     }
 }
 enum class OutputLimitField(val wire: String) { MAX_TOKENS("max_tokens"), MAX_COMPLETION_TOKENS("max_completion_tokens") }
-enum class ProviderFailure { HTTP, NETWORK, TIMEOUT, INCOMPATIBLE_CONTEXT, RESPONSE_TOO_LARGE, REQUEST_TOO_LARGE, INVALID_RESPONSE, INCOMPLETE_RESPONSE }
+typealias ProviderFailure = ProviderErrorKind
 /** No response body, endpoint, key, exception cause or user-supplied arguments in diagnostics. */
-class OpenAiProviderException(val failure: ProviderFailure, val status: Int? = null) : Exception("Provider failure: $failure${status?.let { " ($it)" }.orEmpty()}")
+class OpenAiProviderException(failure: ProviderFailure, status: Int? = null) :
+    ProviderException(failure, status, "Provider failure: $failure${status?.let { " ($it)" }.orEmpty()}") {
+    val failure: ProviderFailure get() = kind
+}
 data class ProviderModel(val id: String)

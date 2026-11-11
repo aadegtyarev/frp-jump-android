@@ -10,7 +10,6 @@ import kotlinx.serialization.Transient
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.agent.*
-import ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider
 import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
@@ -30,12 +29,12 @@ import ru.adsrv.frpjump.store.TextStorage
     @Transient val localContinuation: AgentContinuation? = null) {
     @Transient val chars = text.length.toLong() + calls.sumOf { it.chars } + (continuation?.length ?: localContinuation?.sizeChars ?: 0)
     fun value(provider: AgentProvider) = AgentReply(text, calls.map { it.value() },
-        continuation?.let { checkNotNull(provider as? OpenAiAgentProvider).restoreContinuation(it) } ?: localContinuation)
+        continuation?.let { checkNotNull(provider as? PersistentContinuations).restoreContinuation(it) } ?: localContinuation)
     companion object {
         fun of(reply: AgentReply, provider: AgentProvider?) = SavedReply(reply.text,
             reply.calls.map { SavedCall(it.id, it.name, it.arguments) },
-            reply.continuation?.let { (provider as? OpenAiAgentProvider)?.saveContinuation(it) },
-            reply.continuation.takeIf { provider !is OpenAiAgentProvider })
+            reply.continuation?.let { (provider as? PersistentContinuations)?.saveContinuation(it) },
+            reply.continuation.takeIf { provider !is PersistentContinuations })
     }
 }
 @Serializable internal data class SavedExchange(val reply: SavedReply, val results: List<SavedResult> = emptyList()) {
