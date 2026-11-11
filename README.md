@@ -635,8 +635,9 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   when narrow). Ctrl, Alt and Shift stay held, lit, until the next key, and apply
   to ⌫ ⏎ and the arrows as to a hardware keyboard (Shift+Tab is back-tab; Shift
   is used up, not sent, with PgUp / PgDn, so they never scroll the screen);
-  the next typed letter is upper-cased by Shift, other characters and `| ~ / -`
-  stay as they are; ^C ^D ^Z ^R send
+  the next typed character goes through Termux's own Shift (letters become
+  capitals; digits and most symbols do not change), `| ~ / -` stay as they are
+  and use Shift up; ^C ^D ^Z ^R send
   their control byte as is and, like a snippet, use up a held Ctrl / Alt / Shift.
   The arrows and ⌫ repeat while held (after 400 ms, then about 15 a
   second), with every repeat taking the Ctrl / Alt / Shift held at the press.

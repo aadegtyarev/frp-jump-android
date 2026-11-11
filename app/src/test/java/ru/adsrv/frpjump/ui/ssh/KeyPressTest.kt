@@ -176,5 +176,4 @@ class KeyPressTest {
         assertFalse(modifiers.shift)
         assertTrue(modifiers.ctrl)
     }
-
 }

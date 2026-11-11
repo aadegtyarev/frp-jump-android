@@ -469,8 +469,8 @@ fun pressFor(key: ExtraKey, modifiers: Modifiers): KeyPress {
             var mod = 0
             if (modifiers.takeCtrl()) mod = mod or KeyHandler.KEYMOD_CTRL
             if (modifiers.takeAlt()) mod = mod or KeyHandler.KEYMOD_ALT
-            // Termux turns Shift + PgUp / PgDn into a local scroll, or, on the alternate screen
-            // without mouse tracking, into about a screenful of arrow keys: Shift is used up, not sent.
+            // Termux turns Shift + PgUp / PgDn into a local scroll, or, on the alternate screen,
+            // into a screenful of arrow keys (or wheel events with mouse tracking): Shift is used up, not sent.
             val shift = modifiers.takeShift()
             if (shift && keyCode != KeyEvent.KEYCODE_PAGE_UP && keyCode != KeyEvent.KEYCODE_PAGE_DOWN) {
                 mod = mod or KeyHandler.KEYMOD_SHIFT

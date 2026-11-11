@@ -38,8 +38,10 @@ Shift modifier as the terminal emulator encodes it (Shift+Tab is `ESC [ Z`,
 Shift+Up `ESC [ 1 ; 2 A`); Alt+Shift+Tab is also `ESC [ Z`. Esc, Enter and
 Backspace bytes do not change with Shift (it is used up). PgUp and PgDn are sent
 without Shift (it is used up), because Termux would turn Shift+PgUp/PgDn into a
-local scroll, or on the alternate screen without mouse tracking into a screenful
-of arrow keys. For soft-keyboard text Termux's own Shift handling applies: the
+local scroll, on the alternate screen into a screenful of arrow keys, or with
+mouse tracking into a screenful of wheel events. A hardware keyboard keeps stock
+Termux behavior: sticky Shift then a physical PgUp/PgDn scrolls locally. For
+soft-keyboard text Termux's own Shift handling applies: the
 next typed character goes through `Character.toUpperCase` (letters become
 uppercase; Termux also maps a few non-letters, such as circled letters). The
 `| ~ / -` keys are typed as is and release Shift. Ctrl+L is sticky Ctrl then `l`.
