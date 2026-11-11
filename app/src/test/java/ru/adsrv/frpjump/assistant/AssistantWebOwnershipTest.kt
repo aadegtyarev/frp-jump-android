@@ -38,7 +38,7 @@ class AssistantWebOwnershipTest {
             if (commitFirst) settings.assistantChat.beforeAction = probe else settings.assistantChat.checkedAction = probe
             val committed = CountDownLatch(1)
             val commit = Thread {
-                settings.setAssistantTool(tool, true); settings.setAssistantTool(tool, false); committed.countDown()
+                settings.setAssistantTool(AssistantToolId.fromWire(tool)!!, true); settings.setAssistantTool(AssistantToolId.fromWire(tool)!!, false); committed.countDown()
             }
             try {
                 chat.edit("q"); chat.send(); assertTrue("$category/$commitFirst", entered.await(2, TimeUnit.SECONDS))
@@ -70,7 +70,7 @@ class AssistantWebOwnershipTest {
             } }, {}, AgentModule(true), runtime = settings.assistantChat)
             try {
                 chat.edit("current"); chat.send(); entered.await()
-                settings.setAssistantTool(tool, false); chat.refresh()
+                settings.setAssistantTool(AssistantToolId.fromWire(tool)!!, false); chat.refresh()
                 assertTrue(chat.state.value.busy); assertFalse(chat.state.value.stopping)
                 release.complete(Unit); idle(chat)
                 assertEquals(1, fetches); assertEquals("current", chat.state.value.turns.single().user)

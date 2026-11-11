@@ -49,11 +49,11 @@ class AssistantProfileInformationToolTest {
                 assertTrue(requests.first().tools.isEmpty())
                 assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome)
                 assertEquals(0, f.deviceRequests.get())
-                c.settings.setAssistantTool("profile_information", true)
+                c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, true)
                 assertEquals(0, f.deviceRequests.get())
                 held = CompletableDeferred()
                 c.chat.edit("enabled invocation"); c.chat.send()
-                c.settings.setAssistantTool("profile_information", false)
+                c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, false)
                 held!!.complete(Unit); c.idle(); held = null
                 assertEquals(2, f.deviceRequests.get()); assertEquals(2, f.versionRequests.get())
                 val withResult = requests.last()
@@ -134,10 +134,10 @@ class AssistantProfileInformationToolTest {
             val entered = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
             f.beforeResponse = { entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
             Chat(f, AgentProvider { AgentReply(calls = listOf(ToolCall("stop", "profile_information", empty))) }).use { c ->
-                c.settings.setAssistantTool("profile_information", true)
+                c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, true)
                 c.chat.edit("stop read"); c.chat.send()
                 assertTrue(entered.await(3, java.util.concurrent.TimeUnit.SECONDS))
-                assertEquals(ChatToolProgress.PROFILE_INFORMATION, c.chat.state.value.toolProgress)
+                assertEquals(ChatToolProgress.Tool(AssistantToolId.PROFILE_INFORMATION), c.chat.state.value.toolProgress)
                 c.chat.stop(); release.countDown(); c.idle()
                 assertTrue(c.chat.state.value.turns.isEmpty()); assertEquals("stop read", c.chat.state.value.draft)
             }
@@ -164,7 +164,7 @@ class AssistantProfileInformationToolTest {
             f.beforeResponse = { entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
             try {
                 Chat(f, AgentProvider { AgentReply(calls = listOf(ToolCall("held", "profile_information", empty))) }).use { c ->
-                    c.settings.setAssistantTool("profile_information", true)
+                    c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, true)
                     c.chat.edit("held information"); c.chat.send()
                     assertTrue(entered.await(3, java.util.concurrent.TimeUnit.SECONDS))
                     c.chat.stop()

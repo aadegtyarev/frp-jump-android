@@ -18,7 +18,7 @@ internal class AssistantProfileInformationTool(
         { information.observe().first() }, dispatch,
     )
 
-    override val spec = ToolSpec("profile_information",
+    override val spec = ToolSpec(AssistantToolId.PROFILE_INFORMATION.wire,
         "Find app-known devices and saved connections across all profiles, refreshing device lists once per invocation. " +
             "Optional query matches part of a device name/label, connection name or profile name (case/NFC insensitive); profile_id selects an exact profile. " +
             "Empty arguments browse. Results are whole records: follow next_offset with the same query/profile_id when needed. " +

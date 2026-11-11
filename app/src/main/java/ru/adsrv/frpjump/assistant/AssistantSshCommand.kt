@@ -72,7 +72,7 @@ private fun unavailable() = ToolOutput("SSH target unavailable. Use an existing 
 private fun setup() = ToolOutput("SSH login or host trust needs setup. Open this connection in the ordinary SSH UI first. No command was executed.", ToolOutcome.FAILED)
 
 internal class AssistantSshCommandTool(private val commands: AssistantSshCommands, private val dispatch: WebDispatch) : AgentTool {
-    override val spec = ToolSpec("ssh_command", "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.", buildJsonObject {
+    override val spec = ToolSpec(AssistantToolId.SSH_COMMAND.wire, "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.", buildJsonObject {
         put("type", "object")
         putJsonObject("properties") { for (name in listOf("profile_id", "connection_id", "command")) putJsonObject(name) { put("type", "string") } }
         putJsonArray("required") { add("profile_id"); add("connection_id"); add("command") }; put("additionalProperties", false)

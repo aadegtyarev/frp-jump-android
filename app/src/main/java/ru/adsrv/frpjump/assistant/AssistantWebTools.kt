@@ -20,9 +20,9 @@ internal class AssistantWebTools(
     private val budget = WebBudget()
     val sources = ArrayList<ChatSource>()
     val tools: List<AgentTool> = buildList {
-        if (enabled.search) add(tool("web_search", "Search public web via unofficial best-effort DuckDuckGo. Query up to 256 characters.", "query") { search(it) })
-        if (enabled.readPage) add(tool("read_page", "Read a public HTTPS HTML/text/Markdown page or follow a selected link. No JavaScript.", "url") { read(it) })
-        if (enabled.inspectImage) add(tool("inspect_image", "Request an unverified model response about a selected public JPEG/PNG; may fail. Extra model token charges apply.", "url", "question") { image(it) })
+        if (enabled.search) add(tool(AssistantToolId.WEB_SEARCH.wire, "Search public web via unofficial best-effort DuckDuckGo. Query up to 256 characters.", "query") { search(it) })
+        if (enabled.readPage) add(tool(AssistantToolId.READ_PAGE.wire, "Read a public HTTPS HTML/text/Markdown page or follow a selected link. No JavaScript.", "url") { read(it) })
+        if (enabled.inspectImage) add(tool(AssistantToolId.INSPECT_IMAGE.wire, "Request an unverified model response about a selected public JPEG/PNG; may fail. Extra model token charges apply.", "url", "question") { image(it) })
     }
     private fun tool(name: String, description: String, vararg fields: String, action: suspend (JsonObject) -> String) = object : AgentTool {
         override val spec = ToolSpec(name, description, buildJsonObject {

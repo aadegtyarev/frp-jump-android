@@ -154,7 +154,7 @@ class AssistantProfileRefreshOwnershipTest {
             f.api.beforeOwnedCallbackExit = hold::waitHere
             try {
                 c.send(); hold.entered("tool-only")
-                c.settings.setAssistantTool("profile_information", false); c.old.refresh()
+                c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, false); c.old.refresh()
                 assertTrue(c.settings.assistantChat.busy.value)
                 hold.release.countDown(); c.idle()
                 assertEquals("Old information answer", c.old.state.value.turns.single().answer)
