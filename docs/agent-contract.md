@@ -68,6 +68,8 @@ IDs within a run, incomplete exchanges, excessive replies and empty final
 responses are rejected. Unknown tools and tool failures are explicit results.
 Raw exception messages are not given to the model. There are no automatic
 provider/tool retries.
+Every tool checks the captured owner before validating its arguments, so an invalid-argument
+result is reported only for an owned call.
 
 Execution defaults are finite, validated kernel parameters, not settings UI:
 
@@ -350,7 +352,7 @@ separate approval and the full-access warning described below.
 ## Optional SSH command
 
 The independent default-off `ssh_command` tool accepts exactly `profile_id`,
-`connection_id` and one nonempty `command` string. Discover saved IDs through
+`connection_id` and one nonempty `command` string. Owner admission precedes this validation (see Minimal execution). Discover saved IDs through
 `profile_information`; there is no additional catalogue or automatic attachment.
 One unambiguous saved SSH connection in any profile must already have a ready
 visible tunnel. Missing, non-SSH, hidden, removed, down or unavailable targets

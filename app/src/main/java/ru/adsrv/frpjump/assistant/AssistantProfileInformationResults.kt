@@ -7,27 +7,7 @@ import ru.adsrv.frpjump.devices.searchMatches
 import ru.adsrv.frpjump.profiles.ProfileInformationPart
 import ru.adsrv.frpjump.profiles.ProfileInformationState
 
-internal data class ProfileInformationQuery(val query: String = "", val profileId: String? = null, val offset: Int = 0) {
-    companion object {
-        fun parse(args: JsonObject): ProfileInformationQuery {
-            require(args.keys.all { it in setOf("query", "profile_id", "offset") })
-            fun text(key: String): String? {
-                if (key !in args) return null
-                val value = args[key] as? JsonPrimitive
-                require(value != null && value.isString && value.content.length <= 256)
-                return value.content
-            }
-            val profile = text("profile_id")
-            require(profile == null || profile.isNotBlank())
-            val offset = if ("offset" !in args) 0 else {
-                val value = args["offset"] as? JsonPrimitive
-                require(value != null && !value.isString)
-                requireNotNull(value.intOrNull).also { require(it >= 0) }
-            }
-            return ProfileInformationQuery(text("query").orEmpty().trim(), profile, offset)
-        }
-    }
-}
+internal data class ProfileInformationQuery(val query: String = "", val profileId: String? = null, val offset: Int = 0)
 
 /** A bounded live selection, not a snapshot/cache. Records are rendered only for this page. */
 internal fun profileInformationText(state: ProfileInformationState, query: ProfileInformationQuery = ProfileInformationQuery()): String {

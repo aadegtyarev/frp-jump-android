@@ -6,6 +6,7 @@ import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.agent.openai.ImageInspector
+import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.settings.AssistantTools
 
 /** One Send's fixed tools, quotas and provenance. No credential, app/file/connection access. */
@@ -20,47 +21,45 @@ internal class AssistantWebTools(
     private val budget = WebBudget()
     val sources = ArrayList<ChatSource>()
     val tools: List<AgentTool> = buildList {
-        if (enabled.search) add(tool(AssistantToolId.WEB_SEARCH.wire, "Search public web via unofficial best-effort DuckDuckGo. Query up to 256 characters.", "query") { search(it) })
-        if (enabled.readPage) add(tool(AssistantToolId.READ_PAGE.wire, "Read a public HTTPS HTML/text/Markdown page or follow a selected link. No JavaScript.", "url") { read(it) })
-        if (enabled.inspectImage) add(tool(AssistantToolId.INSPECT_IMAGE.wire, "Request an unverified model response about a selected public JPEG/PNG; may fail. Extra model token charges apply.", "url", "question") { image(it) })
+        if (enabled.search) add(Search())
+        if (enabled.readPage) add(ReadPage())
+        if (enabled.inspectImage) add(InspectImage())
     }
-    private fun tool(name: String, description: String, vararg fields: String, action: suspend (JsonObject) -> String) = object : AgentTool {
-        override val spec = ToolSpec(name, description, buildJsonObject {
-            put("type", "object"); put("additionalProperties", false)
-            putJsonObject("properties") { fields.forEach { putJsonObject(it) { put("type", "string") } } }
-            putJsonArray("required") { fields.forEach { add(it) } }
-        })
-        override suspend fun execute(arguments: JsonObject): ToolOutput {
-            return try {
-                if (arguments.keys != fields.toSet()) webFail(WebFailure.ARGUMENTS)
-                // Check ownership even for argument failures; dispatch rechecks actual enqueue.
-                dispatch("tool-start") { }
-                ToolOutput(withContext(Dispatchers.IO) { action(arguments) })
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) {
-                val detail = webFailureDescription(failure)
-                ToolOutput("Tool failed: $detail No successful retrieval or image understanding is implied. Do not automatically repeat.", ToolOutcome.FAILED)
-            }
-        }
+    /** Shared web mapping: fixed failure text, IO dispatcher for the action. */
+    private abstract inner class WebTool<A : Any>(id: AssistantToolId, description: String, schema: JsonObject) : AppTool<A>(id, description, schema, dispatch) {
+        override val invalidArguments get() = failure(WebException(WebFailure.ARGUMENTS))
+        override fun failure(error: Exception) =
+            ToolOutput("Tool failed: ${webFailureDescription(error)} No successful retrieval or image understanding is implied. Do not automatically repeat.", ToolOutcome.FAILED)
+        override suspend fun run(args: A) = ToolOutput(withContext(Dispatchers.IO) { text(args) })
+        abstract suspend fun text(args: A): String
     }
-    private fun argument(args: JsonObject, name: String, max: Int): String {
-        val value = (args[name] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: webFail(WebFailure.ARGUMENTS)
-        if (value.isBlank() || value.length > max) webFail(WebFailure.ARGUMENTS)
-        return value
+    private inner class Search : WebTool<String>(AssistantToolId.WEB_SEARCH,
+        "Search public web via unofficial best-effort DuckDuckGo. Query up to 256 characters.", objectSchema { string("query") }) {
+        override fun parse(args: StrictArgs) = args.run { exactKeys("query"); string("query", 256) }
+        override suspend fun text(args: String) = search(args)
+    }
+    private inner class ReadPage : WebTool<String>(AssistantToolId.READ_PAGE,
+        "Read a public HTTPS HTML/text/Markdown page or follow a selected link. No JavaScript.", objectSchema { string("url") }) {
+        override fun parse(args: StrictArgs) = args.run { exactKeys("url"); string("url", 2048) }
+        override suspend fun text(args: String) = read(args)
+    }
+    private inner class InspectImage : WebTool<Pair<String, String>>(AssistantToolId.INSPECT_IMAGE,
+        "Request an unverified model response about a selected public JPEG/PNG; may fail. Extra model token charges apply.", objectSchema { string("url"); string("question") }) {
+        override fun parse(args: StrictArgs) = args.run { exactKeys("url", "question"); string("url", 2048) to string("question", 1000) }
+        override suspend fun text(args: Pair<String, String>) = image(args.first, args.second)
     }
     private fun source(source: ChatSource) {
         dispatch("source") {
             if (source !in sources) { sources.add(source); publish(source) }
         }
     }
-    private suspend fun read(args: JsonObject): String {
-        val response = fetcher.fetch(argument(args, "url", 2048), budget, dispatch)
+    private suspend fun read(url: String): String {
+        val response = fetcher.fetch(url, budget, dispatch)
         val document = WebDocuments.page(response)
         source(ChatSource(document.title, response.url))
         return document.result(response.url)
     }
-    private suspend fun search(args: JsonObject): String {
-        val query = argument(args, "query", 256)
+    private suspend fun search(query: String): String {
         searchState.check(budget) // Refuse promptly, before scheduling DNS; attempts (including DNS failures) are charged at owned dispatch.
         val url = "https://html.duckduckgo.com/html/".toHttpUrl().newBuilder().addQueryParameter("q", query).build().toString()
         var charged = false
@@ -84,9 +83,7 @@ internal class AssistantWebTools(
         append("Untrusted DuckDuckGo results (best-effort); selected results (at most 5), not exhaustive; target pages have NOT been fetched:\n")
         results.forEach { append("${it.title}: ${it.url}\n") }
     }
-    private suspend fun image(args: JsonObject): String {
-        val url = argument(args, "url", 2048)
-        val question = argument(args, "question", 1000)
+    private suspend fun image(url: String, question: String): String {
         if (budget.inspections >= 2) webFail(WebFailure.LIMIT)
         budget.inspections++
         val operation = inspector ?: webFail(WebFailure.IMAGE)

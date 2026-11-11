@@ -6,6 +6,7 @@ import kotlinx.serialization.json.*
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import ru.adsrv.frpjump.agent.*
+import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.profiles.ProfilesState
 import ru.adsrv.frpjump.ssh.*
@@ -71,22 +72,21 @@ internal fun commandTunnelReady(t: Tunnel) = t.state.status in setOf(TunnelStatu
 private fun unavailable() = ToolOutput("SSH target unavailable. Use an existing ready saved SSH connection; no tunnel was started.", ToolOutcome.FAILED)
 private fun setup() = ToolOutput("SSH login or host trust needs setup. Open this connection in the ordinary SSH UI first. No command was executed.", ToolOutcome.FAILED)
 
-internal class AssistantSshCommandTool(private val commands: AssistantSshCommands, private val dispatch: WebDispatch) : AgentTool {
-    override val spec = ToolSpec(AssistantToolId.SSH_COMMAND.wire, "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.", buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") { for (name in listOf("profile_id", "connection_id", "command")) putJsonObject(name) { put("type", "string") } }
-        putJsonArray("required") { add("profile_id"); add("connection_id"); add("command") }; put("additionalProperties", false)
-    })
-    override suspend fun execute(arguments: JsonObject): ToolOutput {
-        fun value(key: String) = (arguments[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
-        val profile = value("profile_id"); val connection = value("connection_id"); val command = value("command")
-        if (arguments.keys != setOf("profile_id", "connection_id", "command") || profile == null || connection == null || command == null)
-            return ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
-        return try { commands.execute(profile, connection, command, dispatch) }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { ToolOutput("SSH failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED) }
+internal class AssistantSshCommandTool(private val commands: AssistantSshCommands, private val dispatch: WebDispatch) : AppTool<SshCommandArgs>(
+    AssistantToolId.SSH_COMMAND,
+    "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.",
+    objectSchema { string("profile_id"); string("connection_id"); string("command") }, dispatch,
+) {
+    override fun parse(args: StrictArgs) = args.run {
+        exactKeys("profile_id", "connection_id", "command")
+        SshCommandArgs(string("profile_id"), string("connection_id"), string("command"))
     }
+    override val invalidArguments = ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
+    override suspend fun run(args: SshCommandArgs) = commands.execute(args.profile, args.connection, args.command, dispatch)
+    override fun failure(error: Exception) = ToolOutput("SSH failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED)
 }
+/** Not a data class: its toString must never print the command. */
+internal class SshCommandArgs(val profile: String, val connection: String, val command: String)
 
 /** The coroutine cannot finish until the admitted worker, readers and disconnect have really exited. */
 internal class SshCommandOperation {
