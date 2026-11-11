@@ -356,7 +356,7 @@ whatever the pane asked), so several lines always show the sheet there; a
 multiplexer started by hand in a plain-shell tab can't be detected. Additional
 rows start collapsed; the small ⋯ above the main row explicitly toggles Esc,
 Tab, sticky Ctrl and
-Alt, ^D ^Z ^R ^L, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
+Alt, Shift, ^D ^Z ^R, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat
 while held (400 ms, then about 15 a second); the other keys do not.
 
 Settings → Terminal → Direct input is on by default, including when an

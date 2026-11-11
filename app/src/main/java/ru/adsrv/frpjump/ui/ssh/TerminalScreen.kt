@@ -319,8 +319,7 @@ fun TerminalScreen(
             paste = {
                 // Literal text; explicit long action appends CR inside the captured
                 // output transaction, never via whichever tab happens to be current.
-                modifiers.ctrl = false
-                modifiers.alt = false
+                modifiers.clear()
                 target.paste(text, connection, execute)
             },
         )
@@ -362,8 +361,7 @@ fun TerminalScreen(
         focusManager.clearFocus(force = true)
         if (enabled) {
             input.finishComposition()
-            modifiers.ctrl = false
-            modifiers.alt = false
+            modifiers.clear()
             input.clearFocus()
         }
         if (!enabled) {
@@ -643,8 +641,7 @@ fun TerminalScreen(
                             selected.typed()
                             selected.terminal.session.write(if (run) line + "\r" else line)
                             // A snippet is typed as is, without a held Ctrl / Alt; it uses up the hold.
-                            modifiers.ctrl = false
-                            modifiers.alt = false
+                            modifiers.clear()
                         }
                     },
                     onManage = { managing = true },
@@ -833,13 +830,17 @@ private class ViewClient(
 
     override fun readControlKey() = modifiers.takeCtrl()
 
-    override fun readAltKey() = modifiers.takeAlt()
+    private val shiftHook = StickyShiftHook(modifiers) { codePoint, ctrl, alt -> input.terminal.inputCodePoint(codePoint, ctrl, alt) }
 
-    override fun readShiftKey() = false
+    override fun readAltKey() = shiftHook.readAlt()
+
+    override fun readShiftKey() = modifiers.takeShift()
 
     override fun readFnKey() = false
 
     override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
+        // Shift: see StickyShiftHook; the repeated call reaches here again and types.
+        if (shiftHook.onCodePoint(codePoint, ctrlDown)) return true
         session().typed()
         return false
     }

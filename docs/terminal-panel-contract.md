@@ -29,7 +29,13 @@ Keys is the initial surface. There is no dedicated Keys/Text selector row.
 | `>_` in Text | Return to Keys without inserting or discarding the draft; additional rows remain collapsed. |
 
 Additional keys start collapsed. Keep their order: Esc, Tab, sticky Ctrl,
-Alt, ^D, ^Z, ^R, ^L, then Home, End, PgUp, PgDn, `|`, `~`, `/`, `-`.
+Alt, Shift, ^D, ^Z, ^R, then Home, End, PgUp, PgDn, `|`, `~`, `/`, `-`.
+Sticky Ctrl, Alt and Shift apply to the next key, then release; they combine.
+Shift sends key-code keys (arrows, Tab, Esc, Enter, Backspace, Home, End, PgUp,
+PgDn) with the Shift modifier as the terminal emulator encodes it (Shift+Tab is
+`ESC [ Z`), and uppercases the next typed letter; other typed characters pass
+unchanged and still release it. Ready combos (^C ^D ^Z ^R) release all three
+without applying them. Ctrl+L is sticky Ctrl then `l`.
 Keys address the terminal, not a retained draft. Paste retains the existing
 clipboard availability and session-bound confirmation behavior; panel
 compaction must not bypass it.

@@ -49,7 +49,6 @@ class KeyPressTest {
         assertEquals("\u0004", bytes(ExtraKey.CTRL_D))
         assertEquals("\u001a", bytes(ExtraKey.CTRL_Z))
         assertEquals("\u0012", bytes(ExtraKey.CTRL_R))
-        assertEquals("\u000c", bytes(ExtraKey.CTRL_L))
     }
 
     @Test
@@ -73,5 +72,74 @@ class KeyPressTest {
         modifiers.ctrl = true
         assertEquals(KeyPress.Typed('|'.code), pressFor(ExtraKey.PIPE, modifiers))
         assertTrue(modifiers.ctrl)
+    }
+
+    @Test
+    fun theFirstGroupKeepsItsOrderWithShiftAfterAlt() {
+        assertEquals(listOf("ESC", "TAB", "Ctrl", "Alt", "Shift", "CTRL_D", "CTRL_Z", "CTRL_R"), comboSlotNames())
+    }
+
+    @Test
+    fun shiftTabIsBackTab() {
+        modifiers.shift = true
+        assertEquals("\u001b[Z", bytes(ExtraKey.TAB))
+        assertFalse(modifiers.shift)
+        assertEquals("\t", bytes(ExtraKey.TAB))
+    }
+
+    @Test
+    fun shiftArrowAndNavigationKeysUseTheEmulatorsEncoding() {
+        modifiers.shift = true
+        assertEquals("\u001b[1;2A", bytes(ExtraKey.UP))
+        modifiers.shift = true
+        assertEquals("\u001b[1;2D", bytes(ExtraKey.LEFT))
+        modifiers.shift = true
+        assertEquals("\u001b[1;2H", bytes(ExtraKey.HOME))
+        modifiers.shift = true
+        // The emulator's table has no Shift variant for PgUp: plain ESC [ 5 ~ (pinned as is).
+        assertEquals("\u001b[5~", bytes(ExtraKey.PAGE_UP))
+        assertFalse(modifiers.shift)
+    }
+
+    @Test
+    fun ctrlShiftArrowIsModifierSix() {
+        modifiers.ctrl = true
+        modifiers.shift = true
+        assertEquals("\u001b[1;6A", bytes(ExtraKey.UP))
+        assertFalse(modifiers.ctrl)
+        assertFalse(modifiers.shift)
+    }
+
+    @Test
+    fun aReadyComboUsesUpShiftToo() {
+        modifiers.shift = true
+        assertEquals("\u0004", bytes(ExtraKey.CTRL_D))
+        assertFalse(modifiers.shift)
+    }
+
+    @Test
+    fun aCharacterKeyLeavesShiftForTheView() {
+        modifiers.shift = true
+        assertEquals(KeyPress.Typed('~'.code), pressFor(ExtraKey.TILDE, modifiers))
+        assertTrue(modifiers.shift)
+    }
+
+    @Test
+    fun shiftUppercasesLettersOnlyAndKeepsOtherCharacters() {
+        assertEquals('A'.code, shiftedCodePoint('a'.code))
+        assertEquals('Я'.code, shiftedCodePoint('я'.code))
+        assertEquals(0x10428 - 0x28, shiftedCodePoint(0x10428)) // Deseret small letter long I -> capital
+        assertEquals('1'.code, shiftedCodePoint('1'.code))
+        assertEquals('|'.code, shiftedCodePoint('|'.code))
+        assertEquals('-'.code, shiftedCodePoint('-'.code))
+    }
+
+    @Test
+    fun modifiersClearReleasesAllThree() {
+        modifiers.ctrl = true
+        modifiers.alt = true
+        modifiers.shift = true
+        modifiers.clear()
+        assertFalse(modifiers.ctrl || modifiers.alt || modifiers.shift)
     }
 }
