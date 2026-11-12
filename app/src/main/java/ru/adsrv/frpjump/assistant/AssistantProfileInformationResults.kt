@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.assistant
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.devices.DeviceRow
+import ru.adsrv.frpjump.errors.ErrorKind
 import ru.adsrv.frpjump.devices.searchMatches
 import ru.adsrv.frpjump.ops.profile.ProfileInformationQuery
 import ru.adsrv.frpjump.profiles.ProfileInformationPart
@@ -13,7 +14,7 @@ internal fun profileInformationText(state: ProfileInformationState, query: Profi
     val profiles = state.profiles.filter { query.profileId == null || it.id == query.profileId }
     val coverage = buildJsonObject {
         put("loaded", state.loaded)
-        put("load_error", if (state.failure != null) JsonPrimitive("Profile loading failed") else JsonNull)
+        put("load_error", if (state.failure != null) ProfileErrorField.LOAD_ERROR.kind(ErrorKind.PROFILES_LOAD_FAILED) else JsonNull)
         put("retrying", state.retrying)
         put("profiles", profiles.size)
         put("unavailable_profiles", profiles.count { !it.available })
@@ -98,11 +99,11 @@ private fun profileRecord(p: ProfileInformationPart, device: DeviceRow?, row: Co
             put("device_list", p.devices?.let { d -> buildJsonObject {
                 put("known", d.devices != null); put("updated_at", d.updatedAt?.toString()?.let(::JsonPrimitive) ?: JsonNull)
                 put("stale", d.stale); put("unreachable", d.unreachable)
-                put("error", if (d.error != null) JsonPrimitive("Device list refresh failed") else JsonNull)
+                put("error", ProfileErrorField.DEVICE_LIST_ERROR.json(d.error))
             } } ?: JsonNull)
             put("tunnel_state", p.tunnels?.let { t -> buildJsonObject {
-                put("sync_error", if (t.syncError != null) JsonPrimitive("Tunnel synchronization failed") else JsonNull)
-                put("mismatch", if (t.mismatch != null) JsonPrimitive("Protocol mismatch") else JsonNull)
+                put("sync_error", ProfileErrorField.SYNC_ERROR.json(t.syncError))
+                put("mismatch", ProfileErrorField.MISMATCH.json(t.mismatch))
                 put("waiting", t.waiting?.name?.let(::JsonPrimitive) ?: JsonNull)
                 put("pending_count", t.pending.size); put("error_count", t.errors.size)
             } } ?: JsonNull)
@@ -119,7 +120,7 @@ private fun profileRecord(p: ProfileInformationPart, device: DeviceRow?, row: Co
             put("https", c.https); put("user", c.user?.let { JsonPrimitive(text(it, "connection.user")) } ?: JsonNull)
             put("pinned_local_port", c.localPort?.let(::JsonPrimitive) ?: JsonNull)
             put("pending", r.pending?.name?.let(::JsonPrimitive) ?: JsonNull)
-            put("error", if (r.error != null) JsonPrimitive("Connection operation failed") else JsonNull)
+            put("error", ProfileErrorField.CONNECTION_ERROR.json(r.error))
             put("tunnel", r.tunnel?.let { t -> buildJsonObject {
                 put("local_address", "127.0.0.1:${t.localPort}"); put("status", t.state.status.name)
                 put("direct_mode", t.direct.name); put("pinned", t.pinned)
@@ -131,7 +132,7 @@ private fun profileRecord(p: ProfileInformationPart, device: DeviceRow?, row: Co
         if (operationKey != null) putJsonObject("operation") {
             put("key", text(operationKey, "operation.key"))
             put("pending", p.tunnels?.pending?.get(operationKey)?.name?.let(::JsonPrimitive) ?: JsonNull)
-            put("error", if (p.tunnels?.errors?.containsKey(operationKey) == true) JsonPrimitive("Connection operation failed") else JsonNull)
+            put("error", ProfileErrorField.OPERATION_ERROR.json(p.tunnels?.errors?.get(operationKey)))
         }
         put("shortened_fields", JsonArray(shortened.map(::JsonPrimitive)))
     }

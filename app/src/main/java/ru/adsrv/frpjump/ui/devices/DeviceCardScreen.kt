@@ -53,6 +53,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.caption
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.PlusGlyph
+import ru.adsrv.frpjump.ui.userText
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.connections.ConnectionCard
 import ru.adsrv.frpjump.ui.connections.ConnectionDialogs
@@ -153,8 +154,8 @@ fun DeviceCardScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item(key = "header") { Header(vm.device, state.device, state.profileName) }
-            state.mismatch?.let { item(key = "mismatch") { Problem(stringResource(R.string.mismatch_banner, it)) } }
-            state.syncError?.let { item(key = "sync") { Problem(it) } }
+            state.mismatch?.let { item(key = "mismatch") { Problem(stringResource(R.string.mismatch_banner, it.userText())) } }
+            state.syncError?.let { item(key = "sync") { Problem(it.userText()) } }
             item(key = "section") {
                 Row(
                     Modifier

@@ -8,7 +8,7 @@ import ru.adsrv.frpjump.ops.TunnelRefusal
 
 /*
  * The owner's wording of operation results, in the app's language. Each screen-facing operation gets its own exhaustive `when`; the
- * assistant words the same results for the model elsewhere. A payload written by the tunnel manager or the server is shown as it is.
+ * assistant words the same results for the model elsewhere. A server's own `detail` is shown as it is.
  */
 
 fun TunnelRefusal.userText(): String = when (this) {
@@ -16,8 +16,8 @@ fun TunnelRefusal.userText(): String = when (this) {
 }
 
 fun TunnelFailure.userText(): String = when (this) {
-    is TunnelFailure.DidNotComeUp -> detail ?: Texts.get(R.string.files_tunnel_down)
-    is TunnelFailure.DeviceNotListening -> detail
+    is TunnelFailure.DidNotComeUp -> error?.userText() ?: Texts.get(R.string.files_tunnel_down)
+    is TunnelFailure.DeviceNotListening -> reason.userText()
 }
 
 /** The notice for a result of `TunnelUp`; null when the tunnel is up. `TunnelUp` only returns tunnel refusals and failures. */

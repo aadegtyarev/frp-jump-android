@@ -23,8 +23,9 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
   - `Failed(reason: OpFailure, outcome: RemoteOutcome)`: started, did not finish. `RemoteOutcome` is `UNKNOWN` (the remote effect may have
     happened) or `KNOWN` (the remote side reported how it ended). `NOT_STARTED` is reserved for a failure before any remote call that is
     not a refusal; no operation returns it today.
-- `OpRefusal` and `OpFailure` are sealed, with domain subtypes and no wording. A payload is a fact (an exit status and signal) or a message
-  the tunnel manager or the server wrote; the operation layer owns no user- or model-facing text.
+- `OpRefusal` and `OpFailure` are sealed, with domain subtypes and no wording. A payload is a fact (an exit status and signal, or a typed domain error from `errors/DomainError.kt`: the tunnel
+  manager's last error, the device port that is not open); the operation layer owns no user- or model-facing text. A typed error keeps what the
+  owner's screens need (a server's `detail`, a host) and the screens word it when they show it (`ui/DomainErrorTexts.kt`).
 - Cancellation propagates as `CancellationException`; it is never an `OpResult`. A caller that stops an operation gets no late result.
 - An adapter words every typed result itself and shows or sends nothing the types do not carry (no exception messages, no secrets).
 
@@ -34,7 +35,7 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
 | --- | --- | --- | --- | --- | --- |
 | `ssh_exec` (`SshExec`) | `CHANGE_REMOTE` | tool `ssh_command` | `OpResult<SshExecOutput>` (streams, status, signal) | `SshRefusal`: `TargetUnavailable`, `NeedsSetup`, `TargetLostBeforeExec`, `ConnectFailed` | `SshFailure`: `TargetLost(exit?)`, `CommandFailed(exit?)`; `KNOWN` only when an exit was already reported, else `UNKNOWN`. `SshFailure.Unexpected` is never returned by the operation: it is the adapter's word for an exception that escaped it |
 | `profile_query` (`ProfileQuery`) | `READ_REMOTE` | tool `profile_information` | `OpResult<ProfileInformationState>` | none | `ProfileQueryFailure.Unavailable` (`UNKNOWN`) |
-| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(detail?)` (`UNKNOWN`), `DeviceNotListening(detail)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
+| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(error: DomainError?)` (`UNKNOWN`), `DeviceNotListening(reason: DevicePortNotOpen)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
 
 ### `ssh_exec`
 

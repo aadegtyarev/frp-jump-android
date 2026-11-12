@@ -29,6 +29,10 @@ import ru.adsrv.frpjump.api.NetworkException
 import ru.adsrv.frpjump.api.DesiredStateResponse
 import ru.adsrv.frpjump.api.AgentApi
 import ru.adsrv.frpjump.api.ProtocolMismatchException
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.errors.ProtocolMismatch
+import ru.adsrv.frpjump.errors.toDomainError
 import ru.adsrv.frpjump.ports.LocalPortAllocator
 import ru.adsrv.frpjump.ports.LocalPortStore
 import ru.adsrv.frpjump.ports.PortReservations
@@ -39,9 +43,6 @@ import ru.adsrv.frpjump.ports.wireProtocolFor
 import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.StoredEnrollment
 import ru.adsrv.frpjump.store.Credentials
-import ru.adsrv.frpjump.ui.userMessage
-import ru.adsrv.frpjump.locale.Texts
-import ru.adsrv.frpjump.R
 import java.io.IOException
 
 /**
@@ -74,11 +75,11 @@ data class TunnelsState(
     /** Connect/disconnect in flight, by [localPortKey]. */
     val pending: Map<String, PendingOp> = emptyMap(),
     /** Last connect/disconnect error, by [localPortKey]. */
-    val errors: Map<String, String> = emptyMap(),
+    val errors: Map<String, DomainError> = emptyMap(),
     /** Last poll failure, cleared by the next success. */
-    val syncError: String? = null,
+    val syncError: DomainError? = null,
     /** Set while the server speaks another wire version: nothing is applied. */
-    val mismatch: String? = null,
+    val mismatch: ProtocolMismatch? = null,
     /** Set while polls fail for want of a network or of the Keystore (locked); cleared by a success. */
     val waiting: Waiting? = null,
 ) {
@@ -99,9 +100,9 @@ private data class Core(
     /** Per grant id, as last applied. */
     val modes: Map<String, DirectMode> = emptyMap(),
     val pending: Map<String, PendingOperation> = emptyMap(),
-    val errors: Map<String, String> = emptyMap(),
-    val syncError: String? = null,
-    val mismatch: String? = null,
+    val errors: Map<String, DomainError> = emptyMap(),
+    val syncError: DomainError? = null,
+    val mismatch: ProtocolMismatch? = null,
     val waiting: Waiting? = null,
 )
 
@@ -208,13 +209,8 @@ class TunnelManager(
                     localPort = it.localPort,
                     state = (states[it.grant.grantId] ?: VisitorState(TunnelStatus.CONNECTING)).let { state ->
                         val shown = retryShown[it.grant.grantId]?.takeIf { _ -> it.pinned && state.status == TunnelStatus.CONNECTING } ?: state
-                        // A pinned port stays: say plainly who is in the way.
-                        when {
-                            it.pinned && portTaken(shown) ->
-                                shown.copy(detail = Texts.get(R.string.local_port_taken_pinned, it.localPort, PINNED_RETRY_MS / 1000))
-                            shown.deviceMissing -> shown.copy(detail = Texts.get(R.string.device_port_not_open, it.grant.targetPort))
-                            else -> shown
-                        }
+                        // A pinned port stays: the screens say plainly who is in the way, from this flag.
+                        if (it.pinned && portTaken(shown)) shown.copy(pinnedPortTaken = true) else shown
                     },
                     direct = c.modes[it.grant.grantId] ?: DirectMode.ON,
                     pinned = it.pinned,
@@ -342,7 +338,7 @@ class TunnelManager(
      * which follows them a moment later: right after a sync it may not show
      * the tunnel yet, or show it listening before a refusal came in.
      */
-    suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String? {
+    suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): DevicePortNotOpen? {
         val key = localPortKey(device, port)
         // Null once it is no longer planned: gone.
         val tunnel = combine(core, runner.states) { c, states ->
@@ -357,7 +353,7 @@ class TunnelManager(
             tunnel.first { it == null || !it.second.waitingForDevice }
         }
         val waiting = outcome == null && runner.states.value[planned.grant.grantId]?.waitingForDevice == true
-        return if (outcome?.second?.deviceMissing == true || waiting) Texts.get(R.string.device_port_not_open, port) else null
+        return if (outcome?.second?.deviceMissing == true || waiting) DevicePortNotOpen(port) else null
     }
 
     /** frpc's recent output, for diagnostics. */
@@ -404,14 +400,17 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: ProtocolMismatchException) {
-            core.update { it.copy(mismatch = e.userMessage()) }
+            core.update { it.copy(mismatch = ProtocolMismatch(e.serverVersion)) }
             SyncResult(null, ok = false)
         } catch (e: Exception) {
             if (noteRemoval(e, credentials)) stopAllLocked()
-            core.update { it.copy(syncError = e.userMessage(), waiting = if (e.isNoNetwork()) Waiting.NETWORK else null) }
+            core.update { it.copy(syncError = e.toDomainError(), waiting = if (e.isNoNetwork()) Waiting.NETWORK else null) }
             SyncResult(null, ok = false)
         }
     }
+
+    /** What a log line may say of a failure: its kind and class, never its payload. */
+    private fun Throwable.logName() = "${toDomainError().kind} (${javaClass.simpleName})"
 
     /** The server could not be reached at all (not an answer it gave). */
     private fun Exception.isNoNetwork() = this is IOException || (this is NetworkException && cause is IOException)
@@ -530,7 +529,7 @@ class TunnelManager(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "reapply failed: ${e.userMessage()}")
+            Log.w(TAG, "reapply failed: ${e.logName()}")
         }
     }
 
@@ -572,12 +571,12 @@ class TunnelManager(
                 val desired = sync()
                 if (desired != null && desired.consumed.any { it.grantId == grant.grantId }) return
             }
-            fail(key, operation, Texts.get(R.string.tunnel_not_listed))
+            fail(key, operation, DomainError.NotListed)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             noteRemoval(e, credentials)
-            fail(key, operation, e.userMessage())
+            fail(key, operation, e.toDomainError())
         } finally {
             end(key, operation)
         }
@@ -594,7 +593,7 @@ class TunnelManager(
             throw e
         } catch (e: Exception) {
             noteRemoval(e, credentials)
-            fail(key, operation, e.userMessage())
+            fail(key, operation, e.toDomainError())
         } finally {
             end(key, operation)
         }
@@ -632,7 +631,7 @@ class TunnelManager(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "desired state for disconnect all failed: ${e.userMessage()}")
+                Log.w(TAG, "desired state for disconnect all failed: ${e.logName()}")
                 return false
             }
         }
@@ -643,7 +642,7 @@ class TunnelManager(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "disconnect $t failed: ${e.userMessage()}")
+                Log.w(TAG, "disconnect $t failed: ${e.logName()}")
                 told = false
             }
         }
@@ -754,8 +753,8 @@ class TunnelManager(
         if (it.pending[key] !== operation) it else it.copy(pending = it.pending - key)
     }
 
-    private fun fail(key: String, operation: PendingOperation, message: String) = core.update {
-        if (it.pending[key] !== operation) it else it.copy(errors = it.errors + (key to message))
+    private fun fail(key: String, operation: PendingOperation, error: DomainError) = core.update {
+        if (it.pending[key] !== operation) it else it.copy(errors = it.errors + (key to error))
     }
 
     companion object {

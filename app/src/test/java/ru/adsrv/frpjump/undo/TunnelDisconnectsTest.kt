@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.undo
 
+import ru.adsrv.frpjump.errors.DomainError
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -216,11 +217,11 @@ class TunnelDisconnectsTest {
 
     @Test
     fun `the screens leave dark tunnels out and keep the rest of the state`() {
-        val state = TunnelsState(tunnels = listOf(tunnel(ssh), tunnel(web)), errors = mapOf("dev-a:22" to "x"), syncError = "y")
+        val state = TunnelsState(tunnels = listOf(tunnel(ssh), tunnel(web)), errors = mapOf("dev-a:22" to DomainError.ServerError("x")), syncError = DomainError.ServerError("y"))
         assertTrue(state.withoutDark(emptySet()) === state)
         val shown = state.withoutDark(setOf("dev-a:22"))
         assertEquals(listOf(tunnel(web)), shown.tunnels)
         assertEquals(state.errors, shown.errors)
-        assertEquals("y", shown.syncError)
+        assertEquals(DomainError.ServerError("y"), shown.syncError)
     }
 }

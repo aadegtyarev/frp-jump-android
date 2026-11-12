@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.connections
 
+import ru.adsrv.frpjump.errors.DomainError
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -31,14 +32,14 @@ class ConnectionRowsTest {
         val tunnels = TunnelsState(
             tunnels = listOf(tunnel("wb", 22, 40001)),
             pending = mapOf("wb:22" to PendingOp.DISCONNECTING),
-            errors = mapOf("wb:22" to "boom"),
+            errors = mapOf("wb:22" to DomainError.ServerError("boom")),
         )
         val rows = connectionRows("p1", listOf(root, admin, ui), tunnels)
         val (a, b, c) = rows
         assertEquals(40001, a.tunnel?.localPort)
         assertEquals(a.tunnel, b.tunnel)
         assertEquals(listOf(PendingOp.DISCONNECTING, PendingOp.DISCONNECTING), listOf(a.pending, b.pending))
-        assertEquals(listOf("boom", "boom"), listOf(a.error, b.error))
+        assertEquals(listOf(DomainError.ServerError("boom"), DomainError.ServerError("boom")), listOf(a.error, b.error))
         assertFalse(c.active)
         assertEquals(setOf("p1/1", "p1/2", "p1/3"), rows.map { it.key }.toSet())
     }

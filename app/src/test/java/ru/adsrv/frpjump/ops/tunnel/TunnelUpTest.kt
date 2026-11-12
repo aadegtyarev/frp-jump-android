@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ops.tunnel
 
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
+import ru.adsrv.frpjump.errors.DomainError
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.*
@@ -14,12 +16,12 @@ class TunnelUpTest {
     private val input = TunnelUpInput("home", "wb", 22, PortKind.SSH)
     private fun tunnel(localPort: Int = 4022) = Tunnel("wb", 22, "g", localPort, VisitorState(TunnelStatus.DIRECT))
 
-    private class Tunnels(start: TunnelsState = TunnelsState(), val deviceAnswer: String? = null) : TunnelUpTunnels {
+    private class Tunnels(start: TunnelsState = TunnelsState(), val deviceAnswer: DevicePortNotOpen? = null) : TunnelUpTunnels {
         override val state = MutableStateFlow(start)
         val connects = mutableListOf<Triple<String, Int, PortKind>>()
         val devices = mutableListOf<Boolean>()
         override fun connectAsync(device: String, port: Int, kind: PortKind) { connects += Triple(device, port, kind) }
-        override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String? { devices += fresh; return deviceAnswer }
+        override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): DevicePortNotOpen? { devices += fresh; return deviceAnswer }
     }
 
     private class Host(val tunnels: Tunnels?, val reviveAnswer: Boolean = true) : TunnelUpHost {
@@ -81,14 +83,14 @@ class TunnelUpTest {
 
     @Test fun `a tunnel that does not come up in time fails with the manager's last error, or none, and its remote outcome unknown`() = runBlocking {
         val key = localPortKey("wb", 22)
-        val withError = Tunnels(TunnelsState(errors = mapOf(key to "server said no")))
-        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp("server said no"), RemoteOutcome.UNKNOWN), TunnelUp(Host(withError), waitMs = 30)(input))
+        val withError = Tunnels(TunnelsState(errors = mapOf(key to DomainError.ServerError("server said no"))))
+        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(DomainError.ServerError("server said no")), RemoteOutcome.UNKNOWN), TunnelUp(Host(withError), waitMs = 30)(input))
         assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(null), RemoteOutcome.UNKNOWN), TunnelUp(Host(Tunnels()), waitMs = 30)(input))
     }
 
     @Test fun `a device that does not open the port fails with the manager's explanation and an unknown outcome`() = runBlocking {
-        val tunnels = Tunnels(TunnelsState(tunnels = listOf(tunnel())), deviceAnswer = "port not open")
-        assertEquals(OpResult.Failed(TunnelFailure.DeviceNotListening("port not open"), RemoteOutcome.UNKNOWN), TunnelUp(Host(tunnels))(input))
+        val tunnels = Tunnels(TunnelsState(tunnels = listOf(tunnel())), deviceAnswer = DevicePortNotOpen(80))
+        assertEquals(OpResult.Failed(TunnelFailure.DeviceNotListening(DevicePortNotOpen(80)), RemoteOutcome.UNKNOWN), TunnelUp(Host(tunnels))(input))
     }
 
     @Test fun `cancellation while waiting propagates and is not a result`() = runBlocking {
@@ -114,7 +116,7 @@ class TunnelUpTest {
                 override val value: TunnelsState get() { log += "read"; return inner.value }
             }
             override fun connectAsync(device: String, port: Int, kind: PortKind) { log += "connect"; inner.value = TunnelsState(tunnels = listOf(tunnel())) }
-            override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String? = null
+            override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): DevicePortNotOpen? = null
         }
         val gate = CompletableDeferred<Unit>()
         val host = object : TunnelUpTunnels by tunnels, TunnelUpHost {
@@ -137,7 +139,7 @@ class TunnelUpTest {
         val tunnels = Tunnels()
         val job = async { TunnelUp(Host(tunnels), waitMs = 300)(input) }
         delay(100)
-        tunnels.state.value = TunnelsState(errors = mapOf(key to "late error"))
-        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp("late error"), RemoteOutcome.UNKNOWN), job.await())
+        tunnels.state.value = TunnelsState(errors = mapOf(key to DomainError.ServerError("late error")))
+        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(DomainError.ServerError("late error")), RemoteOutcome.UNKNOWN), job.await())
     }
 }

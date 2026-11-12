@@ -352,12 +352,40 @@ pending/waiting/tunnel states. Profile summaries count pending/errors; individua
 without a connection row. Missing sources remain unknown, not empty success.
 An ordinary refresh failure retains the existing app-known stale/error state;
 reading it successfully does not claim a successful refresh, atomic live
-inventory or remote service readiness. Error fields convey fixed descriptions
-by source field (profile loading, device refresh, connection operation, tunnel
-synchronization or protocol mismatch), not raw UI/server/exception/frpc strings.
+inventory or remote service readiness. Error fields convey a fixed kind by
+source field (profile loading, device refresh, connection operation, tunnel
+synchronization or protocol mismatch), not raw UI/server/exception/frpc strings:
+the field is null, or an object `{"kind": "<KIND>"}` and nothing else. A kind
+carries no payload: no server detail, host, URL, exception message or class name,
+HTTP body or frpc text. The kinds are a model-visible format: adding, removing or
+renaming one is a contract change, and a unit test pins the exact set per field.
+Chats saved by 0.3.70 and earlier hold the former fixed phrases (a string in these
+fields); they are re-sent as saved and the chat's facts view accepts both shapes.
 Typed facts such as relay after direct failure, waiting and device-missing remain
 separate; diagnostic text alone is not classified as a failure. Credentials,
 keys, tokens, certificates and runtime/store objects are never serialized.
+
+Error kinds, and the fields each can appear in. `source_status.load_error` is
+`PROFILES_LOAD_FAILED` or null. `device_list.error`, `tunnel_state.sync_error`,
+`connection.error` and `operation.error` hold how a server or network call failed.
+`tunnel_state.mismatch` holds a protocol kind:
+
+| Kind | Meaning | Fields |
+| --- | --- | --- |
+| `PROFILES_LOAD_FAILED` | the profiles could not be loaded | `source_status.load_error` |
+| `SERVER_ERROR` | the server answered with an error | `device_list.error`, `tunnel_state.sync_error`, `connection.error`, `operation.error` |
+| `NOT_HTTPS` | the control address is not HTTPS | same four |
+| `UNREACHABLE` | the server could not be reached | same four |
+| `CONNECTION_BROKEN` | the connection broke during the call | same four |
+| `REDIRECTED` | the server redirected | same four |
+| `UNEXPECTED_ANSWER` | the answer could not be read | same four |
+| `UNEXPECTED` | anything else (including a failure the app could not classify) | same four |
+| `NO_FREE_PORT` | no free local port in the range | `tunnel_state.sync_error` |
+| `NOT_LISTED` | the tunnel was granted, but it was not listed in time | `connection.error`, `operation.error` |
+| `PROTOCOL_UPDATE_APP` | the server speaks a newer protocol: the app is to be updated | `tunnel_state.mismatch` |
+| `PROTOCOL_UPDATE_SERVER` | the server speaks an older protocol: the server is to be updated | `tunnel_state.mismatch` |
+
+A kind outside a field's set is told as `UNEXPECTED`, so these sets stay true.
 
 The tool uses the existing captured-per-Send set, progress/failure feedback,
 result/context/history bounds, omission, cancellation, slot and module ownership

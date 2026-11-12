@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.api.PROTOCOL_VERSION
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.errors.ProtocolMismatch
 import ru.adsrv.frpjump.assistant.chat.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -74,16 +77,18 @@ class AssistantProfileInformationToolTest {
         val visitor = VisitorState(TunnelStatus.RELAYED, detail = raw, directFailed = true, waitingForPeer = true,
             confirming = true, waitingForDevice = true, deviceMissing = false)
         val tunnels = TunnelsState(listOf(Tunnel("same", 22, "secret-grant", 40001, visitor)),
-            pending = mapOf("same:22" to PendingOp.CONNECTING), errors = mapOf("same:22" to raw), syncError = raw, mismatch = raw, waiting = Waiting.NETWORK)
+            pending = mapOf("same:22" to PendingOp.CONNECTING), errors = mapOf("same:22" to DomainError.ServerError(raw)),
+            syncError = DomainError.Unreachable(raw, raw), mismatch = ProtocolMismatch(PROTOCOL_VERSION + 1), waiting = Waiting.NETWORK)
         val devices = DeviceList(listOf(DeviceRow("same", true, null, false, stale = true, checking = true)),
-            stale = true, error = raw, unreachable = true)
+            stale = true, error = DomainError.Redirected(raw, raw), unreachable = true)
         val part = profileInformationPart(p, listOf(Connection("c", "same", 22, PortKind.SSH)), tunnels, emptySet(), devices)
         val state = ProfileInformationState(true, failure = raw, current = "p", profiles = listOf(part,
             ProfileInformationPart("unavailable", "Unavailable", "grey", true, false)))
         val text = profileInformationText(state)
         assertFalse(text.contains(raw)); assertFalse(text.contains("secret-grant")); assertFalse(text.contains(p.keyAlias))
-        assertFalse(text.contains("detail")); assertTrue(text.contains("Protocol mismatch")); assertTrue(text.contains("127.0.0.1:40001"))
+        assertFalse(text.contains("detail")); assertTrue(text.contains("127.0.0.1:40001"))
         val result = Json.parseToJsonElement(text).jsonObject
+        assertEquals(buildJsonObject { put("kind", "PROFILES_LOAD_FAILED") }, result["source_status"]!!.jsonObject["load_error"])
         val records = result["results"]!!.jsonArray.map { it.jsonObject }
         val known = records.first { it["connection"] is JsonObject }
         val tunnel = known["connection"]!!.jsonObject["tunnel"]!!.jsonObject
@@ -93,8 +98,16 @@ class AssistantProfileInformationToolTest {
         val unavailable = records.last()
         assertEquals(JsonNull, unavailable["profile"]!!.jsonObject["device_list"])
         assertEquals(JsonNull, unavailable["connection"])
-        assertEquals(raw, devicesUiState(state, false).error) // UI details are unchanged.
-        assertEquals(raw, part.rows.single().error)
+        // The kinds, and only the kinds, in every error field.
+        val profile = records.first { it["connection"] is JsonObject }["profile"]!!.jsonObject
+        fun kind(name: String) = buildJsonObject { put("kind", name) }
+        assertEquals(kind("REDIRECTED"), profile["device_list"]!!.jsonObject["error"])
+        assertEquals(kind("UNREACHABLE"), profile["tunnel_state"]!!.jsonObject["sync_error"])
+        assertEquals(kind("PROTOCOL_UPDATE_APP"), profile["tunnel_state"]!!.jsonObject["mismatch"])
+        assertEquals(kind("SERVER_ERROR"), known["connection"]!!.jsonObject["error"])
+        // The owner's screens keep the payload.
+        assertEquals(DomainError.Redirected(raw, raw), devicesUiState(state, false).error)
+        assertEquals(DomainError.ServerError(raw), part.rows.single().error)
     }
     @Test fun `failed ordinary refresh is returned as stale known data not fresh success`() = runBlocking {
         SyntheticProfileInformation().use { f ->
@@ -102,7 +115,7 @@ class AssistantProfileInformationToolTest {
             val result = AssistantProfileInformationTool(f.information).execute(empty)
             assertEquals(4, f.deviceRequests.get()); assertEquals(4, f.versionRequests.get())
             assertEquals(ToolOutcome.SUCCESS, result.outcome) // Successfully read known state, not a successful refresh.
-            assertTrue(result.text.contains("Device list refresh failed")); assertTrue(result.text.contains("\"stale\":true"))
+            assertTrue(result.text.contains("\"error\":{\"kind\":\"SERVER_ERROR\"}")); assertTrue(result.text.contains("\"stale\":true"))
             assertFalse(result.text.contains("private-server-secret"))
         }
     }

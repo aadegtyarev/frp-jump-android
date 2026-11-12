@@ -1,5 +1,10 @@
 package ru.adsrv.frpjump.tunnel
 
+import ru.adsrv.frpjump.connections.Connection
+import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.ui.connections.problemOf
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import kotlinx.coroutines.CompletableDeferred
@@ -196,9 +201,11 @@ class TunnelManagerTest {
             .apply { isAccessible = true }.invoke(manager, key, operation)
     }
 
-    private fun failOperation(key: String, operation: Any, message: String) {
+    private fun rowOf(tunnel: Tunnel) = ConnectionRow("p", Connection("c1", tunnel.device, tunnel.port, PortKind.WEB, "c"), saved = true, tunnel = tunnel, pending = null, error = null)
+
+    private fun failOperation(key: String, operation: Any, error: DomainError) {
         TunnelManager::class.java.declaredMethods.single { it.name == "fail" }
-            .apply { isAccessible = true }.invoke(manager, key, operation, message)
+            .apply { isAccessible = true }.invoke(manager, key, operation, error)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -212,11 +219,11 @@ class TunnelManagerTest {
         val old = admit("wb:80", PendingOp.CONNECTING)!!
         completeOperation("wb:80", old)
         val current = admit("wb:80", PendingOp.CONNECTING)!!
-        failOperation("wb:80", current, "current failure")
+        failOperation("wb:80", current, DomainError.ServerError("current failure"))
         completeOperation("wb:80", old)
-        failOperation("wb:80", old, "stale failure")
+        failOperation("wb:80", old, DomainError.ServerError("stale failure"))
         assertTrue(coreMap("pending")["wb:80"] === current)
-        assertEquals("current failure", coreMap("errors")["wb:80"])
+        assertEquals(DomainError.ServerError("current failure"), coreMap("errors")["wb:80"])
         completeOperation("wb:80", current)
         assertTrue(coreMap("pending").isEmpty())
         manager.close()
@@ -228,7 +235,7 @@ class TunnelManagerTest {
             manager.shutdown {}
             val current = admit("wb:80", kind)!!
             completeOperation("wb:80", old)
-            failOperation("wb:80", old, "stale failure")
+            failOperation("wb:80", old, DomainError.ServerError("stale failure"))
             assertTrue(coreMap("pending")["wb:80"] === current)
             assertTrue(coreMap("errors").isEmpty())
             completeOperation("wb:80", current)
@@ -239,7 +246,7 @@ class TunnelManagerTest {
     @Test fun `reset without a new owner cannot acquire a late operation error`() = runBlocking {
         val old = admit("wb:80", PendingOp.DISCONNECTING)!!
         manager.shutdown {}
-        failOperation("wb:80", old, "stale failure")
+        failOperation("wb:80", old, DomainError.ServerError("stale failure"))
         completeOperation("wb:80", old)
         assertTrue(coreMap("pending").isEmpty())
         assertTrue(coreMap("errors").isEmpty())
@@ -607,12 +614,13 @@ class TunnelManagerTest {
         manager.sync()
         assertEquals(18080, frpc.last!!.visitors.single().localPort)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "listen tcp 127.0.0.1:18080: bind: address already in use"))
-        // Said plainly, not frpc's words.
-        eventually("said plainly") {
-            manager.state.value.tunnels.single().let {
-                it.pinned && it.localPort == 18080 && it.state.detail != null && !it.state.detail!!.contains("address already in use")
-            }
+        // The state carries the typed flag, no wording of its own; the screens say it plainly, not in frpc's words.
+        eventually("flagged") {
+            manager.state.value.tunnels.single().let { it.pinned && it.localPort == 18080 && it.state.pinnedPortTaken }
         }
+        val said = problemOf(rowOf(manager.state.value.tunnels.single()))!!
+        assertEquals(Texts.get(R.string.local_port_taken_pinned, 18080, TunnelManager.PINNED_RETRY_MS / 1000), said)
+        assertFalse(said.contains("address already in use"))
         // Not moved (a rebind would apply at once, on another port).
         delay(100)
         assertEquals(1, frpc.applies)
@@ -828,7 +836,9 @@ class TunnelManagerTest {
     fun `a tunnel given up on names the device's port`() = runBlocking {
         manager.sync()
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
-        eventually("worded") { manager.state.value.tunnels.single().state.detail == Texts.get(R.string.device_port_not_open, 80) }
+        eventually("flagged") { manager.state.value.tunnels.single().state.deviceMissing }
+        // The screens word it from the flag, with the tunnel's device port.
+        assertEquals(Texts.get(R.string.device_port_not_open, 80), problemOf(rowOf(manager.state.value.tunnels.single())))
     }
 
     /** frpc says [state] for g1, and the manager shows it: what an opener sees after tunnelPort. */
@@ -876,7 +886,7 @@ class TunnelManagerTest {
         eventually("waiting") { touched.size >= 2 }
         assertFalse(opened.isCompleted)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
-        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(10_000) { opened.await() })
+        assertEquals(DevicePortNotOpen(80), withTimeout(10_000) { opened.await() })
     }
 
     @Test
@@ -930,7 +940,7 @@ class TunnelManagerTest {
         manager.sync()
         shown(VisitorState(TunnelStatus.RELAYED))
         onTouch = { frpc.refuse("g1"); Touch.CLOSED }
-        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(5_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(DevicePortNotOpen(80), withTimeout(5_000) { manager.awaitDevice("wb", 80, fresh = true) })
     }
 
     @Test

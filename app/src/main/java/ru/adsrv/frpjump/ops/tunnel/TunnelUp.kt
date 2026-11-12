@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.withTimeoutOrNull
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
 import ru.adsrv.frpjump.ops.Effect
 import ru.adsrv.frpjump.ops.OpResult
 import ru.adsrv.frpjump.ops.Operation
@@ -23,7 +24,7 @@ interface TunnelUpTunnels {
     val state: StateFlow<TunnelsState>
     fun connectAsync(device: String, port: Int, kind: PortKind)
     /** Null when the device takes connections (or the tunnel is gone, or does not listen: the opener finds out), otherwise why not. */
-    suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String?
+    suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): DevicePortNotOpen?
 }
 
 /** What [TunnelUp] needs of the app: the profile's tunnels and the tunnels whose disconnect waits for Undo. */
