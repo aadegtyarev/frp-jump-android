@@ -305,7 +305,8 @@ class MqttBrokerTest {
         assertEquals(PublishAnswer.Refused(0x87, null), session.publishNow("denied", "1", qos = 1))
         assertEquals(PublishAnswer.Unconfirmed, session.publishNow("a/b", "x", qos = 0))
         assertTrue("pub /devices/x/controls/K1/on 1 q1 r1" in broker.received)
-        assertTrue("pub a/b x q0 r0" in broker.received)
+        // QoS 0 has no answer, so the broker thread may not have read the frame yet: wait for it (bounded).
+        runBlocking { withTimeout(5_000) { while ("pub a/b x q0 r0" !in broker.received) kotlinx.coroutines.delay(20) } }
     }
 
     @Test
