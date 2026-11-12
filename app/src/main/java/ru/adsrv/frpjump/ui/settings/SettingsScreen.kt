@@ -76,6 +76,7 @@ import ru.adsrv.frpjump.lock.AuthResult
 import ru.adsrv.frpjump.locale.AppLanguage
 import ru.adsrv.frpjump.locale.currentAppLanguage
 import ru.adsrv.frpjump.notices.NoticeKind
+import ru.adsrv.frpjump.settings.AppLockAfter
 import ru.adsrv.frpjump.settings.BackgroundPoll
 import ru.adsrv.frpjump.settings.MAX_LOCAL_PORT
 import ru.adsrv.frpjump.settings.MIN_LOCAL_PORT
@@ -109,7 +110,7 @@ import ru.adsrv.frpjump.update.UpdateState
 import java.time.Instant
 
 /** Which sheet or dialog of the settings is open. */
-private enum class Open { PORTS, POLL, SSH_KEY, LANGUAGE, THEME, HISTORY, FORGET, NEEDS_SCREEN_LOCK, UPDATE }
+private enum class Open { PORTS, POLL, LOCK_AFTER, SSH_KEY, LANGUAGE, THEME, HISTORY, FORGET, NEEDS_SCREEN_LOCK, UPDATE }
 
 /**
  * Settings as the mockup groups them: profile, tunnels, background,
@@ -305,12 +306,24 @@ fun SettingsScreen(
             SwitchRow(
                 tile = { IconTile(FingerprintGlyph) },
                 label = stringResource(R.string.setting_app_lock),
-                hint = stringResource(if (screenLock || settings.appLock) R.string.setting_app_lock_hint else R.string.setting_app_lock_needs_screen_lock),
+                hint = when {
+                    settings.appLock -> stringResource(R.string.setting_app_lock_hint_after, lockAfterLabel(settings.appLockAfter))
+                    screenLock -> stringResource(R.string.setting_app_lock_hint)
+                    else -> stringResource(R.string.setting_app_lock_needs_screen_lock)
+                },
                 hintColor = if (screenLock || settings.appLock) colors.muted else colors.warning,
                 checked = settings.appLock,
                 busy = lockBusy,
                 onChange = onAppLock,
             )
+            if (settings.appLock) {
+                RowDivider()
+                SettingRow(
+                    tile = { IconTile(FingerprintGlyph) },
+                    label = stringResource(R.string.setting_lock_after),
+                    onClick = { open = Open.LOCK_AFTER },
+                ) { ValueChevron(lockAfterLabel(settings.appLockAfter)) }
+            }
             RowDivider()
             SwitchRow(
                 tile = { IconTile(EyeOffGlyph) },
@@ -392,6 +405,15 @@ fun SettingsScreen(
                     color = colors.muted,
                 )
             },
+        )
+        Open.LOCK_AFTER -> ChoiceSheet(
+            title = stringResource(R.string.setting_lock_after),
+            options = AppLockAfter.entries,
+            selected = settings.appLockAfter,
+            label = { lockAfterLabel(it) },
+            onPick = vm::setAppLockAfter,
+            onDismiss = { open = null },
+            footer = { Text(stringResource(R.string.setting_lock_after_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted) },
         )
         Open.HISTORY -> ChoiceSheet(
             title = stringResource(R.string.terminal_history_rows),
@@ -791,6 +813,17 @@ private fun pollLabel(poll: BackgroundPoll): String {
         pluralStringResource(R.plurals.poll_seconds, seconds, seconds)
     } else {
         pluralStringResource(R.plurals.poll_minutes, seconds / 60, seconds / 60)
+    }
+}
+
+/** "Immediately", "30 s", "5 min". */
+@Composable
+private fun lockAfterLabel(after: AppLockAfter): String {
+    val seconds = (after.ms / 1000).toInt()
+    return when {
+        seconds == 0 -> stringResource(R.string.lock_after_immediately)
+        seconds < 60 -> pluralStringResource(R.plurals.poll_seconds, seconds, seconds)
+        else -> pluralStringResource(R.plurals.poll_minutes, seconds / 60, seconds / 60)
     }
 }
 

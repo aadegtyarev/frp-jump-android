@@ -569,6 +569,10 @@
     <string name="settings_security">Security</string>
     <string name="background_poll_row_hint">While tunnels are open</string>
     <string name="setting_app_lock">Unlock with fingerprint</string>
+    <string name="setting_app_lock_hint_after">Fingerprint or screen lock when the app opens. Lock after: %s. Tunnels keep running.</string>
+    <string name="setting_lock_after">Lock after</string>
+    <string name="lock_after_immediately">Immediately</string>
+    <string name="setting_lock_after_hint">Asks when the app starts from scratch and after this long out of sight. Tunnels keep the app running, so closing it is not a restart. After a window the app opened (photo or file picker, share, installer, browser) it asks only after 30 s.</string>
     <string name="setting_app_lock_hint">Fingerprint or screen lock when the app opens. Tunnels keep running.</string>
     <string name="setting_hide_in_recents">Hide in Recents</string>
     <string name="setting_hide_in_recents_hint">No picture in Recents. May block screenshots.</string>
