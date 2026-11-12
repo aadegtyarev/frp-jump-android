@@ -30,7 +30,7 @@ class AssistantChatHistoryTest {
     private fun chat(scope: CoroutineScope, store: AssistantChatHistory, provider: AgentProvider, saved: AssistantProviderSnapshot = snapshot,
         awaitClear: suspend () -> Unit = {}) =
         AssistantConversation(scope, { AssistantAvailability(true) }, { saved }, { provider }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, historyStore = store, awaitHistoryClear = awaitClear, prompts = TestPrompts.lazy)
+            io = Dispatchers.Unconfined, historyStore = store, awaitHistoryClear = awaitClear, prompts = TestPrompts.lazy, confirmations = null)
     private suspend fun AssistantConversation.ready() = withTimeout(3000) { state.first { !it.loading && !it.busy } }
 
     @Test fun `new owner receives selected target and known diagnostic result without replay`() = runBlocking {
@@ -181,7 +181,7 @@ class AssistantChatHistoryTest {
         }
         val owner = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { provider },
             { if (failPreparation) throw ProviderSetupException(ProviderSetupProblem.READ_FAILED) }, AgentModule(true),
-            io = Dispatchers.Unconfined, historyStore = history, prompts = TestPrompts.placeholder)
+            io = Dispatchers.Unconfined, historyStore = history, prompts = TestPrompts.placeholder, confirmations = null)
         try {
             owner.ready(); owner.edit("Diagnose work-root"); owner.send(); owner.ready()
             failPreparation = true

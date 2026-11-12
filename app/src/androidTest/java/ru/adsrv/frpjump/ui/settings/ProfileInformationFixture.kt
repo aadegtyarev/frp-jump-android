@@ -56,7 +56,10 @@ internal class ProfileInformationFixture : AutoCloseable {
             users.forEach { user -> connections.save(Connection("${p.id}-$user", "board1500", 22, PortKind.SSH, customName = "Service $user", user = user)) }
         }
     }
-    val information = ProfileInformation(MutableStateFlow(ProfilesState(loaded = true, index = ProfileIndex(profiles, "work"), runtimes = runtimes)), MutableStateFlow(emptySet()))
+    /** The shared state flows, so a test can build other owners (the SSH targets) over the same profiles and connections. */
+    val state = MutableStateFlow(ProfilesState(loaded = true, index = ProfileIndex(profiles, "work"), runtimes = runtimes))
+    val hidden = MutableStateFlow<Set<String>>(emptySet())
+    val information = ProfileInformation(state, hidden)
     override fun close() {
         runtimes.values.forEach { it.close() }; scope.cancel()
         http.connectionPool.evictAll()

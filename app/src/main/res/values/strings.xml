@@ -1225,7 +1225,10 @@
     <string name="confirm_always">Always</string>
     <string name="confirm_decline">Decline</string>
     <string name="confirm_session_hint">Any command on this connection until you leave Chat.</string>
-    <string name="confirm_always_hint">Turns off confirmations in the whole app, for all tools and connections. Turn them back on in %1$s › %2$s › %3$s.</string>
+    <string name="always_dialog_title">Turn off confirmations?</string>
+    <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and connections. Turn them back on in %1$s › %2$s › %3$s.</string>
+    <string name="always_dialog_confirm">Turn off</string>
+    <string name="always_dialog_cancel">Cancel</string>
     <string name="confirm_waiting">Waiting for your answer…</string>
     <string name="confirm_command">Command</string>
     <string name="confirm_not_saved">Could not save the setting. This call was allowed once.</string>
@@ -1237,4 +1240,10 @@
     <string name="confirmations_off_explanation">Confirmations are off: changing commands run without asking.</string>
     <string name="confirmations_turn_on">Turn on</string>
     <string name="confirmations_close">Close</string>
+    <string name="confirm_lines">Lines: %1$d</string>
+    <string name="confirm_more">▼ Scroll for more</string>
+    <string name="tool_failure_no_answer">%1$s: no answer, declined</string>
+    <string name="chat_receipt_no_answer">No answer, declined</string>
+    <string name="confirmations_details">Details</string>
+    <string name="confirmations_turn_on_failed">Could not save the setting. Try again.</string>
 </resources>

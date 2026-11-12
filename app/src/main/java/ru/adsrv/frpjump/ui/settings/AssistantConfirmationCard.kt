@@ -25,61 +25,108 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.assistant.chat.CardTap
 import ru.adsrv.frpjump.assistant.chat.ConfirmationDecision
+import ru.adsrv.frpjump.assistant.chat.decisionFor
 import ru.adsrv.frpjump.assistant.chat.PendingConfirmation
+import ru.adsrv.frpjump.assistant.chat.commandLineCount
+import ru.adsrv.frpjump.assistant.chat.displayCommand
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.connections.kindWord
 
 /**
- * The owner's question before a changing call: tool, target names, the full command (monospace, selectable, scrollable),
- * the warning and four answers that wrap at large font. Without a known target ([PendingConfirmation.target] null) the
- * call is undescribed: "For session" is not offered, because there is nothing to bind it to.
+ * The owner's question before a changing call. What is being allowed stays in view above the answers, always:
+ * tool, target names, the command and the warning are never scrolled away. Only the command box scrolls (inside the room that is left,
+ * with its line count and a "scroll for more" mark), and the answers stay pinned below. The command is shown with every non-printing or
+ * disguising character as a visible escape ([displayCommand]). In the compact landscape layout ([wide]) the answers sit beside the
+ * command instead of below it, so both fit on a short screen. "For session" is offered only when the target is known by name; "Always"
+ * asks for a second confirmation first (it turns the question off for the whole app).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (ConfirmationDecision) -> Unit, modifier: Modifier = Modifier) {
+internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (ConfirmationDecision) -> Unit, bounded: Boolean = true,
+    wide: Boolean = false, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val info = confirmation.info
     val target = if (info == null) stringResource(R.string.confirm_unknown_target)
         else stringResource(R.string.confirm_target, info.profileName, info.connection.device, info.connection.label { kindWord(context, it) })
+    val tool = stringResource(confirmation.tool.title())
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     val sessionHint = stringResource(R.string.confirm_session_hint)
-    val alwaysHint = stringResource(R.string.confirm_always_hint, stringResource(R.string.settings), stringResource(R.string.assistant_title), stringResource(R.string.assistant_tools))
-    OutlinedCard(modifier.fillMaxWidth().testTag("chat_confirm_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
-            Text(stringResource(confirmation.tool.title()), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
-                modifier = Modifier.testTag("chat_confirm_tool"))
-            Text(target, modifier = Modifier.testTag("chat_confirm_target"))
-            val commandLabel = stringResource(R.string.confirm_command)
-            Box(Modifier.fillMaxWidth().heightIn(max = 200.dp).verticalScroll(rememberScrollState()).testTag("chat_confirm_command_box")) {
+    val shownCommand = remember(confirmation.id) { displayCommand(confirmation.command) }
+    val lines = remember(confirmation.id) { commandLineCount(confirmation.command) }
+    val scroll = rememberScrollState()
+    val commandLabel = stringResource(R.string.confirm_command)
+    var askAlways by remember(confirmation.id) { mutableStateOf(false) }
+    val canSession = info != null && confirmation.target != null
+    // A tap answers through the pure mapping; Always has no answer until its dialog is confirmed.
+    fun answer(tap: CardTap) { val decision = decisionFor(tap, alwaysConfirmed = false); if (decision != null) onAnswer(decision) else askAlways = true }
+
+    @Composable fun Header() {
+        Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
+        Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("chat_confirm_tool"))
+        // Two lines at most, ellipsis after that; TalkBack reads the whole name.
+        Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
+        if (lines > 1) Text(stringResource(R.string.confirm_lines, lines), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
+            modifier = Modifier.testTag("chat_confirm_lines"))
+    }
+    @Composable fun CommandBox(modifier: Modifier) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Box(Modifier.weight(1f, fill = false).verticalScroll(scroll).testTag("chat_confirm_command_box")) {
                 SelectionContainer {
-                    Text(confirmation.command, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: ${confirmation.command}" }.testTag("chat_confirm_command"))
+                    Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: $shownCommand" }.testTag("chat_confirm_command"))
                 }
             }
-            Text(stringResource(R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.testTag("chat_confirm_warning"))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onAnswer(ConfirmationDecision.ONCE) }, modifier = Modifier.testTag("chat_confirm_allow")) { Text(allow) }
-                if (confirmation.target != null) OutlinedButton(onClick = { onAnswer(ConfirmationDecision.SESSION) },
-                    modifier = Modifier.semantics { contentDescription = "$session. $sessionHint" }.testTag("chat_confirm_session")) { Text(session) }
-                OutlinedButton(onClick = { onAnswer(ConfirmationDecision.ALWAYS) },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTheme.colors.error),
-                    modifier = Modifier.semantics { contentDescription = "$always. $alwaysHint" }.testTag("chat_confirm_always")) { Text(always) }
-                OutlinedButton(onClick = { onAnswer(ConfirmationDecision.DENY) }, modifier = Modifier.testTag("chat_confirm_decline")) { Text(decline) }
-            }
-            if (confirmation.target != null) Hint(session, sessionHint, "chat_confirm_session_hint")
-            Hint(always, alwaysHint, "chat_confirm_always_hint")
+            if (scroll.canScrollForward) Text(stringResource(R.string.confirm_more), style = MaterialTheme.typography.labelMedium,
+                color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_more"))
         }
     }
+    @Composable fun Warning() = Text(stringResource(R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.testTag("chat_confirm_warning"))
+    @Composable fun Answers() {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { answer(CardTap.ALLOW) }, modifier = Modifier.testTag("chat_confirm_allow")) { Text(allow) }
+            if (canSession) OutlinedButton(onClick = { answer(CardTap.SESSION) },
+                modifier = Modifier.semantics { contentDescription = "$session. $sessionHint" }.testTag("chat_confirm_session")) { Text(session) }
+            OutlinedButton(onClick = { answer(CardTap.ALWAYS) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTheme.colors.error),
+                modifier = Modifier.testTag("chat_confirm_always")) { Text(always) }
+            OutlinedButton(onClick = { answer(CardTap.DECLINE) }, modifier = Modifier.testTag("chat_confirm_decline")) { Text(decline) }
+        }
+        if (canSession) Hint(session, sessionHint, "chat_confirm_session_hint")
+    }
+
+    OutlinedCard(modifier.fillMaxWidth().testTag("chat_confirm_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
+        if (wide) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Header(); CommandBox(Modifier.heightIn(max = 120.dp)); Warning()
+            }
+            Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers() }
+        } else Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Header()
+            CommandBox(if (bounded) Modifier.weight(1f, fill = false).heightIn(min = 72.dp) else Modifier.heightIn(max = 160.dp))
+            Warning()
+            Answers()
+        }
+    }
+    if (askAlways) AlertDialog(
+        onDismissRequest = { askAlways = false },
+        title = { Text(stringResource(R.string.always_dialog_title), modifier = Modifier.testTag("chat_always_dialog_title")) },
+        text = { Text(stringResource(R.string.always_dialog_text, stringResource(R.string.settings), stringResource(R.string.assistant_title), stringResource(R.string.assistant_tools)),
+            modifier = Modifier.testTag("chat_always_dialog_text")) },
+        confirmButton = { TextButton(onClick = { askAlways = false; decisionFor(CardTap.ALWAYS, alwaysConfirmed = true)?.let(onAnswer) }, modifier = Modifier.testTag("chat_always_turn_off")) {
+            Text(stringResource(R.string.always_dialog_confirm), color = AppTheme.colors.error) } },
+        dismissButton = { TextButton(onClick = { askAlways = false }, modifier = Modifier.testTag("chat_always_cancel")) { Text(stringResource(R.string.always_dialog_cancel)) } },
+    )
 }
 
 @Composable
@@ -90,21 +137,28 @@ private fun Hint(label: String, text: String, tag: String) {
 
 /**
  * The compact mark shown while confirmation requests are off. Tap or long press explains it and offers turning requests back on;
- * there is no banner or strip. Sits between the title and the Tools action of the chat top bar.
+ * there is no banner or strip. Sits between the title and the Tools action of the chat top bar. "Turn on" keeps the dialog open
+ * until the setting is saved (the mark then disappears); if saving fails, [turnOnFailed] shows the error next to the button.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-internal fun ConfirmationsOffIndicator(onTurnOn: () -> Unit, onTools: (() -> Unit)?, modifier: Modifier = Modifier) {
+internal fun ConfirmationsOffIndicator(onTurnOn: () -> Unit, onTools: (() -> Unit)?, turnOnFailed: Boolean = false, modifier: Modifier = Modifier) {
     var open by remember { mutableStateOf(false) }
     val description = stringResource(R.string.confirmations_off_description)
-    Box(modifier.size(48.dp).combinedClickable(role = Role.Button, onClickLabel = description, onClick = { open = true }, onLongClickLabel = description, onLongClick = { open = true })
+    val details = stringResource(R.string.confirmations_details)
+    Box(modifier.size(48.dp).combinedClickable(role = Role.Button, onClickLabel = details, onClick = { open = true }, onLongClickLabel = details, onLongClick = { open = true })
         .semantics { contentDescription = description }.testTag("chat_confirmations_off"), contentAlignment = Alignment.Center) {
         Icon(Icons.Filled.Warning, contentDescription = null, tint = AppTheme.colors.error)
     }
     if (open) AlertDialog(
         onDismissRequest = { open = false },
-        text = { Text(stringResource(R.string.confirmations_off_explanation), modifier = Modifier.testTag("chat_confirmations_off_text")) },
-        confirmButton = { TextButton(onClick = { open = false; onTurnOn() }, modifier = Modifier.testTag("chat_confirmations_turn_on")) { Text(stringResource(R.string.confirmations_turn_on)) } },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.confirmations_off_explanation), modifier = Modifier.testTag("chat_confirmations_off_text"))
+                if (turnOnFailed) Text(stringResource(R.string.confirmations_turn_on_failed), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirmations_turn_on_failed"))
+            }
+        },
+        confirmButton = { TextButton(onClick = onTurnOn, modifier = Modifier.testTag("chat_confirmations_turn_on")) { Text(stringResource(R.string.confirmations_turn_on)) } },
         dismissButton = {
             Row {
                 if (onTools != null) TextButton(onClick = { open = false; onTools() }, modifier = Modifier.testTag("chat_confirmations_tools")) { Text(stringResource(R.string.assistant_tools)) }

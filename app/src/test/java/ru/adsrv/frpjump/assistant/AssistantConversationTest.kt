@@ -44,7 +44,7 @@ class AssistantConversationTest {
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
             preparations++; prepareGate?.invoke(); provider
-        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy)
+        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy, confirmations = null)
         suspend fun idle() = withTimeout(3000) { chat.state.first { !it.busy } }
         suspend fun send(text: String = "question"): ChatState { chat.edit(text); chat.send(); return idle() }
         fun revise() = store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), store.state.value.revision))
@@ -194,7 +194,7 @@ class AssistantConversationTest {
         val queued = mutableListOf<Runnable>()
         val dispatcher = object : CoroutineDispatcher() { override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { queued += block } }
         val scope = CoroutineScope(Job() + dispatcher)
-        val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { AssistantProviderSnapshot(AssistantProviderSettings(model="m"), "r") }, { AgentProvider { AgentReply("a") } }, {}, AgentModule(true), prompts = TestPrompts.placeholder)
+        val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { AssistantProviderSnapshot(AssistantProviderSettings(model="m"), "r") }, { AgentProvider { AgentReply("a") } }, {}, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = null)
         chat.edit("q"); chat.send(); chat.stop(); queued.toList().forEach { it.run() }
         assertFalse(chat.state.value.busy); assertEquals("q", chat.state.value.draft); scope.cancel()
     }
@@ -210,7 +210,7 @@ class AssistantConversationTest {
             val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { AgentReply("late") } }, {
                 checks++
                 if (checks == 2) { entered.countDown(); check(release.await(3, TimeUnit.SECONDS)) }
-            }, module, prompts = TestPrompts.placeholder)
+            }, module, prompts = TestPrompts.placeholder, confirmations = null)
             try {
                 chat.edit("keep"); chat.send(); assertTrue(entered.await(2, TimeUnit.SECONDS))
                 when (change) {
@@ -233,7 +233,7 @@ class AssistantConversationTest {
             val saved = AssistantProviderSnapshot(if (problem == ProviderSetupProblem.READ_FAILED) null else AssistantProviderSettings(model = "m"), "r", problem.takeIf { it == ProviderSetupProblem.READ_FAILED })
             val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { saved }, {
                 preparations++; throw ProviderSetupException(problem ?: ProviderSetupProblem.KEY_REQUIRED)
-            }, {}, AgentModule(true), Dispatchers.Unconfined, prompts = TestPrompts.placeholder)
+            }, {}, AgentModule(true), Dispatchers.Unconfined, prompts = TestPrompts.placeholder, confirmations = null)
             chat.edit("kept"); chat.send()
             assertEquals(if (problem == ProviderSetupProblem.CRYPTO_FAILED) ChatProblem.KEY else if (problem == ProviderSetupProblem.READ_FAILED) ChatProblem.READ else ChatProblem.SETUP, chat.state.value.problem)
             assertEquals("kept", chat.state.value.draft); assertEquals(if (problem == ProviderSetupProblem.READ_FAILED) 0 else 1, preparations)
@@ -241,7 +241,7 @@ class AssistantConversationTest {
         }
         for (enabled in listOf(false, true)) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val chat = AssistantConversation(scope, { AssistantAvailability(enabled) }, { AssistantProviderSnapshot() }, { error("must not prepare") }, {}, AgentModule(true), prompts = TestPrompts.placeholder)
+            val chat = AssistantConversation(scope, { AssistantAvailability(enabled) }, { AssistantProviderSnapshot() }, { error("must not prepare") }, {}, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = null)
             chat.edit("kept"); chat.send(); assertEquals(ChatProblem.SETUP, chat.state.value.problem); chat.close(); scope.cancel()
         }
     }
@@ -272,7 +272,7 @@ class AssistantConversationTest {
             store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "m"), null, "synthetic"))
             val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { store.state.value }, {
                 store.provider(AssistantProviderDraft(it.settings!!, it.revision))
-            }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder)
+            }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = null)
             chat.edit("retry HTTP"); chat.send(); assertTrue(received.await(2, TimeUnit.SECONDS))
             chat.stop(); withTimeout(3000) { chat.state.first { !it.busy } }
             assertTrue(disconnected.await(2, TimeUnit.SECONDS)); assertEquals("retry HTTP", chat.state.value.draft)
@@ -309,7 +309,7 @@ class AssistantConversationTest {
                 store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "m"), null, "synthetic"))
                 val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { store.state.value }, {
                     store.provider(AssistantProviderDraft(it.settings!!, it.revision))
-                }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder)
+                }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = null)
                 chat.edit("retry after timeout"); chat.send(); assertTrue(received.await(2, TimeUnit.SECONDS))
                 val state = withTimeout(35000) { chat.state.first { !it.busy } }
                 assertEquals("partialBody=$partialBody", ChatProblem.TIMEOUT, state.problem)
@@ -351,7 +351,7 @@ class AssistantConversationTest {
             val writes = file.writes
             val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { store.state.value }, {
                 store.provider(AssistantProviderDraft(it.settings!!, it.revision))
-            }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder)
+            }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = null)
             assertEquals(0, box.opens); assertTrue(seen.isEmpty())
             repeat(2) { chat.edit("message-$it"); chat.send(); withTimeout(3000) { chat.state.first { !it.busy } } }
             assertEquals(1, box.opens); assertEquals(writes, file.writes)

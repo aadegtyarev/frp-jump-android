@@ -26,8 +26,11 @@ class AssistantConversation(
     private val awaitHistoryClear: suspend () -> Unit = {},
     /** Required: no compiled-in fallback prompt exists. */
     private val prompts: Lazy<AssistantPrompts>,
-    /** Null: no question is ever asked (kernel-only tests). The chat ViewModel always passes one. */
-    private val confirmations: ConfirmationSupport? = null,
+    /**
+     * Required, no default: leaving it out must be a compile error, never a silent "no question". Null means no question is ever asked
+     * and is for kernel-only tests; the chat ViewModel always passes a real one (pinned by a ViewModel test).
+     */
+    private val confirmations: ConfirmationSupport?,
     /** Millisecond clock of the Send's active-time limit; tests pass a virtual one. */
     private val activeClock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -84,13 +87,17 @@ class AssistantConversation(
         }
     }
     suspend fun deleteHistory() {
+        var stopWaiting: Job? = null
         try { historyStore?.clear() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { reloadHistory(); return }
         synchronized(gate) {
             c.document = SavedChat().bind(snapshot().settings); c.provider = null; confirmations?.grants?.clear()
+            // A running Send that is waiting for the owner is stopped (nothing runs) rather than left with its card wiped from the state.
+            stopWaiting = if (c.confirmation != null) c.pending?.also(own::stopLocked)?.job else null
             if (!c.closed) c.mutable.value = ChatState()
         }
+        stopWaiting?.cancel()
     }
     fun edit(text: String) = synchronized(gate) {
         if (!c.closed && c.pending == null && !c.mutable.value.loading && c.mutable.value.historyProblem != ChatHistoryProblem.READ) {

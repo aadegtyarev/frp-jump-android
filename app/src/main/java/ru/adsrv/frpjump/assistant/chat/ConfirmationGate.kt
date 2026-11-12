@@ -2,7 +2,9 @@ package ru.adsrv.frpjump.assistant.chat
 
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.agent.AgentTool
 import ru.adsrv.frpjump.agent.ToolCall
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.agent.ToolOutput
 import ru.adsrv.frpjump.assistant.tools.AppTool
@@ -25,20 +27,26 @@ import kotlin.coroutines.CoroutineContext
  */
 internal suspend fun authorizeCall(
     support: ConfirmationSupport,
-    tools: Map<String, AppTool<*>>,
+    tools: Map<String, AgentTool>,
     call: ToolCall,
     wait: suspend (ChangeRequest, ConfirmationTargetInfo?) -> ConfirmationDecision,
     onNotSaved: () -> Unit,
     io: CoroutineContext,
 ): ToolOutput? {
-    val tool = tools[call.name] ?: return null
+    val registered = tools[call.name] ?: return null
+    if (registered !is AppTool<*>) {
+        // A catalog tool that changes something but cannot describe itself (not an AppTool) never runs unasked: it is refused.
+        return if (AssistantToolId.fromWire(call.name)?.effect?.changes == true) ToolOutput(NOT_AUTHORIZED, ToolOutcome.FAILED) else null
+    }
+    val tool: AppTool<*> = registered
     val request = (tool.changeCheck(call.arguments) as? ChangeCheck.Change)?.request ?: return null
-    val key = request.target?.let { GrantKey(request.tool, it) }
+    val key = request.target?.let { GrantKey(tool.id, it) }
     val stamp = request.target?.let(support.stamp)
-    if (!mustAsk(request.tool, key, support.policy(), support.grants, stamp = stamp)) return null
+    if (!mustAsk(tool.id, key, support.policy(), support.grants, stamp = stamp)) return null
     return when (wait(request, request.target?.let(support.info))) {
         ConfirmationDecision.ONCE -> null
-        ConfirmationDecision.SESSION -> { if (key != null) support.grants.grant(key, stamp); null }
+        // A grant is never recorded for a tool that was switched off while the owner was being asked.
+        ConfirmationDecision.SESSION -> { if (key != null && support.toolEnabled(tool.id)) support.grants.grant(key, stamp); null }
         ConfirmationDecision.ALWAYS -> {
             // The owner's choice stands even if Stop races this call; the call itself is stopped by the kernel's owner check.
             val saved = withContext(NonCancellable + io) { try { support.persistOff() } catch (_: Exception) { false } }
@@ -49,3 +57,6 @@ internal suspend fun authorizeCall(
         ConfirmationDecision.NO_ANSWER -> ToolOutput(ConfirmationTexts.NO_ANSWER, ToolOutcome.DECLINED)
     }
 }
+
+/** The fixed text of a refusal because no confirmation could be arranged; nothing was executed. */
+internal const val NOT_AUTHORIZED = "Tool was not authorized; nothing was executed."

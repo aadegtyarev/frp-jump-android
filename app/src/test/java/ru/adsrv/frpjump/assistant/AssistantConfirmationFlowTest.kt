@@ -24,7 +24,9 @@ class AssistantConfirmationFlowTest {
     private class Call(val profile: String, val connection: String, val command: String)
 
     private inner class Harness(private val calls: List<Call>, dispatcher: CoroutineDispatcher? = null, clock: (() -> Long)? = null,
-        persistFails: Boolean = false, enabledAtStart: Boolean = true, private val providerDelayMs: Long = 0, modelTimeoutMs: Long = 60_000) : AutoCloseable {
+        persistFails: Boolean = false, enabledAtStart: Boolean = true, private val providerDelayMs: Long = 0, modelTimeoutMs: Long = 60_000,
+        private val custom: ((AgentRequest) -> AgentReply?)? = null) : AutoCloseable {
+        @Volatile var snapshot = saved
         val executed = AtomicInteger()
         val commands = CopyOnWriteArrayList<String>()
         val requests = CopyOnWriteArrayList<AgentRequest>()
@@ -44,16 +46,18 @@ class AssistantConfirmationFlowTest {
             }
             override fun stamp(target: GrantTarget): Any? = this@Harness.stamp
         }
-        val support = ConfirmationSupport(policy = { settings.assistantConfirmations },
-            persistOff = { if (this.persistFails) false else { settings.setAssistantConfirmations(ConfirmationMode.OFF); true } },
-            stamp = { ssh.stamp(it) })
+        /** The production wiring (policy, commit of "off", names, stamp, tool switch); only the persistence failure is simulated. */
+        val support = chatConfirmationSupport(settings, ssh).let { real ->
+            ConfirmationSupport(real.policy, { if (this.persistFails) false else real.persistOff() }, real.info, { ssh.stamp(it) }, real.grants, real.toolEnabled)
+        }
         val scope = CoroutineScope(SupervisorJob() + (dispatcher ?: Dispatchers.Default))
         val chat: AssistantConversation
         init {
-            chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
+            chat = AssistantConversation(scope, { settings.assistantAvailability }, { snapshot }, {
                 AgentProvider { request ->
                     if (providerDelayMs > 0) delay(providerDelayMs)
                     requests += request
+                    custom?.invoke(request)?.let { return@AgentProvider it }
                     val done = request.turns.last().exchanges.size
                     if (done < calls.size) AgentReply(calls = listOf(ToolCall("c$done", "ssh_command", buildJsonObject {
                         put("profile_id", calls[done].profile); put("connection_id", calls[done].connection); put("command", calls[done].command)
@@ -210,7 +214,7 @@ class AssistantConfirmationFlowTest {
         h.send(); val card = h.card()
         h.chat.stop(); h.idle()
         assertEquals(0, h.executed.get()); assertNull(h.state.confirmation)
-        assertFalse(h.settings.assistantChat.busy.value)
+        eventually("slot free") { h.settings.assistantChat.busy.value.takeIf { !it } }
         h.chat.answer(card.id, ConfirmationDecision.ONCE)
         Thread.sleep(100); assertEquals(0, h.executed.get())
     }
@@ -295,5 +299,45 @@ class AssistantConfirmationFlowTest {
         h.chat.answer(old.id, ConfirmationDecision.ONCE)
         Thread.sleep(100); assertEquals(0, h.executed.get()); assertNotNull(h.state.confirmation)
         h.chat.answer(next.id, ConfirmationDecision.DENY); h.idle()
+    }
+
+    @Test fun `a session answer given after the tool was switched off leaves no grant`() {
+        val h = Harness(one())
+        h.send(); val card = h.card()
+        h.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, false); h.chat.toolsChanged(h.settings.assistantAvailability.tools)
+        h.chat.answer(card.id, ConfirmationDecision.SESSION); h.idle()
+        assertTrue(h.support.grants.snapshot().isEmpty())
+    }
+
+    @Test fun `a provider change during the wait stops the Send and runs nothing`() {
+        val h = Harness(one())
+        h.send(); h.card()
+        h.snapshot = AssistantProviderSnapshot(AssistantProviderSettings(model = "m"), "r2"); h.chat.refresh()
+        h.idle()
+        assertEquals(0, h.executed.get()); assertNull(h.state.confirmation); eventually("slot free") { h.settings.assistantChat.busy.value.takeIf { !it } }
+    }
+
+    @Test fun `clearing the history while the owner is asked stops the Send and leaves no orphaned card`() {
+        val h = Harness(one())
+        h.send(); val card = h.card()
+        runBlocking { h.chat.deleteHistory() }
+        h.idle()
+        assertEquals(0, h.executed.get()); assertNull(h.state.confirmation); eventually("slot free") { h.settings.assistantChat.busy.value.takeIf { !it } }
+        h.chat.answer(card.id, ConfirmationDecision.ONCE); Thread.sleep(100); assertEquals(0, h.executed.get())
+    }
+
+    @Test fun `two changing calls in one step are asked one by one and answered separately`() {
+        val two = { request: AgentRequest ->
+            if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf("a", "b").map { c ->
+                ToolCall("id-$c", "ssh_command", buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("command", c) }) }) else null
+        }
+        val h = Harness(emptyList(), custom = two)
+        h.send()
+        val first = h.card(); assertEquals("a", first.command)
+        h.chat.answer(first.id, ConfirmationDecision.DENY)
+        val second = eventually("second card") { h.state.confirmation?.takeIf { it.command == "b" } }
+        assertEquals(0, h.executed.get()); h.chat.answer(second.id, ConfirmationDecision.ONCE); h.idle()
+        assertEquals(listOf("b"), h.commands)
+        assertEquals(listOf(ToolOutcome.DECLINED, ToolOutcome.SUCCESS), h.results().map { it.outcome })
     }
 }

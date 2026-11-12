@@ -39,4 +39,6 @@ class ConfirmationSupport(
     val info: (GrantTarget) -> ConfirmationTargetInfo? = { null },
     val stamp: (GrantTarget) -> Any? = { null },
     val grants: GrantStore = GrantStore(),
+    /** Whether the tool is still switched on; a session grant is not recorded for a tool switched off while the owner was asked. */
+    val toolEnabled: (AssistantToolId) -> Boolean = { true },
 )

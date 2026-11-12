@@ -1,7 +1,7 @@
 # Assistant: confirmation of changing tool calls (phase F8)
 
 Status: Approved by the parent on 2026-11-12 (decisions R1, R6-R12; prompt sentence approved by the operator on 2026-11-12). Date: 2026-11-12. Base: `origin/main` 67df9c8 (0.3.65).
-Implementation: PR 1 (core, no visible change) is merged-ready; PR 2 (visible behavior, prompt v5) follows. The prompt change in section 12 is operator-approved.
+Implementation: PR 1 (core, no visible change) is merged (#202); PR 2 (visible behavior, prompt v5) is in review. The prompt change in section 12 is operator-approved.
 
 ## 1. Goal and user-visible behavior
 
@@ -103,16 +103,22 @@ Only `global` is read or written in F8. `resolve` already takes the call's scope
 | Button 2 | For session | Для сессии |
 | Hint under For session | Any command on this connection until you leave Chat. | Любые команды на этом соединении, пока вы не выйдете из чата. |
 | Button 3 | Always | Всегда |
-| Always explanation (under the button) | Turns off confirmations in the whole app, for all tools and connections. Turn them back on in Settings › LLM assistant › Tools. | Отключает подтверждения во всём приложении, для всех инструментов и соединений. Включить обратно: Настройки › LLM-помощник › Инструменты. |
+| Always confirm dialog, title (tap on Always opens it) | Turn off confirmations? | Выключить подтверждения? |
+| Always confirm dialog, text | Changing commands will run without asking, in the whole app, for all tools and connections. Turn them back on in Settings › LLM assistant › Tools. | Изменяющие команды будут выполняться без вопроса во всём приложении, для всех инструментов и соединений. Включить снова: Настройки › LLM-помощник › Инструменты. |
+| Always confirm dialog, buttons | Turn off / Cancel | Выключить / Отмена |
 | Button 4 | Decline | Отклонить |
 | Receipt for DECLINED | Declined | Отклонено |
-| Receipt for wait timeout | No answer, declined | Нет ответа, отклонено |
+| Receipt and quiet line for wait timeout (the fixed no-answer result text tells it from a real Decline) | No answer, declined | Нет ответа, отклонено |
 | Progress while waiting | Waiting for your answer… | Ждём вашего ответа… |
 | Setting label (Tools screen, top) | Ask before changing commands | Спрашивать перед изменяющими командами |
 | Setting summary | Asks before a tool runs something that can change a system. Off: no questions anywhere in the app. | Спрашивает, прежде чем инструмент выполнит то, что может изменить систему. Выключено: вопросов нигде в приложении нет. |
 | Indicator content description | Confirmations are off | Подтверждения выключены |
-| Indicator explanation (snackbar-style short text on tap/long press) | Confirmations are off: changing commands run without asking. | Подтверждения выключены: изменяющие команды выполняются без вопроса. |
+| Indicator explanation (dialog on tap or long press, with Turn on, Tools and Close) | Confirmations are off: changing commands run without asking. | Подтверждения выключены: изменяющие команды выполняются без вопроса. |
 | Indicator action | Turn on | Включить |
+| Indicator click label (what a tap does, for TalkBack) | Details | Подробнее |
+| Lines of a multi-line command | Lines: N | Строк: N |
+| Scroll mark while the card can scroll | ▼ Scroll for more | ▼ Прокрутите вниз |
+| Turn on could not be saved (in the dialog) | Could not save the setting. Try again. | Не удалось сохранить настройку. Повторите. |
 | Pending save error | Could not save the setting. This call was allowed once. | Не удалось сохранить настройку. Этот вызов разрешён один раз. |
 
 Layout:
@@ -132,7 +138,7 @@ Layout:
 - Send deadline: `withTimeout(120_000)` in `TurnRunner.run` becomes an `ActiveDeadline` (pure, injectable clock): a watchdog cancels the Send with the same `TimeoutCancellationException`-equivalent mapping (`ChatProblem.TIMEOUT`) when active time exceeds 120 s; `authorize` pauses it for the wait and resumes it in `finally`. Active time counts everything else (model, tools, summary) exactly as today.
 - Stop / Back / disable / revision change during the wait: the Send's job is cancelled; the awaiting coroutine is cancelled; the card is cleared. Because `RunOwnership.guarded` refuses commits from a stopped owner, the card is cleared in `RunOwnership.completed()` and in `refreshLocked()`/`close()` (the same places that reset other transient fields), not by the cancelled waiter. Slot semantics unchanged: the slot frees only after the run coroutine finished.
 - Session grants: an in-memory `GrantStore` in the conversation owner (retained across recreation, dropped by `close()`), keyed by tool and structured (profile, connection). Cleared when the assistant disable version advances, when the corresponding tool switch is turned off, on `deleteHistory`, and per target when the connection or its profile is edited or removed while the chat lives (a grant never follows an edited target). Never written to history.
-- Races with Stop: an "Always" answer persists "off" even if Stop races the call; a "For session" answer racing Stop may record its grant. Both are the owner's explicit choice and are acceptable; the racing call itself never runs (`checkOwner` after the hook).
+- Races with Stop: an "Always" answer may still persist "off" when Stop races the call; a "For session" answer racing Stop may record its grant (not when the tool was switched off meanwhile). Both are the owner's explicit choice and are acceptable; the racing call itself never runs (`checkOwner` after the hook).
 - The 5-minute wait uses `withTimeoutOrNull` inside the hook and returns a DECLINED output; a `TimeoutCancellationException` never escapes the hook.
 - Always: write the setting on IO, then (success) return ONCE-like proceed; subscribers (Chat indicator, Tools row) update from `SettingsStore.settings`.
 - No SSH client is created before the answer: `authorize` runs before `AppTool.execute` (and therefore before `AssistantSshCommands.execute` -> `connector.newClient()`); the target description is a pure lookup in `SshTargets` state.
@@ -244,6 +250,17 @@ Focused: `:agent-core:test`, the new/changed `app` unit tests, `AssistantChatScr
 PR 1 (no user-visible change): agent-core `authorize` hook, `DECLINED`, `ActiveDeadline` (+ `TurnRunner` using it), `ConfirmationPolicy`, `GrantStore`, settings field and sanitizing decode, fixed texts, `AppTool.describeChange` + catalog test, tests. Until PR 2, `TurnRunner` passes no `authorize`.
 PR 2 (user-visible): `Confirmations`/`ChatConfirmations`, `ChatState.confirmation`, wiring in `TurnRunner`/`RunOwnership`/`AssistantConversation`, SSH describe, receipts, card UI, Tools switch, indicator, strings EN/RU, prompt v5, docs (ledger), instrumentation tests.
 Estimate: PR 1 about 350 production lines and 450 test lines; PR 2 about 700 production lines (about half UI/strings) and 900 test lines; each is reviewable; do not merge PR 1 alone with a release claiming the feature.
+
+## 15a. Deviations from the first draft (approved by the parent)
+
+- The card is above the message field, outside the history list (keeps the answers reachable at 200% font and in the compact landscape layout).
+- The indicator explanation is a dialog with Turn on / Tools / Close (meets R12: a short explanation and a way to the setting). Turn on keeps the dialog open until the setting is saved and shows an inline error if saving fails.
+- A wait that ran out reads "No answer, declined" (the fixed no-answer text distinguishes it from a real Decline).
+- The command is shown with visible escapes for non-printing and disguising characters and with its line count; the part above the answers scrolls with a "scroll for more" mark, the answers stay pinned below it. The command that runs is unchanged.
+- "For session" is offered only when the target is known by name (an unresolved or undescribed target gets Allow, Always and Decline).
+- A history clear while the owner is being asked stops the Send (nothing runs); the grants are cleared with it.
+- Always asks for a second confirmation (parent decision after the first emulator run): the card no longer carries the long explanation; a dialog says what is turned off and where to turn it back on, with Turn off (persists "off", then this call runs) and Cancel (back to the card, still waiting). This meets R11 and guards against an accidental tap. The short For session hint stays on the card.
+- Card layout rule (parent decision after the first emulator run): tool, target, the command with its line count, and the warning stay in view above the answers at every size; the answers are pinned below; only the command box scrolls inside the room that is left, and the card shows its top when it appears. In the compact landscape layout the answers sit beside the command. The target header is at most two lines with an ellipsis; TalkBack reads it whole.
 
 ## 16. Decisions (closed by the parent, 2026-11-12)
 

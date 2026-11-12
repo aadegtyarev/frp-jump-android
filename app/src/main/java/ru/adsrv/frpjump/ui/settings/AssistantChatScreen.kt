@@ -28,17 +28,21 @@ import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.ui.AppTheme
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 
 @Composable
 fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val provider by vm.provider.collectAsStateWithLifecycle()
+    val toolsState by vm.tools.state.collectAsStateWithLifecycle()
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else {
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
-            confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF, onConfirmationsOn = vm::turnConfirmationsOn)
+            confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF, onConfirmationsOn = vm::turnConfirmationsOn,
+            confirmationsOnFailed = CONFIRMATIONS_KEY in toolsState.failed)
     }
 }
 
@@ -48,7 +52,7 @@ internal fun AssistantChatContent(
     conversation: AssistantConversation, enabled: Boolean, provider: AssistantProviderSnapshot,
     onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null, onClear: (() -> Unit)? = null,
     /** While true the top bar shows the compact "confirmations are off" mark; [onConfirmationsOn] turns requests back on. */
-    confirmationsOff: Boolean = false, onConfirmationsOn: (() -> Unit)? = null,
+    confirmationsOff: Boolean = false, onConfirmationsOn: (() -> Unit)? = null, confirmationsOnFailed: Boolean = false,
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -65,7 +69,10 @@ internal fun AssistantChatContent(
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         val compact = maxHeight < 400.dp
-        val cardLimit = maxHeight * 0.55f
+        val cardLimit = maxHeight * 0.75f
+        val cardInView = remember { BringIntoViewRequester() }
+        // When a question appears in the compact (scrolling) layout, show it from its top: tool, target and command first.
+        LaunchedEffect(state.confirmation?.id) { if (compact && state.confirmation != null) cardInView.bringIntoView() }
         Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -74,7 +81,7 @@ internal fun AssistantChatContent(
                 }
                 Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
-                if (confirmationsOff && onConfirmationsOn != null) ConfirmationsOffIndicator(onConfirmationsOn, onTools)
+                if (confirmationsOff && onConfirmationsOn != null) ConfirmationsOffIndicator(onConfirmationsOn, onTools, confirmationsOnFailed)
                 onTools?.let { action -> TextButton(onClick = action, modifier = Modifier.testTag("chat_tools")) { Text(stringResource(R.string.assistant_tools)) } }
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
@@ -137,7 +144,6 @@ internal fun AssistantChatContent(
                         ChatSources(state.currentSources)
                         ChatToolDeclines(state.receipts)
                         ChatToolReceipts(state.receipts)
-                        if (state.confirmationNotSaved) Text(stringResource(R.string.confirm_not_saved), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_not_saved"))
                     }
                 } }
                 if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.receipts.isNotEmpty())) item {
@@ -151,12 +157,15 @@ internal fun AssistantChatContent(
                 }
             }
             // Outside the history list: the question must stay fully reachable at large font and in the compact landscape layout, where
-            // the list is only 160 dp. Portrait gives it at most 55% of the height and scrolls it as a whole.
+            // the list is only 160 dp. Portrait gives it at most 75% of the height; what is allowed (tool, target, command, warning) and the
+            // answers stay in view, only the command box scrolls inside what is left.
             state.confirmation?.let { pending ->
-                if (!state.stopping) Box(if (compact) Modifier else Modifier.heightIn(max = cardLimit).verticalScroll(rememberScrollState())) {
-                    ChatConfirmationCard(pending, onAnswer = { conversation.answer(pending.id, it) })
+                if (!state.stopping) Box((if (compact) Modifier else Modifier.heightIn(max = cardLimit)).bringIntoViewRequester(cardInView)) {
+                    ChatConfirmationCard(pending, onAnswer = { conversation.answer(pending.id, it) }, bounded = !compact, wide = compact)
                 }
             }
+            // Stays until the next Send, not only while the run is shown: the owner must learn that "Always" was not saved.
+            if (state.confirmationNotSaved) Text(stringResource(R.string.confirm_not_saved), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_not_saved"))
             state.problem?.let { problem -> Text(stringResource(when (problem) {
                 ChatProblem.SETUP -> R.string.chat_setup
                 ChatProblem.READ -> R.string.assistant_provider_read_failed
@@ -219,8 +228,8 @@ private fun ChatToolDeclines(receipts: List<ChatToolReceipt>) {
     if (declined.isEmpty()) return
     Column(Modifier.testTag("chat_tool_declined"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         declined.forEach { receipt ->
-            Text(stringResource(R.string.tool_failure_declined, stringResource(AssistantToolId.fromWire(receipt.call.name)?.title() ?: R.string.tool_failure_unknown)),
-                color = AppTheme.colors.muted)
+            Text(stringResource(if (receipt.result.isNoAnswer()) R.string.tool_failure_no_answer else R.string.tool_failure_declined,
+                stringResource(AssistantToolId.fromWire(receipt.call.name)?.title() ?: R.string.tool_failure_unknown)), color = AppTheme.colors.muted)
         }
     }
 }
@@ -234,7 +243,7 @@ private fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
     }
     if (expanded) receipts.forEach { receipt ->
         val outcome = receipt.result?.outcome
-        SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
+        SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(if (receipt.result.isNoAnswer()) R.string.chat_receipt_no_answer else R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
     }
 }
 
@@ -245,3 +254,7 @@ private fun ChatSources(sources: List<ChatSource>) {
         sources.forEach { source -> SelectionContainer { Text("${source.title}\n${source.url}") } }
     }
 }
+
+/** A declined result whose text is the fixed "no answer" one: the five minutes ran out, the owner did not decline. */
+internal fun ru.adsrv.frpjump.agent.ToolResult?.isNoAnswer(): Boolean =
+    this != null && outcome == ToolOutcome.DECLINED && text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER

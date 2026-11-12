@@ -170,4 +170,35 @@ class AssistantToolsBindingTest {
             } finally { release.countDown(); writer.join(2000); newScope.cancel(); f.main.drain() }
         }
     }
+
+    @Test fun `the confirmation switch saves with pending then acknowledges and a failed save keeps the committed value and shows its own error`() {
+        Fixture().use { f ->
+            assertTrue(f.binding.state.value.confirmations)
+            f.binding.changeConfirmations(false); f.main.drain()
+            assertTrue("old value until the commit is acknowledged", f.binding.state.value.confirmations)
+            assertEquals(setOf(CONFIRMATIONS_KEY), f.binding.state.value.pending)
+            f.finish()
+            assertFalse(f.binding.state.value.confirmations); assertTrue(f.binding.state.value.pending.isEmpty()); assertTrue(f.binding.state.value.failed.isEmpty())
+            assertEquals(ru.adsrv.frpjump.settings.ConfirmationMode.OFF, SettingsStore(f.file).assistantConfirmations.global)
+
+            f.file.fail = true
+            f.binding.changeConfirmations(true); f.main.drain(); f.finish()
+            assertFalse("a failed save keeps the committed value", f.binding.state.value.confirmations)
+            assertEquals(setOf(CONFIRMATIONS_KEY), f.binding.state.value.failed); assertTrue(f.binding.state.value.pending.isEmpty())
+            assertEquals(ru.adsrv.frpjump.settings.ConfirmationMode.OFF, f.store.assistantConfirmations.global)
+            assertTrue("a tool switch is not marked failed", AssistantToolId.entries.none { it.wire in f.binding.state.value.failed })
+
+            f.file.fail = false
+            f.binding.changeConfirmations(true); f.main.drain(); f.finish()
+            assertTrue(f.binding.state.value.confirmations); assertTrue(f.binding.state.value.failed.isEmpty())
+        }
+    }
+
+    @Test fun `the confirmation switch and a tool switch save independently and keep each other's values`() {
+        Fixture().use { f ->
+            f.binding.changeConfirmations(false); f.change("ssh_command", true); f.finish()
+            assertFalse(f.binding.state.value.confirmations); assertTrue(f.binding.state.value.committed.sshCommand)
+            f.canonical()
+        }
+    }
 }

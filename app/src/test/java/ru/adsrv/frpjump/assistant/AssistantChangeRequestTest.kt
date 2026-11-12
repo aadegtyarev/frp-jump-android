@@ -17,15 +17,14 @@ import ru.adsrv.frpjump.ssh.*
 class AssistantChangeRequestTest {
     private fun obj(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
 
+    /** The tools exactly as a Send gets them: through the production factory with every switch on. */
     private fun tools(): Map<AssistantToolId, AppTool<*>> {
-        val web = AssistantWebTools(AssistantTools(search = true, readPage = true, inspectImage = true),
-            PublicFetcher { _, _, _ -> throw WebException(WebFailure.NETWORK) }, WebSearchState(), null, { }).tools
         val synthetic = SyntheticProfileInformation()
         val box = FakeKeystore().box("synthetic-ssh")
         val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { throw AssertionError("must not construct a client") })
-        val all = web + AssistantProfileInformationTool({ }, { ProfileInformationState() }) +
-            AssistantSshCommandTool(AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)))
+        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
+            synthetic.information, AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)), { })
         return all.associate { tool -> AssistantToolId.fromWire(tool.spec.name)!! to (tool as AppTool<*>) }
     }
 

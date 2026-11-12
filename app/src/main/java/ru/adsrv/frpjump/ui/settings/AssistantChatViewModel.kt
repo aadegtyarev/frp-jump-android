@@ -30,12 +30,7 @@ class AssistantChatViewModel(
         app.assistantHistory, app.pendingUndo, app.assistantPrompts)
     init { require(settingsStore.assistantChat === providerStore.chatRuntime) }
     /** Always present in the app: a chat built here asks before a changing call. Only kernel tests build a conversation without it. */
-    internal val confirmations = ru.adsrv.frpjump.assistant.chat.ConfirmationSupport(
-        policy = { settingsStore.assistantConfirmations },
-        persistOff = { try { settingsStore.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF); true } catch (_: Exception) { false } },
-        info = { target -> sshCommands?.info(target) },
-        stamp = { target -> sshCommands?.stamp(target) },
-    )
+    internal val confirmations = ru.adsrv.frpjump.assistant.chat.chatConfirmationSupport(settingsStore, sshCommands)
     val conversation = AssistantConversation(viewModelScope,
         availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
         prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands,

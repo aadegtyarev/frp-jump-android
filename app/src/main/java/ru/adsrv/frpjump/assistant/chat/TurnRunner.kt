@@ -11,7 +11,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
     val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?,
-    val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport? = null,
+    val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 }) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
@@ -57,10 +57,10 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val past = a.past.map { it to it.model(active) }
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource)
             val summary = summary(active, prompts.summary)
-            val changing = tools.filterIsInstance<AppTool<*>>().associateBy { it.spec.name }
+            val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
                 env.limits(a.settings), prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
-                authorize = { call -> authorize(changing, call) })
+                authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)
             val problem = finishProblem(summaryProblem, result.finish, transportTimeout, invalidReply)
             finish(problem, if (problem == null) "answer" else "finish-error", summaryStatus)
@@ -68,7 +68,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     }
 
     /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
-    private suspend fun authorize(tools: Map<String, AppTool<*>>, call: ToolCall): ToolOutput? {
+    private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
         val support = env.confirm ?: return null
         return authorizeCall(support, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
             onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io)

@@ -27,7 +27,7 @@ connector, stored login/refusal and host-key policy on its own per-operation
 client. It allocates no PTY/tmux session, does not reconnect/replay commands or
 change terminal/Files ownership, and never starts a tunnel. Stop/target loss
 cancels only that command’s client; the Chat slot waits for actual cleanup.
-The command starts only after the owner's confirmation (the card shows the full command) unless the app-wide confirmation switch is off; no client is created before the answer.
+The command starts only after the owner's confirmation (the card shows the full command; a For session answer covers later commands on that connection until Chat is left) unless the app-wide confirmation switch is off; no client is created before the answer.
 Commands/output, potentially secret, are shared with the configured model only
 when that explicitly enabled tool is invoked. Accepted commands and results may
 also enter the assistant's encrypted local conversation; restoring that history

@@ -33,25 +33,26 @@ class ConfirmationGateTest {
     private val withCommand = arrayOf("command" to JsonPrimitive("uptime"))
 
     private class Rig(val answer: ConfirmationDecision = ConfirmationDecision.ONCE, policy: ConfirmationPolicy = ConfirmationPolicy(),
-        val persistFails: Boolean = false, val persistThrows: Boolean = false) {
+        val persistFails: Boolean = false, val persistThrows: Boolean = false, var enabled: Boolean = true) {
         val asked = ArrayList<ChangeRequest>()
         var persisted = 0
         var notSaved = 0
         var stamp: Any? = "s1"
         var livePolicy = policy
         val support = ConfirmationSupport(policy = { livePolicy },
-            persistOff = { if (persistThrows) error("boom"); persisted++; !persistFails }, stamp = { stamp })
+            persistOff = { if (persistThrows) error("boom"); persisted++; !persistFails }, stamp = { stamp }, toolEnabled = { enabled })
         suspend fun run(tool: AppTool<*>, call: ToolCall) = authorizeCall(support, mapOf(call.name to tool), call,
             wait = { request, _ -> asked += request; answer }, onNotSaved = { notSaved++ }, io = Dispatchers.Unconfined)
     }
 
     @Test fun `a described changing call asks and each answer maps to the right result`() = runBlocking {
         val tool = described(); val c = call("ssh_command", *withCommand)
-        for ((answer, expected) in listOf(ConfirmationDecision.ONCE to null, ConfirmationDecision.SESSION to null, ConfirmationDecision.ALWAYS to null)) {
+        for (answer in listOf(ConfirmationDecision.ONCE, ConfirmationDecision.SESSION, ConfirmationDecision.ALWAYS)) {
             val rig = Rig(answer)
             assertNull(answer.name, rig.run(tool, c)); assertEquals(1, rig.asked.size); assertEquals("uptime", rig.asked.single().command)
-            assertEquals(expected, null)
         }
+        assertEquals("only Always commits the switch", 1, Rig(ConfirmationDecision.ALWAYS).also { it.run(tool, c) }.persisted)
+        assertEquals(0, Rig(ConfirmationDecision.ONCE).also { it.run(tool, c) }.persisted)
         val denied = Rig(ConfirmationDecision.DENY).run(tool, c)!!
         assertEquals(ToolOutcome.DECLINED, denied.outcome); assertEquals(ConfirmationTexts.DECLINED, denied.text)
         val silent = Rig(ConfirmationDecision.NO_ANSWER).run(tool, c)!!
@@ -129,5 +130,47 @@ class ConfirmationGateTest {
         try { authorizeCall(rig.support, mapOf("ssh_command" to tool), c, wait = { _, _ -> throw CancellationException("stopped") }, onNotSaved = {}, io = Dispatchers.Unconfined) }
         catch (e: CancellationException) { thrown = e }
         assertNotNull(thrown)
+    }
+
+    /** A tool that is in the registry but is not an AppTool: nothing can describe its change. */
+    private class Bare(name: String) : AgentTool {
+        override val spec = ToolSpec(name, "Synthetic bare tool", JsonObject(emptyMap()))
+        override suspend fun execute(arguments: JsonObject) = ToolOutput("ran")
+    }
+
+    @Test fun `a catalog tool that changes something but is not an AppTool is refused and never asked or run`() = runBlocking {
+        val rig = Rig(ConfirmationDecision.ONCE)
+        val result = authorizeCall(rig.support, mapOf("ssh_command" to Bare("ssh_command")), call("ssh_command", *withCommand),
+            wait = { r, _ -> rig.asked += r; ConfirmationDecision.ONCE }, onNotSaved = {}, io = Dispatchers.Unconfined)
+        assertNotNull("a null result would let the call run", result)
+        assertEquals(ToolOutcome.FAILED, result!!.outcome); assertEquals("Tool was not authorized; nothing was executed.", result.text)
+        assertTrue(rig.asked.isEmpty())
+    }
+
+    @Test fun `a bare read tool and an unknown name are not refused`() = runBlocking {
+        val rig = Rig(ConfirmationDecision.DENY)
+        for (name in AssistantToolId.entries.filter { !it.effect.changes }.map { it.wire }) {
+            assertNull(name, authorizeCall(rig.support, mapOf(name to Bare(name)), call(name), wait = { r, _ -> rig.asked += r; ConfirmationDecision.DENY }, onNotSaved = {}, io = Dispatchers.Unconfined))
+        }
+        assertNull(authorizeCall(rig.support, emptyMap(), call("ssh_command"), wait = { r, _ -> rig.asked += r; ConfirmationDecision.DENY }, onNotSaved = {}, io = Dispatchers.Unconfined))
+        assertTrue(rig.asked.isEmpty())
+    }
+
+    @Test fun `the decision follows the registered tool identity not the identity a description claims`() = runBlocking {
+        val lying = Changing { ChangeRequest(AssistantToolId.WEB_SEARCH, target, "x") }
+        val rig = Rig(ConfirmationDecision.DENY)
+        assertEquals(ToolOutcome.DECLINED, rig.run(lying, call("ssh_command", *withCommand))!!.outcome)
+        assertEquals(1, rig.asked.size)
+        val session = Rig(ConfirmationDecision.SESSION)
+        session.run(lying, call("ssh_command", *withCommand))
+        assertTrue(session.support.grants.has(GrantKey(AssistantToolId.SSH_COMMAND, target), "s1"))
+    }
+
+    @Test fun `a session answer is not recorded for a tool that was switched off while the owner was asked`() = runBlocking {
+        val rig = Rig(ConfirmationDecision.SESSION, enabled = false)
+        assertNull(rig.run(described(), call("ssh_command", *withCommand)))
+        assertTrue(rig.support.grants.snapshot().isEmpty())
+        val on = Rig(ConfirmationDecision.SESSION)
+        on.run(described(), call("ssh_command", *withCommand)); assertEquals(1, on.support.grants.snapshot().size)
     }
 }

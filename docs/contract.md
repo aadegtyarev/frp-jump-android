@@ -791,7 +791,7 @@ public/private-data disclosure and model token-charge notices. SSH command carri
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
 files within account rights; commands and output may contain secrets and go to
 the configured model. Before such a changing call runs, the owner is asked (Allow, For session, Always, Decline) unless the app-wide
-"Ask before changing commands" switch on Tools is off; see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
+"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (until Chat is left); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
 or saving makes no request. Switches autosave through the same Tools binding in
 Settings and Chat. Actual committed values, pending progress and inline failures
 come from one snapshot; no Save button or pre-commit checked value. Storage runs

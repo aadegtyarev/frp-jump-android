@@ -5,7 +5,7 @@
 This surface covers the optional assistant kernel, external API adapter and
 provider setup and a locally saved chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below. Calls of tools that change something (today `ssh_command`) ask the owner first unless the owner turned the question off; see [Confirmation of changing calls](#confirmation-of-changing-calls).
+implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below. Calls of tools that change something (today `ssh_command`) ask the owner first unless the owner turned the question off or answered For session for that connection; see [Confirmation of changing calls](#confirmation-of-changing-calls).
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -425,7 +425,7 @@ readers and cleanup exit. Tool-only changes affect the next Send, not admitted w
 Timeouts (30 s tool / 120 s of Send active time by default; the confirmation wait is in neither, and has its own 5-minute limit) are cancellation thresholds, not
 remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
 an admitted command’s effects may remain uncertain. Commands/output enter the
-same bounded encrypted Chat history and configured model requests, not app logs. A declined call is saved as `declined` and shown as "Declined", not as a failure. Arbitrary remote output can contain secrets and is not
+same bounded encrypted Chat history and configured model requests, not app logs. A declined call is saved as `DECLINED` (sent to the model as `declined`) and shown as "Declined", or "No answer, declined" when the wait ran out, never as a failure. Arbitrary remote output can contain secrets and is not
 generically scrubbed. App-stored credentials/internal diagnostics are not tool
 arguments/results. Remote content remains untrusted data, never new authority.
 
@@ -434,15 +434,15 @@ arguments/results. Remote content remains untrusted data, never new authority.
 Before a call of a tool whose catalog effect changes something (today `ssh_command`) runs, the owner is asked, unless the app-wide
 switch (Settings → LLM assistant → Tools → "Ask before changing commands") is off. Read tools never ask. The default is on.
 
-The question is a card above the message field with the tool, the target names (profile · device · connection, never IDs; "Unknown
+The question is a card above the message field (the command is shown with visible escapes for non-printing characters and its line count; the tool, target, command and warning stay in view above the answers, and only the command box scrolls) with the tool, the target names (profile · device · connection, never IDs; "Unknown
 connection" when unresolved), the full command (monospace, selectable, scrollable) and the full-access warning. Answers: **Allow** (this
 call), **For session**, **Always**, **Decline**. For session covers the tool and the exact connection until the chat screen is left, the
 assistant is disabled, the tool is switched off, the history is cleared, or the connection or its profile is edited or removed (a grant
-is stamped with the saved definition and dropped when it changes); it is in memory only. Always turns the app-wide switch off (the
-card says so and where to turn it back on); if that cannot be saved, the call is allowed once, an inline note says so, and requests stay
+is stamped with the saved definition and dropped when it changes); it is in memory only. Always turns the app-wide switch off after a second confirmation (a dialog
+says what is turned off and where to turn it back on; Cancel returns to the question, still waiting); if that cannot be saved, the call is allowed once, an inline note says so, and requests stay
 on. Decline, and five minutes without an answer, give the model a fixed text (`declined` outcome) and nothing runs. Stop, Back,
 disable and provider changes during the wait cancel it and run nothing; a late answer or a stale card id is ignored. An Always
-answer persists "off" even if Stop races the call, and a For session answer racing Stop may record its grant; the call itself never
+answer may still persist "off" when Stop races the call, and a For session answer racing Stop may record its grant; the call itself never
 runs. The wait is in neither the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts active time only).
 
 While requests are off, a compact warning icon in the Chat top bar (between the title and Tools) says so on tap or long press and
@@ -496,7 +496,7 @@ authority, never presentation; pending UI acknowledgement is not network authori
 Each Send captures the committed tool booleans atomically at admission and keeps
 that fixed set throughout the run, including calls dispatched after a switch
 changes. Changes apply only to the next Send; the current Send may finish with
-its original tools. They neither cancel work nor clear history, provider or draft.
+its original tools (the confirmation switch and session grants are the exception: they are read at each call). They neither cancel work nor clear history, provider or draft.
 There is no tool-change epoch/revocation signal. Failed saves retain prior settings.
 Admission, every model/public/image start check and every source/progress/answer/error
 publication still check the captured owner, provider revision and disable version.

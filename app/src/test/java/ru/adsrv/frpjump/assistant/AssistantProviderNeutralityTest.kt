@@ -18,7 +18,7 @@ class AssistantProviderNeutralityTest {
 
     private fun chat(scope: CoroutineScope, tools: AssistantTools, runtime: AssistantChatRuntime, provider: AgentProvider) =
         AssistantConversation(scope, { AssistantAvailability(true, tools = tools) }, { snapshot }, { provider }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, runtime = runtime, prompts = TestPrompts.placeholder)
+            io = Dispatchers.Unconfined, runtime = runtime, prompts = TestPrompts.placeholder, confirmations = null)
 
     private suspend fun AssistantConversation.sendAndWait(text: String = "question"): ChatState {
         edit(text); send(); return withTimeout(3000) { state.first { !it.busy } }
