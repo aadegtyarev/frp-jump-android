@@ -57,6 +57,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FullscreenExitGlyph
 import ru.adsrv.frpjump.ui.FullscreenGlyph
 import ru.adsrv.frpjump.ui.ImageGlyph
+import ru.adsrv.frpjump.ui.NoticeLayer
 
 /** A real IME editor: its composing text never passes through TerminalInput. */
 @Composable
@@ -190,8 +191,11 @@ fun FullscreenTerminalText(onCollapse: () -> Unit, content: @Composable () -> Un
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         BackHandler(onBack = onCollapse)
-        Column(
-            Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding().padding(12.dp).testTag("terminal_text_fullscreen"),
-        ) { content() }
+        // The dialog is its own window: the activity's notice host is under it, so it carries one (image failures and "inserted").
+        NoticeLayer {
+            Column(
+                Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding().padding(12.dp).testTag("terminal_text_fullscreen"),
+            ) { content() }
+        }
     }
 }

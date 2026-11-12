@@ -374,7 +374,7 @@ class TerminalImageInsertTest {
         capture("entry-paste-empty-clipboard")
         pasteKey.performClick()
         assertEquals("a tap with an empty clipboard pastes nothing and opens no picker", 0, pastes.size + pickers.size)
-        assertEquals(compose.activity.getString(R.string.terminal_clipboard_empty), pasteKey.fetchSemanticsNode().config[SemanticsProperties.StateDescription])
+        assertEquals(compose.activity.getString(R.string.terminal_image_clipboard_empty_offer), pasteKey.fetchSemanticsNode().config[SemanticsProperties.StateDescription])
         pasteKey.performTouchInput { longClick() }
         compose.waitForIdle()
         assertEquals(1, pickers.size)
@@ -403,13 +403,16 @@ class TerminalImageInsertTest {
         assertEquals("a long press is not a tap", 0, pastes.size)
     }
 
-    @Test fun anUnavailableTabKeepsTheScreensPasteLongPressOff() {
-        startScreen()
-        pasteKey.performTouchInput { longClick() }
+    @Test fun withNoImageOfferedPasteHasNoLongClickActionOrLabel() {
+        compose.runOnUiThread { clipboard.setPrimaryClip(ClipData.newPlainText("synthetic", "text")) }
+        keysWithCounts(false, mutableListOf(), mutableListOf())
+        val config = pasteKey.fetchSemanticsNode().config
+        assertFalse("no long-click action", config.contains(SemanticsActions.OnLongClick))
+        assertTrue(config.contains(SemanticsActions.OnClick))
+        compose.runOnUiThread { clipboard.clearPrimaryClip() }
         compose.waitForIdle()
-        // The tab is not Open: no picker activity came up and the screen is still the one under test.
-        compose.onNodeWithTag("terminal_main_keys").assertIsDisplayed()
-        assertTrue(compose.activity.hasWindowFocus())
+        pasteKey.assertIsNotEnabled()
+        assertFalse(pasteKey.fetchSemanticsNode().config.contains(SemanticsActions.OnLongClick))
     }
 
     @Test fun pasteHasATalkBackLongClickLabelInsertImage() {
@@ -506,4 +509,21 @@ class TerminalImageInsertTest {
     @Test fun theBarAndCancelFitInTheCompactEditorWithoutHidingInsertOrTheField() = checkBarFitsWithEditor(false, "entry-editor-bar-compact")
 
     @Test fun theBarAndCancelFitInTheExpandedEditorWithoutHidingInsertOrTheField() = checkBarFitsWithEditor(true, "entry-editor-bar-expanded")
+
+    @Test fun theEditorsControlsAreNotWrappedOrCutAtTheCurrentOrientationAndFontScale() {
+        editor()
+        val word = compose.onNodeWithText(compose.activity.getString(R.string.terminal_text_insert), useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode()
+        val results = mutableListOf<TextLayoutResult>()
+        word.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+        assertTrue("Insert is on one line", results.all { it.lineCount == 1 })
+        val box = compose.onNodeWithTag("terminal_text_insert").fetchSemanticsNode().boundsInRoot
+        assertTrue("Insert is cut by its button", word.boundsInRoot.left >= box.left - 1f && word.boundsInRoot.right <= box.right + 1f)
+        // Every control is on screen and the five do not overlap.
+        val width = compose.activity.resources.displayMetrics.widthPixels
+        val boxes = listOf("terminal_mode_keys", "terminal_text_image", "terminal_text_expand", "terminal_text_insert").map {
+            compose.onNodeWithTag(it).assertIsDisplayed().fetchSemanticsNode().let { n -> Rect(n.positionOnScreen, androidx.compose.ui.geometry.Size(n.size.width.toFloat(), n.size.height.toFloat())) }
+        }
+        boxes.forEach { assertTrue("$it is off screen", it.left >= 0f && it.right <= width + 1f) }
+        boxes.zipWithNext().forEach { (a, b) -> assertFalse("$a overlaps $b", a.overlaps(b)) }
+    }
 }

@@ -40,7 +40,7 @@ The terminal input connection must not receive the editor's composing text.
   the path is never mixed into the draft (a path pasted alone is recognized as an image
   by Claude Code, mixed with text it is plain text). The image bar with Cancel shows
   above the editor, or inside the full-screen editor, without hiding Insert or the
-  field. The compact editor offers expand, Insert and return to Keys. Typing,
+  field. The editor's controls are: image, expand/collapse, Insert and return to Keys. Typing,
   composition and editor Enter stay local. Suggestions and voice input
   depend on the installed keyboard.
 - Expand opens the same draft and selection full screen. Collapse and Back

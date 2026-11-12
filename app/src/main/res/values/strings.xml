@@ -1217,6 +1217,7 @@
 
     <!-- Terminal: insert an image (docs/contract.md, SSH console) -->
     <string name="terminal_image_insert">Insert image</string>
+    <string name="terminal_image_clipboard_empty_offer">clipboard is empty; long press to insert an image</string>
     <string name="terminal_image_offer_title">Insert image from clipboard?</string>
     <string name="terminal_image_offer_text">It is sent to the device and its path is inserted.</string>
     <string name="terminal_image_clipboard_has_image">clipboard has an image</string>

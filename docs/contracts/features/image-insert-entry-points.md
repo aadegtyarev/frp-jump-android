@@ -1,6 +1,6 @@
 # Image insertion: more entry points
 
-Status: Approved by the operator on 2026-11-12 (long press on Paste; editor button with the path going straight to the terminal; multi-photo deferred). Base: `origin/main` e8c7d5b (0.3.66).
+Status: Approved by the operator on 2026-11-12 (long press on Paste; editor button with the path going straight to the terminal; multi-photo deferred). Implementation complete for final verification. Base: `origin/main` e8c7d5b (0.3.66).
 
 ## Goal and user-visible behavior
 

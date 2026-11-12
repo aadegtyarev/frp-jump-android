@@ -62,6 +62,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -377,20 +379,29 @@ private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean, onIns
     val empty = stringResource(R.string.terminal_clipboard_empty)
     val image = stringResource(R.string.terminal_image_clipboard_has_image)
     val insertImage = stringResource(R.string.terminal_image_insert)
-    // combinedClickable's enabled switches the long press off with the tap, so the key stays enabled while the picker is on
-    // offer. Without it a long press is swallowed (not read as a tap), so that it never pastes by accident.
-    val action = Modifier.combinedClickable(
-        enabled = canPaste || canOfferImage,
-        role = Role.Button,
-        onClick = { if (canPaste) onPaste() },
-        onLongClickLabel = if (canOfferImage) insertImage else null,
-        onLongClick = { if (canOfferImage) onInsertImage() },
-    )
+    val emptyOffer = stringResource(R.string.terminal_image_clipboard_empty_offer)
+    // On offer, combinedClickable (its long press, label and haptics; `enabled` would switch the long press off with the tap).
+    // Otherwise a plain tap detector: no long-click action, label or haptics, and a long hold is not a tap, so it never pastes.
+    val action = if (canOfferImage) {
+        Modifier.combinedClickable(
+            role = Role.Button,
+            onClick = { if (canPaste) onPaste() },
+            onLongClickLabel = insertImage,
+            onLongClick = onInsertImage,
+        )
+    } else {
+        Modifier.pointerInput(canPaste) { detectTapGestures(onLongPress = { }, onTap = { if (canPaste) onPaste() }) }
+    }
     KeyBox(
         Modifier
             .semantics {
                 contentDescription = label
-                if (!canPaste) stateDescription = empty else if (kind == ClipKind.IMAGE) stateDescription = image
+                if (!canPaste) stateDescription = if (canOfferImage) emptyOffer else empty
+                else if (kind == ClipKind.IMAGE) stateDescription = image
+                if (!canOfferImage) {
+                    role = Role.Button
+                    if (canPaste) onClick { onPaste(); true } else disabled()
+                }
             }
             .then(action),
         colors.termKey,

@@ -156,6 +156,8 @@ fun TerminalScreen(
     keyLogin: KeyLoginFlow,
     /** Where a session's "Use key login" installs the key; null when its login is not by password. */
     keyLoginTarget: (SshSession) -> KeyInstallTarget?,
+    /** Tests only: stands in for "the tab is Open" and for the system picker, which an emulator without an SSH server cannot reach. */
+    imageHooks: ImageEntryHooks? = null,
 ) {
     val all by sessions.sessions.collectAsStateWithLifecycle()
     val stored by snippetStore.snippets.collectAsStateWithLifecycle()
@@ -327,11 +329,16 @@ fun TerminalScreen(
         pickImageFor = null
         if (uri != null && tab != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
     }
-    // The one way into the photo picker (the menu item, the long press on Paste, the editor's button), for the tab shown now.
-    val canInsertImage = state == SshState.Open && imageRuns[selected.id] == null
-    fun pickImageForSelected() {
-        if (!canInsertImage) return
-        pickImageFor = selected
+    // The one way into the photo picker (the menu item, the long press on Paste, the editor's button). Callers pass lambdas, not
+    // a reference to this local function: equal references are skipped on recomposition and would keep an old tab (see #156).
+    fun tabOpen(tab: SshSession) = imageHooks?.isOpen?.invoke(tab) ?: (tab.state.value == SshState.Open)
+    val canInsertImage = (imageHooks?.isOpen?.invoke(selected) ?: (state == SshState.Open)) && imageRuns[selected.id] == null
+    val shownTab = rememberUpdatedState(selected)
+    fun pickImageFor(tab: SshSession) {
+        // [tab] is what the caller was composed with; a stale caller (an old tab) or a tab that is not Open or busy does nothing.
+        if (tab !== shownTab.value || !tabOpen(tab) || imageRuns[tab.id] != null) return
+        if (imageHooks != null) { imageHooks.picked(tab); return }
+        pickImageFor = tab
         try {
             pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         } catch (e: ActivityNotFoundException) {
@@ -533,7 +540,7 @@ fun TerminalScreen(
                                 enabled = canInsertImage,
                                 onClick = {
                                     barMenu = false
-                                    pickImageForSelected()
+                                    pickImageFor(selected)
                                 },
                             )
                             // Off while the device is being asked: a second tap would only ask again.
@@ -711,14 +718,14 @@ fun TerminalScreen(
                             onExpand = { sessions.drafts.expand(selected.id, true); focusManager.clearFocus(force = true) },
                             onKeys = { setTextMode(false) },
                             canInsertImage = canInsertImage,
-                            onInsertImage = ::pickImageForSelected,
+                            onInsertImage = { pickImageFor(selected) },
                         )
                     },
                     onKeyboard = { show -> if (show) input.showKeyboard(explicit = true) else input.hideKeyboard() },
                     // The same paste as the selection menu's: bracketed when the remote side asked for it.
                     onPaste = { view.currentSession?.onPasteTextFromClipboard() },
                     canOfferImage = canInsertImage,
-                    onInsertImage = ::pickImageForSelected,
+                    onInsertImage = { pickImageFor(selected) },
                     onKey = { key ->
                         selected.typed()
                         sendExtraKey(view, key, modifiers)
@@ -743,7 +750,7 @@ fun TerminalScreen(
                 expanded = true,
                 onKeys = { setTextMode(false) },
                 canInsertImage = canInsertImage,
-                onInsertImage = ::pickImageForSelected,
+                onInsertImage = { pickImageFor(selected) },
             )
         }
     }

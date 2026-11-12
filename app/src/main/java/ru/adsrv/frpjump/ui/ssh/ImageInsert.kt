@@ -50,6 +50,9 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.MainButton
 import ru.adsrv.frpjump.ui.notice
 
+/** Test seam of [TerminalScreen]: [isOpen] replaces "the tab is Open", and [picked] the system picker (told which tab asked). */
+class ImageEntryHooks(val isOpen: (SshSession) -> Boolean, val picked: (SshSession) -> Unit)
+
 /** One image going to one tab: what the bar shows and the job to cancel. */
 class ImageRun {
     var state: ImageInsertState by mutableStateOf(ImageInsertState.Encoding)

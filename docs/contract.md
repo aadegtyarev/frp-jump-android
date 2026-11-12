@@ -357,7 +357,9 @@ multiplexer started by hand in a plain-shell tab can't be detected.
 
 **Insert image.** ⋮ → Insert image opens the system photo picker (no storage
 permission); so does a long press on the Paste key (TalkBack action "Insert image")
-and the image button of the text editor, all by one rule and one flow. A tap on Paste is unchanged. With an image and no text on the clipboard, Paste (key or the
+and the image button of the text editor, all by one rule and one flow. A tap on Paste is unchanged. The long press and its TalkBack action exist only while
+the picker is available; otherwise the key has no long-click action, and a long hold
+never pastes. With an empty clipboard the key says so and mentions the long press. With an image and no text on the clipboard, Paste (key or the
 selection menu) offers "Insert image from clipboard?" (ru «Вставить изображение
 из буфера?») instead of pasting; with any text it pastes the text as before.
 The picture is re-encoded without metadata (EXIF, GPS, XMP, text chunks and
@@ -374,15 +376,16 @@ the offer is not offered, unless the tab is Open and has no image on its way
 "Uploading image… N%" with Cancel; a failure inserts nothing and shows one
 short reason; the image goes to the tab it was started on only, never to
 another tab or the same tab's next connection, and leaving the terminal screen
-or closing the tab (also with its Undo pending) cancels it. The device-side rules (modes, no overwrite, cleanup after 60
-minutes) are in the [SSH contract](ssh-persist-contract.md#remote-image-files).
+or closing the tab (also with its Undo pending) cancels it. The device-side
+rules (modes, no overwrite, cleanup after 60 minutes) are in the [SSH contract](ssh-persist-contract.md#remote-image-files).
 From the text editor the path also goes straight to the terminal, in the tab that
 started it and without Enter; the editor's draft is not read, changed or sent. The
 progress bar and Cancel show in text mode too (above the editor; in the full-screen
 editor, inside it). The remote program decides what to do with the path.
-*Extension point, not current behavior:* the job and its paste step are shaped for
-several photos later (a list of sources, one paste of the absolute paths joined by
-single spaces, never newlines); today exactly one photo is sent.
+Image notices also show over the full-screen editor. *Extension point, not current
+behavior:* only the join helper exists (`joinImagePaths`: absolute paths joined by
+single spaces into one paste, never newlines); the job still takes exactly one
+source, and several photos are not implemented.
 
 Additional
 rows start collapsed; the small ⋯ above the main row explicitly toggles Esc,
