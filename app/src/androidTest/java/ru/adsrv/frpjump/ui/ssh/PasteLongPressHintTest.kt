@@ -42,8 +42,6 @@ import ru.adsrv.frpjump.ui.FrpJumpTheme
 class PasteLongPressHintTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val offer = mutableStateOf(true)
-    private var onTerm = Color.Unspecified
-    private var muted = Color.Unspecified
     private var keyColor = Color.Unspecified
 
     @Before fun configureDisplay() {
@@ -62,7 +60,7 @@ class PasteLongPressHintTest {
     private fun start(narrow: Boolean) {
         compose.setContent {
             FrpJumpTheme {
-                onTerm = AppTheme.colors.onTerm; muted = AppTheme.colors.termMuted; keyColor = AppTheme.colors.termKey
+                keyColor = AppTheme.colors.termKey
                 Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                     Spacer(Modifier.weight(1f))
                     val panel = if (narrow) Modifier.width(320.dp) else Modifier
@@ -78,18 +76,14 @@ class PasteLongPressHintTest {
 
     private fun bounds(tag: String): Rect = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
-    /** The mark's strongest pixel, taken over the key's own colour: which of the two tints it is. */
-    private fun tintOf(tag: String): Color {
+    /** How far the mark's strongest pixel is above the key's own colour, as brightness (0..255). */
+    private fun strength(tag: String): Double {
         val bitmap = compose.onNodeWithTag(tag, useUnmergedTree = true).captureToImage().asAndroidBitmap()
-        val bg = keyColor.toArgb()
-        fun dist(a: Int, b: Int) = (0..2).sumOf { val d = ((a shr (it * 8)) and 255) - ((b shr (it * 8)) and 255); d * d }
-        var best = bg
-        for (x in 0 until bitmap.width) for (y in 0 until bitmap.height) {
-            val p = bitmap.getPixel(x, y)
-            if (dist(p, bg) > dist(best, bg)) best = p
-        }
-        assertTrue("the mark is not drawn over the key: $tag", dist(best, bg) > 0)
-        return if (dist(best, onTerm.toArgb()) < dist(best, muted.toArgb())) onTerm else muted
+        fun lum(c: Int) = 0.2126 * ((c shr 16) and 255) + 0.7152 * ((c shr 8) and 255) + 0.0722 * (c and 255)
+        val bg = lum(keyColor.toArgb())
+        var best = 0.0
+        for (x in 0 until bitmap.width) for (y in 0 until bitmap.height) best = maxOf(best, Math.abs(lum(bitmap.getPixel(x, y)) - bg))
+        return best
     }
 
     private fun capture(name: String) {
@@ -106,6 +100,7 @@ class PasteLongPressHintTest {
 
     private fun checkHint(narrow: Boolean) {
         start(narrow)
+        val strengths = mutableMapOf<Boolean, Double>()
         for ((available, state) in listOf(true to "available", false to "unavailable")) {
             offer.value = available
             compose.waitForIdle()
@@ -114,9 +109,13 @@ class PasteLongPressHintTest {
             assertTrue("the hint does not overlap the paste glyph: $hint $glyph", !hint.overlaps(glyph))
             assertTrue("the paste glyph stays the larger mark", glyph.width > hint.width && glyph.height > hint.height)
             assertTrue("the hint is in the top-end corner", hint.top <= glyph.top && hint.right >= glyph.right)
-            assertEquals("the hint is ${if (available) "full" else "muted"}", if (available) onTerm else muted, tintOf("terminal_paste_hint"))
+            strengths[available] = strength("terminal_paste_hint")
             capture(if (narrow) "$state-320dp" else state)
         }
+        val on = strengths.getValue(true); val off = strengths.getValue(false)
+        assertTrue("the available hint is drawn: $on", on > 40.0)
+        assertTrue("the unavailable hint is still visible: $off", off > 5.0)
+        assertTrue("the unavailable hint is clearly weaker (disabled emphasis, 38%): $off of $on", off <= 0.45 * on)
     }
 
     @Test fun theHintIsDrawnAndMutedWithoutTheLongPress() = checkHint(false)

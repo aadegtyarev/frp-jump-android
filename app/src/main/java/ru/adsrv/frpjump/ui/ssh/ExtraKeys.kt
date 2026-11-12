@@ -211,6 +211,8 @@ internal fun disclosureEndReserve(innerWidth: Dp): Dp {
 /** The main row's keys; the extra rows' are lower, so all of it stays small above the keyboard. */
 private val KEY_HEIGHT = 44.dp
 /** Paste's mark: the glyph (18 dp, bottom-start) and the long-press hint (top-end) side by side, not overlapping. */
+/** Material's disabled emphasis: the unavailable hint is clearly weaker than the available one, yet still visible. */
+private const val HINT_DISABLED_ALPHA = 0.38f
 private val PASTE_HINT_SIZE = 12.dp
 private val PASTE_MARK_SIZE = 30.dp
 private val EXTRA_KEY_HEIGHT = 36.dp
@@ -411,11 +413,11 @@ private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean, onIns
         colors.termKey,
     ) {
         // The small picture in the top-end corner hints at the long press (decorative, like the pencil on the keyboard key):
-        // always shown, muted while the long press is not on offer. The paste glyph stays the main mark.
+        // always shown, at Material's disabled emphasis (38% alpha) while the long press is not on offer. The paste glyph stays the main mark.
         Box(Modifier.size(PASTE_MARK_SIZE), contentAlignment = Alignment.Center) {
             Icon(PasteGlyph, contentDescription = null, tint = if (canPaste) colors.onTerm else colors.termMuted,
                 modifier = Modifier.size(18.dp).align(Alignment.BottomStart).testTag("terminal_paste_glyph"))
-            Icon(ImageGlyph, contentDescription = null, tint = if (canOfferImage) colors.onTerm else colors.termMuted,
+            Icon(ImageGlyph, contentDescription = null, tint = if (canOfferImage) colors.onTerm else colors.onTerm.copy(alpha = HINT_DISABLED_ALPHA),
                 modifier = Modifier.size(PASTE_HINT_SIZE).align(Alignment.TopEnd).testTag("terminal_paste_hint"))
         }
     }
