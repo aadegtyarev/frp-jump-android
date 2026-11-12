@@ -6,6 +6,7 @@ import ru.adsrv.frpjump.agent.AgentTool
 import ru.adsrv.frpjump.agent.ToolOutput
 import ru.adsrv.frpjump.agent.ToolSpec
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.ops.Effect
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.agent.admitSideEffect
 
@@ -21,6 +22,9 @@ internal abstract class AppTool<A : Any>(
     schema: JsonObject,
 ) : AgentTool {
     final override val spec = ToolSpec(id.wire, description, schema)
+
+    /** What the tool may do; the catalog's by default. An [OperationTool] answers with its operation's (pinned equal to the catalog's by tests). */
+    open val effect: Effect get() = id.effect
 
     /** Reads the arguments through [StrictArgs], which throws [InvalidArguments] on any violation. */
     protected abstract fun parse(args: StrictArgs): A
@@ -41,7 +45,7 @@ internal abstract class AppTool<A : Any>(
      */
     fun changeCheck(arguments: JsonObject): ChangeCheck {
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return ChangeCheck.Invalid }
-        if (!id.effect.changes) return ChangeCheck.ReadOnly
+        if (!effect.changes) return ChangeCheck.ReadOnly
         val described = try { describeChange(parsed) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
         return ChangeCheck.Change(described ?: ChangeRequest(id, null, "", described = false))
     }

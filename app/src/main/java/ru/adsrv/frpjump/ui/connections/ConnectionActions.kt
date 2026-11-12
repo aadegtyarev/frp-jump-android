@@ -6,13 +6,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
@@ -48,18 +45,19 @@ import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.toAuth
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.tunnel.SessionOn
-import ru.adsrv.frpjump.tunnel.TunnelManager
 import ru.adsrv.frpjump.tunnel.TunnelRef
-import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.ui.ssh.KeyLoginFlow
 import ru.adsrv.frpjump.undo.PendingUndo
 import ru.adsrv.frpjump.undo.TunnelDisconnects
 import ru.adsrv.frpjump.restore.restoringProfiles
+import ru.adsrv.frpjump.ops.OpResult
+import ru.adsrv.frpjump.ops.tunnel.TunnelUp
+import ru.adsrv.frpjump.ops.tunnel.TunnelUpHost
+import ru.adsrv.frpjump.ops.tunnel.TunnelUpInput
+import ru.adsrv.frpjump.ops.tunnel.TunnelUpTunnels
 import ru.adsrv.frpjump.ui.userMessage
+import ru.adsrv.frpjump.ui.userText
 import java.io.IOException
-
-/** How long "Use key login" waits for a tunnel it brought up. */
-private const val TUNNEL_WAIT_MS = 45_000L
 
 /**
  * What the device card and the Connections tab do with a connection, for
@@ -77,30 +75,37 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val runtime = runtime(row.profile) ?: return
         val c = row.connection
         val target = KeyInstallTarget(row.profile, runtime.hostKeys, c.device, c.port, sshLogin(row).user, runtime.sshLogins, localPort = {
-            tunnelPort(row.profile, c.device, c.port, c.kind)
+            // The key-login flow reports a missing tunnel by its IOException message.
+            when (val result = tunnelUp(TunnelUpInput(row.profile, c.device, c.port, c.kind))) {
+                is OpResult.Done -> result.value
+                is OpResult.Refused -> throw IOException(result.reason.userText())
+                is OpResult.Failed -> throw IOException(result.reason.userText())
+            }
         })
         keyLogin.start(target)
     }
 
-    /**
-     * The local port of the tunnel to [device]:[port], brought up for a
-     * connection of [kind] (which names it to the server) when it is down,
-     * once the device takes connections on it ([TunnelManager.awaitDevice]);
-     * throws [IOException] with why when it does not come up.
-     */
-    private suspend fun tunnelPort(profile: String, device: String, port: Int, kind: PortKind): Int {
-        val runtime = runtime(profile) ?: throw IOException(Texts.get(R.string.profile_gone))
-        val key = localPortKey(device, port)
-        fun up(s: TunnelsState) = s.tunnels.firstOrNull { it.key == key }?.localPort
-        // Used again while its disconnect waits for Undo: it stays up. Being disconnected: connect afresh after.
-        if (!revive(profile, device, port)) app.disconnects.awaitDisconnected(TunnelRef(profile, device, port))
-        val already = up(runtime.tunnels.state.value)
-        if (already == null && runtime.tunnels.state.value.pending[key] == null) runtime.tunnels.connectAsync(device, port, kind)
-        val localPort = already ?: withTimeoutOrNull(TUNNEL_WAIT_MS) { runtime.tunnels.state.mapNotNull { up(it) }.first() }
-            ?: throw IOException(runtime.tunnels.state.value.errors[key] ?: Texts.get(R.string.files_tunnel_down))
-        // A tunnel brought up just now may not be open on the device yet: wait for it rather than fail the first connection.
-        runtime.tunnels.awaitDevice(device, port, fresh = already == null)?.let { throw IOException(it) }
-        return localPort
+    /** Brings a tunnel up for the screens: the operation, over this app's tunnels. */
+    private val tunnelUp = TunnelUp(object : TunnelUpHost {
+        override fun tunnels(profile: String) = runtime(profile)?.tunnels?.let { manager ->
+            object : TunnelUpTunnels {
+                override val state get() = manager.state
+                override fun connectAsync(device: String, port: Int, kind: PortKind) { manager.connectAsync(device, port, kind) }
+                override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean) = manager.awaitDevice(device, port, fresh)
+            }
+        }
+        override fun revive(tunnel: TunnelRef) = app.disconnects.revive(tunnel)
+        override suspend fun awaitDisconnected(tunnel: TunnelRef) = app.disconnects.awaitDisconnected(tunnel)
+    })
+
+    /** The local port of [row]'s tunnel, brought up when it is down; null when it does not come up (a notice says why). */
+    private suspend fun tunnelPortOrNotice(row: ConnectionRow): Int? {
+        val c = row.connection
+        return when (val result = tunnelUp(TunnelUpInput(row.profile, c.device, c.port, c.kind))) {
+            is OpResult.Done -> result.value
+            is OpResult.Refused -> { app.notices.show(result.reason.userText(), NoticeKind.WARN); null }
+            is OpResult.Failed -> { app.notices.show(result.reason.userText(), NoticeKind.WARN); null }
+        }
     }
 
     /** The sessions of every tunnel, for the SSH rows' counts of terminals. */
@@ -130,13 +135,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
      * screen cancels it and nothing opens. Main thread.
      */
     suspend fun connectedRow(row: ConnectionRow): ConnectionRow? {
-        val c = row.connection
-        try {
-            tunnelPort(row.profile, c.device, c.port, c.kind)
-        } catch (e: IOException) {
-            app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
-            return null
-        }
+        tunnelPortOrNotice(row) ?: return null
         val tunnel = runtime(row.profile)?.tunnels?.state?.value?.tunnels?.firstOrNull { it.key == row.tunnelKey } ?: return null
         return row.copy(tunnel = tunnel, pending = null, error = null)
     }
@@ -392,12 +391,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun openSshWhenUp(row: ConnectionRow, user: String, method: SshAuthMethod, password: String, remember: Boolean, onOpened: (Int) -> Unit) {
         row.tunnel?.localPort?.let { port -> openSshAt(row, port, user, method, password, remember)?.let(onOpened); return }
         scope.launch {
-            val port = try {
-                tunnelPort(row.profile, row.connection.device, row.connection.port, row.connection.kind)
-            } catch (e: IOException) {
-                app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
-                return@launch
-            }
+            val port = tunnelPortOrNotice(row) ?: return@launch
             openSshAt(row, port, user, method, password, remember)?.let(onOpened)
         }
     }
@@ -435,12 +429,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     fun openMqttWhenUp(row: ConnectionRow, onOpened: (Int) -> Unit) {
         openMqtt(row)?.let { return onOpened(it) }
         scope.launch {
-            val localPort = try {
-                tunnelPort(row.profile, row.connection.device, row.connection.port, row.connection.kind)
-            } catch (e: IOException) {
-                app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
-                return@launch
-            }
+            val localPort = tunnelPortOrNotice(row) ?: return@launch
             val c = row.connection
             onOpened(app.mqtt.find(row.profile, c.id)?.id ?: app.mqtt.open(row.profile, c.id, c.device, c.port, localPort).id)
         }

@@ -4,10 +4,9 @@ import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.searchMatches
+import ru.adsrv.frpjump.ops.profile.ProfileInformationQuery
 import ru.adsrv.frpjump.profiles.ProfileInformationPart
 import ru.adsrv.frpjump.profiles.ProfileInformationState
-
-internal data class ProfileInformationQuery(val query: String = "", val profileId: String? = null, val offset: Int = 0)
 
 /** A bounded live selection, not a snapshot/cache. Records are rendered only for this page. */
 internal fun profileInformationText(state: ProfileInformationState, query: ProfileInformationQuery = ProfileInformationQuery()): String {

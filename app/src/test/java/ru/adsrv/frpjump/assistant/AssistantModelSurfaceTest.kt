@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.ops.ssh.*
+import ru.adsrv.frpjump.ops.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*

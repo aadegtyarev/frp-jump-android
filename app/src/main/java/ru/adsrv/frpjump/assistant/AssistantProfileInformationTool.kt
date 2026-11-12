@@ -5,6 +5,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.tools.*
+import ru.adsrv.frpjump.ops.OpFailure
+import ru.adsrv.frpjump.ops.OpRefusal
+import ru.adsrv.frpjump.ops.ProfileQueryFailure
+import ru.adsrv.frpjump.ops.profile.ProfileInformationQuery
+import ru.adsrv.frpjump.ops.profile.ProfileQuery
 import ru.adsrv.frpjump.profiles.ProfileInformation
 import ru.adsrv.frpjump.profiles.ProfileInformationState
 
@@ -12,7 +17,7 @@ import ru.adsrv.frpjump.profiles.ProfileInformationState
 internal class AssistantProfileInformationTool(
     private val refresh: suspend () -> Unit,
     private val read: suspend () -> ProfileInformationState,
-) : AppTool<ProfileInformationQuery>(AssistantToolId.PROFILE_INFORMATION, DESCRIPTION, SCHEMA) {
+) : OperationTool<ProfileInformationQuery, ProfileInformationState>(AssistantToolId.PROFILE_INFORMATION, DESCRIPTION, SCHEMA, ProfileQuery(refresh, read)) {
     constructor(information: ProfileInformation) : this(
         {
             // FrpJumpApi asks the ambient admission with a neutral endpoint name; this tool names the category the app guard knows.
@@ -29,11 +34,13 @@ internal class AssistantProfileInformationTool(
             optionalString("profile_id", 256), optionalInt("offset", min = 0) ?: 0)
     }
     override val invalidArguments = ToolOutput("Invalid profile information arguments: optional query/profile_id strings up to 256 characters and a nonnegative integer offset.", ToolOutcome.FAILED)
-    override suspend fun run(args: ProfileInformationQuery): ToolOutput {
-        refresh()
-        return ToolOutput(profileInformationText(read(), args))
+    override fun render(input: ProfileInformationQuery, output: ProfileInformationState) = profileInformationText(output, input)
+    override val unexpected: OpFailure = ProfileQueryFailure.Unavailable
+    // A reading operation has no refusal; its failure is worded here.
+    override fun modelText(refusal: OpRefusal): String = error("profile_information has no refusals")
+    override fun modelText(failure: OpFailure) = when (failure as ProfileQueryFailure) {
+        ProfileQueryFailure.Unavailable -> "Could not obtain profile information. No successful refresh is implied."
     }
-    override fun failure(error: Exception) = ToolOutput("Could not obtain profile information. No successful refresh is implied.", ToolOutcome.FAILED)
 
     private companion object {
         const val DESCRIPTION = "Find app-known devices and saved connections across all profiles, refreshing device lists once per invocation. " +
