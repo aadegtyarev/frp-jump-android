@@ -9,7 +9,7 @@ import ru.adsrv.frpjump.ssh.MemoryStorage
 
 class ConfirmationPolicyTest {
     private val ssh = AssistantToolId.SSH_COMMAND
-    private val key = GrantKey(ssh, "p/c")
+    private val key = GrantKey(ssh, GrantTarget("p", "c"))
     private val ask = ConfirmationPolicy()
     private val off = ConfirmationPolicy(global = ConfirmationMode.OFF)
 
@@ -19,7 +19,7 @@ class ConfirmationPolicyTest {
     }
 
     @Test fun `overrides of any level win by specificity without changing the call shape`() {
-        val device = ConfirmationScope("device", "d1"); val target = ConfirmationScope("target", "p/c")
+        val device = ConfirmationScope("device", "d1"); val target = ConfirmationScope("target", "p", "c")
         val policy = ConfirmationPolicy(global = ConfirmationMode.OFF, overrides = listOf(
             ConfirmationOverride(device, ConfirmationMode.ASK), ConfirmationOverride(target, ConfirmationMode.OFF)))
         assertEquals(ConfirmationMode.OFF, policy.resolve())
@@ -37,8 +37,8 @@ class ConfirmationPolicyTest {
         assertFalse(mustAsk(ssh, key, off, grants))
         grants.grant(key)
         assertFalse(mustAsk(ssh, key, ask, grants))
-        assertTrue("another connection still asks", mustAsk(ssh, GrantKey(ssh, "p/other"), ask, grants))
-        assertTrue("another profile still asks", mustAsk(ssh, GrantKey(ssh, "q/c"), ask, grants))
+        assertTrue("another connection still asks", mustAsk(ssh, GrantKey(ssh, GrantTarget("p", "other")), ask, grants))
+        assertTrue("another profile still asks", mustAsk(ssh, GrantKey(ssh, GrantTarget("q", "c")), ask, grants))
         assertTrue(mustAsk(ssh, null, ask, grants))
     }
 
@@ -49,13 +49,36 @@ class ConfirmationPolicyTest {
         assertFalse(grants.has(key)); assertTrue(grants.has(GrantKey(AssistantToolId.WEB_SEARCH, null)))
         grants.grant(key); grants.clear()
         assertFalse(grants.has(key)); assertFalse(grants.has(GrantKey(AssistantToolId.WEB_SEARCH, null)))
-        assertEquals(key, GrantKey(ssh, "p/c"))
+        assertEquals(key, GrantKey(ssh, GrantTarget("p", "c")))
+        assertNotEquals("structured, not joined", GrantKey(ssh, GrantTarget("a/b", "c")), GrantKey(ssh, GrantTarget("a", "b/c")))
     }
 
     @Test fun `grants are safe under concurrent use`() {
         val grants = GrantStore()
-        val threads = (0 until 4).map { n -> Thread { repeat(500) { grants.grant(GrantKey(ssh, "$n/$it")); grants.has(key); if (it % 100 == 0) grants.clear(ssh) } } }
-        threads.forEach { it.start() }; threads.forEach { it.join() }
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
+        try {
+            val futures = (0 until 4).map { n -> pool.submit {
+                repeat(500) { i -> grants.grant(GrantKey(ssh, GrantTarget("p$n", "c$i"))); grants.has(key); grants.snapshot() }
+            } }
+            futures.forEach { it.get(30, java.util.concurrent.TimeUnit.SECONDS) }
+        } finally { pool.shutdownNow() }
+        val all = grants.snapshot()
+        assertEquals(2000, all.size)
+        for (n in 0 until 4) for (i in 0 until 500) assertTrue(all.contains(GrantKey(ssh, GrantTarget("p$n", "c$i"))))
+        grants.clearTarget("p1")
+        assertEquals(1500, grants.snapshot().size)
+    }
+
+    @Test fun `an edited or removed target drops only its own grants`() {
+        val grants = GrantStore()
+        val a = GrantKey(ssh, GrantTarget("p", "c1")); val b = GrantKey(ssh, GrantTarget("p", "c2")); val c = GrantKey(ssh, GrantTarget("q", "c1"))
+        grants.grant(a); grants.grant(b); grants.grant(c); grants.grant(GrantKey(AssistantToolId.WEB_SEARCH, null))
+        grants.clearTarget("p", "c1")
+        assertFalse(grants.has(a)); assertTrue(grants.has(b)); assertTrue(grants.has(c))
+        grants.clearTarget("p")
+        assertFalse(grants.has(b)); assertTrue(grants.has(c)); assertTrue(grants.has(GrantKey(AssistantToolId.WEB_SEARCH, null)))
+        grants.clearTarget("nobody")
+        assertEquals(2, grants.snapshot().size)
     }
 
     @Test fun `fixed model texts are exact`() {

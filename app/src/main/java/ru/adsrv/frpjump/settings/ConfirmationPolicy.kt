@@ -13,9 +13,12 @@ enum class ConfirmationMode {
     @SerialName("off") OFF,
 }
 
-/** A level an override may attach to (future: device, tunnel/target). [kind] and [id] are opaque strings so new levels need no format change. */
+/**
+ * A level an override may attach to (future: device, tunnel/target). [kind], [id] and the optional [sub] are opaque strings, so a new
+ * level needs no new fields; a target is (kind "target", id = profile, sub = connection), never a joined string.
+ */
 @Serializable
-data class ConfirmationScope(val kind: String, val id: String)
+data class ConfirmationScope(val kind: String, val id: String, val sub: String? = null)
 
 @Serializable
 data class ConfirmationOverride(val scope: ConfirmationScope, val mode: ConfirmationMode)
@@ -39,8 +42,11 @@ data class ConfirmationPolicy(
     companion object { const val VERSION = 1 }
 }
 
-/** The key of a session grant: the tool plus its target (ssh_command: "profileId/connectionId"). Never the command. */
-data class GrantKey(val tool: AssistantToolId, val target: String?)
+/** A saved connection as a grant target: two fields, so ids containing any character can never collide. */
+data class GrantTarget(val profileId: String, val connectionId: String)
+
+/** The key of a session grant: the tool plus its target (ssh_command: profile and connection). Never the command. */
+data class GrantKey(val tool: AssistantToolId, val target: GrantTarget?)
 
 /** Session grants, in memory only, owned by one chat screen. Thread-safe; never persisted, never in history. */
 class GrantStore {
@@ -49,6 +55,11 @@ class GrantStore {
     fun grant(key: GrantKey) { synchronized(keys) { keys += key } }
     fun clear() = synchronized(keys) { keys.clear() }
     fun clear(tool: AssistantToolId) = synchronized(keys) { keys.removeAll { it.tool == tool } }
+    /** A grant must not follow an edited or removed target: drop the grants of one connection, or of a whole profile when [connectionId] is null. */
+    fun clearTarget(profileId: String, connectionId: String? = null) = synchronized(keys) {
+        keys.removeAll { key -> key.target?.let { it.profileId == profileId && (connectionId == null || it.connectionId == connectionId) } == true }
+    }
+    fun snapshot(): Set<GrantKey> = synchronized(keys) { keys.toSet() }
 }
 
 /**

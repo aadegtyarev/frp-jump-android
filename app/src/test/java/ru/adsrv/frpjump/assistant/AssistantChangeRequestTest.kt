@@ -10,6 +10,7 @@ import ru.adsrv.frpjump.profiles.FakeKeystore
 import ru.adsrv.frpjump.profiles.ProfileInformationState
 import ru.adsrv.frpjump.profiles.SyntheticProfileInformation
 import ru.adsrv.frpjump.settings.AssistantTools
+import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.ssh.*
 
 /** Every tool whose catalog effect changes something must describe its change, so none can skip the confirmation hook. */
@@ -42,23 +43,24 @@ class AssistantChangeRequestTest {
         )
         assertEquals(AssistantToolId.entries.toSet(), valid.keys)
         for ((id, tool) in tools()) {
-            val request = tool.changeRequest(valid.getValue(id))
+            val check = tool.changeCheck(valid.getValue(id))
             if (id.effect.changes) {
-                assertNotNull("$id changes but describes nothing", request)
-                assertEquals(id, request!!.tool)
-            } else assertNull("$id", request)
+                assertTrue("$id changes but is not a Change: $check", check is ChangeCheck.Change)
+                assertEquals(id, (check as ChangeCheck.Change).request.tool)
+                assertNotNull("$id must describe its target", check.request.target)
+            } else assertSame("$id", ChangeCheck.ReadOnly, check)
         }
     }
 
     @Test fun `ssh describes tool target and full command and invalid arguments describe nothing`() {
         val ssh = tools().getValue(AssistantToolId.SSH_COMMAND)
         val command = "printf 'a'\nuname -a"
-        val request = ssh.changeRequest(obj("profile_id" to JsonPrimitive("p1"), "connection_id" to JsonPrimitive("c1"), "command" to JsonPrimitive(command)))!!
-        assertEquals("p1/c1", request.target); assertEquals(command, request.command)
+        val request = (ssh.changeCheck(obj("profile_id" to JsonPrimitive("p1"), "connection_id" to JsonPrimitive("c1"), "command" to JsonPrimitive(command))) as ChangeCheck.Change).request
+        assertEquals(GrantTarget("p1", "c1"), request.target); assertEquals(command, request.command)
         assertFalse("toString must not print the command", request.toString().contains("uname"))
         for (bad in listOf(obj(), obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive(" "), "command" to JsonPrimitive("x")),
             obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("x"), "extra" to JsonPrimitive(1)),
-            obj("profile_id" to JsonPrimitive(1), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("x")))) assertNull(bad.toString(), ssh.changeRequest(bad))
+            obj("profile_id" to JsonPrimitive(1), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("x")))) assertSame(bad.toString(), ChangeCheck.Invalid, ssh.changeCheck(bad))
     }
 
     @Test fun `a declined result is saved and restored and is not a tool failure`() {
@@ -74,5 +76,34 @@ class AssistantChangeRequestTest {
         assertEquals(ToolOutcome.DECLINED, view.receipts.single().result?.outcome)
         val failed = SavedTurn("q", listOf(SavedExchange(SavedReply("", listOf(call)), listOf(SavedResult.of(ToolResult("c1", "ssh_command", "x", ToolOutcome.FAILED))))), status = SavedTurnState.COMPLETE).view()
         assertTrue(failed.toolFailed)
+    }
+
+    /** A changing tool whose description is missing or fails, and whose optional field is absent, must still look like a change. */
+    private class OptionalFieldTool(private val describe: (Optional) -> ChangeRequest?) : AppTool<OptionalFieldTool.Optional>(
+        AssistantToolId.SSH_COMMAND, "Synthetic changing tool", JsonObject(emptyMap())) {
+        class Optional(val command: String?)
+        override fun parse(args: StrictArgs) = args.run { onlyKeys("command"); Optional(optionalString("command", 100, allowBlank = false)) }
+        override val invalidArguments = ToolOutput("invalid", ToolOutcome.FAILED)
+        override suspend fun run(args: Optional) = ToolOutput("ran")
+        override fun failure(error: Exception) = ToolOutput("failed", ToolOutcome.FAILED)
+        override fun describeChange(args: Optional) = describe(args)
+    }
+
+    @Test fun `a changing tool without a description or with an absent optional field is a Change never read-only`() {
+        val undescribed = OptionalFieldTool { null }
+        val absent = undescribed.changeCheck(obj())
+        assertTrue("optional field absent, no description: $absent", absent is ChangeCheck.Change)
+        assertNull((absent as ChangeCheck.Change).request.target); assertEquals("", absent.request.command)
+        assertTrue(undescribed.changeCheck(obj("command" to JsonPrimitive("x"))) is ChangeCheck.Change)
+        val failing = OptionalFieldTool { throw IllegalStateException("boom") }
+        assertTrue(failing.changeCheck(obj()) is ChangeCheck.Change)
+        val described = OptionalFieldTool { ChangeRequest(AssistantToolId.SSH_COMMAND, null, it.command.orEmpty()) }
+        assertEquals("", (described.changeCheck(obj()) as ChangeCheck.Change).request.command)
+        assertSame(ChangeCheck.Invalid, undescribed.changeCheck(obj("other" to JsonPrimitive(1))))
+    }
+
+    @Test fun `progress after a tool is cleared for success and decline and failed otherwise`() {
+        assertNull(progressAfter(ToolOutcome.SUCCESS)); assertNull(progressAfter(ToolOutcome.DECLINED))
+        for (o in listOf(ToolOutcome.FAILED, ToolOutcome.TIMEOUT, ToolOutcome.UNKNOWN_TOOL)) assertEquals(o.name, ChatToolProgress.FAILED, progressAfter(o))
     }
 }

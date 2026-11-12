@@ -1,7 +1,7 @@
 # Assistant: confirmation of changing tool calls (phase F8)
 
 Status: Approved by the parent on 2026-11-12 (decisions R1, R6-R12; prompt sentence approved by the operator on 2026-11-12). Date: 2026-11-12. Base: `origin/main` 67df9c8 (0.3.65).
-Nothing in this document is implemented. The proposed prompt change (section 12) needs operator approval before the asset is touched.
+Implementation: PR 1 (core, no visible change) is merged-ready; PR 2 (visible behavior, prompt v5) follows. The prompt change in section 12 is operator-approved.
 
 ## 1. Goal and user-visible behavior
 
@@ -49,12 +49,14 @@ Read tools (`web_search`, `read_page`, `inspect_image`, `profile_information`) n
 
 ```
 enum ConfirmationDecision { ONCE, SESSION, ALWAYS, DENY }
-data class GrantKey(tool: AssistantToolId, target: String?)   // ssh_command: "<profileId>/<connectionId>"
+data class GrantTarget(profileId: String, connectionId: String)   // structured, never a joined string
+data class GrantKey(tool: AssistantToolId, target: GrantTarget?)
 ```
 
 `authorize(call)`:
 1. Tool unknown or `!effect.changes` -> proceed (null).
-2. Tool describes no change request (invalid arguments) -> proceed to the tool, which fails on its own.
+2. `AppTool.changeCheck(arguments)` is three-state. `Invalid` (arguments do not parse) -> proceed to the tool, which fails on its own and runs nothing. `ReadOnly` (a read tool) -> proceed. `Change(request)` -> continue below.
+   **Fail-closed rule:** a tool with `effect.changes` whose arguments parse but that gives no description (or whose `describeChange` throws) is still a `Change`, with an undescribed request (no target, empty command). The hook must then ask (the card says "Unknown connection" and cannot offer a target-bound "For session"), or refuse; it must never run the call unasked. `changeCheck` enforces this in code, and a test pins it with a changing tool whose optional field is absent.
 3. Policy resolves `ASK` for (tool, target)? If `OFF` -> proceed.
 4. Session grant for the key -> proceed.
 5. Ask the owner: ONCE -> proceed; SESSION -> record grant, proceed; ALWAYS -> persist "off", proceed; DENY -> `ToolOutput(DECLINED)`; timeout -> `ToolOutput(DECLINED)` with the timeout text.
@@ -65,15 +67,15 @@ The policy is read live at each call (not captured at Send admission, unlike too
 
 ```
 enum ConfirmationMode { ASK, OFF }                       // default ASK
-data class ConfirmationPolicy(
-    val global: ConfirmationMode = ASK,
-    val overrides: List<ConfirmationOverride> = emptyList())   // always empty in F8
-data class ConfirmationOverride(val scope: Scope, val mode: ConfirmationMode)
-sealed Scope { Device(id), Target(profileId, connectionId) /* future; either, or both */ }
-fun ConfirmationPolicy.resolve(tool, target): ConfirmationMode = most specific matching override ?: global
+data class ConfirmationScope(kind: String, id: String, sub: String? = null)   // opaque; target = ("target", profile, connection)
+data class ConfirmationOverride(scope: ConfirmationScope, mode: ConfirmationMode)
+data class ConfirmationPolicy(version: Int = 1, global: ConfirmationMode = ASK,
+                              overrides: List<ConfirmationOverride> = emptyList())   // always empty in F8
+fun ConfirmationPolicy.resolve(scopes: List<ConfirmationScope> = emptyList()): ConfirmationMode
+    // most specific matching override (scopes given most specific first) ?: global
 ```
 
-Only `global` is read or written in F8. `resolve` already takes tool+target so adding an override level changes no call site.
+Only `global` is read or written in F8. `resolve` already takes the call's scopes, so adding an override level changes no call site; `mustAsk(tool, key, policy, grants, scopes)` is the single pure decision.
 
 ### 4.3 Persisted shape (new `AppSettings` field, `@SerialName("assistant_confirmations")`)
 
@@ -81,8 +83,8 @@ Only `global` is read or written in F8. `resolve` already takes tool+target so a
 "assistant_confirmations": { "version": 1, "global": "ask" }
 ```
 
-- Absent -> `ask`. Unknown `version`, wrong type, unknown `global` string, or any parse problem -> `ask` (fail closed), sanitized independently in `SettingsStore.decode` like the tool booleans, so unrelated settings are never reset.
-- Future overrides add an optional `"overrides": [{"scope": {"kind": "...", "id": "..."}, "mode": "off|ask"}]` inside the same object; a version-1 reader ignores it (`ignoreUnknownKeys`), a future reader treats an absent array as empty. No breaking change for either level or both.
+- `ask` is the default and is omitted from the file: a 0.3.65 settings file stays byte-identical until the owner picks `off` (golden-JSON test: default `AppSettings` encodes as `{}`). Absent -> `ask`. Unknown `version`, wrong type, unknown `global` string, or any parse problem -> `ask` (fail closed), sanitized independently in `SettingsStore.decode` like the tool booleans, so unrelated settings are never reset.
+- Future overrides add an optional `"overrides": [{"scope": {"kind": "...", "id": "..."}, "mode": "off|ask"}]` inside the same object; a version-1 reader ignores the array (`ignoreUnknownKeys`) and does not read it, a future reader treats an absent array as empty. Adding a level is additive. An override that is stricter than the global value (for example `ask` for one device while global is `off`) needs a version bump (2): a version-1 reader falls back to `ask` for the whole object (fail closed), so it never silently ignores a stricter override, but it also never honors a looser `off`.
 - Known limitation: an older app rewriting the file drops the object (requests back to `ask`: the safe direction).
 - Existing field names and `SavedChat` version 1 unchanged.
 - `SettingsStore.setAssistantConfirmations(mode)` uses `update`; it must not touch `assistantAvailability.disableVersion`.
@@ -129,13 +131,15 @@ Layout:
 - `ToolOutcome.DECLINED` added to agent-core; the OpenAI codec already writes `outcome.name.lowercase()` so the model sees `declined`.
 - Send deadline: `withTimeout(120_000)` in `TurnRunner.run` becomes an `ActiveDeadline` (pure, injectable clock): a watchdog cancels the Send with the same `TimeoutCancellationException`-equivalent mapping (`ChatProblem.TIMEOUT`) when active time exceeds 120 s; `authorize` pauses it for the wait and resumes it in `finally`. Active time counts everything else (model, tools, summary) exactly as today.
 - Stop / Back / disable / revision change during the wait: the Send's job is cancelled; the awaiting coroutine is cancelled; the card is cleared. Because `RunOwnership.guarded` refuses commits from a stopped owner, the card is cleared in `RunOwnership.completed()` and in `refreshLocked()`/`close()` (the same places that reset other transient fields), not by the cancelled waiter. Slot semantics unchanged: the slot frees only after the run coroutine finished.
-- Session grants: an in-memory set in the conversation owner (retained across recreation, dropped by `close()`), cleared when the assistant disable version advances, when the corresponding tool switch is turned off, and on `deleteHistory`. Never written to history.
+- Session grants: an in-memory `GrantStore` in the conversation owner (retained across recreation, dropped by `close()`), keyed by tool and structured (profile, connection). Cleared when the assistant disable version advances, when the corresponding tool switch is turned off, on `deleteHistory`, and per target when the connection or its profile is edited or removed while the chat lives (a grant never follows an edited target). Never written to history.
+- Races with Stop: an "Always" answer persists "off" even if Stop races the call; a "For session" answer racing Stop may record its grant. Both are the owner's explicit choice and are acceptable; the racing call itself never runs (`checkOwner` after the hook).
+- The 5-minute wait uses `withTimeoutOrNull` inside the hook and returns a DECLINED output; a `TimeoutCancellationException` never escapes the hook.
 - Always: write the setting on IO, then (success) return ONCE-like proceed; subscribers (Chat indicator, Tools row) update from `SettingsStore.settings`.
 - No SSH client is created before the answer: `authorize` runs before `AppTool.execute` (and therefore before `AssistantSshCommands.execute` -> `connector.newClient()`); the target description is a pure lookup in `SshTargets` state.
 
 ## 7. Persistence
 
-- `DECLINED` results are saved like other results (outcome string in `SavedResult`); the receipt screen shows the localized "Declined". Older histories read unchanged.
+- `DECLINED` results are saved like other results (outcome string in `SavedResult`); the receipt screen shows the localized "Declined". Older histories read unchanged. `SavedResult` decoding in the new app tolerates an unknown outcome name (it maps to a non-success, non-declined value) so a future outcome cannot break this version. Downgrade: an older app throws on `valueOf("DECLINED")` when reading such a history; this cannot be fixed in old apps and goes into the release notes.
 - A pending confirmation is not saved. The `Replied` event persists the proposed call before `authorize` runs (today's order), so after process death the call appears without a result and the existing "unfinished historical proposal; missing results are UNKNOWN" note applies. This is conservative (nothing ran) and accepted; see risk R2.
 - Settings object as in 4.3.
 
@@ -206,7 +210,7 @@ Instrumentation (`emulator-5580`, API35; synthetic fake provider/connector; rest
 
 Gates: the full command from `AGENTS.md`, `git diff --check`, `repo-docs` checker; read actual test counts. Evidence is scoped emulator evidence, not physical-device or live-service validation.
 
-## 12. Proposed prompt change (needs operator approval; asset NOT edited)
+## 12. Prompt change (operator-approved; applied in PR 2)
 
 `app/src/main/assets/assistant/skill.md`, v4 -> v5. Insert one bullet in the "Safety" section, directly after the "An error, timeout or interrupted history ..." bullet. The sentence below is the parent's corrected version (the earlier "The owner approves each changing call" is false once Always turns requests off); the operator approved it word for word on 2026-11-12. The asset is NOT edited in PR 1; PR 2 copies the approved file byte for byte (2591 bytes, SHA-256 ae79a0777ceb609a2b7e748523e5540df17b3f8b6d31eb8f6510c326122b4627; the sentence in that file is authoritative if it differs from the diff below), sets SYSTEM_VERSION 5, pins the hash and updates the agent-contract version references:
 

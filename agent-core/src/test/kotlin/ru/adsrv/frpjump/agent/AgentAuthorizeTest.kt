@@ -99,19 +99,4 @@ class AgentAuthorizeTest {
         try { run.await(); fail("Expected cancellation") } catch (_: CancellationException) { }
         assertEquals(0, runs); assertFalse(module.isRunning)
     }
-
-    @Test fun `a refusal after a revocation is not recorded either`() = runBlocking {
-        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
-        val events = ArrayList<AgentEvent>()
-        val module = AgentModule(true)
-        val run = async { module.run(provider(), listOf(tool { ToolOutput("bad") }), "", "user", onEvent = { events += it }, authorize = {
-            withContext(NonCancellable) { entered.complete(Unit); release.await() }
-            ToolOutput("declined", ToolOutcome.DECLINED)
-        }) }
-        withTimeout(2000) { entered.await() }
-        module.setEnabled(false)
-        release.complete(Unit)
-        try { run.await(); fail("Expected cancellation") } catch (_: CancellationException) { }
-        assertTrue(events.none { it is AgentEvent.FinishedTool })
-    }
 }

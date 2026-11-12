@@ -75,4 +75,16 @@ class AssistantConfirmationSettingsTest {
         assertEquals(ConfirmationMode.OFF, s.assistantConfirmations.global)
         assertEquals(1L, s.assistantAvailability.disableVersion)
     }
+
+    @Test fun `golden JSON ask is omitted so old files stay byte-identical and off is the versioned object`() {
+        assertEquals("{}", ru.adsrv.frpjump.api.WireJson.encodeToString(AppSettings.serializer(), AppSettings()))
+        assertEquals("""{"assistant_confirmations":{"version":1,"global":"off"}}""",
+            ru.adsrv.frpjump.api.WireJson.encodeToString(AppSettings.serializer(), AppSettings(assistantConfirmations = ConfirmationPolicy(global = ConfirmationMode.OFF))))
+        val file = MemoryStorage("""{"direct":false,"assistant_enabled":true}""")
+        SettingsStore(file).update { it.copy(assistantSearch = true) }
+        assertFalse(file.text!!.contains("assistant_confirmations"))
+        val off = MemoryStorage(); val s = SettingsStore(off)
+        s.setAssistantConfirmations(ConfirmationMode.OFF); s.setAssistantConfirmations(ConfirmationMode.ASK)
+        assertEquals("{}", off.text)
+    }
 }

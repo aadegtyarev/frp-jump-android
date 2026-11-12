@@ -49,11 +49,62 @@ class ActiveDeadlineTest {
         assertTrue(expires(vt2, tight) { delay(40); tight.pause(); delay(1_000); tight.resume(); delay(40); tight.paused { delay(5_000) }; delay(21) })
     }
 
-    @Test fun `paused resumes the clock when cancelled during the wait`() {
-        // After cancellation the clock is running: a fresh guard on the same object still expires on active time.
-        val vt2 = VirtualTime()
-        val d2 = ActiveDeadline(100, { vt2.now })
-        assertTrue(try { vt2.run { val w = launch { d2.paused { awaitCancellation() } }; yield(); w.cancelAndJoin(); d2.guard { delay(1_000) } }; false } catch (_: ActiveDeadlineExpired) { true })
+    @Test fun `paused resumes the clock when the waiter is cancelled during the wait`() {
+        val vt = VirtualTime()
+        val deadline = ActiveDeadline(100, { vt.now })
+        // The pause happens INSIDE the running guard, then the waiter is cancelled: only the finally in paused() can restart the clock.
+        assertTrue(expires(vt, deadline) {
+            delay(10)
+            val waiter = launch { deadline.paused { awaitCancellation() } }
+            yield(); delay(500); waiter.cancelAndJoin()
+            delay(1_000)
+        })
+        // 10 active, 500 paused, then the clock ran again: expiry at 10 + 90 active = 600 virtual.
+        assertEquals(600, vt.now)
+    }
+
+    @Test fun `Stop wins when it races the expiry`() {
+        val vt = VirtualTime()
+        vt.run {
+            lateinit var job: Job
+            job = launch {
+                try {
+                    ActiveDeadline(100, { vt.now }).guard {
+                        // Expiry cancels this body; the body's cleanup is where the owner's Stop lands.
+                        try { awaitCancellation() } finally { withContext(NonCancellable) { job.cancel() } }
+                    }
+                } catch (c: CancellationException) { assertFalse("a stopped Send must not look like a timeout", c is ActiveDeadlineExpired); throw c }
+            }
+            job.join()
+            assertTrue(job.isCancelled)
+        }
+    }
+
+    @Test fun `expiry without a Stop is the active-time timeout`() {
+        val vt = VirtualTime()
+        assertTrue(expires(vt, ActiveDeadline(100, { vt.now })) { awaitCancellation() })
+    }
+
+    @Test fun `pauses nest and an unmatched resume is ignored`() {
+        val vt = VirtualTime()
+        val deadline = ActiveDeadline(100, { vt.now })
+        var done = false
+        vt.run { deadline.guard {
+            delay(50); deadline.pause(); deadline.pause(); deadline.resume(); delay(1_000)
+            deadline.resume(); deadline.resume(); delay(49); done = true
+        } }
+        assertTrue("still paused after one of two resumes: 1000 not counted", done)
+        val vt2 = VirtualTime(); val d2 = ActiveDeadline(100, { vt2.now })
+        assertTrue(expires(vt2, d2) { delay(50); d2.pause(); d2.pause(); d2.resume(); delay(1_000); d2.resume(); delay(51) })
+        val vt3 = VirtualTime(); val d3 = ActiveDeadline(100, { vt3.now })
+        assertTrue("an unmatched resume must not stop or restart the clock", expires(vt3, d3) { d3.resume(); d3.resume(); delay(101) })
+    }
+
+    @Test fun `a deadline is single-use`() {
+        val vt = VirtualTime()
+        val deadline = ActiveDeadline(100, { vt.now })
+        vt.run { deadline.guard { delay(1) } }
+        assertThrows(IllegalStateException::class.java) { vt.run { deadline.guard { delay(1) } } }
     }
 
     @Test fun `outer cancellation stays a plain cancellation and an inner failure propagates`() {
