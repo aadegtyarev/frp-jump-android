@@ -46,6 +46,9 @@ object ImageLimits {
     const val LONG_SIDE = 2000
     const val JPEG_QUALITY = 85
     const val NAME_TRIES = 4
+
+    /** The most images one insert takes; the picker and the clipboard offer are cut to it. */
+    const val BATCH_MAX = 10
     const val CLEANUP_AGE_SECONDS = 60L * 60
     const val CLEANUP_ENTRIES = 500
 }

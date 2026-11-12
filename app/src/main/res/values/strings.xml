@@ -1235,4 +1235,11 @@
     <string name="terminal_image_path_unsafe">The home folder name has special characters.</string>
     <string name="terminal_image_folder_unsafe">The images folder on the device is not safe to use.</string>
     <string name="terminal_image_insert_refused">Could not insert the path.</string>
+    <string name="terminal_images_offer_title">Insert %1$d images from clipboard?</string>
+    <string name="terminal_images_offer_text">They are sent to the device and their paths are inserted.</string>
+    <string name="terminal_images_preparing">Image %1$d of %2$d · preparing</string>
+    <string name="terminal_images_uploading">Image %1$d of %2$d · %3$d%%</string>
+    <string name="terminal_images_done">%1$d images inserted</string>
+    <string name="terminal_images_partly">%2$d of %1$d images were not sent: %3$s</string>
+    <string name="terminal_images_cut">Only the first %1$d images are used.</string>
 </resources>

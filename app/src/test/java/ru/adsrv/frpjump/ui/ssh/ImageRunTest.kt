@@ -53,7 +53,7 @@ class ImageRunTest {
     }
 
     private fun start(tab: Int, encode: (track: (Closeable) -> Unit) -> EncodedImage, outcomes: MutableList<ImageInsertOutcome> = CopyOnWriteArrayList()) =
-        startImageRun(scope, runs, tab, target, encode, insertOn = Dispatchers.Unconfined) { outcomes += it }
+        startImageRun(scope, runs, tab, target, listOf(encode), insertOn = Dispatchers.Unconfined) { outcomes += it }
 
     @Test fun oneImagePerTabAndAnotherTabIsIndependent() {
         val gate = CountDownLatch(1)
@@ -120,7 +120,7 @@ class ImageRunTest {
         Thread.setDefaultUncaughtExceptionHandler { _, e -> uncaught += e }
         try {
             val called = CountDownLatch(1)
-            startImageRun(scope, runs, 1, target, { throw ImageFailureException(ImageFailure.TOO_LARGE) }, insertOn = Dispatchers.Unconfined) {
+            startImageRun(scope, runs, 1, target, listOf({ _ -> throw ImageFailureException(ImageFailure.TOO_LARGE) }), insertOn = Dispatchers.Unconfined) {
                 called.countDown()
                 throw IllegalStateException("the notice failed")
             }
@@ -132,5 +132,12 @@ class ImageRunTest {
         } finally {
             Thread.setDefaultUncaughtExceptionHandler(before)
         }
+    }
+
+    @Test fun thePickerTakesTenOrThePlatformsLowerLimit() {
+        assertEquals(10, batchPickerMax(null))
+        assertEquals(10, batchPickerMax(100))
+        assertEquals(5, batchPickerMax(5))
+        assertEquals(2, batchPickerMax(1))
     }
 }

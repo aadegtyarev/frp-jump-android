@@ -338,6 +338,39 @@ class TerminalImageInsertTest {
         assertEquals(1, inserted.size)
     }
 
+    @Test fun theBatchBarSaysTheImageOfTheBatchAndFitsWithCancelAndTheDisclosure() {
+        val cancels = mutableListOf<Unit>()
+        val state = mutableStateOf<ImageInsertState>(ImageInsertState.Preparing(2, 5))
+        compose.setContent { FrpJumpTheme { Frame(state.value, cancels) } }
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_images_preparing, 2, 5)).assertIsDisplayed()
+        compose.runOnUiThread { state.value = ImageInsertState.Uploading(450, 1000, 2, 5) }
+        val label = compose.activity.getString(R.string.terminal_images_uploading, 2, 5, 40)
+        val text = compose.onNodeWithText(label).assertIsDisplayed().fetchSemanticsNode()
+        capture("multi-bar-uploading-above-keys")
+        assertFalse("the bar's words are cut", overflowed(text))
+        val cancel = compose.onNodeWithText(compose.activity.getString(R.string.cancel)).assertIsDisplayed().fetchSemanticsNode()
+        val more = compose.onNodeWithTag("terminal_more_keys").fetchSemanticsNode()
+        fun onScreen(node: androidx.compose.ui.semantics.SemanticsNode) =
+            Rect(node.positionOnScreen, androidx.compose.ui.geometry.Size(node.size.width.toFloat(), node.size.height.toFloat()))
+        assertFalse("Cancel ${onScreen(cancel)} is under the keys' disclosure ${onScreen(more)}", onScreen(cancel).overlaps(onScreen(more)))
+        val keys = compose.onNodeWithTag("terminal_main_keys").assertIsDisplayed().fetchSemanticsNode()
+        assertTrue("the bar sits above the keys", text.boundsInRoot.bottom <= keys.boundsInRoot.top + 1f)
+        compose.onNodeWithText(compose.activity.getString(R.string.cancel)).performClick()
+        assertEquals(1, cancels.size)
+    }
+
+    @Test fun theOfferForSeveralImagesNamesTheCountAndInsertsOnlyOnTheButton() {
+        val inserted = mutableListOf<Unit>()
+        compose.setContent { FrpJumpTheme { ImageOfferSheet(onInsert = { inserted += Unit }, onDismiss = {}, count = 5) } }
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_images_offer_title, 5)).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_images_offer_text)).assertIsDisplayed()
+        capture("multi-offer")
+        assertTrue(inserted.isEmpty())
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_image_insert)).performClick()
+        compose.waitForIdle()
+        assertEquals(1, inserted.size)
+    }
+
     @Test fun theBarAndKeysStayVisibleWithTheKeyboardUp() {
         bar(ImageInsertState.Uploading(450, 1000), mutableListOf(), withKeyboard = true)
         // The keyboard needs a moment, and a device with a hardware keyboard may not show it: the screenshot says which.

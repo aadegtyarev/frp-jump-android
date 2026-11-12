@@ -39,12 +39,14 @@ import ru.adsrv.frpjump.image.EncodedImage
 import ru.adsrv.frpjump.image.ImageEncoder
 import ru.adsrv.frpjump.image.ImageFailure
 import ru.adsrv.frpjump.image.ImageInsertJob
+import ru.adsrv.frpjump.image.ImageLimits
 import ru.adsrv.frpjump.image.ImageInsertOutcome
 import ru.adsrv.frpjump.image.ImageInsertState
 import ru.adsrv.frpjump.image.ImageTarget
 import ru.adsrv.frpjump.image.onlyWhile
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ssh.SshSession
+import ru.adsrv.frpjump.ssh.clipImageItems
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.MainButton
@@ -53,7 +55,7 @@ import ru.adsrv.frpjump.ui.notice
 /** Test seam of [TerminalScreen]: [isOpen] replaces "the tab is Open", and [picked] the system picker (told which tab asked). */
 class ImageEntryHooks(val isOpen: (SshSession) -> Boolean, val picked: (SshSession) -> Unit)
 
-/** One image going to one tab: what the bar shows and the job to cancel. */
+/** One image, or one batch of images, going to one tab: what the bar shows and the job to cancel. */
 class ImageRun {
     var state: ImageInsertState by mutableStateOf(ImageInsertState.Encoding)
     lateinit var job: Job
@@ -67,6 +69,16 @@ class ImageRun {
         job.cancel()
     }
 }
+
+/**
+ * How many pictures the picker may return: [ImageLimits.BATCH_MAX], or the platform's own limit when it is lower (API 33+:
+ * `MediaStore.getPickImagesMaxLimit()`, [platformLimit]); never below 2, which the multiple-pick contract needs. On older
+ * systems there is no such limit to ask ([platformLimit] null).
+ */
+fun batchPickerMax(platformLimit: Int?): Int = minOf(ImageLimits.BATCH_MAX, platformLimit ?: ImageLimits.BATCH_MAX).coerceAtLeast(2)
+
+/** [batchPickerMax] for this device. */
+fun imagePickerMax(): Int = batchPickerMax(if (android.os.Build.VERSION.SDK_INT >= 33) android.provider.MediaStore.getPickImagesMaxLimit() else null)
 
 /** A fixed key: a second failure replaces the first instead of queuing up. */
 private const val IMAGE_NOTICE_KEY = "image-insert"
@@ -89,7 +101,7 @@ fun imageFailureText(context: Context, reason: ImageFailure): String = context.g
 
 /**
  * Starts one image run for tab [tabId] in [scope] (the terminal screen's: leaving the screen cancels it), or returns null
- * when that tab already has one: one image per tab at a time. The tab's entry in [runs] (what the bar shows, and the guard
+ * when that tab already has one: one image or batch per tab at a time. The tab's entry in [runs] (what the bar shows, and the guard
  * that keeps the menu item off) is removed when the job has ended, not when it was cancelled and not when a channel it
  * abandoned has finished closing. [onOutcome] is told how it ended unless it was cancelled.
  */
@@ -98,7 +110,7 @@ fun startImageRun(
     runs: SnapshotStateMap<Int, ImageRun>,
     tabId: Int,
     target: ImageTarget,
-    encode: (track: (java.io.Closeable) -> Unit) -> EncodedImage,
+    sources: List<(track: (java.io.Closeable) -> Unit) -> EncodedImage>,
     insertOn: CoroutineDispatcher = Dispatchers.Main.immediate,
     onOutcome: (ImageInsertOutcome) -> Unit,
 ): ImageRun? {
@@ -106,7 +118,7 @@ fun startImageRun(
     val run = ImageRun()
     runs[tabId] = run
     run.job = scope.launch {
-        val outcome = ImageInsertJob(target, encode, { run.state = it }, insertOn = insertOn).run()
+        val outcome = ImageInsertJob(target, sources, { run.state = it }, insertOn = insertOn).run()
         // Whoever reports the outcome must not be able to take the screen's scope down with it.
         try {
             onOutcome(outcome)
@@ -127,7 +139,8 @@ fun cancelRunsOfGoneTabs(runs: SnapshotStateMap<Int, ImageRun>, shownTabs: Set<I
 }
 
 /**
- * Starts sending [uri] to [session]'s tab, as that tab is now (see [startImageRun]). [visible] says the tab is still one
+ * Starts sending [uris] (the first [ImageLimits.BATCH_MAX] of them, in this order) to [session]'s tab, as that tab is now
+ * (see [startImageRun]). [visible] says the tab is still one
  * the owner sees (not closed with its Undo pending, not replaced): checked at the start and again just before the path is
  * pasted.
  */
@@ -135,28 +148,37 @@ fun startImageInsert(
     scope: CoroutineScope,
     context: Context,
     session: SshSession,
-    uri: Uri,
+    uris: List<Uri>,
     runs: SnapshotStateMap<Int, ImageRun>,
     visible: () -> Boolean = { true },
 ) {
     if (runs[session.id] != null) return
     val target = session.captureImageTarget()?.onlyWhile(visible) ?: return context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
     val resolver = context.contentResolver
-    startImageRun(scope, runs, session.id, target, { track -> ImageEncoder.encode(resolver, uri, track) }) { outcome ->
+    val picked = uris.take(ImageLimits.BATCH_MAX)
+    val sources = picked.map { uri -> { track: (java.io.Closeable) -> Unit -> ImageEncoder.encode(resolver, uri, track) } }
+    startImageRun(scope, runs, session.id, target, sources) { outcome ->
         when (outcome) {
-            ImageInsertOutcome.Inserted -> context.notice(context.getString(R.string.terminal_image_done), NoticeKind.DONE, key = IMAGE_NOTICE_KEY)
+            ImageInsertOutcome.Inserted -> context.notice(
+                if (picked.size > 1) context.getString(R.string.terminal_images_done, picked.size) else context.getString(R.string.terminal_image_done),
+                NoticeKind.DONE, key = IMAGE_NOTICE_KEY,
+            )
+            is ImageInsertOutcome.InsertedPartly -> context.notice(
+                context.getString(R.string.terminal_images_partly, outcome.inserted + outcome.notSent, outcome.notSent, imageFailureText(context, outcome.firstReason)),
+                NoticeKind.WARN, key = IMAGE_NOTICE_KEY,
+            )
             is ImageInsertOutcome.Failed -> context.notice(imageFailureText(context, outcome.reason), NoticeKind.WARN, key = IMAGE_NOTICE_KEY)
         }
     }
 }
 
-/** The first picture on the clipboard, read now (after the owner confirmed), or null. */
-fun clipboardImageUri(context: Context): Uri? = try {
+/** The pictures on the clipboard (at most [ImageLimits.BATCH_MAX], in order), read now (after the owner asked), or empty. */
+fun clipboardImageUris(context: Context): List<Uri> = try {
     context.getSystemService(ClipboardManager::class.java).primaryClip?.let { clip ->
-        (0 until clip.itemCount).firstNotNullOfOrNull { clip.getItemAt(it).uri }
-    }
+        clipImageItems((0 until clip.itemCount).map { clip.getItemAt(it).uri })
+    }.orEmpty()
 } catch (e: RuntimeException) {
-    null
+    emptyList()
 }
 
 /** ⋮ → Insert image; off unless the tab is open and has no image on its way. */
@@ -175,7 +197,12 @@ fun ImageProgressBar(state: ImageInsertState, onCancel: () -> Unit, modifier: Mo
     val colors = AppTheme.colors
     val text = when (state) {
         // Whole tens only: the words change a few times, not with every packet.
-        is ImageInsertState.Uploading -> stringResource(R.string.terminal_image_uploading, if (state.total > 0) (state.sent * 100 / state.total).toInt() / 10 * 10 else 0)
+        is ImageInsertState.Uploading -> {
+            val percent = if (state.total > 0) (state.sent * 100 / state.total).toInt() / 10 * 10 else 0
+            if (state.count > 1) stringResource(R.string.terminal_images_uploading, state.index, state.count, percent)
+            else stringResource(R.string.terminal_image_uploading, percent)
+        }
+        is ImageInsertState.Preparing -> stringResource(R.string.terminal_images_preparing, state.index, state.count)
         ImageInsertState.Encoding -> stringResource(R.string.terminal_image_preparing)
     }
     BoxWithConstraints(modifier.fillMaxWidth().background(colors.termBar)) {
@@ -211,12 +238,12 @@ fun ImageProgressBar(state: ImageInsertState, onCancel: () -> Unit, modifier: Mo
     }
 }
 
-/** The clipboard holds a picture: send it to the device? ✕ or a swipe down leaves it. */
+/** The clipboard holds [count] pictures: send them to the device, as one insert? ✕ or a swipe down leaves them. */
 @Composable
-fun ImageOfferSheet(onInsert: () -> Unit, onDismiss: () -> Unit) {
+fun ImageOfferSheet(onInsert: () -> Unit, onDismiss: () -> Unit, count: Int = 1) {
     AppSheet(
-        title = stringResource(R.string.terminal_image_offer_title),
-        subtitle = stringResource(R.string.terminal_image_offer_text),
+        title = if (count > 1) stringResource(R.string.terminal_images_offer_title, count) else stringResource(R.string.terminal_image_offer_title),
+        subtitle = stringResource(if (count > 1) R.string.terminal_images_offer_text else R.string.terminal_image_offer_text),
         onDismiss = onDismiss,
     ) {
         Column {

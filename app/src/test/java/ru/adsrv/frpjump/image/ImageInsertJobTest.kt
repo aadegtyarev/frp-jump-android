@@ -101,7 +101,7 @@ class ImageInsertJobTest {
     private val at = LocalDateTime.of(2026, 11, 12, 1, 30)
 
     private fun job(target: ImageTarget, states: MutableList<ImageInsertState> = CopyOnWriteArrayList(), encode: () -> EncodedImage = { jpeg }) =
-        ImageInsertJob(target, { _ -> encode() }, { states += it }, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 2000, cleanupMs = 2000)
+        ImageInsertJob(target, listOf({ _ -> encode() }), { states += it }, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 2000, cleanupMs = 2000)
 
     private fun <T> blocking(block: suspend () -> T): T = runBlocking { withTimeout(15_000) { block() } }
 
@@ -352,7 +352,7 @@ class ImageInsertJobTest {
         val target = Target(device)
         val started = System.nanoTime()
         // The real background runner and closer: the cleanup is on a thread of its own.
-        val outcome = blocking { ImageInsertJob(target, { _ -> jpeg }, {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, cleanupMs = 400).run() }
+        val outcome = blocking { ImageInsertJob(target, listOf({ _ -> jpeg }), {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, cleanupMs = 400).run() }
         assertEquals(ImageInsertOutcome.Inserted, outcome)
         assertTrue("the path did not wait for the cleanup", (System.nanoTime() - started) / 1_000_000 < 3_000)
         assertEquals(1, target.pastes.size)
@@ -369,7 +369,7 @@ class ImageInsertJobTest {
         device.listHook = { channel -> channel.closedLatch.await(20, TimeUnit.SECONDS) }
         val closedVia = CopyOnWriteArrayList<Closeable>()
         val target = Target(device)
-        val outcome = blocking { ImageInsertJob(target, { _ -> jpeg }, {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, cleanupMs = 300, closeWith = { closedVia += it; it.close() }).run() }
+        val outcome = blocking { ImageInsertJob(target, listOf({ _ -> jpeg }), {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, cleanupMs = 300, closeWith = { closedVia += it; it.close() }).run() }
         assertEquals(ImageInsertOutcome.Inserted, outcome)
         waitFor("the watchdog to close the cleanup's channel through the closer") { closedVia.any { it === device.channels.first() } }
     }
@@ -382,7 +382,7 @@ class ImageInsertJobTest {
         // A slow listing: the job is over before it answers, and the channel must still be open for it.
         device.listHook = { Thread.sleep(1_500) }
         val target = Target(device)
-        val outcome = blocking { ImageInsertJob(target, { _ -> jpeg }, {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined).run() }
+        val outcome = blocking { ImageInsertJob(target, listOf({ _ -> jpeg }), {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined).run() }
         assertEquals(ImageInsertOutcome.Inserted, outcome)
         assertTrue("the job did not wait for the listing", device.files.containsKey("$d/img-20260101-0000-aaaa.jpg"))
         waitFor("the old file to be removed by the cleanup") { !device.files.containsKey("$d/img-20260101-0000-aaaa.jpg") }
@@ -393,7 +393,7 @@ class ImageInsertJobTest {
         // Closing an sshj channel can wait 30 s for the peer; the job (and its tab's guard) must not.
         val device = Device().apply { prepareFails = ImageFailure.FOLDER_UNSAFE; closeDelayMs = 3_000 }
         val started = System.nanoTime()
-        val outcome = blocking { ImageInsertJob(Target(device), { _ -> jpeg }, {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined).run() }
+        val outcome = blocking { ImageInsertJob(Target(device), listOf({ _ -> jpeg }), {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined).run() }
         assertEquals(ImageInsertOutcome.Failed(ImageFailure.FOLDER_UNSAFE), outcome)
         assertTrue("the job ended without waiting for the close", (System.nanoTime() - started) / 1_000_000 < 1_500)
         waitFor("the channel to be closed in the background") { device.channels.first().closed }
@@ -467,7 +467,7 @@ class ImageInsertJobTest {
         }
         val started = System.nanoTime()
         val cancelled = runBlocking {
-            val running = async(Dispatchers.Default) { ImageInsertJob(target, { _ -> jpeg }, {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 500).run() }
+            val running = async(Dispatchers.Default) { ImageInsertJob(target, listOf({ _ -> jpeg }), {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 500).run() }
             assertTrue(inWrite.await(5, TimeUnit.SECONDS))
             running.cancel()
             awaitCancelled(running)
@@ -483,13 +483,13 @@ class ImageInsertJobTest {
         val closed = CountDownLatch(1)
         val cancelled = runBlocking {
             val running = async(Dispatchers.Default) {
-                ImageInsertJob(target, { track ->
+                ImageInsertJob(target, listOf({ track: (Closeable) -> Unit ->
                     val gate = CountDownLatch(1)
                     track(Closeable { closed.countDown(); gate.countDown() })
                     reading.countDown()
                     gate.await(20, TimeUnit.SECONDS)
                     throw IOException("closed")
-                }, {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }).run()
+                }), {}, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }).run()
             }
             assertTrue(reading.await(5, TimeUnit.SECONDS))
             running.cancel()
@@ -510,8 +510,143 @@ class ImageInsertJobTest {
         }
         assertEquals(ImageInsertOutcome.Failed(ImageFailure.SAVE_FAILED), blocking { job(target).run() })
         // A progress callback that throws is the same.
-        val outcome = blocking { ImageInsertJob(Target(Device()), { _ -> jpeg }, { throw IllegalArgumentException("ui") }, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }).run() }
+        val outcome = blocking { ImageInsertJob(Target(Device()), listOf({ _ -> jpeg }), { throw IllegalArgumentException("ui") }, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }).run() }
         assertEquals(ImageInsertOutcome.Failed(ImageFailure.SAVE_FAILED), outcome)
+    }
+
+    // ---- Batches of several images (docs/contract.md section 7; docs/ssh-persist-contract.md, Remote image files) ----
+
+    private fun source(size: Int, fill: Byte): (track: (Closeable) -> Unit) -> EncodedImage = { _ -> EncodedImage(ByteArray(size) { fill }, ImageFormat.JPEG) }
+
+    private fun failing(reason: ImageFailure): (track: (Closeable) -> Unit) -> EncodedImage = { _ -> throw ImageFailureException(reason) }
+
+    private fun batch(
+        target: ImageTarget,
+        sources: List<(track: (Closeable) -> Unit) -> EncodedImage>,
+        states: MutableList<ImageInsertState> = CopyOnWriteArrayList(),
+        cleanups: AtomicInteger = AtomicInteger(),
+    ) = ImageInsertJob(
+        target, sources, { states += it }, now = { at }, random = Random(3), insertOn = Dispatchers.Unconfined, closeWith = { it.close() },
+        cleanupRunner = { cleanups.incrementAndGet(); it.run() }, removalMs = 2000, cleanupMs = 2000,
+    )
+
+    @Test fun aBatchOfThreeGoesInOrderOverOneChannelAsOneSpaceJoinedPaste() {
+        val device = Device()
+        val target = Target(device)
+        val cleanups = AtomicInteger()
+        val outcome = blocking { batch(target, listOf(source(10, 1), source(20, 2), source(30, 3)), cleanups = cleanups).run() }
+        assertEquals(ImageInsertOutcome.Inserted, outcome)
+        assertEquals("one channel for the whole batch, no second opening", 1, device.opened.get())
+        assertEquals("one paste", 1, target.pastes.size)
+        val (text, enter) = target.pastes.single()
+        assertFalse(enter)
+        assertFalse("never a newline", text.contains('\n'))
+        val paths = text.split(' ')
+        assertEquals(3, paths.size)
+        assertEquals("the order the pictures were given", listOf(10, 20, 30), paths.map { device.files[it]!!.size })
+        assertEquals(listOf<Byte>(1, 2, 3), paths.map { device.files[it]!![0] })
+        assertEquals("the age cleanup runs once per batch", 1, cleanups.get())
+    }
+
+    @Test fun theProgressNamesTheImageOfTheBatch() {
+        val states = CopyOnWriteArrayList<ImageInsertState>()
+        blocking { batch(Target(Device()), listOf(source(10, 1), source(20, 2), source(30, 3)), states).run() }
+        assertTrue(states.contains(ImageInsertState.Preparing(1, 3)))
+        assertTrue(states.contains(ImageInsertState.Uploading(0, 20, 2, 3)))
+        assertTrue(states.contains(ImageInsertState.Uploading(30, 30, 3, 3)))
+        assertFalse("a batch never shows the one-image words", states.contains(ImageInsertState.Encoding))
+        val order = states.filterIsInstance<ImageInsertState.Uploading>().map { it.index }
+        assertEquals(order.sorted(), order)
+    }
+
+    @Test fun anUnreadableImageIsSkippedAndTheRestGoInOnePaste() {
+        val device = Device()
+        val target = Target(device)
+        val outcome = blocking { batch(target, listOf(source(10, 1), failing(ImageFailure.TOO_LARGE), source(30, 3))).run() }
+        assertEquals(ImageInsertOutcome.InsertedPartly(2, 1, ImageFailure.TOO_LARGE), outcome)
+        assertEquals(1, target.pastes.size)
+        assertEquals(2, target.pastes.single().first.split(' ').size)
+        assertEquals(1, device.opened.get())
+    }
+
+    @Test fun aFailedUploadEndsTheBatchAndThePartFileGoesButTheDoneOnesAreInserted() {
+        val device = Device()
+        val target = Target(device)
+        val created = AtomicInteger()
+        device.createHook = { if (created.incrementAndGet() == 2) throw ImageFailureException(ImageFailure.NO_SPACE) }
+        val outcome = blocking { batch(target, listOf(source(10, 1), source(20, 2), source(30, 3))).run() }
+        assertEquals(ImageInsertOutcome.InsertedPartly(1, 2, ImageFailure.NO_SPACE), outcome)
+        assertEquals(1, target.pastes.size)
+        assertEquals("the part file was removed, the done one stays", 1, device.files.size)
+        assertEquals(device.files.keys.single(), target.pastes.single().first)
+    }
+
+    @Test fun everyImageFailingIsTheSingleReasonOfTheFirst() {
+        val device = Device()
+        val target = Target(device)
+        val outcome = blocking { batch(target, listOf(failing(ImageFailure.UNREADABLE), failing(ImageFailure.TOO_LARGE))).run() }
+        assertEquals(ImageInsertOutcome.Failed(ImageFailure.UNREADABLE), outcome)
+        assertTrue(target.pastes.isEmpty())
+        assertEquals("nothing to upload, nothing opened", 0, device.opened.get())
+    }
+
+    @Test fun cancelInTheMiddleInsertsNothingAndRemovesTheBatchsFilesAndThePartFile() {
+        val device = Device()
+        val target = Target(device)
+        val created = AtomicInteger()
+        val inSecond = CountDownLatch(1)
+        device.createHook = { channel ->
+            if (created.incrementAndGet() == 2) { inSecond.countDown(); channel.closedLatch.await(20, TimeUnit.SECONDS) }
+        }
+        val cancelled = runBlocking {
+            val running = async(Dispatchers.Default) { batch(target, listOf(source(10, 1), source(20, 2), source(30, 3))).run() }
+            assertTrue(inSecond.await(5, TimeUnit.SECONDS))
+            assertEquals("the first file is complete, the second is the part file", 2, device.files.size)
+            running.cancel()
+            awaitCancelled(running)
+        }
+        assertTrue(cancelled)
+        assertTrue("nothing inserted", target.pastes.isEmpty())
+        assertTrue("the complete file and the part file are both removed: ${device.files.keys}", device.files.isEmpty())
+    }
+
+    @Test fun aLostConnectionInTheMiddleInsertsNothing() {
+        val device = Device()
+        val target = Target(device)
+        val created = AtomicInteger()
+        device.createHook = { if (created.incrementAndGet() == 2) { target.current = false; throw IOException("lost") } }
+        val outcome = blocking { batch(target, listOf(source(10, 1), source(20, 2), source(30, 3))).run() }
+        assertEquals(ImageInsertOutcome.Failed(ImageFailure.CONNECTION_LOST), outcome)
+        assertTrue(target.pastes.isEmpty())
+    }
+
+    @Test fun aTabThatChangedBetweenImagesGetsNoPasteAndNoMoreUploads() {
+        val device = Device()
+        val target = Target(device)
+        val created = AtomicInteger()
+        device.createHook = { if (created.incrementAndGet() == 1) target.current = false }
+        val outcome = blocking { batch(target, listOf(source(10, 1), source(20, 2), source(30, 3))).run() }
+        assertEquals(ImageInsertOutcome.Failed(ImageFailure.CONNECTION_LOST), outcome)
+        assertTrue(target.pastes.isEmpty())
+        assertEquals("the second image was never started", 1, created.get())
+    }
+
+    @Test fun tenIsTheMostOneBatchTakes() {
+        val device = Device()
+        val target = Target(device)
+        var read = 0
+        val sources = List(12) { { _: (Closeable) -> Unit -> read++; EncodedImage(ByteArray(5) { 1 }, ImageFormat.JPEG) } }
+        val outcome = blocking { batch(target, sources).run() }
+        assertEquals(ImageInsertOutcome.Inserted, outcome)
+        assertEquals(10, read)
+        assertEquals(10, target.pastes.single().first.split(' ').size)
+        assertEquals(10, ImageLimits.BATCH_MAX)
+    }
+
+    @Test fun anEmptyBatchOpensNothing() {
+        val device = Device()
+        assertEquals(ImageInsertOutcome.Failed(ImageFailure.UNREADABLE), blocking { batch(Target(device), emptyList()).run() })
+        assertEquals(0, device.opened.get())
     }
 
     /**
