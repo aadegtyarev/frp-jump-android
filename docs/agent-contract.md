@@ -5,7 +5,7 @@
 This surface covers the optional assistant kernel, external API adapter and
 provider setup and a locally saved chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below.
+implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below. Calls of tools that change something (today `ssh_command`) ask the owner first unless the owner turned the question off or answered For session for that connection; see [Confirmation of changing calls](#confirmation-of-changing-calls).
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -20,7 +20,7 @@ Settings → LLM assistant enables or disables the experimental module. It is
 **off by default**, including upgrades from versions without this setting.
 The preference is committed before the switch reports success. A failed
 write retains the previous preference and shows an error. A malformed new
-flag falls back to off without resetting unrelated settings.
+flag falls back to off without resetting unrelated settings. The opposite holds for the confirmation value (below): a malformed value falls back to ask (requests on).
 
 Settings → LLM assistant → Assistant provider configures one external
 OpenAI-compatible provider. Chat is available next to provider setup. SSH commands require their own default-off tool switch; tunnel control is **not available**. Enabling the module, opening settings or
@@ -58,7 +58,7 @@ Save, Fetch models and recovery behavior.
   replacement client after a disconnect. The SSH adapter below owns one ordinary client; the information tool reads shared application state. Neither starts or controls tunnels.
 - The application skill is the base system prompt,
   [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-  (version 4). Chat attaches it to every main chat-loop request as the first
+  (version 5). Chat attaches it to every main chat-loop request as the first
   message, unchanged and byte-stable within and across Sends. It is guidance for
   the model, not a permission system or an executing script; the code enforces
   every limit. The compact summarizer prompt is `assets/assistant/summary.md`
@@ -76,14 +76,14 @@ than waiting and silently running later. A stopped/noncooperative run keeps
 that slot until it exits. Runs own child jobs; stopping the assistant must
 not cancel unrelated application work.
 
-Each step is one provider request followed by the proposed tools, in order.
+Each step is one provider request followed by the proposed tools, in order. A call of a changing tool may first wait for the owner (see Confirmation of changing calls); the calls stay in order.
 Tool calls and their results form one indivisible exchange. Duplicate call
 IDs within a run, incomplete exchanges, excessive replies and empty final
 responses are rejected. Unknown tools and tool failures are explicit results.
 Raw exception messages are not given to the model. There are no automatic
 provider/tool retries.
 Every tool checks the captured owner before validating its arguments, so an invalid-argument
-result is reported only for an owned call.
+result is reported only for an owned call. The confirmation hook runs before the tool, only for known tools, and the owner is checked again after it returns, so a Stop or disable that raced the answer wins and nothing runs.
 
 Execution defaults are finite, validated kernel parameters, not settings UI:
 
@@ -92,12 +92,12 @@ Execution defaults are finite, validated kernel parameters, not settings UI:
 | Model steps per run | 12 |
 | Tool calls per step | 4 |
 | Model request timeout | 60 seconds |
-| Tool timeout | 30 seconds |
+| Tool timeout | 30 seconds (the owner's confirmation wait is not part of it) |
 
 Disabled and busy admission return without a provider/tool call. A run finishes
 with complete, context-full, step-limit, model-timeout, provider-failed or
 invalid-reply status; cancellation propagates to its caller. Tool outcomes are
-success, failed, timeout or unknown-tool, distinct from the run's finish status.
+success, failed, timeout, unknown-tool or declined (the owner refused the call; nothing ran), distinct from the run's finish status. The model timeout does not include the confirmation wait either.
 
 Timeouts and cancellation are cooperative: adapters must support cancellation
 of their own I/O. An already performed remote change is not rolled back by
@@ -158,8 +158,8 @@ provider setup. Recovery re-reads provider metadata without unsealing a key.
 Send explicitly owns one pending operation, including off-Main credential
 preparation and the HTTP request. Follow-ups reuse the same provider instance
 and complete historical protocol exchanges. Interrupted attempts retain received
-results and an explicit unknown-outcome note, never executable pending calls.
-Stop cancels that operation, not unrelated
+results and an explicit unknown-outcome note, never executable pending calls; a pending confirmation is not saved and is never restored or executed.
+Stop cancels that operation (including a confirmation wait, which runs nothing), not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
 Stopping until it exits. An app-lived, text-free admission token spans preparation,
 the HTTP exchange including response-body read and close, post-kernel publication and actual job
@@ -262,7 +262,7 @@ active context without deleting old messages. Restoring or clearing makes no
 provider/tool request and never resumes or repeats an action.
 
 At most two summary requests run per Send, within the existing model timeout and
-120-second whole-Send limit. A summary reserves at most 1,024 output tokens,
+120-second whole-Send limit of active time (the confirmation wait is excluded). A summary reserves at most 1,024 output tokens,
 never more than the configured output reserve, and accepts at most 4,000 text
 characters. Blank, oversized, tool-bearing or nonreducing replies are failures.
 If no eligible data exists, a fitting request proceeds unchanged; if the remaining
@@ -279,7 +279,7 @@ replacement Send before real cleanup. Summary text is model-generated historical
 data, not verified truth or an owner/accounting source for SSH work.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 4) and only enabled tool schemas. The prompt contains no profile,
+version 5) and only enabled tool schemas. The prompt contains no profile,
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
 Tool schemas follow catalog order with stable JSON; summary, history and
@@ -384,8 +384,8 @@ One unambiguous saved SSH connection in any profile must already have a ready
 visible tunnel. Missing, non-SSH, hidden, removed, down or unavailable targets
 fail without starting/reviving a tunnel. No open terminal is required.
 
-Each invocation captures the saved connection, runtime, tunnel configuration and
-one operation-owned ordinary SSHJ client. It never substitutes a Terminal/Files
+Each invocation, once allowed (see Confirmation of changing calls), captures the saved connection, runtime, tunnel configuration and
+one operation-owned ordinary SSHJ client; no client exists before the owner's answer. It never substitutes a Terminal/Files
 client or re-resolves a replacement after target loss. Operation-local observers
 stop owned work on target removal, pending Undo, profile loss or tunnel-plan loss;
 Undo does not revive that operation. Target loss in a still-authorized Send returns
@@ -421,23 +421,47 @@ cancellation before the client, after connect, after authentication and after
 opening the session, and is then cancelled. Stop, disable, revision, pop and
 timeout disconnect only the owned client (from an IO thread), including one
 constructed after cancellation, and keep the global slot through actual worker,
-readers and cleanup exit. Tool-only changes affect the next Send, not admitted work.
-Timeouts (30 s tool / 120 s Send by default) are cancellation thresholds, not
+readers and cleanup exit. Tool-only changes affect the next Send, not admitted work; the confirmation switch and session grants are read at each call.
+Timeouts (30 s tool / 120 s of Send active time by default; the confirmation wait is in neither, and has its own 5-minute limit) are cancellation thresholds, not
 remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
 an admitted command’s effects may remain uncertain. Commands/output enter the
-same bounded encrypted Chat history and configured model requests, not app logs. Arbitrary remote output can contain secrets and is not
+same bounded encrypted Chat history and configured model requests, not app logs. A declined call is saved as `DECLINED` (sent to the model as `declined`) and shown as "Declined", or "No answer, declined" when the wait ran out, never as a failure. Arbitrary remote output can contain secrets and is not
 generically scrubbed. App-stored credentials/internal diagnostics are not tool
 arguments/results. Remote content remains untrusted data, never new authority.
 
+## Confirmation of changing calls
+
+Before a call of a tool whose catalog effect changes something (today `ssh_command`) runs, the owner is asked, unless the app-wide
+switch (Settings → LLM assistant → Tools → "Ask before changing commands") is off. Read tools never ask. The default is on.
+
+The question is a card above the message field (the history takes the room the card and Stop leave; the disabled message field is hidden while a question is open; each question opens at its top). The four answers are pinned at the bottom of the card; above them a section scrolls with the tool, the target names (profile · device · connection, never IDs; "Unknown
+connection" when unresolved), the full command (monospace, selectable, always left to right, in its own scrolling box with its line count; non-printing and disguising characters, including the whole default-ignorable set and long combining-mark runs, are shown as highlighted escapes, and a note says when it has right-to-left letters or Arabic digits; in the rendered text a left-to-right mark follows each of them, so the order shown is the order that runs) and the full-access warning. A string argument with an unpaired surrogate is invalid for every tool (no card, nothing runs). Answers: **Allow** (this
+call), **For session**, **Always**, **Decline**. For session covers the tool and the exact connection until the chat screen is left, the
+assistant is disabled, the tool is switched off, the history is cleared, or the connection or its profile is edited or removed (a grant
+is stamped with the saved definition and dropped when it changes); it is in memory only. Always turns the app-wide switch off after a second confirmation (a dialog
+says what is turned off and where to turn it back on; Cancel returns to the question, still waiting); if that cannot be saved, the call is allowed once, an inline note says so, and requests stay
+on. Decline, and five minutes without an answer, give the model a fixed text (`declined` outcome) and nothing runs. Stop, Back,
+disable and provider changes during the wait cancel it and run nothing; a late answer or a stale card id is ignored. An Always
+answer may still persist "off" when Stop races the call, and a For session answer racing Stop may record its grant; the call itself never
+runs. The wait is in neither the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts active time only).
+
+While requests are off, a compact warning icon in the Chat top bar (between the title and Tools) says so on tap or long press and
+offers "Turn on" (beside the Send/Stop button when the whole title does not fit next to it in the top bar); there is no banner or strip. Fail closed: a changing tool with valid arguments but no description, or a changing catalog tool that is not an AppTool, is refused (nothing runs, no card), and so is every changing call when no confirmation support exists; invalid arguments ask nothing and run nothing; the policy is read live at each call. The setting is the
+`assistant_confirmations` object `{"version":1,"global":"ask"|"off"}`; ask is the default and is omitted from the file, any other
+or malformed value reads as ask, and per-device or per-target overrides may be added later (a stricter override needs a version bump).
+The prompt rule (`skill.md` v5) tells the model that a declined call must not be redone another way; it is guidance, not enforcement.
+A history written with a `declined` outcome cannot be read by app versions before this one; this version reads an unknown outcome name
+as a failure.
+
 ## Optional public Web tools
 
-Settings → LLM assistant → Tools has five independent persisted switches:
+Settings → LLM assistant → Tools has five independent persisted tool switches and, above them, the app-wide confirmation switch ("Ask before changing commands", on by default):
 Web search (`web_search`), Read page (`read_page`) and Inspect image
 (`inspect_image`), Profile information (`profile_information`) and SSH command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
 only booleans, opening this screen or enabling a tool makes no request. Failed
 writes keep committed switches/authority and show an inline error. Tools remain
-changeable while Chat is busy. Chat's Tools action opens the same five switches
+changeable while Chat is busy. Chat's Tools action opens the same screen
 without popping the conversation. The Tools arrow and system Back return to that
 same owner, draft and completed history, including across recreation; actual Chat
 pop still cancels work and releases route memory; accepted history remains encrypted. The notice explains DuckDuckGo query disclosure, selected public text/images and
@@ -448,7 +472,7 @@ Public GET is not guaranteed free of remote effects.
 
 Tools autosaves each switch; there is no Save button or optimistic checked value.
 Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
-One immutable presentation snapshot contains the actual committed five booleans,
+One immutable presentation snapshot contains the actual committed five tool booleans and the confirmation switch,
 pending IDs and fixed inline save failures. Checked, progress/enabled and failure
 are rendered from that same snapshot, not independent checked/completion channels.
 Real storage work runs off Main. On completion, Main reads the latest canonical
@@ -471,7 +495,7 @@ authority, never presentation; pending UI acknowledgement is not network authori
 Each Send captures the committed tool booleans atomically at admission and keeps
 that fixed set throughout the run, including calls dispatched after a switch
 changes. Changes apply only to the next Send; the current Send may finish with
-its original tools. They neither cancel work nor clear history, provider or draft.
+its original tools (the confirmation switch and session grants are the exception: they are read at each call). They neither cancel work nor clear history, provider or draft.
 There is no tool-change epoch/revocation signal. Failed saves retain prior settings.
 Admission, every model/public/image start check and every source/progress/answer/error
 publication still check the captured owner, provider revision and disable version.
@@ -479,7 +503,7 @@ Stop/pop, assistant disable (including off/on), provider revision/read failures
 cancel exact work; the shared slot remains occupied through DNS, the HTTP exchange and body read,
 parser, owned SSH worker/readers and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
 image preparation and settings IO run off Main and outside commit guards. The
-whole Send deadline is 120 seconds; existing kernel per-call limits also apply.
+whole Send deadline is 120 seconds of active time (paused while the owner is asked); existing kernel per-call limits also apply.
 
 ### Search and static documents
 
@@ -697,10 +721,9 @@ The app surface includes provider setup, chat, optional public-read tools and
 the profile-information and SSH-command tools above, and bounded automatic
 working summaries. Tunnel-control, dedicated Files/MQTT/TCP tools, evaluators, permission modes and
 subagents remain outside this surface. No tunnel creation, start, reconfiguration
-or deletion is granted to the agent. No permissions evaluator or confirmation modes are shipped. The enabled SSH tool has full access within the SSH account’s rights. Public tools carry the public-read/data-disclosure notice above, not
+or deletion is granted to the agent. No permissions evaluator or confirmation modes beyond the single app-wide switch are shipped. The enabled SSH tool has full access within the SSH account’s rights. Public tools carry the public-read/data-disclosure notice above, not
 a misleading full-access warning. Any other future connection-tool prototype requires
-separate approval and an explicit full-access warning until confirmation modes
-exist; availability does not waive that conditional safety requirement.
+separate approval, an explicit full-access warning and, when its catalog effect changes something, a change description so that it asks the owner like `ssh_command`; availability does not waive that conditional safety requirement.
 
 Synthetic shared-source/projection tests cover multiple profiles, repeated device
 names, devices without connection rows, saved/unnamed tunnels, Undo, unavailable
@@ -717,13 +740,14 @@ LLM quality certification. Deterministic ownership tests cover both refresh
 endpoints across profiles, revoke/start ordering, held HTTP interceptor/body exit with Stop
 reaching the exact calls, Stop/pop, module off/on and provider authority changes, without revoking a Send
 for tool-switch-only changes. Synthetic SSH client/owner tests cover saved target/auth/trust, bounded dual streams, honest status, target loss, admission refusal and phase-by-phase cancellation, disconnect thread and actual cleanup under Stop/timeout/revocation; a loopback SSH server test covers disconnect unblocking a blocked exec. The shared Tools binding and component fixtures
-include all five switches, save errors, retained owners and explicit invocation.
+include all five tool switches and the confirmation switch, save errors, retained owners and explicit invocation.
 Existing kernel tests use fake providers/tools. Adapter tests use synthetic
 loopback HTTP responses. Settings/store tests cover committed opt-in,
 malformed-field fallback, disable invalidation, credential/root binding,
 revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
+Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/close during the wait, stale and repeated answers, virtual-time five-minute and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the indicator and the Tools switch.
 Chat tests exercise the production conversation owner with controlled preparation,
 providers and cancellation, plus the real credential-store → adapter loopback
 path. Real-adapter loopback tests prove prompt cancellation (stalled response and

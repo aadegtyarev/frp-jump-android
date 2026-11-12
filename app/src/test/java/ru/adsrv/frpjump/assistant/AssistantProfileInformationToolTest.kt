@@ -29,7 +29,7 @@ class AssistantProfileInformationToolTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
-            store::requireRevision, module, Dispatchers.Unconfined, { limits }, settings.assistantChat, f.information, prompts = TestPrompts.placeholder)
+            store::requireRevision, module, Dispatchers.Unconfined, { limits }, settings.assistantChat, f.information, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         suspend fun idle() = withTimeout(5000) { chat.state.first { !it.busy } }
         suspend fun send() { chat.edit("question"); chat.send(); idle() }
         override fun close() { chat.close(); scope.cancel() }

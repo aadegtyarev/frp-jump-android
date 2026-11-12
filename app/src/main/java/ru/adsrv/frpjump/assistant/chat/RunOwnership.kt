@@ -21,6 +21,8 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         val now = availability(); val saved = snapshot()
         if (now.disableVersion != c.authority.disableVersion || !now.enabled || saved.revision != c.revision || saved.problem != null) {
             c.provider = null
+            c.clearConfirmation()
+            if (!now.enabled || now.disableVersion != c.authority.disableVersion) c.confirmations?.grants?.clear()
             if (!c.archive) {
                 c.document = SavedChat(draft = c.document.draft).bind(saved.settings)
                 c.mutable.value = c.mutable.value.copy(turns = emptyList(), omitted = false, problem = null, currentSources = emptyList(), toolProgress = null,
@@ -32,6 +34,9 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         c.authority = now; c.revision = saved.revision
         if (c.pending == null) c.mutable.value = c.mutable.value.copy(busy = runtime.occupied(), stopping = runtime.occupied())
     }
+
+    /** Takes the gate itself; id-based and ownership-free, so a cancelled waiter can always remove its own card. */
+    fun clearConfirmation(id: Long) = synchronized(gate) { c.clearConfirmation(id) }
 
     /** Caller holds the gate. */
     fun stopLocked(owner: Pending) { owner.stopped = true; c.interrupt(); c.mutable.value = c.mutable.value.copy(stopping = true); c.persist() }
@@ -55,7 +60,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
     /** The owner's job ended: caller notifies busy listeners and repaints after this returns. */
     fun completed(owner: Pending) = synchronized(gate) {
         if (c.pending === owner) {
-            c.interrupt(); c.persist(); c.pending = null; runtime.release(owner)
+            c.interrupt(); c.persist(); c.pending = null; runtime.release(owner); c.clearConfirmation()
             if (!c.closed) c.mutable.value = c.mutable.value.copy(busy = false, stopping = false, pendingText = null)
         }
     }
@@ -81,7 +86,8 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         check(runtime.acquire(owner)); c.pending = owner
         c.document = c.document.withTurn(text, c.archive); c.persist()
         c.mutable.value = c.mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
-            currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList())
+            currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList(),
+            confirmationNotSaved = false)
         return Admission(owner, saved, settings, text, past, enabledTools, retained)
     }
 }

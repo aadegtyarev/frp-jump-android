@@ -26,11 +26,18 @@ class AssistantConversation(
     private val awaitHistoryClear: suspend () -> Unit = {},
     /** Required: no compiled-in fallback prompt exists. */
     private val prompts: Lazy<AssistantPrompts>,
+    /**
+     * Required, no default: leaving it out must be a compile error. Null refuses every changing call (nothing runs); a test that needs
+     * changing calls to run passes a support whose policy is off. The chat ViewModel always passes a real one.
+     */
+    private val confirmations: ConfirmationSupport?,
+    /** Millisecond clock of the Send's active-time limit; tests pass a virtual one. */
+    private val activeClock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     private val gate = runtime.gate
-    private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore)
+    private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
@@ -80,10 +87,17 @@ class AssistantConversation(
         }
     }
     suspend fun deleteHistory() {
+        var stopWaiting: Job? = null
         try { historyStore?.clear() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { reloadHistory(); return }
-        synchronized(gate) { c.document = SavedChat().bind(snapshot().settings); c.provider = null; if (!c.closed) c.mutable.value = ChatState() }
+        synchronized(gate) {
+            c.document = SavedChat().bind(snapshot().settings); c.provider = null; confirmations?.grants?.clear()
+            // A running Send that is waiting for the owner is stopped (nothing runs) rather than left with its card wiped from the state.
+            stopWaiting = if (c.confirmation != null) c.pending?.also(own::stopLocked)?.job else null
+            if (!c.closed) c.mutable.value = ChatState()
+        }
+        stopWaiting?.cancel()
     }
     fun edit(text: String) = synchronized(gate) {
         if (!c.closed && c.pending == null && !c.mutable.value.loading && c.mutable.value.historyProblem != ChatHistoryProblem.READ) {
@@ -99,8 +113,24 @@ class AssistantConversation(
     fun close() {
         val cancel = synchronized(gate) {
             if (c.closed) return
-            c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.mutable.value = ChatState(); c.pending?.job
+            c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.confirmation = null
+            confirmations?.grants?.clear(); c.mutable.value = ChatState(); c.pending?.job
         }; cancel?.cancel()
+    }
+
+    /** The owner's answer to the pending card. A stale id, no pending card, a stopped or closed run, or [ConfirmationDecision.NO_ANSWER] is ignored. */
+    fun answer(id: Long, decision: ConfirmationDecision) {
+        if (decision == ConfirmationDecision.NO_ANSWER) return
+        val slot = synchronized(gate) {
+            if (c.closed || c.pending?.stopped != false) null
+            else c.confirmation?.takeIf { it.id == id }?.also { c.clearConfirmation(id) }
+        }
+        slot?.answer?.complete(decision)
+    }
+    /** A tool that is switched off loses its session grants (the Tools screen can be opened without leaving Chat). */
+    fun toolsChanged(enabled: ru.adsrv.frpjump.settings.AssistantTools) {
+        val grants = confirmations?.grants ?: return
+        for (id in AssistantToolId.entries) if (!enabled[id]) grants.clear(id)
     }
 
     fun send() {

@@ -60,10 +60,10 @@ class AssistantChatOwnershipTest {
                 store.requireRevision(it)
                 checks++
                 if (phase == "post" && checks == 2) { hold.waitHere(); if (failure) error("synthetic") }
-            }, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            }, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             val newer = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
                 preparations++; AgentProvider { AgentReply("new answer") }
-            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             try {
                 old.edit("old private input"); old.send(); hold.entered()
                 if (phase == "http") {
@@ -103,11 +103,11 @@ class AssistantChatOwnershipTest {
                 blockingCancellable({ cancelled.countDown() }) { inside.waitHere() }
                 if (action == "error") throw ProviderException(ProviderErrorKind.NETWORK, null, null)
                 AgentReply("old answer")
-            } }, store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            } }, store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             var preparations = 0
             val newer = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
                 preparations++; AgentProvider { AgentReply("new answer") }
-            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             try {
                 old.edit("old private input"); old.send(); inside.entered()
                 when (action) {
@@ -181,11 +181,11 @@ class AssistantChatOwnershipTest {
             val unrelated = scope.launch { awaitCancellation() }
             val adapter = ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider(ru.adsrv.frpjump.agent.openai.OpenAiConfig(loop.url, "m"), "synthetic")
             val old = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { adapter },
-                store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+                store::requireRevision, AgentModule(true), limits = { AgentLimits(modelTimeoutMs = if (action == "timeout") 100 else 5000) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             var preparations = 0
             val newer = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
                 preparations++; AgentProvider { AgentReply("new answer") }
-            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            }, store::requireRevision, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             try {
                 old.edit("old private input"); old.send()
                 assertTrue("request $action", loop.received.await(4, TimeUnit.SECONDS))
@@ -247,7 +247,7 @@ class AssistantChatOwnershipTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val adapter = ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider(ru.adsrv.frpjump.agent.openai.OpenAiConfig(url, "m"), "synthetic")
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { adapter }, store::requireRevision,
-            AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         val hold = Gate(); val dispatches = java.util.concurrent.atomic.AtomicInteger()
         // The second model request is held just before its start check; the disable commits first, so the check must refuse it.
         settings.assistantChat.probes = ChatProbes(before = { category -> if (category == "dispatch" && dispatches.incrementAndGet() == 2) hold.waitHere() })
@@ -280,7 +280,7 @@ class AssistantChatOwnershipTest {
                         if (triggerSetup) throw ProviderSetupException(ProviderSetupProblem.CRYPTO_FAILED)
                         AgentProvider { calls++; if (category == "finish-error") error("synthetic"); AgentReply("answer".repeat(20)) }
                     }, store::requireRevision, AgentModule(true), limits = { AgentLimits(contextTokens = Utf8TokenEstimate.count(AgentRequest(TestPrompts.real.system,
-                        emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.lazy)
+                        emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
                     if (category == "window") { chat.edit("x".repeat(100)); chat.send(); idle(chat) }
                     triggerSetup = category == "setup-error"
                     val hold = Gate()

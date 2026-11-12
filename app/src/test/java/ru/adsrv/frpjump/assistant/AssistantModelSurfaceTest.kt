@@ -480,7 +480,7 @@ class AssistantModelSurfaceTest {
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
             store::requireRevision, module, Dispatchers.IO, { AgentLimits() }, settings.assistantChat,
-            profileInformation = f.profiles.information, sshCommands = f.service, prompts = TestPrompts.lazy)
+            profileInformation = f.profiles.information, sshCommands = f.service, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         override fun close() { chat.close(); scope.cancel() }
     }
 }

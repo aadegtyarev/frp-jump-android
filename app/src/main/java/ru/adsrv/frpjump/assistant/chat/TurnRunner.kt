@@ -3,13 +3,18 @@ package ru.adsrv.frpjump.assistant.chat
 import kotlinx.coroutines.*
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.*
+import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.profiles.ProfileInformation
+import ru.adsrv.frpjump.settings.ConfirmationTexts
 
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
     val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?,
-    val archive: Boolean, val prompts: Lazy<AssistantPrompts>)
+    val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
+    val clock: () -> Long = { System.nanoTime() / 1_000_000 }) {
+    val confirmIds = java.util.concurrent.atomic.AtomicLong()
+}
 
 private class HistoryFull : Exception()
 
@@ -21,6 +26,7 @@ private class HistoryFull : Exception()
 internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private val owner = a.owner
     private val own = env.own
+    private val deadline = ActiveDeadline(SEND_LIMIT_MS, env.clock)
     private companion object { const val SEND_LIMIT_MS = 120_000L }
     private var transportTimeout = false
     private var invalidReply = false
@@ -30,7 +36,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     suspend fun run() {
         // Active time only: a pause (owner confirmation, from the next change on) does not count against the Send.
-        try { ActiveDeadline(SEND_LIMIT_MS).guard { exchange() } }
+        try { deadline.guard { exchange() } }
         catch (_: ActiveDeadlineExpired) { withContext(NonCancellable + env.io) { finish(ChatProblem.TIMEOUT) } }
         catch (_: HistoryFull) { withContext(NonCancellable + env.io) { finish(ChatProblem.CONTEXT_FULL) } }
         catch (_: TimeoutCancellationException) { withContext(NonCancellable + env.io) { finish(ChatProblem.TIMEOUT) } }
@@ -51,11 +57,34 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val past = a.past.map { it to it.model(active) }
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource)
             val summary = summary(active, prompts.summary)
+            val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
-                env.limits(a.settings), prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) })
+                env.limits(a.settings), prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
+                authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)
             val problem = finishProblem(summaryProblem, result.finish, transportTimeout, invalidReply)
             finish(problem, if (problem == null) "answer" else "finish-error", summaryStatus)
+        }
+    }
+
+    /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
+    private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
+        return authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
+            onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io)
+    }
+
+    /** Shows the card and waits at most five minutes; a timeout is [ConfirmationDecision.NO_ANSWER], never a cancellation. */
+    private suspend fun ask(request: ChangeRequest, info: ConfirmationTargetInfo?): ConfirmationDecision {
+        val answer = CompletableDeferred<ConfirmationDecision>()
+        val id = env.confirmIds.incrementAndGet()
+        own.guarded(owner, "confirmation") {
+            confirmation = ConfirmationSlot(id, answer)
+            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info))
+        } ?: throw CancellationException("Send no longer owned")
+        try {
+            return withTimeoutOrNull(ConfirmationTexts.WAIT_LIMIT_MS) { answer.await() } ?: ConfirmationDecision.NO_ANSWER
+        } finally {
+            own.clearConfirmation(id)
         }
     }
 

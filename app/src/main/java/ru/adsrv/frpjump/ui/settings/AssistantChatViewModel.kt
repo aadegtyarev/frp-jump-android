@@ -2,7 +2,10 @@ package ru.adsrv.frpjump.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import ru.adsrv.frpjump.settings.assistantTools
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.agent.AgentModule
 import ru.adsrv.frpjump.agent.AgentProvider
@@ -26,10 +29,12 @@ class AssistantChatViewModel(
     constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistant, app.profileInformation, app.assistantSshCommands,
         app.assistantHistory, app.pendingUndo, app.assistantPrompts)
     init { require(settingsStore.assistantChat === providerStore.chatRuntime) }
+    /** Always present in the app: a chat built here asks before a changing call. Only kernel tests build a conversation without it. */
+    internal val confirmations = ru.adsrv.frpjump.assistant.chat.chatConfirmationSupport(settingsStore, sshCommands)
     val conversation = AssistantConversation(viewModelScope,
         availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
         prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands,
-        historyStore = historyStore, awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") }, prompts = prompts)
+        historyStore = historyStore, awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") }, prompts = prompts, confirmations = confirmations)
     fun clearHistory() {
         if (!conversation.hideHistory()) return
         if (historyUndo == null) viewModelScope.launch { conversation.deleteHistory() }
@@ -41,7 +46,11 @@ class AssistantChatViewModel(
         viewModelScope.launch { settingsStore.assistantDisables.collect { conversation.refresh() } }
         viewModelScope.launch { settingsStore.assistantChat.busy.collect { conversation.refresh() } }
         viewModelScope.launch { provider.collect { conversation.refresh() } }
+        // A tool that is switched off loses its session grants, even though the Tools screen opens without leaving Chat.
+        viewModelScope.launch { settingsStore.settings.map { it.assistantTools() }.distinctUntilChanged().collect { conversation.toolsChanged(it) } }
     }
+    /** Turns confirmation requests back on (the Chat indicator's action); the Tools switch does the same through its own binding. */
+    fun turnConfirmationsOn() { tools.changeConfirmations(true) }
     internal val tools = AssistantToolsBinding(settingsStore, viewModelScope)
     override fun onCleared() { conversation.close() }
 }

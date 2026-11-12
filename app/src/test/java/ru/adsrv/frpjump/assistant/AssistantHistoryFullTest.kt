@@ -15,7 +15,7 @@ class AssistantHistoryFullTest {
         val snapshot = AssistantProviderSnapshot(AssistantProviderSettings(model = "m", contextTokens = 1_000_000, outputTokens = 1000), "r")
         val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { AgentProvider { AgentReply("x".repeat(ChatLimits.MAX_HISTORY_CHARS + 1)) } },
             {}, AgentModule(true), io = Dispatchers.Unconfined,
-            limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 1000, maxReplyChars = 600_000) }, prompts = TestPrompts.placeholder)
+            limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 1000, maxReplyChars = 600_000) }, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("question"); chat.send()
             val state = withTimeout(5000) { chat.state.first { !it.busy && it.problem != null } }

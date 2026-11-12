@@ -28,11 +28,12 @@ internal fun AssistantToolsEntry(onTools: () -> Unit) {
 @Composable
 internal fun AssistantToolsRoute(binding: AssistantToolsBinding, onBack: () -> Unit) {
     val state by binding.state.collectAsStateWithLifecycle()
-    AssistantToolsScreen(state, binding::change, onBack)
+    AssistantToolsScreen(state, binding::change, onBack, binding::changeConfirmations)
 }
 
 @Composable
-internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (AssistantToolId, Boolean) -> Unit, onBack: () -> Unit) {
+internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (AssistantToolId, Boolean) -> Unit, onBack: () -> Unit,
+    onConfirmationsChange: (Boolean) -> Unit = {}) {
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding()
         .verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -41,6 +42,13 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
             Text(stringResource(R.string.assistant_tools), style = MaterialTheme.typography.titleLarge)
         }
         Text(stringResource(R.string.assistant_tools_notice))
+        Group(null) {
+            Column(Modifier.testTag("tool_confirmations")) {
+                SwitchRow(tile = { GlyphTile("?") }, label = stringResource(R.string.confirmations_setting), hint = stringResource(R.string.confirmations_setting_hint),
+                    checked = state.confirmations, busy = CONFIRMATIONS_KEY in state.pending, onChange = onConfirmationsChange)
+                if (CONFIRMATIONS_KEY in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)
+            }
+        }
         Group(null) {
             AssistantToolId.entries.forEachIndexed { index, id ->
                 if (index > 0) RowDivider()

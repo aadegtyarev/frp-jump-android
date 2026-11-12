@@ -40,7 +40,7 @@ class AssistantSideEffectAdmissionTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             AgentProvider { providerHeldGate += Thread.holdsLock(settings.assistantChat.gate); if (++calls == 1) reply() else AgentReply("complete") }
-        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("q"); chat.send(); idle(chat)
             val categories = checked.map { it.first }.toSet()
@@ -63,7 +63,7 @@ class AssistantSideEffectAdmissionTest {
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             // This provider never calls any admission API.
             AgentProvider { if (providerCalls.incrementAndGet() == 1) reply() else AgentReply("complete") }
-        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("q"); chat.send(); idle(chat)
             assertEquals(2, providerCalls.get()); assertEquals(providerCalls.get(), dispatches.get())
@@ -79,7 +79,7 @@ class AssistantSideEffectAdmissionTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             AgentProvider { providerCalls.incrementAndGet(); AgentReply("complete") }
-        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         stop = { chat.stop() }
         try {
             chat.edit("q"); chat.send(); idle(chat)

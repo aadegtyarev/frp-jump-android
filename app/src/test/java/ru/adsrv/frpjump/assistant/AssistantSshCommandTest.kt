@@ -417,7 +417,7 @@ class AssistantSshCommandTest {
         val chat = conversation()
         fun conversation() = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
             store::requireRevision, module, Dispatchers.IO, { AgentLimits(toolTimeoutMs = timeout) }, settings.assistantChat,
-            sshCommands = f.service, prompts = TestPrompts.placeholder)
+            sshCommands = f.service, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         fun send() { chat.edit("synthetic command"); chat.send() }
         suspend fun idle() = withTimeout(5000) { chat.state.first { !it.busy } }
         override fun close() { chat.close(); scope.cancel() }

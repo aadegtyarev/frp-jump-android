@@ -33,7 +33,7 @@ class AssistantWebOwnershipTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
                 AgentProvider { if (++calls == 1) reply("call") else AgentReply("complete") }
-            }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             val entered = CountDownLatch(1); val release = CountDownLatch(1); val once = AtomicBoolean()
             val probe: (String) -> Unit = { point -> if (point == category && once.compareAndSet(false, true)) { entered.countDown(); check(release.await(3, TimeUnit.SECONDS)) } }
             settings.assistantChat.probes = if (commitFirst) ChatProbes(before = probe) else ChatProbes(checked = probe)
@@ -68,7 +68,7 @@ class AssistantWebOwnershipTest {
                 requests += request
                 if (requests.size == 1) { entered.complete(Unit); release.await(); reply("after-toggle") }
                 else AgentReply("complete")
-            } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             try {
                 chat.edit("current"); chat.send(); entered.await()
                 settings.setAssistantTool(AssistantToolId.fromWire(tool)!!, false); chat.refresh()
@@ -92,9 +92,9 @@ class AssistantWebOwnershipTest {
             withContext(NonCancellable) { release.await() }; document()
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val old = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { calls++; reply("old") } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        val old = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { calls++; reply("old") } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         var replacements = 0
-        val newer = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { replacements++; AgentReply("new") } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        val newer = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider { replacements++; AgentReply("new") } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             old.edit("private"); old.send(); entered.await(); old.close()
             newer.edit("new"); newer.send(); assertEquals(0, replacements); assertTrue(newer.state.value.busy)
@@ -114,7 +114,7 @@ class AssistantWebOwnershipTest {
                 if (request.turns.last().exchanges.isEmpty()) reply("call-${++calls}")
                 else AgentReply("x".repeat(30_000))
             }
-        }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             repeat(20) { chat.edit("q$it"); chat.send(); idle(chat) }
             val state = chat.state.value
@@ -134,7 +134,7 @@ class AssistantWebOwnershipTest {
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
             calls++
             AgentReply("x".repeat(30_000), (1..4).map { index -> ToolCall("$calls-$index", "read_page", buildJsonObject { put("url", "https://public.org/doc") }) })
-        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("Keep exact input"); chat.send(); idle(chat)
             assertEquals(ChatProblem.CONTEXT_FULL, chat.state.value.problem)
@@ -167,7 +167,7 @@ class AssistantWebOwnershipTest {
                 else AgentReply("done")
             }
             fun chat() = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider }, store::requireRevision,
-                AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+                AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             val old = chat()
             val entered = CountDownLatch(1); val release = CountDownLatch(1); val once = AtomicBoolean()
             val probe: (String) -> Unit = { category -> if (category == "source" && once.compareAndSet(false, true)) {
@@ -226,7 +226,7 @@ class AssistantWebOwnershipTest {
             if (turn.user == "clean") AgentReply("Clean answer")
             else if (turn.exchanges.isEmpty()) AgentReply(calls = listOf(ToolCall("search", "web_search", buildJsonObject { put("query", "generated documentation query") })))
             else { received.complete(turn.exchanges.single().results.single()); reply.await(); error("private provider exception") }
-        } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("Find documentation"); chat.send()
             val result = withTimeout(4000) { received.await() }
@@ -253,7 +253,7 @@ class AssistantWebOwnershipTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
             calls++; AgentReply("x".repeat(4000), listOf(ToolCall("read", "read_page", buildJsonObject { put("url", "https://public.org/doc") })))
-        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 4096, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 4096, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("Read"); chat.send(); idle(chat)
             assertEquals(1, calls)
@@ -271,7 +271,7 @@ class AssistantWebOwnershipTest {
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { snapshot }, { AgentProvider { request ->
             val turn = request.turns.last()
             if (turn.user == "failure" && turn.exchanges.isEmpty()) reply("read") else AgentReply("Available answer")
-        } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+        } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         suspend fun send(text: String) { chat.edit(text); chat.send(); idle(chat) }
         try {
             send("failure")
@@ -299,7 +299,7 @@ class AssistantWebOwnershipTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
                 AgentReply(calls = listOf(ToolCall("search", "web_search", buildJsonObject { put("query", "q") })))
-            } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder)
+            } }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             try {
                 chat.edit("q"); chat.send(); entered.await(); chat.stop(); release.complete(Unit); idle(chat)
                 assertEquals(WebFailure.BLOCKED, assertThrows(WebException::class.java) { settings.assistantChat.webSearch.check(WebBudget()) }.reason)

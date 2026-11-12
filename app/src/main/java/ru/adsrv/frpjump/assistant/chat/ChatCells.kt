@@ -15,7 +15,16 @@ internal class Pending(val revision: String?, val version: Long) { lateinit var 
  * `AssistantChatRuntime.gate` (`synchronized(gate)` in the conversation and `RunOwnership`), never across a suspension.
  */
 internal class ChatCells(var document: SavedChat, var authority: AssistantAvailability, var revision: String?,
-    private val historyStore: AssistantChatHistory?) {
+    private val historyStore: AssistantChatHistory?, val confirmations: ConfirmationSupport? = null) {
+    /** The question the run is waiting on; cleared with the card in [clearConfirmation]. */
+    var confirmation: ConfirmationSlot? = null
+    /** Caller holds the gate. Id-based, so a late clear can never remove a newer question. [id] null clears whatever is pending. */
+    fun clearConfirmation(id: Long? = null) {
+        val slot = confirmation ?: return
+        if (id != null && slot.id != id) return
+        confirmation = null
+        if (!closed) mutable.value = mutable.value.copy(confirmation = null)
+    }
     val mutable = MutableStateFlow(ChatState())
     /** Whether a history archive backs the document (turns are then never trimmed or dropped). */
     val archive: Boolean get() = historyStore != null

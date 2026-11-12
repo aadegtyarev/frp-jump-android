@@ -1215,6 +1215,37 @@
     <string name="chat_summary_failed">Could not prepare a useful summary. History is kept. Check the summary model or increase the context window.</string>
     <string name="chat_history_full">Local history limit reached. Clear history to start a new conversation.</string>
 
+    <!-- Confirmation of changing assistant calls -->
+    <string name="confirm_title">Run this command?</string>
+    <string name="confirm_target">%1$s · %2$s · %3$s</string>
+    <string name="confirm_unknown_target">Unknown connection</string>
+    <string name="confirm_warning">Full access within the SSH account. The command and its output go to your model.</string>
+    <string name="confirm_allow">Allow</string>
+    <string name="confirm_session">For session</string>
+    <string name="confirm_always">Always</string>
+    <string name="confirm_decline">Decline</string>
+    <string name="confirm_session_hint">Any command on this connection until you leave Chat.</string>
+    <string name="always_dialog_title">Turn off confirmations?</string>
+    <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and connections. Turn them back on in %1$s › %2$s › %3$s.</string>
+    <string name="always_dialog_confirm">Turn off</string>
+    <string name="always_dialog_cancel">Cancel</string>
+    <string name="confirm_waiting">Waiting for your answer…</string>
+    <string name="confirm_command">Command</string>
+    <string name="confirm_not_saved">Could not save the setting. This call was allowed once.</string>
+    <string name="chat_receipt_declined">Declined</string>
+    <string name="tool_failure_declined">%1$s: declined</string>
+    <string name="confirmations_setting">Ask before changing commands</string>
+    <string name="confirmations_setting_hint">Asks before a tool runs something that can change a system. Off: no questions anywhere in the app.</string>
+    <string name="confirmations_off_description">Confirmations are off</string>
+    <string name="confirmations_off_explanation">Confirmations are off: changing commands run without asking.</string>
+    <string name="confirmations_turn_on">Turn on</string>
+    <string name="confirmations_close">Close</string>
+    <string name="confirm_lines">Lines: %1$d</string>
+    <string name="confirm_more">▼ Scroll for more</string>
+    <string name="tool_failure_no_answer">%1$s: no answer, declined</string>
+    <string name="chat_receipt_no_answer">No answer, declined</string>
+    <string name="confirmations_details">Details</string>
+    <string name="confirmations_turn_on_failed">Could not save the setting. Try again.</string>
     <!-- Terminal: insert an image (docs/contract.md, SSH console) -->
     <string name="terminal_image_insert">Insert image</string>
     <string name="terminal_image_clipboard_empty_offer">clipboard is empty; long press to insert an image</string>
@@ -1235,6 +1266,8 @@
     <string name="terminal_image_path_unsafe">The home folder name has special characters.</string>
     <string name="terminal_image_folder_unsafe">The images folder on the device is not safe to use.</string>
     <string name="terminal_image_insert_refused">Could not insert the path.</string>
+    <string name="confirm_rtl_note">Contains right-to-left text</string>
+    <string name="confirm_more_above">▲ Scroll up</string>
     <string name="terminal_images_preparing">Image %1$d of %2$d · preparing</string>
     <string name="terminal_images_uploading">Image %1$d of %2$d · %3$d%%</string>
     <string name="terminal_images_done">%1$d images inserted</string>

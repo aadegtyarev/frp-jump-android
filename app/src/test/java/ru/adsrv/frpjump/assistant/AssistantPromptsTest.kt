@@ -22,9 +22,9 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test.
-        assertEquals(4, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(5, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("e344abe12ddce301ebfcd46b1daa4e028f567b4c20a8ab7008cf932c0bcfe778", sha256(asset("assistant/skill.md")))
+        assertEquals("ae79a0777ceb609a2b7e748523e5540df17b3f8b6d31eb8f6510c326122b4627", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 
@@ -74,7 +74,7 @@ class AssistantPromptsTest {
     private val snapshot = AssistantProviderSnapshot(AssistantProviderSettings(model = "m"), "r")
     private fun chat(scope: CoroutineScope, tools: AssistantTools, prompts: Lazy<AssistantPrompts>, provider: AgentProvider) =
         AssistantConversation(scope, { AssistantAvailability(true, tools = tools) }, { snapshot }, { provider }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, prompts = prompts)
+            io = Dispatchers.Unconfined, prompts = prompts, confirmations = TestConfirmations.off)
     private suspend fun AssistantConversation.sendAndWait(text: String): ChatState {
         edit(text); send(); return withTimeout(3000) { state.first { !it.busy } }
     }
@@ -107,7 +107,7 @@ class AssistantPromptsTest {
         val broken = lazy { AssistantPrompts.load { ByteArrayInputStream(byteArrayOf(0xFF.toByte())) } }
         val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot },
             { prepared++; throw ProviderSetupException(ProviderSetupProblem.CRYPTO_FAILED) }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, prompts = broken)
+            io = Dispatchers.Unconfined, prompts = broken, confirmations = TestConfirmations.off)
         try {
             assertEquals(ChatProblem.SETUP, chat.sendAndWait("kept").problem); assertEquals(0, prepared)
         } finally { chat.close(); scope.cancel() }
