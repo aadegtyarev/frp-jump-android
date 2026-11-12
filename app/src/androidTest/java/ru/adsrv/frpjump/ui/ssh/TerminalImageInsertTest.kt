@@ -455,6 +455,13 @@ class TerminalImageInsertTest {
         return calls
     }
 
+    /** Compose idle, then the window (insets and IME animations outlive Compose's idle), then Compose again. */
+    private fun settleWindow() {
+        compose.waitForIdle()
+        runCatching { InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 4_000) }
+        compose.waitForIdle()
+    }
+
     private val imageButton get() = compose.onNodeWithTag("terminal_text_image")
 
     @Test fun theEditorsImageButtonIsLabelledOnWhenAvailableAndOpensOnlyThePicker() {
@@ -485,6 +492,9 @@ class TerminalImageInsertTest {
 
     private fun checkBarFitsWithEditor(expanded: Boolean, shot: String) {
         val calls = editor(state = ImageInsertState.Uploading(450, 1000), expanded = expanded)
+        // The editor asks for the keyboard when it appears; measure only once the window has settled under it (a bar measured
+        // while the keyboard is still sliding in is squeezed for a moment). The assertions are unchanged.
+        settleWindow()
         val label = compose.activity.getString(R.string.terminal_image_uploading, 40)
         val text = compose.onNodeWithText(label).assertIsDisplayed().fetchSemanticsNode()
         assertFalse("the bar's words are cut", overflowed(text))
@@ -512,6 +522,11 @@ class TerminalImageInsertTest {
 
     @Test fun theEditorsControlsAreNotWrappedOrCutAtTheCurrentOrientationAndFontScale() {
         editor()
+        // The editor asks for the keyboard when it appears; what an earlier test left (an IME still moving, a window not yet
+        // gone) must settle first, or the row is measured above a keyboard that is on its way. The assertions below are unchanged.
+        settleWindow()
+        val tags = listOf("terminal_mode_keys", "terminal_text_image", "terminal_text_expand", "terminal_text_insert")
+        compose.waitUntil(5_000) { tags.all { runCatching { compose.onNodeWithTag(it).assertIsDisplayed() }.isSuccess } }
         val word = compose.onNodeWithText(compose.activity.getString(R.string.terminal_text_insert), useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode()
         val results = mutableListOf<TextLayoutResult>()
         word.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
