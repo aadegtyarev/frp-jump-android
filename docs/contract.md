@@ -253,6 +253,9 @@ profile without re-enrollment.
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
   when connected and "Connect and open" when not.
+- Bringing a connection's tunnel up for these actions (and for "Use key login" and "Change login") is the `tunnel_up` operation of the
+  [operations surface](contracts/surfaces/operations.md): same order, same 45 s wait for the tunnel, same notices as before it was
+  an operation. The assistant does not use it.
 
 ### 5. Connections tab
 

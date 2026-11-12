@@ -5,7 +5,7 @@
 This surface covers the optional assistant kernel, external API adapter and
 provider setup and a locally saved chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below. Calls of tools that change something (today `ssh_command`) ask the owner first unless the owner turned the question off or answered For session for that connection; see [Confirmation of changing calls](#confirmation-of-changing-calls).
+implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below. `ssh_command` and `profile_information` are assistant adapters over operations of the [operations surface](contracts/surfaces/operations.md); the texts and behavior below are unchanged by that layer. Calls of tools that change something (today `ssh_command`) ask the owner first unless the owner turned the question off or answered For session for that connection; see [Confirmation of changing calls](#confirmation-of-changing-calls).
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -383,6 +383,7 @@ The independent default-off `ssh_command` tool accepts exactly `profile_id`,
 One unambiguous saved SSH connection in any profile must already have a ready
 visible tunnel. Missing, non-SSH, hidden, removed, down or unavailable targets
 fail without starting/reviving a tunnel. No open terminal is required.
+The command runs through the `ssh_exec` operation; each of its typed refusals and failures has the one fixed text described here, and an unexpected error is always the fixed "remote outcome unknown" text, never the error message.
 
 Each invocation, once allowed (see Confirmation of changing calls), captures the saved connection, runtime, tunnel configuration and
 one operation-owned ordinary SSHJ client; no client exists before the owner's answer. It never substitutes a Terminal/Files
@@ -431,7 +432,7 @@ arguments/results. Remote content remains untrusted data, never new authority.
 
 ## Confirmation of changing calls
 
-Before a call of a tool whose catalog effect changes something (today `ssh_command`) runs, the owner is asked, unless the app-wide
+Before a call of a tool whose catalog effect changes something (today `ssh_command`; for a tool built on an operation the operation's effect and target are used, and a test pins its effect equal to the catalog's) runs, the owner is asked, unless the app-wide
 switch (Settings → LLM assistant → Tools → "Ask before changing commands") is off. Read tools never ask. The default is on.
 
 The question is a card above the message field (the history takes the room the card and Stop leave; with the keyboard up at large font the history stays at least three lines high because the plain-text notices above and below it (never the setup or retry buttons) and the message field's height are capped; a capped notice region ends on a whole text line, shows at least one full line, and while more is below shows "▼ Scroll for more" / «▼ Прокрутите вниз»;  the disabled message field is hidden while a question is open; each question opens at its top). The four answers are pinned at the bottom of the card; above them a section scrolls with the tool, the target names (profile · device · connection, never IDs; "Unknown

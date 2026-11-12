@@ -6,6 +6,7 @@ import ru.adsrv.frpjump.agent.AgentTool
 import ru.adsrv.frpjump.agent.ToolOutput
 import ru.adsrv.frpjump.agent.ToolSpec
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.ops.Effect
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.agent.admitSideEffect
 
@@ -22,6 +23,12 @@ internal abstract class AppTool<A : Any>(
 ) : AgentTool {
     final override val spec = ToolSpec(id.wire, description, schema)
 
+    /**
+     * What the tool may do; the catalog's by default. An [OperationTool] answers with its operation's, and refuses to be built when that
+     * differs from the catalog's. [changeCheck] still treats the call as changing when either says so.
+     */
+    open val effect: Effect get() = id.effect
+
     /** Reads the arguments through [StrictArgs], which throws [InvalidArguments] on any violation. */
     protected abstract fun parse(args: StrictArgs): A
     protected abstract val invalidArguments: ToolOutput
@@ -29,7 +36,7 @@ internal abstract class AppTool<A : Any>(
     /** Fixed, sanitized text; never an exception message. */
     protected abstract fun failure(error: Exception): ToolOutput
     /**
-     * What a call of a changing tool (catalog `effect.changes`) will do, for the owner's confirmation. Null for read tools; a changing
+     * What a call of a changing tool (catalog `effect.changes`, or the tool's own [effect]) will do, for the owner's confirmation. Null for read tools; a changing
      * tool that returns null is NOT treated as read-only: [changeCheck] fails closed to an undescribed [ChangeCheck.Change].
      */
     protected open fun describeChange(args: A): ChangeRequest? = null
@@ -41,7 +48,7 @@ internal abstract class AppTool<A : Any>(
      */
     fun changeCheck(arguments: JsonObject): ChangeCheck {
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return ChangeCheck.Invalid }
-        if (!id.effect.changes) return ChangeCheck.ReadOnly
+        if (!(effect.changes || id.effect.changes)) return ChangeCheck.ReadOnly
         val described = try { describeChange(parsed) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
         return ChangeCheck.Change(described ?: ChangeRequest(id, null, "", described = false))
     }

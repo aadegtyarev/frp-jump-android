@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.ops.*
+import ru.adsrv.frpjump.ops.ssh.SshExecInput
+import ru.adsrv.frpjump.ops.ssh.SshExecOutput
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
@@ -41,8 +44,13 @@ class AssistantConfirmationFlowTest {
         private val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { throw AssertionError("must not construct a client") })
         val ssh = object : AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)) {
-            override suspend fun execute(profile: String, connection: String, command: String): ToolOutput {
-                executed.incrementAndGet(); commands += command; return ToolOutput("ran $command")
+            override val exec = object : Operation<SshExecInput, SshExecOutput> {
+                override val name = "ssh_exec"
+                override val effect = Effect.CHANGE_REMOTE
+                override fun target(input: SshExecInput) = GrantTarget(input.profile, input.connection)
+                override suspend fun invoke(input: SshExecInput): OpResult<SshExecOutput> {
+                    executed.incrementAndGet(); commands += input.command; return OpResult.Done(SshExecOutput("ran ${input.command}", "", 0, null))
+                }
             }
             override fun stamp(target: GrantTarget): Any? = this@Harness.stamp
         }
