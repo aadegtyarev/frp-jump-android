@@ -37,6 +37,7 @@ internal class AssistantSshCommandTool(private val commands: AssistantSshCommand
         SshCommandArgs(string("profile_id"), string("connection_id"), string("command"))
     }
     override val invalidArguments = ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
+    override fun describeChange(args: SshCommandArgs) = ChangeRequest(id, "${args.profile}/${args.connection}", args.command)
     override suspend fun run(args: SshCommandArgs) = commands.execute(args.profile, args.connection, args.command)
     override fun failure(error: Exception) = ToolOutput("SSH failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED)
 }

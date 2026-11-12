@@ -27,6 +27,15 @@ internal abstract class AppTool<A : Any>(
     protected abstract suspend fun run(args: A): ToolOutput
     /** Fixed, sanitized text; never an exception message. */
     protected abstract fun failure(error: Exception): ToolOutput
+    /**
+     * What a call of a changing tool (catalog `effect.changes`) will do, for the owner's confirmation. null for read tools.
+     * Every changing tool must override it (pinned by the catalog test), so none can bypass the confirmation hook.
+     */
+    protected open fun describeChange(args: A): ChangeRequest? = null
+
+    /** Pure: strict parse, then the description; null for a read tool or invalid arguments (the tool then fails on its own, running nothing). */
+    fun changeRequest(arguments: JsonObject): ChangeRequest? =
+        try { describeChange(parse(StrictArgs(arguments))) } catch (_: InvalidArguments) { null }
 
     final override suspend fun execute(arguments: JsonObject): ToolOutput {
         admitSideEffect("tool-start")
@@ -36,3 +45,6 @@ internal abstract class AppTool<A : Any>(
         catch (error: Exception) { failure(error) }
     }
 }
+
+/** Not a data class: its toString must never print the command. [target] is the grant key part (ssh_command: "profileId/connectionId"). */
+internal class ChangeRequest(val tool: AssistantToolId, val target: String?, val command: String)

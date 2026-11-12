@@ -53,7 +53,7 @@ import ru.adsrv.frpjump.assistant.tools.*
         val receipts = exchanges.flatMap { exchange -> exchange.reply.calls.map { call ->
             ChatToolReceipt(call.value(), exchange.results.firstOrNull { it.callId == call.id }?.value())
         } }
-        val failures = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.outcome != ToolOutcome.SUCCESS }?.let { result ->
+        val failures = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.outcome != ToolOutcome.SUCCESS && it.outcome != ToolOutcome.DECLINED }?.let { result ->
             ChatToolFailure(result, if (receipt.call.name == AssistantToolId.WEB_SEARCH.wire) try { StrictArgs(receipt.call.arguments).optionalString("query", 256, allowBlank = true) } catch (_: InvalidArguments) { null } else null)
         } }
         val information = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.name == AssistantToolId.PROFILE_INFORMATION.wire && it.outcome == ToolOutcome.SUCCESS }?.let {
