@@ -62,6 +62,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -239,6 +241,8 @@ fun ExtraKeys(
     textEditor: @Composable () -> Unit,
     /** The tab is open and not sending an image: Paste may offer the clipboard's picture. */
     canOfferImage: Boolean = false,
+    /** Long press on Paste: the same photo picker as the menu's Insert image; reachable only while [canOfferImage]. */
+    onInsertImage: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
@@ -273,7 +277,7 @@ fun ExtraKeys(
             Box(Modifier.fillMaxWidth()) {
                 Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                     Key(ExtraKey.CTRL_C, modifiers, onKey)
-                    PasteKey(onPaste, canOfferImage)
+                    PasteKey(onPaste, canOfferImage, onInsertImage)
                     ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
                     val label = stringResource(R.string.terminal_keyboard)
                     KeyBox(
@@ -362,23 +366,44 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
 
 /**
  * Pastes the clipboard's text, or (a picture and no text, [canOfferImage]) offers to send the picture; dimmed, saying why,
- * while there is neither.
+ * while there is neither. A long press opens the photo picker ([onInsertImage]) while [canOfferImage], also with an empty
+ * clipboard: then the tap does nothing and the key says so by its state description.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean) {
+private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean, onInsertImage: () -> Unit) {
     val colors = AppTheme.colors
     val kind = clipboardKind()
     val canPaste = kind == ClipKind.TEXT || (kind == ClipKind.IMAGE && canOfferImage)
     val label = stringResource(R.string.terminal_paste)
     val empty = stringResource(R.string.terminal_clipboard_empty)
     val image = stringResource(R.string.terminal_image_clipboard_has_image)
+    val insertImage = stringResource(R.string.terminal_image_insert)
+    val emptyOffer = stringResource(R.string.terminal_image_clipboard_empty_offer)
+    // On offer, combinedClickable (its long press, label and haptics; `enabled` would switch the long press off with the tap).
+    // Otherwise a plain tap detector: no long-click action, label or haptics, and a long hold is not a tap, so it never pastes.
+    val action = if (canOfferImage) {
+        Modifier.combinedClickable(
+            role = Role.Button,
+            onClick = { if (canPaste) onPaste() },
+            onLongClickLabel = insertImage,
+            onLongClick = onInsertImage,
+        )
+    } else {
+        Modifier.pointerInput(canPaste) { detectTapGestures(onLongPress = { }, onTap = { if (canPaste) onPaste() }) }
+    }
     KeyBox(
         Modifier
             .semantics {
                 contentDescription = label
-                if (!canPaste) stateDescription = empty else if (kind == ClipKind.IMAGE) stateDescription = image
+                if (!canPaste) stateDescription = if (canOfferImage) emptyOffer else empty
+                else if (kind == ClipKind.IMAGE) stateDescription = image
+                if (!canOfferImage) {
+                    role = Role.Button
+                    if (canPaste) onClick { onPaste(); true } else disabled()
+                }
             }
-            .clickable(enabled = canPaste, role = Role.Button, onClick = onPaste),
+            .then(action),
         colors.termKey,
     ) {
         Icon(PasteGlyph, contentDescription = null, tint = if (canPaste) colors.onTerm else colors.termMuted, modifier = Modifier.size(18.dp))

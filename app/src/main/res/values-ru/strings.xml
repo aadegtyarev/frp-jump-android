@@ -1296,6 +1296,7 @@
     <string name="confirmations_turn_on_failed">Не удалось сохранить настройку. Повторите.</string>
     <!-- Терминал: вставка изображения (docs/contract.md, консоль SSH) -->
     <string name="terminal_image_insert">Вставить изображение</string>
+    <string name="terminal_image_clipboard_empty_offer">буфер обмена пуст; долгое нажатие вставляет изображение</string>
     <string name="terminal_image_offer_title">Вставить изображение из буфера?</string>
     <string name="terminal_image_offer_text">Оно отправится на устройство, а путь к нему будет вставлен.</string>
     <string name="terminal_image_clipboard_has_image">в буфере изображение</string>
