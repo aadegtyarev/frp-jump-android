@@ -313,8 +313,12 @@ class AssistantSshCommandTest {
                     val first = f.client.disconnectThreads.toList()
                     assertEquals("$cause: only the closer disconnected so far: $first", 1, first.size)
                     assertTrue("$cause: closer on an IO worker: $first", base(first.single()).startsWith("DefaultDispatcher-worker"))
-                } finally { release.countDown() }
-                try { withTimeout(5000) { work.join() } } finally { work.cancel() }
+                } finally {
+                    release.countDown()
+                    // Even after a failed assertion: join (or cancel) before the dispatchers shut down, so a regression fails instead of hanging.
+                    if (withTimeoutOrNull(5000) { work.join() } == null) work.cancel()
+                }
+                assertTrue("$cause: worker exited within 5 s after release", work.isCompleted)
                 val threads = f.client.disconnectThreads.map(::base)
                 assertTrue("$cause: every disconnect on an IO worker: $threads", threads.isNotEmpty() && threads.all { it.startsWith("DefaultDispatcher-worker") })
             }
