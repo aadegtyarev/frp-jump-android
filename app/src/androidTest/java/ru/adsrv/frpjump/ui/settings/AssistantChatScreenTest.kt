@@ -766,9 +766,75 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
         }
-        // This assertion is about the failure text, not about the keyboard layout: with the soft keyboard up at 200% font in Russian the
-        // list is one line high (also on main), so the keyboard is put away first.
-        hideKeyboard(); compose.waitForIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
+        button("chat_current_tool_failure").assertIsDisplayed()
+        compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
+    }
+
+    @Test fun historyStaysReadableAndScrollableWithTheKeyboardUp() {
+        mode = "tool-failure"
+        settings.update { it.copy(assistantReadPage = true) }
+        settings.assistantChat.publicWeb = PublicFetcher { url, _, attempt ->
+            ru.adsrv.frpjump.agent.admitSideEffect("public-dispatch"); attempt("public-dispatch")
+            if (!url.startsWith("https://")) throw WebException(WebFailure.URL)
+            WebResponse(url, "text/html", "x".toByteArray(), 200, null)
+        }
+        install(); input().performTextInput("Unavailable page")
+        sendAndAwait()
+        compose.runOnIdle { assertTrue(owner!!.state.value.turns.last().toolFailed); mode = "tool-failure-provider-fail" }
+        // A second message with the soft keyboard really up (the first turn's failure is already in the history).
+        input().performTextInput("Fail again")
+        sendAndAwait()
+        compose.runOnIdle { assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem) }
+        compose.activityRule.scenario.onActivity { activity ->
+            androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).show(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }
+        val until = SystemClock.uptimeMillis() + 5000
+        fun keyboardUp(): Boolean { var up = false; compose.activityRule.scenario.onActivity { up = androidx.core.view.ViewCompat.getRootWindowInsets(it.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }; return up }
+        while (!keyboardUp() && SystemClock.uptimeMillis() < until) SystemClock.sleep(100)
+        assertTrue("the soft keyboard did not come up", keyboardUp())
+        settle("chat_send"); compose.waitForIdle()
+        // Compact (landscape) scrolls as a whole, so the error needs scrolling to there; in portrait it is on screen as it is.
+        if (args.getString("composerOrientation") == "landscape") compose.onNodeWithTag("chat_error").performScrollTo()
+        compose.onNodeWithTag("chat_error").assertIsDisplayed()
+        shot("history-keyboard")
+        // The history is at least three lines of body text high (measured from the real failure text, so it follows the font scale), the
+        // field and Send keep their room below it, and the failure of the turn is reachable by scrolling.
+        button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
+        val line = mutableListOf<androidx.compose.ui.text.TextLayoutResult>().also { out ->
+            val detail = compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure")), useUnmergedTree = true).fetchSemanticsNode()
+            compose.runOnIdle { detail.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(out) }
+        }.first().let { it.getLineBottom(0) - it.getLineTop(0) }
+        val minimum = 3 * line
+        val history = bounds("chat_history")
+        assertTrue("history is ${history.height} px high, expected at least $minimum (3 lines of $line)", history.height >= minimum)
+        // Landscape is the compact layout: the whole screen scrolls, so "in the window" and "below" are not promises there.
+        if (args.getString("composerOrientation") != "landscape") {
+            assertTrue("the field overlaps the history", bounds("chat_input").top >= history.bottom - 1f)
+            assertTrue("Send is below the field", bounds("chat_send").top >= bounds("chat_input").bottom - 1f)
+            assertTrue("Send is outside the window", bounds("chat_send").bottom <= rootBounds().bottom + 1f)
+        }
+        // The error under the history: its region ends on a line boundary (never a half line) and, when it cannot show all of the error, says
+        // so with the scroll mark; the rest is reachable by scrolling.
+        // (Landscape has no cap: the notices show in full inside the scrolling screen, which the scroll-to above already proved.)
+        if (args.getString("composerOrientation") != "landscape") {
+            val errorLine = layoutOf("chat_error").let { it.getLineBottom(0) - it.getLineTop(0) }
+            val errorLines = layoutOf("chat_error").lineCount
+            val region = bounds("chat_notices_below").height
+            val shownLines = region / errorLine
+            assertTrue("the notice region ($region px) ends mid-line (line $errorLine px)", Math.abs(shownLines - Math.round(shownLines)) < 0.02f && shownLines >= 1f)
+            val cut = Math.round(shownLines) < errorLines
+            assertEquals("the scroll mark must show exactly when the error is cut", cut, compose.onAllNodes(hasTestTag("chat_notices_below_more"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+            if (cut) {
+                compose.onNodeWithTag("chat_notices_below", useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { it(0f, 100_000f) }
+                compose.waitForIdle()
+                val tail = bounds("chat_error")
+                assertTrue("the end of the error is not reachable", tail.bottom <= bounds("chat_notices_below").bottom + 1f)
+                assertEquals("the mark must go once scrolled to the end", 0, compose.onAllNodes(hasTestTag("chat_notices_below_more"), useUnmergedTree = true).fetchSemanticsNodes().size)
+            }
+        }
+        button("chat_history").performScrollToIndex(0)
+        compose.onNodeWithText("Unavailable page", substring = true).assertIsDisplayed()
         button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
         button("chat_current_tool_failure").assertIsDisplayed()
         compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
