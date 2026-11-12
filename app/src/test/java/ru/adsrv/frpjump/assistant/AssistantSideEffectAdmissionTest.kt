@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
@@ -33,8 +34,9 @@ class AssistantSideEffectAdmissionTest {
             providerHeldGate += Thread.holdsLock(settings.assistantChat.gate)
             admitSideEffect("public-dispatch"); attempt("public-dispatch"); document()
         }
-        settings.assistantChat.beforeAction = { category -> before += category to Thread.holdsLock(settings.assistantChat.gate) }
-        settings.assistantChat.checkedAction = { category -> checked += category to Thread.holdsLock(settings.assistantChat.gate) }
+        settings.assistantChat.probes = ChatProbes(
+            before = { category -> before += category to Thread.holdsLock(settings.assistantChat.gate) },
+            checked = { category -> checked += category to Thread.holdsLock(settings.assistantChat.gate) })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             AgentProvider { providerHeldGate += Thread.holdsLock(settings.assistantChat.gate); if (++calls == 1) reply() else AgentReply("complete") }
@@ -56,7 +58,7 @@ class AssistantSideEffectAdmissionTest {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
         val dispatches = AtomicInteger(); val providerCalls = AtomicInteger()
         settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt -> admitSideEffect("public-dispatch"); attempt("public-dispatch"); document() }
-        settings.assistantChat.checkedAction = { category -> if (category == "dispatch") dispatches.incrementAndGet() }
+        settings.assistantChat.probes = ChatProbes(checked = { category -> if (category == "dispatch") dispatches.incrementAndGet() })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             // This provider never calls any admission API.
@@ -73,7 +75,7 @@ class AssistantSideEffectAdmissionTest {
         val providerCalls = AtomicInteger()
         var stop: (() -> Unit)? = null
         // Stop commits between the pre-guard probe and the check of the first provider start.
-        settings.assistantChat.beforeAction = { category -> if (category == "dispatch") stop?.invoke() }
+        settings.assistantChat.probes = ChatProbes(before = { category -> if (category == "dispatch") stop?.invoke() })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             AgentProvider { providerCalls.incrementAndGet(); AgentReply("complete") }

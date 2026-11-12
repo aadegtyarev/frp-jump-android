@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import java.net.ServerSocket
 import java.util.Base64
 import java.util.concurrent.CountDownLatch

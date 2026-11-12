@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.json.*
@@ -437,9 +438,9 @@ class AssistantSshCommandTest {
     @Test fun `Chat guard revokes actual SSH admission before any worker starts`() = runBlocking {
         Fixture().use { f -> f.ready(); Chat(f).use { c ->
             c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
-            c.settings.assistantChat.beforeAction = { category -> if (category == "ssh-dispatch") {
+            c.settings.assistantChat.probes = ChatProbes(before = { category -> if (category == "ssh-dispatch") {
                 c.settings.update { it.copy(assistantEnabled = false) }
-            } }
+            } })
             c.send(); c.idle()
             assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty()); assertTrue(c.chat.state.value.turns.isEmpty())
         } }

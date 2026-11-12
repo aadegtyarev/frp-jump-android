@@ -1,0 +1,33 @@
+package ru.adsrv.frpjump.assistant.chat
+
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import ru.adsrv.frpjump.agent.AgentProvider
+import ru.adsrv.frpjump.assistant.AssistantChatHistory
+import ru.adsrv.frpjump.assistant.ChatHistoryProblem
+import ru.adsrv.frpjump.settings.AssistantAvailability
+
+/** The one live run owner: its authority snapshot, its job and whether Stop was requested. */
+internal class Pending(val revision: String?, val version: Long) { lateinit var job: Job; var stopped = false }
+
+/**
+ * The conversation's mutable cells. They have no lock of their own: read and write them only while holding
+ * `AssistantChatRuntime.gate` (`synchronized(gate)` in the conversation and `RunOwnership`), never across a suspension.
+ */
+internal class ChatCells(var document: SavedChat, var authority: AssistantAvailability, var revision: String?,
+    private val historyStore: AssistantChatHistory?) {
+    val mutable = MutableStateFlow(ChatState())
+    /** Whether a history archive backs the document (turns are then never trimmed or dropped). */
+    val archive: Boolean get() = historyStore != null
+    var provider: AgentProvider? = null
+    var closed = false
+    var loading = false
+    var pending: Pending? = null
+    fun persist() { if (!closed && !loading && mutable.value.historyProblem != ChatHistoryProblem.READ) historyStore?.save(document) }
+    fun interrupt() { document = document.interrupted() }
+    /** Only copies already projected data under the short guard. */
+    fun render(value: SavedChat, projected: List<ChatTurn>) {
+        if (closed || document !== value) return
+        mutable.value = projectChat(value, projected, archive, pending != null, mutable.value)
+    }
+}

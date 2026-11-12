@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -74,7 +75,7 @@ class AssistantProfileRefreshOwnershipTest {
     @Test fun `AUTH-1 revoke wins before all four actual starts for every revocation cause`() = runBlocking {
         for (cause in causes) SyntheticProfileInformation().use { f -> Chat(f).use { c ->
             val hold = Hold(4)
-            c.settings.assistantChat.beforeAction = { category -> if (category.startsWith("profile-") && category.endsWith("-dispatch")) hold.waitHere() }
+            c.settings.assistantChat.probes = ChatProbes(before = { category -> if (category.startsWith("profile-") && category.endsWith("-dispatch")) hold.waitHere() })
             try {
                 c.send(); hold.entered(cause)
                 // For committed authority changes deliberately omit the observer cancellation:
@@ -95,7 +96,7 @@ class AssistantProfileRefreshOwnershipTest {
             val cancelOf = java.util.concurrent.ConcurrentHashMap<okhttp3.Call, CountDownLatch>()
             f.onCanceled = { call -> cancelOf.computeIfAbsent(call) { CountDownLatch(1) }.countDown() }
             f.beforeResponseOf = { call -> check(cancelOf.computeIfAbsent(call) { CountDownLatch(1) }.await(15, TimeUnit.SECONDS)) { "call was never cancelled" } }
-            c.settings.assistantChat.checkedAction = { category -> if (category == "profile-$operation-dispatch" && once.compareAndSet(false, true)) hold.waitHere() }
+            c.settings.assistantChat.probes = ChatProbes(checked = { category -> if (category == "profile-$operation-dispatch" && once.compareAndSet(false, true)) hold.waitHere() })
             val revokeStarted = CountDownLatch(1)
             val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
             val revoke = Thread { try { revokeStarted.countDown(); c.revoke(cause) } catch (e: Throwable) { failure.set(e) } }
@@ -164,7 +165,7 @@ class AssistantProfileRefreshOwnershipTest {
     @Test fun `ambient categories are the profile-dispatch strings and tool-start`() = runBlocking {
         SyntheticProfileInformation().use { f -> Chat(f).use { c ->
             val categories = java.util.concurrent.CopyOnWriteArrayList<String>()
-            c.settings.assistantChat.beforeAction = { category -> categories += category }
+            c.settings.assistantChat.probes = ChatProbes(before = { category -> categories += category })
             c.send(); c.idle()
             assertEquals("Old information answer", c.old.state.value.turns.single().answer)
             assertEquals(1, categories.count { it == "tool-start" })

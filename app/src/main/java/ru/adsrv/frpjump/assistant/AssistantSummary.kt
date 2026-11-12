@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import ru.adsrv.frpjump.agent.*

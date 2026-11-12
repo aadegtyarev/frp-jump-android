@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.assistant.chat.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
@@ -10,7 +11,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.assistant.ChatProfileInformation
 import ru.adsrv.frpjump.ui.AppTheme
 
 /** The actual bounded received facts, not a second generated answer. Parsed off Main by Chat. */

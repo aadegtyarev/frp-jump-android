@@ -2,9 +2,12 @@ package ru.adsrv.frpjump.assistant
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import ru.adsrv.frpjump.assistant.chat.ChatProbes
 
 /** App-lived, text-free admission and authority linearization boundary.
- * Lock order: store IO monitor -> gate; chat uses gate only, never a store monitor.
+ * Lock order: store IO monitor -> gate. Chat code takes the gate only; while holding it, the only store monitor it
+ * takes is the history store's short `queue` monitor through `persist()` (gate -> queue; the store never takes the
+ * gate while holding `queue`). Notifications take their own monitor and then the gate, never the reverse.
  * No disk/credential IO, suspension, or cancellation is performed while holding gate.
  * Notifications are emitted after store monitors/gate have been released.
  */
@@ -13,8 +16,7 @@ class AssistantChatRuntime {
     internal val webSearch = WebSearchState()
     internal var publicWeb: PublicFetcher = PublicWebTransport()
     // Narrow deterministic probes for the chat/store race regressions; absent in production.
-    internal var beforeAction: ((String) -> Unit)? = null
-    internal var checkedAction: ((String) -> Unit)? = null
+    internal var probes: ChatProbes = ChatProbes.None
     private var active: Any? = null
     private val changes = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = changes

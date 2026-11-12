@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import java.net.ServerSocket
 import java.net.InetAddress
 import kotlin.concurrent.thread
@@ -111,14 +112,52 @@ class AssistantSummaryTest {
             lateinit var chat: AssistantConversation
             chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history)
             // The summary call is the first provider call of this Send; a Stop that commits just before its start check must refuse it.
-            runtime.beforeAction={ category -> if(category=="dispatch" && refuse && dispatches==0) chat.stop() }
-            runtime.checkedAction={ category -> if(category=="dispatch") dispatches++ }
+            runtime.probes=ChatProbes(
+                before={ category -> if(category=="dispatch" && refuse && dispatches==0) chat.stop() },
+                checked={ category -> if(category=="dispatch") dispatches++ })
             try {
                 chat.ready();chat.edit("Continue");chat.send();chat.ready()
                 if(refuse) { assertEquals(0,summaryCalls);assertEquals(0,mainCalls);assertEquals(0,dispatches) }
                 else { assertTrue("a summary request was made",summaryCalls>=1);assertEquals(1,mainCalls);assertEquals(summaryCalls+mainCalls,dispatches) }
             } finally { chat.close();scope.cancel() }
         }
+    }
+
+    @Test fun `a summarizing Send commits under every guarded category and each commit is already persisted`() = runBlocking {
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined); val runtime=AssistantChatRuntime()
+        // The store writes on real IO threads, so the probe can wait for the file while the conversation thread is blocked.
+        val file=Memory(); val history=AssistantChatHistory(file,Box(),CoroutineScope(SupervisorJob()+Dispatchers.IO),Dispatchers.IO)
+        val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
+        history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
+        val model=AgentProvider { request ->
+            if(request.instructions==AssistantSummary.PROMPT) AgentReply("target=work-root; done=diagnostic; unknown=upgrade") else AgentReply("final-answer")
+        }
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history)
+        val categories=Collections.synchronizedList(mutableListOf<String>()); var presentations=0
+        val problems=Collections.synchronizedList(mutableListOf<String>())
+        fun awaitSaved(marker: String) {
+            val end=System.nanoTime()+3_000_000_000L
+            while(file.text?.let { String(Base64.getDecoder().decode(it)) }?.contains(marker)!=true) {
+                if(System.nanoTime()>end) { problems+="$marker was not saved before its projection"; return }
+                Thread.sleep(5)
+            }
+        }
+        runtime.probes=ChatProbes(before={ category ->
+            // A projection follows its committed update/finish: that document must already be written to the history file
+            // (a finished Send clears the draft; the older records are COMPLETE already).
+            if(category=="presentation") {
+                val first=presentations++==0
+                if(categories.lastOrNull()!=(if(first) "history" else "answer")) problems+="projection after ${categories.lastOrNull()}"
+                awaitSaved(if(first) "final-answer" else "\"draft\":\"\"")
+            }
+            categories+=category
+        })
+        try {
+            chat.ready();chat.edit("Continue");chat.send();chat.ready()
+            assertTrue("categories $categories",categories.containsAll(listOf("admission","dispatch","progress","summary","history","presentation","answer")))
+            assertEquals(2,presentations); assertEquals(emptyList<String>(),problems.toList())
+            assertTrue(chat.state.value.summarized)
+        } finally { chat.close();scope.cancel() }
     }
 
     @Test fun `summary provider failure reports the provider status on the summary problem`() = runBlocking {

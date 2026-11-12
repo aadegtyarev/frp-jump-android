@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import org.junit.Assert.*
 import org.junit.Test
 import ru.adsrv.frpjump.agent.*
