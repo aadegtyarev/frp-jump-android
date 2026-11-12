@@ -21,10 +21,12 @@ class DisclosureGeometryTest {
         assertTrue(disclosureEndReserve(787.dp).value > disclosureEndReserve(377.dp).value)
     }
 
-    @Test fun theReserveAlwaysCoversTheTargetsWidthLessWhatMayProtrude() {
+    @Test fun theReserveAlwaysCoversTheWholeTarget() {
         for (w in 150..1400 step 7) {
             val g = disclosureGeometry(w.dp)
-            assertTrue("width $w", disclosureEndReserve(w.dp).value >= g.targetWidth.value - 20f)
+            // The target never reaches past the panel's side padding at its end, so its whole width lies inside the reserve.
+            assertTrue("offset at width $w", g.targetOffset.value <= PANEL_SIDE_PADDING.value + 0.01f)
+            assertTrue("width $w", disclosureEndReserve(w.dp).value >= g.targetWidth.value)
         }
     }
 }

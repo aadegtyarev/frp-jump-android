@@ -243,9 +243,16 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   helpers in all, 2 abandoned per connection, ended by an interrupt or by sshj's
   30 s). The app never ends a channel's input stream itself, only sends CLOSE:
   a reply arriving on a stream marked finished would make sshj drop the whole
-  connection, shell included. Cancel mid-upload takes about one round trip on a
-  live device and at most the 10 s request timeout on a hung one; the part-file
-  removal is bounded to 5 s by its own helper. A failed or abandoned opening
+  connection, shell included. Cancel mid-upload typically ends within one round
+  trip on a live device and at most the 10 s request timeout on a hung one, up to
+  30 s while a write waits for the peer's window (the peer's CLOSE does not wake
+  it), and a stalled socket write ends only when the connection does; the same
+  holds for an interrupted helper. Interrupting is safe because the transport is a
+  plain `java.net.Socket`; that stops holding if a connection is ever tunnelled
+  through another SSH channel. The part-file removal is bounded to 5 s by its own
+  helper. The per-connection limit of 2 abandoned helpers is checked before it is
+  counted and can briefly be exceeded in a tight race; the 6-thread pool is the
+  hard cap. A failed or abandoned opening
   closes what it made (a channel sshj confirms after its own open timeout can,
   rarely, stay). A device without SFTP is reported, nothing else changes.
 - The app creates `~/.cache/frp-jump/images/` (absolute path from the SFTP
