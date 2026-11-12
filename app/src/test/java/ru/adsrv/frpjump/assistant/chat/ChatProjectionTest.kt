@@ -1,7 +1,9 @@
 package ru.adsrv.frpjump.assistant.chat
 
+import kotlinx.serialization.json.*
 import org.junit.Assert.*
 import org.junit.Test
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.ChatHistoryProblem
 
 class ChatProjectionTest {
@@ -54,5 +56,17 @@ class ChatProjectionTest {
         assertEquals(listOf("T"), state.currentSources.map { it.title })
         assertTrue(state.busy && state.stopping && state.loading); assertEquals(ChatHistoryProblem.WRITE, state.historyProblem)
         assertEquals(ChatToolProgress.SUMMARY, state.toolProgress)
+    }
+    @Test fun `current turn receipts tool failures and profile information are projected only while it is current`() {
+        val search = SavedCall("c1", AssistantToolId.WEB_SEARCH.wire, buildJsonObject { put("query", "frp") })
+        val info = SavedCall("c2", AssistantToolId.PROFILE_INFORMATION.wire, JsonObject(emptyMap()))
+        val results = listOf(SavedResult("c1", search.name, "down", "FAILED"), SavedResult("c2", info.name, "{\"name\":\"p\"}", "SUCCESS"))
+        val current = SavedTurn("q", listOf(SavedExchange(SavedReply(calls = listOf(search, info)), results)), status = SavedTurnState.RUNNING)
+        val state = project(SavedChat(records = listOf(done, current)), archive = true, running = true)
+        assertEquals(listOf("c1", "c2"), state.receipts.map { it.call.id }); assertEquals(listOf("FAILED", "SUCCESS"), state.receipts.map { it.result?.outcome?.name })
+        assertTrue(state.toolFailed); assertEquals(listOf("frp"), state.toolFailures.map { it.query })
+        assertEquals(listOf("p"), state.information.map { it.page?.get("name")?.jsonPrimitive?.content })
+        val settled = project(SavedChat(records = listOf(done, current.copy(status = SavedTurnState.COMPLETE))), archive = true, running = false)
+        assertTrue(settled.receipts.isEmpty()); assertFalse(settled.toolFailed); assertTrue(settled.toolFailures.isEmpty()); assertTrue(settled.information.isEmpty())
     }
 }

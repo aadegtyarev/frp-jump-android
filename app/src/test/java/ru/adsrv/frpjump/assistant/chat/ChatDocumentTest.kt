@@ -47,4 +47,15 @@ class ChatDocumentTest {
     @Test fun `views follow records`() {
         assertEquals(listOf("a", "b"), chat(turn("a"), turn("b")).views().map { it.user })
     }
+    @Test fun `withLast and finished trim without an archive and keep everything with one`() {
+        val over = SavedChat(records = List(ChatLimits.MAX_TURNS) { turn("t$it") } + turn("run", SavedTurnState.RUNNING))
+        val edited = over.withLast(false) { it.copy(user = "x") }
+        assertEquals(ChatLimits.MAX_TURNS, edited.records.size); assertTrue(edited.omitted); assertEquals("x", edited.records.last().user)
+        val kept = over.withLast(true) { it.copy(user = "x") }
+        assertEquals(ChatLimits.MAX_TURNS + 1, kept.records.size); assertFalse(kept.omitted)
+        val done = over.finished(null, null, false)
+        assertEquals(ChatLimits.MAX_TURNS, done.records.size); assertTrue(done.omitted); assertEquals(SavedTurnState.COMPLETE, done.records.last().status)
+        val archived = over.finished(null, null, true)
+        assertEquals(ChatLimits.MAX_TURNS + 1, archived.records.size); assertFalse(archived.omitted)
+    }
 }

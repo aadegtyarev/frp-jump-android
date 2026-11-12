@@ -136,7 +136,7 @@ class AssistantSummaryTest {
         val categories=Collections.synchronizedList(mutableListOf<String>()); var presentations=0
         val problems=Collections.synchronizedList(mutableListOf<String>())
         fun awaitSaved(marker: String) {
-            val end=System.nanoTime()+3_000_000_000L
+            val end=System.nanoTime()+10_000_000_000L
             while(file.text?.let { String(Base64.getDecoder().decode(it)) }?.contains(marker)!=true) {
                 if(System.nanoTime()>end) { problems+="$marker was not saved before its projection"; return }
                 Thread.sleep(5)

@@ -8,7 +8,10 @@ import ru.adsrv.frpjump.assistant.chat.ChatProbes
  * Lock order: store IO monitor -> gate. Chat code takes the gate only; while holding it, the only store monitor it
  * takes is the history store's short `queue` monitor through `persist()` (gate -> queue; the store never takes the
  * gate while holding `queue`). Notifications take their own monitor and then the gate, never the reverse.
- * No disk/credential IO, suspension, or cancellation is performed while holding gate.
+ * Nothing suspends while holding gate. `persist()` only hands the document to the history store: it launches the
+ * store's save job on the store's `io` dispatcher and cancels the previous save job. Sealing and the file write run
+ * in that job, outside the gate when `io` dispatches (production uses `Dispatchers.IO`; tests that pass
+ * `Dispatchers.Unconfined` run them inline under the gate).
  * Notifications are emitted after store monitors/gate have been released.
  */
 class AssistantChatRuntime {
