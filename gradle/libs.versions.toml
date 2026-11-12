@@ -54,6 +54,7 @@ okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 junit = { module = "junit:junit", version.ref = "junit" }
 sshj = { module = "com.hierynomus:sshj", version.ref = "sshj" }
 sshd-test-server = { module = "org.apache.sshd:sshd-core", version.ref = "apacheSshd" }
+sshd-sftp-test-server = { module = "org.apache.sshd:sshd-sftp", version.ref = "apacheSshd" }
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 termux-terminal-emulator = { module = "com.github.termux.termux-app:terminal-emulator", version.ref = "termux" }
