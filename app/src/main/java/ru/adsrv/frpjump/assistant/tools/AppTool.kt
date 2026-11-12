@@ -6,7 +6,7 @@ import ru.adsrv.frpjump.agent.AgentTool
 import ru.adsrv.frpjump.agent.ToolOutput
 import ru.adsrv.frpjump.agent.ToolSpec
 import ru.adsrv.frpjump.assistant.AssistantToolId
-import ru.adsrv.frpjump.assistant.WebDispatch
+import ru.adsrv.frpjump.agent.admitSideEffect
 
 /**
  * One assistant tool: schema, typed parsing and an action. The pipeline is written once here:
@@ -18,7 +18,6 @@ internal abstract class AppTool<A : Any>(
     val id: AssistantToolId,
     description: String,
     schema: JsonObject,
-    private val dispatch: WebDispatch,
 ) : AgentTool {
     final override val spec = ToolSpec(id.wire, description, schema)
 
@@ -30,7 +29,7 @@ internal abstract class AppTool<A : Any>(
     protected abstract fun failure(error: Exception): ToolOutput
 
     final override suspend fun execute(arguments: JsonObject): ToolOutput {
-        dispatch("tool-start") { }
+        admitSideEffect("tool-start")
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return invalidArguments }
         return try { run(parsed) }
         catch (cancelled: CancellationException) { throw cancelled }

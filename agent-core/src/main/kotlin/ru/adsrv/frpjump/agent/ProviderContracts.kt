@@ -14,7 +14,7 @@ interface PersistentContinuations {
  * Returned ordinary model text, including inability/refusal, is unverified and not proof of vision.
  */
 interface ImageInspector {
-    suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit = { it() }): String
+    suspend fun inspectImage(mime: String, bytes: ByteArray, question: String): String
 }
 
 enum class ProviderErrorKind { HTTP, NETWORK, TIMEOUT, INCOMPATIBLE_CONTEXT, RESPONSE_TOO_LARGE, REQUEST_TOO_LARGE, INVALID_RESPONSE, INCOMPLETE_RESPONSE }

@@ -34,7 +34,9 @@ Save, Fetch models and recovery behavior.
 
 - `agent-core` is a plain Kotlin/JVM module: provider-neutral messages,
   suspend provider/tool interfaces, one execution loop, bounded window and
-  results, cancellation and observable events. It has no Android, HTTP,
+  results, cancellation (including the blocking-call and start-admission
+  primitives `blockingCancellable` and `SideEffectAdmission`) and observable
+  events. It has no Android, HTTP,
   SSH, connection-discovery or credential dependency. It uses Kotlin
   coroutines/JSON already used by the app, not an agent framework.
 - The app owns the opt-in setting and module lifetime. Every successfully
@@ -44,6 +46,9 @@ Save, Fetch models and recovery behavior.
   jobs outside the settings monitor. Failed writes do not invalidate work.
   Enabling again cannot revive an old run. This version is process-local: no
   execution survives process restart and no persistent journal is needed.
+  Neutral providers need no admission API: the app checks admission before each
+  provider call. Transports that start their own network work (public web,
+  image) check admission immediately before each start.
 - `agent-openai` implements non-streaming OpenAI-compatible Chat Completions
   and model discovery. It is not constructed or called by enabling the module.
 - `AssistantProviderStore` owns the app-private atomic provider document and
@@ -148,10 +153,10 @@ results and an explicit unknown-outcome note, never executable pending calls.
 Stop cancels that operation, not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
 Stopping until it exits. An app-lived, text-free admission token spans preparation,
-HTTP callback and response-body cleanup, post-kernel publication and actual job
+the HTTP exchange including response-body read and close, post-kernel publication and actual job
 cleanup, even after pop/reopen; a new screen may restore saved text but cannot
-start a replacement while that slot is occupied. Cancellation closes the exact call promptly, but the slot
-is held until both its callback execution and the coroutine have exited. No replacement send is queued. Failed/stopped input
+start a replacement while that slot is occupied. Cancellation closes the exact call promptly (from an IO thread), but the slot
+is held until the blocking exchange has returned and the run coroutine has finished. No replacement send is queued. Failed/stopped input
 stays editable for explicit retry. Setup/read/key, timeout, context-full,
 invalid-answer and provider failures use fixed messages, never raw diagnostics.
 There is no automatic retry, streaming or provider/model fallback.
@@ -188,8 +193,10 @@ explicit notice; an index in the same document separates old records from new
 model input. No deletion is required and old opaque state is never retargeted.
 Failed settings writes retain prior authority. Admission and publication
 recheck current authority, including after the kernel returns. Successful settings
-and provider snapshot commits serialize with admission, nonblocking provider-call
-start and every guarded answer/draft/error/window publication on a shared guard.
+and provider snapshot commits serialize with admission, every provider/public/image
+start check and every guarded answer/draft/error/window publication on a shared guard.
+A start whose check passed before a commit may still begin; an HTTP exchange is then cancelled, while an
+uncancellable DNS lookup finishes and no HTTP request starts afterwards.
 Store IO/credential work happens outside that guard; state notifications and
 cancellation run outside store commit monitors. An old completion
 cannot publish an answer/error or release another owner's pending slot.
@@ -440,10 +447,10 @@ that fixed set throughout the run, including calls dispatched after a switch
 changes. Changes apply only to the next Send; the current Send may finish with
 its original tools. They neither cancel work nor clear history, provider or draft.
 There is no tool-change epoch/revocation signal. Failed saves retain prior settings.
-Admission, every model/public/image dispatch and source/progress/answer/error
+Admission, every model/public/image start check and every source/progress/answer/error
 publication still check the captured owner, provider revision and disable version.
 Stop/pop, assistant disable (including off/on), provider revision/read failures
-cancel exact work; the shared slot remains occupied through DNS, callback/body,
+cancel exact work; the shared slot remains occupied through DNS, the HTTP exchange and body read,
 parser, owned SSH worker/readers and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
 image preparation and settings IO run off Main and outside commit guards. The
 whole Send deadline is 120 seconds; existing kernel per-call limits also apply.
@@ -511,7 +518,7 @@ public HTTP requests including redirect hops, at most 3 redirects per fetch,
 including transparently decompressed/chunked bodies. No automatic retries,
 including OkHttp's HTTP503 Retry-After:0 replay. Fetched content is untrusted
 evidence, never instructions/tool authority; prompts supplement, not replace,
-URL/dispatch guards.
+URL policy and start-admission checks.
 
 ### Optimistic same-model images and provenance
 
@@ -693,8 +700,11 @@ committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
 Chat tests exercise the production conversation owner with controlled preparation,
 providers and cancellation, plus the real credential-store → adapter loopback
-path. Controlled loopback callback tests also hold real adapter cleanup across
-completion, failure, cancellation and authority changes before explicit retry.
+path. Real-adapter loopback tests prove prompt cancellation (stalled response and
+body) and that an exchange held by an application-interceptor latch keeps the caller
+until it returns; held-exchange tests of the public transport (stalled body, latched
+DNS) do the same. Slot retention across completion, failure, cancellation and authority
+changes before explicit retry is proven with a fake provider built on `blockingCancellable`.
 Synthetic navigation/Compose checks use the production Settings chat entry,
 chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
 setup recovery, recreation and pop. The explicit test-only plain-Application

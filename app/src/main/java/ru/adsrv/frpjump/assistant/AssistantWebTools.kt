@@ -14,8 +14,9 @@ internal class AssistantWebTools(
     private val fetcher: PublicFetcher,
     private val searchState: WebSearchState,
     private val inspector: ImageInspector?,
-    private val dispatch: WebDispatch,
     private val publish: (ChatSource) -> Unit,
+    // Test seam: the production check needs Android BitmapFactory.
+    private val validate: (String, ByteArray) -> Unit = ::validateImage,
 ) {
     private val budget = WebBudget()
     val sources = ArrayList<ChatSource>()
@@ -25,7 +26,7 @@ internal class AssistantWebTools(
         if (enabled.inspectImage) add(InspectImage())
     }
     /** Shared web mapping: fixed failure text, IO dispatcher for the action. */
-    private abstract inner class WebTool<A : Any>(id: AssistantToolId, description: String, schema: JsonObject) : AppTool<A>(id, description, schema, dispatch) {
+    private abstract inner class WebTool<A : Any>(id: AssistantToolId, description: String, schema: JsonObject) : AppTool<A>(id, description, schema) {
         override val invalidArguments get() = failure(WebException(WebFailure.ARGUMENTS))
         override fun failure(error: Exception) =
             ToolOutput("Tool failed: ${webFailureDescription(error)} No successful retrieval or image understanding is implied. Do not automatically repeat.", ToolOutcome.FAILED)
@@ -48,27 +49,24 @@ internal class AssistantWebTools(
         override suspend fun text(args: Pair<String, String>) = image(args.first, args.second)
     }
     private fun source(source: ChatSource) {
-        dispatch("source") {
-            if (source !in sources) { sources.add(source); publish(source) }
-        }
+        if (source in sources) return
+        publish(source)
+        sources.add(source)
     }
     private suspend fun read(url: String): String {
-        val response = fetcher.fetch(url, budget, dispatch)
+        val response = fetcher.fetch(url, budget) { }
         val document = WebDocuments.page(response)
         source(ChatSource(document.title, response.url))
         return document.result(response.url)
     }
     private suspend fun search(query: String): String {
-        searchState.check(budget) // Refuse promptly, before scheduling DNS; attempts (including DNS failures) are charged at owned dispatch.
+        searchState.check(budget) // Refuse promptly, before scheduling DNS; attempts (including DNS failures) are charged at the admitted start.
         val url = "https://html.duckduckgo.com/html/".toHttpUrl().newBuilder().addQueryParameter("q", query).build().toString()
         var charged = false
         var httpStarted = false
-        val response = fetcher.fetch(url, budget) { category, start ->
-            dispatch(category) {
-                if (!charged) { searchState.charge(budget); charged = true }
-                if (category == "public-dispatch" && !httpStarted) { searchState.httpDispatch(); httpStarted = true }
-                start()
-            }
+        val response = fetcher.fetch(url, budget) { category ->
+            if (!charged) { searchState.charge(budget); charged = true }
+            if (category == "public-dispatch" && !httpStarted) { searchState.httpDispatch(); httpStarted = true }
         }
         val results = try { WebDocuments.search(response) } catch (failure: WebException) {
             if (failure.reason == WebFailure.BLOCKED) searchState.block(budget, response.retryAfter)
@@ -86,11 +84,12 @@ internal class AssistantWebTools(
         if (budget.inspections >= 2) webFail(WebFailure.LIMIT)
         budget.inspections++
         val operation = inspector ?: webFail(WebFailure.IMAGE)
-        val response = fetcher.fetch(url, budget, dispatch)
+        val response = fetcher.fetch(url, budget) { }
         if (response.status !in 200..299) webFail(WebFailure.HTTP, response.status)
-        validateImage(response.mime, response.bytes)
+        validate(response.mime, response.bytes)
         val modelText = try {
-            operation.inspectImage(response.mime, response.bytes, question) { start -> dispatch("image-dispatch", start) }
+            admitSideEffect("image-dispatch")
+            operation.inspectImage(response.mime, response.bytes, question)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: ProviderException) { throw WebException(WebFailure.IMAGE, failure.status, failure.kind) }
         catch (_: Exception) { webFail(WebFailure.IMAGE) }

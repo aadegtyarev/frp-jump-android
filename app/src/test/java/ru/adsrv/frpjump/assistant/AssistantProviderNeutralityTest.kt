@@ -50,14 +50,14 @@ class AssistantProviderNeutralityTest {
     private suspend fun fetchesFor(model: (AgentRequest) -> AgentReply, withInspector: Boolean): Int {
         var fetches = 0
         val runtime = AssistantChatRuntime().apply {
-            publicWeb = PublicFetcher { url, _, dispatch -> fetches++; dispatch("public-dispatch") { }; WebResponse(url, "text/plain", ByteArray(0), 404, null) }
+            publicWeb = PublicFetcher { url, _, attempt -> fetches++; admitSideEffect("public-dispatch"); attempt("public-dispatch"); WebResponse(url, "text/plain", ByteArray(0), 404, null) }
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
             var calls = 0
             val provider: AgentProvider = if (withInspector) object : AgentProvider, ImageInspector {
                 override suspend fun complete(request: AgentRequest) = model(request).also { calls++ }
-                override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String, dispatch: (() -> Unit) -> Unit) = "x"
+                override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String) = "x"
             } else AgentProvider { model(it).also { calls++ } }
             chat(scope, AssistantTools(inspectImage = true), runtime, provider).sendAndWait()
             assertEquals(2, calls)

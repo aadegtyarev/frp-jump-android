@@ -4,15 +4,13 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.Proxy
 import java.util.Locale
-import java.util.concurrent.SynchronousQueue
-import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okio.Buffer
+import ru.adsrv.frpjump.agent.admitSideEffect
+import ru.adsrv.frpjump.agent.blockingCancellable
 
 internal enum class WebFailure { URL, NETWORK, HTTP, TOO_LARGE, TYPE, EMPTY, LIMIT, BLOCKED, IMAGE, ARGUMENTS }
 internal class WebException(val reason: WebFailure, val status: Int? = null,
@@ -58,10 +56,9 @@ internal object PublicWebPolicy {
 internal class WebBudget { var requests = 0; var inspections = 0; var searches = 0; var searchBlocked = false }
 internal class WebResponse(val url: String, val mime: String, val bytes: ByteArray, val status: Int, val retryAfter: String?, val charset: String? = null)
 
-/** The guard only encloses enqueue, never DNS, body reading or parsing. */
-internal typealias WebDispatch = (String, () -> Unit) -> Unit
+/** [attempt] runs on the caller's coroutine once per admitted DNS lookup ("dns-dispatch") and HTTP start ("public-dispatch"); it may throw WebException (quota) and must not block. */
 internal fun interface PublicFetcher {
-    suspend fun fetch(url: String, budget: WebBudget, dispatch: WebDispatch): WebResponse
+    suspend fun fetch(url: String, budget: WebBudget, attempt: (category: String) -> Unit): WebResponse
 }
 
 /** Dedicated credential-free transport. Validated resolution is the ONLY DNS used by that connection.
@@ -72,22 +69,18 @@ internal class PublicWebTransport(
     // Synthetic tests inject an in-memory exchange client, never a production public-policy bypass.
     private val template: OkHttpClient = base,
 ) : PublicFetcher {
-    override suspend fun fetch(url: String, budget: WebBudget, dispatch: WebDispatch): WebResponse = withContext(Dispatchers.IO) {
+    override suspend fun fetch(url: String, budget: WebBudget, attempt: (category: String) -> Unit): WebResponse {
         var target = PublicWebPolicy.url(url)
         repeat(4) { hop ->
             currentCoroutineContext().ensureActive()
             if (budget.requests >= 12) webFail(WebFailure.LIMIT)
             val host = target.host
-            val addresses = coroutineScope {
-                var resolution: Deferred<List<InetAddress>>? = null
-                dispatch("dns-dispatch") {
-                    // Admit the owned blocking task, not DNS itself, under the short common guard.
-                    resolution = async(Dispatchers.IO) { PublicWebPolicy.resolve(host, dns) }
-                }
-                checkNotNull(resolution).await()
-            }
+            // DNS cannot be cancelled: the caller waits for the lookup to return, then no HTTP starts.
+            admitSideEffect("dns-dispatch")
+            attempt("dns-dispatch")
+            val addresses = blockingCancellable({}) { PublicWebPolicy.resolve(host, dns) }
             currentCoroutineContext().ensureActive()
-            val client = template.newBuilder().dispatcher(Dispatcher(executor)).connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            val client = template.newBuilder().connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
                 .dns(object : Dns { override fun lookup(hostname: String): List<InetAddress> = if (hostname != host) webFail(WebFailure.URL) else addresses }).build()
             val language = Locale.getDefault().toLanguageTag().takeUnless { it == "und" } ?: "en"
             val request = Request.Builder().url(target)
@@ -95,88 +88,46 @@ internal class PublicWebTransport(
                 .header("Accept", "text/html, application/xhtml+xml, text/plain;q=0.9, text/markdown;q=0.9, image/png;q=0.8, image/jpeg;q=0.8")
                 .header("Accept-Language", language)
                 .get().build()
-            val response = execute(client.newCall(request), dispatch) {
-                if (budget.requests >= 12) webFail(WebFailure.LIMIT)
-                budget.requests++
-            }
+            admitSideEffect("public-dispatch")
+            attempt("public-dispatch")
+            if (budget.requests >= 12) webFail(WebFailure.LIMIT)
+            budget.requests++
+            val call = client.newCall(request)
+            val response = blockingCancellable(call::cancel) { exchange(call) }
             if (response.status in setOf(301, 302, 303, 307, 308)) {
                 if (hop == 3) webFail(WebFailure.LIMIT)
                 target = PublicWebPolicy.url(target.resolve(response.retryAfter ?: "")?.toString() ?: webFail(WebFailure.URL))
-            } else return@withContext response
+            } else return response
         }
         webFail(WebFailure.LIMIT)
     }
 
-    private suspend fun execute(call: Call, dispatch: WebDispatch, charge: () -> Unit): WebResponse {
-        val exited = CompletableDeferred<Unit>()
-        var enqueued = false
-        try {
-            return suspendCancellableCoroutine { continuation ->
-                continuation.invokeOnCancellation { call.cancel() }
-                var inline = false
-                try {
-                    dispatch("public-dispatch") {
-                        if (!continuation.isActive) throw CancellationException()
-                        charge()
-                        enqueued = true
-                        call.enqueue(object : Callback {
-                            private fun callback(block: () -> Unit) {
-                                if (!executor.register(exited)) inline = true
-                                block()
-                            }
-                            override fun onFailure(call: Call, e: IOException) = callback {
-                                continuation.resumeWithException(WebException(WebFailure.NETWORK))
-                            }
-                            override fun onResponse(call: Call, response: Response) = callback {
-                                response.use {
-                                    try {
-                                        if (!continuation.isActive) return@callback
-                                        val redirect = response.code in setOf(301, 302, 303, 307, 308)
-                                        val body = response.body ?: webFail(WebFailure.EMPTY)
-                                        val buffer = Buffer()
-                                        if (!redirect && response.isSuccessful) {
-                                            if (response.header("Content-Encoding")?.let { !it.equals("identity", true) } == true) webFail(WebFailure.TYPE)
-                                            if (body.contentLength() > MAX_BYTES) webFail(WebFailure.TOO_LARGE)
-                                            val source = body.source()
-                                            while (source.read(buffer, minOf(8192L, MAX_BYTES + 1L - buffer.size)) != -1L) {
-                                                if (buffer.size > MAX_BYTES) webFail(WebFailure.TOO_LARGE)
-                                            }
-                                        }
-                                        continuation.resume(WebResponse(response.request.url.toString(), body.contentType()?.let { "${it.type}/${it.subtype}" }.orEmpty(),
-                                            buffer.readByteArray(), response.code, response.header(if (redirect) "Location" else "Retry-After"), body.contentType()?.parameter("charset")))
-                                    } catch (failure: Exception) {
-                                        continuation.resumeWithException(if (failure is WebException) failure else WebException(WebFailure.NETWORK))
-                                    }
-                                }
-                            }
-                        })
+    /** Blocking exchange with the capped body read; any failure other than a policy WebException is a network failure. */
+    private fun exchange(call: Call): WebResponse {
+        val received = try { call.execute() } catch (_: Exception) { throw WebException(WebFailure.NETWORK) }
+        return try {
+            received.use { response ->
+                val redirect = response.code in setOf(301, 302, 303, 307, 308)
+                val body = response.body ?: webFail(WebFailure.EMPTY)
+                val buffer = Buffer()
+                if (!redirect && response.isSuccessful) {
+                    if (response.header("Content-Encoding")?.let { !it.equals("identity", true) } == true) webFail(WebFailure.TYPE)
+                    if (body.contentLength() > MAX_BYTES) webFail(WebFailure.TOO_LARGE)
+                    val source = body.source()
+                    while (source.read(buffer, minOf(8192L, MAX_BYTES + 1L - buffer.size)) != -1L) {
+                        if (buffer.size > MAX_BYTES) webFail(WebFailure.TOO_LARGE)
                     }
-                } catch (failure: Throwable) { exited.complete(Unit); continuation.resumeWithException(failure) }
-                finally { if (inline || !enqueued) exited.complete(Unit) }
+                }
+                WebResponse(response.request.url.toString(), body.contentType()?.let { "${it.type}/${it.subtype}" }.orEmpty(),
+                    buffer.readByteArray(), response.code, response.header(if (redirect) "Location" else "Retry-After"), body.contentType()?.parameter("charset"))
             }
-        } finally { withContext(NonCancellable) { exited.await() } }
+        } catch (failure: Exception) { throw if (failure is WebException) failure else WebException(WebFailure.NETWORK) }
     }
 
     private companion object {
         const val USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
         const val MAX_BYTES = 1_048_576
-        class ExitExecutor : ThreadPoolExecutor(0, Int.MAX_VALUE, 60, TimeUnit.SECONDS, SynchronousQueue(),
-            { task -> Thread(task, "assistant-public-http").apply { isDaemon = true } }) {
-            private val pending = ThreadLocal<MutableList<CompletableDeferred<Unit>>>()
-            private val worker = ThreadLocal<Boolean>()
-            override fun beforeExecute(thread: Thread, task: Runnable) { super.beforeExecute(thread, task); worker.set(true) }
-            fun register(done: CompletableDeferred<Unit>): Boolean {
-                if (worker.get() != true) return false
-                (pending.get() ?: mutableListOf<CompletableDeferred<Unit>>().also { pending.set(it) }).add(done)
-                return true
-            }
-            override fun afterExecute(task: Runnable, failure: Throwable?) {
-                val done = pending.get(); pending.remove(); worker.remove()
-                try { super.afterExecute(task, failure) } finally { done?.forEach { it.complete(Unit) } }
-            }
-        }
-        val executor = ExitExecutor()
-        val base = OkHttpClient.Builder().dispatcher(Dispatcher(executor)).proxy(Proxy.NO_PROXY)
+        val base = OkHttpClient.Builder().proxy(Proxy.NO_PROXY)
             .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
             .addNetworkInterceptor { chain ->
                 val response = chain.proceed(chain.request())

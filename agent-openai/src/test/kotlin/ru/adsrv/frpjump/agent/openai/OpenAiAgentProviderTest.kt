@@ -13,6 +13,8 @@ import ru.adsrv.frpjump.agent.*
 
 class OpenAiAgentProviderTest {
     private val key = "synthetic-test-key"
+    /** Negative observation: a caller that wrongly finishes before its blocking call returns would do so well inside this window. */
+    private suspend fun assertHeld(job: Job) = assertNull("the caller must still wait for the blocking call", withTimeoutOrNull(300) { job.join() })
     private val final = """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"done"}}]}"""
     private val request = AgentRequest("skill", emptyList(), listOf(AgentTurn("user")), 512)
     private data class Reply(val text: String, val status: Int = 200, val chunked: Boolean = false, val gzip: Boolean = false, val gate: CountDownLatch? = null, val retryAfterZero: Boolean = false)
@@ -337,9 +339,8 @@ class OpenAiAgentProviderTest {
         Endpoint().use { e ->
             e.replies += Reply(imageReply("done"))
             val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "same-model", "high", OutputLimitField.MAX_COMPLETION_TOKENS), key)
-            var starts = 0
-            assertEquals("done", provider.inspectImage("image/png", byteArrayOf(1, 2, 3), "What is visible?") { starts++; it() })
-            assertEquals(1, starts)
+            assertEquals("done", provider.inspectImage("image/png", byteArrayOf(1, 2, 3), "What is visible?"))
+            assertEquals(1, e.seen.size)
             val seen = e.seen.poll(2, TimeUnit.SECONDS)!!
             assertEquals("/v1/chat/completions", seen.path); assertEquals("Bearer $key", seen.authorization)
             val body = Json.parseToJsonElement(seen.body).jsonObject
@@ -364,7 +365,9 @@ class OpenAiAgentProviderTest {
             val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "same", maxRequestBytes = 1024), key)
             failure(ProviderFailure.REQUEST_TOO_LARGE) { runBlocking { provider.inspectImage("image/png", ByteArray(1024), "q") } }
             assertTrue(e.seen.isEmpty())
-            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { provider.inspectImage("image/png", byteArrayOf(1), "q") { throw kotlinx.coroutines.CancellationException() } } }
+            assertTrue(e.seen.isEmpty())
+            // A coroutine that is already cancelled starts no request (the refused-admission half lives in the app tests).
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { cancelled { provider.inspectImage("image/png", byteArrayOf(1), "q") }; Unit } }
             assertTrue(e.seen.isEmpty())
         }
     }
@@ -405,6 +408,127 @@ class OpenAiAgentProviderTest {
             assertNotNull(withContext(Dispatchers.IO) { e.seen.poll(2, TimeUnit.SECONDS) })
             try { call.await(); fail() } catch (_: TimeoutCancellationException) { }
             release.countDown(); assertTrue(e.seen.isEmpty()) // The one original request was consumed above; no retry remained.
+        }
+    }
+
+    // ---- Structured cancellation: the exchange is cancelled by Call.cancel() and the caller waits for its exit ----
+
+    /** Runs [block] in a coroutine that cancels itself first. */
+    private suspend fun <T> cancelled(block: suspend () -> T): T = coroutineScope {
+        val deferred = async(start = CoroutineStart.UNDISPATCHED) { currentCoroutineContext().job.cancel(); block() }
+        deferred.await()
+    }
+    private class Latched {
+        val entered = CountDownLatch(1); val release = CountDownLatch(1); val canceled = CountDownLatch(1)
+        val calls = CopyOnWriteArrayList<okhttp3.Call>()
+        val template: okhttp3.OkHttpClient = okhttp3.OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false)
+            .eventListener(object : okhttp3.EventListener() { override fun canceled(call: okhttp3.Call) { canceled.countDown() } }).addInterceptor { chain ->
+            calls += chain.call()
+            val response = chain.proceed(chain.request())
+            entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); response
+        }.build()
+    }
+    private fun template(interceptor: okhttp3.Interceptor) = okhttp3.OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false).addInterceptor(interceptor).build()
+
+    @Test fun `stalled response is cancelled promptly by call cancel`() = runBlocking {
+        Endpoint().use { e ->
+            val gate = CountDownLatch(1)
+            e.replies += Reply(final, gate = gate)
+            val calls = CopyOnWriteArrayList<okhttp3.Call>()
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, template { calls += it.call(); it.proceed(it.request()) })
+            val job = launch(Dispatchers.Default) { provider.complete(request) }
+            assertNotNull(withContext(Dispatchers.IO) { e.seen.poll(2, TimeUnit.SECONDS) })
+            withTimeout(2_000) { job.cancelAndJoin() }
+            assertTrue(job.isCancelled); assertTrue(calls.single().isCanceled())
+            gate.countDown()
+        }
+    }
+
+    @Test fun `stalled body read is cancelled promptly`() = runBlocking {
+        val stalled = CountDownLatch(1); val release = CountDownLatch(1); val received = CountDownLatch(1)
+        val pool = Executors.newCachedThreadPool { runnable -> Thread(runnable, "synthetic-stalled").apply { isDaemon = true } }
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+            executor = pool
+            createContext("/") { exchange ->
+                try {
+                    exchange.requestBody.readBytes(); received.countDown()
+                    exchange.sendResponseHeaders(200, 100_000)
+                    exchange.responseBody.write("{\"choices\"".toByteArray()); exchange.responseBody.flush()
+                    stalled.countDown(); release.await(5, TimeUnit.SECONDS)
+                } catch (_: Exception) { /* The client closes the synthetic connection. */ }
+                finally { exchange.close() }
+            }
+            start()
+        }
+        try {
+            val provider = OpenAiAgentProvider(OpenAiConfig("http://127.0.0.1:${server.address.port}/v1", "m"), key)
+            val job = launch(Dispatchers.Default) { provider.complete(request) }
+            assertTrue(withContext(Dispatchers.IO) { stalled.await(3, TimeUnit.SECONDS) })
+            withTimeout(2_000) { job.cancelAndJoin() }
+            assertTrue(job.isCancelled)
+        } finally { release.countDown(); server.stop(0); pool.shutdownNow() }
+    }
+
+    @Test fun `cancel holds the provider call until the exchange thread exits`() = runBlocking {
+        Endpoint().use { e ->
+            e.replies += Reply(final)
+            val latched = Latched()
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, latched.template)
+            val job = launch(Dispatchers.Default) { provider.complete(request) }
+            assertTrue(withContext(Dispatchers.IO) { latched.entered.await(3, TimeUnit.SECONDS) })
+            job.cancel()
+            assertTrue("Call.cancel() must reach the exact call promptly", latched.canceled.await(3, TimeUnit.SECONDS))
+            assertHeld(job)
+            latched.release.countDown(); job.join()
+            assertTrue(job.isCancelled); assertTrue(latched.calls.single().isCanceled())
+        }
+    }
+
+    @Test fun `already cancelled calls send no request`() = runBlocking {
+        Endpoint().use { e ->
+            e.replies += Reply(final)
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key)
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { cancelled { provider.complete(request) }; Unit } }
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { cancelled { provider.inspectImage("image/png", byteArrayOf(1), "q") }; Unit } }
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { cancelled { provider.listModels() }; Unit } }
+            assertTrue(e.seen.isEmpty())
+        }
+    }
+
+    @Test fun `cancel after admission but before the network step sends no request`() = runBlocking {
+        Endpoint().use { e ->
+            e.replies += Reply(final)
+            // The application interceptor runs before RetryAndFollowUpInterceptor: the cancel lands in the check-then-start window.
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, template { chain -> chain.call().cancel(); chain.proceed(chain.request()) })
+            failure(ProviderFailure.NETWORK) { runBlocking { provider.complete(request) } }
+            assertTrue(e.seen.isEmpty())
+        }
+    }
+
+    @Test fun `non IO runtime failure of the exchange maps to NETWORK and interrupted IO stays TIMEOUT`() = runBlocking {
+        Endpoint().use { e ->
+            val runtime = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, template { throw IllegalStateException("private-detail") })
+            failure(ProviderFailure.NETWORK) { runBlocking { runtime.complete(request) } }
+            val timeout = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, template { throw java.io.InterruptedIOException("timeout") })
+            failure(ProviderFailure.TIMEOUT) { runBlocking { timeout.complete(request) } }
+            val io = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, template { throw java.io.IOException("synthetic") })
+            failure(ProviderFailure.NETWORK) { runBlocking { io.complete(request) } }
+            assertTrue(e.seen.isEmpty())
+        }
+    }
+
+    @Test fun `listModels works without ambient admission and cancellation waits for exit`() = runBlocking {
+        Endpoint().use { e ->
+            e.replies += Reply("""{"data":[{"id":"a"}]}""")
+            assertEquals(listOf(ProviderModel("a")), OpenAiAgentProvider(OpenAiConfig(e.url), key).listModels())
+            e.replies += Reply("""{"data":[{"id":"a"}]}""")
+            val latched = Latched()
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url), key, latched.template)
+            val job = launch(Dispatchers.Default) { provider.listModels() }
+            assertTrue(withContext(Dispatchers.IO) { latched.entered.await(3, TimeUnit.SECONDS) })
+            job.cancel(); assertTrue(latched.canceled.await(3, TimeUnit.SECONDS)); assertHeld(job)
+            latched.release.countDown(); job.join()
+            assertTrue(job.isCancelled)
         }
     }
 

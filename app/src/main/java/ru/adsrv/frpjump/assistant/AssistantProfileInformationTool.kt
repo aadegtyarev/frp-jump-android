@@ -10,8 +10,8 @@ import ru.adsrv.frpjump.profiles.ProfileInformationState
 internal class AssistantProfileInformationTool(
     private val refresh: suspend () -> Unit,
     private val read: suspend () -> ProfileInformationState,
-    dispatch: WebDispatch,
-) : AppTool<ProfileInformationQuery>(AssistantToolId.PROFILE_INFORMATION, DESCRIPTION, SCHEMA, dispatch) {
+    @Suppress("UNUSED_PARAMETER") dispatch: WebDispatch, // PR 4b: the refresh start still dispatches through the app guard.
+) : AppTool<ProfileInformationQuery>(AssistantToolId.PROFILE_INFORMATION, DESCRIPTION, SCHEMA) {
     constructor(information: ProfileInformation, dispatch: WebDispatch) : this(
         { information.refreshAll { operation, start -> dispatch("profile-$operation-dispatch", start) } },
         { information.observe().first() }, dispatch,

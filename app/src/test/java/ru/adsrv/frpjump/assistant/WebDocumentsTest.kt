@@ -56,12 +56,12 @@ class WebDocumentsTest {
     @Test fun `fixed tools never reuse shared search payload and allow read after block`() = runBlocking {
         var now = 0L; var requests = 0; var blocked = false
         val search = WebSearchState { now }
-        val fetcher = PublicFetcher { url, _, dispatch ->
-            dispatch("public-dispatch") { requests++ }
+        val fetcher = PublicFetcher { url, _, attempt ->
+            attempt("public-dispatch"); requests++
             if (url.contains("duckduckgo")) html(if (blocked) "CAPTCHA" else normalSearch)
             else html("<title>Read</title><p>Useful documentation with enough content for a successful static read.</p>")
         }
-        fun session() = AssistantWebTools(AssistantTools(true, true), fetcher, search, null, { _, start -> start() }, {})
+        fun session() = AssistantWebTools(AssistantTools(true, true), fetcher, search, null, {})
         fun query(text: String = "q") = buildJsonObject { put("query", text) }
         val one = session()
         assertEquals(listOf("web_search", "read_page"), one.tools.map { it.spec.name })
@@ -80,9 +80,9 @@ class WebDocumentsTest {
     }
     @Test fun `DNS failures consume search attempts and cooldown refuses before another resolution`() = runBlocking {
         var attempts = 0
-        val session = AssistantWebTools(AssistantTools(search = true), PublicFetcher { _, _, dispatch ->
-            dispatch("dns-dispatch") { attempts++ }; throw WebException(WebFailure.NETWORK)
-        }, WebSearchState { 0L }, null, { _, start -> start() }, {})
+        val session = AssistantWebTools(AssistantTools(search = true), PublicFetcher { _, _, attempt ->
+            attempt("dns-dispatch"); attempts++; throw WebException(WebFailure.NETWORK)
+        }, WebSearchState { 0L }, null, {})
         val query = buildJsonObject { put("query", "q") }
         assertEquals(ToolOutcome.FAILED, session.tools.single().execute(query).outcome)
         assertEquals(ToolOutcome.FAILED, session.tools.single().execute(query).outcome)
@@ -102,7 +102,7 @@ class WebDocumentsTest {
                 val result = page.result(response.url)
                 assertTrue(result.contains("no JavaScript was executed")); assertTrue(result.contains("Content may be incomplete"))
                 assertFalse(result.contains("loadArticle()"))
-                val session = AssistantWebTools(AssistantTools(readPage = true), PublicFetcher { _, _, _ -> response }, WebSearchState(), null, { _, start -> start() }, {})
+                val session = AssistantWebTools(AssistantTools(readPage = true), PublicFetcher { _, _, _ -> response }, WebSearchState(), null, {})
                 assertEquals(ToolOutcome.SUCCESS, session.tools.single().execute(buildJsonObject { put("url", response.url) }).outcome)
                 assertEquals(listOf(ChatSource("Static page", response.url)), session.sources)
             }
@@ -182,7 +182,7 @@ class WebDocumentsTest {
             }
             assertTrue(description, description.startsWith(expected))
         }
-        val tools = AssistantWebTools(AssistantTools(readPage = true), PublicFetcher { _, _, _ -> error("secret body/key/URL") }, WebSearchState(), null, { _, start -> start() }, {})
+        val tools = AssistantWebTools(AssistantTools(readPage = true), PublicFetcher { _, _, _ -> error("secret body/key/URL") }, WebSearchState(), null, {})
         val result = tools.tools.single().execute(buildJsonObject { put("url", "https://public.org") })
         assertEquals(ToolOutcome.FAILED, result.outcome)
         assertTrue(result.text.contains("Network request failed")); assertFalse(result.text.contains("secret"))

@@ -97,6 +97,30 @@ class AssistantSummaryTest {
         } finally { release.complete(Unit);chat.close();scope.cancel() }
     }
 
+    @Test fun `every provider call including the summary call is admitted and a refused summary dispatch sends nothing`() = runBlocking {
+        for (refuse in listOf(false, true)) {
+            val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined); val runtime=AssistantChatRuntime()
+            val history=AssistantChatHistory(Memory(),Box(),scope,Dispatchers.Unconfined)
+            val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
+            history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
+            var summaryCalls=0;var mainCalls=0;var dispatches=0
+            val model=AgentProvider { request ->
+                if(request.instructions==AssistantSummary.PROMPT) { summaryCalls++;AgentReply("target=work-root; done=diagnostic; unknown=upgrade") }
+                else { mainCalls++;AgentReply("answer") }
+            }
+            lateinit var chat: AssistantConversation
+            chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history)
+            // The summary call is the first provider call of this Send; a Stop that commits just before its start check must refuse it.
+            runtime.beforeAction={ category -> if(category=="dispatch" && refuse && dispatches==0) chat.stop() }
+            runtime.checkedAction={ category -> if(category=="dispatch") dispatches++ }
+            try {
+                chat.ready();chat.edit("Continue");chat.send();chat.ready()
+                if(refuse) { assertEquals(0,summaryCalls);assertEquals(0,mainCalls);assertEquals(0,dispatches) }
+                else { assertTrue("a summary request was made",summaryCalls>=1);assertEquals(1,mainCalls);assertEquals(summaryCalls+mainCalls,dispatches) }
+            } finally { chat.close();scope.cancel() }
+        }
+    }
+
     @Test fun `summary provider failure reports the provider status on the summary problem`() = runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         val history=AssistantChatHistory(Memory(),Box(),scope,Dispatchers.Unconfined)
