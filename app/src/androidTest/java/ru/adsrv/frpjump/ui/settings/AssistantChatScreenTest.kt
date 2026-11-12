@@ -112,11 +112,13 @@ class AssistantChatScreenTest {
             }), { error("No SSH setup") }, ru.adsrv.frpjump.ssh.TmuxNames(Memory()),
             clientFactory = { error("No actual SSH") }),
     ))
-    private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands, historyStore = history) {
+    /** The shipped assets, read through the app under test. */
+    private val prompts = lazy { AssistantPrompts.load(InstrumentationRegistry.getInstrumentation().targetContext.assets::open) }
+    private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands, historyStore = history, prompts = prompts) {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
-            if (mode == "summary" && request.instructions == AssistantSummary.PROMPT) {
+            if (mode == "summary" && request.instructions == prompts.value.summary) {
                 summaryCalls++
                 return@AgentProvider AgentReply(summaryFacts(request.turns.single().user))
             }

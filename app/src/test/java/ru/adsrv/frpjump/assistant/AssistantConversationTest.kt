@@ -28,7 +28,7 @@ class AssistantConversationTest {
         override fun destroy() = Unit
     }
     private fun windowLimits() = AgentLimits(contextTokens = Utf8TokenEstimate.count(
-        AgentRequest(AssistantConversation.INSTRUCTIONS, emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
+        AgentRequest(TestPrompts.real.system, emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
     private class Fixture(
         val provider: AgentProvider = AgentProvider { AgentReply("answer") },
         val io: CoroutineDispatcher = Dispatchers.Unconfined,
@@ -44,7 +44,7 @@ class AssistantConversationTest {
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
             preparations++; prepareGate?.invoke(); provider
-        }, store::requireRevision, module, io, { limit })
+        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy)
         suspend fun idle() = withTimeout(3000) { chat.state.first { !it.busy } }
         suspend fun send(text: String = "question"): ChatState { chat.edit(text); chat.send(); return idle() }
         fun revise() = store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), store.state.value.revision))
@@ -63,7 +63,7 @@ class AssistantConversationTest {
             assertEquals(1, f.preparations); assertEquals(2, requests.size)
             assertSame(opaque, requests[1].turns[0].exchanges.single().reply.continuation)
             assertEquals(listOf("one", "two"), requests[1].turns.map { it.user })
-            assertTrue(requests.all { it.tools.isEmpty() && it.instructions == AssistantConversation.INSTRUCTIONS })
+            assertTrue(requests.all { it.tools.isEmpty() && it.instructions == TestPrompts.real.system })
             assertEquals(listOf(ChatTurn("one", "complete"), ChatTurn("two", "complete")), f.chat.state.value.turns)
             assertFalse(f.chat.state.value.toString().contains("opaque"))
             assertFalse(f.file.text!!.contains("one")); assertFalse(f.settingsFile.text!!.contains("one"))

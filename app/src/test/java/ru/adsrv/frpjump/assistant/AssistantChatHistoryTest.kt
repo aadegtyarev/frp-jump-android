@@ -30,7 +30,7 @@ class AssistantChatHistoryTest {
     private fun chat(scope: CoroutineScope, store: AssistantChatHistory, provider: AgentProvider, saved: AssistantProviderSnapshot = snapshot,
         awaitClear: suspend () -> Unit = {}) =
         AssistantConversation(scope, { AssistantAvailability(true) }, { saved }, { provider }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, historyStore = store, awaitHistoryClear = awaitClear)
+            io = Dispatchers.Unconfined, historyStore = store, awaitHistoryClear = awaitClear, prompts = TestPrompts.lazy)
     private suspend fun AssistantConversation.ready() = withTimeout(3000) { state.first { !it.loading && !it.busy } }
 
     @Test fun `new owner receives selected target and known diagnostic result without replay`() = runBlocking {
@@ -46,7 +46,7 @@ class AssistantChatHistoryTest {
         var calls = 0
         val restored = chat(scope, AssistantChatHistory(file, Box(), scope, Dispatchers.Unconfined), AgentProvider { request ->
             calls++
-            assertEquals(AssistantConversation.INSTRUCTIONS, request.instructions)
+            assertEquals(TestPrompts.real.system, request.instructions)
             assertEquals("Continue", request.turns.last().user)
             val facts = Json.parseToJsonElement(request.turns.first().exchanges.first().results.single().text).jsonObject
             AgentReply("${facts.getValue("profile_id").jsonPrimitive.content}/${facts.getValue("connection_id").jsonPrimitive.content}: ${facts.getValue("os").jsonPrimitive.content}")

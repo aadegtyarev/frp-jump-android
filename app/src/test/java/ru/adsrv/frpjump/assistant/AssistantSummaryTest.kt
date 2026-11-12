@@ -53,13 +53,13 @@ class AssistantSummaryTest {
             { AgentReply("x".repeat(4001)) }, { AgentReply(calls=listOf(ToolCall("bad","ssh_command",buildJsonObject{}))) })
         for (response in invalid) {
             var doc=initial
-            val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},response)
+            val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},response,TestPrompts.real.summary)
             try { engine.prepare(AgentRequest("base",emptyList(),listOf(AgentTurn("Continue")),512));fail("Expected rejection") } catch (_:Exception) { }
             assertSame(initial,doc)
         }
         var small=initial.copy(records=initial.records.take(2)+SavedTurn("Continue"),summary=null)
         val before=small
-        val noProgress=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512,summaryPercent=1),model,{small},{small=small.copy(summary=it)},{AgentReply("x".repeat(4000))})
+        val noProgress=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512,summaryPercent=1),model,{small},{small=small.copy(summary=it)},{AgentReply("x".repeat(4000))},TestPrompts.real.summary)
         try { noProgress.prepare(AgentRequest("base",emptyList(),listOf(AgentTurn("Continue")),512));fail("Expected no-progress rejection") } catch (_:IllegalStateException) { }
         assertSame(before,small)
     }
@@ -71,12 +71,31 @@ class AssistantSummaryTest {
         val turn=AgentTurn("Continue Work, not Home",blocks)
         var doc=SavedChat(records=listOf(SavedTurn.of(turn)))
         val model=AgentProvider { AgentReply(facts(it.turns.single().user)) }
-        val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},model::complete)
+        val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},model::complete,TestPrompts.real.summary)
         val result=engine.prepare(AgentRequest("base",emptyList(),listOf(turn),512))
         assertEquals(0,doc.summary!!.turn);assertTrue(doc.summary!!.exchange in 1 until 40)
         assertEquals(40,doc.records.single().exchanges.size)
         assertEquals(blocks.last(),result.turns.last().exchanges.last())
         assertTrue(result.turns.first().exchanges.single().reply.text.contains("target=work-root"))
+    }
+
+    @Test fun `summary requests use the summary prompt without tools and the main request keeps the system prompt`() = runBlocking {
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined); val runtime=AssistantChatRuntime()
+        val history=AssistantChatHistory(Memory(),Box(),scope,Dispatchers.Unconfined)
+        val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
+        history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
+        val seen=java.util.concurrent.CopyOnWriteArrayList<AgentRequest>()
+        val model=AgentProvider { request -> seen+=request
+            if(request.instructions==TestPrompts.real.summary) AgentReply("target=work-root; done=diagnostic; unknown=upgrade") else AgentReply("answer") }
+        val chat=AssistantConversation(scope,{AssistantAvailability(true,tools=ru.adsrv.frpjump.settings.AssistantTools(search=true))},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy)
+        try {
+            chat.ready();chat.edit("Continue");chat.send();chat.ready()
+            val summaries=seen.filter { it.instructions==TestPrompts.real.summary }; val mains=seen-summaries.toSet()
+            assertTrue(summaries.isNotEmpty());assertTrue(summaries.all { it.tools.isEmpty() })
+            assertEquals(1,mains.size);assertEquals(TestPrompts.real.system,mains.single().instructions)
+            assertEquals(listOf("web_search"),mains.single().tools.map { it.name })
+            assertTrue(mains.single().turns.first().user.startsWith("Earlier conversation summary"))
+        } finally { chat.close();scope.cancel() }
     }
 
     @Test fun `stop during noncooperative summary holds slot and suppresses late private data`() = runBlocking {
@@ -86,10 +105,10 @@ class AssistantSummaryTest {
         history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
         val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>();var mainCalls=0
         val model=AgentProvider { request ->
-            if(request.instructions==AssistantSummary.PROMPT) { entered.complete(Unit);withContext(NonCancellable) { release.await() };AgentReply("late-private target=work-root") }
+            if(request.instructions==TestPrompts.real.summary) { entered.complete(Unit);withContext(NonCancellable) { release.await() };AgentReply("late-private target=work-root") }
             else { mainCalls++;AgentReply("must not run") }
         }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy)
         try {
             chat.ready();chat.edit("Continue");chat.send();withTimeout(3000) { entered.await() }
             chat.stop();assertTrue(chat.state.value.stopping);assertTrue(runtime.occupied())
@@ -106,11 +125,11 @@ class AssistantSummaryTest {
             history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
             var summaryCalls=0;var mainCalls=0;var dispatches=0
             val model=AgentProvider { request ->
-                if(request.instructions==AssistantSummary.PROMPT) { summaryCalls++;AgentReply("target=work-root; done=diagnostic; unknown=upgrade") }
+                if(request.instructions==TestPrompts.real.summary) { summaryCalls++;AgentReply("target=work-root; done=diagnostic; unknown=upgrade") }
                 else { mainCalls++;AgentReply("answer") }
             }
             lateinit var chat: AssistantConversation
-            chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history)
+            chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy)
             // The summary call is the first provider call of this Send; a Stop that commits just before its start check must refuse it.
             runtime.probes=ChatProbes(
                 before={ category -> if(category=="dispatch" && refuse && dispatches==0) chat.stop() },
@@ -130,9 +149,9 @@ class AssistantSummaryTest {
         val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
         history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
         val model=AgentProvider { request ->
-            if(request.instructions==AssistantSummary.PROMPT) AgentReply("target=work-root; done=diagnostic; unknown=upgrade") else AgentReply("final-answer")
+            if(request.instructions==TestPrompts.real.summary) AgentReply("target=work-root; done=diagnostic; unknown=upgrade") else AgentReply("final-answer")
         }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy)
         val categories=Collections.synchronizedList(mutableListOf<String>()); var presentations=0
         val problems=Collections.synchronizedList(mutableListOf<String>())
         fun awaitSaved(marker: String) {
@@ -166,10 +185,10 @@ class AssistantSummaryTest {
         val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
         history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
         val model=AgentProvider { request ->
-            if(request.instructions==AssistantSummary.PROMPT) throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP,400)
+            if(request.instructions==TestPrompts.real.summary) throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP,400)
             AgentReply("must not run")
         }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,historyStore=history)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,historyStore=history,prompts=TestPrompts.lazy)
         try {
             chat.ready();chat.edit("Continue");chat.send();chat.ready()
             assertEquals(ChatProblem.SUMMARY,chat.state.value.problem);assertEquals(400,chat.state.value.problemStatus)
@@ -194,7 +213,7 @@ class AssistantSummaryTest {
                     seen += body
                     val messages=body.getValue("messages").jsonArray.map { it.jsonObject }
                     val text=messages.joinToString("\n") { it["content"]?.jsonPrimitive?.content.orEmpty() }
-                    val summary=messages.first().getValue("content").jsonPrimitive.content==AssistantSummary.PROMPT
+                    val summary=messages.first().getValue("content").jsonPrimitive.content==TestPrompts.real.summary
                     if (summary) { assertNull(body["tools"]); assertEquals(override?:"chat-model",body.getValue("model").jsonPrimitive.content) }
                     else { assertEquals("chat-model",body.getValue("model").jsonPrimitive.content); assertFalse(text.contains("Inspect the Work board")) }
                     val answer=facts(text)
@@ -214,7 +233,7 @@ class AssistantSummaryTest {
                 val file=Memory();val history=AssistantChatHistory(file,box,scope)
                 val original=records();history.save(SavedChat(records=original).bind(provider.currentSnapshot.settings));history.load()
                 fun chat(store:AssistantChatHistory)=AssistantConversation(scope,{AssistantAvailability(true)},{provider.currentSnapshot},
-                    { provider.provider(AssistantProviderDraft(it.settings!!,it.revision)) },provider::requireRevision,AgentModule(true),historyStore=store)
+                    { provider.provider(AssistantProviderDraft(it.settings!!,it.revision)) },provider::requireRevision,AgentModule(true),historyStore=store,prompts=TestPrompts.lazy)
                 val first=chat(history);first.ready();assertTrue(seen.isEmpty())
                 first.edit("Continue using the selected target and observed outcomes; do not repeat actions");first.send();first.ready()
                 assertNull(first.state.value.problem);assertEquals("target=work-root; done=diagnostic; unknown=upgrade",first.state.value.turns.last().answer)
@@ -225,7 +244,7 @@ class AssistantSummaryTest {
                 assertNull(reopened.state.value.problem);assertEquals("target=work-root; done=diagnostic; unknown=upgrade",reopened.state.value.turns.last().answer)
                 assertEquals(before+1,seen.size);assertEquals(42,reopened.state.value.turns.size)
                 assertEquals("chat-model",provider.currentSnapshot.settings!!.model);reopened.close()
-                val summaries=seen.count { it.getValue("messages").jsonArray.first().jsonObject.getValue("content").jsonPrimitive.content==AssistantSummary.PROMPT }
+                val summaries=seen.count { it.getValue("messages").jsonArray.first().jsonObject.getValue("content").jsonPrimitive.content==TestPrompts.real.summary }
                 assertTrue(summaries in 1..2)
                 assertTrue(workerErrors.toString(),workerErrors.isEmpty())
             } finally { scope.cancel();server.close();worker.join(1000) }
