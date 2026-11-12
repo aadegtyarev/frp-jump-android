@@ -69,8 +69,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
     private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
-        val support = env.confirm ?: return null
-        return authorizeCall(support, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
+        return authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
             onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io)
     }
 

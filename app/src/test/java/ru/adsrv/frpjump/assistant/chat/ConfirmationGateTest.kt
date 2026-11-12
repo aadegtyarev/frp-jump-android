@@ -59,23 +59,30 @@ class ConfirmationGateTest {
         assertEquals(ToolOutcome.DECLINED, silent.outcome); assertEquals(ConfirmationTexts.NO_ANSWER, silent.text)
     }
 
-    @Test fun `a changing call with valid arguments and no description is asked never run unasked`() = runBlocking {
+    @Test fun `a changing call with valid arguments and no description is refused never shown with an empty command and never run`() = runBlocking {
         for (args in listOf(emptyArray(), withCommand)) {
-            val rig = Rig(ConfirmationDecision.DENY)
+            val rig = Rig(ConfirmationDecision.ONCE)
             val result = rig.run(undescribed, call("ssh_command", *args))
-            assertEquals("asked", 1, rig.asked.size); assertNull(rig.asked.single().target); assertEquals("", rig.asked.single().command)
-            assertEquals(ToolOutcome.DECLINED, result!!.outcome)
+            assertNotNull("a null result would let the call run", result)
+            assertEquals(ToolOutcome.FAILED, result!!.outcome); assertEquals("Tool was not authorized; nothing was executed.", result.text)
+            assertTrue("no card for what cannot be described", rig.asked.isEmpty())
         }
         val throwing = Changing { error("describe failed") }
-        val rig = Rig(ConfirmationDecision.DENY)
-        assertEquals(ToolOutcome.DECLINED, rig.run(throwing, call("ssh_command"))!!.outcome); assertEquals(1, rig.asked.size)
+        val rig = Rig(ConfirmationDecision.ONCE)
+        assertEquals(ToolOutcome.FAILED, rig.run(throwing, call("ssh_command"))!!.outcome); assertTrue(rig.asked.isEmpty())
+        // Even with the question turned off an undescribed change is refused: nobody can say what runs.
+        val off = Rig(ConfirmationDecision.ONCE, ConfirmationPolicy(global = ConfirmationMode.OFF))
+        assertEquals(ToolOutcome.FAILED, off.run(undescribed, call("ssh_command"))!!.outcome)
     }
 
-    @Test fun `an undescribed call cannot create a session grant`() = runBlocking {
-        val rig = Rig(ConfirmationDecision.SESSION)
-        assertNull(rig.run(undescribed, call("ssh_command")))
-        assertTrue(rig.support.grants.snapshot().isEmpty())
-        assertNull(rig.run(undescribed, call("ssh_command"))); assertEquals("asks again every time", 2, rig.asked.size)
+    @Test fun `without any support every changing call is refused and reads and invalid arguments are not`() = runBlocking {
+        val asked = ArrayList<ChangeRequest>()
+        suspend fun run(tool: AppTool<*>, c: ToolCall) = authorizeCall(null, mapOf(c.name to tool), c, wait = { r, _ -> asked += r; ConfirmationDecision.ONCE }, onNotSaved = {}, io = Dispatchers.Unconfined)
+        val refused = run(described(), call("ssh_command", *withCommand))
+        assertNotNull(refused); assertEquals(ToolOutcome.FAILED, refused!!.outcome); assertEquals(NOT_AUTHORIZED, refused.text)
+        assertNull(run(Reading(), call("web_search", *withCommand)))
+        assertNull(run(described(), call("ssh_command", "unexpected" to JsonPrimitive(1))))
+        assertTrue(asked.isEmpty())
     }
 
     @Test fun `read tools and invalid arguments are never asked`() = runBlocking {
@@ -161,6 +168,7 @@ class ConfirmationGateTest {
         val rig = Rig(ConfirmationDecision.DENY)
         assertEquals(ToolOutcome.DECLINED, rig.run(lying, call("ssh_command", *withCommand))!!.outcome)
         assertEquals(1, rig.asked.size)
+        assertEquals("the card names the registered tool", AssistantToolId.SSH_COMMAND, rig.asked.single().tool)
         val session = Rig(ConfirmationDecision.SESSION)
         session.run(lying, call("ssh_command", *withCommand))
         assertTrue(session.support.grants.has(GrantKey(AssistantToolId.SSH_COMMAND, target), "s1"))

@@ -28,6 +28,8 @@ import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.ui.AppTheme
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 
@@ -70,6 +72,23 @@ internal fun AssistantChatContent(
     BoxWithConstraints(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         val compact = maxHeight < 400.dp
         val cardInView = remember { BringIntoViewRequester() }
+        // Where the "confirmations are off" mark goes is decided by measuring, not by locale or font scale: in the top bar when the whole
+        // title still fits next to it, else beside the Send/Stop button (same tap and long press explanation). The widths come from the
+        // text measurer, so the decision does not depend on where the mark currently is (no flip-flop).
+        val measurer = rememberTextMeasurer()
+        val density = LocalDensity.current
+        val titleText = stringResource(R.string.chat_title)
+        val toolsText = stringResource(R.string.assistant_tools)
+        val titleStyle = MaterialTheme.typography.titleLarge
+        val toolsStyle = MaterialTheme.typography.labelLarge
+        val markInTopBar = remember(maxWidth, titleText, toolsText, titleStyle, toolsStyle, density, onTools != null, onClear != null) {
+            with(density) {
+                fun width(text: String, style: androidx.compose.ui.text.TextStyle) = measurer.measure(androidx.compose.ui.text.AnnotatedString(text), style).size.width.toDp()
+                val used = 48.dp + width(titleText, titleStyle) + (if (onTools != null) width(toolsText, toolsStyle) + 24.dp else 0.dp) + (if (onClear != null) 48.dp else 0.dp)
+                used + 48.dp + 8.dp <= maxWidth - 32.dp
+            }
+        }
+        val mark: @Composable () -> Unit = { if (confirmationsOff && onConfirmationsOn != null) ConfirmationsOffIndicator(onConfirmationsOn, onTools, confirmationsOnFailed) }
         // When a question appears in the compact (scrolling) layout, show it from its top: tool, target and command first.
         LaunchedEffect(state.confirmation?.id) { if (compact && state.confirmation != null) cardInView.bringIntoView() }
         Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
@@ -78,9 +97,8 @@ internal fun AssistantChatContent(
                 IconButton(onClick = { conversation.close(); onBack() }, modifier = Modifier.testTag("chat_back")) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                 }
-                Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f))
-                if (confirmationsOff && onConfirmationsOn != null) ConfirmationsOffIndicator(onConfirmationsOn, onTools, confirmationsOnFailed)
+                Text(titleText, style = titleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("chat_title"))
+                if (markInTopBar) mark()
                 onTools?.let { action -> TextButton(onClick = action, modifier = Modifier.testTag("chat_tools")) { Text(stringResource(R.string.assistant_tools)) } }
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
@@ -112,10 +130,9 @@ internal fun AssistantChatContent(
             if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
             if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
             if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
-            // While a question is open the room goes to it: in the portrait layout the history list is not shown (its state is kept) and the
-            // message field, disabled during a run anyway, is hidden; Stop stays.
-            val asking = state.confirmation != null && !state.stopping
-            if (!asking || compact) LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            // While a question is open the message field (disabled during a run anyway) is hidden; Stop stays at the bottom.
+            val asking = state.asking
+            val history: @Composable (Modifier) -> Unit = { modifier -> LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(state.turns) { turn ->
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ChatUserMessage(turn.user)
@@ -157,15 +174,21 @@ internal fun AssistantChatContent(
                         ChatToolReceipts(state.receipts)
                     }
                 }
-            }
-            // Outside the history list: the question must stay fully reachable at large font and in the compact landscape layout, where
-            // the list is only 160 dp. Portrait gives it at most 75% of the height; what is allowed (tool, target, command, warning) and the
-            // answers stay in view, only the command box scrolls inside what is left.
-            state.confirmation?.let { pending ->
-                if (!state.stopping) Box((if (compact) Modifier else Modifier.weight(1f, fill = false)).bringIntoViewRequester(cardInView)) {
-                    ChatConfirmationCard(pending, onAnswer = { conversation.answer(pending.id, it) }, bounded = !compact, wide = compact)
+            } }
+            // The question sits under the history, outside the list. It and Stop are measured first and the history takes what is left
+            // (weight), shrinking to nothing only when the question needs the room. A fresh question gets a fresh card (key), so its scroll
+            // state starts at the top.
+            val question: @Composable () -> Unit = {
+                state.confirmation?.let { pending ->
+                    if (!state.stopping) key(pending.id) {
+                        Box(Modifier.bringIntoViewRequester(cardInView)) {
+                            ChatConfirmationCard(pending, onAnswer = { conversation.answer(pending.id, it) }, wide = compact)
+                        }
+                    }
                 }
             }
+            if (compact) { history(Modifier.height(160.dp)); question() }
+            else Box(Modifier.weight(1f).fillMaxWidth()) { Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) { history(Modifier.weight(1f)); question() } }
             // Stays until the next Send, not only while the run is shown: the owner must learn that "Always" was not saved.
             if (state.confirmationNotSaved) Text(stringResource(R.string.confirm_not_saved), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_not_saved"))
             state.problem?.let { problem -> Text(stringResource(when (problem) {
@@ -187,11 +210,14 @@ internal fun AssistantChatContent(
             if (!asking) OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
                 label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
                 minLines = 1, maxLines = 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
-            if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
-                modifier = Modifier.fillMaxWidth().testTag("chat_stop")) {
-                Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
-            } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank() && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
-                modifier = Modifier.fillMaxWidth().testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!markInTopBar) mark()
+                if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
+                    modifier = Modifier.weight(1f).testTag("chat_stop")) {
+                    Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
+                } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank() && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
+                    modifier = Modifier.weight(1f).testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
+            }
         }
     }
 }

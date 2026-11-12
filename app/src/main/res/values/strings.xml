@@ -1265,4 +1265,6 @@
     <string name="terminal_image_path_unsafe">The home folder name has special characters.</string>
     <string name="terminal_image_folder_unsafe">The images folder on the device is not safe to use.</string>
     <string name="terminal_image_insert_refused">Could not insert the path.</string>
+    <string name="confirm_rtl_note">Contains right-to-left text</string>
+    <string name="confirm_more_above">▲ Scroll up</string>
 </resources>

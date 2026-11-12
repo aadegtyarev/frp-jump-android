@@ -98,7 +98,7 @@ class AssistantToolCatalogTest {
         settings.assistantChat.probes = ChatProbes(before = { point -> if (point == "progress") seen += chat.state.value.toolProgress })
         chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             AgentProvider { if (calls.incrementAndGet() == 1) AgentReply(calls = listOf(ToolCall("call", toolName, arguments))) else AgentReply("complete") }
-        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = null)
+        }, {}, AgentModule(true), runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("q"); chat.send()
             withTimeout(4000) { chat.state.first { !it.busy } }

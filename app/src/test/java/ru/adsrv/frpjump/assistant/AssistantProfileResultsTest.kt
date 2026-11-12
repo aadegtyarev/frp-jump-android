@@ -134,7 +134,7 @@ class AssistantProfileResultsTest {
                 }
             }
             val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { provider }, {}, AgentModule(true),
-                runtime = settings.assistantChat, profileInformation = f.information, prompts = TestPrompts.placeholder, confirmations = null)
+                runtime = settings.assistantChat, profileInformation = f.information, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
             suspend fun idle() = withTimeout(5000) { chat.state.first { !it.busy } }
             suspend fun send(text: String) { chat.edit(text); chat.send(); idle() }
             try {

@@ -4,6 +4,18 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 
+/** A string with a surrogate that is not half of a valid pair: it cannot be encoded, and a command line would carry `?` for it. */
+internal fun hasLoneSurrogate(text: String): Boolean {
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        if (Character.isHighSurrogate(c)) { if (i + 1 < text.length && Character.isLowSurrogate(text[i + 1])) i += 2 else return true }
+        else if (Character.isLowSurrogate(c)) return true
+        else i++
+    }
+    return false
+}
+
 /** Raised by [StrictArgs] for any argument the schema does not allow; carries no argument text. */
 internal class InvalidArguments : RuntimeException("Invalid tool arguments", null, false, false)
 
@@ -24,6 +36,8 @@ internal class StrictArgs(private val json: JsonObject) {
         if (primitive == null || !primitive.isString) throw InvalidArguments()
         val value = primitive.content
         if (value.length > max || (!allowBlank && value.isBlank())) throw InvalidArguments()
+        // What the owner is shown must be what runs: a lone surrogate would be encoded as `?` (a glob in a command line).
+        if (hasLoneSurrogate(value)) throw InvalidArguments()
         return value
     }
     /** Like [string], or null when the key is absent. */

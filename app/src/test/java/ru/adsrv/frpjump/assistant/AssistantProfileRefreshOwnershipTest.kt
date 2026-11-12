@@ -43,11 +43,11 @@ class AssistantProfileRefreshOwnershipTest {
                 if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(ToolCall("information", "profile_information", buildJsonObject { })))
                 else AgentReply("Old information answer")
             }
-        }, store::requireRevision, module, runtime = settings.assistantChat, profileInformation = f.information, prompts = TestPrompts.placeholder, confirmations = null)
+        }, store::requireRevision, module, runtime = settings.assistantChat, profileInformation = f.information, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         var preparations = 0
         val newer = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, {
             preparations++; AgentProvider { AgentReply("New explicit answer") }
-        }, store::requireRevision, module, runtime = settings.assistantChat, profileInformation = f.information, prompts = TestPrompts.placeholder, confirmations = null)
+        }, store::requireRevision, module, runtime = settings.assistantChat, profileInformation = f.information, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         val unrelated = scope.launch { awaitCancellation() }
         fun send() { old.edit("Old information question"); old.send() }
         fun revoke(cause: String, refresh: Boolean = true) {

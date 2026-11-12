@@ -27,8 +27,8 @@ class AssistantConversation(
     /** Required: no compiled-in fallback prompt exists. */
     private val prompts: Lazy<AssistantPrompts>,
     /**
-     * Required, no default: leaving it out must be a compile error, never a silent "no question". Null means no question is ever asked
-     * and is for kernel-only tests; the chat ViewModel always passes a real one (pinned by a ViewModel test).
+     * Required, no default: leaving it out must be a compile error. Null refuses every changing call (nothing runs); a test that needs
+     * changing calls to run passes a support whose policy is off. The chat ViewModel always passes a real one.
      */
     private val confirmations: ConfirmationSupport?,
     /** Millisecond clock of the Send's active-time limit; tests pass a virtual one. */

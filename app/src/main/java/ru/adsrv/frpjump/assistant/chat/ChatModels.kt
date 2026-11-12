@@ -39,6 +39,9 @@ data class ChatState(
     val confirmationNotSaved: Boolean = false,
 )
 
+/** A question to the owner is on screen: the message field is hidden and the card takes the room. Ends with an answer, Stop or a timeout. */
+val ChatState.asking: Boolean get() = confirmation != null && !stopping
+
 /** Chat limits shared by the saved document and the conversation; `AssistantConversation` re-exports them. */
 object ChatLimits {
     const val MAX_INPUT = 8_000

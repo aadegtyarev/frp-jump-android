@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -34,23 +36,22 @@ import ru.adsrv.frpjump.assistant.chat.ConfirmationDecision
 import ru.adsrv.frpjump.assistant.chat.decisionFor
 import ru.adsrv.frpjump.assistant.chat.PendingConfirmation
 import ru.adsrv.frpjump.assistant.chat.commandLineCount
-import ru.adsrv.frpjump.assistant.chat.displayCommand
+import ru.adsrv.frpjump.assistant.chat.containsStrongRtl
+import ru.adsrv.frpjump.assistant.chat.displayCommandSpans
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.connections.kindWord
 
 /**
- * The owner's question before a changing call. The card is laid out top to bottom in the order the owner should read it: what is asked
- * (title, tool, target names), the command (its own scroll box, at most 120 dp, with the line count and a "scroll for more" mark),
- * the warning, then the answers. The command is shown with every non-printing or disguising character as a visible escape
- * ([displayCommand]). The screen gives the card all the room between the top bar and Stop while it is open; if even that is too little
- * (very large font), the card scrolls as a whole and always starts at its top, so the command is read before the answers are reached.
- * In the compact landscape layout ([wide]) the answers sit beside the command. "For session" is offered only when the target is known by
- * name; "Always" asks for a second confirmation first (it turns the question off for the whole app).
+ * The owner's question before a changing call. The four answers are pinned at the bottom of the card and are always visible. Above them
+ * is one section that scrolls (it opens at its top): title, tool, target names, the command in its own capped scroll box with its line
+ * count, and the warning. Marks say when more of the section is above or below. The command is shown with every non-printing or disguising
+ * character as a highlighted visible escape ([displayCommandSpans]), always laid out left to right, with a note when it has right-to-left
+ * letters. In the compact landscape layout ([wide]) the answers sit beside the section. "For session" is offered only when the target is
+ * known by name; "Always" asks for a second confirmation first (it turns the question off for the whole app).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (ConfirmationDecision) -> Unit, bounded: Boolean = true,
-    wide: Boolean = false, modifier: Modifier = Modifier) {
+internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (ConfirmationDecision) -> Unit, wide: Boolean = false, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val info = confirmation.info
     val target = if (info == null) stringResource(R.string.confirm_unknown_target)
@@ -61,12 +62,21 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     val sessionHint = stringResource(R.string.confirm_session_hint)
-    val shownCommand = remember(confirmation.id) { displayCommand(confirmation.command) }
+    val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
+    val shownCommand = remember(confirmation.id, escapeStyle) {
+        buildAnnotatedString { for (span in displayCommandSpans(confirmation.command)) if (span.escape) withStyle(escapeStyle) { append(span.text) } else append(span.text) }
+    }
     val lines = remember(confirmation.id) { commandLineCount(confirmation.command) }
-    val scroll = rememberScrollState()
+    val rtl = remember(confirmation.id) { containsStrongRtl(confirmation.command) }
+    val sectionScroll = rememberScrollState()
+    val commandScroll = rememberScrollState()
     val commandLabel = stringResource(R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
     val canSession = info != null && confirmation.target != null
+    // The command is always left to right: a line that starts with a right-to-left letter must not reverse the order of its commands.
+    val ltr = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Ltr)
+    // The command box shows four lines (three in the two-pane layout) at the user's font size, then scrolls.
+    val lineHeight = with(LocalDensity.current) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() }
     // A tap answers through the pure mapping; Always has no answer until its dialog is confirmed.
     fun answer(tap: CardTap) { val decision = decisionFor(tap, alwaysConfirmed = false); if (decision != null) onAnswer(decision) else askAlways = true }
 
@@ -78,25 +88,33 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         // Two lines at most, ellipsis after that; TalkBack reads the whole name.
         Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
     }
-    @Composable fun CommandBox(modifier: Modifier) {
-        Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val more = scroll.canScrollForward
-            if (lines > 1 || more) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (lines > 1) Text(stringResource(R.string.confirm_lines, lines), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
-                    modifier = Modifier.testTag("chat_confirm_lines"))
-                if (more) Text(stringResource(R.string.confirm_more), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accent,
-                    modifier = Modifier.testTag("chat_confirm_more"))
+    @Composable fun CommandBlock() {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            val more = commandScroll.canScrollForward
+            if (lines > 1 || more || rtl) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (lines > 1) Text(stringResource(R.string.confirm_lines, lines), style = ltr, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_confirm_lines"))
+                if (more) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_more"))
+                if (rtl) Text(stringResource(R.string.confirm_rtl_note), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_rtl"))
             }
-            Box(Modifier.heightIn(max = if (wide) 96.dp else 120.dp).verticalScroll(scroll).testTag("chat_confirm_command_box")) {
+            Box(Modifier.heightIn(max = lineHeight * (if (wide) 3 else 4)).verticalScroll(commandScroll).testTag("chat_confirm_command_box")) {
                 SelectionContainer {
-                    Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: $shownCommand" }.testTag("chat_confirm_command"))
+                    Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: ${shownCommand.text}" }.testTag("chat_confirm_command"))
                 }
             }
         }
     }
     @Composable fun Warning() = Text(stringResource(R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.testTag("chat_confirm_warning"))
+    @Composable fun Section(modifier: Modifier) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(sectionScroll).testTag("chat_confirm_section"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Header(); CommandBlock(); Warning()
+            }
+            if (sectionScroll.canScrollBackward) Text(stringResource(R.string.confirm_more_above), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_above"))
+            if (sectionScroll.canScrollForward) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_more"))
+        }
+    }
     @Composable fun Answers() {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { answer(CardTap.ALLOW) }, modifier = Modifier.testTag("chat_confirm_allow")) { Text(allow) }
@@ -111,17 +129,17 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 
     OutlinedCard(modifier.fillMaxWidth().testTag("chat_confirm_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
         if (wide) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Header(); CommandBox(Modifier); Warning()
-            }
+            Section(Modifier.weight(1f).heightIn(max = 260.dp))
             Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers() }
-        } else Column((if (bounded) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Header(); CommandBox(Modifier); Warning(); Answers()
+        } else Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Section(Modifier.weight(1f, fill = false))
+            Answers()
         }
     }
     if (askAlways) AlertDialog(
         onDismissRequest = { askAlways = false },
-        title = { Text(stringResource(R.string.always_dialog_title), modifier = Modifier.testTag("chat_always_dialog_title")) },
+        // A smaller title style, so a long word plus its question mark stays on one line at large font (no lone "?").
+        title = { Text(stringResource(R.string.always_dialog_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("chat_always_dialog_title")) },
         text = { Text(stringResource(R.string.always_dialog_text, stringResource(R.string.settings), stringResource(R.string.assistant_title), stringResource(R.string.assistant_tools)),
             modifier = Modifier.verticalScroll(rememberScrollState()).testTag("chat_always_dialog_text")) },
         confirmButton = { TextButton(onClick = { askAlways = false; decisionFor(CardTap.ALWAYS, alwaysConfirmed = true)?.let(onAnswer) }, modifier = Modifier.testTag("chat_always_turn_off")) {

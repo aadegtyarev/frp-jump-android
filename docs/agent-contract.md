@@ -434,8 +434,8 @@ arguments/results. Remote content remains untrusted data, never new authority.
 Before a call of a tool whose catalog effect changes something (today `ssh_command`) runs, the owner is asked, unless the app-wide
 switch (Settings → LLM assistant → Tools → "Ask before changing commands") is off. Read tools never ask. The default is on.
 
-The question is a card above the message field (the command is shown with visible escapes for non-printing characters and its line count; the tool, target, command and warning stay in view above the answers, and only the command box scrolls) with the tool, the target names (profile · device · connection, never IDs; "Unknown
-connection" when unresolved), the full command (monospace, selectable, scrollable) and the full-access warning. Answers: **Allow** (this
+The question is a card above the message field (the history takes the room the card and Stop leave; the disabled message field is hidden while a question is open; each question opens at its top). The four answers are pinned at the bottom of the card; above them a section scrolls with the tool, the target names (profile · device · connection, never IDs; "Unknown
+connection" when unresolved), the full command (monospace, selectable, always left to right, in its own scrolling box with its line count; non-printing and disguising characters, including the whole default-ignorable set and long combining-mark runs, are shown as highlighted escapes, and a note says when it has right-to-left letters) and the full-access warning. A string argument with an unpaired surrogate is invalid for every tool (no card, nothing runs). Answers: **Allow** (this
 call), **For session**, **Always**, **Decline**. For session covers the tool and the exact connection until the chat screen is left, the
 assistant is disabled, the tool is switched off, the history is cleared, or the connection or its profile is edited or removed (a grant
 is stamped with the saved definition and dropped when it changes); it is in memory only. Always turns the app-wide switch off after a second confirmation (a dialog
@@ -446,8 +446,7 @@ answer may still persist "off" when Stop races the call, and a For session answe
 runs. The wait is in neither the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts active time only).
 
 While requests are off, a compact warning icon in the Chat top bar (between the title and Tools) says so on tap or long press and
-offers "Turn on"; there is no banner or strip. Fail closed: a changing tool with valid arguments but no description is still asked
-(unknown target, no For session); invalid arguments ask nothing and run nothing; the policy is read live at each call. The setting is the
+offers "Turn on" (beside the Send/Stop button when the whole title does not fit next to it in the top bar); there is no banner or strip. Fail closed: a changing tool with valid arguments but no description, or a changing catalog tool that is not an AppTool, is refused (nothing runs, no card), and so is every changing call when no confirmation support exists; invalid arguments ask nothing and run nothing; the policy is read live at each call. The setting is the
 `assistant_confirmations` object `{"version":1,"global":"ask"|"off"}`; ask is the default and is omitted from the file, any other
 or malformed value reads as ask, and per-device or per-target overrides may be added later (a stricter override needs a version bump).
 The prompt rule (`skill.md` v5) tells the model that a declined call must not be redone another way; it is guidance, not enforcement.

@@ -25,7 +25,7 @@ class AssistantConfirmationFlowTest {
 
     private inner class Harness(private val calls: List<Call>, dispatcher: CoroutineDispatcher? = null, clock: (() -> Long)? = null,
         persistFails: Boolean = false, enabledAtStart: Boolean = true, private val providerDelayMs: Long = 0, modelTimeoutMs: Long = 60_000,
-        private val custom: ((AgentRequest) -> AgentReply?)? = null) : AutoCloseable {
+        private val custom: ((AgentRequest) -> AgentReply?)? = null, withSupport: Boolean = true) : AutoCloseable {
         @Volatile var snapshot = saved
         val executed = AtomicInteger()
         val commands = CopyOnWriteArrayList<String>()
@@ -65,7 +65,7 @@ class AssistantConfirmationFlowTest {
                 }
             }, {}, AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled }),
                 io = dispatcher ?: Dispatchers.Default, limits = { AgentLimits(modelTimeoutMs = modelTimeoutMs) }, runtime = settings.assistantChat, sshCommands = ssh, prompts = TestPrompts.placeholder,
-                confirmations = support, activeClock = clock ?: { System.nanoTime() / 1_000_000 })
+                confirmations = if (withSupport) support else null, activeClock = clock ?: { System.nanoTime() / 1_000_000 })
             live += this
         }
         val state get() = chat.state.value
@@ -261,6 +261,7 @@ class AssistantConfirmationFlowTest {
         val result = h.results().single()
         assertEquals(ToolOutcome.DECLINED, result.outcome); assertEquals(ConfirmationTexts.NO_ANSWER, result.text)
         assertNull("the wait did not time the Send out", h.state.problem); assertEquals("done", h.state.turns.single().answer)
+        assertFalse("after the timeout the question is gone and the history is shown again", h.state.asking)
     }
 
     @Test fun `a long wait for the owner does not use up the 120 second Send limit`() {
@@ -339,5 +340,23 @@ class AssistantConfirmationFlowTest {
         assertEquals(0, h.executed.get()); h.chat.answer(second.id, ConfirmationDecision.ONCE); h.idle()
         assertEquals(listOf("b"), h.commands)
         assertEquals(listOf(ToolOutcome.DECLINED, ToolOutcome.SUCCESS), h.results().map { it.outcome })
+    }
+
+    @Test fun `a conversation without a confirmation support refuses a changing call and runs nothing`() {
+        val h = Harness(one(), withSupport = false)
+        h.send(); h.idle()
+        assertEquals(0, h.executed.get()); assertNull(h.state.confirmation)
+        val result = h.results().single()
+        assertEquals(ToolOutcome.FAILED, result.outcome); assertEquals("Tool was not authorized; nothing was executed.", result.text)
+    }
+
+    @Test fun `the question shows only while it is open and the history and field come back after every way it can end`() {
+        fun Harness.asks() = state.asking
+        // Decline
+        val declined = Harness(one()); declined.send(); declined.card(); assertTrue(declined.asks())
+        declined.chat.answer(declined.state.confirmation!!.id, ConfirmationDecision.DENY); declined.idle(); assertFalse(declined.asks())
+        // Stop
+        val stopped = Harness(one()); stopped.send(); stopped.card(); assertTrue(stopped.asks())
+        stopped.chat.stop(); stopped.idle(); assertFalse(stopped.asks()); assertNull(stopped.state.confirmation)
     }
 }

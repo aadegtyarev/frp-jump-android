@@ -43,7 +43,7 @@ internal abstract class AppTool<A : Any>(
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return ChangeCheck.Invalid }
         if (!id.effect.changes) return ChangeCheck.ReadOnly
         val described = try { describeChange(parsed) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
-        return ChangeCheck.Change(described ?: ChangeRequest(id, null, ""))
+        return ChangeCheck.Change(described ?: ChangeRequest(id, null, "", described = false))
     }
 
     final override suspend fun execute(arguments: JsonObject): ToolOutput {
@@ -56,7 +56,7 @@ internal abstract class AppTool<A : Any>(
 }
 
 /** Not a data class: its toString must never print the command. [target] is the structured grant target; null when unknown or undescribed. */
-internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String)
+internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String, val described: Boolean = true)
 
 internal sealed interface ChangeCheck {
     data object Invalid : ChangeCheck

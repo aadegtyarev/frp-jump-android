@@ -57,6 +57,10 @@ class AssistantChangeRequestTest {
         val request = (ssh.changeCheck(obj("profile_id" to JsonPrimitive("p1"), "connection_id" to JsonPrimitive("c1"), "command" to JsonPrimitive(command))) as ChangeCheck.Change).request
         assertEquals(GrantTarget("p1", "c1"), request.target); assertEquals(command, request.command)
         assertFalse("toString must not print the command", request.toString().contains("uname"))
+        // A lone surrogate would run as "?" (a glob): the call is invalid, so there is no card and nothing runs.
+        for (c in listOf("rm -rf /\uD800\uD800\uD800", "x\uDC00")) assertSame(c, ChangeCheck.Invalid,
+            ssh.changeCheck(obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive(c))))
+        assertSame(ChangeCheck.Invalid, ssh.changeCheck(obj("profile_id" to JsonPrimitive("p\uD800"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("x"))))
         for (bad in listOf(obj(), obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive(" "), "command" to JsonPrimitive("x")),
             obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("x"), "extra" to JsonPrimitive(1)),
             obj("profile_id" to JsonPrimitive(1), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("x")))) assertSame(bad.toString(), ChangeCheck.Invalid, ssh.changeCheck(bad))
@@ -93,6 +97,7 @@ class AssistantChangeRequestTest {
         val absent = undescribed.changeCheck(obj())
         assertTrue("optional field absent, no description: $absent", absent is ChangeCheck.Change)
         assertNull((absent as ChangeCheck.Change).request.target); assertEquals("", absent.request.command)
+        assertFalse("an undescribed change says so", absent.request.described)
         assertTrue(undescribed.changeCheck(obj("command" to JsonPrimitive("x"))) is ChangeCheck.Change)
         val failing = OptionalFieldTool { throw IllegalStateException("boom") }
         assertTrue(failing.changeCheck(obj()) is ChangeCheck.Change)

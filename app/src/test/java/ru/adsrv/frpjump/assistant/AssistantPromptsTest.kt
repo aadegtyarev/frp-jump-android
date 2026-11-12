@@ -74,7 +74,7 @@ class AssistantPromptsTest {
     private val snapshot = AssistantProviderSnapshot(AssistantProviderSettings(model = "m"), "r")
     private fun chat(scope: CoroutineScope, tools: AssistantTools, prompts: Lazy<AssistantPrompts>, provider: AgentProvider) =
         AssistantConversation(scope, { AssistantAvailability(true, tools = tools) }, { snapshot }, { provider }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, prompts = prompts, confirmations = null)
+            io = Dispatchers.Unconfined, prompts = prompts, confirmations = TestConfirmations.off)
     private suspend fun AssistantConversation.sendAndWait(text: String): ChatState {
         edit(text); send(); return withTimeout(3000) { state.first { !it.busy } }
     }
@@ -107,7 +107,7 @@ class AssistantPromptsTest {
         val broken = lazy { AssistantPrompts.load { ByteArrayInputStream(byteArrayOf(0xFF.toByte())) } }
         val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot },
             { prepared++; throw ProviderSetupException(ProviderSetupProblem.CRYPTO_FAILED) }, {}, AgentModule(true),
-            io = Dispatchers.Unconfined, prompts = broken, confirmations = null)
+            io = Dispatchers.Unconfined, prompts = broken, confirmations = TestConfirmations.off)
         try {
             assertEquals(ChatProblem.SETUP, chat.sendAndWait("kept").problem); assertEquals(0, prepared)
         } finally { chat.close(); scope.cancel() }

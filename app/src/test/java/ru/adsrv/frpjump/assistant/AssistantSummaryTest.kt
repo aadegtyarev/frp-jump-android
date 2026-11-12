@@ -87,7 +87,7 @@ class AssistantSummaryTest {
         val seen=java.util.concurrent.CopyOnWriteArrayList<AgentRequest>()
         val model=AgentProvider { request -> seen+=request
             if(request.instructions==TestPrompts.real.summary) AgentReply("target=work-root; done=diagnostic; unknown=upgrade") else AgentReply("answer") }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true,tools=ru.adsrv.frpjump.settings.AssistantTools(search=true))},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = null)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true,tools=ru.adsrv.frpjump.settings.AssistantTools(search=true))},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready();chat.edit("Continue");chat.send();chat.ready()
             val summaries=seen.filter { it.instructions==TestPrompts.real.summary }; val mains=seen-summaries.toSet()
@@ -108,7 +108,7 @@ class AssistantSummaryTest {
             if(request.instructions==TestPrompts.real.summary) { entered.complete(Unit);withContext(NonCancellable) { release.await() };AgentReply("late-private target=work-root") }
             else { mainCalls++;AgentReply("must not run") }
         }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = null)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready();chat.edit("Continue");chat.send();withTimeout(3000) { entered.await() }
             chat.stop();assertTrue(chat.state.value.stopping);assertTrue(runtime.occupied())
@@ -129,7 +129,7 @@ class AssistantSummaryTest {
                 else { mainCalls++;AgentReply("answer") }
             }
             lateinit var chat: AssistantConversation
-            chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = null)
+            chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
             // The summary call is the first provider call of this Send; a Stop that commits just before its start check must refuse it.
             runtime.probes=ChatProbes(
                 before={ category -> if(category=="dispatch" && refuse && dispatches==0) chat.stop() },
@@ -151,7 +151,7 @@ class AssistantSummaryTest {
         val model=AgentProvider { request ->
             if(request.instructions==TestPrompts.real.summary) AgentReply("target=work-root; done=diagnostic; unknown=upgrade") else AgentReply("final-answer")
         }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = null)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
         val categories=Collections.synchronizedList(mutableListOf<String>()); var presentations=0
         val problems=Collections.synchronizedList(mutableListOf<String>())
         fun awaitSaved(marker: String) {
@@ -188,7 +188,7 @@ class AssistantSummaryTest {
             if(request.instructions==TestPrompts.real.summary) throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP,400)
             AgentReply("must not run")
         }
-        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,historyStore=history,prompts=TestPrompts.lazy, confirmations = null)
+        val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready();chat.edit("Continue");chat.send();chat.ready()
             assertEquals(ChatProblem.SUMMARY,chat.state.value.problem);assertEquals(400,chat.state.value.problemStatus)
@@ -233,7 +233,7 @@ class AssistantSummaryTest {
                 val file=Memory();val history=AssistantChatHistory(file,box,scope)
                 val original=records();history.save(SavedChat(records=original).bind(provider.currentSnapshot.settings));history.load()
                 fun chat(store:AssistantChatHistory)=AssistantConversation(scope,{AssistantAvailability(true)},{provider.currentSnapshot},
-                    { provider.provider(AssistantProviderDraft(it.settings!!,it.revision)) },provider::requireRevision,AgentModule(true),historyStore=store,prompts=TestPrompts.lazy, confirmations = null)
+                    { provider.provider(AssistantProviderDraft(it.settings!!,it.revision)) },provider::requireRevision,AgentModule(true),historyStore=store,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
                 val first=chat(history);first.ready();assertTrue(seen.isEmpty())
                 first.edit("Continue using the selected target and observed outcomes; do not repeat actions");first.send();first.ready()
                 assertNull(first.state.value.problem);assertEquals("target=work-root; done=diagnostic; unknown=upgrade",first.state.value.turns.last().answer)

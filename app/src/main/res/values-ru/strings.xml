@@ -1313,4 +1313,6 @@
     <string name="terminal_image_path_unsafe">В имени домашней папки есть спецсимволы.</string>
     <string name="terminal_image_folder_unsafe">Папка для изображений на устройстве небезопасна.</string>
     <string name="terminal_image_insert_refused">Не удалось вставить путь.</string>
+    <string name="confirm_rtl_note">Есть текст справа налево</string>
+    <string name="confirm_more_above">▲ Прокрутите вверх</string>
 </resources>
