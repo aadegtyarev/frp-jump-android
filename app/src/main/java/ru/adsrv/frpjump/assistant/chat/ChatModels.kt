@@ -21,6 +21,9 @@ sealed interface ChatToolProgress {
     data object SUMMARY : ChatToolProgress
     data object FAILED : ChatToolProgress
 }
+/** The progress line after a tool finished: nothing for success and for a decline (not a failure), the failed marker otherwise. */
+internal fun progressAfter(outcome: ToolOutcome): ChatToolProgress? =
+    if (outcome == ToolOutcome.SUCCESS || outcome == ToolOutcome.DECLINED) null else ChatToolProgress.FAILED
 enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, INTERRUPTED, SUMMARY, HISTORY_FULL }
 data class ChatState(
     val turns: List<ChatTurn> = emptyList(), val draft: String = "", val pendingText: String? = null,

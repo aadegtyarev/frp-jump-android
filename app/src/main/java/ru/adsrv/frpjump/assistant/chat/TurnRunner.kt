@@ -21,6 +21,7 @@ private class HistoryFull : Exception()
 internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private val owner = a.owner
     private val own = env.own
+    private companion object { const val SEND_LIMIT_MS = 120_000L }
     private var transportTimeout = false
     private var invalidReply = false
     private var summaryProblem: ChatProblem? = null
@@ -28,7 +29,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private var summaryProvider: AgentProvider? = null
 
     suspend fun run() {
-        try { withTimeout(120_000) { exchange() } }
+        // Active time only: a pause (owner confirmation, from the next change on) does not count against the Send.
+        try { ActiveDeadline(SEND_LIMIT_MS).guard { exchange() } }
+        catch (_: ActiveDeadlineExpired) { withContext(NonCancellable + env.io) { finish(ChatProblem.TIMEOUT) } }
         catch (_: HistoryFull) { withContext(NonCancellable + env.io) { finish(ChatProblem.CONTEXT_FULL) } }
         catch (_: TimeoutCancellationException) { withContext(NonCancellable + env.io) { finish(ChatProblem.TIMEOUT) } }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -114,7 +117,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 val value = update { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()
-                own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = if (event.result.outcome == ToolOutcome.SUCCESS) null else ChatToolProgress.FAILED) }
+                own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = progressAfter(event.result.outcome)) }
             }
             is AgentEvent.Window -> if (event.omittedTurns > 0 || event.omittedExchanges > 0) own.guarded(owner, "window") {
                 document = document.withOmitted(); mutable.value = mutable.value.copy(omitted = true)

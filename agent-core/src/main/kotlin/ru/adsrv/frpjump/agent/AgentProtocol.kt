@@ -8,7 +8,8 @@ data class ToolCall(val id: String, val name: String, val arguments: JsonObject)
 /** Opaque, provider-owned continuation state. Not UI text; implementations must redact toString(). */
 interface AgentContinuation { val estimatedTokens: Long; val sizeChars: Int }
 data class AgentReply(val text: String = "", val calls: List<ToolCall> = emptyList(), val continuation: AgentContinuation? = null)
-enum class ToolOutcome { SUCCESS, FAILED, TIMEOUT, UNKNOWN_TOOL }
+/** [DECLINED]: the owner (or an authorization hook) refused the call; the tool was not executed. */
+enum class ToolOutcome { SUCCESS, FAILED, TIMEOUT, UNKNOWN_TOOL, DECLINED }
 data class ToolOutput(val text: String, val outcome: ToolOutcome = ToolOutcome.SUCCESS)
 data class ToolResult(
     val callId: String,

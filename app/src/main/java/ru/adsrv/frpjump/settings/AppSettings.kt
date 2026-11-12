@@ -105,6 +105,8 @@ data class AppSettings(
     @SerialName("assistant_profile_information") val assistantProfileInformation: Boolean = false,
     @SerialName("assistant_ssh_command") val assistantSshCommand: Boolean = false,
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
+    /** Ask before a changing assistant tool call: global value now, overrides later; absent or malformed means ask. */
+    @SerialName("assistant_confirmations") val assistantConfirmations: ConfirmationPolicy = ConfirmationPolicy(),
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -165,6 +167,13 @@ class SettingsStore(private val storage: TextStorage) {
     private val _assistantDisables = MutableStateFlow(0L)
     val assistantDisables: StateFlow<Long> = _assistantDisables
 
+    /** The committed confirmation policy, read live at each call (never captured at Send admission). */
+    @Volatile var assistantConfirmations: ConfirmationPolicy = _settings.value.assistantConfirmations
+        private set
+
+    /** Shared persisted confirmation switch: only the global value. Never revokes admitted work. */
+    fun setAssistantConfirmations(mode: ConfirmationMode) = update { it.copy(assistantConfirmations = it.assistantConfirmations.copy(global = mode)) }
+
     /** Shared persisted tool operation used by Settings and the retained Chat owner. */
     fun setAssistantTool(id: AssistantToolId, enabled: Boolean) = update { it.withAssistantTools(it.assistantTools().with(id, enabled)) }
 
@@ -183,6 +192,7 @@ class SettingsStore(private val storage: TextStorage) {
                     previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0,
                     next.assistantTools())
                 committedSettings = next
+                assistantConfirmations = next.assistantConfirmations
                 assistantAvailability.disableVersion
             }
         }
@@ -215,11 +225,20 @@ class SettingsStore(private val storage: TextStorage) {
         val normalized = JsonObject(json + toolFields + ("terminal_history_rows" to JsonPrimitive(history)) +
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
             ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
+            ("assistant_confirmations" to normalizeConfirmations(json["assistant_confirmations"])) +
             ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))
         val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
         return if ("direct" !in json && relayOnly != null) settings.copy(direct = !relayOnly) else settings
+    }
+
+    /** Fail closed: only a version-1 object with global exactly "off" turns requests off; anything else is ask. Overrides are not read yet. */
+    private fun normalizeConfirmations(raw: JsonElement?): JsonElement {
+        val group = raw as? JsonObject
+        val version = (group?.get("version") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull
+        val off = version == ConfirmationPolicy.VERSION && (group?.get("global") as? JsonPrimitive)?.takeIf { it.isString }?.content == "off"
+        return WireJson.encodeToJsonElement(ConfirmationPolicy(global = if (off) ConfirmationMode.OFF else ConfirmationMode.ASK))
     }
 
     /** Bad new fields never reset unrelated preferences; only an inconsistent byte pair resets together. */

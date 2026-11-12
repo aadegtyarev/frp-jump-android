@@ -4,6 +4,7 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.tools.*
+import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.ssh.*
 
 /** One saved target, one ordinary owned client. Never uses Terminal/Files clients or starts tunnels. */
@@ -37,6 +38,7 @@ internal class AssistantSshCommandTool(private val commands: AssistantSshCommand
         SshCommandArgs(string("profile_id"), string("connection_id"), string("command"))
     }
     override val invalidArguments = ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
+    override fun describeChange(args: SshCommandArgs) = ChangeRequest(id, GrantTarget(args.profile, args.connection), args.command)
     override suspend fun run(args: SshCommandArgs) = commands.execute(args.profile, args.connection, args.command)
     override fun failure(error: Exception) = ToolOutput("SSH failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED)
 }

@@ -56,6 +56,15 @@ class AgentModule(
         counter: TokenCounter = Utf8TokenEstimate,
         prepareRequest: suspend (AgentRequest) -> AgentRequest = { it },
         onEvent: (AgentEvent) -> Unit = {},
+        /**
+         * Called for every known tool call after [AgentEvent.Calling] and BEFORE the tool timeout starts, so the wait is in neither
+         * the tool nor the model timeout. null: execute the tool. Non-null: record it as the result and do not execute.
+         * A hook that throws (other than cancellation) never lets the tool run.
+         * The hook owns its own limits: a wait for an answer must bound itself (the app uses `withTimeoutOrNull` and returns a
+         * DECLINED output on expiry). A TimeoutCancellationException must never escape the hook; it would unwind as a cancellation.
+         * Cancellation (Stop, disable) propagates, and `checkOwner()` runs after the hook returns, so a late answer never runs the tool.
+         */
+        authorize: suspend (ToolCall) -> ToolOutput? = { null },
     ): AgentRunResult = coroutineScope {
         val initial = AgentTurn(user)
         val mine = Active(currentCoroutineContext()[Job]!!, disableVersion())
@@ -127,7 +136,15 @@ class AgentModule(
                     onEvent(AgentEvent.Calling(call))
                     checkOwner()
                     val tool = registry[call.name]
-                    val output = if (tool == null) ToolOutput("Unknown tool", ToolOutcome.UNKNOWN_TOOL) else try {
+                    val refused = if (tool == null) null else try {
+                        authorize(call).also { checkOwner() }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        checkOwner()
+                        ToolOutput("Tool was not authorized; nothing was executed.", ToolOutcome.FAILED)
+                    }
+                    val output = if (tool == null) ToolOutput("Unknown tool", ToolOutcome.UNKNOWN_TOOL) else if (refused != null) refused else try {
                         withTimeout(limits.toolTimeoutMs) { tool.execute(call.arguments) }
                     } catch (timeout: TimeoutCancellationException) {
                         checkOwner()
