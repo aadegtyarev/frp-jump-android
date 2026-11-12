@@ -327,9 +327,13 @@ class AssistantSshCommandTest {
     }
     @Test fun `cancel while the sibling reader blocks releases it`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val release = CountDownLatch(1)
-            // The stdout reader fails at once, the stderr reader stays blocked until the client is disconnected (the fake never unblocks by itself).
-            f.client.readHook = { name -> if (name == "stdout") throw IOException("private-stream-detail") else check(release.await(5, TimeUnit.SECONDS)) }
+            val release = CountDownLatch(1); val stderrBlocked = CountDownLatch(1)
+            // The stderr reader blocks (the fake never unblocks by itself); only then does the stdout reader fail. Without that order
+            // a fast stdout failure cancels the stderr reader before it ever starts, and there is no blocked sibling to test.
+            f.client.readHook = { name ->
+                if (name == "stdout") { check(stderrBlocked.await(5, TimeUnit.SECONDS)); throw IOException("private-stream-detail") }
+                else { stderrBlocked.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+            }
             val work = async(Dispatchers.Default) { f.execute() }
             try {
                 assertTrue("the failed reader's catch disconnects while its sibling is blocked", f.client.disconnected.await(3, TimeUnit.SECONDS))
