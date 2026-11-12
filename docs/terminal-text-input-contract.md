@@ -54,7 +54,7 @@ The terminal input connection must not receive the editor's composing text.
   submit it or apply a modifier to buffered editor text.
 - Provide Russian and English labels for mode, expand/collapse and insertion
   controls, including explicit accessible short- and long-action labels.
-  The small pencil on ⌨ and return glyph on Insert are decorative hints,
+  The small pencil on ⌨, the return glyph on Insert and the image glyph on Paste are decorative hints,
   not separate buttons or permanent instruction rows.
 
 ## Draft lifetime and privacy
