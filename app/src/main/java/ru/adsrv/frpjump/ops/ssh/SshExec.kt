@@ -12,9 +12,16 @@ import ru.adsrv.frpjump.ssh.SshTargets
 /** Not a data class: its toString must never print the command. */
 class SshExecInput(val profile: String, val connection: String, val command: String)
 
-/** What a command that ran to its end left: the captured streams and how it ended. A nonzero [status] is still a finished command. */
-data class SshExecOutput(val stdout: String, val stderr: String, val status: Int?, val signal: String?) {
+/**
+ * What a command that ran to its end left: the captured streams and how it ended. A nonzero [status] is still a finished command.
+ * Not a data class: its toString must never print the output.
+ */
+class SshExecOutput(val stdout: String, val stderr: String, val status: Int?, val signal: String?) {
     val succeeded: Boolean get() = status == 0 && signal == null
+    override fun equals(other: Any?) = other is SshExecOutput && stdout == other.stdout && stderr == other.stderr &&
+        status == other.status && signal == other.signal
+    override fun hashCode() = listOf(stdout, stderr, status, signal).hashCode()
+    override fun toString() = "SshExecOutput(status=$status, signal=$signal, stdout=${stdout.length} chars, stderr=${stderr.length} chars)"
 }
 
 /**

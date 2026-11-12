@@ -86,9 +86,9 @@ class TunnelUpTest {
         assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(null), RemoteOutcome.UNKNOWN), TunnelUp(Host(Tunnels()), waitMs = 30)(input))
     }
 
-    @Test fun `a device that does not open the port fails with the manager's explanation and a known outcome`() = runBlocking {
+    @Test fun `a device that does not open the port fails with the manager's explanation and an unknown outcome`() = runBlocking {
         val tunnels = Tunnels(TunnelsState(tunnels = listOf(tunnel())), deviceAnswer = "port not open")
-        assertEquals(OpResult.Failed(TunnelFailure.DeviceNotListening("port not open"), RemoteOutcome.KNOWN), TunnelUp(Host(tunnels))(input))
+        assertEquals(OpResult.Failed(TunnelFailure.DeviceNotListening("port not open"), RemoteOutcome.UNKNOWN), TunnelUp(Host(tunnels))(input))
     }
 
     @Test fun `cancellation while waiting propagates and is not a result`() = runBlocking {
@@ -96,5 +96,48 @@ class TunnelUpTest {
         delay(50)
         job.cancelAndJoin()
         assertTrue(job.isCancelled)
+    }
+
+    @Test fun `the wait is 45 s and the Connections actions use that default`() {
+        assertEquals(45_000L, TunnelUp.TUNNEL_WAIT_MS)
+        val source = java.io.File("src/main/java/ru/adsrv/frpjump/ui/connections/ConnectionActions.kt").readText()
+        assertTrue(source.contains("TunnelUp(object : TunnelUpHost"))
+        assertFalse("ConnectionActions must not pick its own wait", source.contains("waitMs"))
+        assertFalse(source.contains("TUNNEL_WAIT_MS"))
+    }
+
+    @Test fun `a disconnect being done is awaited before the state is read and before the connect`() = runBlocking {
+        val log = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val inner = MutableStateFlow(TunnelsState())
+        val tunnels = object : TunnelUpTunnels {
+            override val state = object : kotlinx.coroutines.flow.StateFlow<TunnelsState> by inner {
+                override val value: TunnelsState get() { log += "read"; return inner.value }
+            }
+            override fun connectAsync(device: String, port: Int, kind: PortKind) { log += "connect"; inner.value = TunnelsState(tunnels = listOf(tunnel())) }
+            override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean): String? = null
+        }
+        val gate = CompletableDeferred<Unit>()
+        val host = object : TunnelUpTunnels by tunnels, TunnelUpHost {
+            override fun tunnels(profile: String) = tunnels
+            override fun revive(tunnel: TunnelRef): Boolean { log += "revive"; return false }
+            override suspend fun awaitDisconnected(tunnel: TunnelRef) { log += "await-start"; gate.await(); log += "await-end" }
+        }
+        val job = async { TunnelUp(host, waitMs = 2_000)(input) }
+        withTimeout(2_000) { while ("await-start" !in log) delay(5) }
+        delay(100)
+        assertEquals("nothing reads or connects while the disconnect is being done", listOf("revive", "await-start"), log.toList())
+        gate.complete(Unit)
+        assertEquals(OpResult.Done(4022), withTimeout(2_000) { job.await() })
+        assertTrue(log.indexOf("await-end") < log.indexOf("read"))
+        assertTrue(log.indexOf("await-end") < log.indexOf("connect"))
+    }
+
+    @Test fun `the last error is read after the wait, not before it`() = runBlocking {
+        val key = localPortKey("wb", 22)
+        val tunnels = Tunnels()
+        val job = async { TunnelUp(Host(tunnels), waitMs = 300)(input) }
+        delay(100)
+        tunnels.state.value = TunnelsState(errors = mapOf(key to "late error"))
+        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp("late error"), RemoteOutcome.UNKNOWN), job.await())
     }
 }

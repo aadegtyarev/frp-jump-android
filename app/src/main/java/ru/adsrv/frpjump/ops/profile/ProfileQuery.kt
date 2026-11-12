@@ -9,13 +9,13 @@ import ru.adsrv.frpjump.ops.RemoteOutcome
 import ru.adsrv.frpjump.profiles.ProfileInformationState
 
 /** Which part of the app-known catalogue is wanted. The operation reads it all; an adapter uses the query to select and page what it shows. */
-data class ProfileInformationQuery(val query: String = "", val profileId: String? = null, val offset: Int = 0)
+internal data class ProfileInformationQuery(val query: String = "", val profileId: String? = null, val offset: Int = 0)
 
 /**
  * The app-known devices and saved connections of every profile, after refreshing the device lists once. Reads only: no inventory owner,
  * cache or connection control. [refresh] and [read] are the shared source's; the caller chooses how the refresh is admitted.
  */
-class ProfileQuery(
+internal class ProfileQuery(
     private val refresh: suspend () -> Unit,
     private val read: suspend () -> ProfileInformationState,
 ) : Operation<ProfileInformationQuery, ProfileInformationState> {

@@ -56,7 +56,7 @@ import ru.adsrv.frpjump.ops.tunnel.TunnelUpHost
 import ru.adsrv.frpjump.ops.tunnel.TunnelUpInput
 import ru.adsrv.frpjump.ops.tunnel.TunnelUpTunnels
 import ru.adsrv.frpjump.ui.userMessage
-import ru.adsrv.frpjump.ui.userText
+import ru.adsrv.frpjump.ui.tunnelNotice
 import java.io.IOException
 
 /**
@@ -76,11 +76,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         val c = row.connection
         val target = KeyInstallTarget(row.profile, runtime.hostKeys, c.device, c.port, sshLogin(row).user, runtime.sshLogins, localPort = {
             // The key-login flow reports a missing tunnel by its IOException message.
-            when (val result = tunnelUp(TunnelUpInput(row.profile, c.device, c.port, c.kind))) {
-                is OpResult.Done -> result.value
-                is OpResult.Refused -> throw IOException(result.reason.userText())
-                is OpResult.Failed -> throw IOException(result.reason.userText())
-            }
+            val result = tunnelUp(TunnelUpInput(row.profile, c.device, c.port, c.kind))
+            (result as? OpResult.Done)?.value ?: throw IOException(result.tunnelNotice())
         })
         keyLogin.start(target)
     }
@@ -101,11 +98,15 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     /** The local port of [row]'s tunnel, brought up when it is down; null when it does not come up (a notice says why). */
     private suspend fun tunnelPortOrNotice(row: ConnectionRow): Int? {
         val c = row.connection
-        return when (val result = tunnelUp(TunnelUpInput(row.profile, c.device, c.port, c.kind))) {
-            is OpResult.Done -> result.value
-            is OpResult.Refused -> { app.notices.show(result.reason.userText(), NoticeKind.WARN); null }
-            is OpResult.Failed -> { app.notices.show(result.reason.userText(), NoticeKind.WARN); null }
+        val result = try {
+            tunnelUp(TunnelUpInput(row.profile, c.device, c.port, c.kind))
+        } catch (e: IOException) {
+            app.notices.show(e.message ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+            return null
         }
+        (result as? OpResult.Done)?.let { return it.value }
+        app.notices.show(result.tunnelNotice() ?: Texts.get(R.string.files_tunnel_down), NoticeKind.WARN)
+        return null
     }
 
     /** The sessions of every tunnel, for the SSH rows' counts of terminals. */

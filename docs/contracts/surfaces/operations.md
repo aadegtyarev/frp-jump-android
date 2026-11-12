@@ -12,15 +12,17 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
 
 ## Interface
 
-- `Operation<I, O>`: `name`, `effect`, `target(input)` (the grant/confirmation target of a changing operation, null when none) and
+- `Operation<I, O>`: `name`, `effect`, `target(input)` (the F8 `GrantTarget` of a changing operation, null when none; `ops` therefore depends
+  on `settings.GrantTarget`) and
   `suspend invoke(input): OpResult<O>`.
 - `Effect` (`ops/Effect.kt`): `READ_LOCAL`, `READ_REMOTE`, `CHANGE_LOCAL`, `CHANGE_REMOTE`. An operation that changes something is
   `CHANGE_*`. For an assistant tool the effect equals `AssistantToolId.effect`; a test pins this for every operation tool.
 - `OpResult<O>`:
   - `Done(value)`: the operation ran to its end. A command that exited nonzero is `Done`: it ran.
   - `Refused(reason: OpRefusal)`: nothing was started.
-  - `Failed(reason: OpFailure, outcome: RemoteOutcome)`: started, did not finish. `RemoteOutcome` is `NOT_STARTED`, `UNKNOWN` (the remote
-    effect may have happened) or `KNOWN` (the remote side reported how it ended).
+  - `Failed(reason: OpFailure, outcome: RemoteOutcome)`: started, did not finish. `RemoteOutcome` is `UNKNOWN` (the remote effect may have
+    happened) or `KNOWN` (the remote side reported how it ended). `NOT_STARTED` is reserved for a failure before any remote call that is
+    not a refusal; no operation returns it today.
 - `OpRefusal` and `OpFailure` are sealed, with domain subtypes and no wording. A payload is a fact (an exit status and signal) or a message
   the tunnel manager or the server wrote; the operation layer owns no user- or model-facing text.
 - Cancellation propagates as `CancellationException`; it is never an `OpResult`. A caller that stops an operation gets no late result.
@@ -30,9 +32,9 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
 
 | Operation | Effect | Caller | Result | Refusals | Failures |
 | --- | --- | --- | --- | --- | --- |
-| `ssh_exec` (`SshExec`) | `CHANGE_REMOTE` | tool `ssh_command` | `OpResult<SshExecOutput>` (streams, status, signal) | `SshRefusal`: `TargetUnavailable`, `NeedsSetup`, `TargetLostBeforeExec`, `ConnectFailed` | `SshFailure`: `TargetLost(exit?)`, `CommandFailed(exit?)`, `Unexpected`; `KNOWN` only when an exit was already reported, else `UNKNOWN` |
+| `ssh_exec` (`SshExec`) | `CHANGE_REMOTE` | tool `ssh_command` | `OpResult<SshExecOutput>` (streams, status, signal) | `SshRefusal`: `TargetUnavailable`, `NeedsSetup`, `TargetLostBeforeExec`, `ConnectFailed` | `SshFailure`: `TargetLost(exit?)`, `CommandFailed(exit?)`; `KNOWN` only when an exit was already reported, else `UNKNOWN`. `SshFailure.Unexpected` is never returned by the operation: it is the adapter's word for an exception that escaped it |
 | `profile_query` (`ProfileQuery`) | `READ_REMOTE` | tool `profile_information` | `OpResult<ProfileInformationState>` | none | `ProfileQueryFailure.Unavailable` (`UNKNOWN`) |
-| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(detail?)` (`UNKNOWN`), `DeviceNotListening(detail)` (`KNOWN`) |
+| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(detail?)` (`UNKNOWN`), `DeviceNotListening(detail)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
 
 ### `ssh_exec`
 
@@ -57,13 +59,15 @@ revived and stays up, otherwise a disconnect being done is awaited; when the tun
 connect for the connection's kind; it is waited for up to 45 s; then the device is waited for (as a fresh tunnel when it was brought up
 here). It does not come up: `DidNotComeUp` with the tunnel manager's last error for it, when there is one. The device does not open the
 port: `DeviceNotListening` with the manager's explanation. The assistant does not get this operation: tunnels are not managed by the model.
-If that policy is ever lifted, `tunnel_up` is one catalog row plus one `OperationTool`, with the F8 confirmation applying by its effect.
+If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
 
 ## Adapters
 
 - **Assistant (`OperationTool`).** Keeps the `AppTool` pipeline: admission first, then strict parsing, then the operation; any exception
-  other than cancellation becomes one fixed text and never its message. The tool's effect is the operation's effect; the confirmation
-  asks by that effect and by the operation's target, and a changing call that cannot be described is refused. The adapter owns the model
+  other than cancellation becomes one fixed text and never its message. The tool's effect is the operation's effect, and a tool cannot be built when it
+  differs from the catalog's (the confirmation reads both, so a mismatch would skip the question); a call counts as changing when either says
+  so. The confirmation asks by that effect and by the operation's target, and a changing call with nothing to show the owner (no command text)
+  cannot be described and is refused. The adapter owns the model
   wording of the output and of each refusal and failure. Every result other than a clean exit is reported to the model as failed, with
   the same texts as before the layer existed ([Optional SSH command](../../agent-contract.md#optional-ssh-command),
   [Optional profile information](../../agent-contract.md#optional-profile-information)).
@@ -73,7 +77,7 @@ If that policy is ever lifted, `tunnel_up` is one catalog row plus one `Operatio
 ## Security and privacy
 
 - The operation layer adds no authority: the assistant still has only the tools in the catalog; none of them starts, changes or stops a tunnel.
-- A command and its output are never part of a result's string form (`SshExecInput` is not a data class).
+- A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 
 ## Non-goals

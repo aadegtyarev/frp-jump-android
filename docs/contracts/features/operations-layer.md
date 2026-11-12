@@ -37,6 +37,27 @@ owner sees the same notices.
 - Read, unchanged: [`docs/files-contract.md`](../../files-contract.md), [`docs/mqtt-contract.md`](../../mqtt-contract.md),
   [`docs/ssh-persist-contract.md`](../../ssh-persist-contract.md), the terminal contracts.
 
+## Deviations from the plan
+
+- `Operation.target` returns the F8 `GrantTarget?`, not a `String?`, so the confirmation key stays structured. `ops` depends on `settings.GrantTarget`.
+- `TunnelFailure` carries a detail string written by the tunnel manager or the server (`awaitDevice` returns text and its tests pin that);
+  the ops layer itself words nothing.
+- `RemoteOutcome` choices (the plan gave none): SSH failures are `KNOWN` only with an exit already reported, else `UNKNOWN`; a profile query
+  failure and `DidNotComeUp` and `DeviceNotListening` are `UNKNOWN`. `NOT_STARTED` exists but nothing returns it.
+- `OperationTool` also takes `render(input, output)` (not only the output) and an `outcome(output)` hook, because the profile text depends on
+  the query and an SSH command that exited nonzero is a finished command reported to the model as failed.
+- `ProfileQuery` and `ProfileInformationQuery` are internal; `SshExec`, `SshExecInput`/`Output` and `TunnelUp` are public.
+- `OperationTool` refuses to be built when the operation's effect differs from the catalog's (fail closed), and a changing call without a
+  command text is undescribed and refused.
+
+### Tests rewritten because a signature was removed
+
+- `AssistantConfirmationFlowTest`: the `AssistantSshCommands.execute(profile, connection, command)` override became an `exec` operation
+  override (it also defines `target`); same scenarios.
+- `AssistantSshCommandRealSshTest`, `AssistantSshCommandTest` (the `SshCommandOperation.run`/`execute` call sites): `ToolOutput` became
+  `OpResult`; the target-loss scenario asserts `Failed(TargetLost(null), UNKNOWN)` instead of the text.
+- `AssistantModelSurfaceTest`: imports only.
+
 ## Behavior that must not change (acceptance basis)
 
 - Every model-facing text, byte for byte: the `ssh_command` and `profile_information` specs and descriptions, invalid-argument texts,

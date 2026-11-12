@@ -20,6 +20,10 @@ internal abstract class OperationTool<I : Any, O>(
     schema: JsonObject,
     protected val operation: Operation<I, O>,
 ) : AppTool<I>(id, description, schema) {
+    init {
+        // Fail closed: the confirmation reads the effect from here and from the catalog; they must be one.
+        require(operation.effect == id.effect) { "${id.wire}: operation effect ${operation.effect} differs from the catalog's ${id.effect}" }
+    }
     override val effect get() = operation.effect
 
     /** The text of a finished operation, for [input]. */
@@ -30,10 +34,13 @@ internal abstract class OperationTool<I : Any, O>(
     protected abstract fun modelText(failure: OpFailure): String
     /** The failure an unexpected exception of the operation stands for. */
     protected abstract val unexpected: OpFailure
-    /** What the owner is shown a changing call as; never read for a reading tool. */
-    protected open fun commandText(input: I): String = ""
+    /** What the owner is shown a changing call as; null (the default) means it cannot be described, and the call is refused. Never read for a reading tool. */
+    protected open fun commandText(input: I): String? = null
 
-    override fun describeChange(args: I) = ChangeRequest(id, operation.target(args), commandText(args))
+    override fun describeChange(args: I): ChangeRequest? {
+        val text = commandText(args)?.takeIf { it.isNotEmpty() } ?: return null
+        return ChangeRequest(id, operation.target(args), text)
+    }
 
     final override suspend fun run(args: I): ToolOutput = when (val result = operation(args)) {
         is OpResult.Done -> ToolOutput(render(args, result.value), outcome(result.value))

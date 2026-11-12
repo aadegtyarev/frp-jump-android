@@ -63,7 +63,7 @@ class TunnelUp(
             ?: return OpResult.Failed(TunnelFailure.DidNotComeUp(tunnels.state.value.errors[key]), RemoteOutcome.UNKNOWN)
         // A tunnel brought up just now may not be open on the device yet: wait for it rather than fail the first connection.
         tunnels.awaitDevice(device, port, fresh = already == null)
-            ?.let { return OpResult.Failed(TunnelFailure.DeviceNotListening(it), RemoteOutcome.KNOWN) }
+            ?.let { return OpResult.Failed(TunnelFailure.DeviceNotListening(it), RemoteOutcome.UNKNOWN) }
         return OpResult.Done(localPort)
     }
 

@@ -10,6 +10,8 @@ import ru.adsrv.frpjump.assistant.chat.*
 import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.ops.*
 import ru.adsrv.frpjump.ops.profile.ProfileInformationQuery
+import ru.adsrv.frpjump.agent.AgentProvider
+import ru.adsrv.frpjump.agent.AgentReply
 import ru.adsrv.frpjump.ops.ssh.SshExec
 import ru.adsrv.frpjump.ops.ssh.SshExecInput
 import ru.adsrv.frpjump.ops.ssh.SshExecOutput
@@ -46,20 +48,66 @@ class OperationToolTest {
 
     private fun run(result: OpResult<SshExecOutput>) = runBlocking { sshTool { result }.execute(sshArgs) }
 
-    @Test fun `every operation tool takes its effect from its operation and it equals the catalog's`() {
-        val ssh = AssistantSshCommandTool(AssistantSshCommands(targets()))
-        val profile = AssistantProfileInformationTool(synthetic.information)
-        val operations = mapOf<AssistantToolId, Pair<OperationTool<*, *>, Operation<*, *>>>(
-            AssistantToolId.SSH_COMMAND to (ssh to SshExec(targets())),
-            AssistantToolId.PROFILE_INFORMATION to (profile to ru.adsrv.frpjump.ops.profile.ProfileQuery({ }, { ProfileInformationState() })),
-        )
-        for ((id, pair) in operations) {
-            assertEquals("$id tool", id.effect, pair.first.effect)
-            assertEquals("$id operation", id.effect, pair.second.effect)
-            assertSame(id, pair.first.id)
+    @Test fun `every operation tool the factory builds has its operation's effect equal to the catalog's`() {
+        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
+            synthetic.information, AssistantSshCommands(targets()), { })
+        val operationTools = all.filterIsInstance<OperationTool<*, *>>()
+        // The pilots are operation tools; any later one is covered here without being listed.
+        assertTrue(operationTools.map { it.id }.containsAll(listOf(AssistantToolId.SSH_COMMAND, AssistantToolId.PROFILE_INFORMATION)))
+        for (tool in operationTools) assertEquals("${tool.id}", tool.id.effect, tool.effect)
+        assertEquals(AssistantToolId.SSH_COMMAND.effect, SshExec(targets()).effect)
+        assertEquals(AssistantToolId.PROFILE_INFORMATION.effect, ru.adsrv.frpjump.ops.profile.ProfileQuery({ }, { ProfileInformationState() }).effect)
+    }
+
+    @Test fun `an operation that disagrees with the catalog about changing cannot become a tool`() {
+        // A reading operation behind a changing catalog row would skip the question: it is refused at construction.
+        for (effect in listOf(Effect.READ_REMOTE, Effect.READ_LOCAL, Effect.CHANGE_LOCAL)) {
+            try {
+                AssistantSshCommandTool(object : AssistantSshCommands(targets()) { override val exec = Scripted(effect) { error("not run") } })
+                fail("$effect behind ssh_command must be refused")
+            } catch (_: IllegalArgumentException) { }
         }
-        // The two pilots are the whole set; a later operation tool must be listed here.
-        assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.PROFILE_INFORMATION), operations.keys)
+    }
+
+    /** A tool whose own effect says "read" under a changing catalog row: the call is still treated as changing. */
+    private class Lying : AppTool<Unit>(AssistantToolId.SSH_COMMAND, "d", objectSchema { }) {
+        override val effect = Effect.READ_REMOTE
+        override fun parse(args: StrictArgs) = Unit
+        override val invalidArguments = ToolOutput("x", ToolOutcome.FAILED)
+        override suspend fun run(args: Unit) = ToolOutput("ran")
+        override fun failure(error: Exception) = ToolOutput("x", ToolOutcome.FAILED)
+    }
+    @Test fun `a changing catalog row is never read-only whatever the tool says`() {
+        val check = Lying().changeCheck(buildJsonObject { })
+        assertTrue(check is ChangeCheck.Change)
+        assertFalse((check as ChangeCheck.Change).request.described)
+    }
+
+    private class Bare(val text: String?) : OperationTool<SshExecInput, SshExecOutput>(AssistantToolId.SSH_COMMAND, "d", objectSchema { },
+        Scripted { error("not run") }) {
+        override fun parse(args: StrictArgs) = SshExecInput("p", "c", "x")
+        override val invalidArguments = ToolOutput("x", ToolOutcome.FAILED)
+        override fun render(input: SshExecInput, output: SshExecOutput) = ""
+        override fun modelText(refusal: OpRefusal) = ""
+        override fun modelText(failure: OpFailure) = ""
+        override val unexpected: OpFailure = SshFailure.Unexpected
+        override fun commandText(input: SshExecInput) = text
+    }
+    @Test fun `a changing operation tool with nothing to show the owner is undescribed and so refused`() {
+        for (text in listOf(null, "")) {
+            val check = Bare(text).changeCheck(buildJsonObject { }) as ChangeCheck.Change
+            assertFalse("text=$text", check.request.described)
+        }
+        assertTrue((Bare("uptime").changeCheck(buildJsonObject { }) as ChangeCheck.Change).request.described)
+    }
+
+    @Test fun `a command and its output never appear in the string form of an input or a result`() {
+        val out = SshExecOutput("private-stdout", "private-stderr", 0, null)
+        for (text in listOf(out.toString(), OpResult.Done(out).toString(), SshExecInput("p", "c", "private-command").toString())) {
+            assertFalse(text, text.contains("private"))
+        }
+        assertEquals(SshExecOutput("a", "b", 1, "TERM"), SshExecOutput("a", "b", 1, "TERM"))
+        assertNotEquals(SshExecOutput("a", "b", 1, "TERM"), SshExecOutput("a", "c", 1, "TERM"))
     }
 
     @Test fun `the confirmation takes its effect and target from the operation`() {
@@ -68,9 +116,6 @@ class OperationToolTest {
         assertEquals("secret-command", request.command)
         assertTrue(request.described)
         assertSame(AssistantToolId.SSH_COMMAND, request.tool)
-        // An operation that only reads is never asked about, whatever the catalog says for the tool.
-        val reading = AssistantSshCommandTool(object : AssistantSshCommands(targets()) { override val exec = Scripted(Effect.READ_REMOTE) { error("not run") } })
-        assertSame(ChangeCheck.ReadOnly, reading.changeCheck(sshArgs))
     }
 
     @Test fun `SshExec declares its name effect and target`() {
