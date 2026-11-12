@@ -9,7 +9,7 @@ import ru.adsrv.frpjump.profiles.ProfileInformation
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
     val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?,
-    val archive: Boolean)
+    val archive: Boolean, val prompts: Lazy<AssistantPrompts>)
 
 private class HistoryFull : Exception()
 
@@ -36,13 +36,19 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     }
 
     private suspend fun exchange() {
-        val active = withContext(env.io) { env.requireRevision(a.saved.revision); a.retained ?: env.prepare(a.saved) }
+        // First use of the lazy prompts reads assets: off Main, on the Send's IO path, before any key decrypt or provider build;
+        // a broken asset is an ordinary setup problem.
+        val (active, prompts) = withContext(env.io) {
+            env.requireRevision(a.saved.revision)
+            val loaded = env.prompts.value
+            (a.retained ?: env.prepare(a.saved)) to loaded
+        }
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource)
-            val summary = summary(active)
-            val result = env.module.run(toolProvider(active, past), tools, AssistantConversation.INSTRUCTIONS, a.text, past.map { it.second },
+            val summary = summary(active, prompts.summary)
+            val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
                 env.limits(a.settings), prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) })
             env.requireRevision(a.saved.revision)
             val problem = finishProblem(summaryProblem, result.finish, transportTimeout, invalidReply)
@@ -72,7 +78,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         }
     }
 
-    private fun summary(active: AgentProvider) = AssistantSummary(a.settings, active,
+    private fun summary(active: AgentProvider, prompt: String) = AssistantSummary(a.settings, active,
         read = { own.guarded(owner, "history") { document } ?: throw CancellationException() },
         save = { value -> own.guarded(owner, "summary") {
             document = document.withSummary(value); persist()
@@ -82,7 +88,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = ChatToolProgress.SUMMARY) } ?: throw CancellationException()
             val selected = summaryProvider ?: (a.settings.summaryModel?.let { model -> env.prepare(a.saved.copy(settings = a.settings.copy(model = model))) } ?: active).also { summaryProvider = it }
             complete(selected, request)
-        })
+        }, prompt)
 
     private suspend fun prepared(summary: AssistantSummary, request: AgentRequest): AgentRequest =
         if (!env.archive) request else try { summary.prepare(request) }

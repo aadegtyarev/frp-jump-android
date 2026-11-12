@@ -56,9 +56,18 @@ Save, Fetch models and recovery behavior.
 - The kernel does not itself grant target access. Any connection-tool adapter
   must bind to its admitted connection identity and must never resolve a
   replacement client after a disconnect. The SSH adapter below owns one ordinary client; the information tool reads shared application state. Neither starts or controls tunnels.
-- The versioned [application skill](../app/src/main/assets/assistant/skill.md)
-  is input for a coordinator, not a permission system or an automatically
-  executing script. Text chat does not attach it or any automatic app context.
+- The application skill is the base system prompt,
+  [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
+  (version 4). Chat attaches it to every main chat-loop request as the first
+  message, unchanged and byte-stable within and across Sends. It is guidance for
+  the model, not a permission system or an executing script; the code enforces
+  every limit. The compact summarizer prompt is `assets/assistant/summary.md`
+  (version 2); summary requests open with it instead. Both are read strictly
+  (UTF-8, no byte order mark) and there is no compiled-in fallback prompt. Still
+  compiled into the app are the fixed image-inspection question wording, the
+  summary request framing text ("Earlier conversation summary", "Previous
+  summary / Observed conversation"), tool descriptions and schemas, and fixed
+  tool-result texts. No automatic app context is attached.
 
 ## Minimal execution
 
@@ -239,10 +248,11 @@ spelling, without changing the main model. There is no discovery, capability
 inference or hidden fallback. The selected model must support the configured
 window. Summary requests advertise no tools, and any returned tool proposal is
 rejected without execution. They contain observed transcript data, not private
-provider continuation. The short version-1 prompt (`AssistantSummary.PROMPT`)
+provider continuation. The compact version-2 prompt (`assets/assistant/summary.md`)
 retains the goal, exact selected IDs, decisions, received results, completed and
-uncertain actions, source references and next steps, treating old text as
-untrusted data rather than new authority.
+uncertain actions, source references and next steps, treats old text as
+untrusted data rather than new authority, and sets the 4,000-character limit. It
+replaces the base prompt for these requests.
 
 The summary and its covered turn/exchange position are saved together in the
 same canonical encrypted document. Main requests derive a working summary plus
@@ -268,10 +278,16 @@ requests: Stop/revocation suppress unauthorized late data and cannot release a
 replacement Send before real cleanup. Summary text is model-generated historical
 data, not verified truth or an owner/accounting source for SSH work.
 
-Requests contain explicit chat text/history, the canonical version-3 base prompt
-(`AssistantConversation.INSTRUCTIONS`) and only enabled
-tool schemas. No profiles, connection data, files, credentials,
-diagnostics or application skill are automatically attached. Proposals unavailable in that Send's captured set
+Requests contain explicit chat text/history, the base prompt (`skill.md`,
+version 4) and only enabled tool schemas. The prompt contains no profile,
+connection, enabled-tool list, date, version or language data; the same bytes
+open every main chat-loop request (summary requests open with `summary.md`).
+Tool schemas follow catalog order with stable JSON; summary, history and
+the current request follow the system message. No provider-specific cache
+parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
+with a byte order mark) or empty fails the Send as an ordinary setup problem,
+with no fallback text and no request. No profiles,
+connection data, files, credentials or diagnostics are automatically attached. Proposals unavailable in that Send's captured set
 return bounded explicit unknown-tool results without network; they do
 not grant authority. Existing endpoint, redirect, retry, payload and sanitized-error
 protections remain. Public content is acquired only through explicitly enabled

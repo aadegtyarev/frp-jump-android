@@ -167,6 +167,8 @@ class FrpJumpApp : Application() {
         private set
     lateinit var assistantProvider: ru.adsrv.frpjump.assistant.AssistantProviderStore
         private set
+    /** Read on first use from the Send's IO path, never on Main; a missing asset surfaces as a setup problem. */
+    val assistantPrompts: Lazy<ru.adsrv.frpjump.assistant.AssistantPrompts> = lazy { ru.adsrv.frpjump.assistant.AssistantPrompts.load(assets::open) }
     val assistantHistory by lazy {
         ru.adsrv.frpjump.assistant.AssistantChatHistory(AtomicTextFile(File(noBackupFilesDir, "assistant_chat.json")),
             KeystoreSecretBox("frpjump-assistant-chat-v1"), appScope)
