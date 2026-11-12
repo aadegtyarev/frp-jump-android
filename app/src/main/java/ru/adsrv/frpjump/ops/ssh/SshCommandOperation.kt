@@ -1,9 +1,10 @@
-package ru.adsrv.frpjump.assistant
+package ru.adsrv.frpjump.ops.ssh
 
 import kotlinx.coroutines.*
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import ru.adsrv.frpjump.agent.*
+import ru.adsrv.frpjump.ops.*
 import ru.adsrv.frpjump.ssh.*
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,25 +38,24 @@ internal class SshCommandOperation {
         synchronized(lock) { client }?.let { runCatching { it.disconnect() } }
     }
     /** SSHJ caches these nullable facts independently of stream consumption, including after channel close. */
-    private fun receivedExit(): String? {
+    private fun receivedExit(): SshExit? {
         val running = synchronized(lock) { command } ?: return null
         val status = running.exitStatus
         val signal = running.exitSignal
-        return if (status == null && signal == null) null else
-            "exit_status: ${status ?: "unknown"}\nexit_signal: ${signal?.name ?: "unknown"}"
+        return if (status == null && signal == null) null else SshExit(status, signal?.name)
     }
-    private fun targetFailure(): ToolOutput {
+    private fun targetFailure(): OpResult<SshExecOutput> {
         val received = receivedExit()
-        return ToolOutput(when {
-            !execAdmitted -> "SSH target unavailable. No command was executed. Check the connection in the app."
-            received != null -> "SSH target became unavailable. Remote exit received; output withheld.\n$received"
-            else -> "SSH target became unavailable; remote outcome unknown. Check the connection in the app; do not automatically repeat the command."
-        }, ToolOutcome.FAILED)
+        return when {
+            !execAdmitted -> OpResult.Refused(SshRefusal.TargetLostBeforeExec)
+            received != null -> OpResult.Failed(SshFailure.TargetLost(received), RemoteOutcome.KNOWN)
+            else -> OpResult.Failed(SshFailure.TargetLost(null), RemoteOutcome.UNKNOWN)
+        }
     }
 
-    suspend fun run(work: suspend () -> ToolOutput): ToolOutput {
+    suspend fun run(work: suspend () -> OpResult<SshExecOutput>): OpResult<SshExecOutput> {
         admitSideEffect("ssh-dispatch")
-        var result: ToolOutput? = null
+        var result: OpResult<SshExecOutput>? = null
         try {
             coroutineScope {
                 val finished = AtomicBoolean(false)
@@ -84,18 +84,18 @@ internal class SshCommandOperation {
         return synchronized(lock) { if (targetLost) targetFailure() else checkNotNull(result) }
     }
 
-    suspend fun execute(connector: SshConnector, command: String, available: () -> Boolean): ToolOutput {
+    suspend fun execute(connector: SshConnector, command: String, available: () -> Boolean): OpResult<SshExecOutput> {
         val ssh = connector.newClient()
         synchronized(lock) { client = ssh }
         var session: Session? = null
         try {
             checkActive()
-            if (!available()) return unavailable()
+            if (!available()) return OpResult.Refused(SshRefusal.TargetUnavailable)
             connector.connect(ssh); checkActive()
             connector.authenticate(ssh); checkActive()
-            if (!available()) return unavailable()
+            if (!available()) return OpResult.Refused(SshRefusal.TargetUnavailable)
             session = ssh.startSession(); checkActive()
-            if (!available()) return unavailable()
+            if (!available()) return OpResult.Refused(SshRefusal.TargetUnavailable)
             // After this point a failure may have uncertain remote effects.
             synchronized(lock) { execAdmitted = true }
             val running = session.exec(command).also { synchronized(lock) { this.command = it } }
@@ -109,8 +109,7 @@ internal class SshCommandOperation {
                     checkActive()
                     val status = running.exitStatus
                     val signal = running.exitSignal
-                    ToolOutput("stdout:\n$out\nstderr:\n$err\nexit_status: ${status ?: "unknown"}\nexit_signal: ${signal?.name ?: "unknown"}",
-                        if (status == 0 && signal == null) ToolOutcome.SUCCESS else ToolOutcome.FAILED)
+                    OpResult.Done(SshExecOutput(out, err, status, signal?.name))
                 } catch (failure: Exception) {
                     // Unblock the sibling stream before structured scope waits for it.
                     runCatching { ssh.disconnect() }
@@ -118,15 +117,15 @@ internal class SshCommandOperation {
                 }
             }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: HostKeyRejected) { return setup() }
-        catch (_: net.schmizz.sshj.userauth.UserAuthException) { return setup() }
+        catch (_: HostKeyRejected) { return OpResult.Refused(SshRefusal.NeedsSetup) }
+        catch (_: net.schmizz.sshj.userauth.UserAuthException) { return OpResult.Refused(SshRefusal.NeedsSetup) }
         catch (_: Exception) {
             val received = receivedExit()
-            return ToolOutput(when {
-                received != null -> "SSH command failed. Remote exit received; output withheld.\n$received"
-                synchronized(lock) { execAdmitted } -> "SSH command failed; remote outcome unknown. Do not automatically repeat it."
-                else -> "SSH unavailable. Check the connection in the ordinary SSH UI. No command was executed."
-            }, ToolOutcome.FAILED)
+            return when {
+                received != null -> OpResult.Failed(SshFailure.CommandFailed(received), RemoteOutcome.KNOWN)
+                synchronized(lock) { execAdmitted } -> OpResult.Failed(SshFailure.CommandFailed(null), RemoteOutcome.UNKNOWN)
+                else -> OpResult.Refused(SshRefusal.ConnectFailed)
+            }
         } finally {
             runCatching { session?.close() }
             runCatching { ssh.disconnect() }

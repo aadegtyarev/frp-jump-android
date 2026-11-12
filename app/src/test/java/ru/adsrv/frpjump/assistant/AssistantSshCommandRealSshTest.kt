@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.ops.ssh.*
+import ru.adsrv.frpjump.ops.*
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.KeyPairGenerator
@@ -76,7 +78,7 @@ class AssistantSshCommandRealSshTest {
         Peer(closeStreams).use { peer ->
             val operation = SshCommandOperation()
             val connector = connector(peer)
-            val result = CompletableDeferred<Result<ToolOutput>>()
+            val result = CompletableDeferred<Result<OpResult<SshExecOutput>>>()
             val job = launch(Dispatchers.Default) {
                 result.complete(runCatching { operation.run { operation.execute(connector, "never-exits", { true }) } })
             }
@@ -97,8 +99,7 @@ class AssistantSshCommandRealSshTest {
                 if (cause == "stop") assertTrue(job.isCancelled)
                 else {
                     val output = result.await().getOrThrow()
-                    assertEquals(ToolOutcome.FAILED, output.outcome)
-                    assertTrue(output.text, output.text.contains("remote outcome unknown"))
+                    assertEquals(OpResult.Failed(SshFailure.TargetLost(null), RemoteOutcome.UNKNOWN), output)
                 }
             } finally { job.cancel() }
         }

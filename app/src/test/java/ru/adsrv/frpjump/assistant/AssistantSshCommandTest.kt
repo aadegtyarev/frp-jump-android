@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.ops.ssh.*
+import ru.adsrv.frpjump.ops.*
 import ru.adsrv.frpjump.assistant.chat.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -659,6 +661,31 @@ class AssistantSshCommandTest {
             result
         }
     }
+    /** The operation's own typed result for the same scenario as [availableExitWithReaders]. */
+    private suspend fun heldOperationResult(code: Int?, signal: Signal?, readFails: Boolean, loseTarget: Boolean): OpResult<SshExecOutput> = coroutineScope {
+        Fixture().use { f -> f.ready()
+            val release = CountDownLatch(1)
+            f.client.code = code; f.client.signal = signal
+            f.client.out = "private-held-stdout"; f.client.err = "private-held-stderr"
+            f.client.heldRead = release
+            val work = async(Dispatchers.Default) { f.service.exec(SshExecInput("home", "ssh", "printf synthetic")) }
+            try {
+                assertTrue(f.client.reading.await(3, TimeUnit.SECONDS))
+                if (loseTarget) f.loseTarget("hidden-connection")
+                if (readFails) f.client.failRead = true
+            } finally { release.countDown() }
+            work.await()
+        }
+    }
+    @Test fun `OPERATION result types and remote outcomes after a lost target or a failed read`() = runBlocking {
+        // Target lost while the readers are held: what the channel already reported is KNOWN, nothing reported is UNKNOWN.
+        assertEquals(OpResult.Failed(SshFailure.TargetLost(SshExit(7, null)), RemoteOutcome.KNOWN), heldOperationResult(7, null, readFails = false, loseTarget = true))
+        assertEquals(OpResult.Failed(SshFailure.TargetLost(SshExit(null, "TERM")), RemoteOutcome.KNOWN), heldOperationResult(null, Signal.TERM, readFails = false, loseTarget = true))
+        assertEquals(OpResult.Failed(SshFailure.TargetLost(null), RemoteOutcome.UNKNOWN), heldOperationResult(null, null, readFails = false, loseTarget = true))
+        // A reader failure after the command was sent: a command failure, KNOWN only with an exit.
+        assertEquals(OpResult.Failed(SshFailure.CommandFailed(SshExit(0, null)), RemoteOutcome.KNOWN), heldOperationResult(0, null, readFails = true, loseTarget = false))
+        assertEquals(OpResult.Failed(SshFailure.CommandFailed(null), RemoteOutcome.UNKNOWN), heldOperationResult(null, null, readFails = true, loseTarget = false))
+    }
     @Test fun `EXIT FACTS held readers preserve available zero nonzero signal and missing exit`() = runBlocking {
         val failures = mutableListOf<String>()
         for ((code, signal) in listOf(0 to null, 7 to null, null to Signal.TERM, null to null)) {
@@ -689,7 +716,7 @@ class AssistantSshCommandTest {
             val outcome = java.util.concurrent.atomic.AtomicReference<String?>()
             val job = launch(Dispatchers.Default) {
                 try {
-                    operation.run { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); ToolOutput("late result") }
+                    operation.run { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); OpResult.Done(SshExecOutput("late result", "", 0, null)) }
                     outcome.set("returned")
                 } catch (cancelled: CancellationException) { outcome.set("cancelled"); throw cancelled }
             }
