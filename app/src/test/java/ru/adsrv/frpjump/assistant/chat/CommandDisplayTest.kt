@@ -68,9 +68,49 @@ class CommandDisplayTest {
         assertEquals(emptyList<DisplaySpan>(), displayCommandSpans(""))
     }
 
-    @Test fun `strong right-to-left letters are detected and nothing else is`() {
-        for (c in listOf("א", "x א y", "ا", "ls مرحبا", ": א; rm -rf ./* x ;ב; cd /tmp/scratch")) assertTrue(c, containsStrongRtl(c))
-        for (c in listOf("", "uptime", "привет 你好", "123 456 ١٢", "a‮b", "ls ./*")) assertFalse(c, containsStrongRtl(c))
+    @Test fun `right-to-left letters and Arabic digits are detected and nothing else is`() {
+        for (c in listOf("\u05D0", "x \u05D0 y", "\u0627", "ls \u0645\u0631\u062D\u0628\u0627", ": \u05D0; rm -rf ./* x ;\u05D1; cd /tmp/scratch",
+            "mv -f \u0661 \u0662", "\u0660", "\u0669", "\u066B", "\u066C", "a\uD803\uDD30", "\uD803\uDE60")) assertTrue(c, containsStrongRtl(c))
+        for (c in listOf("", "uptime", "привет 你好", "123 456", "a\u202Eb", "ls ./*", "x \u06F1 y")) assertFalse(c, containsStrongRtl(c))
+    }
+
+    // ---- The rendered text: its visual order equals its logical order ----
+
+    private fun rendered(raw: String) = displayCommandSpans(raw, forRender = true).joinToString("") { it.text }
+    /** The characters of [text] in the order a left-to-right paragraph shows them (the Unicode bidirectional algorithm). */
+    private fun visual(text: String): String {
+        val bidi = java.text.Bidi(text, java.text.Bidi.DIRECTION_LEFT_TO_RIGHT)
+        val levels = ByteArray(text.length) { bidi.getLevelAt(it).toByte() }
+        val order = Array<Any>(text.length) { it }
+        java.text.Bidi.reorderVisually(levels, 0, order, 0, text.length)
+        return order.joinToString("") { text[it as Int].toString() }
+    }
+    private fun noLrm(s: String) = s.replace("\u200E", "")
+
+    @Test fun `without the marks the order is reversed and with them it is the order that runs`() {
+        val fixtures = listOf("mv -f \u0661 \u0662", "cat \u0661 > \u0662", ": \u05D0 >1 \u05D1", "echo \u05D0 (1) \u05D1", "echo \u0628 \u06F1 \u06F2",
+            ": \u05D0; rm -rf ./* x ;\u05D1; cd /tmp/scratch", "a \u05D0\u05D1 b \u0661\u0662 c")
+        for (raw in fixtures) {
+            val shown = rendered(raw)
+            assertEquals("logical == visual for: $raw", noLrm(shown), noLrm(visual(shown)))
+            assertEquals("the command text is unchanged by the marks: $raw", raw, noLrm(shown))
+        }
+        // The first four reorder without the marks: that is the defect the marks remove.
+        for (raw in fixtures.take(4)) assertNotEquals("raw order must differ (test is meaningful): $raw", raw, visual(raw))
+        assertEquals("mv -f \u0662 \u0661", visual("mv -f \u0661 \u0662"))
+    }
+
+    @Test fun `the marks follow the combining marks and never touch lines escapes or the plain description`() {
+        assertEquals("\u05D0\u0301\u200E", rendered("\u05D0\u0301"))
+        assertEquals("a\u05D0\u200E\n\u05D1\u200E", rendered("a\u05D0\n\u05D1"))
+        assertEquals(1, commandLineCount("a\u05D0\u05D1"))
+        assertEquals(2, rendered("a\u05D0\nb").count { it == '\n' } + 1)
+        assertEquals("the plain display has no marks", "x\u05D0y", displayCommand("x\u05D0y"))
+        val withEscape = displayCommandSpans("a\u202E\u05D0\u0661", forRender = true)
+        assertEquals(listOf(false, true, false), withEscape.map { it.escape })
+        assertEquals(esc(0x202E), withEscape[1].text)
+        assertEquals("\u05D0\u200E\u0661\u200E", withEscape[2].text)
+        for (c in listOf("uptime", "ls -la\nx", "привет 你好 123", "")) assertEquals("no marks for text without such characters", c, rendered(c))
     }
 
     @Test fun `the line count is the original lines and ignores one final break`() {

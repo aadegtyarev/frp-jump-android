@@ -6,6 +6,13 @@ import android.content.res.Configuration
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -128,6 +135,7 @@ class AssistantChatScreenTest {
     private var sshCommandText = "printf synthetic"
     /** The whole screen laid out right to left, as on a phone set to Arabic or Hebrew: only an explicit left-to-right command keeps its order. */
     private var forceRtl = false
+    private var windowHeightDp: Int? = null
     /** The shipped assets, read through the app under test. */
     private val prompts = lazy { AssistantPrompts.load(InstrumentationRegistry.getInstrumentation().targetContext.assets::open) }
     private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands, historyStore = history, prompts = prompts) {
@@ -261,6 +269,8 @@ class AssistantChatScreenTest {
             androidx.compose.ui.platform.LocalLayoutDirection provides (if (forceRtl) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.platform.LocalLayoutDirection.current)) {
         FrpJumpTheme(mode = if (args.getString("chatDark") == "true") ThemeMode.DARK else ThemeMode.LIGHT) {
             val nav = rememberNavController()
+            // A short window (split screen, a small phone): the screen gets only this many dp of height (still the portrait layout, 400 dp or more).
+            androidx.compose.foundation.layout.Box(windowHeightDp?.let { androidx.compose.ui.Modifier.fillMaxWidth().height(it.dp).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.ime).consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.navigationBars) } ?: androidx.compose.ui.Modifier.fillMaxSize()) {
             NavHost(nav, "settings") {
                 composable("settings") {
                     val vm = viewModel { ToolsFixtureViewModel(settings) }
@@ -282,6 +292,7 @@ class AssistantChatScreenTest {
                         onSetup = { nav.navigate("setup") })
                 }
                 composable("setup") { Text("Synthetic provider setup") }
+            }
             }
         }
     }
@@ -1300,5 +1311,45 @@ class AssistantChatScreenTest {
         input().performTextInput("Again"); button("chat_send").performClick()
         compose.waitUntil(5000) { owner?.state?.value?.confirmation != null }
         button("chat_stop").performClick(); awaitIdle()
+    }
+
+    private fun orderOnOneLine(command: String, first: Char, second: Char, rtlLayout: Boolean) {
+        sshCommandText = command
+        forceRtl = rtlLayout
+        startConfirmation()
+        compose.onNodeWithTag("chat_confirm_rtl", useUnmergedTree = true).assertIsDisplayed()
+        val layout = layoutOf("chat_confirm_command")
+        val shown = layout.layoutInput.text.text
+        assertEquals("one visual line: ${layout.lineCount}", 1, layout.lineCount)
+        val a = layout.getHorizontalPosition(shown.indexOf(first), true); val b = layout.getHorizontalPosition(shown.indexOf(second), true)
+        assertTrue("$first (left=$a) is shown before $second (left=$b): the order the arguments are in", a < b)
+        shot("arabic-digits")
+        button("chat_confirm_decline").performClick(); awaitIdle()
+    }
+    @Test fun arabicDigitsKeepTheirOrderInALeftToRightLayout() = orderOnOneLine("mv -f \u0661 \u0662", '\u0661', '\u0662', rtlLayout = false)
+    @Test fun arabicDigitsKeepTheirOrderInARightToLeftLayout() = orderOnOneLine("mv -f \u0661 \u0662", '\u0661', '\u0662', rtlLayout = true)
+    @Test fun redirectionWithArabicDigitsKeepsItsDirection() = orderOnOneLine("cat \u0661 > \u0662", '\u0661', '\u0662', rtlLayout = false)
+
+    private fun isDisplayed(tag: String) = try { compose.onNodeWithTag(tag, useUnmergedTree = true).assertIsDisplayed(); true } catch (_: AssertionError) { false }
+
+    @Test fun inAShortWindowAllowIsNeverVisibleWhileTheCommandsFirstLineIsNot() {
+        // Tall enough for the top bar, the message field and Send at 200% font (the Send must stay clickable), short for the card.
+        windowHeightDp = 520
+        try { startConfirmation() } catch (e: Throwable) { throw AssertionError("startConfirmation failed in the short window: ${e.message}; state=${owner?.state?.value?.let { "busy=${it.busy} draft=${it.draft} confirmation=${it.confirmation != null}" }}", e) }
+        // The card opens at its top: tool and target first.
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertIsDisplayed()
+        val lineHeight = layoutOf("chat_confirm_command").let { it.getLineBottom(0) - it.getLineTop(0) }
+        val commandVisible = bounds("chat_confirm_command").height >= lineHeight - 1f
+        val allowVisible = isDisplayed("chat_confirm_allow")
+        assertTrue("Allow visible=$allowVisible while the command's first line visible=$commandVisible (height ${bounds("chat_confirm_command").height} of $lineHeight)", !allowVisible || commandVisible)
+        assertTrue("the command's first line is visible or reachable first", commandVisible || isDisplayed("chat_confirm_command"))
+        shot("short-window")
+        // Every answer is reachable (scrolling the card when it does not fit).
+        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) shown(tag)
+        // A click lands only on a node that is inside the window: scroll to it first where the card scrolls.
+        val decline = compose.onNodeWithTag("chat_confirm_decline"); runCatching { decline.performScrollTo() }
+        decline.performClick()
+        try { awaitIdle() } catch (e: Throwable) { throw AssertionError("still asking after Decline: ${owner?.state?.value?.confirmation != null}; declineBounds=${bounds("chat_confirm_decline")}", e) }
     }
 }

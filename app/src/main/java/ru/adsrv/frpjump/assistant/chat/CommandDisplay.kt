@@ -15,17 +15,21 @@ internal data class DisplaySpan(val text: String, val escape: Boolean)
  * run (a stack of marks can hide the base letter). Short forms: carriage return, tab, ESC, NUL and DEL get one-character glyphs; the rest are
  * written as an angle-bracketed U+ escape. A line feed stays a line break.
  */
-internal fun displayCommandSpans(raw: String): List<DisplaySpan> {
+internal fun displayCommandSpans(raw: String, forRender: Boolean = false): List<DisplaySpan> {
     val spans = ArrayList<DisplaySpan>()
     val plain = StringBuilder()
     fun flush() { if (plain.isNotEmpty()) { spans += DisplaySpan(plain.toString(), false); plain.setLength(0) } }
     fun escape(text: String) { flush(); spans += DisplaySpan(text, true) }
     var i = 0
     var marks = 0
+    var pendingLrm = false
     while (i < raw.length) {
         val cp = raw.codePointAt(i)
         i += Character.charCount(cp)
         val mark = isCombiningMark(cp)
+        // A left-to-right mark after each right-to-left letter or Arabic digit (and after its combining marks) keeps what follows in left-to-right
+        // context, so the shown order equals the logical order. Render only: the marks are not part of the command or of its description.
+        if (forRender && pendingLrm && !mark) { plain.append(LRM); pendingLrm = false }
         marks = if (mark) marks + 1 else 0
         when {
             cp == '\n'.code || cp == ' '.code -> plain.appendCodePoint(cp)
@@ -37,12 +41,21 @@ internal fun displayCommandSpans(raw: String): List<DisplaySpan> {
             needsEscape(cp) || (mark && marks > MAX_MARKS) -> escape("⟨U+" + "%04X".format(cp) + "⟩")
             else -> plain.appendCodePoint(cp)
         }
+        if (forRender && !mark && isRtlOrArabicDigit(cp) && !needsEscape(cp)) pendingLrm = true
     }
+    if (forRender && pendingLrm) plain.append(LRM)
     flush()
     return spans
 }
 
-/** The displayed command as plain text (the escapes without their highlight). */
+private const val LRM = '\u200E'
+
+private fun isRtlOrArabicDigit(cp: Int): Boolean = when (Character.getDirectionality(cp)) {
+    Character.DIRECTIONALITY_RIGHT_TO_LEFT, Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC, Character.DIRECTIONALITY_ARABIC_NUMBER -> true
+    else -> false
+}
+
+/** The displayed command as plain text (the escapes without their highlight, no direction marks). */
 internal fun displayCommand(raw: String): String = displayCommandSpans(raw).joinToString("") { it.text }
 
 private const val MAX_MARKS = 2
@@ -68,16 +81,16 @@ internal fun isDefaultIgnorable(cp: Int): Boolean =
         cp == 0xFFA0 || cp in 0xFFF0..0xFFF8 || cp in 0x1BCA0..0x1BCA3 || cp in 0x1D173..0x1D17A || cp in 0xE0000..0xE0FFF
 
 /**
- * Whether the command has a strong right-to-left letter (Hebrew, Arabic ...). The command is always laid out left to right, but two
- * right-to-left letters on one line are still shown in reverse order of each other, so the owner is told.
+ * Whether the command has a right-to-left letter (Hebrew, Arabic ...) or an Arabic digit: the characters whose position the bidirectional
+ * algorithm may change. The command is laid out left to right and, in the rendered text only, a left-to-right mark follows each of them, so
+ * the shown order equals the logical order; the owner is still told that the text has such characters.
  */
 internal fun containsStrongRtl(raw: String): Boolean {
     var i = 0
     while (i < raw.length) {
         val cp = raw.codePointAt(i)
         i += Character.charCount(cp)
-        val d = Character.getDirectionality(cp)
-        if (d == Character.DIRECTIONALITY_RIGHT_TO_LEFT || d == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC) return true
+        if (isRtlOrArabicDigit(cp)) return true
     }
     return false
 }
