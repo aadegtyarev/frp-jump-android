@@ -229,6 +229,50 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   Options override only what the app explicitly sets. `mouse on` also affects
   a laptop attached to these sessions, and phone reattach detaches it (`-D`).
 
+### Remote image files
+
+- Insert image ([contract](contract.md#7-ssh-console)) opens one separate SFTP
+  channel on the tab's authenticated connection: no new login, no change to
+  the shell channel, tmux, reconnect or host keys. Closing or cancelling it
+  closes only that channel. The SFTP wait is 10 s per request, not a deadline
+  for the whole upload; the SFTP version exchange is not timed by sshj at all.
+  sshj also waits up to its own 30 s for a channel open and for the subsystem
+  request, and a close waits up to 30 s for the peer. So opening the channel and
+  starting SFTP runs on a helper thread that the job abandons at 10 s in all or on
+  Cancel (a channel it makes later is closed as soon as it exists; at most 6 such
+  helpers in all, 2 abandoned per connection, ended by an interrupt or by sshj's
+  30 s). The app never ends a channel's input stream itself, only sends CLOSE:
+  a reply arriving on a stream marked finished would make sshj drop the whole
+  connection, shell included. Cancel mid-upload takes about one round trip on a
+  live device and at most the 10 s request timeout on a hung one; the part-file
+  removal is bounded to 5 s by its own helper. A failed or abandoned opening
+  closes what it made (a channel sshj confirms after its own open timeout can,
+  rarely, stay). A device without SFTP is reported, nothing else changes.
+- The app creates `~/.cache/frp-jump/images/` (absolute path from the SFTP
+  home; a home with characters outside `A-Za-z0-9._/-` is refused). Missing
+  folders are created 0700. `~/.cache` may be a link to a folder; `frp-jump`
+  and `images` must be real folders of the login user (same uid as the home),
+  otherwise the upload is refused; a wider `images` mode is tightened to 0700.
+- Files are `img-YYYYMMDD-HHMM-xxxx.jpg` or `.png`, created exclusively with
+  mode 0600 and never overwritten (a clash takes a new suffix, 4 tries).
+  Cancel or failure removes the file the job created when the connection
+  allows; a lost connection can leave it.
+- On each upload, best effort and bounded, files in that folder that match the
+  app's own name pattern, are regular files (never links or folders, never
+  followed), and are more than 60 minutes older than the new file's device
+  modification time are deleted (a file with no known time is kept). The
+  cleanup runs on a thread of its own after the file is written (the path does
+  not wait for it), with a 15 s deadline that also closes its channel, at most
+  500 entries read, and a failure never reaches the owner; its thread lives about
+  15 s plus one 10 s request timeout, and the channel close can take sshj's 30 s
+  more, on threads nothing waits for.
+  Nothing else is deleted; images are not removed on tab close or app exit, so
+  they stay on the device for about an hour until a later upload.
+- An image upload is never retried or replayed by Reconnect; a connection or
+  terminal that changed meanwhile, or a tab closed (also with its Undo pending),
+  gets no insertion. A complete file stays when the insertion is refused or the
+  tab changed; only a cancel removes it.
+
 ## Security, privacy and stored data
 
 - Host keys are pinned per profile/device/target port, never the shared
@@ -253,6 +297,8 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   the common 64 × 1024 UTF-16-code-unit cap and copied-text notice. Leaving the
   screen/backgrounding does not revoke the last selected tab. No new prompt,
   opt-in or foreground restriction is introduced here.
+- Image insertion keeps image bytes and their source URI out of logs, notices
+  and diagnostics, and never logs the remote path or folder names.
 - Preserve paste confirmation and session/output-generation binding. Dropped
   input is never replayed into the next shell; stale queued chunks cannot
   cross handover after the copy-mode guard. Local write/paste acceptance is

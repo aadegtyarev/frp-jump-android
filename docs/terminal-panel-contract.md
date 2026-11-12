@@ -23,6 +23,7 @@ Keys is the initial surface. There is no dedicated Keys/Text selector row.
 | Short keyboard tap | Request one system-keyboard visibility toggle. |
 | Hold keyboard | Open the selected tab's Text composer once; releasing must not also trigger the short tap. Expose a labelled accessibility long-click action. |
 | Terminal ⋮ → Text input | Open or focus the same editor as an explicit alternative to the gesture. |
+| Terminal ⋮ → Insert image | Open the system photo picker. Dimmed (not hidden) unless the tab is Open, and while that tab already has an image on its way, until that job has really ended (a tap on the bar's Cancel hides the bar at once but the item stays dimmed until then). See [Insert image](contract.md#7-ssh-console). |
 | Settings → Terminal | Explain the keyboard gesture and menu entry; no separate persisted panel setting is required. |
 | ⋯ above the main row | Explicitly open/close additional keys without sending terminal input or stealing IME focus. Opening the system keyboard alone does not open these rows. |
 | Enter Text | Collapse additional rows. Show only the editor in the input area: no main key row, additional rows, disclosure or command chips. |
@@ -47,7 +48,15 @@ uppercase; Termux also maps a few non-letters, such as circled letters). The
 `| ~ / -` keys are typed as is and release Shift. Ctrl+L is sticky Ctrl then `l`.
 Keys address the terminal, not a retained draft. Paste retains the existing
 clipboard availability and session-bound confirmation behavior; panel
-compaction must not bypass it.
+compaction must not bypass it. With an image and no text on the clipboard Paste
+stays enabled and offers to insert the image instead; it is dimmed for an
+image-only clipboard when the tab is not Open or already has an image on its
+way. A clipboard with text is never affected. The image progress bar
+(text and Cancel) sits between the terminal and the snippets row; it wraps at
+200% font and must not hide any key. Its Cancel ends left of the disclosure
+target, by the same geometry the target is placed with (the target's reach from
+the panel's end, which differs between portrait and wide landscape), so neither
+covers the other in any orientation or font scale.
 
 Text retains compact/full-screen expand and collapse, Back to the compact
 editor, visible ordinary IME composition, and text/selection/focus through

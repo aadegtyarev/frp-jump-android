@@ -18,6 +18,9 @@ for visual minimalism. SSH identity and tunnel behavior belong to the
   the SSH user's permissions. It does not escalate privileges with `sudo`.
 - Listing and file bytes use SFTP. Search in subfolders uses a command channel
   on the Files SSH connection; basic browsing does not require a command shell.
+- Terminal "Insert image" does not use a Files visit: it opens its own SFTP
+  channel on the terminal tab's connection ([SSH contract](ssh-persist-contract.md#remote-image-files))
+  and changes no Files ownership, transfer or cleanup rule here.
 - Files owns its own SSH/SFTP connection, separate from terminal channels.
   A transfer or failure on one must not close the other's SSH connection.
   They still depend on the same tunnel.

@@ -1262,4 +1262,24 @@
     <string name="chat_summary_saved">Ранний контекст свёрнут в сводку; исходные сообщения доступны в истории.</string>
     <string name="chat_summary_failed">Не удалось подготовить полезную сводку. История сохранена. Проверьте модель сводки или увеличьте контекстное окно.</string>
     <string name="chat_history_full">Достигнут лимит локальной истории. Очистите её для нового разговора.</string>
+
+    <!-- Терминал: вставка изображения (docs/contract.md, консоль SSH) -->
+    <string name="terminal_image_insert">Вставить изображение</string>
+    <string name="terminal_image_offer_title">Вставить изображение из буфера?</string>
+    <string name="terminal_image_offer_text">Оно отправится на устройство, а путь к нему будет вставлен.</string>
+    <string name="terminal_image_clipboard_has_image">в буфере изображение</string>
+    <string name="terminal_image_preparing">Подготовка изображения…</string>
+    <string name="terminal_image_uploading">Отправка изображения… %1$d%%</string>
+    <string name="terminal_image_done">Изображение вставлено</string>
+    <string name="terminal_image_unreadable">Не удалось прочитать изображение.</string>
+    <string name="terminal_image_too_large">Изображение слишком большое.</string>
+    <string name="terminal_image_connection_lost">Соединение потеряно. Ничего не вставлено.</string>
+    <string name="terminal_image_refused">Устройство отклонило отправку: нет доступа.</string>
+    <string name="terminal_image_no_space">На устройстве нет места.</string>
+    <string name="terminal_image_not_available">Передача файлов на устройстве недоступна.</string>
+    <string name="terminal_image_save_failed">Устройство не смогло сохранить изображение.</string>
+    <string name="terminal_image_no_picker">Нет приложения для выбора фото.</string>
+    <string name="terminal_image_path_unsafe">В имени домашней папки есть спецсимволы.</string>
+    <string name="terminal_image_folder_unsafe">Папка для изображений на устройстве небезопасна.</string>
+    <string name="terminal_image_insert_refused">Не удалось вставить путь.</string>
 </resources>
