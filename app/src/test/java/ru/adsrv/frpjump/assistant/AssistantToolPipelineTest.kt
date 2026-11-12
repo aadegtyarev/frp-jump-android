@@ -17,17 +17,11 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** The shared tool pipeline: admission (`tool-start`) first, then strict parsing, then the action. */
 class AssistantToolPipelineTest {
-    /** `admission` is the ambient start check every tool uses for `tool-start`; `dispatch` is the legacy guard of the profile/SSH tools (PR 4b). */
+    /** `admission` is the ambient start check every tool uses for `tool-start` (the profile and SSH tools ask further categories through the same element). */
     private class Probe(var cancelAt: String? = null) {
         val categories = ArrayList<String>()
-        val legacy = ArrayList<String>()
         val effects = AtomicInteger()
         val admission = SideEffectAdmission { category -> categories += category; category != cancelAt }
-        val dispatch: WebDispatch = { category, start ->
-            legacy += category
-            if (category == cancelAt) throw CancellationException()
-            start()
-        }
     }
     private class Case(val name: String, val tool: AgentTool, val valid: JsonObject, val invalid: JsonObject, val invalidText: String)
 
@@ -38,12 +32,12 @@ class AssistantToolPipelineTest {
         val fetcher = PublicFetcher { _, _, _ -> probe.effects.incrementAndGet(); throw WebException(WebFailure.NETWORK) }
         val web = AssistantWebTools(AssistantTools(search = true, readPage = true, inspectImage = true), fetcher, WebSearchState(), null, { }).tools
         val webInvalid = "Tool failed: Invalid tool arguments: URL at most 2048, query 256, image question 1000 characters. No successful retrieval or image understanding is implied. Do not automatically repeat."
-        val profile = AssistantProfileInformationTool({ probe.effects.incrementAndGet() }, { probe.effects.incrementAndGet(); ProfileInformationState() }, probe.dispatch)
+        val profile = AssistantProfileInformationTool({ probe.effects.incrementAndGet() }, { probe.effects.incrementAndGet(); ProfileInformationState() })
         val synthetic = SyntheticProfileInformation()
         val box = FakeKeystore().box("synthetic-ssh")
         val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { probe.effects.incrementAndGet(); throw AssertionError("must not construct a client") })
-        val ssh = AssistantSshCommandTool(AssistantSshCommands(synthetic.state, synthetic.hidden, env), probe.dispatch)
+        val ssh = AssistantSshCommandTool(AssistantSshCommands(synthetic.state, synthetic.hidden, env))
         return listOf(
             Case("web_search", web[0], obj("query" to str("q")), obj("query" to JsonPrimitive(1)), webInvalid),
             Case("read_page", web[1], obj("url" to str("https://127.0.0.1/")), obj("url" to str("a"), "extra" to str("b")), webInvalid),
@@ -60,11 +54,10 @@ class AssistantToolPipelineTest {
         for (valid in listOf(true, false)) {
             val probe = Probe()
             for (case in cases(probe)) {
-                probe.categories.clear(); probe.legacy.clear()
+                probe.categories.clear()
                 withContext(probe.admission) { case.tool.execute(if (valid) case.valid else case.invalid) }
                 assertEquals("${case.name} valid=$valid", 1, probe.categories.count { it == "tool-start" })
                 assertEquals("${case.name} valid=$valid", "tool-start", probe.categories.first())
-                assertEquals("${case.name} valid=$valid", 0, probe.legacy.count { it == "tool-start" })
             }
         }
     }
@@ -86,7 +79,6 @@ class AssistantToolPipelineTest {
         }
         assertEquals(0, probe.effects.get())
         assertTrue(probe.categories.all { it == "tool-start" })
-        assertTrue(probe.legacy.isEmpty())
     }
 
     @Test fun `refused admission never charges the web budget, search state or image inspections`() = runBlocking {

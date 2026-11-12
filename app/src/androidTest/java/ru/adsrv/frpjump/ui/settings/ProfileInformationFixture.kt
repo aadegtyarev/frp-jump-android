@@ -34,7 +34,7 @@ internal class ProfileInformationFixture : AutoCloseable {
     private val body = (0 until 3000).joinToString(",", "[", "]") { i ->
         """{"name":"board$i","enrolled_at":"2026-01-01","last_seen_at":null,"enabled":true,"label":"${if (i == 1500) "Щиток" else "Other"}"}"""
     }
-    private val http = OkHttpClient.Builder().dispatcher(Dispatcher(ApiCallbackExitExecutor())).addInterceptor { chain ->
+    private val http = OkHttpClient.Builder().addInterceptor { chain ->
         val request = chain.request()
         check(request.url.host.endsWith(".example"))
         val version = request.url.encodedPath.endsWith("/version")
@@ -59,6 +59,6 @@ internal class ProfileInformationFixture : AutoCloseable {
     val information = ProfileInformation(MutableStateFlow(ProfilesState(loaded = true, index = ProfileIndex(profiles, "work"), runtimes = runtimes)), MutableStateFlow(emptySet()))
     override fun close() {
         runtimes.values.forEach { it.close() }; scope.cancel()
-        http.dispatcher.executorService.shutdownNow(); http.connectionPool.evictAll()
+        http.connectionPool.evictAll()
     }
 }

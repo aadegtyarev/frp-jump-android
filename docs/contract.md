@@ -828,8 +828,9 @@ available in Chat if the subsequent model request fails, under the same memory,
 aggregate-history and authority lifecycle. Each actual invocation makes one ordinary all-profile device-list pull, with
 existing authentication, feature checks, cache writes and error/stale behavior;
 no extra tunnel polling/probing or control is started. Information-owned request
-starts use the existing Chat authority guard; cancellation retains its slot
-through actual HTTP worker cleanup without cancelling unrelated UI/background
+start checks use the existing Chat authority guard (a start admitted just before a
+commit may begin and is then cancelled); cancellation retains its slot until the
+HTTP exchange has actually returned, without cancelling unrelated UI/background
 requests. Missing information stays
 unknown. Fixed error descriptions and typed app states are sent, not raw
 UI/server/exception diagnostics or credentials. It is not an atomic live inventory

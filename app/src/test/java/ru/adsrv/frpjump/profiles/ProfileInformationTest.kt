@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import okhttp3.*
+import okio.buffer
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
@@ -35,14 +36,24 @@ class SyntheticProfileInformation : AutoCloseable {
     val versionRequests = AtomicInteger()
     @Volatile var fail = false
     @Volatile var beforeResponse: (() -> Unit)? = null
-    @Volatile var onEnqueue: ((Call) -> Unit)? = null
+    /** Like [beforeResponse], but told which call is in the interceptor. */
+    @Volatile var beforeResponseOf: ((Call) -> Unit)? = null
+    /** Runs inside the response body read of every request (the exchange has returned from the interceptor chain). */
+    @Volatile var beforeBodyRead: (() -> Unit)? = null
+    /** Runs when OkHttp reports `Call.cancel()` for any call: the hook-free proof that a cancel reached the exact call. */
+    @Volatile var onCanceled: ((Call) -> Unit)? = null
+    /** One entry per call actually created and started (`callStart`); a refused or never-started request leaves none. */
     val enqueues = java.util.concurrent.CopyOnWriteArrayList<String>()
+    val canceled = java.util.concurrent.CopyOnWriteArrayList<String>()
     val api: FrpJumpApi
-    private val http = OkHttpClient.Builder().dispatcher(Dispatcher(ApiCallbackExitExecutor()))
+    private val http = OkHttpClient.Builder()
         .eventListener(object : EventListener() {
             override fun callStart(call: Call) {
                 enqueues += "${call.request().url.host}/${call.request().url.pathSegments.last()}"
-                onEnqueue?.invoke(call)
+            }
+            override fun canceled(call: Call) {
+                canceled += "${call.request().url.host}/${call.request().url.pathSegments.last()}"
+                onCanceled?.invoke(call)
             }
         }).addInterceptor { chain ->
         val request = chain.request()
@@ -53,11 +64,19 @@ class SyntheticProfileInformation : AutoCloseable {
             deviceRequests.incrementAndGet()
         }
         beforeResponse?.invoke()
+        beforeResponseOf?.invoke(chain.call())
         val body = if (fail) """{"detail":"private-server-secret"}""" else if (version)
             """{"protocol_version":1,"package_version":"synthetic","features":["device-display"]}"""
         else """[{"name":"same","enrolled_at":"2026-01-01","last_seen_at":null,"enabled":true},{"name":"no-connections","enrolled_at":"2026-01-01","last_seen_at":null,"enabled":true}]"""
         Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(if (fail) 503 else 200).message("synthetic")
-            .body(body.toResponseBody("application/json".toMediaType())).build()
+            .body(object : ResponseBody() {
+                private val delegate = body.toResponseBody("application/json".toMediaType())
+                override fun contentType() = delegate.contentType()
+                override fun contentLength() = delegate.contentLength()
+                override fun source(): okio.BufferedSource = object : okio.ForwardingSource(delegate.source()) {
+                    override fun read(sink: okio.Buffer, byteCount: Long): Long { beforeBodyRead?.invoke(); return super.read(sink, byteCount) }
+                }.let { src -> src.buffer() }
+            }).build()
     }.build()
     private val record = RestoreRecord(MemoryStorage()).apply { load() }
     init { api = FrpJumpApi(http) }
@@ -73,7 +92,7 @@ class SyntheticProfileInformation : AutoCloseable {
     val state = MutableStateFlow(ProfilesState(loaded = true, index = ProfileIndex(profiles, "work"), runtimes = runtimes))
     val hidden = MutableStateFlow<Set<String>>(emptySet())
     val information = ProfileInformation(state, hidden)
-    override fun close() { runtimes.values.forEach { it.close() }; scope.cancel(); http.dispatcher.executorService.shutdownNow(); http.connectionPool.evictAll() }
+    override fun close() { runtimes.values.forEach { it.close() }; scope.cancel(); http.connectionPool.evictAll() }
 }
 
 class ProfileInformationTest {
