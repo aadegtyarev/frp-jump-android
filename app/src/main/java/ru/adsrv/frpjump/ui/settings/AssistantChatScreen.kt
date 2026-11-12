@@ -69,7 +69,6 @@ internal fun AssistantChatContent(
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         val compact = maxHeight < 400.dp
-        val cardLimit = maxHeight * 0.75f
         val cardInView = remember { BringIntoViewRequester() }
         // When a question appears in the compact (scrolling) layout, show it from its top: tool, target and command first.
         LaunchedEffect(state.confirmation?.id) { if (compact && state.confirmation != null) cardInView.bringIntoView() }
@@ -113,7 +112,10 @@ internal fun AssistantChatContent(
             if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
             if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
             if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
-            LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            // While a question is open the room goes to it: in the portrait layout the history list is not shown (its state is kept) and the
+            // message field, disabled during a run anyway, is hidden; Stop stays.
+            val asking = state.confirmation != null && !state.stopping
+            if (!asking || compact) LazyColumn((if (compact) Modifier.height(160.dp) else Modifier.weight(1f)).fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 items(state.turns) { turn ->
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ChatUserMessage(turn.user)
@@ -160,7 +162,7 @@ internal fun AssistantChatContent(
             // the list is only 160 dp. Portrait gives it at most 75% of the height; what is allowed (tool, target, command, warning) and the
             // answers stay in view, only the command box scrolls inside what is left.
             state.confirmation?.let { pending ->
-                if (!state.stopping) Box((if (compact) Modifier else Modifier.heightIn(max = cardLimit)).bringIntoViewRequester(cardInView)) {
+                if (!state.stopping) Box((if (compact) Modifier else Modifier.weight(1f, fill = false)).bringIntoViewRequester(cardInView)) {
                     ChatConfirmationCard(pending, onAnswer = { conversation.answer(pending.id, it) }, bounded = !compact, wide = compact)
                 }
             }
@@ -182,7 +184,7 @@ internal fun AssistantChatContent(
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
-            OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
+            if (!asking) OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
                 label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
                 minLines = 1, maxLines = 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
             if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,

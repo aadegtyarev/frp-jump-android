@@ -39,12 +39,13 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.connections.kindWord
 
 /**
- * The owner's question before a changing call. What is being allowed stays in view above the answers, always:
- * tool, target names, the command and the warning are never scrolled away. Only the command box scrolls (inside the room that is left,
- * with its line count and a "scroll for more" mark), and the answers stay pinned below. The command is shown with every non-printing or
- * disguising character as a visible escape ([displayCommand]). In the compact landscape layout ([wide]) the answers sit beside the
- * command instead of below it, so both fit on a short screen. "For session" is offered only when the target is known by name; "Always"
- * asks for a second confirmation first (it turns the question off for the whole app).
+ * The owner's question before a changing call. The card is laid out top to bottom in the order the owner should read it: what is asked
+ * (title, tool, target names), the command (its own scroll box, at most 120 dp, with the line count and a "scroll for more" mark),
+ * the warning, then the answers. The command is shown with every non-printing or disguising character as a visible escape
+ * ([displayCommand]). The screen gives the card all the room between the top bar and Stop while it is open; if even that is too little
+ * (very large font), the card scrolls as a whole and always starts at its top, so the command is read before the answers are reached.
+ * In the compact landscape layout ([wide]) the answers sit beside the command. "For session" is offered only when the target is known by
+ * name; "Always" asks for a second confirmation first (it turns the question off for the whole app).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -76,19 +77,22 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             modifier = Modifier.testTag("chat_confirm_tool"))
         // Two lines at most, ellipsis after that; TalkBack reads the whole name.
         Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
-        if (lines > 1) Text(stringResource(R.string.confirm_lines, lines), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
-            modifier = Modifier.testTag("chat_confirm_lines"))
     }
     @Composable fun CommandBox(modifier: Modifier) {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(Modifier.weight(1f, fill = false).verticalScroll(scroll).testTag("chat_confirm_command_box")) {
+            val more = scroll.canScrollForward
+            if (lines > 1 || more) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (lines > 1) Text(stringResource(R.string.confirm_lines, lines), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
+                    modifier = Modifier.testTag("chat_confirm_lines"))
+                if (more) Text(stringResource(R.string.confirm_more), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accent,
+                    modifier = Modifier.testTag("chat_confirm_more"))
+            }
+            Box(Modifier.heightIn(max = if (wide) 96.dp else 120.dp).verticalScroll(scroll).testTag("chat_confirm_command_box")) {
                 SelectionContainer {
                     Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: $shownCommand" }.testTag("chat_confirm_command"))
                 }
             }
-            if (scroll.canScrollForward) Text(stringResource(R.string.confirm_more), style = MaterialTheme.typography.labelMedium,
-                color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_more"))
         }
     }
     @Composable fun Warning() = Text(stringResource(R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
@@ -108,21 +112,18 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     OutlinedCard(modifier.fillMaxWidth().testTag("chat_confirm_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
         if (wide) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Header(); CommandBox(Modifier.heightIn(max = 120.dp)); Warning()
+                Header(); CommandBox(Modifier); Warning()
             }
             Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers() }
-        } else Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Header()
-            CommandBox(if (bounded) Modifier.weight(1f, fill = false).heightIn(min = 72.dp) else Modifier.heightIn(max = 160.dp))
-            Warning()
-            Answers()
+        } else Column((if (bounded) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Header(); CommandBox(Modifier); Warning(); Answers()
         }
     }
     if (askAlways) AlertDialog(
         onDismissRequest = { askAlways = false },
         title = { Text(stringResource(R.string.always_dialog_title), modifier = Modifier.testTag("chat_always_dialog_title")) },
         text = { Text(stringResource(R.string.always_dialog_text, stringResource(R.string.settings), stringResource(R.string.assistant_title), stringResource(R.string.assistant_tools)),
-            modifier = Modifier.testTag("chat_always_dialog_text")) },
+            modifier = Modifier.verticalScroll(rememberScrollState()).testTag("chat_always_dialog_text")) },
         confirmButton = { TextButton(onClick = { askAlways = false; decisionFor(CardTap.ALWAYS, alwaysConfirmed = true)?.let(onAnswer) }, modifier = Modifier.testTag("chat_always_turn_off")) {
             Text(stringResource(R.string.always_dialog_confirm), color = AppTheme.colors.error) } },
         dismissButton = { TextButton(onClick = { askAlways = false }, modifier = Modifier.testTag("chat_always_cancel")) { Text(stringResource(R.string.always_dialog_cancel)) } },
@@ -153,9 +154,10 @@ internal fun ConfirmationsOffIndicator(onTurnOn: () -> Unit, onTools: (() -> Uni
     if (open) AlertDialog(
         onDismissRequest = { open = false },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.confirmations_off_explanation), modifier = Modifier.testTag("chat_confirmations_off_text"))
+            // The error comes first (it is what just changed) and the text scrolls, so neither is cut off in a short window at large font.
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (turnOnFailed) Text(stringResource(R.string.confirmations_turn_on_failed), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirmations_turn_on_failed"))
+                Text(stringResource(R.string.confirmations_off_explanation), modifier = Modifier.testTag("chat_confirmations_off_text"))
             }
         },
         confirmButton = { TextButton(onClick = onTurnOn, modifier = Modifier.testTag("chat_confirmations_turn_on")) { Text(stringResource(R.string.confirmations_turn_on)) } },

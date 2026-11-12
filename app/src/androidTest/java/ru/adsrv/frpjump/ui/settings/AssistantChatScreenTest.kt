@@ -94,7 +94,16 @@ class AssistantChatScreenTest {
     private var informationFixture: ProfileInformationFixture? = null
     private var history: AssistantChatHistory? = null
     private var historyCleanup: (() -> Unit)? = null
-    @org.junit.After fun closeInformationFixture() { informationFixture?.close(); historyCleanup?.invoke() }
+    /**
+     * The soft keyboard belongs to the window, not to a test: one left open by an earlier test shrinks the screen of the next one
+     * (a large-font list can drop to one line). Every test starts and ends with it hidden.
+     */
+    private fun hideKeyboard() {
+        compose.activityRule.scenario.onActivity { activity ->
+            androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }
+    }
+    @org.junit.After fun closeInformationFixture() { hideKeyboard(); informationFixture?.close(); historyCleanup?.invoke() }
     private var information = ru.adsrv.frpjump.profiles.ProfileInformation(
         kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true,
             index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
@@ -221,6 +230,7 @@ class AssistantChatScreenTest {
     }
 
     @Before fun display() {
+        hideKeyboard()
         // This suite is runnable with normal discovery too; the safe explicit runner is required
         // by the operator's device procedure, not by an unconditional wrong-runner test failure.
         val landscape = args.getString("composerOrientation") == "landscape"
@@ -267,7 +277,16 @@ class AssistantChatScreenTest {
         }
     }
     }
-    private fun install(activity: ComponentActivity) { activity.setContent { Content() } }
+    /**
+     * The chosen language applies to the activity itself, not only to the screen's composition: a Dialog is its own window with its own
+     * composition view, which reads the activity's resources (in the app the language is set process-wide through AppCompat).
+     */
+    @Suppress("DEPRECATION")
+    private fun localizeActivity(activity: ComponentActivity) {
+        val configuration = Configuration(activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
+        activity.resources.updateConfiguration(configuration, activity.resources.displayMetrics)
+    }
+    private fun install(activity: ComponentActivity) { localizeActivity(activity); activity.setContent { Content() } }
     private fun install() {
         compose.activityRule.scenario.onActivity { install(it) }
         compose.onNodeWithTag("assistant_chat_entry").assertIsDisplayed().performClick()
@@ -686,6 +705,9 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
         }
+        // This assertion is about the failure text, not about the keyboard layout: with the soft keyboard up at 200% font in Russian the
+        // list is one line high (also on main), so the keyboard is put away first.
+        hideKeyboard(); compose.waitForIdle()
         button("chat_history").performScrollToNode(hasTestTag("chat_current_tool_failure"))
         button("chat_current_tool_failure").assertIsDisplayed()
         compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
@@ -927,7 +949,12 @@ class AssistantChatScreenTest {
     }
     private fun landscape() = compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     /** The node is displayed; in the compact landscape layout the screen column is scrolled to it first. */
-    private fun shown(tag: String): SemanticsNodeInteraction = compose.onNodeWithTag(tag).also { if (landscape()) it.performScrollTo() }.assertIsDisplayed()
+    private fun shown(tag: String): SemanticsNodeInteraction {
+        val node = compose.onNodeWithTag(tag)
+        if (landscape()) node.performScrollTo()
+        else try { node.assertIsDisplayed() } catch (_: AssertionError) { node.performScrollTo() }  // a card taller than the screen scrolls as a whole
+        return node.assertIsDisplayed()
+    }
     /** What is being allowed and the answer to allow it are visible together, without scrolling the card. */
     private fun assertCommandAndAllowVisible() {
         compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertIsDisplayed()
@@ -1081,12 +1108,12 @@ class AssistantChatScreenTest {
         startConfirmation()
         val shownText = compose.onNodeWithTag("chat_confirm_command", useUnmergedTree = true)
         for (escape in listOf("\u27E8U+202E\u27E9", "\u27E8U+202C\u27E9", "\u27E8U+200B\u27E9", "\u2409", "\u240D")) shownText.assertTextContains(escape, substring = true)
-        compose.runOnIdle {
-            assertTrue("the displayed text has no raw bidi override", compose.onNodeWithTag("chat_confirm_command", useUnmergedTree = true)
-                .fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") { it.text }.none { it == '\u202E' })
-            // The command that will run is the original one.
-            assertEquals(sshCommandText, owner!!.state.value.receipts.single().call.arguments["command"]!!.jsonPrimitive.content)
-        }
+        // Compose queries run on the test thread, never inside runOnIdle/runOnUiThread.
+        val displayed = compose.onNodeWithTag("chat_confirm_command", useUnmergedTree = true)
+            .fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") { it.text }
+        assertTrue("the displayed text has no raw bidi override", displayed.none { it == '\u202E' })
+        // The command that will run is the original one.
+        compose.runOnIdle { assertEquals(sshCommandText, owner!!.state.value.receipts.single().call.arguments["command"]!!.jsonPrimitive.content) }
         shot("hidden-characters")
         button("chat_confirm_decline").performClick(); awaitIdle()
     }
