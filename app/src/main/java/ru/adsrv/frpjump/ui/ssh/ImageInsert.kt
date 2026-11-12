@@ -172,13 +172,29 @@ fun startImageInsert(
     }
 }
 
-/** The pictures on the clipboard (at most [ImageLimits.BATCH_MAX], in order), read now (after the owner asked), or empty. */
+/** The pictures on the clipboard (at most [ImageLimits.BATCH_MAX], in order), read now, only after the owner confirmed the offer (reading the clip
+ * grants access to it and shows the system's "pasted from clipboard" notice), or empty. */
 fun clipboardImageUris(context: Context): List<Uri> = try {
     context.getSystemService(ClipboardManager::class.java).primaryClip?.let { clip ->
         clipImageItems((0 until clip.itemCount).map { clip.getItemAt(it).uri })
     }.orEmpty()
 } catch (e: RuntimeException) {
     emptyList()
+}
+
+/**
+ * The clipboard offer of one terminal: the Paste tap only records the tab ([offer]); [read] (the clipboard's pictures) runs
+ * only from [confirm], after the owner pressed Insert, so a dismissed offer never touches the clip.
+ */
+class ClipboardImageOffer<T : Any>(private val read: () -> List<Uri>) {
+    var pending: T? by mutableStateOf(null)
+        private set
+
+    fun offer(tab: T) { pending = tab }
+
+    fun confirm(): List<Uri> = read()
+
+    fun dismiss() { pending = null }
 }
 
 /** ⋮ → Insert image; off unless the tab is open and has no image on its way. */
@@ -238,12 +254,15 @@ fun ImageProgressBar(state: ImageInsertState, onCancel: () -> Unit, modifier: Mo
     }
 }
 
-/** The clipboard holds [count] pictures: send them to the device, as one insert? ✕ or a swipe down leaves them. */
+/**
+ * The clipboard holds a picture or several: send them to the device, as one insert? The count is not known here: the clip is
+ * read only after Insert. ✕ or a swipe down leaves them.
+ */
 @Composable
-fun ImageOfferSheet(onInsert: () -> Unit, onDismiss: () -> Unit, count: Int = 1) {
+fun ImageOfferSheet(onInsert: () -> Unit, onDismiss: () -> Unit) {
     AppSheet(
-        title = if (count > 1) stringResource(R.string.terminal_images_offer_title, count) else stringResource(R.string.terminal_image_offer_title),
-        subtitle = stringResource(if (count > 1) R.string.terminal_images_offer_text else R.string.terminal_image_offer_text),
+        title = stringResource(R.string.terminal_image_offer_title),
+        subtitle = stringResource(R.string.terminal_image_offer_text),
         onDismiss = onDismiss,
     ) {
         Column {

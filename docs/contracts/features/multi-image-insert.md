@@ -15,7 +15,7 @@ The owner sends up to 10 photos to the device in one go and gets all their paths
 | S2 | Picker returns 1 image | Exactly today's flow, words and notices |
 | S3 | Picker returns N (2..10) | One batch for the tab: images go one at a time over ONE SFTP channel (encode one, upload it, release it; never all in memory); all successful absolute paths go in ONE paste, joined by single spaces, in the picker's order, no Enter, no newline |
 | S4 | A fallback picker returns more than 10 | The first 10 are used, a short notice says so |
-| S5 | Clipboard holds several images and no text | Paste offers one insert: "Insert N images from clipboard?" (ru «Вставить изображения из буфера (N)?»), N at most 10. A text clip and a single image are unchanged |
+| S5 | Clipboard holds one or several images and no text | Paste offers one count-free insert: "Insert from clipboard?" (ru «Вставить из буфера?») / "Images from the clipboard are sent to the device and their paths are inserted."; the clip is read only after Insert (never at the Paste tap or on dismiss), at most 10 images are used, and the batch bar then shows "Image N of M". A text clip is unchanged |
 | S6 | Progress | A batch bar says "Image N of M · P%" (ru «Изображение N из M · P%»), "Image N of M · preparing" while one is read; a single image keeps "Uploading image… P%" |
 | S7 | Cancel mid-batch | Stops the whole batch: nothing is inserted; the part file is removed as today; the complete files this batch created are removed best effort, all together within the existing 5 s removal bound (including opening its channel); files not reached stay and go with the 60-minute cleanup |
 | S8 | An image cannot be read (too large, unreadable) | It is skipped; the rest go |

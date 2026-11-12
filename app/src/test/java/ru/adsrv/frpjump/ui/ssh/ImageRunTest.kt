@@ -134,6 +134,20 @@ class ImageRunTest {
         }
     }
 
+    @Test fun theClipboardIsReadOnlyWhenTheOwnerConfirmsNeverAtThePasteTap() {
+        var reads = 0
+        val offer = ClipboardImageOffer<String> { reads++; listOf(android.net.Uri.EMPTY) }
+        offer.offer("tab")
+        assertEquals("tab", offer.pending)
+        assertEquals("the Paste tap does not read the clipboard", 0, reads)
+        offer.dismiss()
+        assertNull(offer.pending)
+        assertEquals("a dismissed offer never reads it", 0, reads)
+        offer.offer("tab")
+        assertEquals(1, offer.confirm().size)
+        assertEquals(1, reads)
+    }
+
     @Test fun thePickerTakesTenOrThePlatformsLowerLimit() {
         assertEquals(10, batchPickerMax(null))
         assertEquals(10, batchPickerMax(100))

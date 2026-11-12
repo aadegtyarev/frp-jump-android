@@ -51,7 +51,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -325,8 +324,8 @@ fun TerminalScreen(
     }
     val imageRuns = remember { mutableStateMapOf<Int, ImageRun>() }
     var pickImageFor by remember { mutableStateOf<SshSession?>(null) }
-    var imageOffer by remember { mutableStateOf<SshSession?>(null) }
-    var imageOfferCount by remember { mutableIntStateOf(1) }
+    // The clipboard is read only when the owner confirms the offer (ClipboardImageOffer), never at the Paste tap.
+    val imageOffer = remember { ClipboardImageOffer<SshSession> { clipboardImageUris(context) } }
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(imagePickerMax())) { uris ->
         val tab = pickImageFor
         pickImageFor = null
@@ -438,11 +437,7 @@ fun TerminalScreen(
 
             override fun onPasteImage(session: SshSession) {
                 if (session.state.value != SshState.Open) context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
-                else if (imageRuns[session.id] == null) {
-                    // The owner asked to paste, so the clip's list of pictures may be read now (not their content).
-                    imageOfferCount = clipboardImageUris(context).size.coerceAtLeast(1)
-                    imageOffer = session
-                }
+                else if (imageRuns[session.id] == null) imageOffer.offer(session)
             }
         }
         onDispose { sessions.listener = null; input.diagnostics = null }
@@ -766,15 +761,14 @@ fun TerminalScreen(
         }
     }
     // Compose after the full-screen editor so confirmation is always above it.
-    imageOffer?.let { tab ->
+    imageOffer.pending?.let { tab ->
         ImageOfferSheet(
-            count = imageOfferCount,
             onInsert = {
-                val uris = clipboardImageUris(context)
+                val uris = imageOffer.confirm()
                 if (uris.isNotEmpty()) startImageInsert(scope, context, tab, uris, imageRuns, visibleTab(tab))
                 else context.notice(context.getString(R.string.terminal_image_unreadable), NoticeKind.WARN)
             },
-            onDismiss = { imageOffer = null },
+            onDismiss = { imageOffer.dismiss() },
         )
     }
     pasteAsk?.let { pending ->

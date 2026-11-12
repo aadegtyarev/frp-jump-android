@@ -269,8 +269,9 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   Failure removes the part file the job was writing when the connection
   allows; Cancel of a batch removes the part file and every complete file that
   batch created (best effort, within the 5 s bound above, in order); a lost
-  connection can leave them. A failed image ends the batch's uploads; the
-  complete files before it stay and are inserted.
+  connection can leave them. A failed upload ends the batch's uploads; the
+  complete files before it stay and are inserted unless the connection or tab
+  changed. An unreadable image is skipped.
 - Once per batch (after its last file is written, on its channel), best effort and bounded, files in that folder that match the
   app's own name pattern, are regular files (never links or folders, never
   followed), and are more than 60 minutes older than the batch's last file's device

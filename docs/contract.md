@@ -361,9 +361,9 @@ where there is one); so does a long press on the Paste key (TalkBack action "Ins
 and the image button of the text editor, all by one rule and one flow. A tap on Paste is unchanged. The long press and its TalkBack action exist only while
 the picker is available; otherwise the key has no long-click action, and a long hold
 never pastes. With an empty clipboard the key says so and mentions the long press. With an image and no text on the clipboard, Paste (key or the
-selection menu) offers "Insert image from clipboard?" (ru «Вставить изображение
-из буфера?») instead of pasting; with several images (at most 10) it is one offer,
-"Insert N images from clipboard?" (ru «Вставить изображения из буфера (N)?»); with any
+selection menu) offers "Insert from clipboard?" (ru «Вставить из буфера?») instead of pasting; the one offer covers a single image or several (at most 10), so the clipboard
+is not read until the owner confirms (reading it shows the system's "pasted from clipboard"
+notice); the batch bar then shows "Image N of M"; with any
 text it pastes the text as before.
 The picture is re-encoded without metadata (EXIF, GPS, XMP, text chunks and
 colour profiles are not carried): rotated upright, the long side at most 2000

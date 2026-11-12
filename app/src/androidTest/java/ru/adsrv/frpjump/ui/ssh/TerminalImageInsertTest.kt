@@ -359,11 +359,11 @@ class TerminalImageInsertTest {
         assertEquals(1, cancels.size)
     }
 
-    @Test fun theOfferForSeveralImagesNamesTheCountAndInsertsOnlyOnTheButton() {
+    @Test fun theOfferIsTheSameForSeveralImagesAndInsertsOnlyOnTheButton() {
         val inserted = mutableListOf<Unit>()
-        compose.setContent { FrpJumpTheme { ImageOfferSheet(onInsert = { inserted += Unit }, onDismiss = {}, count = 5) } }
-        compose.onNodeWithText(compose.activity.getString(R.string.terminal_images_offer_title, 5)).assertIsDisplayed()
-        compose.onNodeWithText(compose.activity.getString(R.string.terminal_images_offer_text)).assertIsDisplayed()
+        compose.setContent { FrpJumpTheme { ImageOfferSheet(onInsert = { inserted += Unit }, onDismiss = {}) } }
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_image_offer_title)).assertIsDisplayed()
+        compose.onNodeWithText(compose.activity.getString(R.string.terminal_image_offer_text)).assertIsDisplayed()
         capture("multi-offer")
         assertTrue(inserted.isEmpty())
         compose.onNodeWithText(compose.activity.getString(R.string.terminal_image_insert)).performClick()
