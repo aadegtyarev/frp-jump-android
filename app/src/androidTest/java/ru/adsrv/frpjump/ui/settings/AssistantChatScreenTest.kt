@@ -95,6 +95,8 @@ class AssistantChatScreenTest {
     private var calls = 0
     private var summaryCalls = 0
     private val requests = mutableListOf<AgentRequest>()
+    /** Positive waits only: a loaded emulator can be slow, and a longer wait never turns a failure into a pass. */
+    private val WAIT_MS = 15_000L
     private var owner: AssistantConversation? = null
     private var ownerSupport: ru.adsrv.frpjump.assistant.chat.ConfirmationSupport? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
@@ -226,9 +228,9 @@ class AssistantChatScreenTest {
         }
         history!!.save(SavedChat(records=records).bind(store.currentSnapshot.settings))
         runBlocking(Dispatchers.IO) { history!!.load() }
-        mode="summary"; install(); compose.waitUntil(5000) { owner?.state?.value?.loading==false }
+        mode="summary"; install(); compose.waitUntil(WAIT_MS) { owner?.state?.value?.loading==false }
         input().performTextInput("Continue selected target without repeating actions")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         val answer="target=work-root; done=diagnostic; unknown=upgrade"
         compose.runOnIdle {
             assertTrue(summaryCalls in 1..2); assertEquals(summaryCalls+1,calls)
@@ -240,8 +242,8 @@ class AssistantChatScreenTest {
         runBlocking(Dispatchers.IO) { assertNotNull(history!!.load()!!.summary) }
         val previous=owner; val previousCalls=calls
         compose.onNodeWithTag("assistant_chat_entry").performClick()
-        compose.waitUntil(5000) { owner !== previous && owner?.state?.value?.loading==false }
-        input().performTextInput("Продолжай"); button("chat_send").performClick(); awaitIdle()
+        compose.waitUntil(WAIT_MS) { owner !== previous && owner?.state?.value?.loading==false }
+        input().performTextInput("Продолжай"); sendAndAwait()
         compose.runOnIdle { assertEquals(previousCalls+1,calls); assertEquals(42,owner!!.state.value.turns.size); assertEquals(answer,owner!!.state.value.turns.last().answer) }
     }
 
@@ -312,8 +314,23 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("assistant_chat_entry").assertIsDisplayed().performClick()
     }
     private fun input() = button("chat_input")
+    /**
+     * Waits until [tag] has stopped moving. The soft keyboard slides the screen's content with a system animation that Compose's idling does
+     * not wait for: a click injected at the node's bounds mid-slide lands where the button was and does nothing (seen in RU portrait at
+     * 100% font: a Send or Stop that never happened). Positive wait: three equal readings 100 ms apart, at most 5 s.
+     */
+    private fun settle(tag: String) {
+        var last: androidx.compose.ui.geometry.Rect? = null; var stable = 0
+        val until = SystemClock.uptimeMillis() + 5000
+        while (stable < 3 && SystemClock.uptimeMillis() < until) {
+            val now = runCatching { bounds(tag) }.getOrNull()
+            if (now != null && now == last) stable++ else { stable = 0; last = now }
+            compose.waitForIdle(); SystemClock.sleep(100)
+        }
+    }
     private fun button(tag: String): SemanticsNodeInteraction {
         if (tag == "chat_tools") toolsBinding = chatBinding
+        if (tag == "chat_send" || tag == "chat_stop") settle(tag)
         val node = compose.onNodeWithTag(tag)
         // Scroll only when the compact layout supplies a scrolling parent.
         if (compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) node.performScrollTo()
@@ -335,7 +352,7 @@ class AssistantChatScreenTest {
             return "tool=$id expected=$enabled committed=${committedTool(id)} observable=${current.assistantSearch}/${current.assistantReadPage}/${current.assistantInspectImage} presentation=${toolsBinding?.state?.value} rendered=${node?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ToggleableState)} enabled=${node != null && !node.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)} busy=${owner?.state?.value?.busy}"
         }
         try {
-            compose.waitUntil(5000) {
+            compose.waitUntil(WAIT_MS) {
                 val node = compose.onAllNodes(hasAnyAncestor(hasTestTag("tool_$id")) and isToggleable()).fetchSemanticsNodes().singleOrNull()
                 committedTool(id) == enabled && toolsBinding?.state?.value?.let { state ->
                     state.committed == settings.assistantAvailability.tools && id !in state.pending && id !in state.failed
@@ -353,33 +370,57 @@ class AssistantChatScreenTest {
             throw AssertionError("Tool save acknowledgement failed: $details; screenshot=${target.name}", failure)
         }
     }
-    private fun awaitIdle() { compose.waitUntil(5000) { owner?.state?.value?.busy == false } }
+    private fun awaitIdle() {
+        try { compose.waitUntil(WAIT_MS) { owner?.state?.value?.busy == false } }
+        catch (e: androidx.compose.ui.test.ComposeTimeoutException) {
+            val s = owner?.state?.value
+            runCatching { shot("timeout-idle") }
+            throw AssertionError("never idle: " + diagnose("never-idle"), e)
+        }
+    }
+    /**
+     * Clicks Send and waits until that Send has really run and ended. Under a loaded emulator a Send may not have
+     * turned busy yet when the click returns, and a fast one can be busy for less than a frame, so "not busy" alone
+     * could return before it ran: wait for its result too (a new request, a new turn, a changed problem or the draft
+     * taken), then for "not busy".
+     */
+    private fun sendAndAwait() {
+        val before = owner!!.state.value; val requested = requests.size
+        button("chat_send").performClick()
+        try {
+            compose.waitUntil(WAIT_MS) {
+                val now = owner?.state?.value ?: return@waitUntil false
+                !now.busy && (requests.size > requested || now.turns.size != before.turns.size ||
+                    now.problem != before.problem || now.draft != before.draft)
+            }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("send did not complete: " + diagnose("no-send"), e) }
+    }
     private fun awaitMarkdown() {
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_markdown_rendered").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("assistant_markdown_rendered").fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test fun sendFollowupStopErrorAndRecovery() {
         install()
         compose.runOnIdle { assertEquals(0, calls) }
         input().performTextInput("First message")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals("Complete answer 1", owner!!.state.value.turns.single().answer) }
         button("chat_history").performScrollToNode(hasText("Complete answer 1"))
         compose.onNodeWithText("Complete answer 1").assertIsDisplayed()
         input().performTextInput("Second message")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals(2, requests[1].turns.size); assertEquals("First message", requests[1].turns.first().user); mode = "wait" }
         input().performTextInput("Recover this text")
         button("chat_send").performClick()
-        compose.waitUntil(5000) { owner!!.state.value.busy }
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.busy }
         button("chat_stop").assertIsDisplayed().performClick(); awaitIdle()
         input().assertTextContains("Recover this text")
         compose.runOnIdle { mode = "error" }
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         button("chat_error").assertIsDisplayed()
         input().assertTextContains("Recover this text")
         compose.runOnIdle { mode = "answer" }
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals(3, owner!!.state.value.turns.size); assertEquals(3, requests.last().turns.size) }
     }
 
@@ -387,7 +428,7 @@ class AssistantChatScreenTest {
         mode = "formatted"
         install()
         input().performTextInput("Literal **question**")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals(formattedAnswer, owner!!.state.value.turns.single().answer) }
         compose.activityRule.scenario.onActivity {
             (it.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
@@ -413,16 +454,16 @@ class AssistantChatScreenTest {
             }
         }
         answer.performTouchInput { longClick(Offset(20f, 20f)) }
-        compose.waitUntil(5000) { copySelection != null }
+        compose.waitUntil(WAIT_MS) { copySelection != null }
         compose.runOnIdle { assertNotNull(copySelection); mode = "long" }
         input().performTextInput("Next")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertEquals(longAnswer, owner!!.state.value.turns.last().answer)
             assertEquals(formattedAnswer, requests.last().turns.first().exchanges.last().reply.text)
         }
         button("chat_history").performScrollToNode(hasText("Line 120", substring = true))
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_markdown_loading").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("assistant_markdown_loading").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText("Line 120", substring = true).assertExists().assertTextEquals(longAnswer)
     }
 
@@ -430,7 +471,7 @@ class AssistantChatScreenTest {
         mode = "resources"
         install()
         input().performTextInput("Show resources")
-        button("chat_send").performClick(); awaitIdle(); awaitMarkdown()
+        sendAndAwait(); awaitMarkdown()
         button("chat_history").performScrollToNode(hasText("[link](https://example.test)", substring = true))
         compose.onNodeWithText("[link](https://example.test)", substring = true)
             .assertExists().assertHasNoClickAction()
@@ -445,15 +486,15 @@ class AssistantChatScreenTest {
         mode = "code"
         install()
         input().performTextInput("Code please")
-        button("chat_send").performClick(); awaitIdle(); awaitMarkdown()
+        sendAndAwait(); awaitMarkdown()
         button("chat_history").performScrollToNode(hasText("C:\\", substring = true))
         val inline = compose.onNodeWithText("C:\\", substring = true).assertIsDisplayed()
         compose.onNodeWithText("  command \\ path\n    next\n", substring = true).assertExists()
         inline.performTouchInput { longClick(Offset(20f, 20f)) }
-        compose.waitUntil(5000) { copySelection != null }
+        compose.waitUntil(WAIT_MS) { copySelection != null }
         compose.runOnIdle { assertNotNull(copySelection); mode = "answer" }
         input().performTextInput("Next")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertEquals(codeAnswer, owner!!.state.value.turns.first().answer)
             assertEquals(codeAnswer, requests.last().turns.first().exchanges.last().reply.text)
@@ -475,14 +516,14 @@ class AssistantChatScreenTest {
         }
         val text = compose.onNodeWithText(original).assertIsDisplayed().assertHasNoClickAction()
         text.performTouchInput { longClick(Offset(20f, 20f)) }
-        compose.waitUntil(5000) { copySelection != null }
+        compose.waitUntil(WAIT_MS) { copySelection != null }
         compose.runOnIdle { assertNotNull(copySelection) }
     }
 
     @Test fun recreationRetainsActualBackStackOwnerAndPopDiscards() {
         install()
         input().performTextInput("First")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         input().performTextInput("Draft only in memory")
         lateinit var before: AssistantConversation
         compose.runOnIdle { before = owner!! }
@@ -493,7 +534,7 @@ class AssistantChatScreenTest {
         input().assertTextContains("Draft only in memory")
         button("chat_back").performClick()
         compose.onNodeWithText("Outside chat").assertExists()
-        compose.waitUntil(5000) { before.state.value == ChatState() }
+        compose.waitUntil(WAIT_MS) { before.state.value == ChatState() }
     }
 
     @Test fun disabledSetupHasDirectRecovery() {
@@ -528,7 +569,7 @@ class AssistantChatScreenTest {
         awaitIdle()
         compose.runOnIdle { mode = "answer" }
         input().performTextInput("New draft")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals(1, calls); assertEquals("New draft", owner!!.state.value.turns.single().user) }
         val russian = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag("ru")) }
         val resources = compose.activity.createConfigurationContext(russian).resources
@@ -546,7 +587,7 @@ class AssistantChatScreenTest {
             toolToggle(id).assertIsOn().assertIsEnabled()
             compose.runOnIdle { assertEquals(0, calls); settingsFile.failWrites = true }
             toolToggle(id).performClick()
-            compose.waitUntil(5000) { toolsBinding!!.state.value.let { id in it.failed && id !in it.pending } }
+            compose.waitUntil(WAIT_MS) { toolsBinding!!.state.value.let { id in it.failed && id !in it.pending } }
             toolToggle(id).assertIsOn().assertIsEnabled()
             compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.assistant_tool_save_failed)) and hasAnyAncestor(hasTestTag("tool_$id"))).assertExists()
             compose.runOnIdle { assertTrue(committedTool(id)); settingsFile.failWrites = false }
@@ -566,7 +607,7 @@ class AssistantChatScreenTest {
         install()
         compose.runOnIdle { mode = "tool-ssh"; assertEquals(0, calls) }
         input().performTextInput("Run synthetic command")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome) }
         button("chat_tools").performClick()
         toolToggle("ssh_command").assertIsOff()
@@ -577,7 +618,7 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals(2, calls) }
         compose.onNodeWithTag("tools_back").performScrollTo().performClick()
         input().performTextInput("Try the saved synthetic target")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertEquals(listOf("ssh_command"), requests.last().tools.map { it.name })
             val result = requests.last().turns.last().exchanges.single().results.single()
@@ -593,7 +634,7 @@ class AssistantChatScreenTest {
         install()
         compose.runOnIdle { mode = "tool-information"; assertEquals(0, calls) }
         input().performTextInput("What does the app know?")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertTrue(requests.first().tools.isEmpty())
             assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome)
@@ -605,7 +646,7 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals(2, calls) }
         compose.onNodeWithTag("tools_back").performScrollTo().performClick()
         input().performTextInput("Read profile information")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             val output = requests.last().turns.last().exchanges.single().results.single()
             assertEquals(ToolOutcome.SUCCESS, output.outcome)
@@ -628,9 +669,9 @@ class AssistantChatScreenTest {
         informationFixture = ProfileInformationFixture(); information = informationFixture!!.information
         mode = "profile-results"; settings.update { it.copy(assistantProfileInformation = true) }
         install()
-        compose.waitUntil(5000) { owner?.state?.value?.loading == false }
+        compose.waitUntil(WAIT_MS) { owner?.state?.value?.loading == false }
         input().performTextInput("Найди подключения к board1500")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         runBlocking(Dispatchers.IO) { history!!.load() }
         val ciphertext = file.readText()
         assertFalse(ciphertext.contains("board1500")); assertFalse(ciphertext.contains("work-root"))
@@ -643,7 +684,7 @@ class AssistantChatScreenTest {
             mode = "resume-history"
         }
         compose.onNodeWithTag("assistant_chat_entry").performClick()
-        compose.waitUntil(5000) { owner?.state?.value?.let { !it.loading && it.turns.size == 1 } == true }
+        compose.waitUntil(WAIT_MS) { owner?.state?.value?.let { !it.loading && it.turns.size == 1 } == true }
         compose.runOnIdle {
             assertEquals(before, calls)
             assertTrue(owner!!.state.value.turns.single().answer.contains("Work · board1500"))
@@ -654,7 +695,7 @@ class AssistantChatScreenTest {
         button("chat_history").performScrollToNode(hasText("work-root", substring = true))
         compose.onNode(hasText("work-root", substring = true) and hasText("profile_information", substring = true)).assertIsDisplayed()
         input().performTextInput("Продолжай с рабочим root-подключением")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertEquals(before + 1, calls)
             assertEquals("Continued work / work-root", owner!!.state.value.turns.last().answer)
@@ -668,7 +709,7 @@ class AssistantChatScreenTest {
         mode = "profile-results"
         settings.update { it.copy(assistantProfileInformation = true) }
         install(); input().performTextInput("Найди подключения к board1500")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             val turn = owner!!.state.value.turns.single()
             assertTrue(turn.answer.contains("Work · board1500 · Service root · SSH:22 · root"))
@@ -678,7 +719,7 @@ class AssistantChatScreenTest {
             mode = "profile-results-provider-fail"; informationFixture!!.fail = true
         }
         input().performTextInput("Проверь ещё раз board1500")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
             val selected = owner!!.state.value.information.single()
@@ -704,22 +745,22 @@ class AssistantChatScreenTest {
             WebResponse("https://public.org/doc", "text/html", "<title>Fetched guide</title><p>Useful static documentation with enough text to read.</p>".toByteArray(), 200, null)
         }
         install(); input().performTextInput("Read documentation")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         button("chat_history").performScrollToNode(hasText("Fetched guide\nhttps://public.org/doc"))
         compose.onNodeWithText("Fetched guide\nhttps://public.org/doc").assertIsDisplayed().assertHasNoClickAction()
         compose.runOnIdle { assertEquals(2, calls); assertEquals(1, owner!!.state.value.turns.single().sources.size); mode = "tool-failure" }
         input().performTextInput("Unavailable page")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertTrue(owner!!.state.value.turns.last().toolFailed); assertTrue(owner!!.state.value.turns.last().sources.isEmpty()); mode = "tool-read-provider-fail" }
         input().performTextInput("Fetch then fail")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem); assertEquals(1, owner!!.state.value.currentSources.size) }
         button("chat_history").performScrollToIndex(2)
         assertTrue(compose.onAllNodes(hasTestTag("chat_sources") and hasAnyAncestor(hasTestTag("chat_history"))).fetchSemanticsNodes().isNotEmpty())
         input().assertIsDisplayed()
         compose.runOnIdle { mode = "tool-failure-provider-fail" }
         input().performTextReplacement("Fail again")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertTrue(owner!!.state.value.turns.last().toolFailed)
             assertTrue(owner!!.state.value.toolFailed)
@@ -741,7 +782,7 @@ class AssistantChatScreenTest {
             WebResponse(url, "text/html", "<form id='challenge-form'></form>".toByteArray(), 202, null)
         }
         install(); input().performTextInput("Find the documentation")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle {
             assertEquals(ChatProblem.PROVIDER, owner!!.state.value.problem)
             assertTrue(owner!!.state.value.toolFailed)
@@ -806,19 +847,19 @@ class AssistantChatScreenTest {
 
     @Test fun chatToolsAllSwitchesKeepCurrentSnapshotCompleteAndApplyNextSend() {
         install(); input().performTextInput("Completed first")
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         val retained = owner!!
         val ids = listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")
         for ((index, id) in ids.withIndex()) {
             val completeCount = retained.state.value.turns.size
             compose.runOnIdle { heldProviderReply = CompletableDeferred(); mode = "held-answer" }
             input().performTextInput("pending-$id"); button("chat_send").performClick()
-            compose.waitUntil(5000) { retained.state.value.busy }
+            compose.waitUntil(WAIT_MS) { retained.state.value.busy }
             compose.runOnIdle { assertEquals(ids.take(index), requests.last().tools.map { it.name }) }
             button("chat_tools").performClick()
             compose.runOnIdle { settingsFile.failWrites = true }
             toolToggle(id).assertIsOff().performClick()
-            compose.waitUntil(5000) { toolsBinding!!.state.value.let { id in it.failed && id !in it.pending } }
+            compose.waitUntil(WAIT_MS) { toolsBinding!!.state.value.let { id in it.failed && id !in it.pending } }
             toolToggle(id).assertIsOff().assertIsEnabled()
             compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.assistant_tool_save_failed)) and hasAnyAncestor(hasTestTag("tool_$id"))).assertExists()
             compose.runOnIdle { assertFalse(committedTool(id)); assertTrue(retained.state.value.busy); settingsFile.failWrites = false }
@@ -841,7 +882,7 @@ class AssistantChatScreenTest {
                 assertEquals("late reply", retained.state.value.turns.last().answer)
                 assertEquals("", retained.state.value.draft); mode = "answer"
             }
-            input().performTextInput("next-$id"); button("chat_send").performClick(); awaitIdle()
+            input().performTextInput("next-$id"); sendAndAwait()
             compose.runOnIdle {
                 assertEquals(completeCount + 2, retained.state.value.turns.size)
                 assertEquals(ids.take(index + 1), requests.last().tools.map { it.name })
@@ -852,7 +893,7 @@ class AssistantChatScreenTest {
             val count = retained.state.value.turns.size
             compose.runOnIdle { heldProviderReply = CompletableDeferred(); mode = "held-answer" }
             input().performTextInput("pending-off-$id"); button("chat_send").performClick()
-            compose.waitUntil(5000) { retained.state.value.busy }
+            compose.waitUntil(WAIT_MS) { retained.state.value.busy }
             button("chat_tools").performClick()
             toolToggle(id).assertIsOn().performClick(); awaitToolSaved(id, false)
             toolToggle(id).assertIsOff().assertIsEnabled()
@@ -862,7 +903,7 @@ class AssistantChatScreenTest {
             input().assertTextContains("pending-off-$id")
             compose.runOnIdle { heldProviderReply.complete(Unit) }; awaitIdle()
             compose.runOnIdle { assertSame(retained, owner); assertEquals(count + 1, retained.state.value.turns.size); assertEquals("", retained.state.value.draft); mode = "answer" }
-            input().performTextInput("next-off-$id"); button("chat_send").performClick(); awaitIdle()
+            input().performTextInput("next-off-$id"); sendAndAwait()
             compose.runOnIdle { assertEquals(ids.drop(index + 1), requests.last().tools.map { it.name }); assertEquals(count + 2, requests.last().turns.size) }
         }
         input().performTextInput("Retained draft")
@@ -875,22 +916,22 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertSame(retained, owner); assertEquals(1 + 4 * ids.size, retained.state.value.turns.size) }
         input().assertTextContains("Retained draft")
         button("chat_back").performClick()
-        compose.waitUntil(5000) { retained.state.value == ChatState() }
+        compose.waitUntil(WAIT_MS) { retained.state.value == ChatState() }
         compose.onNodeWithTag("assistant_chat_entry").performClick()
         compose.runOnIdle { assertNotSame(retained, owner); assertTrue(owner!!.state.value.turns.isEmpty()) }
     }
 
     @Test fun oldAndCurrentExchangeOmissionsUseTruthfulLocalizedContextLabel() {
         mode = "current-omission"; install()
-        input().performTextInput("Current exchanges"); button("chat_send").performClick(); awaitIdle()
+        input().performTextInput("Current exchanges"); sendAndAwait()
         compose.runOnIdle { assertEquals(1, owner!!.state.value.turns.size); assertTrue(owner!!.state.value.omitted) }
         compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.chat_omitted)).assertExists()
         button("chat_back").performClick()
         compose.onNodeWithTag("assistant_chat_entry").performClick()
         compose.runOnIdle { mode = "long-context" }
-        input().performTextInput("First old turn"); button("chat_send").performClick(); awaitIdle()
+        input().performTextInput("First old turn"); sendAndAwait()
         compose.runOnIdle { assertFalse(owner!!.state.value.omitted); owner!!.edit("y".repeat(7000)) }
-        button("chat_send").performClick(); awaitIdle()
+        sendAndAwait()
         compose.runOnIdle { assertTrue(owner!!.state.value.omitted); assertEquals(2, owner!!.state.value.turns.size) }
         compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.chat_omitted)).assertExists()
     }
@@ -938,7 +979,7 @@ class AssistantChatScreenTest {
             compose.onNodeWithTag("tools_back").performScrollTo().performClick()
             input().assertTextContains("Retained draft")
             button("chat_back").performClick()
-            compose.waitUntil(5000) { oldChat.state.value == ChatState() }
+            compose.waitUntil(WAIT_MS) { oldChat.state.value == ChatState() }
             compose.onNodeWithTag("assistant_chat_entry").performClick()
             compose.runOnIdle { assertNotSame(oldChat, owner); assertNotSame(oldBinding, chatBinding) }
             settingsFile.beforeWrite = null; release.countDown()
@@ -964,8 +1005,17 @@ class AssistantChatScreenTest {
         compose.runOnIdle { mode = providerMode }
         input().performTextInput("Run synthetic command")
         button("chat_send").performClick()
-        compose.waitUntil(5000) { owner?.state?.value?.confirmation != null }
+        try { compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null } }
+        catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("no question appeared: " + diagnose("no-question"), e) }
         compose.waitForIdle()
+    }
+    /** What the screen looked like when a wait gave up: state, the key nodes' bounds and a screenshot. */
+    private fun diagnose(name: String): String {
+        runCatching { shot(name) }
+        val s = owner?.state?.value
+        fun b(tag: String) = runCatching { bounds(tag).toString() }.getOrDefault("none")
+        return "busy=${s?.busy} stopping=${s?.stopping} draft='${s?.draft}' pending=${s?.pendingText} problem=${s?.problem} requests=${requests.size} " +
+            "root=${runCatching { rootBounds() }.getOrNull()} send=${b("chat_send")} stop=${b("chat_stop")} input=${b("chat_input")} title=${b("chat_title")} mark=${b("chat_confirmations_off")}"
     }
     private fun landscape() = compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     /** The node is displayed; in the compact landscape layout the screen column is scrolled to it first. */
@@ -1008,7 +1058,7 @@ class AssistantChatScreenTest {
     /** The short-command case: tool, target, the command and the four answers are on screen together. */
     private fun assertCommandAndAllowVisible() = assertCommandStartAndAnswersVisible(1)
     private fun confirmationsToggle() = compose.onNode(hasAnyAncestor(hasTestTag("tool_confirmations")) and isToggleable()).performScrollTo().assertIsDisplayed()
-    private fun awaitConfirmations(mode: ru.adsrv.frpjump.settings.ConfirmationMode) = compose.waitUntil(5000) { settings.assistantConfirmations.global == mode }
+    private fun awaitConfirmations(mode: ru.adsrv.frpjump.settings.ConfirmationMode) = compose.waitUntil(WAIT_MS) { settings.assistantConfirmations.global == mode }
 
     @Test fun changingCallAsksWithNamesFullCommandFourAnswersAndHints() {
         startConfirmation()
@@ -1028,7 +1078,7 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_confirm_always_hint").assertDoesNotExist()
         shot("card")
         button("chat_stop").performClick()
-        compose.waitUntil(5000) { owner?.state?.value?.busy == false }
+        compose.waitUntil(WAIT_MS) { owner?.state?.value?.busy == false }
     }
 
     @Test fun declineExecutesNothingAndShowsDeclinedNotAFailure() {
@@ -1085,22 +1135,22 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_tools").assertIsDisplayed(); compose.onNodeWithTag("chat_back").assertIsDisplayed()
         shot("indicator")
         // A later changing call no longer asks.
-        input().performTextInput("Again"); button("chat_send").performClick(); awaitIdle()
+        input().performTextInput("Again"); sendAndAwait()
         compose.runOnIdle { assertNull(owner!!.state.value.confirmation); assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }
         button("chat_confirmations_off").performClick()
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirmations_off_text").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off_text").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("chat_confirmations_off_text").assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirmations_off_explanation))
         shot("indicator-dialog", dialog = true)
         compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
         awaitConfirmations(ConfirmationMode.ASK)
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun longPressOnTheIndicatorExplainsAndClosesWithoutChange() {
         settings.setAssistantConfirmations(ConfirmationMode.OFF)
         install()
         button("chat_confirmations_off").assertIsDisplayed().performTouchInput { longClick() }
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirmations_off_text").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off_text").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("chat_confirmations_off_text").assertIsDisplayed()
         compose.onNodeWithTag("chat_confirmations_close").performClick()
         compose.onNodeWithTag("chat_confirmations_off_text").assertDoesNotExist()
@@ -1118,7 +1168,7 @@ class AssistantChatScreenTest {
         shot("tools-switch-on")
         confirmationsToggle().performClick()
         awaitConfirmations(ConfirmationMode.OFF)
-        compose.waitUntil(5000) { chatBinding?.state?.value?.let { !it.confirmations && CONFIRMATIONS_KEY !in it.pending } == true }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { !it.confirmations && CONFIRMATIONS_KEY !in it.pending } == true }
         confirmationsToggle().assertIsOff()
         shot("tools-switch-off")
         compose.onNodeWithTag("tools_back").performScrollTo().performClick()
@@ -1203,7 +1253,7 @@ class AssistantChatScreenTest {
         compose.waitForIdle()
         assertTrue("the first card was scrolled", scrollOf("chat_confirm_command_box") > 0f)
         button("chat_confirm_decline").performClick()
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirm_command", useUnmergedTree = true).fetchSemanticsNodes().firstOrNull()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirm_command", useUnmergedTree = true).fetchSemanticsNodes().firstOrNull()
             ?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)?.joinToString("") { it.text }?.startsWith("second-line-1") == true }
         // The second card is a fresh card: its command box and its section both start at the top.
         assertEquals(0f, scrollOf("chat_confirm_command_box"), 0.5f); assertEquals(0f, scrollOf("chat_confirm_section"), 0.5f)
@@ -1257,7 +1307,7 @@ class AssistantChatScreenTest {
         // Still there after the run ended; the next Send clears it (and asks again, because requests stayed on).
         compose.onNodeWithTag("chat_confirm_not_saved").assertIsDisplayed()
         input().performTextInput("Again"); button("chat_send").performClick()
-        compose.waitUntil(5000) { owner?.state?.value?.confirmation != null }
+        compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null }
         compose.onNodeWithTag("chat_confirm_not_saved").assertDoesNotExist()
         button("chat_stop").performClick(); awaitIdle()
     }
@@ -1268,14 +1318,14 @@ class AssistantChatScreenTest {
         button("chat_confirmations_off").performClick()
         settingsFile.failWrites = true
         compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirmations_turn_on_failed").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_turn_on_failed").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("chat_confirmations_turn_on_failed").assertIsDisplayed()
         compose.runOnIdle { assertEquals(ConfirmationMode.OFF, settings.assistantConfirmations.global) }
         shot("turn-on-failed", dialog = true)
         settingsFile.failWrites = false
         compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
         awaitConfirmations(ConfirmationMode.ASK)
-        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun cardShowsTheRealProfileDeviceAndConnectionNamesAndForSessionSkipsTheSameTargetNextTime() {
@@ -1288,11 +1338,11 @@ class AssistantChatScreenTest {
         button("chat_confirm_session").performClick(); awaitIdle()
         compose.runOnIdle { assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }
         // The same target no longer asks; another connection of the same profile does.
-        input().performTextInput("Again"); button("chat_send").performClick(); awaitIdle()
+        input().performTextInput("Again"); sendAndAwait()
         compose.runOnIdle { assertNull(owner!!.state.value.confirmation); assertTrue(requests.last().turns.last().exchanges.single().results.single().text.contains("unavailable")) }
         sshTarget = "work" to "work-admin"
         input().performTextInput("Other"); button("chat_send").performClick()
-        compose.waitUntil(5000) { owner?.state?.value?.confirmation != null }
+        compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null }
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("Work · board1500 · Service admin")
         button("chat_stop").performClick(); awaitIdle()
     }
@@ -1305,11 +1355,11 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals(1, ownerSupport!!.grants.snapshot().size) }
         button("chat_tools").performClick()
         toolToggle("ssh_command").performClick(); awaitToolSaved("ssh_command", false)
-        compose.waitUntil(5000) { ownerSupport!!.grants.snapshot().isEmpty() }
+        compose.waitUntil(WAIT_MS) { ownerSupport!!.grants.snapshot().isEmpty() }
         toolToggle("ssh_command").performClick(); awaitToolSaved("ssh_command", true)
         compose.onNodeWithTag("tools_back").performScrollTo().performClick()
         input().performTextInput("Again"); button("chat_send").performClick()
-        compose.waitUntil(5000) { owner?.state?.value?.confirmation != null }
+        compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null }
         button("chat_stop").performClick(); awaitIdle()
     }
 
