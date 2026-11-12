@@ -31,7 +31,16 @@ The terminal input connection must not receive the editor's composing text.
   above them. The terminal remains visible above the compact multiline
   editor. Returning to Keys restores the main row with additional rows
   collapsed; only ⋯ opens additional rows.
-- The compact editor offers expand, Insert and return to Keys. Typing,
+- The editor (compact and expanded) offers an image button (label "Insert image" /
+  «Вставить изображение»), expand/collapse, Insert and return to Keys. The image button
+  opens the system photo picker under the same availability rule as ⋮ → Insert image
+  (tab Open, no image on its way; otherwise dimmed). The uploaded file's absolute path
+  goes straight to the terminal through the accepted-paste path, to the tab that started
+  it, without Enter; the draft, its selection and revision are not read or changed, and
+  the path is never mixed into the draft (a path pasted alone is recognized as an image
+  by Claude Code, mixed with text it is plain text). The image bar with Cancel shows
+  above the editor, or inside the full-screen editor, without hiding Insert or the
+  field. The editor's controls are: image, expand/collapse, Insert and return to Keys. Typing,
   composition and editor Enter stay local. Suggestions and voice input
   depend on the installed keyboard.
 - Expand opens the same draft and selection full screen. Collapse and Back

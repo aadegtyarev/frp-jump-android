@@ -23,6 +23,13 @@ sealed interface ImageInsertState {
     data class Uploading(val sent: Long, val total: Long) : ImageInsertState
 }
 
+/**
+ * What one paste carries for [paths]: the absolute paths joined by single spaces, never by a newline (Claude Code makes
+ * "[Image #1] [Image #2]" of space-joined paths in one paste, and keeps newline-separated ones as text). Today the job
+ * sends one image, so this is that one path; several images would be one paste of this.
+ */
+fun joinImagePaths(paths: List<String>): String = paths.joinToString(" ")
+
 sealed interface ImageInsertOutcome {
     /** The path went into the terminal. */
     data object Inserted : ImageInsertOutcome
@@ -129,7 +136,7 @@ class ImageInsertJob(
             currentCoroutineContext().ensureActive()
             if (!target.stillCurrent()) return ImageInsertOutcome.Failed(ImageFailure.CONNECTION_LOST)
             val inserted = try {
-                withContext(insertOn) { target.paste(path, enter = false).also { if (it) created.done() } }
+                withContext(insertOn) { target.paste(joinImagePaths(listOf(path)), enter = false).also { if (it) created.done() } }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -156,6 +156,8 @@ fun TerminalScreen(
     keyLogin: KeyLoginFlow,
     /** Where a session's "Use key login" installs the key; null when its login is not by password. */
     keyLoginTarget: (SshSession) -> KeyInstallTarget?,
+    /** Tests only: stands in for "the tab is Open" and for the system picker, which an emulator without an SSH server cannot reach. */
+    imageHooks: ImageEntryHooks? = null,
 ) {
     val all by sessions.sessions.collectAsStateWithLifecycle()
     val stored by snippetStore.snippets.collectAsStateWithLifecycle()
@@ -326,6 +328,23 @@ fun TerminalScreen(
         val tab = pickImageFor
         pickImageFor = null
         if (uri != null && tab != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
+    }
+    // The one way into the photo picker (the menu item, the long press on Paste, the editor's button). Callers pass lambdas, not
+    // a reference to this local function: equal references are skipped on recomposition and would keep an old tab (see #156).
+    fun tabOpen(tab: SshSession) = imageHooks?.isOpen?.invoke(tab) ?: (tab.state.value == SshState.Open)
+    val canInsertImage = (imageHooks?.isOpen?.invoke(selected) ?: (state == SshState.Open)) && imageRuns[selected.id] == null
+    val shownTab = rememberUpdatedState(selected)
+    fun pickImageFor(tab: SshSession) {
+        // [tab] is what the caller was composed with; a stale caller (an old tab) or a tab that is not Open or busy does nothing.
+        if (tab !== shownTab.value || !tabOpen(tab) || imageRuns[tab.id] != null) return
+        if (imageHooks != null) { imageHooks.picked(tab); return }
+        pickImageFor = tab
+        try {
+            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        } catch (e: ActivityNotFoundException) {
+            pickImageFor = null
+            context.notice(context.getString(R.string.terminal_image_no_picker), NoticeKind.WARN)
+        }
     }
     // A tab closed (its Undo pending, closed for good, its tunnel gone) takes its image with it.
     LaunchedEffect(list) { cancelRunsOfGoneTabs(imageRuns, list.map { it.id }.toSet()) }
@@ -518,16 +537,10 @@ fun TerminalScreen(
                                 onClick = { barMenu = false; managing = true },
                             )
                             InsertImageMenuItem(
-                                enabled = state == SshState.Open && imageRuns[selected.id] == null,
+                                enabled = canInsertImage,
                                 onClick = {
                                     barMenu = false
-                                    pickImageFor = selected
-                                    try {
-                                        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                    } catch (e: ActivityNotFoundException) {
-                                        pickImageFor = null
-                                        context.notice(context.getString(R.string.terminal_image_no_picker), NoticeKind.WARN)
-                                    }
+                                    pickImageFor(selected)
                                 },
                             )
                             // Off while the device is being asked: a second tap would only ask again.
@@ -604,7 +617,10 @@ fun TerminalScreen(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-                imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel) }
+                // Not while the editor is expanded: its own window covers this one, and carries the bar itself.
+                if (!(draft.textMode && draft.expanded)) {
+                    imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel, keysShown = !draft.textMode) }
+                }
                 (state as? SshState.Reconnecting)?.let { reconnecting ->
                     // The same bar as Ended: what happens, and what the owner can do meanwhile.
                     Column(
@@ -701,12 +717,15 @@ fun TerminalScreen(
                             onInsertAndEnter = { insertDraft(true) },
                             onExpand = { sessions.drafts.expand(selected.id, true); focusManager.clearFocus(force = true) },
                             onKeys = { setTextMode(false) },
+                            canInsertImage = canInsertImage,
+                            onInsertImage = { pickImageFor(selected) },
                         )
                     },
                     onKeyboard = { show -> if (show) input.showKeyboard(explicit = true) else input.hideKeyboard() },
                     // The same paste as the selection menu's: bracketed when the remote side asked for it.
                     onPaste = { view.currentSession?.onPasteTextFromClipboard() },
-                    canOfferImage = state == SshState.Open && imageRuns[selected.id] == null,
+                    canOfferImage = canInsertImage,
+                    onInsertImage = { pickImageFor(selected) },
                     onKey = { key ->
                         selected.typed()
                         sendExtraKey(view, key, modifiers)
@@ -718,6 +737,7 @@ fun TerminalScreen(
     }
     if (draft.textMode && draft.expanded) {
         FullscreenTerminalText(onCollapse = { sessions.drafts.expand(selected.id, false) }) {
+            imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel, keysShown = false) }
             TerminalTextComposer(
                 sessionId = selected.id,
                 value = editorValue,
@@ -729,6 +749,8 @@ fun TerminalScreen(
                 onExpand = { sessions.drafts.expand(selected.id, false) },
                 expanded = true,
                 onKeys = { setTextMode(false) },
+                canInsertImage = canInsertImage,
+                onInsertImage = { pickImageFor(selected) },
             )
         }
     }

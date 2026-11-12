@@ -56,6 +56,8 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FullscreenExitGlyph
 import ru.adsrv.frpjump.ui.FullscreenGlyph
+import ru.adsrv.frpjump.ui.ImageGlyph
+import ru.adsrv.frpjump.ui.NoticeLayer
 
 /** A real IME editor: its composing text never passes through TerminalInput. */
 @Composable
@@ -70,6 +72,10 @@ fun TerminalTextComposer(
     expanded: Boolean = false,
     onKeys: () -> Unit,
     onInsertAndEnter: () -> Unit,
+    /** The tab is open and has no image on its way: the image button is on. */
+    canInsertImage: Boolean = false,
+    /** Opens the photo picker; the path then goes straight to the terminal, the draft is not touched. */
+    onInsertImage: () -> Unit = {},
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -83,7 +89,7 @@ fun TerminalTextComposer(
         // Share one row with the actions: stacking chrome would hide the whole terminal above the IME.
         Row(Modifier.fillMaxWidth().then(frame), verticalAlignment = Alignment.CenterVertically) {
             ComposerField(value, onValueChange, focus, Modifier.weight(1f).heightIn(min = 48.dp, max = 80.dp))
-            ComposerActions(false, enabled, onKeys, onExpand, onInsert, onInsertAndEnter, Modifier.widthIn(min = 180.dp, max = 320.dp))
+            ComposerActions(false, enabled, onKeys, onExpand, onInsert, onInsertAndEnter, canInsertImage, onInsertImage, Modifier.widthIn(min = 180.dp, max = 320.dp))
         }
     } else {
         Column((if (expanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).then(frame)) {
@@ -91,7 +97,7 @@ fun TerminalTextComposer(
                 value, onValueChange, focus,
                 if (expanded) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 160.dp),
             )
-            ComposerActions(expanded, enabled, onKeys, onExpand, onInsert, onInsertAndEnter, Modifier.fillMaxWidth())
+            ComposerActions(expanded, enabled, onKeys, onExpand, onInsert, onInsertAndEnter, canInsertImage, onInsertImage, Modifier.fillMaxWidth())
         }
     }
 }
@@ -105,6 +111,8 @@ private fun ComposerActions(
     onExpand: () -> Unit,
     onInsert: () -> Unit,
     onInsertAndEnter: () -> Unit,
+    canInsertImage: Boolean,
+    onInsertImage: () -> Unit,
     modifier: Modifier,
 ) {
     val colors = AppTheme.colors
@@ -114,6 +122,10 @@ private fun ComposerActions(
             Text(">_", color = colors.onTerm)
         }
         Spacer(Modifier.weight(1f))
+        IconButton(onClick = onInsertImage, enabled = canInsertImage, modifier = Modifier.testTag("terminal_text_image")) {
+            val tint = if (canInsertImage) colors.onTerm else colors.termMuted
+            Icon(ImageGlyph, contentDescription = stringResource(R.string.terminal_image_insert), tint = tint)
+        }
         IconButton(onClick = onExpand, modifier = Modifier.testTag("terminal_text_expand")) {
             Icon(
                 if (expanded) FullscreenExitGlyph else FullscreenGlyph,
@@ -179,8 +191,11 @@ fun FullscreenTerminalText(onCollapse: () -> Unit, content: @Composable () -> Un
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         BackHandler(onBack = onCollapse)
-        Column(
-            Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding().padding(12.dp).testTag("terminal_text_fullscreen"),
-        ) { content() }
+        // The dialog is its own window: the activity's notice host is under it, so it carries one (image failures and "inserted").
+        NoticeLayer {
+            Column(
+                Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding().padding(12.dp).testTag("terminal_text_fullscreen"),
+            ) { content() }
+        }
     }
 }

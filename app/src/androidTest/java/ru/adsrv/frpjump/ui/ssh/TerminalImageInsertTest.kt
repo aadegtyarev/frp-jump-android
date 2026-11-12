@@ -31,6 +31,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
@@ -44,6 +46,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -158,7 +165,7 @@ class TerminalImageInsertTest {
         val config = compose.activity.resources.configuration
         runCatching { instrumentation.uiAutomation.waitForIdle(350, 3_000) }
         val screenshot = instrumentation.uiAutomation.takeScreenshot() ?: return
-        File(instrumentation.targetContext.externalCacheDir, "image-$name-${config.orientation}-${config.fontScale}.png").outputStream().use {
+        File(instrumentation.targetContext.externalCacheDir, "${if (name.startsWith("entry-")) "" else "image-"}$name-${config.orientation}-${config.fontScale}.png").outputStream().use {
             screenshot.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
         screenshot.recycle()
@@ -341,5 +348,197 @@ class TerminalImageInsertTest {
         compose.onNodeWithTag("terminal_main_keys").assertIsDisplayed()
         val text = compose.onNodeWithText(compose.activity.getString(R.string.terminal_image_uploading, 40)).assertIsDisplayed().fetchSemanticsNode()
         assertFalse("the bar's words are cut", overflowed(text))
+    }
+
+    /** The real extra keys with Paste counted: what a tap pastes and how often the picker is asked for. */
+    private fun keysWithCounts(canOfferImage: Boolean, pastes: MutableList<Unit>, pickers: MutableList<Unit>) {
+        compose.setContent {
+            FrpJumpTheme {
+                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    Box(Modifier.weight(1f))
+                    ExtraKeys(remember { Modifiers() }, onKeyboard = {}, onPaste = { pastes += Unit }, onKey = {}, textMode = false, onTextMode = {},
+                        textEditor = {}, canOfferImage = canOfferImage, onInsertImage = { pickers += Unit })
+                }
+            }
+        }
+        compose.waitForIdle()
+    }
+
+    private val pasteKey get() = compose.onNodeWithContentDescription(compose.activity.getString(R.string.terminal_paste))
+
+    @Test fun aLongPressOnPasteOpensThePickerAlsoWithAnEmptyClipboardAndATapOnlyPastes() {
+        val pastes = mutableListOf<Unit>()
+        val pickers = mutableListOf<Unit>()
+        compose.runOnUiThread { clipboard.clearPrimaryClip() }
+        keysWithCounts(true, pastes, pickers)
+        capture("entry-paste-empty-clipboard")
+        pasteKey.performClick()
+        assertEquals("a tap with an empty clipboard pastes nothing and opens no picker", 0, pastes.size + pickers.size)
+        assertEquals(compose.activity.getString(R.string.terminal_image_clipboard_empty_offer), pasteKey.fetchSemanticsNode().config[SemanticsProperties.StateDescription])
+        pasteKey.performTouchInput { longClick() }
+        compose.waitForIdle()
+        assertEquals(1, pickers.size)
+        assertEquals(0, pastes.size)
+    }
+
+    @Test fun aTapOnPasteWithTextPastesAndNeverOpensThePicker() {
+        val pastes = mutableListOf<Unit>()
+        val pickers = mutableListOf<Unit>()
+        compose.runOnUiThread { clipboard.setPrimaryClip(ClipData.newPlainText("synthetic", "text")) }
+        keysWithCounts(true, pastes, pickers)
+        capture("entry-paste-text-clipboard")
+        pasteKey.performClick()
+        assertEquals(1, pastes.size)
+        assertEquals(0, pickers.size)
+    }
+
+    @Test fun aLongPressOnPasteDoesNothingWhenNoImageMayBeOffered() {
+        val pastes = mutableListOf<Unit>()
+        val pickers = mutableListOf<Unit>()
+        compose.runOnUiThread { clipboard.setPrimaryClip(ClipData.newPlainText("synthetic", "text")) }
+        keysWithCounts(false, pastes, pickers)
+        pasteKey.performTouchInput { longClick() }
+        compose.waitForIdle()
+        assertEquals(0, pickers.size)
+        assertEquals("a long press is not a tap", 0, pastes.size)
+    }
+
+    @Test fun withNoImageOfferedPasteHasNoLongClickActionOrLabel() {
+        compose.runOnUiThread { clipboard.setPrimaryClip(ClipData.newPlainText("synthetic", "text")) }
+        keysWithCounts(false, mutableListOf(), mutableListOf())
+        val config = pasteKey.fetchSemanticsNode().config
+        assertFalse("no long-click action", config.contains(SemanticsActions.OnLongClick))
+        assertTrue(config.contains(SemanticsActions.OnClick))
+        compose.runOnUiThread { clipboard.clearPrimaryClip() }
+        compose.waitForIdle()
+        pasteKey.assertIsNotEnabled()
+        assertFalse(pasteKey.fetchSemanticsNode().config.contains(SemanticsActions.OnLongClick))
+    }
+
+    @Test fun pasteHasATalkBackLongClickLabelInsertImage() {
+        compose.runOnUiThread { clipboard.clearPrimaryClip() }
+        keysWithCounts(true, mutableListOf(), mutableListOf())
+        assertEquals(compose.activity.getString(R.string.terminal_image_insert), pasteKey.fetchSemanticsNode().config[SemanticsActions.OnLongClick].label)
+    }
+
+    /** The real editor in a harness with a fixed draft: what Insert and the image button call, and what the draft is after. */
+    @Composable
+    private fun EditorFrame(
+        text: String, canImage: Boolean, calls: MutableList<String>, state: ImageInsertState?, expanded: Boolean,
+    ) {
+        val focus = remember { FocusRequester() }
+        var value by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+        val editor: @Composable () -> Unit = {
+            TerminalTextComposer(
+                1, value, { value = it }, focus, canInsert = true, onInsert = { calls += "insert" }, onExpand = {}, expanded = expanded,
+                onKeys = {}, onInsertAndEnter = { calls += "insert-enter" }, canInsertImage = canImage, onInsertImage = { calls += "image" },
+            )
+        }
+        Column(Modifier.fillMaxSize().background(AppTheme.colors.termBar).safeDrawingPadding().imePadding()) {
+            Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black))
+            if (expanded) {
+                FullscreenTerminalText(onCollapse = {}) {
+                    state?.let { ImageProgressBar(it, onCancel = { calls += "cancel" }, keysShown = false) }
+                    editor()
+                }
+            } else {
+                state?.let { ImageProgressBar(it, onCancel = { calls += "cancel" }, keysShown = false) }
+                ExtraKeys(remember { Modifiers() }, onKeyboard = {}, onPaste = {}, onKey = {}, textMode = true, onTextMode = {}, textEditor = editor)
+            }
+        }
+    }
+
+    private fun editor(canImage: Boolean = true, state: ImageInsertState? = null, expanded: Boolean = false, text: String = "draft text"): MutableList<String> {
+        val calls = mutableListOf<String>()
+        compose.setContent { FrpJumpTheme { EditorFrame(text, canImage, calls, state, expanded) } }
+        compose.waitForIdle()
+        return calls
+    }
+
+    /** Compose idle, then the window (insets and IME animations outlive Compose's idle), then Compose again. */
+    private fun settleWindow() {
+        compose.waitForIdle()
+        runCatching { InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 4_000) }
+        compose.waitForIdle()
+    }
+
+    private val imageButton get() = compose.onNodeWithTag("terminal_text_image")
+
+    @Test fun theEditorsImageButtonIsLabelledOnWhenAvailableAndOpensOnlyThePicker() {
+        val calls = editor()
+        imageButton.assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithContentDescription(compose.activity.getString(R.string.terminal_image_insert)).assertIsDisplayed()
+        capture("entry-editor-compact")
+        imageButton.performClick()
+        compose.waitForIdle()
+        assertEquals("the button neither inserts the draft nor submits it", listOf("image"), calls)
+        compose.onNodeWithTag("terminal_text_editor").assertTextEquals("draft text")
+    }
+
+    @Test fun theEditorsImageButtonIsOffWhenTheTabIsNotOpenOrBusy() {
+        val calls = editor(canImage = false)
+        imageButton.assertIsDisplayed().assertIsNotEnabled().performClick()
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test fun theExpandedEditorHasTheImageButtonToo() {
+        val calls = editor(expanded = true)
+        imageButton.assertIsDisplayed().assertIsEnabled()
+        capture("entry-editor-expanded")
+        imageButton.performClick()
+        assertEquals(listOf("image"), calls)
+        compose.onNodeWithTag("terminal_text_editor").assertTextEquals("draft text")
+    }
+
+    private fun checkBarFitsWithEditor(expanded: Boolean, shot: String) {
+        val calls = editor(state = ImageInsertState.Uploading(450, 1000), expanded = expanded)
+        // The editor asks for the keyboard when it appears; measure only once the window has settled under it (a bar measured
+        // while the keyboard is still sliding in is squeezed for a moment). The assertions are unchanged.
+        settleWindow()
+        val label = compose.activity.getString(R.string.terminal_image_uploading, 40)
+        val text = compose.onNodeWithText(label).assertIsDisplayed().fetchSemanticsNode()
+        assertFalse("the bar's words are cut", overflowed(text))
+        val cancel = compose.onNodeWithText(compose.activity.getString(R.string.cancel)).assertIsDisplayed()
+        compose.onNodeWithTag("terminal_text_insert").assertIsDisplayed()
+        compose.onNodeWithTag("terminal_text_editor").assertIsDisplayed()
+        imageButton.assertIsDisplayed()
+        capture(shot)
+        // Cancel sits at the end of the panel: no disclosure reserve in text mode.
+        val width = compose.activity.resources.displayMetrics.widthPixels
+        val right = cancel.fetchSemanticsNode().let { it.positionOnScreen.x + it.size.width }
+        val slack = 24 * compose.activity.resources.displayMetrics.density
+        assertTrue("Cancel ends at ${right}px of ${width}px; no disclosure reserve is wanted here", right >= width - slack - 40 * compose.activity.resources.displayMetrics.density)
+        cancel.performClick()
+        assertEquals(listOf("cancel"), calls)
+        // The bar is above the editor, and the Insert action is not covered by it.
+        val bar = text.boundsInRoot
+        val insert = compose.onNodeWithTag("terminal_text_insert").fetchSemanticsNode().boundsInRoot
+        assertTrue("the bar must not overlap Insert", bar.bottom <= insert.top + 1f || bar.top >= insert.bottom - 1f)
+    }
+
+    @Test fun theBarAndCancelFitInTheCompactEditorWithoutHidingInsertOrTheField() = checkBarFitsWithEditor(false, "entry-editor-bar-compact")
+
+    @Test fun theBarAndCancelFitInTheExpandedEditorWithoutHidingInsertOrTheField() = checkBarFitsWithEditor(true, "entry-editor-bar-expanded")
+
+    @Test fun theEditorsControlsAreNotWrappedOrCutAtTheCurrentOrientationAndFontScale() {
+        editor()
+        // The editor asks for the keyboard when it appears; what an earlier test left (an IME still moving, a window not yet
+        // gone) must settle first, or the row is measured above a keyboard that is on its way. The assertions below are unchanged.
+        settleWindow()
+        val tags = listOf("terminal_mode_keys", "terminal_text_image", "terminal_text_expand", "terminal_text_insert")
+        compose.waitUntil(5_000) { tags.all { runCatching { compose.onNodeWithTag(it).assertIsDisplayed() }.isSuccess } }
+        val word = compose.onNodeWithText(compose.activity.getString(R.string.terminal_text_insert), useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode()
+        val results = mutableListOf<TextLayoutResult>()
+        word.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+        assertTrue("Insert is on one line", results.all { it.lineCount == 1 })
+        val box = compose.onNodeWithTag("terminal_text_insert").fetchSemanticsNode().boundsInRoot
+        assertTrue("Insert is cut by its button", word.boundsInRoot.left >= box.left - 1f && word.boundsInRoot.right <= box.right + 1f)
+        // Every control is on screen and the five do not overlap.
+        val width = compose.activity.resources.displayMetrics.widthPixels
+        val boxes = listOf("terminal_mode_keys", "terminal_text_image", "terminal_text_expand", "terminal_text_insert").map {
+            compose.onNodeWithTag(it).assertIsDisplayed().fetchSemanticsNode().let { n -> Rect(n.positionOnScreen, androidx.compose.ui.geometry.Size(n.size.width.toFloat(), n.size.height.toFloat())) }
+        }
+        boxes.forEach { assertTrue("$it is off screen", it.left >= 0f && it.right <= width + 1f) }
+        boxes.zipWithNext().forEach { (a, b) -> assertFalse("$a overlaps $b", a.overlaps(b)) }
     }
 }
