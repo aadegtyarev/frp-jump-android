@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.assistant.chat.*
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock

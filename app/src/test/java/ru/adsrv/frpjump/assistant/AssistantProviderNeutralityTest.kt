@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.buildJsonObject

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -249,7 +250,7 @@ class AssistantChatOwnershipTest {
             AgentModule(true), runtime = settings.assistantChat)
         val hold = Gate(); val dispatches = java.util.concurrent.atomic.AtomicInteger()
         // The second model request is held just before its start check; the disable commits first, so the check must refuse it.
-        settings.assistantChat.beforeAction = { category -> if (category == "dispatch" && dispatches.incrementAndGet() == 2) hold.waitHere() }
+        settings.assistantChat.probes = ChatProbes(before = { category -> if (category == "dispatch" && dispatches.incrementAndGet() == 2) hold.waitHere() })
         try {
             chat.edit("q"); chat.send(); hold.entered()
             assertEquals(1, requests.get())
@@ -285,7 +286,7 @@ class AssistantChatOwnershipTest {
                     val hold = Gate()
                     val once = AtomicBoolean()
                     val probe: (String) -> Unit = { point -> if (point == category && once.compareAndSet(false, true)) hold.waitHere() }
-                    if (commitFirst) settings.assistantChat.beforeAction = probe else settings.assistantChat.checkedAction = probe
+                    settings.assistantChat.probes = if (commitFirst) ChatProbes(before = probe) else ChatProbes(checked = probe)
                     val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
                     val commit = Thread {
                         try {

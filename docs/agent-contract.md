@@ -739,6 +739,10 @@ live LLM, SSH or broker compatibility, or physical-device/vendor behavior.
 - [External adapter](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiAgentProvider.kt)
   and [provider configuration](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiConfig.kt).
 - [Conversation owner](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantConversation.kt)
+  (public facade; its parts live in the
+  [chat package](../app/src/main/java/ru/adsrv/frpjump/assistant/chat/): saved
+  document and pure projection/error mapping, run ownership under the runtime
+  gate, one Send in `TurnRunner`, per-Send tool list in `AssistantToolFactory`)
   and [chat screen](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantChatScreen.kt).
 - [Provider store](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantProviderStore.kt)
   and [settings form](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantProviderScreen.kt).

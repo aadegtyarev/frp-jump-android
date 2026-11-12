@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,7 +36,7 @@ class AssistantWebOwnershipTest {
             }, {}, AgentModule(true), runtime = settings.assistantChat)
             val entered = CountDownLatch(1); val release = CountDownLatch(1); val once = AtomicBoolean()
             val probe: (String) -> Unit = { point -> if (point == category && once.compareAndSet(false, true)) { entered.countDown(); check(release.await(3, TimeUnit.SECONDS)) } }
-            if (commitFirst) settings.assistantChat.beforeAction = probe else settings.assistantChat.checkedAction = probe
+            settings.assistantChat.probes = if (commitFirst) ChatProbes(before = probe) else ChatProbes(checked = probe)
             val committed = CountDownLatch(1)
             val commit = Thread {
                 settings.setAssistantTool(AssistantToolId.fromWire(tool)!!, true); settings.setAssistantTool(AssistantToolId.fromWire(tool)!!, false); committed.countDown()
@@ -172,7 +173,7 @@ class AssistantWebOwnershipTest {
             val probe: (String) -> Unit = { category -> if (category == "source" && once.compareAndSet(false, true)) {
                 entered.countDown(); check(release.await(3, TimeUnit.SECONDS))
             } }
-            if (revokeFirst) settings.assistantChat.beforeAction = probe else settings.assistantChat.checkedAction = probe
+            settings.assistantChat.probes = if (revokeFirst) ChatProbes(before = probe) else ChatProbes(checked = probe)
             val commit = Thread {
                 when (revoke) {
                     "stop" -> old.stop()
@@ -198,7 +199,7 @@ class AssistantWebOwnershipTest {
                     assertTrue("$revoke late answer", old.state.value.turns.isEmpty())
                 }
                 assertThrows(WebException::class.java) { settings.assistantChat.webSearch.check(WebBudget()) } // Never reset attempted charges.
-                settings.assistantChat.beforeAction = null; settings.assistantChat.checkedAction = null
+                settings.assistantChat.probes = ChatProbes.None
                 if (revoke == "read-problem") { file.text = originalFile; store.reload() }
                 settings.update { it.copy(assistantEnabled = true, assistantSearch = true, assistantReadPage = true, assistantInspectImage = true) }
                 val next = chat()

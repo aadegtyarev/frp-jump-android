@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.assistant.chat.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
@@ -94,7 +95,7 @@ class AssistantToolCatalogTest {
         val seen = java.util.concurrent.CopyOnWriteArrayList<ChatToolProgress?>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         lateinit var chat: AssistantConversation
-        settings.assistantChat.beforeAction = { point -> if (point == "progress") seen += chat.state.value.toolProgress }
+        settings.assistantChat.probes = ChatProbes(before = { point -> if (point == "progress") seen += chat.state.value.toolProgress })
         chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, {
             AgentProvider { if (calls.incrementAndGet() == 1) AgentReply(calls = listOf(ToolCall("call", toolName, arguments))) else AgentReply("complete") }
         }, {}, AgentModule(true), runtime = settings.assistantChat)
