@@ -129,6 +129,12 @@ class SshTargetsTest {
         }
     }
 
+    @Test fun `resolveSaved refuses several tunnels for the connection port`() = fixture { f ->
+        f.grants = listOf(f.grants.single(), f.grants.single().copy(grantId = "g2", secret = "secret2"))
+        (f.runner.states as MutableStateFlow).value = mapOf("g" to VisitorState(TunnelStatus.RELAYED), "g2" to VisitorState(TunnelStatus.RELAYED))
+        f.manager.sync(); withTimeout(5000) { f.manager.state.first { it.tunnels.size == 2 } }
+        assertEquals(SshTargetResolution.Unavailable, f.resolved())
+    }
     @Test fun `resolveSaved accepts each ready tunnel status`() {
         for (s in listOf(TunnelStatus.DIRECT, TunnelStatus.RELAYED, TunnelStatus.TRYING)) fixture { f ->
             (f.runner.states as MutableStateFlow).value = mapOf("g" to VisitorState(s))
@@ -207,8 +213,17 @@ class SshTargetsTest {
         (f.runner.states as MutableStateFlow).value = mapOf("g" to VisitorState(TunnelStatus.FAILED))
     })
     @Test fun `watchLost tunnel pending source`() = watch({ it.startPending() })
-    @Test fun `watchLost session removed source`() = watch({ it.runtime.session.markRemoved() })
-    @Test fun `watchLost plan source`() = watch({ it.grants = emptyList(); it.manager.sync() })
+    // Another source may fire as well; the session-removed watcher alone is pinned by AssistantSshCommandTest.
+    @Test fun `watchLost fires after the session is removed`() = watch({ it.runtime.session.markRemoved() })
+    // The plan watcher runs Unconfined inside the sync, before the Default-dispatched projection can report the loss.
+    @Test fun `plan loss is signalled from the plan before the projection`() { repeat(20) { fixture { f ->
+        val lost = AtomicInteger(); val scope = CoroutineScope(Job())
+        try {
+            f.targets.watchLost(f.target(), scope) { lost.incrementAndGet() }
+            f.grants = emptyList(); f.manager.sync()
+            assertTrue(lost.get() > 0)
+        } finally { scope.cancel() }
+    } } }
 
     @Test fun `targetPresent follows the plan entry and pending state of the exact tunnel`() = fixture { f ->
         val t = f.target().tunnel
