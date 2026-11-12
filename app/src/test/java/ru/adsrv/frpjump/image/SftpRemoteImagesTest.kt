@@ -231,7 +231,7 @@ class SftpRemoteImagesTest {
     }
 
     private fun job(target: ImageTarget, bytes: ByteArray = ByteArray(5000) { 3 }, at: LocalDateTime = LocalDateTime.of(2026, 11, 12, 1, 30)) =
-        ImageInsertJob(target, { EncodedImage(bytes, ImageFormat.JPEG) }, {}, now = { at }, random = Random(5), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 5000, cleanupMs = 5000)
+        ImageInsertJob(target, listOf({ _ -> EncodedImage(bytes, ImageFormat.JPEG) }), {}, now = { at }, random = Random(5), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 5000, cleanupMs = 5000)
 
     @Test fun theJobInsertsAnAbsolutePathThatNamesTheNewFile() {
         val ssh = client()
@@ -243,6 +243,23 @@ class SftpRemoteImagesTest {
         assertTrue(path, path.startsWith("/.cache/frp-jump/images/img-20261112-0130-"))
         assertTrue(Files.isRegularFile(root.resolve(path.removePrefix("/"))))
         assertEquals("rw-------", perms(root.resolve(path.removePrefix("/"))))
+    }
+
+    @Test fun aBatchOfThreeUsesOneChannelAndPastesThreeFilesInOneLine() {
+        val ssh = client()
+        val pastes = Pastes()
+        val opened = SftpRemoteImages.helpersSubmitted.get()
+        val at = LocalDateTime.of(2026, 11, 12, 1, 30)
+        val sources = (1..3).map { n -> { _: (java.io.Closeable) -> Unit -> EncodedImage(ByteArray(1000 * n) { n.toByte() }, ImageFormat.JPEG) } }
+        val job = ImageInsertJob(target(ssh, pastes = pastes), sources, {}, now = { at }, random = Random(5), insertOn = Dispatchers.Unconfined, closeWith = { it.close() }, cleanupRunner = { it.run() }, removalMs = 5000, cleanupMs = 5000)
+        assertEquals(ImageInsertOutcome.Inserted, runBlocking { withTimeout(30_000) { job.run() } })
+        assertEquals("one SFTP channel opened for the whole batch", 1, SftpRemoteImages.helpersSubmitted.get() - opened)
+        val (line, enter) = pastes.single()
+        assertFalse(enter)
+        val paths = line.split(' ')
+        assertEquals(3, paths.size)
+        assertEquals(listOf(1000L, 2000L, 3000L), paths.map { Files.size(root.resolve(it.removePrefix("/"))) })
+        paths.forEach { assertEquals("rw-------", perms(root.resolve(it.removePrefix("/")))) }
     }
 
     @Test fun theUploadUsesTheOpenConnectionAndLogsInNoMore() {
@@ -723,7 +740,7 @@ class SftpRemoteImagesTest {
         val cancelled = runBlocking {
             val running = async(Dispatchers.Default) {
                 ImageInsertJob(
-                    target(ssh), { _ -> EncodedImage(ByteArray(2 * 1024 * 1024) { 4 }, ImageFormat.JPEG) },
+                    target(ssh), listOf({ _ -> EncodedImage(ByteArray(2 * 1024 * 1024) { 4 }, ImageFormat.JPEG) }),
                     { if (it is ImageInsertState.Uploading && it.sent > 200_000) progressed.countDown() },
                     now = { LocalDateTime.of(2026, 11, 12, 1, 30) }, random = Random(5), insertOn = Dispatchers.Unconfined,
                 ).run()

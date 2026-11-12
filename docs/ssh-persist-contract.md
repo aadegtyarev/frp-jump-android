@@ -232,7 +232,9 @@ that join timeout as a proven end-to-end maximum or remove the protection;
 ### Remote image files
 
 - Insert image ([contract](contract.md#7-ssh-console)) opens one separate SFTP
-  channel on the tab's authenticated connection: no new login, no change to
+  channel on the tab's authenticated connection, one per batch of up to 10 images
+  (the images go one at a time over it, no second channel per image; the opening
+  and every rule below are per channel, not per image): no new login, no change to
   the shell channel, tmux, reconnect or host keys. Closing or cancelling it
   closes only that channel. The SFTP wait is 10 s per request, not a deadline
   for the whole upload; the SFTP version exchange is not timed by sshj at all.
@@ -249,8 +251,10 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   it), and a stalled socket write ends only when the connection does; the same
   holds for an interrupted helper. Interrupting is safe because the transport is a
   plain `java.net.Socket`; that stops holding if a connection is ever tunnelled
-  through another SSH channel. The part-file removal is bounded to 5 s by its own
-  helper. The per-connection limit of 2 abandoned helpers is checked before it is
+  through another SSH channel. The removal of the part file (and, on Cancel, of the batch's
+  complete files too) is bounded to 5 s in all by its own helper, including the
+  opening of the channel it uses; files not reached by then stay for the age
+  cleanup. The per-connection limit of 2 abandoned helpers is checked before it is
   counted and can briefly be exceeded in a tight race; the 6-thread pool is the
   hard cap. A failed or abandoned opening
   closes what it made (a channel sshj confirms after its own open timeout can,
@@ -262,12 +266,16 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   otherwise the upload is refused; a wider `images` mode is tightened to 0700.
 - Files are `img-YYYYMMDD-HHMM-xxxx.jpg` or `.png`, created exclusively with
   mode 0600 and never overwritten (a clash takes a new suffix, 4 tries).
-  Cancel or failure removes the file the job created when the connection
-  allows; a lost connection can leave it.
-- On each upload, best effort and bounded, files in that folder that match the
+  Failure removes the part file the job was writing when the connection
+  allows; Cancel of a batch removes the part file and every complete file that
+  batch created (best effort, within the 5 s bound above, in order); a lost
+  connection can leave them. A failed upload ends the batch's uploads; the
+  complete files before it stay and are inserted unless the connection or tab
+  changed. An unreadable image is skipped.
+- Once per batch (after its last file is written, on its channel), best effort and bounded, files in that folder that match the
   app's own name pattern, are regular files (never links or folders, never
-  followed), and are more than 60 minutes older than the new file's device
-  modification time are deleted (a file with no known time is kept). The
+  followed), and are more than 60 minutes older than the batch's last file's device
+  modification time (the batch's own files are never deleted by it) are deleted (a file with no known time is kept). The
   cleanup runs on a thread of its own after the file is written (the path does
   not wait for it), with a 15 s deadline that also closes its channel, at most
   500 entries read, and a failure never reaches the owner; its thread lives about
@@ -276,9 +284,9 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   Nothing else is deleted; images are not removed on tab close or app exit, so
   they stay on the device for about an hour until a later upload.
 - An image upload is never retried or replayed by Reconnect; a connection or
-  terminal that changed meanwhile, or a tab closed (also with its Undo pending),
-  gets no insertion. A complete file stays when the insertion is refused or the
-  tab changed; only a cancel removes it.
+  terminal that changed meanwhile (also between two images of a batch), or a tab
+  closed (also with its Undo pending), gets no insertion. Complete files stay when
+  the insertion is refused or the tab changed; only a cancel removes them.
 
 ## Security, privacy and stored data
 

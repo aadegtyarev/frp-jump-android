@@ -89,6 +89,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.image.ImageLimits
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.snippets.stepsAmongShown
@@ -323,11 +324,16 @@ fun TerminalScreen(
     }
     val imageRuns = remember { mutableStateMapOf<Int, ImageRun>() }
     var pickImageFor by remember { mutableStateOf<SshSession?>(null) }
-    var imageOffer by remember { mutableStateOf<SshSession?>(null) }
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+    // The clipboard is read only when the owner confirms the offer (ClipboardImageOffer), never at the Paste tap.
+    val imageOffer = remember { ClipboardImageOffer<SshSession> { clipboardImageUris(context) } }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(imagePickerMax())) { uris ->
         val tab = pickImageFor
         pickImageFor = null
-        if (uri != null && tab != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
+        if (uris.isNotEmpty() && tab != null) {
+            // The system picker keeps to its limit; an old fallback picker may not.
+            if (uris.size > ImageLimits.BATCH_MAX) context.notice(context.getString(R.string.terminal_images_cut, ImageLimits.BATCH_MAX), NoticeKind.INFO)
+            startImageInsert(scope, context, tab, uris, imageRuns, visibleTab(tab))
+        }
     }
     // The one way into the photo picker (the menu item, the long press on Paste, the editor's button). Callers pass lambdas, not
     // a reference to this local function: equal references are skipped on recomposition and would keep an old tab (see #156).
@@ -431,7 +437,7 @@ fun TerminalScreen(
 
             override fun onPasteImage(session: SshSession) {
                 if (session.state.value != SshState.Open) context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
-                else if (imageRuns[session.id] == null) imageOffer = session
+                else if (imageRuns[session.id] == null) imageOffer.offer(session)
             }
         }
         onDispose { sessions.listener = null; input.diagnostics = null }
@@ -755,14 +761,14 @@ fun TerminalScreen(
         }
     }
     // Compose after the full-screen editor so confirmation is always above it.
-    imageOffer?.let { tab ->
+    imageOffer.pending?.let { tab ->
         ImageOfferSheet(
             onInsert = {
-                val uri = clipboardImageUri(context)
-                if (uri != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
+                val uris = imageOffer.confirm()
+                if (uris.isNotEmpty()) startImageInsert(scope, context, tab, uris, imageRuns, visibleTab(tab))
                 else context.notice(context.getString(R.string.terminal_image_unreadable), NoticeKind.WARN)
             },
-            onDismiss = { imageOffer = null },
+            onDismiss = { imageOffer.dismiss() },
         )
     }
     pasteAsk?.let { pending ->

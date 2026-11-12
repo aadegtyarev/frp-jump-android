@@ -1266,8 +1266,8 @@
     <!-- Терминал: вставка изображения (docs/contract.md, консоль SSH) -->
     <string name="terminal_image_insert">Вставить изображение</string>
     <string name="terminal_image_clipboard_empty_offer">буфер обмена пуст; долгое нажатие вставляет изображение</string>
-    <string name="terminal_image_offer_title">Вставить изображение из буфера?</string>
-    <string name="terminal_image_offer_text">Оно отправится на устройство, а путь к нему будет вставлен.</string>
+    <string name="terminal_image_offer_title">Вставить из буфера?</string>
+    <string name="terminal_image_offer_text">Изображения из буфера отправятся на устройство, а пути к ним будут вставлены.</string>
     <string name="terminal_image_clipboard_has_image">в буфере изображение</string>
     <string name="terminal_image_preparing">Подготовка изображения…</string>
     <string name="terminal_image_uploading">Отправка изображения… %1$d%%</string>
@@ -1283,4 +1283,9 @@
     <string name="terminal_image_path_unsafe">В имени домашней папки есть спецсимволы.</string>
     <string name="terminal_image_folder_unsafe">Папка для изображений на устройстве небезопасна.</string>
     <string name="terminal_image_insert_refused">Не удалось вставить путь.</string>
+    <string name="terminal_images_preparing">Изображение %1$d из %2$d · подготовка</string>
+    <string name="terminal_images_uploading">Изображение %1$d из %2$d · %3$d%%</string>
+    <string name="terminal_images_done">Вставлено изображений: %1$d</string>
+    <string name="terminal_images_partly">%2$d из %1$d изображений не отправлены: %3$s</string>
+    <string name="terminal_images_cut">Использованы только первые %1$d изображений.</string>
 </resources>

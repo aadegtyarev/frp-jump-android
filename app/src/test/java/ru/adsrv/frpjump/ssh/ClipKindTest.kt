@@ -27,4 +27,12 @@ class ClipKindTest {
         assertEquals(ClipKind.NONE, clipKind(listOf("video/mp4")))
         assertEquals(ClipKind.NONE, clipKind(null as ClipDescription?))
     }
+
+    @Test fun severalImageItemsAreOneImageClipOfferedTogether() {
+        assertEquals(ClipKind.IMAGE, clipKind(listOf("image/jpeg", "image/png", "image/jpeg")))
+        assertEquals(listOf("a", "b", "c"), clipImageItems(listOf("a", null, "b", "c")))
+        assertEquals(listOf("a"), clipImageItems(listOf("a")))
+        assertEquals(emptyList<String>(), clipImageItems(listOf<String?>(null)))
+        assertEquals((1..10).map { "u$it" }, clipImageItems((1..14).map { "u$it" }))
+    }
 }
