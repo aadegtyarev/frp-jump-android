@@ -4,12 +4,19 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.tools.*
+import ru.adsrv.frpjump.assistant.chat.ConfirmationTargetInfo
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.ssh.*
 
 /** One saved target, one ordinary owned client. Never uses Terminal/Files clients or starts tunnels. */
-class AssistantSshCommands(private val targets: SshTargets) {
-    internal suspend fun execute(profile: String, connection: String, command: String): ToolOutput = coroutineScope {
+open class AssistantSshCommands(private val targets: SshTargets) {
+    /** Names for the confirmation card; a pure lookup of saved state: no client, no tunnel, no network. Null when unknown. */
+    internal open fun info(target: GrantTarget): ConfirmationTargetInfo? = targets.labels(target.profileId, target.connectionId)
+        ?.let { ConfirmationTargetInfo(it.first, it.second) }
+    /** Changes when the saved connection or its profile is edited or removed (a session grant must not follow it). */
+    internal open fun stamp(target: GrantTarget): Any? = targets.stamp(target.profileId, target.connectionId)
+
+    internal open suspend fun execute(profile: String, connection: String, command: String): ToolOutput = coroutineScope {
         val target = (targets.resolveSaved(profile, connection) as? SshTargetResolution.Ready)?.target
             ?: return@coroutineScope unavailable()
         // Observers only signal cancellation; no transport cleanup or suspension in a source publisher.

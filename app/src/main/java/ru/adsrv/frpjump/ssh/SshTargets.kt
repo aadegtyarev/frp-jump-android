@@ -52,6 +52,22 @@ class SshTargets(
         return if (isAvailable(target)) SshTargetResolution.Ready(target) else SshTargetResolution.Unavailable
     }
 
+    /** (profile name, connection) of a saved connection of any kind or state; null when either is unknown. Pure lookup. */
+    fun labels(profileId: String, connectionId: String): Pair<String, Connection>? {
+        val state = profiles.value
+        val profile = state.index.profiles.singleOrNull { it.id == profileId } ?: return null
+        val connection = state.runtimes[profileId]?.connections?.connections?.value?.singleOrNull { it.id == connectionId } ?: return null
+        return profile.name to connection
+    }
+
+    /** Equal while the saved connection, its profile and the profile's enrollment are unchanged; null when it is gone. */
+    fun stamp(profileId: String, connectionId: String): Any? {
+        val state = profiles.value
+        val profile = state.index.profiles.singleOrNull { it.id == profileId } ?: return null
+        val connection = state.runtimes[profileId]?.connections?.connections?.value?.singleOrNull { it.id == connectionId } ?: return null
+        return listOf(profile, connection, state.enrollments[profileId])
+    }
+
     /** Whether [target] is still the same ready, visible target on the current state. */
     fun isAvailable(target: SavedSshTarget): Boolean {
         val profile = target.profile

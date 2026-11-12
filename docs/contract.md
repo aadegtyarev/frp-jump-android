@@ -63,8 +63,9 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   and Files sessions close only when Undo is gone); closing a terminal tab
   or a session on the Sessions tab (its shell ends when Undo is gone);
   deleting files; deleting retained MQTT
-  topics. The one confirm left is "Forget profile": it wipes the phone's
-  keys and only a new enroll brings them back.
+  topics. Two confirms are left: "Forget profile" (it wipes the phone's
+  keys and only a new enroll brings them back) and the assistant's question before a changing tool call (a remote change cannot be
+  undone, so Undo cannot apply; the owner can turn the question off app-wide).
 - Consistency: controls that do the same action look the same everywhere —
   same glyph, same kind of control, same placement relative to what they act
   on (Disconnect is the same button on a connection row, a device card and
@@ -789,7 +790,8 @@ search, Read page, Inspect image, Profile information and SSH command switches, 
 public/private-data disclosure and model token-charge notices. SSH command carries
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
 files within account rights; commands and output may contain secrets and go to
-the configured model. These operate only during explicit Send; opening
+the configured model. Before such a changing call runs, the owner is asked (Allow, For session, Always, Decline) unless the app-wide
+"Ask before changing commands" switch on Tools is off; see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
 or saving makes no request. Switches autosave through the same Tools binding in
 Settings and Chat. Actual committed values, pending progress and inline failures
 come from one snapshot; no Save button or pre-commit checked value. Storage runs
@@ -952,7 +954,7 @@ These are review scenarios, not a record of tests run or releases published:
 
 The phone does not expose ports, reach other people's devices or enroll by a key.
 The separately enabled assistant SSH tool can run administrative commands within
-the SSH account’s rights; existing manual SSH and Files behavior is unchanged. Google Play distribution, armv7 release builds
+the SSH account’s rights (after the owner's confirmation unless that is turned off); existing manual SSH and Files behavior is unchanged. Google Play distribution, armv7 release builds
 and additional UI languages are not promised. x86_64 builds are for local
 debug/minified validation, not the arm64 release target. Assistant chat is
 locally saved and encrypted, with optional public-read, profile-information and

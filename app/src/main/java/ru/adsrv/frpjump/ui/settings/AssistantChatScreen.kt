@@ -25,7 +25,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.*
+import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.ui.AppTheme
+import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
 fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit) {
@@ -35,7 +37,8 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else {
-        AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory)
+        AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
+            confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF, onConfirmationsOn = vm::turnConfirmationsOn)
     }
 }
 
@@ -44,10 +47,12 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
 internal fun AssistantChatContent(
     conversation: AssistantConversation, enabled: Boolean, provider: AssistantProviderSnapshot,
     onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null, onClear: (() -> Unit)? = null,
+    /** While true the top bar shows the compact "confirmations are off" mark; [onConfirmationsOn] turns requests back on. */
+    confirmationsOff: Boolean = false, onConfirmationsOn: (() -> Unit)? = null,
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
-    LaunchedEffect(state.turns.size, state.pendingText, state.toolFailures.size, state.information.size) {
+    LaunchedEffect(state.turns.size, state.pendingText, state.toolFailures.size, state.information.size, state.confirmation?.id) {
         val count = state.turns.size + if (state.pendingText != null || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.currentSources.isNotEmpty()) 1 else 0
         if (count > 0) historyScroll.scrollToItem(count - 1)
     }
@@ -60,13 +65,16 @@ internal fun AssistantChatContent(
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         val compact = maxHeight < 400.dp
+        val cardLimit = maxHeight * 0.55f
         Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { conversation.close(); onBack() }, modifier = Modifier.testTag("chat_back")) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                 }
-                Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.chat_title), style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                if (confirmationsOff && onConfirmationsOn != null) ConfirmationsOffIndicator(onConfirmationsOn, onTools)
                 onTools?.let { action -> TextButton(onClick = action, modifier = Modifier.testTag("chat_tools")) { Text(stringResource(R.string.assistant_tools)) } }
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
@@ -110,6 +118,7 @@ internal fun AssistantChatContent(
                             else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
                             ChatProfileInformationResults(turn.information)
                             ChatSources(turn.sources)
+                            ChatToolDeclines(turn.receipts)
                             ChatToolReceipts(turn.receipts)
                         }
                     }
@@ -117,7 +126,7 @@ internal fun AssistantChatContent(
                 state.pendingText?.let { text -> item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         ChatUserMessage(text)
-                        Text(stringResource(if (state.stopping) R.string.chat_stopping else when (val progress = state.toolProgress) {
+                        Text(stringResource(if (state.stopping) R.string.chat_stopping else if (state.confirmation != null) R.string.confirm_waiting else when (val progress = state.toolProgress) {
                             is ChatToolProgress.Tool -> progress.id.progress()
                             ChatToolProgress.SUMMARY -> R.string.chat_summary_progress
                             ChatToolProgress.FAILED -> if (state.toolFailures.isEmpty()) R.string.tool_failed else R.string.chat_waiting
@@ -126,7 +135,9 @@ internal fun AssistantChatContent(
                         ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
                         ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
+                        ChatToolDeclines(state.receipts)
                         ChatToolReceipts(state.receipts)
+                        if (state.confirmationNotSaved) Text(stringResource(R.string.confirm_not_saved), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_not_saved"))
                     }
                 } }
                 if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.receipts.isNotEmpty())) item {
@@ -134,8 +145,16 @@ internal fun AssistantChatContent(
                         ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
                         ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
+                        ChatToolDeclines(state.receipts)
                         ChatToolReceipts(state.receipts)
                     }
+                }
+            }
+            // Outside the history list: the question must stay fully reachable at large font and in the compact landscape layout, where
+            // the list is only 160 dp. Portrait gives it at most 55% of the height and scrolls it as a whole.
+            state.confirmation?.let { pending ->
+                if (!state.stopping) Box(if (compact) Modifier else Modifier.heightIn(max = cardLimit).verticalScroll(rememberScrollState())) {
+                    ChatConfirmationCard(pending, onAnswer = { conversation.answer(pending.id, it) })
                 }
             }
             state.problem?.let { problem -> Text(stringResource(when (problem) {
@@ -193,6 +212,19 @@ private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier
     }
 }
 
+/** A declined call is not a failure: a quiet line per call, visible without opening the receipts. */
+@Composable
+private fun ChatToolDeclines(receipts: List<ChatToolReceipt>) {
+    val declined = receipts.filter { it.result?.outcome == ToolOutcome.DECLINED }
+    if (declined.isEmpty()) return
+    Column(Modifier.testTag("chat_tool_declined"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        declined.forEach { receipt ->
+            Text(stringResource(R.string.tool_failure_declined, stringResource(AssistantToolId.fromWire(receipt.call.name)?.title() ?: R.string.tool_failure_unknown)),
+                color = AppTheme.colors.muted)
+        }
+    }
+}
+
 @Composable
 private fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
     if (receipts.isEmpty()) return
@@ -201,7 +233,8 @@ private fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
         Text(stringResource(R.string.chat_history_tool_results))
     }
     if (expanded) receipts.forEach { receipt ->
-        SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${receipt.result?.outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
+        val outcome = receipt.result?.outcome
+        SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
     }
 }
 

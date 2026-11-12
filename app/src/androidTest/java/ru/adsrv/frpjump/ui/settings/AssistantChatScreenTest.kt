@@ -34,6 +34,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.*
+import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.store.SecretBox
@@ -517,6 +518,8 @@ class AssistantChatScreenTest {
     }
 
     @Test fun sshCommandRequiresOptInAndDisclosesFullAccessAndPrivateOutput() {
+        // This test covers tool gating and result handling, not the owner's question (see the confirmation tests below).
+        settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)
         install()
         compose.runOnIdle { mode = "tool-ssh"; assertEquals(0, calls) }
         input().performTextInput("Run synthetic command")
@@ -897,6 +900,138 @@ class AssistantChatScreenTest {
             toolToggle("web_search").assertIsOn().assertIsEnabled()
             compose.runOnIdle { assertEquals(oldState, oldBinding.state.value); assertTrue(oldBinding.state.value.failed.isEmpty()); assertEquals(0, calls) }
         } finally { settingsFile.beforeWrite = null; release.countDown() }
+    }
+
+
+    // ---- Confirmation of changing calls (chat-component runner: a plain Application, the production ViewModel and screen) ----
+
+    private fun shot(name: String) {
+        val tag = listOf(args.getString("chatLocale") ?: "en", args.getString("composerOrientation") ?: "portrait", "font" + (args.getString("composerFontScale") ?: "1.0")).joinToString("-")
+        val target = java.io.File(compose.activity.getExternalFilesDir(null), "f8-$name-$tag.png")
+        InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { bitmap ->
+            target.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+        }
+    }
+    private fun startConfirmation() {
+        settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
+        install()
+        compose.runOnIdle { mode = "tool-ssh" }
+        input().performTextInput("Run synthetic command")
+        button("chat_send").performClick()
+        compose.waitUntil(5000) { owner?.state?.value?.confirmation != null }
+        compose.waitForIdle()
+    }
+    private fun shown(tag: String) = compose.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+    private fun confirmationsToggle() = compose.onNode(hasAnyAncestor(hasTestTag("tool_confirmations")) and isToggleable()).performScrollTo().assertIsDisplayed()
+    private fun awaitConfirmations(mode: ru.adsrv.frpjump.settings.ConfirmationMode) = compose.waitUntil(5000) { settings.assistantConfirmations.global == mode }
+
+    @Test fun changingCallAsksWithNamesFullCommandFourAnswersAndHints() {
+        startConfirmation()
+        compose.runOnIdle { assertEquals(1, calls); assertNotNull(owner!!.state.value.confirmation) }
+        shown("chat_confirm_card")
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirm_unknown_target))
+        compose.onNodeWithTag("chat_confirm_command", useUnmergedTree = true).assertTextContains("printf synthetic")
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.confirm_warning)).performScrollTo().assertIsDisplayed()
+        // The tool is not executed while the question is open: the second provider request has not been made.
+        compose.runOnIdle { assertEquals(1, requests.size) }
+        for (tag in listOf("chat_confirm_allow", "chat_confirm_session", "chat_confirm_always", "chat_confirm_decline")) { shown(tag).assertHasClickAction() }
+        shown("chat_confirm_session_hint")
+        compose.onNodeWithTag("chat_confirm_session_hint").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint), substring = true)
+        val path = listOf(ru.adsrv.frpjump.R.string.settings, ru.adsrv.frpjump.R.string.assistant_title, ru.adsrv.frpjump.R.string.assistant_tools).joinToString(" › ") { localizedText(it) }
+        shown("chat_confirm_always_hint")
+        compose.onNodeWithTag("chat_confirm_always_hint").assertTextContains(path, substring = true)
+        shot("card")
+        button("chat_stop").performClick()
+        compose.waitUntil(5000) { owner?.state?.value?.busy == false }
+    }
+
+    @Test fun declineExecutesNothingAndShowsDeclinedNotAFailure() {
+        startConfirmation()
+        shown("chat_confirm_decline").performClick()
+        awaitIdle()
+        compose.runOnIdle {
+            val result = requests.last().turns.last().exchanges.single().results.single()
+            assertEquals(ToolOutcome.DECLINED, result.outcome)
+            assertTrue(result.text.startsWith("The owner declined this call. Nothing was executed."))
+            assertNull(owner!!.state.value.confirmation); assertFalse(owner!!.state.value.turns.last().toolFailed)
+        }
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_declined"))
+        compose.onNodeWithTag("chat_tool_declined").assertIsDisplayed()
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.tool_failure_declined).replace("%1\$s", localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command))).assertIsDisplayed()
+        compose.onAllNodesWithTag("chat_current_tool_failure").assertCountEquals(0)
+        shot("declined")
+    }
+
+    @Test fun allowRunsThisCallOnlyAndTheToolThenAnswersAsBefore() {
+        startConfirmation()
+        shown("chat_confirm_allow").performClick()
+        awaitIdle()
+        compose.runOnIdle {
+            val result = requests.last().turns.last().exchanges.single().results.single()
+            assertEquals(ToolOutcome.FAILED, result.outcome); assertTrue(result.text.contains("unavailable"))
+            assertEquals(ConfirmationMode.ASK, settings.assistantConfirmations.global)
+        }
+    }
+
+    @Test fun alwaysTurnsConfirmationsOffShowsTheIndicatorAndItTurnsThemBackOn() {
+        startConfirmation()
+        shown("chat_confirm_always").performClick()
+        awaitIdle()
+        awaitConfirmations(ConfirmationMode.OFF)
+        compose.onNodeWithTag("chat_confirmations_off").assertIsDisplayed()
+        compose.onNodeWithTag("chat_tools").assertIsDisplayed(); compose.onNodeWithTag("chat_back").assertIsDisplayed()
+        shot("indicator")
+        // A later changing call no longer asks.
+        input().performTextInput("Again"); button("chat_send").performClick(); awaitIdle()
+        compose.runOnIdle { assertNull(owner!!.state.value.confirmation); assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }
+        compose.onNodeWithTag("chat_confirmations_off").performClick()
+        compose.onNodeWithTag("chat_confirmations_off_text").assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirmations_off_explanation))
+        shot("indicator-dialog")
+        compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
+        awaitConfirmations(ConfirmationMode.ASK)
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test fun longPressOnTheIndicatorExplainsAndClosesWithoutChange() {
+        settings.setAssistantConfirmations(ConfirmationMode.OFF)
+        install()
+        compose.onNodeWithTag("chat_confirmations_off").assertIsDisplayed().performTouchInput { longClick() }
+        compose.onNodeWithTag("chat_confirmations_off_text").assertIsDisplayed()
+        compose.onNodeWithTag("chat_confirmations_close").performClick()
+        compose.onNodeWithTag("chat_confirmations_off_text").assertDoesNotExist()
+        assertEquals(ConfirmationMode.OFF, settings.assistantConfirmations.global)
+        // The indicator must not push the other top bar actions out.
+        compose.onNodeWithTag("chat_tools").assertIsDisplayed(); compose.onNodeWithTag("chat_back").assertIsDisplayed()
+        shot("indicator-idle")
+    }
+
+    @Test fun toolsScreenHasTheConfirmationSwitchThatAutosavesAndDrivesTheIndicator() {
+        install()
+        compose.onNodeWithTag("chat_confirmations_off").assertDoesNotExist()
+        button("chat_tools").performClick()
+        confirmationsToggle().assertIsOn()
+        shot("tools-switch-on")
+        confirmationsToggle().performClick()
+        awaitConfirmations(ConfirmationMode.OFF)
+        compose.waitUntil(5000) { chatBinding?.state?.value?.let { !it.confirmations && CONFIRMATIONS_KEY !in it.pending } == true }
+        confirmationsToggle().assertIsOff()
+        shot("tools-switch-off")
+        compose.onNodeWithTag("tools_back").performScrollTo().performClick()
+        compose.onNodeWithTag("chat_confirmations_off").assertIsDisplayed()
+        button("chat_tools").performClick()
+        confirmationsToggle().performClick(); awaitConfirmations(ConfirmationMode.ASK)
+    }
+
+    @Test fun stopDuringTheQuestionCancelsItAndToolsRoundTripKeepsIt() {
+        startConfirmation()
+        button("chat_tools").performClick()
+        compose.onNodeWithTag("tools_back").performScrollTo().performClick()
+        shown("chat_confirm_card")
+        compose.runOnIdle { assertEquals(1, requests.size) }
+        button("chat_stop").performClick()
+        awaitIdle()
+        compose.runOnIdle { assertNull(owner!!.state.value.confirmation); assertEquals(1, requests.size) }
+        compose.onNodeWithTag("chat_confirm_card").assertDoesNotExist()
     }
 
 }

@@ -48,26 +48,33 @@ data class GrantTarget(val profileId: String, val connectionId: String)
 /** The key of a session grant: the tool plus its target (ssh_command: profile and connection). Never the command. */
 data class GrantKey(val tool: AssistantToolId, val target: GrantTarget?)
 
-/** Session grants, in memory only, owned by one chat screen. Thread-safe; never persisted, never in history. */
+/**
+ * Session grants, in memory only, owned by one chat screen. Thread-safe; never persisted, never in history.
+ * A grant may carry a [stamp] of the target it was given for (its saved definition); a grant whose current stamp differs
+ * (the target was edited or removed) is dropped when next looked up, so a grant never follows an edited target.
+ */
 class GrantStore {
-    private val keys = HashSet<GrantKey>()
-    fun has(key: GrantKey): Boolean = synchronized(keys) { key in keys }
-    fun grant(key: GrantKey) { synchronized(keys) { keys += key } }
-    fun clear() = synchronized(keys) { keys.clear() }
-    fun clear(tool: AssistantToolId) = synchronized(keys) { keys.removeAll { it.tool == tool } }
-    /** A grant must not follow an edited or removed target: drop the grants of one connection, or of a whole profile when [connectionId] is null. */
-    fun clearTarget(profileId: String, connectionId: String? = null) = synchronized(keys) {
-        keys.removeAll { key -> key.target?.let { it.profileId == profileId && (connectionId == null || it.connectionId == connectionId) } == true }
+    private val keys = HashMap<GrantKey, Any?>()
+    fun has(key: GrantKey): Boolean = has(key, null)
+    fun has(key: GrantKey, stamp: Any?): Boolean = synchronized(keys) {
+        if (!keys.containsKey(key)) false else if (keys[key] == stamp) true else { keys.remove(key); false }
     }
-    fun snapshot(): Set<GrantKey> = synchronized(keys) { keys.toSet() }
+    fun grant(key: GrantKey, stamp: Any? = null) { synchronized(keys) { keys[key] = stamp } }
+    fun clear() = synchronized(keys) { keys.clear() }
+    fun clear(tool: AssistantToolId) = synchronized(keys) { keys.keys.removeAll { it.tool == tool } }
+    /** Drop the grants of one connection, or of a whole profile when [connectionId] is null. */
+    fun clearTarget(profileId: String, connectionId: String? = null) = synchronized(keys) {
+        keys.keys.removeAll { key -> key.target?.let { it.profileId == profileId && (connectionId == null || it.connectionId == connectionId) } == true }
+    }
+    fun snapshot(): Set<GrantKey> = synchronized(keys) { keys.keys.toSet() }
 }
 
 /**
  * Pure decision: must this call ask the owner? Only tools whose catalog effect changes something can ask; the policy (read live at
  * each call) and a session grant can waive the question. Unknown and read tools never ask.
  */
-fun mustAsk(tool: AssistantToolId?, key: GrantKey?, policy: ConfirmationPolicy, grants: GrantStore, scopes: List<ConfirmationScope> = emptyList()): Boolean =
-    tool != null && tool.effect.changes && policy.resolve(scopes) == ConfirmationMode.ASK && (key == null || !grants.has(key))
+fun mustAsk(tool: AssistantToolId?, key: GrantKey?, policy: ConfirmationPolicy, grants: GrantStore, scopes: List<ConfirmationScope> = emptyList(), stamp: Any? = null): Boolean =
+    tool != null && tool.effect.changes && policy.resolve(scopes) == ConfirmationMode.ASK && (key == null || !grants.has(key, stamp))
 
 /** Fixed texts the model receives; the owner's text is never forwarded. */
 object ConfirmationTexts {

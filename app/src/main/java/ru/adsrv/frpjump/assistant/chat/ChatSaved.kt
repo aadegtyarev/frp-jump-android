@@ -15,7 +15,8 @@ import ru.adsrv.frpjump.assistant.tools.*
 @Serializable internal data class SavedResult(val callId: String, val name: String, val text: String, val outcome: String, val omittedChars: Int = 0,
     @Transient val original: ToolResult? = null) {
     @Transient val chars = callId.length.toLong() + name.length + text.length
-    fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.valueOf(outcome), omittedChars)
+    /** An outcome name this version does not know (written by a newer one) reads as a failure: not success, not declined. */
+    fun value() = original ?: ToolResult(callId, name, text, ToolOutcome.entries.firstOrNull { it.name == outcome } ?: ToolOutcome.FAILED, omittedChars)
     companion object { fun of(value: ToolResult) = SavedResult(value.callId, value.name, value.text, value.outcome.name, value.omittedChars, value) }
 }
 @Serializable internal data class SavedReply(val text: String = "", val calls: List<SavedCall> = emptyList(), val continuation: String? = null,

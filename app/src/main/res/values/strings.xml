@@ -1214,4 +1214,27 @@
     <string name="chat_summary_saved">Earlier context is summarized; original messages remain in history.</string>
     <string name="chat_summary_failed">Could not prepare a useful summary. History is kept. Check the summary model or increase the context window.</string>
     <string name="chat_history_full">Local history limit reached. Clear history to start a new conversation.</string>
+
+    <!-- Confirmation of changing assistant calls -->
+    <string name="confirm_title">Run this command?</string>
+    <string name="confirm_target">%1$s · %2$s · %3$s</string>
+    <string name="confirm_unknown_target">Unknown connection</string>
+    <string name="confirm_warning">Full access within the SSH account. The command and its output go to your model.</string>
+    <string name="confirm_allow">Allow</string>
+    <string name="confirm_session">For session</string>
+    <string name="confirm_always">Always</string>
+    <string name="confirm_decline">Decline</string>
+    <string name="confirm_session_hint">Any command on this connection until you leave Chat.</string>
+    <string name="confirm_always_hint">Turns off confirmations in the whole app, for all tools and connections. Turn them back on in %1$s › %2$s › %3$s.</string>
+    <string name="confirm_waiting">Waiting for your answer…</string>
+    <string name="confirm_command">Command</string>
+    <string name="confirm_not_saved">Could not save the setting. This call was allowed once.</string>
+    <string name="chat_receipt_declined">Declined</string>
+    <string name="tool_failure_declined">%1$s: declined</string>
+    <string name="confirmations_setting">Ask before changing commands</string>
+    <string name="confirmations_setting_hint">Asks before a tool runs something that can change a system. Off: no questions anywhere in the app.</string>
+    <string name="confirmations_off_description">Confirmations are off</string>
+    <string name="confirmations_off_explanation">Confirmations are off: changing commands run without asking.</string>
+    <string name="confirmations_turn_on">Turn on</string>
+    <string name="confirmations_close">Close</string>
 </resources>

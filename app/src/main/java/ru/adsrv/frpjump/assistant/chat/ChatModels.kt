@@ -33,6 +33,10 @@ data class ChatState(
     val summarized: Boolean = false, val problemStatus: Int? = null,
     val receipts: List<ChatToolReceipt> = emptyList(), val currentSources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
+    /** The owner's pending question for a changing call; never persisted. */
+    val confirmation: PendingConfirmation? = null,
+    /** "Always" could not be saved: that call was allowed once and requests stay on. Cleared by the next Send. */
+    val confirmationNotSaved: Boolean = false,
 )
 
 /** Chat limits shared by the saved document and the conversation; `AssistantConversation` re-exports them. */
