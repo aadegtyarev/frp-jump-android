@@ -36,6 +36,8 @@ class SyntheticProfileInformation : AutoCloseable {
     val versionRequests = AtomicInteger()
     @Volatile var fail = false
     @Volatile var beforeResponse: (() -> Unit)? = null
+    /** Like [beforeResponse], but told which call is in the interceptor. */
+    @Volatile var beforeResponseOf: ((Call) -> Unit)? = null
     /** Runs inside the response body read of every request (the exchange has returned from the interceptor chain). */
     @Volatile var beforeBodyRead: (() -> Unit)? = null
     /** Runs when OkHttp reports `Call.cancel()` for any call: the hook-free proof that a cancel reached the exact call. */
@@ -62,6 +64,7 @@ class SyntheticProfileInformation : AutoCloseable {
             deviceRequests.incrementAndGet()
         }
         beforeResponse?.invoke()
+        beforeResponseOf?.invoke(chain.call())
         val body = if (fail) """{"detail":"private-server-secret"}""" else if (version)
             """{"protocol_version":1,"package_version":"synthetic","features":["device-display"]}"""
         else """[{"name":"same","enrolled_at":"2026-01-01","last_seen_at":null,"enabled":true},{"name":"no-connections","enrolled_at":"2026-01-01","last_seen_at":null,"enabled":true}]"""

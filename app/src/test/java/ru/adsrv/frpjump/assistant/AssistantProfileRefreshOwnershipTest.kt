@@ -90,8 +90,11 @@ class AssistantProfileRefreshOwnershipTest {
 
     @Test fun `AUTH-1 check wins the guard before the commit and the admitted start is then cancelled`() = runBlocking {
         for (operation in listOf("version", "devices")) for (cause in causes) SyntheticProfileInformation().use { f -> Chat(f).use { c ->
-            val hold = Hold(); val responseHold = Hold(); val once = AtomicBoolean()
-            f.beforeResponse = responseHold::waitHere
+            val hold = Hold(); val once = AtomicBoolean()
+            // Every started call is held in the interceptor until ITS OWN Call.cancel() arrived (bounded; a miss fails the call and the assertions below).
+            val cancelOf = java.util.concurrent.ConcurrentHashMap<okhttp3.Call, CountDownLatch>()
+            f.onCanceled = { call -> cancelOf.computeIfAbsent(call) { CountDownLatch(1) }.countDown() }
+            f.beforeResponseOf = { call -> check(cancelOf.computeIfAbsent(call) { CountDownLatch(1) }.await(15, TimeUnit.SECONDS)) { "call was never cancelled" } }
             c.settings.assistantChat.checkedAction = { category -> if (category == "profile-$operation-dispatch" && once.compareAndSet(false, true)) hold.waitHere() }
             val revokeStarted = CountDownLatch(1)
             val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
@@ -103,15 +106,12 @@ class AssistantProfileRefreshOwnershipTest {
                 while (revoke.isAlive && revoke.state != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield()
                 assertEquals("The commit must wait for the start check's guard", Thread.State.BLOCKED, revoke.state)
                 hold.release.countDown(); revoke.join(2000); assertFalse(revoke.isAlive); failure.get()?.let { throw it }
-                // Variant 1: an admitted start may begin before the commit's cancel arrives or never begin; if it began, that exact call is
-                // cancelled. Started calls are held in the interceptor, so the cancel of each must arrive before the hold is released.
-                val deadline2 = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-                while (!f.canceled.containsAll(f.enqueues) && System.nanoTime() < deadline2) Thread.yield()
-                assertTrue("$cause/$operation: every started call was cancelled while held: ${f.enqueues} vs ${f.canceled}", f.canceled.containsAll(f.enqueues))
-                responseHold.release.countDown(); c.idle()
+                // Variant 1: an admitted start may begin before the commit's cancel arrives or never begin; if it began, that exact call is cancelled.
+                c.idle()
+                assertTrue("$cause/$operation: every started call was cancelled: ${f.enqueues} vs ${f.canceled}", f.canceled.containsAll(f.enqueues))
                 assertTrue(c.old.state.value.turns.isEmpty()); assertTrue(c.old.state.value.currentSources.isEmpty())
                 assertTrue(c.unrelated.isActive)
-            } finally { hold.release.countDown(); responseHold.release.countDown(); revoke.join(2000) }
+            } finally { hold.release.countDown(); revoke.join(2000) }
         } }
     }
 

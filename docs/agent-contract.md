@@ -293,8 +293,8 @@ reading and cleanup run outside it. A start whose check passed before a commit m
 still begin and is then cancelled. Cancellation signals only those owned calls (the
 exact HTTP call, from an IO thread) and keeps the shared Chat slot until each HTTP
 exchange, including body read and close, has returned. Ordinary UI/background
-requests use the same call path; they differ only in that a cancelled caller also
-waits for the actual exit of the HTTP call. It starts no extra tunnel poll, probe,
+requests use the same call path without the start check; a cancelled caller waits
+for the actual exit of its HTTP call. It starts no extra tunnel poll, probe,
 connection or control operation.
 
 Devices, Connections and the tool consume the same derived application API over

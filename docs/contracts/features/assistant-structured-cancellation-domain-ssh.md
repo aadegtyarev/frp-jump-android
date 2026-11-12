@@ -85,8 +85,10 @@ Cancellation and races (each has a named test, see Acceptance criteria)
     the last phase check: see "SSH start window"; never wider than today.
 11. A stream reader fails while its sibling blocks: the sibling is released by `disconnect()` (existing
     catch kept) or by the closer; the result text is the existing "SSH command failed ..." text.
-12. Admission refusal (`CancellationException("Not admitted: ...")`) propagates through `pull`, cancelling the
-    sibling `checkFeatures`/`fetch` and the other profiles' pulls, exactly as today's refusal lambda did.
+12. Admission refusal (`CancellationException("Not admitted: ...")`): a `devices` refusal propagates through `fetch`, `pull` and
+    `refreshAll` (cancelling the sibling `checkFeatures` and the other profiles' pulls); a `version` refusal ends inside the
+    `launch` child of `pull` and, as on `main`, does not cancel the sibling fetch (which asks its own check). After a real
+    commit every check refuses, so the whole pull is cancelled either way.
 
 ## Non-goals
 
@@ -249,7 +251,8 @@ suspend fun run(...) {
 - **G4.** Ordinary calls behave as before. Differences: after cancellation their coroutine also waits for the
   actual exit of the HTTP thread; consequently the profile's `fetching` and the tunnel manager's `syncing`
   mutexes are released at actual exit; HTTP bodies are read on IO even for callers on Main; calls no longer
-  pass through OkHttp's async-dispatcher caps (64 total, 5 per host).
+  pass through OkHttp's async-dispatcher caps (64 total, 5 per host); a `RuntimeException` from the interceptor chain is mapped to
+  `NetworkException(UNREACHABLE)` (message, reason, host unchanged) instead of crashing the OkHttp thread (strictly better).
 
 ## SSH start window (operator condition)
 
@@ -266,8 +269,8 @@ extra check immediately before `session.exec` is listed as D3 and not recommende
 
 Greps (repository root, on the final tree). Must print nothing unless an accepted output is listed.
 
-1. `grep -rnE "ApiCallbackExitExecutor|ApiRequestDispatch|WebDispatch|beforeOwned|ownedCall|ExitExecutor|Call\.await" app/src agent-core/src agent-openai/src` prints nothing.
-2. `grep -rnE "\bdispatch\s*:|\bdispatch\(|, dispatch\b|\(dispatch\b|dispatch\)" app/src agent-core/src agent-openai/src --include=*.kt` prints nothing.
+1. `grep -rnE "ApiCallbackExitExecutor|ApiRequestDispatch|WebDispatch|beforeOwned|ownedCall|ExitExecutor|Call\.await" app/src agent-core/src agent-openai/src` prints nothing except `app/src/main/java/ru/adsrv/frpjump/update/ReleaseSource.kt:171` (`private suspend fun Call.await()` of the in-app updater, out of scope).
+2. `grep -rnE "\bdispatch\s*:|\bdispatch\(|, dispatch\b|\(dispatch\b|dispatch\)" app/src agent-core/src agent-openai/src --include=*.kt` prints nothing except 5 pre-existing false positives: the `CoroutineDispatcher.dispatch` overrides in `AssistantToolsBindingTest.kt`, `AssistantConversationTest.kt` and androidTest `FilesSessionVisitTest.kt`, and the two `"dns-dispatch:"` string lines in `PublicWebTransportTest.kt`.
 3. `grep -rnE "CoroutineScope\(|SupervisorJob|closeRequested" app/src/main/java/ru/adsrv/frpjump/assistant/AssistantSshCommand.kt app/src/main/java/ru/adsrv/frpjump/api app/src/main/java/ru/adsrv/frpjump/devices/DeviceDirectory.kt app/src/main/java/ru/adsrv/frpjump/profiles/ProfileInformation.kt` prints nothing.
 4. `grep -rn "NonCancellable" app/src/main/java/ru/adsrv/frpjump/api app/src/main/java/ru/adsrv/frpjump/assistant/AssistantSshCommand.kt`: exactly one line, the closer's `withContext(NonCancellable + Dispatchers.IO)`.
 5. `grep -rnE "runInterruptible|\.interrupt\(\)" app/src/main agent-core/src agent-openai/src` prints nothing.

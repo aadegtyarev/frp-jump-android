@@ -213,6 +213,7 @@ class FrpJumpApiCancellationTest {
         }
         val main = Executors.newSingleThreadExecutor { Thread(it, "fake-main") }
         val publisher = Executors.newSingleThreadExecutor { Thread(it, "fake-publisher") }
+        var callerJob: Job? = null
         try {
             val outcome = AtomicReference<Throwable?>()
             val caller = launch(main.asCoroutineDispatcher()) {
@@ -221,6 +222,7 @@ class FrpJumpApiCancellationTest {
                     if (ambient) withContext(SideEffectAdmission { true }) { body() } else body()
                 } catch (e: Throwable) { outcome.set(e); throw e }
             }
+            callerJob = caller
             try {
                 assertTrue("exchange entered", entered.await(3, TimeUnit.SECONDS))
                 publisher.submit { caller.cancel() }.get(3, TimeUnit.SECONDS)
@@ -236,7 +238,7 @@ class FrpJumpApiCancellationTest {
             assertEquals(0, probe.client.dispatcher.runningCallsCount())
             assertTrue("exchange on IO, never on the caller: ${interceptorThread.get()}", interceptorThread.get()!!.startsWith("DefaultDispatcher-worker"))
             assertTrue("body read on IO or never reached: ${bodyThread.get()}", bodyThread.get()?.startsWith("DefaultDispatcher-worker") != false)
-        } finally { release.countDown(); main.shutdownNow(); publisher.shutdownNow() }
+        } finally { release.countDown(); callerJob?.let { withTimeoutOrNull(5000) { it.cancelAndJoin() } }; main.shutdownNow(); publisher.shutdownNow() }
     }
     @Test fun `cancel cancels the exact call and waits for the actual exit of an owned call`() = cancelWaitsForExit(ambient = true)
     @Test fun `cancel cancels the exact call and waits for the actual exit of an ordinary call`() = cancelWaitsForExit(ambient = false)

@@ -297,21 +297,26 @@ class AssistantSshCommandTest {
     @Test fun `disconnect runs on an IO thread for Stop and for target loss never on the caller or publisher thread`() = runBlocking {
         val main = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "fake-main") }
         val publisher = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "fake-publisher") }
+        // Coroutine debug mode renames threads ("fake-main @coroutine#7"): compare the base name.
+        fun base(name: String) = name.substringBefore(" @coroutine")
         try {
             for (cause in listOf("stop", "target-loss")) Fixture().use { f -> f.ready()
-                val release = CountDownLatch(1); f.client.heldRead = release
+                // The worker is blocked inside authentication (a blocking call), so the closer's disconnect is necessarily the first one.
+                val entered = CountDownLatch(1); val release = CountDownLatch(1)
+                f.client.beforeAuth = { entered.countDown(); check(release.await(10, TimeUnit.SECONDS)) }
                 val work = launch(main.asCoroutineDispatcher()) { f.execute() }
                 try {
-                    assertTrue("$cause: readers blocked", f.client.reading.await(3, TimeUnit.SECONDS))
+                    assertTrue("$cause: worker blocked in auth", entered.await(3, TimeUnit.SECONDS))
                     publisher.submit { if (cause == "stop") work.cancel() else runBlocking { f.loseTarget("hidden-connection") } }.get(3, TimeUnit.SECONDS)
-                    // The worker is blocked in a read, so this first disconnect can only be the closer's, and it must not wait for the read.
-                    assertTrue("$cause: promptly disconnected", f.client.disconnected.await(3, TimeUnit.SECONDS))
-                    assertTrue("$cause: still blocked", f.client.disconnects.get() >= 1 && !work.isCompleted)
+                    assertTrue("$cause: closer disconnected while the worker is blocked", f.client.disconnected.await(3, TimeUnit.SECONDS))
+                    assertFalse("$cause: the blocked worker still owns the exit", work.isCompleted)
+                    val first = f.client.disconnectThreads.toList()
+                    assertEquals("$cause: only the closer disconnected so far: $first", 1, first.size)
+                    assertTrue("$cause: closer on an IO worker: $first", base(first.single()).startsWith("DefaultDispatcher-worker"))
                 } finally { release.countDown() }
-                withTimeout(5000) { work.join() }
-                val threads = f.client.disconnectThreads.toList()
-                assertTrue("$cause: $threads", threads.isNotEmpty() && threads.none { it == "fake-main" || it == "fake-publisher" })
-                assertTrue("$cause: first disconnect on IO: $threads", threads.first().startsWith("DefaultDispatcher-worker"))
+                try { withTimeout(5000) { work.join() } } finally { work.cancel() }
+                val threads = f.client.disconnectThreads.map(::base)
+                assertTrue("$cause: every disconnect on an IO worker: $threads", threads.isNotEmpty() && threads.all { it.startsWith("DefaultDispatcher-worker") })
             }
         } finally { main.shutdownNow(); publisher.shutdownNow() }
     }
