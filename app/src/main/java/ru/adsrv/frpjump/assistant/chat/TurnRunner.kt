@@ -36,8 +36,13 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     }
 
     private suspend fun exchange() {
-        // First use of the lazy prompts reads assets: off Main, on the Send's IO path; a failure is an ordinary setup problem.
-        val (active, prompts) = withContext(env.io) { env.requireRevision(a.saved.revision); (a.retained ?: env.prepare(a.saved)) to env.prompts.value }
+        // First use of the lazy prompts reads assets: off Main, on the Send's IO path, before any key decrypt or provider build;
+        // a broken asset is an ordinary setup problem.
+        val (active, prompts) = withContext(env.io) {
+            env.requireRevision(a.saved.revision)
+            val loaded = env.prompts.value
+            (a.retained ?: env.prepare(a.saved)) to loaded
+        }
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }

@@ -58,12 +58,16 @@ Save, Fetch models and recovery behavior.
   replacement client after a disconnect. The SSH adapter below owns one ordinary client; the information tool reads shared application state. Neither starts or controls tunnels.
 - The application skill is the base system prompt,
   [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-  (version 4). Chat attaches it to every request as the first message, unchanged
-  and byte-stable within and across Sends. It is guidance for the model, not a
-  permission system or an executing script; the code enforces every limit. The
-  compact summarizer prompt is `assets/assistant/summary.md` (version 2). No
-  other prompt text is compiled into the app, and no automatic app context is
-  attached.
+  (version 4). Chat attaches it to every main chat-loop request as the first
+  message, unchanged and byte-stable within and across Sends. It is guidance for
+  the model, not a permission system or an executing script; the code enforces
+  every limit. The compact summarizer prompt is `assets/assistant/summary.md`
+  (version 2); summary requests open with it instead. Both are read strictly
+  (UTF-8, no byte order mark) and there is no compiled-in fallback prompt. Still
+  compiled into the app are the fixed image-inspection question wording, the
+  summary request framing text ("Earlier conversation summary", "Previous
+  summary / Observed conversation"), tool descriptions and schemas, and fixed
+  tool-result texts. No automatic app context is attached.
 
 ## Minimal execution
 
@@ -276,11 +280,13 @@ data, not verified truth or an owner/accounting source for SSH work.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
 version 4) and only enabled tool schemas. The prompt contains no profile,
-connection, tool-list, date, version or language data; the same bytes open every
-request. Tool schemas follow catalog order with stable JSON; summary, history and
+connection, enabled-tool list, date, version or language data; the same bytes
+open every main chat-loop request (summary requests open with `summary.md`).
+Tool schemas follow catalog order with stable JSON; summary, history and
 the current request follow the system message. No provider-specific cache
-parameter is sent. A prompt asset that cannot be read fails the Send as an
-ordinary setup problem, with no fallback text and no request. No profiles,
+parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
+with a byte order mark) or empty fails the Send as an ordinary setup problem,
+with no fallback text and no request. No profiles,
 connection data, files, credentials or diagnostics are automatically attached. Proposals unavailable in that Send's captured set
 return bounded explicit unknown-tool results without network; they do
 not grant authority. Existing endpoint, redirect, retry, payload and sanitized-error

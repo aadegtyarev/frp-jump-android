@@ -181,7 +181,7 @@ class AssistantChatHistoryTest {
         }
         val owner = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { provider },
             { if (failPreparation) throw ProviderSetupException(ProviderSetupProblem.READ_FAILED) }, AgentModule(true),
-            io = Dispatchers.Unconfined, historyStore = history)
+            io = Dispatchers.Unconfined, historyStore = history, prompts = TestPrompts.placeholder)
         try {
             owner.ready(); owner.edit("Diagnose work-root"); owner.send(); owner.ready()
             failPreparation = true

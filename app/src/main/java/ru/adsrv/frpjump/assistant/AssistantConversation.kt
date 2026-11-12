@@ -24,7 +24,8 @@ class AssistantConversation(
     private val sshCommands: AssistantSshCommands? = null,
     private val historyStore: AssistantChatHistory? = null,
     private val awaitHistoryClear: suspend () -> Unit = {},
-    private val prompts: Lazy<AssistantPrompts> = AssistantPrompts.PLACEHOLDER,
+    /** Required: no compiled-in fallback prompt exists. */
+    private val prompts: Lazy<AssistantPrompts>,
 ) {
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore)

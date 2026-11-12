@@ -4,16 +4,16 @@ Status: Approved by the operator on 2026-11-12 (prompt texts approved without ed
 
 ## Goal and user-visible behavior
 
-- Two model prompts live in assets and nowhere else: `app/src/main/assets/assistant/skill.md` (base system prompt) and `app/src/main/assets/assistant/summary.md` (summarizer prompt). The Kotlin constants `AssistantConversation.INSTRUCTIONS(_VERSION)` and `AssistantSummary.PROMPT(_VERSION)` are deleted.
+- The two chat prompts live in assets and nowhere else (the image-inspection question, the summary framing text, tool descriptions and fixed result texts stay compiled in): `app/src/main/assets/assistant/skill.md` (base system prompt) and `app/src/main/assets/assistant/summary.md` (summarizer prompt). The Kotlin constants `AssistantConversation.INSTRUCTIONS(_VERSION)` and `AssistantSummary.PROMPT(_VERSION)` are deleted.
 - `skill.md` merges the former `INSTRUCTIONS` (version 3) and the unused `skill.md` (version 2), keeps every safety rule, drops stale statements (summarization unavailable, subagents, permission evaluator) and is at most 4096 bytes.
-- The system text is byte-identical in every request of every Send, so the provider's prefix cache can work. Behavior change: the model sees new wording and a few additions (see the promise ledger in the F7 report; additions are SSH inspect-before-change guidance, no credential requests, source naming for web facts).
+- The system text is byte-identical in every main chat-loop request of every Send (summary requests open with the summary prompt), so the provider's prefix cache can work. Behavior change: the model sees new wording and a few additions (see the promise ledger in the F7 report; additions are SSH inspect-before-change guidance, no credential requests, source naming for web facts).
 - Users see no UI change.
 
 ## Scenarios
 
-- Send with any tool switches: `request.instructions == prompts.system` for every provider call, including repeated calls inside one Send and across two Sends.
+- Send with any tool switches: `request.instructions == prompts.system` for every main chat-loop provider call, including repeated calls inside one Send and across two Sends.
 - Summarization: the request uses `prompts.summary` as instructions, has no tools, and the summary stays the first turn after the system message.
-- Asset missing or unreadable at first use (packaging bug): the Send fails as an ordinary setup problem; no request is sent without the prompt and no fallback text exists.
+- Asset missing or unreadable at first use (packaging bug): the Send fails as an ordinary setup problem; no request is sent without the prompt and no fallback text exists (also for a non-UTF-8, BOM-prefixed or empty asset). Prompts load before the provider is prepared, so a broken asset fails before any key decrypt.
 - Tools switched between Sends: only the `tools` array changes; the system text does not.
 
 ## Non-goals
@@ -31,10 +31,11 @@ Status: Approved by the operator on 2026-11-12 (prompt texts approved without ed
 
 ## Interfaces and constraints
 
-- `ru.adsrv.frpjump.assistant.AssistantPrompts(system, summary)` with `SYSTEM_VERSION = 4`, `SUMMARY_VERSION = 2` and `load(open: (String) -> InputStream)`: UTF-8, CRLF to LF, trailing whitespace trimmed once, deterministic bytes.
+- `ru.adsrv.frpjump.assistant.AssistantPrompts(system, summary)` with `SYSTEM_VERSION = 4`, `SUMMARY_VERSION = 2` and `load(open: (String) -> InputStream)`: strict UTF-8 (no BOM), CRLF to LF, trailing whitespace trimmed once, deterministic bytes.
 - `FrpJumpApp` holds `by lazy { AssistantPrompts.load(assets::open) }`; first access runs on IO (Send path), never Main.
+- `prompts` is a required parameter of `AssistantConversation`; main code has no default prompt. Tests pass `TestPrompts.lazy` (real assets) or `TestPrompts.placeholder` (dummy strings).
 - Injected through constructors into `AssistantConversation`, `TurnEnv`/`TurnRunner` and `AssistantSummary`.
-- Cache rules (also in KDoc): same system bytes in every request; `tools` in catalog order with stable JSON (`tool-specs.json` golden stays); everything dynamic (summary, history, current request) after the system message; no provider cache parameters.
+- Cache rules (also in KDoc): same system bytes in every request; `tools` in catalog order with stable JSON (`tool-specs.json` golden stays); everything dynamic (summary, history, current request) after the system message; no provider cache parameters (pinned by `OpenAiCacheNeutralityTest` in `agent-openai`; the wire bytes are not reachable from app tests).
 - No version, date, enabled-tool list, profile names or language in the system text. Tool and profile information reaches the model only through the `tools` schemas and the explicit `profile_information` results; the reply language follows the user's message.
 
 ## Exact contract wording to add or change
@@ -71,3 +72,10 @@ Status: Approved by the operator on 2026-11-12 (prompt texts approved without ed
 ## Validation to run
 
 Focused tests, then `./gradlew --no-daemon :agent-core:test :agent-openai:test :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug`, `git diff --check`, repo-docs checker. Emulator: one synthetic Send on `emulator-5580` only if instrumentation touches the path; real-provider cache hits are not validated.
+
+## Remainder (accepted, not changed)
+
+- Hash and version are bumped together by process; the test pins both but cannot force a bump for a wording-only edit beyond the hash failing.
+- A missing asset shows the generic setup message; it is a packaging bug and unlikely.
+- The chat instrumentation runner uses a plain `Application`, so `FrpJumpApp.assistantPrompts` is not exercised there; the test loads the same assets through the target context.
+- Real provider prefix-cache hits are not validated.

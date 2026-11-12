@@ -1,16 +1,21 @@
 package ru.adsrv.frpjump.assistant
 
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 
 /**
  * The assistant's two model prompts, read once from `assets/assistant/` and never built or edited at run time:
  * [system] (`skill.md`, the base system prompt) and [summary] (`summary.md`, the working-summary prompt).
+ * There is no compiled-in fallback text: an asset that is missing, malformed or empty fails the Send as a setup problem.
  *
  * Provider prefix-cache rules, which tests pin:
- * - [system] is byte-identical in every request of every Send; it holds no version, date, tool list, profile name or language;
+ * - [system] is byte-identical in every main chat-loop request of every Send; it holds no version, date, enabled-tool list,
+ *   profile name or language;
  * - `tools` follow the fixed catalog order with stable JSON (see `AssistantToolFactory`);
  * - everything dynamic (summary, history, the current request) comes after the system message;
- * - no provider-specific cache parameter is sent, because not every compatible API accepts one.
+ * - no provider-specific cache parameter is sent (`OpenAiCacheNeutralityTest`), because not every compatible API accepts one.
  * A summary request uses [summary] instead of [system] and carries no tools.
  *
  * Changing an asset requires a new version and a new pinned hash in `AssistantPromptsTest`.
@@ -23,16 +28,21 @@ class AssistantPrompts(val system: String, val summary: String) {
         const val SUMMARY_ASSET = "assistant/summary.md"
 
         /**
-         * Stand-in for callers that never inspect prompt text (most tests). Production wiring passes the loaded prompts
-         * explicitly: `AssistantChatViewModel` has no default.
+         * Strict UTF-8 (malformed input and a BOM are rejected); CRLF to LF; trailing whitespace trimmed once.
+         * Deterministic bytes for prefix caching.
          */
-        val PLACEHOLDER = lazy { AssistantPrompts("assistant system prompt", "assistant summary prompt") }
-
-        /** UTF-8; CRLF to LF; trailing whitespace trimmed once. Deterministic bytes for prefix caching. */
         fun load(open: (String) -> InputStream) = AssistantPrompts(read(open, SYSTEM_ASSET), read(open, SUMMARY_ASSET))
 
         private fun read(open: (String) -> InputStream, path: String): String {
-            val text = open(path).use { String(it.readBytes(), Charsets.UTF_8) }.replace("\r\n", "\n").trimEnd()
+            val bytes = open(path).use { it.readBytes() }
+            val decoded = try {
+                Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes)).toString()
+            } catch (failure: CharacterCodingException) {
+                throw IllegalArgumentException("Prompt asset $path is not valid UTF-8", failure)
+            }
+            require(!decoded.startsWith('\uFEFF')) { "Prompt asset $path starts with a byte order mark" }
+            val text = decoded.replace("\r\n", "\n").trimEnd()
             require(text.isNotEmpty()) { "Empty prompt asset $path" }
             return text
         }

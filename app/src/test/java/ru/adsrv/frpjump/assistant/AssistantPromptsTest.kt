@@ -28,6 +28,30 @@ class AssistantPromptsTest {
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 
+    @Test fun `both assets are strict UTF-8 without BOM or CR and end with exactly one newline`() {
+        for (path in listOf("assistant/skill.md", "assistant/summary.md")) {
+            val bytes = asset(path)
+            val text = Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+            assertFalse("$path BOM", text.startsWith('\uFEFF'))
+            assertFalse("$path CR", text.contains('\r'))
+            assertTrue("$path final newline", text.endsWith("\n") && text.trimEnd() == text.dropLast(1))
+        }
+        assertTrue(asset("assistant/skill.md").size <= 4096)
+        assertEquals(String(asset("assistant/summary.md"), Charsets.UTF_8).removeSuffix("\n"), TestPrompts.real.summary)
+        assertEquals(String(asset("assistant/skill.md"), Charsets.UTF_8).removeSuffix("\n"), TestPrompts.real.system)
+    }
+
+    @Test fun `loader rejects a BOM malformed UTF-8 and an empty asset`() {
+        fun load(skill: ByteArray, summary: ByteArray = "ok".toByteArray()) = AssistantPrompts.load { path ->
+            ByteArrayInputStream(if (path == AssistantPrompts.SYSTEM_ASSET) skill else summary) }
+        assertThrows(IllegalArgumentException::class.java) { load(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte(), 'a'.code.toByte())) }
+        assertThrows(IllegalArgumentException::class.java) { load("ok".toByteArray(), byteArrayOf('a'.code.toByte(), 0xC3.toByte())) }
+        assertThrows(IllegalArgumentException::class.java) { load(byteArrayOf(0xFF.toByte())) }
+        assertThrows(IllegalArgumentException::class.java) { load(" \r\n\n".toByteArray()) }
+        assertThrows(IllegalArgumentException::class.java) { load("ok".toByteArray(), ByteArray(0)) }
+    }
+
     @Test fun `system prompt fits 4096 bytes and has no volatile content`() {
         val bytes = asset("assistant/skill.md")
         assertTrue("skill.md is ${bytes.size} bytes", bytes.size <= 4096)
@@ -70,7 +94,22 @@ class AssistantPromptsTest {
             assertEquals(4, requests.size)
             assertTrue(requests.all { it.instructions == TestPrompts.real.system })
             assertEquals(listOf("web_search", "read_page"), requests.first().tools.map { it.name })
+            // Stable JSON: the schema text of every tool, in order, is identical in all four requests.
+            fun wire(request: AgentRequest) = request.tools.map { "${it.name}|${it.description}|${it.parameters}" }
+            assertTrue(requests.all { wire(it) == wire(requests.first()) })
             assertTrue(requests.all { it.tools == requests.first().tools })
+        } finally { chat.close(); scope.cancel() }
+    }
+
+    @Test fun `a broken asset fails before the provider is prepared so a key error cannot mask it`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var prepared = 0
+        val broken = lazy { AssistantPrompts.load { ByteArrayInputStream(byteArrayOf(0xFF.toByte())) } }
+        val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot },
+            { prepared++; throw ProviderSetupException(ProviderSetupProblem.CRYPTO_FAILED) }, {}, AgentModule(true),
+            io = Dispatchers.Unconfined, prompts = broken)
+        try {
+            assertEquals(ChatProblem.SETUP, chat.sendAndWait("kept").problem); assertEquals(0, prepared)
         } finally { chat.close(); scope.cancel() }
     }
 
