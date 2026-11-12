@@ -92,6 +92,9 @@ The negative-reply distinction is pinned to SSHJ 0.41.2 behavior. A dependency
 change must recheck protocol-reply classification and neighboring global-request
 promise ownership; arbitrary exceptions must not be reclassified as replies.
 
+Image insertion from the terminal records no image bytes, source URIs, remote
+paths or file names in diagnostics or logs.
+
 ## Local measurements
 
 Collect numbers only, without forcing redraws or changing stream buffering:

@@ -345,7 +345,7 @@ prompt, opt-in, foreground check or new limit for the selected tab.
 The extra keys under the terminal are one row: ^C, Paste, ← ↑ ↓ →, ⌫, ⏎
 and ⌨, which shows and hides the soft keyboard (the bar has no keyboard
 button). Paste works as the selection menu's paste and is disabled while the
-clipboard has no text. Any paste drops all trailing line breaks and blank
+clipboard has neither text nor an image. Any paste drops all trailing line breaks and blank
 lines, so a single line never runs by itself. With bracketed paste enabled by the remote side it
 goes as is; several lines without it show a sheet first, "You are pasting N
 lines" (ru «Вы вставляете N строк») — "Without bracketed paste each line runs
@@ -354,7 +354,31 @@ blank lines dropped, joined by a single space; no shell syntax, so a trailing
 `\` continuation stays); the sheet's ✕ or a swipe down cancels. In a tmux
 session the bracketed flag is not trusted (tmux keeps it on toward the app
 whatever the pane asked), so several lines always show the sheet there; a
-multiplexer started by hand in a plain-shell tab can't be detected. Additional
+multiplexer started by hand in a plain-shell tab can't be detected.
+
+**Insert image.** ⋮ → Insert image opens the system photo picker (no storage
+permission). With an image and no text on the clipboard, Paste (key or the
+selection menu) offers "Insert image from clipboard?" (ru «Вставить изображение
+из буфера?») instead of pasting; with any text it pastes the text as before.
+The picture is re-encoded without metadata (EXIF, GPS, XMP, text chunks and
+colour profiles are not carried): rotated upright, the long side at most 2000
+px; PNG stays PNG, a GIF becomes its first frame as PNG, anything else becomes
+JPEG, or PNG when it has real transparency; the encoder's colour profile and
+any Ultra HDR gain map are removed too. Input up to 40 MiB and 250 MP,
+output up to 8 MiB (a PNG over it is sent once as JPEG). It is uploaded on a
+new SFTP channel of the tab's open connection (no new login) to
+`~/.cache/frp-jump/images/` and its absolute path (never `~`) is inserted
+exactly as Paste inserts one line of text, without Enter. The item is dimmed, and
+the offer is not offered, unless the tab is Open and has no image on its way
+(also after Cancel, until that image's job has really ended). A bar shows "Preparing image…" and
+"Uploading image… N%" with Cancel; a failure inserts nothing and shows one
+short reason; the image goes to the tab it was started on only, never to
+another tab or the same tab's next connection, and leaving the terminal screen
+or closing the tab (also with its Undo pending) cancels it. The device-side rules (modes, no overwrite, cleanup after 60
+minutes) are in the [SSH contract](ssh-persist-contract.md#remote-image-files).
+The remote program decides what to do with the path.
+
+Additional
 rows start collapsed; the small ⋯ above the main row explicitly toggles Esc,
 Tab, sticky Ctrl and
 Alt, Shift, ^D ^Z ^R, Home End PgUp PgDn, `| ~ / -`. The arrows and ⌫ repeat

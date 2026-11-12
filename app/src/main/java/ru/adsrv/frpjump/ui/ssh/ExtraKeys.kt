@@ -66,6 +66,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
@@ -76,6 +77,7 @@ import com.termux.view.TerminalView
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ssh.ClipKind
 import ru.adsrv.frpjump.ui.PasteGlyph
 
 /** Sticky Ctrl / Alt / Shift from the extra rows: apply to the next key, then release. */
@@ -175,6 +177,34 @@ private val NAV_SLOTS: List<Slot> = listOf(
 private val EXTRA_KEY_MIN = 36.dp
 private val ROW_GAP = 3.dp
 
+/** The side padding of the key panel; the keys and the disclosure target are measured inside it. */
+internal val PANEL_SIDE_PADDING = 8.dp
+
+/** The shared tracks of the main row and where the disclosure target sits, for a panel [innerWidth] wide (inside its side padding). */
+internal class DisclosureGeometry(val cell: Dp, val targetWidth: Dp, val idealOffset: Dp, val targetOffset: Dp)
+
+internal fun disclosureGeometry(innerWidth: Dp): DisclosureGeometry {
+    // Nine main cells define the shared tracks.
+    val cell = (innerWidth - ROW_GAP * 8) / 9
+    // At narrow widths use all the available space up to the window edge, rather than allowing part of the target to protrude off-screen.
+    val targetWidth = minOf(48.dp, cell + ROW_GAP + 8.dp)
+    val idealOffset = (targetWidth - cell) / 2
+    // Keep the complete disclosure target outside the preceding key.
+    val targetOffset = maxOf(idealOffset, targetWidth - cell - ROW_GAP)
+    return DisclosureGeometry(cell, targetWidth, idealOffset, targetOffset)
+}
+
+/**
+ * How far from the panel's end its disclosure target reaches: the popup is aligned to the end of the padded panel and
+ * shifted by the target's offset (negative on wide cells, where the target is centred over the last cell), so the target's
+ * left edge is this far from the end of a full-width row above it. Anything placed there (the image bar's Cancel) keeps
+ * its own end padding at least this large, in every orientation and font scale.
+ */
+internal fun disclosureEndReserve(innerWidth: Dp): Dp {
+    val g = disclosureGeometry(innerWidth)
+    return PANEL_SIDE_PADDING - g.targetOffset + g.targetWidth
+}
+
 /** The main row's keys; the extra rows' are lower, so all of it stays small above the keyboard. */
 private val KEY_HEIGHT = 44.dp
 private val EXTRA_KEY_HEIGHT = 36.dp
@@ -207,6 +237,8 @@ fun ExtraKeys(
     textMode: Boolean,
     onTextMode: (Boolean) -> Unit,
     textEditor: @Composable () -> Unit,
+    /** The tab is open and not sending an image: Paste may offer the clipboard's picture. */
+    canOfferImage: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
@@ -219,17 +251,15 @@ fun ExtraKeys(
     val disclosureLabel = stringResource(if (expanded) R.string.terminal_extra_keys_hide else R.string.terminal_extra_keys_show)
     val textLabel = stringResource(R.string.terminal_text_input)
     BoxWithConstraints(
-        Modifier.fillMaxWidth().background(colors.termBar).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().background(colors.termBar).padding(horizontal = PANEL_SIDE_PADDING, vertical = 4.dp),
     ) {
         // Nine main cells define the shared tracks. Extra rows use full cells,
         // half-cells on wide screens, or whole-cell multiples when wrapping.
-        val cell = (maxWidth - ROW_GAP * 8) / 9
-        // At narrow widths use all the available space up to the window edge,
-        // rather than allowing part of the target to protrude off-screen.
-        val targetWidth = minOf(48.dp, cell + ROW_GAP + 8.dp)
-        val idealOffset = (targetWidth - cell) / 2
-        // Keep the complete disclosure target outside the preceding key.
-        val targetOffset = maxOf(idealOffset, targetWidth - cell - ROW_GAP)
+        val geometry = disclosureGeometry(maxWidth)
+        val cell = geometry.cell
+        val targetWidth = geometry.targetWidth
+        val idealOffset = geometry.idealOffset
+        val targetOffset = geometry.targetOffset
         val disclosureOffset = with(LocalDensity.current) { IntOffset(targetOffset.roundToPx(), -48.dp.roundToPx()) }
         Column {
             AnimatedVisibility(
@@ -243,7 +273,7 @@ fun ExtraKeys(
             Box(Modifier.fillMaxWidth()) {
                 Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                     Key(ExtraKey.CTRL_C, modifiers, onKey)
-                    PasteKey(onPaste)
+                    PasteKey(onPaste, canOfferImage)
                     ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
                     val label = stringResource(R.string.terminal_keyboard)
                     KeyBox(
@@ -330,18 +360,23 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
     }
 }
 
-/** Pastes the clipboard's text; dimmed, saying why, while there is none. */
+/**
+ * Pastes the clipboard's text, or (a picture and no text, [canOfferImage]) offers to send the picture; dimmed, saying why,
+ * while there is neither.
+ */
 @Composable
-private fun RowScope.PasteKey(onPaste: () -> Unit) {
+private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean) {
     val colors = AppTheme.colors
-    val canPaste = clipboardHasText()
+    val kind = clipboardKind()
+    val canPaste = kind == ClipKind.TEXT || (kind == ClipKind.IMAGE && canOfferImage)
     val label = stringResource(R.string.terminal_paste)
     val empty = stringResource(R.string.terminal_clipboard_empty)
+    val image = stringResource(R.string.terminal_image_clipboard_has_image)
     KeyBox(
         Modifier
             .semantics {
                 contentDescription = label
-                if (!canPaste) stateDescription = empty
+                if (!canPaste) stateDescription = empty else if (kind == ClipKind.IMAGE) stateDescription = image
             }
             .clickable(enabled = canPaste, role = Role.Button, onClick = onPaste),
         colors.termKey,

@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import net.schmizz.sshj.SSHClient
+import ru.adsrv.frpjump.image.ImageTarget
+import ru.adsrv.frpjump.image.RemoteImages
+import ru.adsrv.frpjump.image.SftpRemoteImages
 import net.schmizz.sshj.connection.channel.direct.SessionChannel
 import net.schmizz.sshj.userauth.UserAuthException
 import java.io.IOException
@@ -181,6 +184,21 @@ class SshSession(
         if (openClient() !== destination.client) return false
         typed()
         return terminal.paste(text, destination.input, enter)
+    }
+
+    /**
+     * The destination of an image the owner is inserting: this tab as it is now (see [capturePasteTarget]), with a new SFTP
+     * channel on its open connection (no new login) and the tab's own paste. Null while the tab is not open. Main thread.
+     */
+    fun captureImageTarget(): ImageTarget? {
+        val destination = capturePasteTarget() ?: return null
+        return object : ImageTarget {
+            override fun open(track: (java.io.Closeable) -> Unit): RemoteImages = SftpRemoteImages.open(destination.client, track = track)
+
+            override fun stillCurrent(): Boolean = openClient() === destination.client
+
+            override fun paste(text: String, enter: Boolean): Boolean = paste(text, destination, enter)
+        }
     }
 
     /** State publication and terminal handover serialize against close, never blocking transport work. */

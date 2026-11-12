@@ -1246,4 +1246,23 @@
     <string name="chat_receipt_no_answer">No answer, declined</string>
     <string name="confirmations_details">Details</string>
     <string name="confirmations_turn_on_failed">Could not save the setting. Try again.</string>
+    <!-- Terminal: insert an image (docs/contract.md, SSH console) -->
+    <string name="terminal_image_insert">Insert image</string>
+    <string name="terminal_image_offer_title">Insert image from clipboard?</string>
+    <string name="terminal_image_offer_text">It is sent to the device and its path is inserted.</string>
+    <string name="terminal_image_clipboard_has_image">clipboard has an image</string>
+    <string name="terminal_image_preparing">Preparing image…</string>
+    <string name="terminal_image_uploading">Uploading image… %1$d%%</string>
+    <string name="terminal_image_done">Image inserted</string>
+    <string name="terminal_image_unreadable">Could not read this image.</string>
+    <string name="terminal_image_too_large">The image is too large.</string>
+    <string name="terminal_image_connection_lost">Connection lost. Nothing was inserted.</string>
+    <string name="terminal_image_refused">The device refused the upload: permission denied.</string>
+    <string name="terminal_image_no_space">No space left on the device.</string>
+    <string name="terminal_image_not_available">File transfer is not available on this device.</string>
+    <string name="terminal_image_save_failed">The device could not save the image.</string>
+    <string name="terminal_image_no_picker">No photo picker is available.</string>
+    <string name="terminal_image_path_unsafe">The home folder name has special characters.</string>
+    <string name="terminal_image_folder_unsafe">The images folder on the device is not safe to use.</string>
+    <string name="terminal_image_insert_refused">Could not insert the path.</string>
 </resources>

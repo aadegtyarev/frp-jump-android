@@ -140,7 +140,13 @@ nothing. The same draft-revision and success safeguards apply to both gestures.
 ## Clipboard compatibility
 
 Clipboard Paste uses the same planning and multiline safety rules. The Paste
-key is disabled when the clipboard has no text; availability checks inspect
+key is disabled when the clipboard has neither text nor an image; an image and
+no text offers the image flow ([Insert image](contract.md#7-ssh-console)) from
+the key and from the selection menu, and an image clip's content URI is never
+pasted as text. A clip with any text pastes the text as before. The inserted
+image path is one line through the same accepted-paste path, destination and
+output-generation binding as any single-line paste, with no Enter; local
+acceptance is not remote receipt. Availability checks inspect
 the clipboard description rather than repeatedly reading its contents.
 Whitespace-only clipboard text is rejected on use with feedback. If a
 multiline paste needs confirmation but no terminal screen can show it, send
