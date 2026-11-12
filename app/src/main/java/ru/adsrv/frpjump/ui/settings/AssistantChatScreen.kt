@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
@@ -71,6 +72,7 @@ internal fun AssistantChatContent(
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().imePadding()) {
         val compact = maxHeight < 400.dp
+        val noticeMax = if (compact) Dp.Infinity else maxHeight * 0.15f
         val cardInView = remember { BringIntoViewRequester() }
         // Where the "confirmations are off" mark goes is decided by measuring, not by locale or font scale: in the top bar when the whole
         // title still fits next to it, else beside the Send/Stop button (same tap and long press explanation). The widths come from the
@@ -112,13 +114,15 @@ internal fun AssistantChatContent(
                     }
                 }
             }
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            // Plain-text notices above and below the history are capped (and scroll) so that a long one at large font cannot squeeze the
+            // history away; buttons (setup, retry) stay outside the cap and always visible.
             if (setup != null) {
                 Text(stringResource(setup))
                 TextButton(onClick = onSetup, modifier = Modifier.testTag("chat_setup")) {
                     Text(stringResource(if (!enabled) R.string.settings else R.string.assistant_provider_title))
                 }
             }
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.historyProblem?.let { problem ->
                 Text(stringResource(when (problem) {
                     ChatHistoryProblem.READ -> R.string.chat_history_read_failed
@@ -127,9 +131,11 @@ internal fun AssistantChatContent(
                 }), color = AppTheme.colors.error)
                 TextButton(onClick = conversation::retryHistory, enabled = !state.loading && !state.busy) { Text(stringResource(R.string.chat_history_retry)) }
             }
-            if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
-            if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
-            if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
+            if (state.summarized || state.contextChanged || state.omitted) CappedNotices(noticeMax, "chat_notices_above") {
+                if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
+                if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
+                if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
+            }
             // While a question is open the message field (disabled during a run anyway) is hidden; Stop stays at the bottom.
             val asking = state.asking
             val history: @Composable (Modifier) -> Unit = { modifier -> LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -189,27 +195,29 @@ internal fun AssistantChatContent(
             }
             if (compact) { history(Modifier.height(160.dp)); question() }
             else Box(Modifier.weight(1f).fillMaxWidth()) { Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) { history(Modifier.weight(1f)); question() } }
-            // Stays until the next Send, not only while the run is shown: the owner must learn that "Always" was not saved.
-            if (state.confirmationNotSaved) Text(stringResource(R.string.confirm_not_saved), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_not_saved"))
-            state.problem?.let { problem -> Text(stringResource(when (problem) {
-                ChatProblem.SETUP -> R.string.chat_setup
-                ChatProblem.READ -> R.string.assistant_provider_read_failed
-                ChatProblem.KEY -> R.string.chat_key
-                ChatProblem.TIMEOUT -> R.string.chat_timeout
-                ChatProblem.CONTEXT_FULL -> R.string.chat_context_full
-                ChatProblem.INVALID_REPLY -> R.string.chat_invalid_reply
-                ChatProblem.PROVIDER -> R.string.chat_provider_failed
-                ChatProblem.TOO_LONG -> R.string.chat_too_long
-                ChatProblem.INTERRUPTED -> R.string.chat_interrupted
-                ChatProblem.SUMMARY -> R.string.chat_summary_failed
-                ChatProblem.HISTORY_FULL -> R.string.chat_history_full
-            }) + state.problemStatus?.takeIf { state.problem == ChatProblem.SUMMARY }?.let { " (HTTP $it)" }.orEmpty(), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
+            if (state.confirmationNotSaved || state.problem != null) CappedNotices(noticeMax, "chat_notices_below") {
+                // Stays until the next Send, not only while the run is shown: the owner must learn that "Always" was not saved.
+                if (state.confirmationNotSaved) Text(stringResource(R.string.confirm_not_saved), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_not_saved"))
+                state.problem?.let { problem -> Text(stringResource(when (problem) {
+                    ChatProblem.SETUP -> R.string.chat_setup
+                    ChatProblem.READ -> R.string.assistant_provider_read_failed
+                    ChatProblem.KEY -> R.string.chat_key
+                    ChatProblem.TIMEOUT -> R.string.chat_timeout
+                    ChatProblem.CONTEXT_FULL -> R.string.chat_context_full
+                    ChatProblem.INVALID_REPLY -> R.string.chat_invalid_reply
+                    ChatProblem.PROVIDER -> R.string.chat_provider_failed
+                    ChatProblem.TOO_LONG -> R.string.chat_too_long
+                    ChatProblem.INTERRUPTED -> R.string.chat_interrupted
+                    ChatProblem.SUMMARY -> R.string.chat_summary_failed
+                    ChatProblem.HISTORY_FULL -> R.string.chat_history_full
+                }) + state.problemStatus?.takeIf { state.problem == ChatProblem.SUMMARY }?.let { " (HTTP $it)" }.orEmpty(), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
+            }
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
             if (!asking) OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
                 label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
-                minLines = 1, maxLines = 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
+                minLines = 1, maxLines = if (density.fontScale > 1.3f) 2 else 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (!markInTopBar) mark()
                 if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
@@ -219,6 +227,28 @@ internal fun AssistantChatContent(
                     modifier = Modifier.weight(1f).testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
             }
         }
+    }
+}
+
+/**
+ * Plain-text notices in a region that never takes more than [max]: the cap is snapped to whole body lines (at least one), so a line is
+ * never cut in half, and while more is below, a short mark says so (the same string as the confirmation card's section).
+ */
+@Composable
+private fun CappedNotices(max: Dp, tag: String, content: @Composable ColumnScope.() -> Unit) {
+    // No cap (the compact layout scrolls as a whole, and a scroller must not be nested in it): the notices just show in full.
+    if (max == Dp.Infinity) { Column(Modifier.testTag(tag), content = content); return }
+    val scroll = rememberScrollState()
+    // One line of the text style the notices use, measured (a theme's line height can differ from the nominal one at large font).
+    val measurer = rememberTextMeasurer()
+    val style = LocalTextStyle.current
+    val line = with(LocalDensity.current) { measurer.measure(androidx.compose.ui.text.AnnotatedString("A"), style).size.height.toDp() }
+    val capped = if (max == Dp.Infinity) max else line * maxOf(1, (max / line).toInt())
+    Column {
+        Column(Modifier.heightIn(max = capped).verticalScroll(scroll).testTag(tag), content = content)
+        if (scroll.canScrollForward) Text(stringResource(R.string.confirm_more),
+            style = MaterialTheme.typography.labelMedium.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Ltr),
+            color = AppTheme.colors.accent, modifier = Modifier.testTag("${tag}_more"))
     }
 }
 
