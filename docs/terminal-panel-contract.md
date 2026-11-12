@@ -23,6 +23,7 @@ Keys is the initial surface. There is no dedicated Keys/Text selector row.
 | Short keyboard tap | Request one system-keyboard visibility toggle. |
 | Hold keyboard | Open the selected tab's Text composer once; releasing must not also trigger the short tap. Expose a labelled accessibility long-click action. |
 | Terminal ⋮ → Text input | Open or focus the same editor as an explicit alternative to the gesture. |
+| Long press on Paste | Open the system photo picker, as ⋮ → Insert image, and run the same flow. Works while the tab is Open and has no image on its way (the same rule as the menu item), also with an empty clipboard; otherwise it does nothing. A tap is unchanged (it pastes the clipboard text or offers the clipboard image, and is announced as unavailable, by state description, when there is neither). TalkBack long-click label: "Insert image" / «Вставить изображение». |
 | Terminal ⋮ → Insert image | Open the system photo picker. Dimmed (not hidden) unless the tab is Open, and while that tab already has an image on its way, until that job has really ended (a tap on the bar's Cancel hides the bar at once but the item stays dimmed until then). See [Insert image](contract.md#7-ssh-console). |
 | Settings → Terminal | Explain the keyboard gesture and menu entry; no separate persisted panel setting is required. |
 | ⋯ above the main row | Explicitly open/close additional keys without sending terminal input or stealing IME focus. Opening the system keyboard alone does not open these rows. |
@@ -56,7 +57,9 @@ way. A clipboard with text is never affected. The image progress bar
 200% font and must not hide any key. Its Cancel ends left of the disclosure
 target, by the same geometry the target is placed with (the target's reach from
 the panel's end, which differs between portrait and wide landscape), so neither
-covers the other in any orientation or font scale.
+covers the other in any orientation or font scale. In text mode there are no keys
+and no disclosure: the same bar sits above the editor with Cancel at the end
+(small end padding), and in the full-screen editor it is inside it.
 
 Text retains compact/full-screen expand and collapse, Back to the compact
 editor, visible ordinary IME composition, and text/selection/focus through

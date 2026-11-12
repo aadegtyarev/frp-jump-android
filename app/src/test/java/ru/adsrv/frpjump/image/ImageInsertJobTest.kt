@@ -120,6 +120,13 @@ class ImageInsertJobTest {
         assertEquals(ImageInsertState.Uploading(1000, 1000), states.last())
     }
 
+    @Test fun severalPathsAreOnePasteJoinedBySingleSpacesNeverNewlines() {
+        assertEquals("/a/1.jpg", joinImagePaths(listOf("/a/1.jpg")))
+        assertEquals("/a/1.jpg /a/2.png /a/3.jpg", joinImagePaths(listOf("/a/1.jpg", "/a/2.png", "/a/3.jpg")))
+        assertFalse(joinImagePaths(listOf("/a/1.jpg", "/a/2.png")).contains('\n'))
+        assertEquals("", joinImagePaths(emptyList()))
+    }
+
     @Test fun aPngIsSentAsPng() {
         val target = Target(Device())
         blocking { job(target, encode = { EncodedImage(ByteArray(10), ImageFormat.PNG) }).run() }

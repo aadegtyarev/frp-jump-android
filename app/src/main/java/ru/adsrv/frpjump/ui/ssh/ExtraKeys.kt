@@ -239,6 +239,8 @@ fun ExtraKeys(
     textEditor: @Composable () -> Unit,
     /** The tab is open and not sending an image: Paste may offer the clipboard's picture. */
     canOfferImage: Boolean = false,
+    /** Long press on Paste: the same photo picker as the menu's Insert image; reachable only while [canOfferImage]. */
+    onInsertImage: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     val keyboard = WindowInsets.isImeVisible
@@ -273,7 +275,7 @@ fun ExtraKeys(
             Box(Modifier.fillMaxWidth()) {
                 Row(Modifier.testTag("terminal_main_keys"), horizontalArrangement = Arrangement.spacedBy(ROW_GAP)) {
                     Key(ExtraKey.CTRL_C, modifiers, onKey)
-                    PasteKey(onPaste, canOfferImage)
+                    PasteKey(onPaste, canOfferImage, onInsertImage)
                     ROW_KEYS.forEach { key -> Key(key, modifiers, onKey) }
                     val label = stringResource(R.string.terminal_keyboard)
                     KeyBox(
@@ -362,23 +364,35 @@ private fun ExtraRows(modifiers: Modifiers, onKey: (ExtraKey) -> Unit, modifier:
 
 /**
  * Pastes the clipboard's text, or (a picture and no text, [canOfferImage]) offers to send the picture; dimmed, saying why,
- * while there is neither.
+ * while there is neither. A long press opens the photo picker ([onInsertImage]) while [canOfferImage], also with an empty
+ * clipboard: then the tap does nothing and the key says so by its state description.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean) {
+private fun RowScope.PasteKey(onPaste: () -> Unit, canOfferImage: Boolean, onInsertImage: () -> Unit) {
     val colors = AppTheme.colors
     val kind = clipboardKind()
     val canPaste = kind == ClipKind.TEXT || (kind == ClipKind.IMAGE && canOfferImage)
     val label = stringResource(R.string.terminal_paste)
     val empty = stringResource(R.string.terminal_clipboard_empty)
     val image = stringResource(R.string.terminal_image_clipboard_has_image)
+    val insertImage = stringResource(R.string.terminal_image_insert)
+    // combinedClickable's enabled switches the long press off with the tap, so the key stays enabled while the picker is on
+    // offer. Without it a long press is swallowed (not read as a tap), so that it never pastes by accident.
+    val action = Modifier.combinedClickable(
+        enabled = canPaste || canOfferImage,
+        role = Role.Button,
+        onClick = { if (canPaste) onPaste() },
+        onLongClickLabel = if (canOfferImage) insertImage else null,
+        onLongClick = { if (canOfferImage) onInsertImage() },
+    )
     KeyBox(
         Modifier
             .semantics {
                 contentDescription = label
                 if (!canPaste) stateDescription = empty else if (kind == ClipKind.IMAGE) stateDescription = image
             }
-            .clickable(enabled = canPaste, role = Role.Button, onClick = onPaste),
+            .then(action),
         colors.termKey,
     ) {
         Icon(PasteGlyph, contentDescription = null, tint = if (canPaste) colors.onTerm else colors.termMuted, modifier = Modifier.size(18.dp))

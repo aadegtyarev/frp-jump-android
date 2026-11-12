@@ -479,3 +479,10 @@ val PinGlyph: ImageVector = glyph("Pin", 1.8f) {
 
 /** A puzzle piece: the MQTT explorer's plugins. */
 val PluginGlyph: ImageVector = pathGlyph("Plugin", "M4 6.5H8.25a2.5 2.5 0 1 1 5 0H17.5v4.25a2.5 2.5 0 1 1 0 5V20H4Z")
+
+/** A framed picture with a sun and a hill: "Insert image". */
+val ImageGlyph: ImageVector = glyph("Image") {
+    roundRect(3f, 4f, 18f, 16f, 2f)
+    moveTo(9f, 9f); horizontalLineTo(9.01f)
+    moveTo(3f, 17f); lineTo(8.5f, 12f); lineTo(13f, 16f); lineTo(16f, 13.5f); lineTo(21f, 18f)
+}

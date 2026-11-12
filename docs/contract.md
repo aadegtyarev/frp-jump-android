@@ -356,7 +356,8 @@ whatever the pane asked), so several lines always show the sheet there; a
 multiplexer started by hand in a plain-shell tab can't be detected.
 
 **Insert image.** ⋮ → Insert image opens the system photo picker (no storage
-permission). With an image and no text on the clipboard, Paste (key or the
+permission); so does a long press on the Paste key (TalkBack action "Insert image")
+and the image button of the text editor, all by one rule and one flow. A tap on Paste is unchanged. With an image and no text on the clipboard, Paste (key or the
 selection menu) offers "Insert image from clipboard?" (ru «Вставить изображение
 из буфера?») instead of pasting; with any text it pastes the text as before.
 The picture is re-encoded without metadata (EXIF, GPS, XMP, text chunks and
@@ -367,7 +368,7 @@ any Ultra HDR gain map are removed too. Input up to 40 MiB and 250 MP,
 output up to 8 MiB (a PNG over it is sent once as JPEG). It is uploaded on a
 new SFTP channel of the tab's open connection (no new login) to
 `~/.cache/frp-jump/images/` and its absolute path (never `~`) is inserted
-exactly as Paste inserts one line of text, without Enter. The item is dimmed, and
+exactly as Paste inserts one line of text, without Enter. The item and the editor's button are dimmed, the Paste long press does nothing, and
 the offer is not offered, unless the tab is Open and has no image on its way
 (also after Cancel, until that image's job has really ended). A bar shows "Preparing image…" and
 "Uploading image… N%" with Cancel; a failure inserts nothing and shows one
@@ -375,7 +376,13 @@ short reason; the image goes to the tab it was started on only, never to
 another tab or the same tab's next connection, and leaving the terminal screen
 or closing the tab (also with its Undo pending) cancels it. The device-side rules (modes, no overwrite, cleanup after 60
 minutes) are in the [SSH contract](ssh-persist-contract.md#remote-image-files).
-The remote program decides what to do with the path.
+From the text editor the path also goes straight to the terminal, in the tab that
+started it and without Enter; the editor's draft is not read, changed or sent. The
+progress bar and Cancel show in text mode too (above the editor; in the full-screen
+editor, inside it). The remote program decides what to do with the path.
+*Extension point, not current behavior:* the job and its paste step are shaped for
+several photos later (a list of sources, one paste of the absolute paths joined by
+single spaces, never newlines); today exactly one photo is sent.
 
 Additional
 rows start collapsed; the small ⋯ above the main row explicitly toggles Esc,

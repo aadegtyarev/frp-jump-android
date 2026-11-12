@@ -327,6 +327,18 @@ fun TerminalScreen(
         pickImageFor = null
         if (uri != null && tab != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
     }
+    // The one way into the photo picker (the menu item, the long press on Paste, the editor's button), for the tab shown now.
+    val canInsertImage = state == SshState.Open && imageRuns[selected.id] == null
+    fun pickImageForSelected() {
+        if (!canInsertImage) return
+        pickImageFor = selected
+        try {
+            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        } catch (e: ActivityNotFoundException) {
+            pickImageFor = null
+            context.notice(context.getString(R.string.terminal_image_no_picker), NoticeKind.WARN)
+        }
+    }
     // A tab closed (its Undo pending, closed for good, its tunnel gone) takes its image with it.
     LaunchedEffect(list) { cancelRunsOfGoneTabs(imageRuns, list.map { it.id }.toSet()) }
     fun sendPaste(target: SshSession, text: String, submission: DraftSubmission?, connection: SshSession.PasteTarget, execute: Boolean, selection: Any?) {
@@ -518,16 +530,10 @@ fun TerminalScreen(
                                 onClick = { barMenu = false; managing = true },
                             )
                             InsertImageMenuItem(
-                                enabled = state == SshState.Open && imageRuns[selected.id] == null,
+                                enabled = canInsertImage,
                                 onClick = {
                                     barMenu = false
-                                    pickImageFor = selected
-                                    try {
-                                        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                                    } catch (e: ActivityNotFoundException) {
-                                        pickImageFor = null
-                                        context.notice(context.getString(R.string.terminal_image_no_picker), NoticeKind.WARN)
-                                    }
+                                    pickImageForSelected()
                                 },
                             )
                             // Off while the device is being asked: a second tap would only ask again.
@@ -604,7 +610,10 @@ fun TerminalScreen(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
-                imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel) }
+                // Not while the editor is expanded: its own window covers this one, and carries the bar itself.
+                if (!(draft.textMode && draft.expanded)) {
+                    imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel, keysShown = !draft.textMode) }
+                }
                 (state as? SshState.Reconnecting)?.let { reconnecting ->
                     // The same bar as Ended: what happens, and what the owner can do meanwhile.
                     Column(
@@ -701,12 +710,15 @@ fun TerminalScreen(
                             onInsertAndEnter = { insertDraft(true) },
                             onExpand = { sessions.drafts.expand(selected.id, true); focusManager.clearFocus(force = true) },
                             onKeys = { setTextMode(false) },
+                            canInsertImage = canInsertImage,
+                            onInsertImage = ::pickImageForSelected,
                         )
                     },
                     onKeyboard = { show -> if (show) input.showKeyboard(explicit = true) else input.hideKeyboard() },
                     // The same paste as the selection menu's: bracketed when the remote side asked for it.
                     onPaste = { view.currentSession?.onPasteTextFromClipboard() },
-                    canOfferImage = state == SshState.Open && imageRuns[selected.id] == null,
+                    canOfferImage = canInsertImage,
+                    onInsertImage = ::pickImageForSelected,
                     onKey = { key ->
                         selected.typed()
                         sendExtraKey(view, key, modifiers)
@@ -718,6 +730,7 @@ fun TerminalScreen(
     }
     if (draft.textMode && draft.expanded) {
         FullscreenTerminalText(onCollapse = { sessions.drafts.expand(selected.id, false) }) {
+            imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel, keysShown = false) }
             TerminalTextComposer(
                 sessionId = selected.id,
                 value = editorValue,
@@ -729,6 +742,8 @@ fun TerminalScreen(
                 onExpand = { sessions.drafts.expand(selected.id, false) },
                 expanded = true,
                 onKeys = { setTextMode(false) },
+                canInsertImage = canInsertImage,
+                onInsertImage = ::pickImageForSelected,
             )
         }
     }

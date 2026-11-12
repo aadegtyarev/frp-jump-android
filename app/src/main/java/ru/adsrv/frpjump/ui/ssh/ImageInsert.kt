@@ -168,7 +168,7 @@ fun InsertImageMenuItem(enabled: Boolean, onClick: () -> Unit) {
 
 /** "Preparing image…" / "Uploading image… 40%" with Cancel, between the terminal and the snippets. */
 @Composable
-fun ImageProgressBar(state: ImageInsertState, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+fun ImageProgressBar(state: ImageInsertState, onCancel: () -> Unit, modifier: Modifier = Modifier, keysShown: Boolean = true) {
     val colors = AppTheme.colors
     val text = when (state) {
         // Whole tens only: the words change a few times, not with every packet.
@@ -179,7 +179,8 @@ fun ImageProgressBar(state: ImageInsertState, onCancel: () -> Unit, modifier: Mo
         // Above the main row, the keys' disclosure target owns the end of the panel (terminal-panel-contract.md, "Shared
         // geometry"): Cancel stays left of it, by the same geometry the target is placed with, so neither covers the other
         // in any orientation or font scale, and the words end before Cancel.
-        val reserve = disclosureEndReserve(maxWidth - PANEL_SIDE_PADDING * 2) + 4.dp
+        // With no keys under the bar (the text editor has no disclosure) nothing owns the end of the panel.
+        val reserve = if (keysShown) disclosureEndReserve(maxWidth - PANEL_SIDE_PADDING * 2) + 4.dp else 4.dp
         Column {
             Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = reserve), verticalAlignment = Alignment.CenterVertically) {
                 Text(
