@@ -46,6 +46,9 @@ interface TerminalScreenListener {
 
     /** A multi-line paste into [session] with no bracketed paste: the screen asks before it goes. */
     fun onPasteAsk(session: SshSession, ask: PastePlan.Ask)
+
+    /** Paste with a picture and no text on the clipboard: the screen offers to send it to [session]'s device. */
+    fun onPasteImage(session: SshSession) = Unit
 }
 
 /**
@@ -381,9 +384,15 @@ class SshSessions(
         }
 
         override fun onPasteTextFromClipboard(session: TerminalSession?) {
-            val clip = context.getSystemService(ClipboardManager::class.java).primaryClip ?: return
-            val text = (0 until clip.itemCount).joinToString("") { clip.getItemAt(it).coerceToText(context) }
+            val manager = context.getSystemService(ClipboardManager::class.java)
             val target = _sessions.value.firstOrNull { it.terminal.session === session } ?: return
+            // A picture's content URI is not text to paste: the screen offers to send the picture instead. Decided from the
+            // description alone, so the clip's content is not read until the owner confirms.
+            if (try { clipKind(manager.primaryClipDescription) } catch (e: RuntimeException) { ClipKind.NONE } == ClipKind.IMAGE) {
+                return listener?.onPasteImage(target) ?: Unit
+            }
+            val clip = manager.primaryClip ?: return
+            val text = (0 until clip.itemCount).joinToString("") { clip.getItemAt(it).coerceToText(context) }
             when (val plan = planPaste(text, pasteBracketed(target.terminal.bracketedPaste, target.tmux.inUse))) {
                 // Nothing but spaces and line breaks: said, as the key's tap needs an answer.
                 null -> notices.show(Texts.get(R.string.terminal_clipboard_empty_notice), NoticeKind.INFO, key = PASTE_EMPTY_KEY)

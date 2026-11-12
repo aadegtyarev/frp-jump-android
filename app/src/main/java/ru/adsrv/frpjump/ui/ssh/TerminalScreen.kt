@@ -29,6 +29,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.ButtonDefaults
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -309,6 +314,21 @@ fun TerminalScreen(
     val view = input.terminal
     // Captured destination and draft revision survive changing the selected tab.
     var pasteAsk by remember { mutableStateOf<PendingTerminalPaste?>(null) }
+    // Images on their way, one per tab, owned by this screen: leaving it cancels them (nothing runs on in the background).
+    fun visibleTab(tab: SshSession): () -> Boolean = {
+        sessions.find(tab.id) === tab &&
+            !sessionHidden(pendingUndo.hidden.value, SessionKind.TERMINAL, tab.id, TunnelRef(tab.profile, tab.device, tab.port))
+    }
+    val imageRuns = remember { mutableStateMapOf<Int, ImageRun>() }
+    var pickImageFor by remember { mutableStateOf<SshSession?>(null) }
+    var imageOffer by remember { mutableStateOf<SshSession?>(null) }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val tab = pickImageFor
+        pickImageFor = null
+        if (uri != null && tab != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
+    }
+    // A tab closed (its Undo pending, closed for good, its tunnel gone) takes its image with it.
+    LaunchedEffect(list) { cancelRunsOfGoneTabs(imageRuns, list.map { it.id }.toSet()) }
     fun sendPaste(target: SshSession, text: String, submission: DraftSubmission?, connection: SshSession.PasteTarget, execute: Boolean, selection: Any?) {
         val result = attemptPaste(
             available = {
@@ -388,6 +408,11 @@ fun TerminalScreen(
                 val connection = session.capturePasteTarget()
                 if (connection != null) pasteAsk = PendingTerminalPaste(session, ask, connection)
                 else context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
+            }
+
+            override fun onPasteImage(session: SshSession) {
+                if (session.state.value != SshState.Open) context.notice(context.getString(R.string.terminal_not_open), NoticeKind.WARN)
+                else if (imageRuns[session.id] == null) imageOffer = session
             }
         }
         onDispose { sessions.listener = null; input.diagnostics = null }
@@ -492,6 +517,19 @@ fun TerminalScreen(
                                 text = { Text(stringResource(R.string.snippets)) },
                                 onClick = { barMenu = false; managing = true },
                             )
+                            InsertImageMenuItem(
+                                enabled = state == SshState.Open && imageRuns[selected.id] == null,
+                                onClick = {
+                                    barMenu = false
+                                    pickImageFor = selected
+                                    try {
+                                        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    } catch (e: ActivityNotFoundException) {
+                                        pickImageFor = null
+                                        context.notice(context.getString(R.string.terminal_image_no_picker), NoticeKind.WARN)
+                                    }
+                                },
+                            )
                             // Off while the device is being asked: a second tap would only ask again.
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.terminal_close_all, selected.device)) },
@@ -566,6 +604,7 @@ fun TerminalScreen(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
+                imageRuns[selected.id]?.takeIf { !it.cancelling }?.let { run -> ImageProgressBar(run.state, onCancel = run::cancel) }
                 (state as? SshState.Reconnecting)?.let { reconnecting ->
                     // The same bar as Ended: what happens, and what the owner can do meanwhile.
                     Column(
@@ -667,6 +706,7 @@ fun TerminalScreen(
                     onKeyboard = { show -> if (show) input.showKeyboard(explicit = true) else input.hideKeyboard() },
                     // The same paste as the selection menu's: bracketed when the remote side asked for it.
                     onPaste = { view.currentSession?.onPasteTextFromClipboard() },
+                    canOfferImage = state == SshState.Open && imageRuns[selected.id] == null,
                     onKey = { key ->
                         selected.typed()
                         sendExtraKey(view, key, modifiers)
@@ -693,6 +733,16 @@ fun TerminalScreen(
         }
     }
     // Compose after the full-screen editor so confirmation is always above it.
+    imageOffer?.let { tab ->
+        ImageOfferSheet(
+            onInsert = {
+                val uri = clipboardImageUri(context)
+                if (uri != null) startImageInsert(scope, context, tab, uri, imageRuns, visibleTab(tab))
+                else context.notice(context.getString(R.string.terminal_image_unreadable), NoticeKind.WARN)
+            },
+            onDismiss = { imageOffer = null },
+        )
+    }
     pasteAsk?.let { pending ->
         PasteSheet(
             pending.ask,

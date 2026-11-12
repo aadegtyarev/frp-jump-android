@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump.ui.ssh
 
-import android.content.ClipDescription
 import android.content.ClipboardManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -12,6 +11,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import ru.adsrv.frpjump.ssh.ClipKind
+import ru.adsrv.frpjump.ssh.clipKind
 
 /**
  * Whether the clipboard holds text to paste, from its description only: the
@@ -21,14 +22,18 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  * whenever the clipboard changes while the app is in front.
  */
 @Composable
-fun clipboardHasText(): Boolean {
+fun clipboardHasText(): Boolean = clipboardKind() == ClipKind.TEXT
+
+/** Text, an image and no text, or neither, by the same description-only check (see [clipboardHasText]). */
+@Composable
+fun clipboardKind(): ClipKind {
     val clipboard = LocalContext.current.getSystemService(ClipboardManager::class.java)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var hasText by remember { mutableStateOf(clipboard.holdsText()) }
+    var kind by remember { mutableStateOf(clipboard.kind()) }
     DisposableEffect(clipboard, lifecycle) {
-        val changed = ClipboardManager.OnPrimaryClipChangedListener { hasText = clipboard.holdsText() }
+        val changed = ClipboardManager.OnPrimaryClipChangedListener { kind = clipboard.kind() }
         val resumed = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) hasText = clipboard.holdsText()
+            if (event == Lifecycle.Event.ON_RESUME) kind = clipboard.kind()
         }
         clipboard.addPrimaryClipChangedListener(changed)
         lifecycle.addObserver(resumed)
@@ -37,13 +42,11 @@ fun clipboardHasText(): Boolean {
             lifecycle.removeObserver(resumed)
         }
     }
-    return hasText
+    return kind
 }
 
-private fun ClipboardManager.holdsText(): Boolean = try {
-    val description = primaryClipDescription
-    description != null && (description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
-        description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) || description.hasMimeType("text/*"))
+private fun ClipboardManager.kind(): ClipKind = try {
+    clipKind(primaryClipDescription)
 } catch (e: RuntimeException) {
-    false
+    ClipKind.NONE
 }

@@ -38,7 +38,7 @@ class ImageFailureException(val reason: ImageFailure, cause: Throwable? = null) 
 /** An image ready to upload: the encoded bytes and their [format]. */
 class EncodedImage(val bytes: ByteArray, val format: ImageFormat)
 
-/** Limits of the image flow (docs/contracts/features/terminal-image-paste.md). */
+/** Limits of the image flow (docs/contract.md, SSH console; docs/ssh-persist-contract.md, remote image files). */
 object ImageLimits {
     const val INPUT_BYTES = 40L * 1024 * 1024
     const val INPUT_PIXELS = 250_000_000L
