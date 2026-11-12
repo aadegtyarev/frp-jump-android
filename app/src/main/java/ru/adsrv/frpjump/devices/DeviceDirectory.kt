@@ -15,7 +15,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.api.ApiException
-import ru.adsrv.frpjump.api.ApiRequestDispatch
 import ru.adsrv.frpjump.api.FEATURE_DEVICE_DISPLAY
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.api.NetworkException
@@ -182,18 +181,18 @@ class DeviceDirectory(
     }
 
     /** Pull to refresh: the list, waiting for a fetch in flight, and the server's features. */
-    suspend fun pull(dispatch: ApiRequestDispatch? = null): Boolean = coroutineScope {
-        launch { checkFeatures(dispatch) }
-        fetch(wait = true, dispatch = dispatch)
+    suspend fun pull(): Boolean = coroutineScope {
+        launch { checkFeatures() }
+        fetch(wait = true)
     }
 
-    private suspend fun fetch(wait: Boolean, dispatch: ApiRequestDispatch? = null): Boolean {
+    private suspend fun fetch(wait: Boolean): Boolean {
         if (wait) fetching.withLock { }
         val credentials = store.load() ?: return true
         if (session.removed.value) return true
         if (!fetching.tryLock()) return true
         try {
-            val devices = api.devices(credentials, dispatch)
+            val devices = api.devices(credentials)
             // "Forget" or a new enrollment while the call was out: the answer is not this phone's any more.
             if (store.load()?.apiToken != credentials.apiToken) return true
             val now = Instant.now()
@@ -236,11 +235,11 @@ class DeviceDirectory(
      * pull to refresh, and after a good list refresh (not awaited by it) until it answers once. A failure
      * keeps the last stored answer. False when it failed.
      */
-    suspend fun checkFeatures(dispatch: ApiRequestDispatch? = null): Boolean {
+    suspend fun checkFeatures(): Boolean {
         val credentials = store.load() ?: return true
         if (session.removed.value) return true
         val features = try {
-            api.version(credentials.controlUrl, dispatch).features
+            api.version(credentials.controlUrl).features
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Log.w(TAG, "features not checked: ${e.javaClass.simpleName}")

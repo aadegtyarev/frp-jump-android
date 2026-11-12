@@ -40,7 +40,7 @@ class AssistantModelSurfaceTest {
     private fun webTools(fetcher: PublicFetcher = noFetch()) =
         AssistantWebTools(AssistantTools(search = true, readPage = true, inspectImage = true), fetcher, WebSearchState(), null, { }).tools
     private fun profileTool(refreshes: AtomicInteger = AtomicInteger()) =
-        AssistantProfileInformationTool({ refreshes.incrementAndGet() }, { ProfileInformationState() }) { _, action -> action() }
+        AssistantProfileInformationTool({ refreshes.incrementAndGet() }, { ProfileInformationState() })
 
     private fun specJson(spec: ToolSpec) = buildJsonObject { put("name", spec.name); put("description", spec.description); put("parameters", spec.parameters) }
 
@@ -242,8 +242,8 @@ class AssistantModelSurfaceTest {
 
     @Test fun `profile information refresh and read failures give the fixed failed text`() = runBlocking {
         val text = "Could not obtain profile information. No successful refresh is implied."
-        val failedRefresh = AssistantProfileInformationTool({ error("private-detail") }, { ProfileInformationState() }) { _, action -> action() }
-        val failedRead = AssistantProfileInformationTool({ }, { error("private-detail") }) { _, action -> action() }
+        val failedRefresh = AssistantProfileInformationTool({ error("private-detail") }, { ProfileInformationState() })
+        val failedRead = AssistantProfileInformationTool({ }, { error("private-detail") })
         assertEquals(ToolOutput(text, ToolOutcome.FAILED), failedRefresh.execute(obj()))
         assertEquals(ToolOutput(text, ToolOutcome.FAILED), failedRead.execute(obj()))
     }
@@ -462,7 +462,7 @@ class AssistantModelSurfaceTest {
             override suspend fun disconnect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int): Boolean = error("No tunnel control")
         }, runtime.session, LocalPortStore(MemoryStorage()), runner, { true })
         val service = AssistantSshCommands(profiles.state, profiles.hidden, env)
-        val tool = AssistantSshCommandTool(service) { _, start -> start() }
+        val tool = AssistantSshCommandTool(service)
         val args = buildJsonObject { put("profile_id", "home"); put("connection_id", "ssh"); put("command", "printf synthetic") }
         suspend fun ready() {
             runtime.tunnels.close()

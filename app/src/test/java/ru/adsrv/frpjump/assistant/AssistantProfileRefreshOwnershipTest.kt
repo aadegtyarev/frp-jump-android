@@ -20,7 +20,7 @@ class AssistantProfileRefreshOwnershipTest {
     private class Hold(count: Int = 1) {
         val entered = CountDownLatch(count)
         val release = CountDownLatch(1)
-        fun waitHere() { entered.countDown(); check(release.await(3, TimeUnit.SECONDS)) }
+        fun waitHere() { entered.countDown(); check(release.await(15, TimeUnit.SECONDS)) }
         fun entered(label: String) = assertTrue(label, entered.await(2, TimeUnit.SECONDS))
     }
     private class Chat(val f: SyntheticProfileInformation) : AutoCloseable {
@@ -75,29 +75,24 @@ class AssistantProfileRefreshOwnershipTest {
         for (cause in causes) SyntheticProfileInformation().use { f -> Chat(f).use { c ->
             val hold = Hold(4)
             c.settings.assistantChat.beforeAction = { category -> if (category.startsWith("profile-") && category.endsWith("-dispatch")) hold.waitHere() }
-            val enqueueGuards = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
-            f.onEnqueue = { enqueueGuards += Thread.holdsLock(c.settings.assistantChat.gate) }
             try {
                 c.send(); hold.entered(cause)
                 // For committed authority changes deliberately omit the observer cancellation:
-                // guarded enqueue must reject canonical authority, not merely a cancelled Job.
+                // the start check must reject canonical authority, not merely a cancelled Job.
                 c.revoke(cause, refresh = false)
                 hold.release.countDown(); c.idle()
                 assertEquals("$cause: no /version or /devices in either profile", emptyList<String>(), f.enqueues)
-                assertTrue(enqueueGuards.all { it })
                 assertTrue(c.old.state.value.turns.isEmpty()); assertEquals(1, c.requests.size)
                 assertTrue(c.old.state.value.currentSources.isEmpty()); assertTrue(c.unrelated.isActive)
             } finally { hold.release.countDown() }
         } }
     }
 
-    @Test fun `AUTH-1 actual start wins existing guard before revoke for both endpoints and every cause`() = runBlocking {
+    @Test fun `AUTH-1 check wins the guard before the commit and the admitted start is then cancelled`() = runBlocking {
         for (operation in listOf("version", "devices")) for (cause in causes) SyntheticProfileInformation().use { f -> Chat(f).use { c ->
             val hold = Hold(); val responseHold = Hold(); val once = AtomicBoolean()
             f.beforeResponse = responseHold::waitHere
             c.settings.assistantChat.checkedAction = { category -> if (category == "profile-$operation-dispatch" && once.compareAndSet(false, true)) hold.waitHere() }
-            val enqueueGuards = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
-            f.onEnqueue = { enqueueGuards += Thread.holdsLock(c.settings.assistantChat.gate) }
             val revokeStarted = CountDownLatch(1)
             val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
             val revoke = Thread { try { revokeStarted.countDown(); c.revoke(cause) } catch (e: Throwable) { failure.set(e) } }
@@ -106,33 +101,35 @@ class AssistantProfileRefreshOwnershipTest {
                 revoke.start(); assertTrue(revokeStarted.await(2, TimeUnit.SECONDS))
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
                 while (revoke.isAlive && revoke.state != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield()
-                assertEquals("Revocation must wait for actual enqueue's common guard", Thread.State.BLOCKED, revoke.state)
+                assertEquals("The commit must wait for the start check's guard", Thread.State.BLOCKED, revoke.state)
                 hold.release.countDown(); revoke.join(2000); assertFalse(revoke.isAlive); failure.get()?.let { throw it }
+                // Variant 1: an admitted start may begin before the commit's cancel arrives or never begin; if it began, that exact call is
+                // cancelled. Started calls are held in the interceptor, so the cancel of each must arrive before the hold is released.
+                val deadline2 = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                while (!f.canceled.containsAll(f.enqueues) && System.nanoTime() < deadline2) Thread.yield()
+                assertTrue("$cause/$operation: every started call was cancelled while held: ${f.enqueues} vs ${f.canceled}", f.canceled.containsAll(f.enqueues))
                 responseHold.release.countDown(); c.idle()
-                assertTrue("Winning request actually enqueued: $cause/$operation", f.enqueues.any { it.endsWith("/$operation") })
-                assertTrue("Every actual enqueue held existing guard: $cause/$operation", enqueueGuards.isNotEmpty() && enqueueGuards.all { it })
                 assertTrue(c.old.state.value.turns.isEmpty()); assertTrue(c.old.state.value.currentSources.isEmpty())
                 assertTrue(c.unrelated.isActive)
             } finally { hold.release.countDown(); responseHold.release.countDown(); revoke.join(2000) }
         } }
     }
 
-    @Test fun `OWN-EXIT-1 interceptor body and callback exit retain shared slot across all revocations and reopen`() = runBlocking {
-        for (stage in listOf("interceptor", "body", "callback")) for (cause in causes) SyntheticProfileInformation().use { f -> Chat(f).use { c ->
+    @Test fun `OWN-EXIT-1 interceptor and body exit retain shared slot across all revocations and reopen`() = runBlocking {
+        for (stage in listOf("interceptor", "body")) for (cause in causes) SyntheticProfileInformation().use { f -> Chat(f).use { c ->
             val hold = Hold(4)
-            val awaitingExit = CountDownLatch(4)
+            val canceled = CountDownLatch(4)
+            f.onCanceled = { canceled.countDown() }
             when (stage) {
                 "interceptor" -> f.beforeResponse = hold::waitHere
-                "body" -> f.api.beforeOwnedResponseRead = hold::waitHere
-                "callback" -> f.api.beforeOwnedCallbackExit = hold::waitHere
+                else -> f.beforeBodyRead = hold::waitHere
             }
-            f.api.beforeOwnedAwaitExit = { awaitingExit.countDown() }
             try {
                 c.send(); hold.entered("$stage/$cause")
                 assertEquals(setOf("work.example/devices", "work.example/version", "home.example/devices", "home.example/version"), f.enqueues.toSet())
                 c.revoke(cause)
-                assertTrue("$stage/$cause reached cancelled/returned coroutine exit wait", awaitingExit.await(2, TimeUnit.SECONDS))
-                assertTrue("$stage/$cause outstanding AsyncCall must own global slot", c.settings.assistantChat.busy.value)
+                assertTrue("$stage/$cause Stop reached all four exact calls", canceled.await(2, TimeUnit.SECONDS))
+                assertTrue("$stage/$cause outstanding exchange must own global slot", c.settings.assistantChat.busy.value)
                 c.recover() // Re-enable/setup recovery cannot resurrect old work or free its slot.
                 c.newer.edit("New explicit input"); c.newer.send()
                 assertEquals(0, c.preparations); assertNull(c.newer.state.value.pendingText)
@@ -151,16 +148,28 @@ class AssistantProfileRefreshOwnershipTest {
     @Test fun `tool-switch-only commit does not revoke admitted refresh or discard history`() = runBlocking {
         SyntheticProfileInformation().use { f -> Chat(f).use { c ->
             val hold = Hold(4)
-            f.api.beforeOwnedCallbackExit = hold::waitHere
+            f.beforeResponse = hold::waitHere
             try {
                 c.send(); hold.entered("tool-only")
                 c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, false); c.old.refresh()
                 assertTrue(c.settings.assistantChat.busy.value)
                 hold.release.countDown(); c.idle()
                 assertEquals("Old information answer", c.old.state.value.turns.single().answer)
-                assertEquals(2, c.requests.size); assertEquals(4, f.enqueues.size)
+                assertEquals(2, c.requests.size); assertEquals(4, f.enqueues.size); assertTrue(f.canceled.isEmpty())
                 assertEquals(listOf("profile_information"), c.requests.last().tools.map { it.name })
             } finally { hold.release.countDown() }
+        } }
+    }
+
+    @Test fun `ambient categories are the profile-dispatch strings and tool-start`() = runBlocking {
+        SyntheticProfileInformation().use { f -> Chat(f).use { c ->
+            val categories = java.util.concurrent.CopyOnWriteArrayList<String>()
+            c.settings.assistantChat.beforeAction = { category -> categories += category }
+            c.send(); c.idle()
+            assertEquals("Old information answer", c.old.state.value.turns.single().answer)
+            assertEquals(1, categories.count { it == "tool-start" })
+            assertEquals(2, categories.count { it == "profile-version-dispatch" }); assertEquals(2, categories.count { it == "profile-devices-dispatch" })
+            assertEquals(emptyList<String>(), categories.filter { it == "version" || it == "devices" })
         } }
     }
 }

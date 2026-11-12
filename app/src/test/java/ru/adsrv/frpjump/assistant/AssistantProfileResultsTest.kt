@@ -24,7 +24,7 @@ class AssistantProfileResultsTest {
             } else listOf(DeviceRow("board1500", false, null, false, label = "Щиток, дача"))))
         return ProfileInformationState(loaded = true, profiles = listOf(part(work, true), part(home, false)))
     }
-    private fun tool(state: ProfileInformationState) = AssistantProfileInformationTool({}, { state }) { _, start -> start() }
+    private fun tool(state: ProfileInformationState) = AssistantProfileInformationTool({}, { state })
 
     @Test fun `partial query finds the full set in a large catalogue before the next model request`() = runBlocking {
         val expected = setOf("work-root", "work-admin", "home-root")
@@ -103,7 +103,7 @@ class AssistantProfileResultsTest {
         assertFalse(page["source_status"]!!.jsonObject["complete"]!!.jsonPrimitive.boolean)
         assertEquals(1, page["source_status"]!!.jsonObject["unknown_device_lists"]!!.jsonPrimitive.int)
         var refreshed = 0
-        val checked = AssistantProfileInformationTool({ refreshed++ }, { unknown }) { _, start -> start() }
+        val checked = AssistantProfileInformationTool({ refreshed++ }, { unknown })
         for (args in listOf(buildJsonObject { put("query", "x".repeat(257)) }, buildJsonObject { put("offset", -1) },
             buildJsonObject { put("offset", "1") }, buildJsonObject { put("profile_id", " ") }, buildJsonObject { put("extra", true) }))
             assertEquals(ToolOutcome.FAILED, checked.execute(args).outcome)

@@ -45,12 +45,21 @@ class AssistantSshCommandTest {
         var err = "stderr synthetic"
         var beforeAuth: (() -> Unit)? = null
         var beforeDisconnect: (() -> Unit)? = null
+        var beforeConnect: (() -> Unit)? = null
+        var beforeStartSession: (() -> Unit)? = null
+        val authAttempts = AtomicInteger()
+        val sessions = AtomicInteger()
+        val disconnected = CountDownLatch(1)
+        val disconnectedTwice = CountDownLatch(2)
+        var readHook: ((String) -> Unit)? = null
+        val disconnectThreads = java.util.concurrent.CopyOnWriteArrayList<String>()
         var heldRead: CountDownLatch? = null
         val reading = CountDownLatch(2)
         val disconnects = AtomicInteger()
         val commands = java.util.concurrent.CopyOnWriteArrayList<String>()
-        private fun stream(text: String) = object : ByteArrayInputStream(text.toByteArray()) {
+        private fun stream(text: String, name: String) = object : ByteArrayInputStream(text.toByteArray()) {
             override fun read(b: ByteArray, off: Int, len: Int): Int {
+                readHook?.let { it(name); return super.read(b, off, len) }
                 if (failRead) throw IOException("private-stream-detail")
                 reading.countDown(); heldRead?.let { check(it.await(5, TimeUnit.SECONDS)) }
                 return super.read(b, off, len)
@@ -58,8 +67,8 @@ class AssistantSshCommandTest {
         }
         val channel by lazy { object : SessionChannel(connection) {
             override fun exec(command: String): net.schmizz.sshj.connection.channel.direct.Session.Command { commands += command; if (failExec) throw IOException("private-exec-detail"); return this }
-            override fun getInputStream() = stream(out)
-            override fun getErrorStream() = stream(err)
+            override fun getInputStream() = stream(out, "stdout")
+            override fun getErrorStream() = stream(err, "stderr")
             override fun getOutputStream() = ByteArrayOutputStream()
             override fun getExitStatus(): Int? = code
             override fun getExitSignal(): Signal? = signal
@@ -68,19 +77,22 @@ class AssistantSshCommandTest {
         } }
         override fun addHostKeyVerifier(verifier: HostKeyVerifier) { verifiers += verifier }
         override fun connect(hostname: String, port: Int) {
+            beforeConnect?.invoke()
             assertEquals("127.0.0.1", hostname); connectedPort = port
             if (!verifiers.all { it.verify(hostname, port, key) }) throw IOException("private trust detail")
         }
         override fun authPassword(username: String, password: String) {
-            beforeAuth?.invoke(); if (refuse) throw UserAuthException("private auth detail")
+            authAttempts.incrementAndGet(); beforeAuth?.invoke(); if (refuse) throw UserAuthException("private auth detail")
             user = username; this.password = password
         }
         override fun authPublickey(username: String, providers: Iterable<KeyProvider>) {
-            beforeAuth?.invoke(); if (refuse) throw UserAuthException("private key detail")
+            authAttempts.incrementAndGet(); beforeAuth?.invoke(); if (refuse) throw UserAuthException("private key detail")
             user = username; keyAuth = true
         }
-        override fun startSession() = channel
-        override fun disconnect() { disconnects.incrementAndGet(); beforeDisconnect?.invoke() }
+        override fun startSession(): SessionChannel { sessions.incrementAndGet(); beforeStartSession?.invoke(); return channel }
+        override fun disconnect() {
+            disconnectThreads += Thread.currentThread().name; disconnects.incrementAndGet(); disconnected.countDown(); disconnectedTwice.countDown(); beforeDisconnect?.invoke()
+        }
     }
     private class Fixture : AutoCloseable {
         val profiles = SyntheticProfileInformation()
@@ -111,7 +123,7 @@ class AssistantSshCommandTest {
             override suspend fun disconnect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int): Boolean = error("No tunnel control")
         }, runtime.session, LocalPortStore(MemoryStorage()), runner, { true })
         val service = AssistantSshCommands(profiles.state, profiles.hidden, env)
-        val tool = AssistantSshCommandTool(service) { _, start -> start() }
+        val tool = AssistantSshCommandTool(service)
         val args = buildJsonObject { put("profile_id", "home"); put("connection_id", "ssh"); put("command", "printf synthetic") }
         suspend fun ready() {
             runtime.tunnels.close()
@@ -225,33 +237,96 @@ class AssistantSshCommandTest {
     }
     @Test fun `actual worker admission refusal performs no credential or client work`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val tool = AssistantSshCommandTool(f.service) { category, start -> if (category == "ssh-dispatch") throw CancellationException() else start() }
-            try { tool.execute(f.args); fail("must cancel") } catch (_: CancellationException) { }
-            assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty())
+            val asked = mutableListOf<String>()
+            try { withContext(SideEffectAdmission { asked += it; it != "ssh-dispatch" }) { f.tool.execute(f.args) }; fail("must cancel") } catch (_: CancellationException) { }
+            assertEquals(listOf("tool-start", "ssh-dispatch"), asked)
+            assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty()); assertEquals(0, f.client.disconnects.get())
         }
     }
     @Test fun `refused tool-start on a ready target stops before worker admission credentials or client for valid and invalid arguments`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val admitted = mutableListOf<String>(); val dispatched = mutableListOf<String>()
-            val tool = AssistantSshCommandTool(f.service) { category, _ -> dispatched += category; throw CancellationException() }
+            val admitted = mutableListOf<String>()
             for (arguments in listOf(f.args, buildJsonObject { put("profile_id", "home") })) {
-                try { withContext(SideEffectAdmission { admitted += it; false }) { tool.execute(arguments) }; fail("must cancel") } catch (_: CancellationException) { }
+                try { withContext(SideEffectAdmission { admitted += it; false }) { f.tool.execute(arguments) }; fail("must cancel") } catch (_: CancellationException) { }
             }
-            assertEquals(listOf("tool-start", "tool-start"), admitted)
-            assertTrue("the worker dispatch must not be asked after a refused tool-start", dispatched.isEmpty())
+            assertEquals("ssh-dispatch is never asked after a refused tool-start", listOf("tool-start", "tool-start"), admitted)
             assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty())
         }
     }
     @Test fun `an owned call admits tool-start once before the ssh worker`() = runBlocking {
         Fixture().use { f -> f.ready()
-            val events = mutableListOf<String>()
-            val result = withContext(SideEffectAdmission { events += "admit:$it"; true }) {
-                AssistantSshCommandTool(f.service) { category, start -> events += "dispatch:$category"; start() }.execute(f.args)
-            }
+            val events = java.util.concurrent.CopyOnWriteArrayList<String>()
+            f.beforeFactory = { events += "factory" }
+            val result = withContext(SideEffectAdmission { events += "admit:$it"; true }) { f.tool.execute(f.args) }
             assertEquals(ToolOutcome.SUCCESS, result.outcome)
-            assertEquals("admit:tool-start", events.first()); assertEquals(1, events.count { it == "admit:tool-start" })
-            assertEquals(0, events.count { it == "dispatch:tool-start" })
-            assertEquals(1, events.count { it == "dispatch:ssh-dispatch" })
+            assertEquals(listOf("admit:tool-start", "admit:ssh-dispatch", "factory"), events.toList())
+        }
+    }
+    @Test fun `commit after the ssh-dispatch check constructs no client`() = runBlocking {
+        Fixture().use { f -> f.ready()
+            // A Stop that lands exactly after the start check passed: the caller's own job is cancelled inside the admission check.
+            lateinit var job: Job
+            job = launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
+                withContext(SideEffectAdmission { category -> if (category == "ssh-dispatch") job.cancel(); true }) { f.tool.execute(f.args) }
+            }
+            job.start(); withTimeout(5000) { job.join() }
+            assertTrue(job.isCancelled)
+            assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty()); assertEquals(0, f.client.sessions.get())
+        }
+    }
+    @Test fun `cancel at each phase never starts the command and disconnects`() = runBlocking {
+        for (phase in listOf("factory", "connect", "auth", "startSession")) Fixture().use { f -> f.ready()
+            lateinit var job: Job
+            job = launch(Dispatchers.Default, start = CoroutineStart.LAZY) { f.execute() }
+            val hook = { job.cancel(); Unit }
+            when (phase) {
+                "factory" -> f.beforeFactory = hook
+                "connect" -> f.client.beforeConnect = hook
+                "auth" -> f.client.beforeAuth = hook
+                else -> f.client.beforeStartSession = hook
+            }
+            job.start(); withTimeout(5000) { job.join() }
+            assertTrue("$phase: caller cancelled", job.isCancelled)
+            assertTrue("$phase: no command", f.client.commands.isEmpty())
+            assertEquals("$phase: no session after cancel", if (phase == "startSession") 1 else 0, f.client.sessions.get())
+            assertEquals("$phase: no auth after cancel", if (phase == "auth" || phase == "startSession") 1 else 0, f.client.authAttempts.get())
+            assertEquals("$phase: no connect after cancel", if (phase == "factory") 0 else f.manager.state.value.tunnels.single().localPort, f.client.connectedPort)
+            assertTrue("$phase: client disconnected", f.client.disconnects.get() >= 1)
+        }
+    }
+    @Test fun `disconnect runs on an IO thread for Stop and for target loss never on the caller or publisher thread`() = runBlocking {
+        val main = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "fake-main") }
+        val publisher = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "fake-publisher") }
+        try {
+            for (cause in listOf("stop", "target-loss")) Fixture().use { f -> f.ready()
+                val release = CountDownLatch(1); f.client.heldRead = release
+                val work = launch(main.asCoroutineDispatcher()) { f.execute() }
+                try {
+                    assertTrue("$cause: readers blocked", f.client.reading.await(3, TimeUnit.SECONDS))
+                    publisher.submit { if (cause == "stop") work.cancel() else runBlocking { f.loseTarget("hidden-connection") } }.get(3, TimeUnit.SECONDS)
+                    // The worker is blocked in a read, so this first disconnect can only be the closer's, and it must not wait for the read.
+                    assertTrue("$cause: promptly disconnected", f.client.disconnected.await(3, TimeUnit.SECONDS))
+                    assertTrue("$cause: still blocked", f.client.disconnects.get() >= 1 && !work.isCompleted)
+                } finally { release.countDown() }
+                withTimeout(5000) { work.join() }
+                val threads = f.client.disconnectThreads.toList()
+                assertTrue("$cause: $threads", threads.isNotEmpty() && threads.none { it == "fake-main" || it == "fake-publisher" })
+                assertTrue("$cause: first disconnect on IO: $threads", threads.first().startsWith("DefaultDispatcher-worker"))
+            }
+        } finally { main.shutdownNow(); publisher.shutdownNow() }
+    }
+    @Test fun `cancel while the sibling reader blocks releases it`() = runBlocking {
+        Fixture().use { f -> f.ready()
+            val release = CountDownLatch(1)
+            // The stdout reader fails at once, the stderr reader stays blocked until the client is disconnected (the fake never unblocks by itself).
+            f.client.readHook = { name -> if (name == "stdout") throw IOException("private-stream-detail") else check(release.await(5, TimeUnit.SECONDS)) }
+            val work = async(Dispatchers.Default) { f.execute() }
+            try {
+                assertTrue("the failed reader's catch disconnects while its sibling is blocked", f.client.disconnected.await(3, TimeUnit.SECONDS))
+                delay(50); assertFalse("the blocked reader still owns the exit: ${if (work.isCompleted) runCatching { work.getCompleted().text } else ""}", work.isCompleted)
+            } finally { release.countDown() }
+            val result = withTimeout(5000) { work.await() }
+            assertEquals(ToolOutcome.FAILED, result.outcome); assertTrue(result.text.contains("SSH command failed")); assertFalse(result.text.contains("private-"))
         }
     }
     @Test fun `target hide then Undo during auth fails old operation without retargeting`() = runBlocking {
@@ -294,7 +369,12 @@ class AssistantSshCommandTest {
             val work = launch(Dispatchers.Default) { f.execute() }
             try {
                 assertTrue((if (phase == "read") f.client.reading else entered).await(3, TimeUnit.SECONDS))
-                work.cancel(); delay(50); assertFalse("$phase must retain actual-exit ownership", work.isCompleted)
+                work.cancel()
+                // G1: Stop reaches the client promptly (read: the closer; cleanup: the closer next to the worker's own held disconnect).
+                if (phase == "read") assertTrue("read: disconnected promptly", f.client.disconnected.await(3, TimeUnit.SECONDS))
+                if (phase == "cleanup") assertTrue("cleanup: the closer disconnects next to the held one", f.client.disconnectedTwice.await(3, TimeUnit.SECONDS))
+                if (phase != "factory") assertTrue("$phase: disconnect threads ${f.client.disconnectThreads}", f.client.disconnectThreads.all { it.startsWith("DefaultDispatcher-worker") })
+                delay(50); assertFalse("$phase must retain actual-exit ownership", work.isCompleted)
             } finally { release.countDown() }
             withTimeout(5000) { work.join() }
             assertTrue(f.client.disconnects.get() > 0)
@@ -588,6 +668,25 @@ class AssistantSshCommandTest {
         assertEquals("Reader IOException must not erase available channel exit facts", emptyList<String>(), failures)
     }
 
+    @Test fun `a cancelled caller never receives the local target failure result`() = runBlocking {
+        repeat(20) {
+            val operation = SshCommandOperation()
+            val entered = CountDownLatch(1); val release = CountDownLatch(1)
+            val outcome = java.util.concurrent.atomic.AtomicReference<String?>()
+            val job = launch(Dispatchers.Default) {
+                try {
+                    operation.run { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)); ToolOutput("late result") }
+                    outcome.set("returned")
+                } catch (cancelled: CancellationException) { outcome.set("cancelled"); throw cancelled }
+            }
+            try {
+                assertTrue(entered.await(3, TimeUnit.SECONDS))
+                operation.loseTarget(); job.cancel()
+            } finally { release.countDown() }
+            withTimeout(5000) { job.join() }
+            assertEquals("Stop/timeout/revocation wins even when it races a local target failure", "cancelled", outcome.get())
+        }
+    }
     @Test fun `tool rejects extra credentials and malformed arguments before admission`() = runBlocking {
         Fixture().use { f ->
             for (args in listOf(buildJsonObject {}, JsonObject(f.args + ("password" to JsonPrimitive("secret"))),

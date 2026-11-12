@@ -249,9 +249,8 @@ class AssistantConversation(
                                     } ?: throw CancellationException()
                                 })
                             val tools = web.tools + (if (enabledTools.profileInformation && profileInformation != null) listOf(
-                                AssistantProfileInformationTool(profileInformation) { category, action -> guarded(owner, category) { action(); true } ?: throw CancellationException() }) else emptyList()) +
-                                (if (enabledTools.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands) { category, action ->
-                                    guarded(owner, category) { action(); true } ?: throw CancellationException() }) else emptyList())
+                                AssistantProfileInformationTool(profileInformation)) else emptyList()) +
+                                (if (enabledTools.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList())
                             val toolProvider = AgentProvider { request ->
                                 val retained = guarded(owner, "history") { document.records.toList() } ?: throw CancellationException()
                                 val included = if (historyStore != null) request.turns.dropLast(1) else request.turns.dropLast(1).filter { turn -> past.any { (record, model) -> model === turn && retained.any { it === record } } }

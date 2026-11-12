@@ -193,8 +193,8 @@ explicit notice; an index in the same document separates old records from new
 model input. No deletion is required and old opaque state is never retargeted.
 Failed settings writes retain prior authority. Admission and publication
 recheck current authority, including after the kernel returns. Successful settings
-and provider snapshot commits serialize with admission, every provider/public/image
-start check and every guarded answer/draft/error/window publication on a shared guard.
+and provider snapshot commits serialize with admission, every provider/public/image/
+profile-information/SSH start check and every guarded answer/draft/error/window publication on a shared guard.
 A start whose check passed before a commit may still begin; an HTTP exchange is then cancelled, while an
 uncancellable DNS lookup finishes and no HTTP request starts afterwards.
 Store IO/credential work happens outside that guard; state notifications and
@@ -287,12 +287,15 @@ or saving does not invoke it or automatically attach an inventory to a prompt.
 Each invocation performs one ordinary all-profile device-list pull, the same
 operation as Connections refresh, then reads the application's known state.
 Normal authenticated server requests, feature checks and cache writes still
-apply. Each information-owned request's actual nonblocking enqueue is serialized
-with the existing Chat authority guard; credential/storage work, body reading and
-cleanup remain outside it. Cancellation signals only those owned calls and keeps
-the shared Chat slot until their callback/body and full HTTP worker execution
-have exited. Ordinary UI/background requests retain their existing path and
-lifetime. It starts no extra tunnel poll, probe, connection or control operation.
+apply. Each information-owned request's start check is serialized with the
+existing Chat authority guard; the request itself, credential/storage work, body
+reading and cleanup run outside it. A start whose check passed before a commit may
+still begin and is then cancelled. Cancellation signals only those owned calls (the
+exact HTTP call, from an IO thread) and keeps the shared Chat slot until each HTTP
+exchange, including body read and close, has returned. Ordinary UI/background
+requests use the same call path; they differ only in that a cancelled caller also
+waits for the actual exit of the HTTP call. It starts no extra tunnel poll, probe,
+connection or control operation.
 
 Devices, Connections and the tool consume the same derived application API over
 existing profile/device/connection/tunnel/Undo owners. Complete device lists are
@@ -391,11 +394,14 @@ nullable exit status/signal or explicit unknown. Only known exit 0 without a
 signal is success; EOF, local close/join, nonzero/missing status and failures are
 not invented remote success. Kernel/result/context limits continue to apply.
 
-Actual nonblocking worker admission uses the existing Chat authority guard.
-Client creation, credentials, connect/auth/exec/read and cleanup run off Main and
-outside that guard. Stop cancels only the owned client, including one constructed
-after cancellation, and retains the global slot through actual worker, readers
-and cleanup exit. Tool-only changes affect the next Send, not admitted work.
+The SSH start check uses the existing Chat authority guard. Client creation,
+credentials, connect/auth/exec/read and cleanup run off Main and outside that
+guard; a start whose check passed before a commit may begin, is re-checked for
+cancellation before the client, after connect, after authentication and after
+opening the session, and is then cancelled. Stop, disable, revision, pop and
+timeout disconnect only the owned client (from an IO thread), including one
+constructed after cancellation, and keep the global slot through actual worker,
+readers and cleanup exit. Tool-only changes affect the next Send, not admitted work.
 Timeouts (30 s tool / 120 s Send by default) are cancellation thresholds, not
 remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
 an admitted command’s effects may remain uncertain. Commands/output enter the
@@ -688,9 +694,9 @@ The synthetic consumer derives its answer from actual received records, not an
 unconditional completion. The production-owner/API35 screen fixture also exercises
 these multiple-result and stale-data/provider-failure outcomes; this is not live
 LLM quality certification. Deterministic ownership tests cover both refresh
-endpoints across profiles, revoke/start ordering, held HTTP/body/callback exit,
-Stop/pop, module off/on and provider authority changes, without revoking a Send
-for tool-switch-only changes. Synthetic SSH client/owner tests cover saved target/auth/trust, bounded dual streams, honest status, target loss, guarded admission and actual cleanup under Stop/timeout/revocation. The shared Tools binding and component fixtures
+endpoints across profiles, revoke/start ordering, held HTTP interceptor/body exit with Stop
+reaching the exact calls, Stop/pop, module off/on and provider authority changes, without revoking a Send
+for tool-switch-only changes. Synthetic SSH client/owner tests cover saved target/auth/trust, bounded dual streams, honest status, target loss, admission refusal and phase-by-phase cancellation, disconnect thread and actual cleanup under Stop/timeout/revocation; a loopback SSH server test covers disconnect unblocking a blocked exec. The shared Tools binding and component fixtures
 include all five switches, save errors, retained owners and explicit invocation.
 Existing kernel tests use fake providers/tools. Adapter tests use synthetic
 loopback HTTP responses. Settings/store tests cover committed opt-in,

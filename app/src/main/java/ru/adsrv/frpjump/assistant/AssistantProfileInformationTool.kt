@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.assistant
 
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.profiles.ProfileInformation
@@ -10,11 +12,15 @@ import ru.adsrv.frpjump.profiles.ProfileInformationState
 internal class AssistantProfileInformationTool(
     private val refresh: suspend () -> Unit,
     private val read: suspend () -> ProfileInformationState,
-    @Suppress("UNUSED_PARAMETER") dispatch: WebDispatch, // PR 4b: the refresh start still dispatches through the app guard.
 ) : AppTool<ProfileInformationQuery>(AssistantToolId.PROFILE_INFORMATION, DESCRIPTION, SCHEMA) {
-    constructor(information: ProfileInformation, dispatch: WebDispatch) : this(
-        { information.refreshAll { operation, start -> dispatch("profile-$operation-dispatch", start) } },
-        { information.observe().first() }, dispatch,
+    constructor(information: ProfileInformation) : this(
+        {
+            // FrpJumpApi asks the ambient admission with a neutral endpoint name; this tool names the category the app guard knows.
+            val outer = currentCoroutineContext()[SideEffectAdmission]
+            if (outer == null) information.refreshAll()
+            else withContext(SideEffectAdmission { operation -> outer.check("profile-$operation-dispatch") }) { information.refreshAll() }
+        },
+        { information.observe().first() },
     )
 
     override fun parse(args: StrictArgs) = args.run {

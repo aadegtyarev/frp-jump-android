@@ -61,8 +61,8 @@ class ProfileInformation(
     }
 
     /** Same ordinary pull used by Connections: one pull per currently available runtime. */
-    suspend fun refreshAll(dispatch: ru.adsrv.frpjump.api.ApiRequestDispatch? = null) = coroutineScope {
-        profiles.value.runtimes.values.map { r -> async { r.devices.pull(dispatch) } }.awaitAll()
+    suspend fun refreshAll() = coroutineScope {
+        profiles.value.runtimes.values.map { r -> async { r.devices.pull() } }.awaitAll()
         Unit
     }
 }

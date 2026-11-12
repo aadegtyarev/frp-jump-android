@@ -98,7 +98,7 @@ class AssistantProfileInformationToolTest {
     @Test fun `failed ordinary refresh is returned as stale known data not fresh success`() = runBlocking {
         SyntheticProfileInformation().use { f ->
             f.information.refreshAll(); f.fail = true
-            val result = AssistantProfileInformationTool(f.information) { _, action -> action() }.execute(empty)
+            val result = AssistantProfileInformationTool(f.information).execute(empty)
             assertEquals(4, f.deviceRequests.get()); assertEquals(4, f.versionRequests.get())
             assertEquals(ToolOutcome.SUCCESS, result.outcome) // Successfully read known state, not a successful refresh.
             assertTrue(result.text.contains("Device list refresh failed")); assertTrue(result.text.contains("\"stale\":true"))
@@ -107,21 +107,21 @@ class AssistantProfileInformationToolTest {
     }
     @Test fun `arguments errors and thrown read errors are fixed failures and cancellation propagates`() = runBlocking {
         var refreshes = 0
-        val tool = AssistantProfileInformationTool({ refreshes++ }, { error("secret-read-error") }) { _, action -> action() }
+        val tool = AssistantProfileInformationTool({ refreshes++ }, { error("secret-read-error") })
         assertEquals(ToolOutcome.FAILED, tool.execute(buildJsonObject { put("profile", "work") }).outcome)
         assertEquals(0, refreshes)
         val failed = tool.execute(empty)
         assertEquals(1, refreshes); assertEquals(ToolOutcome.FAILED, failed.outcome); assertFalse(failed.text.contains("secret-read-error"))
         val entered = CompletableDeferred<Unit>(); var exited = false
         val suspended = AssistantProfileInformationTool({ entered.complete(Unit); try { awaitCancellation() } finally { exited = true } },
-            { error("Not read after cancellation") }) { _, action -> action() }
+            { error("Not read after cancellation") })
         val job = launch { suspended.execute(empty); fail("Cancellation swallowed") }
         entered.await(); job.cancelAndJoin(); assertTrue(exited)
     }
     @Test fun `ordinary kernel result bounds and Chat Stop also cover profile information`() = runBlocking {
         val tool = AssistantProfileInformationTool({}, { ProfileInformationState(profiles = List(100) {
             ProfileInformationPart("$it", "Long profile $it", "green", false, false)
-        }) }) { _, action -> action() }
+        }) })
         var result: ToolResult? = null
         val provider = AgentProvider { request ->
             if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(ToolCall("bounded", tool.spec.name, empty)))
@@ -145,15 +145,15 @@ class AssistantProfileInformationToolTest {
     }
     @Test fun `AUTH-1 revoked owner cannot enqueue either ordinary endpoint in any profile`() = runBlocking {
         SyntheticProfileInformation().use { f ->
-            var revoked = false
-            val tool = AssistantProfileInformationTool(f.information) { _, action ->
-                if (revoked) throw CancellationException("Revoked synthetic owner")
-                action()
-            }
-            // Commit wins immediately after the first admitted start (`tool-start`); the refresh start is still guarded by the 4b dispatch.
-            try { withContext(SideEffectAdmission { revoked = true; true }) { tool.execute(empty) } } catch (_: CancellationException) { }
+            val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+            val tool = AssistantProfileInformationTool(f.information)
+            // Commit wins immediately after the first admitted start (`tool-start`): every request start check then fails.
+            try { withContext(SideEffectAdmission { category -> asked += category; category == "tool-start" }) { tool.execute(empty) }; fail("must cancel") } catch (_: CancellationException) { }
+            assertEquals("tool-start", asked.first())
+            assertTrue(asked.drop(1).isNotEmpty() && asked.drop(1).all { it == "profile-version-dispatch" || it == "profile-devices-dispatch" })
             assertEquals("No device request after revocation", 0, f.deviceRequests.get())
             assertEquals("No version request after revocation", 0, f.versionRequests.get())
+            assertEquals("No call was created", emptyList<String>(), f.enqueues)
         }
     }
 

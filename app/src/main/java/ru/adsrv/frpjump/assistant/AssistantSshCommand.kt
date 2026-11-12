@@ -13,6 +13,7 @@ import ru.adsrv.frpjump.ssh.*
 import ru.adsrv.frpjump.tunnel.*
 import ru.adsrv.frpjump.undo.PendingUndo
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** One saved target, one ordinary owned client. Never uses Terminal/Files clients or starts tunnels. */
 class AssistantSshCommands(
@@ -20,7 +21,7 @@ class AssistantSshCommands(
     private val hidden: StateFlow<Set<String>>,
     private val env: SshEnvironment,
 ) {
-    internal suspend fun execute(profile: String, connection: String, command: String, dispatch: WebDispatch): ToolOutput = coroutineScope {
+    internal suspend fun execute(profile: String, connection: String, command: String): ToolOutput = coroutineScope {
         val state = profiles.value
         val runtime = state.runtimes[profile] ?: return@coroutineScope unavailable()
         if (!state.loaded || state.index.profiles.count { it.id == profile } != 1) return@coroutineScope unavailable()
@@ -52,7 +53,7 @@ class AssistantSshCommands(
             launch(Dispatchers.Unconfined) { runtime.tunnels.commandTargetPresent(tunnel).collect { if (!it) operation.loseTarget() } },
         )
         try {
-            operation.run(dispatch) {
+            operation.run {
                 if (!available()) return@run unavailable()
                 val login = runtime.sshLogins.stored(saved.device, saved.port)?.copy(user = saved.sshUser)
                     ?: return@run setup()
@@ -72,7 +73,7 @@ internal fun commandTunnelReady(t: Tunnel) = t.state.status in setOf(TunnelStatu
 private fun unavailable() = ToolOutput("SSH target unavailable. Use an existing ready saved SSH connection; no tunnel was started.", ToolOutcome.FAILED)
 private fun setup() = ToolOutput("SSH login or host trust needs setup. Open this connection in the ordinary SSH UI first. No command was executed.", ToolOutcome.FAILED)
 
-internal class AssistantSshCommandTool(private val commands: AssistantSshCommands, private val dispatch: WebDispatch) : AppTool<SshCommandArgs>(
+internal class AssistantSshCommandTool(private val commands: AssistantSshCommands) : AppTool<SshCommandArgs>(
     AssistantToolId.SSH_COMMAND,
     "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.",
     objectSchema { string("profile_id"); string("connection_id"); string("command") },
@@ -82,33 +83,39 @@ internal class AssistantSshCommandTool(private val commands: AssistantSshCommand
         SshCommandArgs(string("profile_id"), string("connection_id"), string("command"))
     }
     override val invalidArguments = ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
-    override suspend fun run(args: SshCommandArgs) = commands.execute(args.profile, args.connection, args.command, dispatch)
+    override suspend fun run(args: SshCommandArgs) = commands.execute(args.profile, args.connection, args.command)
     override fun failure(error: Exception) = ToolOutput("SSH failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED)
 }
 /** Not a data class: its toString must never print the command. */
 internal class SshCommandArgs(val profile: String, val connection: String, val command: String)
 
-/** The coroutine cannot finish until the admitted worker, readers and disconnect have really exited. */
+/**
+ * The coroutine cannot finish until the admitted worker, readers and every disconnect have really exited: the worker and
+ * a closer are children of one scope. Stop, timeout, revocation and target loss all end in [disconnectClient] on an IO thread.
+ */
 internal class SshCommandOperation {
     private val lock = Any()
-    private var cancelled = false
     private var targetLost = false
     private var execAdmitted = false
     private var command: Session.Command? = null
     private var client: SSHClient? = null
-    private val closeRequested = CompletableDeferred<Unit>()
+    private var worker: Job? = null
+    private var closer: Job? = null
 
-    fun cancel() {
-        synchronized(lock) { cancelled = true }
-        closeRequested.complete(Unit)
-    }
-    /** Target loss stops resources, but is a tool failure, not revocation of the caller's Send. */
+    /**
+     * Target loss stops resources, but is a tool failure, not revocation of the caller's Send. Non-blocking, any thread:
+     * it only sets a flag and cancels two jobs; the socket is closed by the closer on an IO worker.
+     */
     fun loseTarget() {
-        synchronized(lock) { targetLost = true }
-        closeRequested.complete(Unit)
+        val jobs = synchronized(lock) { targetLost = true; listOfNotNull(worker, closer) }
+        jobs.forEach { it.cancel() }
     }
-    private fun checkActive() = synchronized(lock) {
-        if (targetLost || cancelled) throw CancellationException()
+    private suspend fun checkActive() {
+        currentCoroutineContext().ensureActive()
+        if (synchronized(lock) { targetLost }) throw CancellationException()
+    }
+    private fun disconnectClient() {
+        synchronized(lock) { client }?.let { runCatching { it.disconnect() } }
     }
     /** SSHJ caches these nullable facts independently of stream consumption, including after channel close. */
     private fun receivedExit(): String? {
@@ -127,30 +134,35 @@ internal class SshCommandOperation {
         }, ToolOutcome.FAILED)
     }
 
-    suspend fun run(dispatch: WebDispatch, work: suspend () -> ToolOutput): ToolOutput = coroutineScope {
-        // Independent worker: caller cancellation signals resources, but must not pretend the worker exited.
-        val workers = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        val closer = workers.launch { closeRequested.await(); synchronized(lock) { client }?.let { runCatching { it.disconnect() } } }
-        val worker = workers.async(start = CoroutineStart.LAZY) { checkActive(); work() }
+    suspend fun run(work: suspend () -> ToolOutput): ToolOutput {
+        admitSideEffect("ssh-dispatch")
         var result: ToolOutput? = null
         try {
-            dispatch("ssh-dispatch") { checkActive(); worker.start() }
-            result = worker.await()
+            coroutineScope {
+                val finished = AtomicBoolean(false)
+                // Covers the whole operation, including phases between blocking calls and cleanup of a cancelled worker.
+                val closer = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+                    try { awaitCancellation() } finally {
+                        if (!finished.get()) withContext(NonCancellable + Dispatchers.IO) {
+                            // May still be on the caller thread (UNDISPATCHED, or cancelled before suspending): hop to IO.
+                            yield()
+                            disconnectClient()
+                        }
+                    }
+                }
+                val worker = async(Dispatchers.IO) { try { checkActive(); work() } finally { finished.set(true) } }
+                val lost = synchronized(lock) { this@SshCommandOperation.worker = worker; this@SshCommandOperation.closer = closer; targetLost }
+                if (lost) { worker.cancel(); closer.cancel() }
+                try { result = worker.await() } finally { closer.cancel() }
+            }
         } catch (failure: Exception) {
             // Target loss can also make construction/reads fail; only an active caller gets the local failure below.
             currentCoroutineContext().ensureActive()
             if (!synchronized(lock) { targetLost }) throw failure
-        } finally {
-            this@SshCommandOperation.cancel()
-            withContext(NonCancellable) {
-                // Includes a client constructed after cancellation and its final disconnect.
-                worker.cancel(); worker.join(); closer.join()
-            }
-            workers.cancel()
         }
         // Stop/timeout/owner revocation wins even when it races a local target failure.
         currentCoroutineContext().ensureActive()
-        synchronized(lock) { if (targetLost) targetFailure() else checkNotNull(result) }
+        return synchronized(lock) { if (targetLost) targetFailure() else checkNotNull(result) }
     }
 
     suspend fun execute(connector: SshConnector, command: String, available: () -> Boolean): ToolOutput {
