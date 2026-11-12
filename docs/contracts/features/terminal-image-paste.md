@@ -226,15 +226,22 @@ to `idle` after the notice. One job per tab; a second request is ignored
   tabs included, and replies can still be on their way after we close (up to 16
   write answers during an upload, a late VERSION). A channel is closed by
   sending CLOSE, on a thread of its own; the server's CLOSE ends reads blocked
-  on it. Real bounds: Cancel hides the bar at once and ends a Cancel mid-upload
-  after about one round trip on a live device (the server's CLOSE), and at most
-  the 10 s request timeout on a hung one; the job, and the tab's one-image
-  guard, end then, never when an abandoned helper or a close has finished. An
-  abandoned helper lives until its blocked call ends: at once if it was
-  interrupted, otherwise by sshj's own 30 s. Helpers are capped at 6 in all
+  on it. Real bounds: Cancel hides the bar at once. A Cancel mid-upload ends
+  typically within one round trip on a live device (the server's CLOSE) and at
+  most the 10 s request timeout on a hung one; it can take up to 30 s while a
+  write waits for the peer's window to open (the peer's CLOSE does not wake that
+  wait), and a stalled socket write has no timeout at all and ends only when the
+  connection does. The job, and the tab's one-image guard, end then, never when
+  an abandoned helper or a close has finished. An abandoned helper lives until its
+  blocked call ends: at once if it was interrupted, otherwise by sshj's own 30 s
+  (an interrupt can likewise wait up to 30 s in the same window wait). Interrupting
+  is safe because the transport is a plain `java.net.Socket` (no
+  `InterruptibleChannel`); that stops holding if a connection is ever tunnelled
+  through another SSH channel (`connectVia`). Helpers are capped at 6 in all
   (live and abandoned together; a seventh opening is refused at once as "not
-  available") and at 2 abandoned per connection, so one stalled tab cannot take
-  the others' openings. Any failure while opening with the connection up is "not
+  available", and is a hard cap) and at 2 abandoned per connection, so one stalled
+  tab cannot take the others' openings; the per-connection check is made before
+  it is counted, so in a tight race it can briefly exceed 2. Any failure while opening with the connection up is "not
   available" (also a shell startup file printing into the channel), and a failed
   or abandoned opening closes what it made, so repeated failures leave no channel
   behind (tests count them on the server and with stalled stand-ins for the

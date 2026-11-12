@@ -79,14 +79,20 @@ class SftpRemoteImages private constructor(private val sftp: SFTPClient) : Remot
         /**
          * The threads that open channels, at most [MAX_HELPERS] at a time, live and abandoned together. A helper abandoned
          * by the bound or by Cancel ends when its blocked call does: its thread is interrupted once its channel exists,
-         * and sshj's own limits (30 s for a channel open or a subsystem request) end the rest.
+         * and sshj's own limits (30 s for a channel open or a subsystem request) end the rest. Interrupting is safe because
+         * the app's transport is a plain `java.net.Socket` (no `InterruptibleChannel`, so an interrupt cannot close the
+         * connection under the shell); that stops holding if a connection is ever tunnelled through another SSH channel
+         * (`connectVia`). A stalled TCP write has no timeout at all and ends only when the connection does.
          */
         private val HELPERS = ThreadPoolExecutor(0, MAX_HELPERS, 30, TimeUnit.SECONDS, SynchronousQueue()) { r ->
             Thread(r, "image-sftp-open").apply { isDaemon = true }
         }
         private const val MAX_HELPERS = 6
 
-        /** Abandoned helpers still running, per connection: a stalled tab cannot use up the global cap for the others. */
+        /**
+         * Abandoned helpers still running, per connection: a stalled tab cannot use up the global cap for the others. It is
+         * checked before it is counted, so a tight race can briefly exceed it; the pool of [MAX_HELPERS] is the hard cap.
+         */
         private const val MAX_ABANDONED_PER_CLIENT = 2
         private val ABANDONED = java.util.WeakHashMap<Any, AtomicInteger>()
 
@@ -94,6 +100,9 @@ class SftpRemoteImages private constructor(private val sftp: SFTPClient) : Remot
 
         /** Helper threads running now (live or abandoned); for tests. */
         internal fun helpersRunning(): Int = HELPERS.activeCount
+
+        /** Abandoned helpers still counted against [factory]; for tests. */
+        internal fun abandonedCount(factory: Any): Int = abandonedOf(factory).get()
 
         /** Helpers ever submitted; for tests. */
         internal val helpersSubmitted = AtomicInteger()
@@ -169,6 +178,8 @@ class SftpRemoteImages private constructor(private val sftp: SFTPClient) : Remot
             try {
                 HELPERS.execute { work() }
             } catch (e: RejectedExecutionException) {
+                // No helper ever ran: a later Cancel must not count it as an abandoned one that nothing will end.
+                synchronized(lock) { submitted = false; helperEnded = true }
                 throw ImageFailureException(ImageFailure.NOT_AVAILABLE, e)
             }
             done.await(timeoutMs.toLong(), TimeUnit.MILLISECONDS)

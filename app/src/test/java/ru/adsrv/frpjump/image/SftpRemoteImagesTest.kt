@@ -838,4 +838,32 @@ class SftpRemoteImagesTest {
         gate.countDown()
         waitFor("the late channels to be closed") { stalledTab.made.get() == stalledTab.closed.get() }
     }
+
+    @Test fun aRefusedOpeningThatIsCancelledLaterIsNotCountedAsAnAbandonedHelper() {
+        waitFor("no helper left from before") { SftpRemoteImages.helpersRunning() == 0 }
+        val gate = CountDownLatch(1)
+        // Fill the whole pool with stalled openings on other connections.
+        val blockers = List(6) { Stalled(openBlocks = gate) }
+        for (b in blockers) {
+            try { openStalled(b, 100); fail("expected a refusal") } catch (e: ImageFailureException) { assertEquals(ImageFailure.NOT_AVAILABLE, e.reason) }
+        }
+        val tab = Stalled()
+        // The pool says no (twice); the job's closer then calls the opening's handle, as it does at the end of a job.
+        repeat(2) {
+            val handle = java.util.concurrent.atomic.AtomicReference<java.io.Closeable?>()
+            try {
+                openStalled(tab, 2_000) { handle.set(it) }
+                fail("expected a refusal")
+            } catch (e: ImageFailureException) {
+                assertTrue("refused by the pool", e.cause is java.util.concurrent.RejectedExecutionException)
+            }
+            handle.get()!!.close()
+        }
+        assertEquals("no helper ever ran for this connection, so none is counted", 0, SftpRemoteImages.abandonedCount(tab))
+        gate.countDown()
+        waitFor("the pool to be free again") { SftpRemoteImages.helpersRunning() == 0 }
+        // The healthy tab still opens (here: its helper runs and is told the subsystem is not available).
+        try { openStalled(tab, 3_000); fail("expected a refusal") } catch (e: ImageFailureException) { assertEquals(ImageFailure.NOT_AVAILABLE, e.reason) }
+        assertEquals("the connection's helper ran", 1, tab.made.get())
+    }
 }
