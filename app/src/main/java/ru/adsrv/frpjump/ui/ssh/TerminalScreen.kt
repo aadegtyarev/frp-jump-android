@@ -87,8 +87,8 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.snippets.SnippetStore
 import ru.adsrv.frpjump.snippets.stepsAmongShown
-import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.toAuth
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.SshLogin
 import ru.adsrv.frpjump.ssh.SshSession
@@ -724,10 +724,7 @@ fun TerminalScreen(
                 loginLikeId = null
                 val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
                 rememberLogin(from, login)
-                val auth = when (method) {
-                    SshAuthMethod.KEY -> SshAuth.Key
-                    SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
-                }
+                val auth = method.toAuth(password, remember)
                 if (loginReplaces) {
                     openedOrGone(sessions.reconnect(from.id, login.user, auth))
                 } else {

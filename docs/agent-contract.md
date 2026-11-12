@@ -380,6 +380,10 @@ This is distinct from Stop, timeout or owner revocation, whose cancellation and
 stale-publication suppression remain unchanged. This is not an atomic inventory/freshness promise
 or a claim that grant IDs/local ports are unique across lifetimes.
 
+One owner, `SshTargets`, decides target readiness, target loss and the no-dialog
+login rule; the Connections tab's "connect without the dialog" uses the same rule,
+and the Terminal, Connections and Files login dialogs derive credentials from the
+chosen method through one function.
 The existing connector enforces stored login/refusal and pinned host-key policy.
 The saved connection’s user and the port’s stored auth method apply. Remembered
 password authentication preserves Remember. Missing/unreadable/refused login or

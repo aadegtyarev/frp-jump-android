@@ -122,7 +122,7 @@ class AssistantSshCommandTest {
             override suspend fun connect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse = error("No tunnel start")
             override suspend fun disconnect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int): Boolean = error("No tunnel control")
         }, runtime.session, LocalPortStore(MemoryStorage()), runner, { true })
-        val service = AssistantSshCommands(profiles.state, profiles.hidden, env)
+        val service = AssistantSshCommands(SshTargets(profiles.state, profiles.hidden, env))
         val tool = AssistantSshCommandTool(service)
         val args = buildJsonObject { put("profile_id", "home"); put("connection_id", "ssh"); put("command", "printf synthetic") }
         suspend fun ready() {

@@ -68,8 +68,8 @@ import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
 import ru.adsrv.frpjump.ssh.offersSavedPassword
+import ru.adsrv.frpjump.ssh.toAuth
 import ru.adsrv.frpjump.ssh.PinnedHostKey
-import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshConnector
 import ru.adsrv.frpjump.ssh.SshLogin
@@ -459,10 +459,7 @@ class FilesSession(
         if (method == SshAuthMethod.PASSWORD && password.isNotEmpty()) app.sshEnv.refusals.clear(t.profile, t.device, t.port, user.trim())
         val login = SshLogin(user.trim().ifEmpty { SshLogin.DEFAULT_USER }, method)
         scope.launch(Dispatchers.IO) { runtime?.sshLogins?.remember(t.device, t.port, login) }
-        val auth = when (method) {
-            SshAuthMethod.KEY -> SshAuth.Key
-            SshAuthMethod.PASSWORD -> SshAuth.Password(password.ifEmpty { null }, remember)
-        }
+        val auth = method.toAuth(password, remember)
         val next = t.copy(user = login.user, auth = auth)
         target = next
         app.fileTargets.replace(targetId, next)

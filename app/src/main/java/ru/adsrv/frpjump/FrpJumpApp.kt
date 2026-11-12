@@ -90,7 +90,9 @@ class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
     val profileInformation by lazy { ru.adsrv.frpjump.profiles.ProfileInformation(profiles.state, pendingUndo.hidden) }
 
-    val assistantSshCommands by lazy { ru.adsrv.frpjump.assistant.AssistantSshCommands(profiles.state, pendingUndo.hidden, sshEnv) }
+    val sshTargets by lazy { ru.adsrv.frpjump.ssh.SshTargets(profiles.state, pendingUndo.hidden, sshEnv) }
+
+    val assistantSshCommands by lazy { ru.adsrv.frpjump.assistant.AssistantSshCommands(sshTargets) }
 
     lateinit var profiles: Profiles
         private set

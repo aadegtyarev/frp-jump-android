@@ -231,7 +231,7 @@ class TunnelManager(
     /** Operation-local observation of the plan itself, before the UI's conflated projection.
      * It is not a globally unique tunnel incarnation or an atomic inventory promise.
      */
-    internal fun commandTargetPresent(target: Tunnel): kotlinx.coroutines.flow.Flow<Boolean> = core.map { c ->
+    internal fun targetPresent(target: Tunnel): kotlinx.coroutines.flow.Flow<Boolean> = core.map { c ->
         c.pending[target.key] == null && c.planned.any {
             it.key == target.key && it.grant.grantId == target.grantId && it.localPort == target.localPort
         }

@@ -96,7 +96,7 @@ class AssistantChatScreenTest {
             index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
         kotlinx.coroutines.flow.MutableStateFlow(emptySet()),
     )
-    private val sshCommands = AssistantSshCommands(
+    private val sshCommands = AssistantSshCommands(ru.adsrv.frpjump.ssh.SshTargets(
         kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true)),
         kotlinx.coroutines.flow.MutableStateFlow(emptySet()),
         ru.adsrv.frpjump.ssh.SshEnvironment(
@@ -110,7 +110,7 @@ class AssistantChatScreenTest {
                 override fun destroy() = Unit
             }), { error("No SSH setup") }, ru.adsrv.frpjump.ssh.TmuxNames(Memory()),
             clientFactory = { error("No actual SSH") }),
-    )
+    ))
     private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands, historyStore = history) {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
