@@ -37,7 +37,7 @@ class AssistantToolPipelineTest {
         val box = FakeKeystore().box("synthetic-ssh")
         val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { probe.effects.incrementAndGet(); throw AssertionError("must not construct a client") })
-        val ssh = AssistantSshCommandTool(AssistantSshCommands(synthetic.state, synthetic.hidden, env))
+        val ssh = AssistantSshCommandTool(AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)))
         return listOf(
             Case("web_search", web[0], obj("query" to str("q")), obj("query" to JsonPrimitive(1)), webInvalid),
             Case("read_page", web[1], obj("url" to str("https://127.0.0.1/")), obj("url" to str("a"), "extra" to str("b")), webInvalid),
