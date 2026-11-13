@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -75,7 +77,7 @@ import ru.adsrv.frpjump.ui.ssh.TerminalScreen
 import ru.adsrv.frpjump.ui.web.WebScreen
 import java.io.IOException
 
-private object Routes {
+internal object Routes {
     const val LOADING = "loading"
     const val ENROLL = "enroll"
     const val ADD_PROFILE = "profiles/add"
@@ -130,7 +132,7 @@ fun AppNav() {
         app.openDevice.value = null
         if (route in setOf(Routes.ENROLL, Routes.REMOVED, Routes.STORAGE) || app.profiles.runtime(request.profile) == null) return@LaunchedEffect
         app.profiles.setCurrent(request.profile)
-        nav.navigate(Routes.device(request.device)) { popUpTo(Routes.DEVICE) { inclusive = true } }
+        nav.openDeviceCard(request.device)
     }
     NavHost(navController = nav, startDestination = Routes.LOADING) {
         composable(Routes.LOADING) {
@@ -311,6 +313,7 @@ fun AppNav() {
         }
         composable(Routes.TERMINAL) { entry ->
             val profilesState by app.profiles.state.collectAsStateWithLifecycle()
+            val assistant = assistantEnabledNow(app)
             TerminalScreen(
                 sessions = app.ssh,
                 allSessions = app.sessions,
@@ -320,6 +323,7 @@ fun AppNav() {
                 profileColors = profilesState.index.profiles.associate { it.id to it.color },
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 onBack = { nav.popBackStack() },
+                onAskAssistant = if (assistant) ({ quote -> nav.askAssistant(app, quote) }) else null,
                 onOpenFiles = { s ->
                     // The file session kept on this tunnel for this login, else a new one.
                     val id = app.files.kept(TunnelRef(s.profile, s.device, s.port), s.user)
@@ -369,24 +373,7 @@ fun AppNav() {
                 onBack = { nav.popBackStack() },
             )
         }
-        composable(Routes.CHAT) {
-            val vm = viewModel { ru.adsrv.frpjump.ui.settings.AssistantChatViewModel(app) }
-            ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
-                if (!app.settings.assistantAvailability.enabled) nav.popBackStack()
-                else nav.navigate(Routes.PROVIDER)
-            })
-        }
-        composable(Routes.PROVIDER) { entry ->
-            val settingsEntry = remember(entry) { nav.getBackStackEntry(Routes.SETTINGS) }
-            val vm = viewModel<SettingsViewModel>(settingsEntry) { SettingsViewModel(app) }
-            // Recovery re-reads metadata, never unseals the credential or starts provider traffic.
-            LaunchedEffect(Unit) { vm.reloadAssistantProvider().join() }
-            val provider by vm.assistantProvider.collectAsStateWithLifecycle()
-            ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider,
-                onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
-                onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
-                onBack = { nav.popBackStack() })
-        }
+        assistantRoutes(nav, app)
         composable(Routes.SETTINGS) {
             val profilesVm = viewModel { ProfilesViewModel(app) }
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
@@ -401,20 +388,84 @@ fun AppNav() {
                     // The next profile, if any; else enroll.
                     onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
                     onBack = null,
-                    onChat = { nav.navigate(Routes.CHAT) },
+                    onChat = { nav.openAssistant() },
                 )
             }
         }
     }
 }
 
+/** The chat and its provider screen: reached from Settings, the bottom navigation and the terminal menu alike. */
+internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJumpApp) {
+    composable(Routes.CHAT) {
+        val vm = viewModel { ru.adsrv.frpjump.ui.settings.AssistantChatViewModel(app) }
+        // A terminal selection waits in the app only until this chat takes it (at once); from then on it is the chat's, in memory, and
+        // goes after the draft once the saved draft has loaded and no Send runs. It never outlives the chat: a Back drops it with the model.
+        val waiting by app.assistantQuote.collectAsStateWithLifecycle()
+        LaunchedEffect(waiting) { if (waiting != null) vm.hold(app.assistantQuote.getAndUpdate { null }) }
+        val held by vm.heldQuote.collectAsStateWithLifecycle()
+        val chat by vm.conversation.state.collectAsStateWithLifecycle()
+        LaunchedEffect(held, chat.loading, chat.busy) {
+            val text = held ?: return@LaunchedEffect
+            if (chat.loading || chat.busy) return@LaunchedEffect
+            vm.heldQuote.value = null
+            // Refused (the history cannot be read, too long): the chat shows its own notice for that.
+            vm.conversation.appendToDraft(text)
+        }
+        ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
+            if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.goToTab(Tab.SETTINGS) }
+            else nav.navigate(Routes.PROVIDER)
+        })
+    }
+    composable(Routes.PROVIDER) { entry ->
+        // Shares Settings' model while Settings is on the back stack; the chat can be opened from anywhere else, then it has its own.
+        val owner = remember(entry) { runCatching { nav.getBackStackEntry(Routes.SETTINGS) }.getOrDefault(entry) }
+        val vm = viewModel<SettingsViewModel>(owner) { SettingsViewModel(app) }
+        // Recovery re-reads metadata, never unseals the credential or starts provider traffic.
+        LaunchedEffect(Unit) { vm.reloadAssistantProvider().join() }
+        val provider by vm.assistantProvider.collectAsStateWithLifecycle()
+        ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider,
+            onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
+            onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
+            onBack = { nav.popBackStack() })
+    }
+}
+
+/**
+ * Opens the chat over the current screen, so Back returns to it. There is only ever one chat entry (one conversation on one history file
+ * and one run slot): when the chat is already on the back stack, the screens above it are popped to reach it, and its own model (a running
+ * Send included) goes on untouched; popping it and starting anew would stop that Send.
+ */
+internal fun NavHostController.openAssistant() {
+    val open = runCatching { getBackStackEntry(Routes.CHAT) }.isSuccess
+    if (open) popBackStack(Routes.CHAT, inclusive = false) else navigate(Routes.CHAT) { launchSingleTop = true }
+}
+
+/** A terminal selection (or none) for the chat draft, then the chat: the existing one when it is open (see [openAssistant]). */
+internal fun NavHostController.askAssistant(app: FrpJumpApp, quote: String?) {
+    app.assistantQuote.value = quote
+    openAssistant()
+}
+
+/** A notification's device card, over whatever is shown. */
+internal fun NavHostController.openDeviceCard(name: String) = navigate(Routes.device(name)) { popUpTo(Routes.DEVICE) { inclusive = true } }
+
+/** Whether Settings > LLM assistant is on, followed live. */
+@Composable
+internal fun assistantEnabledNow(app: FrpJumpApp): Boolean {
+    val enabled = remember { app.settings.settings.map { it.assistantEnabled }.distinctUntilChanged() }
+    return enabled.collectAsStateWithLifecycle(remember { app.settings.settings.value.assistantEnabled }).value
+}
+
 /** A tab's screen above the bottom navigation; the screen keeps its own status bar padding. */
 @Composable
-private fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
+internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
     val snackbars = remember { SnackbarHostState() }
     UpdateAnnouncement(selected, snackbars) { nav.goToTab(Tab.SETTINGS) }
+    val app = LocalContext.current.applicationContext as FrpJumpApp
+    val assistant = assistantEnabledNow(app)
     Scaffold(
-        bottomBar = { BottomNav(selected) { if (it != selected) nav.goToTab(it) } },
+        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null) { if (it != selected) nav.goToTab(it) } },
         snackbarHost = { SnackbarHost(snackbars) },
         containerColor = AppTheme.colors.ground,
         contentWindowInsets = WindowInsets(0),

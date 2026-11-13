@@ -233,9 +233,7 @@
     <!-- Direct or through the server -->
     <string name="setting_direct">Прямое соединение (P2P)</string>
     <string name="setting_direct_hint">Быстрее. Не вышло — работает через сервер.</string>
-    <string name="direct_channel">Прямое соединение</string>
-    <string name="direct_channel_description">Когда напрямую не вышло и подключение пошло через сервер</string>
-    <string name="direct_failed_title">Напрямую не вышло: %s</string>
+    <string name="direct_or_server">Напрямую или через сервер</string>
     <string name="direct_failed_text">%s уже работает через сервер. Сеть, похоже, не пропускает P2P.</string>
     <string name="direct_kept_text">%s в этой сети работает через сервер.</string>
     <string name="retry_direct">Повторить напрямую</string>
@@ -1345,4 +1343,7 @@
     <string name="terminal_images_done">Вставлено изображений: %1$d</string>
     <string name="terminal_images_partly">%2$d из %1$d изображений не отправлены: %3$s</string>
     <string name="terminal_images_cut">Использованы только первые %1$d изображений.</string>
+    <string name="tab_assistant">Помощник</string>
+    <string name="terminal_ask_assistant">Спросить помощника</string>
+    <string name="chat_quote_truncated">[начало обрезано]</string>
 </resources>
