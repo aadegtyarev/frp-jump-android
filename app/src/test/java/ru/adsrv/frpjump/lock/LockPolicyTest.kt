@@ -140,7 +140,6 @@ class LockPolicyTest {
     @Test
     fun `immediately locks on any absence, even a very short one`() {
         unlockedAt(0)
-        assertFalse(policy.onStart(10, enabled = true, afterMs = 0))
         policy.onStop(20)
         assertTrue(policy.onStart(20, enabled = true, afterMs = 0))
     }
@@ -396,5 +395,57 @@ class LockPolicyTest {
         assertTrue(policy.wouldLockNow(1, enabled = true))
         policy.authFinished(success = true, now = 2)
         assertFalse(policy.wouldLockNow(3, enabled = true))
+    }
+
+    // Two started activities can overlap (a notification's Open starts a second MainActivity).
+
+    @Test
+    fun `a second instance started before the first stops is not an absence`() {
+        unlockedAt(0)
+        policy.onStart(100, enabled = true, afterMs = 0)
+        policy.onStop(200)
+        assertTrue(policy.started)
+        assertFalse(policy.wouldLockNow(1_000_000, enabled = true, afterMs = 0))
+        // The last stop is the absence, and the absence counts from it.
+        policy.onStop(300)
+        assertFalse(policy.started)
+        assertTrue(policy.wouldLockNow(301, enabled = true, afterMs = 0))
+        assertTrue(policy.onStart(310, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `the absence counts from the last stop, not the first`() {
+        for ((back, locks) in listOf(30_300L to false, 30_301L to true)) {
+            val p = LockPolicy()
+            p.onStart(0, enabled = true)
+            p.authStarted()
+            p.authFinished(success = true, now = 0)
+            p.onStart(100, enabled = true)
+            p.onStop(200)
+            p.onStop(300)
+            assertEquals("back at $back", locks, p.onStart(back, enabled = true, afterMs = 30_000))
+        }
+    }
+
+    @Test
+    fun `the handoff mark waits for the real absence`() {
+        unlockedAt(0)
+        policy.onStart(100, enabled = true, afterMs = 0)
+        policy.handoff(150)
+        policy.onStop(200)
+        policy.onStop(300)
+        // Marked: the 30 s floor holds with Immediately.
+        assertFalse(policy.onStart(10_000, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `stops without starts do not count below zero`() {
+        policy.onStop(1)
+        policy.onStop(2)
+        unlockedAt(10)
+        assertTrue(policy.started)
+        policy.onStop(20)
+        assertFalse(policy.started)
+        assertTrue(policy.onStart(30, enabled = true, afterMs = 0))
     }
 }

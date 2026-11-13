@@ -297,7 +297,6 @@ class AppLockTest {
         host.listeners[0].succeeded()
         assertEquals(1, ran)
         ran = 0
-        lock.onStart(enabled = true, afterMs = 0)
         lock.onStop()
         lock.onStart(enabled = true, afterMs = 0)
         assertTrue(lock.locked.value)
@@ -408,7 +407,6 @@ class AppLockTest {
         assertTrue(hold(onDrop = { drops++ }))
         lock.unlock()
         assertEquals(1, drops)
-        lock.onStart(enabled = true, afterMs = 0)
         lock.onStop()
         lock.onStart(enabled = true, afterMs = 0)
         assertTrue(hold(onDrop = { drops++ }))
@@ -542,5 +540,41 @@ class AppLockTest {
         l.holdLaunch(owner, credential, true, true, 30_000L) {}
         l.holdLaunch(owner, credential, true, true, 30_000L) {}
         assertEquals(1, calls[0])
+    }
+
+    // Two instances (a notification's Open starts a second MainActivity before the first stops).
+
+    @Test
+    fun `with a second instance in sight a launch is not held out of sight`() {
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[0].succeeded()
+        lock.onStart(enabled = true, afterMs = 0)
+        now = 100_000
+        lock.onStop()
+        assertFalse(hold(afterMs = 0))
+    }
+
+    @Test
+    fun `a stop of one instance keeps a launch held for the other, locked`() {
+        lock.onStart(enabled = true)
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStop()
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `the prompt ending while another instance is in sight does not drop the held launch`() {
+        coldStartAsking()
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStop()
+        host.listeners[0].error(BiometricPrompt.ERROR_CANCELED, "x")
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(1, ran)
     }
 }

@@ -84,9 +84,10 @@ class AppLock(
 
     fun onStop() {
         policy.onStop(clock())
-        // Out of sight while locked: the held launch is dropped, except for the prompt's own stops
-        // (an owner who left with the prompt up is caught when the prompt ends, see [authenticateFor]).
-        if (!policy.authenticating) dropHeld()
+        // Out of sight while locked (the last started activity stopped): the held launch is dropped, except for
+        // the prompt's own stops (an owner who left with the prompt up is caught when the prompt ends, see
+        // [authenticateFor]). Another instance still in sight keeps it.
+        if (!policy.started && !policy.authenticating) dropHeld()
     }
 
     /** The one place [_locked] changes: it never goes false with a launch still held, unless the unlock runs it. */
