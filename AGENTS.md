@@ -93,3 +93,9 @@
   Environment: Pi
   Model: openai/gpt-6.1-sol
   ```
+- Merge each slice as its own PR after the unit gate, Gitleaks and an
+  independent review; run the emulator e2e matrix once per series on fresh
+  main, and release only from a main commit whose e2e passed (the release PR
+  carries only the version and notes). A slice that touches what unit tests
+  cannot catch (a gesture, drawing, a system dialog) may ask for one targeted
+  emulator set.
