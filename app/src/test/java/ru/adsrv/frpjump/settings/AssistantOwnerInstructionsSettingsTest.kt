@@ -46,6 +46,44 @@ class AssistantOwnerInstructionsSettingsTest {
         assertThrows(IllegalArgumentException::class.java) { store.setAssistantOwnerInstructions("a${tag}b") }
     }
 
+    @Test fun `normalize is idempotent even when removing a character joins a surrogate pair`() {
+        // A control character between the halves of a tag character: after it goes, the halves form the tag character, which goes too.
+        val corrupt = "\uDB40\u0000\uDC41"
+        assertEquals("", AssistantOwnerInstructions.normalize(corrupt))
+        assertEquals("ab", AssistantOwnerInstructions.normalize("a\uDB40\u0000‮\uDC41b"))
+        val random = java.util.Random(20261113)
+        val alphabet = listOf("a", "b", "\n", "\u0000", "\t", "‮", "⁦", "‍", "\uDB40", "\uDC41", "\uD83D", "\uDE00", "󠁁", "\u007F")
+        repeat(2000) {
+            val text = buildString { repeat(random.nextInt(40)) { append(alphabet[random.nextInt(alphabet.size)]) } }
+            val once = AssistantOwnerInstructions.normalize(text)
+            assertEquals("not idempotent for ${text.map { it.code.toString(16) }}", once, AssistantOwnerInstructions.normalize(once))
+            assertEquals(once, AssistantOwnerInstructions.sanitize(once))
+        }
+        val long = "x".repeat(1999) + "\uD83D\u0000\uDE00" + "tail"
+        assertEquals(AssistantOwnerInstructions.normalize(long), AssistantOwnerInstructions.normalize(AssistantOwnerInstructions.normalize(long)))
+    }
+
+    @Test fun `a corrupted stored value is repaired on read and later settings updates do not throw`() {
+        val file = MemoryStorage("""{"direct":true,"assistant_owner_instructions":"\udb40\u0000\udc41ok"}""")
+        val store = SettingsStore(file)
+        assertEquals("ok", store.settings.value.assistantOwnerInstructions)
+        store.update { it.copy(direct = false) }
+        store.setAssistantOwnerInstructions("fine")
+        assertFalse(SettingsStore(file).settings.value.direct)
+        assertEquals("fine", SettingsStore(file).settings.value.assistantOwnerInstructions)
+        // A value that repairs to nothing leaves an empty string and unrelated writes still work.
+        val empty = SettingsStore(MemoryStorage("""{"assistant_owner_instructions":"\udb40\u0000\udc41"}"""))
+        assertEquals("", empty.settings.value.assistantOwnerInstructions)
+        empty.update { it.copy(direct = false) }
+        assertFalse(empty.settings.value.direct)
+    }
+
+    @Test fun `limitEdit result is always a fixed point of normalize`() {
+        // Inserting a control character between two tag halves that sit around it must not leave a tag character behind.
+        val edit = AssistantOwnerInstructions.limitEdit("󠁁", "\uDB40\u0000\uDC41", 2)
+        assertEquals(AssistantOwnerInstructions.normalize(edit.text), edit.text)
+    }
+
     @Test fun `limitEdit keeps the text around an insertion and cuts only the inserted part`() {
         val full = "x".repeat(1997) + "END"
         // Typing at the start of a full field changes nothing; the last character survives.

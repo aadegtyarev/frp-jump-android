@@ -261,7 +261,8 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 6), the owner's own instructions when set, and only enabled tool schemas. The prompt contains no profile,
+version 6), the owner's own instructions when set, and only enabled tool schemas.
+The base prompt contains no profile,
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
 Tool schemas follow catalog order with stable JSON; summary, history and
@@ -300,7 +301,9 @@ makes no request.
   `\n`, the invisible Unicode tag characters U+E0000–E007F, and the bidirectional
   override and isolate controls U+202A–U+202E and U+2066–U+2069 (zero-width
   joiner and non-joiner stay). The text is then cut to 2,000 UTF-16 units without
-  splitting a surrogate pair; a value that is not a string reads as empty, and
+  splitting a surrogate pair. Removal repeats until the text stops changing
+  (removing a character can join the halves of a removed pair), so normalizing
+  twice gives the same text. A value that is not a string reads as empty, and
   no other setting is reset. The store refuses to write a value that is not
   already normalized. Turning the assistant off, or forgetting the provider,
   keeps the text.
@@ -318,7 +321,8 @@ makes no request.
 - Budget: the text, its separator and its header count toward the estimated
   request size, with a fixed framing allowance, in the sliding window and in
   the summary trigger. 2,000 Cyrillic characters estimate to about 4,000 tokens,
-  about 28% of the default 16,384-token budget, so summaries and omissions start
+  about 28% of the default 14,336-token input budget (the 16,384-token window
+  minus the 2,048-token output reserve), so summaries and omissions start
   earlier. Without text nothing is added.
 - Capture: the text is captured at Send admission together with the tool set and
   sent unchanged in every request of that Send; a change during a run affects

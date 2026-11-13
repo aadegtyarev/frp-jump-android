@@ -17,6 +17,13 @@ object AssistantOwnerInstructions {
      * Zero-width joiners and non-joiners stay: they are part of ordinary text in several scripts.
      */
     fun sanitize(text: String): String {
+        // Removing a character can join the halves of a surrogate pair that were apart (a tag character split by a control one), so
+        // repeat until nothing changes: the text shrinks each round, hence this ends, and the result is a fixed point.
+        var current = text
+        while (true) { val next = sanitizeOnce(current); if (next == current) return current; current = next }
+    }
+
+    private fun sanitizeOnce(text: String): String {
         var clean = true
         var i = 0
         while (i < text.length) { val cp = text.codePointAt(i); if (forbidden(cp)) { clean = false; break }; i += Character.charCount(cp) }
@@ -30,7 +37,7 @@ object AssistantOwnerInstructions {
     private fun forbidden(cp: Int) = (cp <= 0x1F && cp != '\n'.code) || cp in 0x7F..0x9F || cp in 0xE0000..0xE007F ||
         cp in 0x202A..0x202E || cp in 0x2066..0x2069
 
-    /** [sanitize], then cut to [MAX_CHARS] without splitting a surrogate pair. */
+    /** [sanitize], then cut to [MAX_CHARS] without splitting a surrogate pair. Idempotent: `normalize(normalize(x)) == normalize(x)`. */
     fun normalize(text: String): String {
         val clean = sanitize(text)
         if (clean.length <= MAX_CHARS) return clean
@@ -63,9 +70,11 @@ object AssistantOwnerInstructions {
             if (keep > 0 && inserted[keep - 1].isHighSurrogate() && inserted[keep].isLowSurrogate()) keep--
             inserted = inserted.substring(0, keep)
         }
-        val text = head + inserted + tail
+        val joined = head + inserted + tail
+        // The ends can meet across a removed insertion (halves of a tag character); the result is always a fixed point of normalize.
+        val text = normalize(joined)
         if (text == new) return Edit(text, cursor.coerceIn(0, text.length))
-        return Edit(text, head.length + inserted.length)
+        return Edit(text, minOf(head.length + inserted.length, text.length))
     }
 
     /** What a Send carries: whitespace only means none. */
