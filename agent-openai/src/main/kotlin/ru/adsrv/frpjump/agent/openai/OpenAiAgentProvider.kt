@@ -61,7 +61,10 @@ class OpenAiAgentProvider internal constructor(
         return OpenAiCodec.models(execute(Request.Builder().url(target).header("Authorization", "Bearer $apiKey").get().build()))
     }
 
-    /** The coroutine ends only after the blocking exchange, body read and close have returned; cancellation cancels this exact call. */
+    /**
+     * The coroutine ends only after the blocking exchange, body read and close have returned; cancellation cancels this exact call.
+     * The cancel runs promptly on an IO worker, never on a non-IO caller thread such as Main ([blockingCancellable]).
+     */
     private suspend fun execute(request: Request): String {
         val call = template.newCall(request)
         return blockingCancellable(call::cancel) {

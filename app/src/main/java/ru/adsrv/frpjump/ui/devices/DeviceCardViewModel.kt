@@ -25,6 +25,8 @@ import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.ui.connections.ConnectionActions
 import ru.adsrv.frpjump.ui.userMessage
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.errors.ProtocolMismatch
 import ru.adsrv.frpjump.undo.PendingUndo
 
 data class DeviceCardUiState(
@@ -32,8 +34,8 @@ data class DeviceCardUiState(
     /** The device as the last list said; null when it is not in it. */
     val device: DeviceRow? = null,
     val profileName: String = "",
-    val syncError: String? = null,
-    val mismatch: String? = null,
+    val syncError: DomainError? = null,
+    val mismatch: ProtocolMismatch? = null,
     /** The login method remembered per SSH port, for the cards' subtitles. */
     val sshMethods: Map<Int, SshAuthMethod> = emptyMap(),
     /** The server supports labels and icons: the "⋮" offers to edit them. */

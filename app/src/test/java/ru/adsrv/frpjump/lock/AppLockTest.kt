@@ -212,4 +212,369 @@ class AppLockTest {
         assertTrue(lock.locked.value)
         // Without the abandon the policy still thinks a prompt is up, and the start would return "unlocked".
     }
+
+    // Held launches: nothing the app opens may appear over the lock screen.
+
+    private var ran = 0
+    private fun hold(
+        action: String? = "android.intent.action.VIEW",
+        who: Any = owner,
+        forResult: Boolean = true,
+        enabled: Boolean = true,
+        afterMs: Long = 30_000L,
+        onDrop: (() -> Unit)? = null,
+    ) = lock.holdLaunch(who, action, forResult, enabled, afterMs, onDrop) { ran++ }
+    private val credential = "android.app.action.CONFIRM_DEVICE_CREDENTIAL"
+
+    @Test
+    fun `a launch is held while locked and runs once after a successful unlock`() {
+        coldStartAsking()
+        assertTrue(hold())
+        assertEquals(0, ran)
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+        // Not again: a later success (turning the setting on, say) has nothing held, with no stop in between.
+        ask()
+        host.listeners.last().succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `a launch is not held while unlocked`() {
+        lock.onStart(enabled = true)
+        lock.unlock()
+        assertFalse(hold())
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `only the latest held launch runs`() {
+        coldStartAsking()
+        val order = mutableListOf<String>()
+        assertTrue(lock.holdLaunch(owner, "a", true, true, 30_000L) { order += "first" })
+        assertTrue(lock.holdLaunch(owner, "b", true, true, 30_000L) { order += "second" })
+        host.listeners[0].succeeded()
+        assertEquals(listOf("second"), order)
+    }
+
+    @Test
+    fun `a failed or cancelled prompt runs nothing, the next success does`() {
+        coldStartAsking()
+        hold()
+        host.listeners[0].error(BiometricPrompt.ERROR_USER_CANCELED, "x")
+        assertEquals(0, ran)
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `a stop while locked drops the held launch`() {
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStop()
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `the prompt's own stop keeps the held launch`() {
+        coldStartAsking()
+        assertTrue(hold())
+        lock.onStop()
+        lock.onStart(enabled = true)
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `destroy of its owner drops the held launch, another owner's destroy does not`() {
+        coldStartAsking()
+        assertTrue(hold())
+        lock.onDestroy(Any())
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+        ran = 0
+        lock.onStop()
+        lock.onStart(enabled = true, afterMs = 0)
+        assertTrue(lock.locked.value)
+        // The prompt belongs to another owner, so only the held launch (of [owner]) goes.
+        ask(Any())
+        assertTrue(hold())
+        lock.onDestroy(owner)
+        host.listeners.last().succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `no screen lock any more drops the held launch`() {
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.unlock()
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `the prompt's own credential screen is never held, an app launch with that action is when no prompt is open`() {
+        coldStartAsking()
+        assertFalse(hold(credential))
+        assertFalse(hold("android.app.action.CONFIRM_DEVICE_CREDENTIAL_WITH_USER"))
+        // Any other launch while the prompt is open is held.
+        assertTrue(hold("android.intent.action.VIEW"))
+        assertTrue(hold(null))
+        host.listeners[0].error(BiometricPrompt.ERROR_USER_CANCELED, "x")
+        // No prompt open: the action alone is not enough.
+        assertTrue(hold(credential))
+    }
+
+    @Test
+    fun `a held launch that throws at the unlock does not break the unlock`() {
+        coldStartAsking()
+        lock.holdLaunch(owner, "a", true, true, 30_000L) { throw IllegalStateException("no activity") }
+        host.listeners[0].succeeded()
+        assertFalse(lock.locked.value)
+        assertEquals(listOf<AuthResult>(AuthResult.Success), results)
+    }
+
+    // B1: the owner leaves while the prompt is up.
+
+    @Test
+    fun `a launch held before the owner left with the prompt up is dropped when the prompt is cancelled out of sight`() {
+        coldStartAsking()
+        assertTrue(hold())
+        lock.onStop()
+        host.listeners[0].error(BiometricPrompt.ERROR_CANCELED, "x")
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `a launch held before the owner left with the prompt up is dropped when it succeeds out of sight`() {
+        coldStartAsking()
+        assertTrue(hold())
+        lock.onStop()
+        host.listeners[0].succeeded()
+        assertEquals(0, ran)
+        assertFalse(lock.locked.value)
+    }
+
+    // N3: the lock never goes false with a launch still held, other than by the prompt's success.
+
+    @Test
+    fun `the setting going off drops the held launch`() {
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStart(enabled = false)
+        assertFalse(lock.locked.value)
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(0, ran)
+    }
+
+    // N1: a dropped launch tells its owner.
+
+    @Test
+    fun `a dropped launch calls onDrop, one that runs does not`() {
+        var drops = 0
+        coldStartAsking()
+        assertTrue(hold(onDrop = { drops++ }))
+        assertTrue(hold(onDrop = { drops += 10 }))
+        // The replaced one is dropped at once.
+        assertEquals(1, drops)
+        lock.onDestroy(owner)
+        assertEquals(11, drops)
+        // One that runs: no drop.
+        drops = 0
+        lock.onStart(enabled = true)
+        ask()
+        assertTrue(hold(onDrop = { drops++ }))
+        host.listeners.last().succeeded()
+        assertEquals(1, ran)
+        assertEquals(0, drops)
+    }
+
+    @Test
+    fun `unlock and a stop call onDrop of the held launch`() {
+        var drops = 0
+        lock.onStart(enabled = true)
+        assertTrue(hold(onDrop = { drops++ }))
+        lock.unlock()
+        assertEquals(1, drops)
+        lock.onStop()
+        lock.onStart(enabled = true, afterMs = 0)
+        assertTrue(hold(onDrop = { drops++ }))
+        lock.onStop()
+        assertEquals(2, drops)
+    }
+
+    @Test
+    fun `a failing onDrop does not break the drop`() {
+        lock.onStart(enabled = true)
+        assertTrue(hold(onDrop = { throw IllegalStateException("registry gone") }))
+        lock.unlock()
+        assertFalse(lock.locked.value)
+    }
+
+    // N2: only RuntimeException is contained.
+
+    @Test
+    fun `an Error from a held launch is not swallowed`() {
+        coldStartAsking()
+        lock.holdLaunch(owner, "a", true, true, 30_000L) { throw StackOverflowError() }
+        org.junit.Assert.assertThrows(StackOverflowError::class.java) { host.listeners[0].succeeded() }
+    }
+
+    // S1: the exemption is for the result path only.
+
+    @Test
+    fun `the credential screen is exempt on the result path only`() {
+        coldStartAsking()
+        assertFalse(hold(credential, forResult = true))
+        assertTrue(hold(credential, forResult = false))
+    }
+
+    // R21: out of sight, where the lock would engage on return.
+
+    /** Unlocked at 0, out of sight from 1_000. */
+    private fun unlockedAndAway() {
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[0].succeeded()
+        now = 1_000
+        lock.onStop()
+    }
+
+    @Test
+    fun `out of sight before the interval has elapsed a launch is not held`() {
+        unlockedAndAway()
+        now = 31_000
+        assertFalse(hold(afterMs = 30_000L))
+    }
+
+    @Test
+    fun `out of sight after the interval a launch is held, and runs after the next unlock`() {
+        unlockedAndAway()
+        now = 31_001
+        assertTrue(hold(afterMs = 30_000L))
+        assertEquals(0, ran)
+        now = 32_000
+        lock.onStart(enabled = true, afterMs = 30_000L)
+        assertTrue(lock.locked.value)
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `in sight and unlocked a launch is not held, even if the lock was never engaged in this process`() {
+        // The setting was off at the start (so never unlocked here); it is on now, the screen is in sight.
+        lock.onStart(enabled = false)
+        assertFalse(lock.locked.value)
+        assertFalse(hold(enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `with Immediately a launch out of sight is held at once`() {
+        unlockedAndAway()
+        assertTrue(hold(afterMs = 0))
+    }
+
+    @Test
+    fun `with the setting off a launch is never held`() {
+        unlockedAndAway()
+        now = 1_000_000
+        assertFalse(hold(enabled = false, afterMs = 0))
+    }
+
+    @Test
+    fun `a launch held out of sight is dropped when the owner is destroyed`() {
+        unlockedAndAway()
+        now = 100_000
+        assertTrue(hold(afterMs = 30_000L))
+        lock.onDestroy(owner)
+        lock.onStart(enabled = true, afterMs = 30_000L)
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(0, ran)
+    }
+
+    // The credential action from the system, with the platform constants as the fallback.
+
+    private fun lockWith(action: String?, calls: IntArray = IntArray(1)) =
+        AppLock(clock = { now }, host = host, systemCredentialAction = { calls[0]++; action })
+
+    @Test
+    fun `the system's own credential action is the one exempted, the constants only without it`() {
+        val l = lockWith("vendor.action.CONFIRM")
+        l.onStart(enabled = true)
+        l.authenticateFor(owner, "t", "s") {}
+        assertFalse(l.holdLaunch(owner, "vendor.action.CONFIRM", true, true, 30_000L) {})
+        assertTrue(l.holdLaunch(owner, credential, true, true, 30_000L) {})
+    }
+
+    @Test
+    fun `without a system action the platform constants are exempted`() {
+        val l = lockWith(null)
+        l.onStart(enabled = true)
+        l.authenticateFor(owner, "t", "s") {}
+        assertFalse(l.holdLaunch(owner, credential, true, true, 30_000L) {})
+        assertFalse(l.holdLaunch(owner, "android.app.action.CONFIRM_DEVICE_CREDENTIAL_WITH_USER", true, true, 30_000L) {})
+        assertTrue(l.holdLaunch(owner, "vendor.action.CONFIRM", true, true, 30_000L) {})
+    }
+
+    @Test
+    fun `the system is asked once, and only when a prompt is active`() {
+        val calls = IntArray(1)
+        val l = lockWith(null, calls)
+        l.onStart(enabled = true)
+        l.holdLaunch(owner, credential, true, true, 30_000L) {}
+        assertEquals(0, calls[0])
+        l.authenticateFor(owner, "t", "s") {}
+        l.holdLaunch(owner, credential, true, true, 30_000L) {}
+        l.holdLaunch(owner, credential, true, true, 30_000L) {}
+        assertEquals(1, calls[0])
+    }
+
+    // Two instances (a notification's Open starts a second MainActivity before the first stops).
+
+    @Test
+    fun `with a second instance in sight a launch is not held out of sight`() {
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[0].succeeded()
+        lock.onStart(enabled = true, afterMs = 0)
+        now = 100_000
+        lock.onStop()
+        assertFalse(hold(afterMs = 0))
+    }
+
+    @Test
+    fun `a stop of one instance keeps a launch held for the other, locked`() {
+        lock.onStart(enabled = true)
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStop()
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `the prompt ending while another instance is in sight does not drop the held launch`() {
+        coldStartAsking()
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStop()
+        host.listeners[0].error(BiometricPrompt.ERROR_CANCELED, "x")
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(1, ran)
+    }
 }

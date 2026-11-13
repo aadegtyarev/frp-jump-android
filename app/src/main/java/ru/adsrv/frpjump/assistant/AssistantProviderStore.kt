@@ -46,7 +46,11 @@ class AssistantProviderDraft(val settings: AssistantProviderSettings, val expect
     internal fun newKey(): String? = replacementKey
 }
 
-/** One atomic document owns metadata + sealed key, so endpoint/key changes cannot commit separately. */
+/**
+ * One atomic document owns metadata + sealed key, so endpoint/key changes cannot commit separately.
+ * Sealing, unsealing and file IO run under this store's monitor, never under the chat gate; the gate is taken last and briefly
+ * to publish [currentSnapshot], and [state] is notified after both are released (lock order: [AssistantChatRuntime]).
+ */
 class AssistantProviderStore(private val file: TextStorage, private val box: SecretBox,
     val chatRuntime: AssistantChatRuntime = AssistantChatRuntime(),
 ) {

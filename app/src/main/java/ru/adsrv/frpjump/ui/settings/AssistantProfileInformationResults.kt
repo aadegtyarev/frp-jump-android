@@ -55,7 +55,7 @@ internal fun ChatProfileInformationResults(results: List<ChatProfileInformation>
                                     Text(stringResource(state), color = AppTheme.colors.muted)
                                     record.obj("operation")?.let { operation ->
                                         Text(listOfNotNull(operation.field("key"), operation.field("pending")).joinToString(" · "))
-                                        operation.field("error")?.let { Text(stringResource(R.string.profile_information_operation_failed), color = AppTheme.colors.muted) }
+                                        operation.takeIf(::operationFailed)?.let { Text(stringResource(R.string.profile_information_operation_failed), color = AppTheme.colors.muted) }
                                     }
                                     connection?.let { c ->
                                         Text(listOfNotNull(c.field("name"), c.field("kind"), c.field("port"), c.field("user")).joinToString(" · "))
@@ -74,5 +74,11 @@ internal fun ChatProfileInformationResults(results: List<ChatProfileInformation>
         }
     }
 }
+/**
+ * An operation record that has an error: the old fixed phrase (a string, in chats saved by 0.3.70 and earlier) or `{"kind": ...}`.
+ * Null or missing: none.
+ */
+internal fun operationFailed(operation: JsonObject): Boolean = operation["error"].let { it != null && it !is JsonNull }
+
 private fun JsonObject.field(name: String): String? = (this[name] as? JsonPrimitive)?.contentOrNull
 private fun JsonObject.obj(name: String): JsonObject? = this[name] as? JsonObject

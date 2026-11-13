@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.connections
 
+import ru.adsrv.frpjump.errors.DomainError
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -16,7 +17,7 @@ class CardTapTest {
     private val connection = Connection("c1", "wb", 1883, PortKind.MQTT)
     private val tunnel = Tunnel("wb", 1883, "g1", 40000, VisitorState(TunnelStatus.RELAYED))
 
-    private fun row(tunnel: Tunnel? = null, pending: PendingOp? = null, error: String? = null) =
+    private fun row(tunnel: Tunnel? = null, pending: PendingOp? = null, error: DomainError? = null) =
         ConnectionRow("p1", connection, saved = true, tunnel = tunnel, pending = pending, error = error)
 
     @Test
@@ -28,7 +29,7 @@ class CardTapTest {
     fun `down, connecting or failed - connect, then the main action`() {
         assertEquals(CardTap.CONNECT_THEN_MAIN, cardTap(row()))
         assertEquals(CardTap.CONNECT_THEN_MAIN, cardTap(row(pending = PendingOp.CONNECTING)))
-        assertEquals(CardTap.CONNECT_THEN_MAIN, cardTap(row(error = "refused")))
+        assertEquals(CardTap.CONNECT_THEN_MAIN, cardTap(row(error = DomainError.ServerError("refused"))))
     }
 
     @Test

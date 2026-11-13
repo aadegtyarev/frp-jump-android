@@ -23,10 +23,16 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
   - `Failed(reason: OpFailure, outcome: RemoteOutcome)`: started, did not finish. `RemoteOutcome` is `UNKNOWN` (the remote effect may have
     happened) or `KNOWN` (the remote side reported how it ended). `NOT_STARTED` is reserved for a failure before any remote call that is
     not a refusal; no operation returns it today.
-- `OpRefusal` and `OpFailure` are sealed, with domain subtypes and no wording. A payload is a fact (an exit status and signal) or a message
-  the tunnel manager or the server wrote; the operation layer owns no user- or model-facing text.
+- `OpRefusal` and `OpFailure` are sealed, with domain subtypes and no wording. A payload is a fact: an exit status and signal, or a typed
+  domain error from `errors/DomainError.kt` (the tunnel manager's last error, the device port that is not open). The operation layer owns no
+  user- or model-facing text.
+- A typed error keeps, for the owner's screens only, what they need to word it: a server's `detail`, a host, and the system's exception
+  messages (`Other.text`, the detail of an unreachable or broken connection). The screens word it when they show it
+  (`ui/DomainErrorTexts.kt`). None of that reaches the model: it gets the error's kind alone.
 - Cancellation propagates as `CancellationException`; it is never an `OpResult`. A caller that stops an operation gets no late result.
-- An adapter words every typed result itself and shows or sends nothing the types do not carry (no exception messages, no secrets).
+- An adapter words every typed result itself and shows or sends nothing the types do not carry; it adds no exception message or secret
+  of its own. The owner's screens show the payload a typed error keeps for them; the model gets only the error's kind, never that
+  payload.
 
 ## Operations today
 
@@ -34,7 +40,7 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
 | --- | --- | --- | --- | --- | --- |
 | `ssh_exec` (`SshExec`) | `CHANGE_REMOTE` | tool `ssh_command` | `OpResult<SshExecOutput>` (streams, status, signal) | `SshRefusal`: `TargetUnavailable`, `NeedsSetup`, `TargetLostBeforeExec`, `ConnectFailed` | `SshFailure`: `TargetLost(exit?)`, `CommandFailed(exit?)`; `KNOWN` only when an exit was already reported, else `UNKNOWN`. `SshFailure.Unexpected` is never returned by the operation: it is the adapter's word for an exception that escaped it |
 | `profile_query` (`ProfileQuery`) | `READ_REMOTE` | tool `profile_information` | `OpResult<ProfileInformationState>` | none | `ProfileQueryFailure.Unavailable` (`UNKNOWN`) |
-| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(detail?)` (`UNKNOWN`), `DeviceNotListening(detail)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
+| `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(error: DomainError?)` (`UNKNOWN`), `DeviceNotListening(reason: DevicePortNotOpen)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
 
 ### `ssh_exec`
 
@@ -57,9 +63,9 @@ no successful refresh is implied.
 Returns the local port of the tunnel to a device port, bringing it up when it is down. In order: a tunnel whose disconnect waits for Undo is
 revived and stays up, otherwise a disconnect being done is awaited; when the tunnel is down and no connect is in flight it is asked to
 connect for the connection's kind; it is waited for up to 45 s; then the device is waited for (as a fresh tunnel when it was brought up
-here). It does not come up: `DidNotComeUp` with the tunnel manager's last error for it, when there is one. The device does not open the
-port: `DeviceNotListening` with the manager's explanation. The assistant does not get this operation: tunnels are not managed by the model.
-If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
+here). It does not come up: `DidNotComeUp` with the tunnel manager's last typed error for it, when there is one. The device does not open the
+port: `DeviceNotListening` with `DevicePortNotOpen(port)`, the port that is not open. The assistant does not get this operation:
+tunnels are not managed by the model. If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
 
 ## Adapters
 

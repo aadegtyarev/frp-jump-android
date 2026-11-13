@@ -8,7 +8,11 @@ import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.settings.AssistantTools
 
-/** One Send's fixed tools, quotas and provenance. No credential, app/file/connection access. */
+/**
+ * One Send's fixed tools, quotas and provenance. No credential, app/file/connection access.
+ * DNS lookups, fetching, parsing and image preparation run on IO, outside the chat gate and store commit monitors: only the
+ * start checks (`dns-dispatch`, `public-dispatch`, `image-dispatch`) and the short [publish] of a source take the gate.
+ */
 internal class AssistantWebTools(
     enabled: AssistantTools,
     private val fetcher: PublicFetcher,

@@ -39,6 +39,10 @@ object ApkInstaller {
     /** As the manifest's provider names it: per application id, so a side-by-side build has its own. */
     private fun authority(context: Context) = "${context.packageName}.updates"
 
+    /**
+     * True when the launch was handed to the activity; MainActivity may hold it while the app lock is
+     * engaged (it then runs after the unlock, or is dropped), so true does not mean a window opened yet.
+     */
     private fun start(context: Context, intent: Intent): Boolean = try {
         context.startActivity(intent)
         true

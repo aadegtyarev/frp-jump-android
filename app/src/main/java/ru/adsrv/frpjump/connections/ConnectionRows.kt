@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.connections
 
+import ru.adsrv.frpjump.errors.DomainError
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.tunnel.PendingOp
@@ -18,7 +19,7 @@ data class ConnectionRow(
     val saved: Boolean,
     val tunnel: Tunnel?,
     val pending: PendingOp?,
-    val error: String?,
+    val error: DomainError?,
 ) {
     /** The tunnel's key within the profile ([localPortKey]). */
     val tunnelKey: String get() = localPortKey(connection.device, connection.port)

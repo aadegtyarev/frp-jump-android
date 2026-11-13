@@ -1,5 +1,15 @@
 package ru.adsrv.frpjump.tunnel
 
+import ru.adsrv.frpjump.connections.Connection
+import ru.adsrv.frpjump.connections.ConnectionRow
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.errors.ErrorKind
+import ru.adsrv.frpjump.errors.ProtocolMismatch
+import ru.adsrv.frpjump.api.PROTOCOL_VERSION
+import ru.adsrv.frpjump.api.ProtocolMismatchException
+import org.junit.Assert.assertNull
+import ru.adsrv.frpjump.ui.connections.problemOf
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import kotlinx.coroutines.CompletableDeferred
@@ -196,9 +206,11 @@ class TunnelManagerTest {
             .apply { isAccessible = true }.invoke(manager, key, operation)
     }
 
-    private fun failOperation(key: String, operation: Any, message: String) {
+    private fun rowOf(tunnel: Tunnel) = ConnectionRow("p", Connection("c1", tunnel.device, tunnel.port, PortKind.WEB, "c"), saved = true, tunnel = tunnel, pending = null, error = null)
+
+    private fun failOperation(key: String, operation: Any, error: DomainError) {
         TunnelManager::class.java.declaredMethods.single { it.name == "fail" }
-            .apply { isAccessible = true }.invoke(manager, key, operation, message)
+            .apply { isAccessible = true }.invoke(manager, key, operation, error)
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -212,11 +224,11 @@ class TunnelManagerTest {
         val old = admit("wb:80", PendingOp.CONNECTING)!!
         completeOperation("wb:80", old)
         val current = admit("wb:80", PendingOp.CONNECTING)!!
-        failOperation("wb:80", current, "current failure")
+        failOperation("wb:80", current, DomainError.ServerError("current failure"))
         completeOperation("wb:80", old)
-        failOperation("wb:80", old, "stale failure")
+        failOperation("wb:80", old, DomainError.ServerError("stale failure"))
         assertTrue(coreMap("pending")["wb:80"] === current)
-        assertEquals("current failure", coreMap("errors")["wb:80"])
+        assertEquals(DomainError.ServerError("current failure"), coreMap("errors")["wb:80"])
         completeOperation("wb:80", current)
         assertTrue(coreMap("pending").isEmpty())
         manager.close()
@@ -228,7 +240,7 @@ class TunnelManagerTest {
             manager.shutdown {}
             val current = admit("wb:80", kind)!!
             completeOperation("wb:80", old)
-            failOperation("wb:80", old, "stale failure")
+            failOperation("wb:80", old, DomainError.ServerError("stale failure"))
             assertTrue(coreMap("pending")["wb:80"] === current)
             assertTrue(coreMap("errors").isEmpty())
             completeOperation("wb:80", current)
@@ -239,7 +251,7 @@ class TunnelManagerTest {
     @Test fun `reset without a new owner cannot acquire a late operation error`() = runBlocking {
         val old = admit("wb:80", PendingOp.DISCONNECTING)!!
         manager.shutdown {}
-        failOperation("wb:80", old, "stale failure")
+        failOperation("wb:80", old, DomainError.ServerError("stale failure"))
         completeOperation("wb:80", old)
         assertTrue(coreMap("pending").isEmpty())
         assertTrue(coreMap("errors").isEmpty())
@@ -388,6 +400,76 @@ class TunnelManagerTest {
         fun holds() = runCatching(check).onFailure { last = it }.getOrDefault(false)
         withTimeoutOrNull(10_000) { while (!holds()) delay(10) }
         if (!holds()) throw AssertionError(what + (last?.let { " (last check threw $it)" } ?: ""), last)
+    }
+
+    @Test
+    fun `a server newer or older than the app is a typed mismatch with the kind that says which side to update`() = runBlocking {
+        for ((server, kind) in listOf(
+            PROTOCOL_VERSION + 1 to ErrorKind.PROTOCOL_UPDATE_APP,
+            PROTOCOL_VERSION + 4 to ErrorKind.PROTOCOL_UPDATE_APP,
+            PROTOCOL_VERSION - 1 to ErrorKind.PROTOCOL_UPDATE_SERVER,
+        )) {
+            api.desiredFailure = ProtocolMismatchException(server)
+            manager.sync()
+            eventually("mismatch $server") { manager.state.value.mismatch == ProtocolMismatch(server, PROTOCOL_VERSION) }
+            assertEquals(kind, manager.state.value.mismatch!!.kind)
+            assertNull("a mismatch is not a sync error", manager.state.value.syncError)
+            api.desiredFailure = null
+            manager.sync()
+            eventually("cleared") { manager.state.value.mismatch == null }
+        }
+    }
+
+    @Test
+    fun `a failed poll keeps the typed error of what failed`() = runBlocking {
+        api.failure = NetworkException(NetworkException.Reason.UNREACHABLE, "s", "offline", IOException("offline"))
+        manager.sync()
+        eventually("unreachable") { manager.state.value.syncError == DomainError.Unreachable("s", "offline") }
+        assertEquals(ErrorKind.UNREACHABLE, manager.state.value.syncError!!.kind)
+        assertNull(manager.state.value.mismatch)
+        api.failure = ApiException(500, "server broke")
+        manager.sync()
+        eventually("server error") { manager.state.value.syncError == DomainError.ServerError("server broke") }
+        api.failure = null
+        manager.sync()
+        eventually("cleared") { manager.state.value.syncError == null }
+    }
+
+    @Test
+    fun `a poll that finds no free local port keeps it as a typed error with the range`() = runBlocking {
+        manager.portRange = 47150..47151
+        ServerSocket().use { first ->
+            ServerSocket().use { second ->
+                first.bind(InetSocketAddress("127.0.0.1", 47150))
+                second.bind(InetSocketAddress("127.0.0.1", 47151))
+                manager.sync()
+                eventually("no free port") { manager.state.value.syncError == DomainError.NoFreePort(47150, 47151) }
+                assertEquals(ErrorKind.NO_FREE_PORT, manager.state.value.syncError!!.kind)
+            }
+        }
+    }
+
+    @Test
+    fun `a granted tunnel the server never lists fails as not listed`() = runBlocking {
+        val quick = TunnelManager("p1", { stored }, api, ProfileSession(), LocalPortStore(MemoryStorage()), FakeFrpc(), { true },
+            touchPort = { Touch.OPEN }, connectAttempts = 2, connectRetryMs = 1)
+        quick.portRange = 47100..47199
+        api.consumed = emptyList()
+        quick.connect("wb", 80, PortKind.WEB)
+        eventually("not listed") { quick.state.value.errors["wb:80"] == DomainError.NotListed }
+        assertEquals(ErrorKind.NOT_LISTED, quick.state.value.errors["wb:80"]!!.kind)
+        assertEquals(1, api.connectCalls.get())
+        quick.close()
+    }
+
+    @Test
+    fun `a refused connect or disconnect keeps the typed error of the refusal`() = runBlocking {
+        api.failure = ApiException(409, "device is busy")
+        manager.connect("wb", 80, PortKind.WEB)
+        eventually("connect") { manager.state.value.errors["wb:80"] == DomainError.ServerError("device is busy") }
+        api.failure = NetworkException(NetworkException.Reason.BROKE, "s", "reset", IOException("reset"))
+        manager.disconnect("wb", 80)
+        eventually("disconnect") { manager.state.value.errors["wb:80"] == DomainError.ConnectionBroken("s", "reset") }
     }
 
     @Test
@@ -607,12 +689,13 @@ class TunnelManagerTest {
         manager.sync()
         assertEquals(18080, frpc.last!!.visitors.single().localPort)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, "listen tcp 127.0.0.1:18080: bind: address already in use"))
-        // Said plainly, not frpc's words.
-        eventually("said plainly") {
-            manager.state.value.tunnels.single().let {
-                it.pinned && it.localPort == 18080 && it.state.detail != null && !it.state.detail!!.contains("address already in use")
-            }
+        // The state carries the typed flag, no wording of its own; the screens say it plainly, not in frpc's words.
+        eventually("flagged") {
+            manager.state.value.tunnels.single().let { it.pinned && it.localPort == 18080 && it.state.pinnedPortTaken }
         }
+        val said = problemOf(rowOf(manager.state.value.tunnels.single()))!!
+        assertEquals(Texts.get(R.string.local_port_taken_pinned, 18080, TunnelManager.PINNED_RETRY_MS / 1000), said)
+        assertFalse(said.contains("address already in use"))
         // Not moved (a rebind would apply at once, on another port).
         delay(100)
         assertEquals(1, frpc.applies)
@@ -828,7 +911,9 @@ class TunnelManagerTest {
     fun `a tunnel given up on names the device's port`() = runBlocking {
         manager.sync()
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
-        eventually("worded") { manager.state.value.tunnels.single().state.detail == Texts.get(R.string.device_port_not_open, 80) }
+        eventually("flagged") { manager.state.value.tunnels.single().state.deviceMissing }
+        // The screens word it from the flag, with the tunnel's device port.
+        assertEquals(Texts.get(R.string.device_port_not_open, 80), problemOf(rowOf(manager.state.value.tunnels.single())))
     }
 
     /** frpc says [state] for g1, and the manager shows it: what an opener sees after tunnelPort. */
@@ -876,7 +961,7 @@ class TunnelManagerTest {
         eventually("waiting") { touched.size >= 2 }
         assertFalse(opened.isCompleted)
         frpc.states.value = mapOf("g1" to VisitorState(TunnelStatus.FAILED, deviceMissing = true))
-        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(10_000) { opened.await() })
+        assertEquals(DevicePortNotOpen(80), withTimeout(10_000) { opened.await() })
     }
 
     @Test
@@ -930,7 +1015,7 @@ class TunnelManagerTest {
         manager.sync()
         shown(VisitorState(TunnelStatus.RELAYED))
         onTouch = { frpc.refuse("g1"); Touch.CLOSED }
-        assertEquals(Texts.get(R.string.device_port_not_open, 80), withTimeout(5_000) { manager.awaitDevice("wb", 80, fresh = true) })
+        assertEquals(DevicePortNotOpen(80), withTimeout(5_000) { manager.awaitDevice("wb", 80, fresh = true) })
     }
 
     @Test

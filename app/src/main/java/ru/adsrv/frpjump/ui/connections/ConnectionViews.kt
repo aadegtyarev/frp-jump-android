@@ -3,6 +3,10 @@ package ru.adsrv.frpjump.ui.connections
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import ru.adsrv.frpjump.ui.mqtt.PluginsSheet
+import ru.adsrv.frpjump.ui.userText
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.tunnel.TunnelManager
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -141,8 +145,16 @@ fun offersDirectChoice(row: ConnectionRow): Boolean {
 }
 
 /** What went wrong with [row], in plain words: its last connect/disconnect, or frpc's reason. */
-fun problemOf(row: ConnectionRow): String? =
-    row.error ?: row.tunnel?.state?.takeIf { it.status == TunnelStatus.FAILED }?.detail
+fun problemOf(row: ConnectionRow): String? = row.error?.userText() ?: row.tunnel?.let { tunnel ->
+    tunnel.state.takeIf { it.status == TunnelStatus.FAILED }?.let { state ->
+        when {
+            // The typed flags, worded now: who holds a pinned port, or that the device has not opened its port.
+            state.pinnedPortTaken -> Texts.get(R.string.local_port_taken_pinned, tunnel.localPort, TunnelManager.PINNED_RETRY_MS / 1000)
+            state.deviceMissing -> DevicePortNotOpen(tunnel.port).userText()
+            else -> state.detail
+        }
+    }
+}
 
 /** Text and container colours of a [Tone]. */
 @Composable
