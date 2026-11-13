@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -42,6 +43,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
+import org.junit.rules.RuleChain
 import org.junit.Test
 import org.junit.runner.RunWith
 import ru.adsrv.frpjump.FrpJumpApp
@@ -59,7 +61,8 @@ import java.util.Locale
  */
 @RunWith(AndroidJUnit4::class)
 class AssistantEntryNavTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val rules: RuleChain = RuleChain.outerRule(ChatFileGuard()).around(compose)
     private val app get() = compose.activity.application as FrpJumpApp
     private var original: AppSettings? = null
     private val chatFile by lazy { ChatFileBackup(app) }
@@ -88,6 +91,12 @@ class AssistantEntryNavTest {
     }
 
     @After fun restore() {
+        // The chat ends first (its model is cleared and saves its draft), only then the saved file is emptied and put back.
+        if (::nav.isInitialized) {
+            compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+            compose.waitUntil(10_000) { compose.runOnUiThread { nav.visibleEntries.value.none { it.destination.route in setOf(Routes.CHAT, Routes.PROVIDER) } } }
+            compose.waitForIdle()
+        }
         compose.runOnIdle { app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
         // Whatever the chat saved on the way is dropped, then the device's own chat file comes back.
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
@@ -144,6 +153,20 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("chat_back").performClick()
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         assertEquals(0, chatEntries())
+    }
+
+    @Test fun askingFromTheTerminalWhileToolsAreOpenReturnsToTheChatWithTheQuote() {
+        host()
+        openFromNav()
+        compose.onNodeWithTag("chat_tools").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("tools_back").fetchSemanticsNodes().isNotEmpty() }
+        val quote = ChatQuote.block("ls -l\ntotal 0", text(R.string.chat_quote_truncated))!!
+        compose.runOnUiThread { nav.askAssistant(app, quote) }
+        // The tools screen is a state of the chat screen, not a route: the chat itself shows again, with the quote in its draft.
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("tools_back").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("chat_title").assertIsDisplayed()
+        compose.waitUntil(10_000) { runCatching { draft == quote }.getOrDefault(false) }
+        assertEquals(1, chatEntries())
     }
 
     @Test fun askingTwiceInARowOpensOneChat() {

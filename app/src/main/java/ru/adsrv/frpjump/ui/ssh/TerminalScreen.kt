@@ -213,8 +213,10 @@ fun TerminalScreen(
     }
     val fontSp by sessions.fontSize.collectAsStateWithLifecycle()
     var barMenu by remember { mutableStateOf(false) }
-    /** The terminal's selected text, read when the menu opened; kept only until the menu closes. */
+    /** The terminal's selected text, read when the menu opened; kept only until the menu closes (by any item or a dismiss). */
     var menuSelection by remember { mutableStateOf<String?>(null) }
+    // Ask takes it (and clears it) before it closes the menu, so this only drops what no item used.
+    LaunchedEffect(barMenu) { if (!barMenu) menuSelection = null }
     /** "Close all sessions of this phone" is asking the device. */
     var closingAll by remember { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf(initialId) }

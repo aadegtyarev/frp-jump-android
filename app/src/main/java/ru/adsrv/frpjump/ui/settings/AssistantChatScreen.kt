@@ -43,6 +43,11 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     val provider by vm.provider.collectAsStateWithLifecycle()
     val toolsState by vm.tools.state.collectAsStateWithLifecycle()
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
+    // A terminal quote (Ask the assistant) lands in the chat itself: the Tools sub-screen, if it was open, gives way to it.
+    // Only a quote taken since this screen last looked: coming back to the chat (or recreation) must not close Tools again.
+    val quotes by vm.quotesTaken.collectAsStateWithLifecycle()
+    var quotesSeen by rememberSaveable { mutableStateOf(quotes) }
+    LaunchedEffect(quotes) { if (quotes != quotesSeen) { quotesSeen = quotes; toolsOpen = false } }
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else {

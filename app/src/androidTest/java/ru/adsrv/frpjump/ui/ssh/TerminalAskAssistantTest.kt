@@ -46,6 +46,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
+import org.junit.rules.RuleChain
+import ru.adsrv.frpjump.ui.ChatFileGuard
 import org.junit.Test
 import org.junit.runner.RunWith
 import ru.adsrv.frpjump.FrpJumpApp
@@ -74,7 +76,8 @@ import ru.adsrv.frpjump.ui.FrpJumpTheme
  */
 @RunWith(AndroidJUnit4::class)
 class TerminalAskAssistantTest {
-    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private val compose = createAndroidComposeRule<ComponentActivity>()
+    @get:Rule val rules: RuleChain = RuleChain.outerRule(ChatFileGuard()).around(compose)
     private val root = SupervisorJob().apply { cancel() }
     private val scope = CoroutineScope(root + Dispatchers.Main)
     private var sessions: SshSessions? = null
@@ -110,6 +113,12 @@ class TerminalAskAssistantTest {
     }
 
     @After fun cleanup() {
+        // The chat ends first (its model is cleared and saves its draft), only then the saved file is emptied and put back.
+        if (::nav.isInitialized) {
+            compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+            compose.waitUntil(10_000) { compose.runOnUiThread { nav.visibleEntries.value.none { it.destination.route in setOf(Routes.CHAT, Routes.PROVIDER, Routes.TERMINAL) } } }
+            compose.waitForIdle()
+        }
         compose.runOnIdle {
             app.visible.value = false; sessions?.closeAll(); app.assistantQuote.value = null
             originalSettings?.let { old -> app.settings.update { old } }
