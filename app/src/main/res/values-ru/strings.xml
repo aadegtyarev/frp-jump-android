@@ -374,6 +374,10 @@
     <string name="host_key_save_failed">Не удалось сохранить ключ хоста (%s). Ключ не стал доверенным. Попробуйте ещё раз.</string>
     <string name="host_key_forget_failed">Не удалось забыть старый ключ хоста (%s). Он по-прежнему доверенный.</string>
     <string name="cert_refused">Не открыто: вы не доверились сертификату.</string>
+    <string name="cert_save_failed">Не удалось сохранить доверие к сертификату (%s). Не открыто.</string>
+    <string name="write_failed_no_space">нет места</string>
+    <string name="write_failed_no_access">нет доступа</string>
+    <string name="write_failed_other">ошибка записи</string>
     <string name="cert_try_again">Попробовать снова</string>
     <string name="download_https">Файлы HTTPS-подключения здесь не скачать: системный загрузчик не доверяет сертификату, подтверждённому в приложении.</string>
     <string name="protocol_clash_ssh">Этот порт уже занят SSH-подключением; SSH и другие типы не могут делить порт.</string>
