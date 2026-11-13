@@ -140,7 +140,6 @@ class LockPolicyTest {
     @Test
     fun `immediately locks on any absence, even a very short one`() {
         unlockedAt(0)
-        assertFalse(policy.onStart(10, enabled = true, afterMs = 0))
         policy.onStop(20)
         assertTrue(policy.onStart(20, enabled = true, afterMs = 0))
     }
@@ -353,5 +352,100 @@ class LockPolicyTest {
         assertFalse(policy.onStart(100, enabled = true, afterMs = 0))
         policy.onStop(200)
         assertTrue(policy.onStart(210, enabled = true, afterMs = 0))
+    }
+
+    // wouldLockNow: what onStart would decide, changing nothing.
+
+    @Test
+    fun `wouldLockNow is false in sight, before the interval, and with the setting off`() {
+        unlockedAt(0)
+        assertFalse(policy.wouldLockNow(100_000, enabled = true))
+        policy.onStop(1_000)
+        assertFalse(policy.wouldLockNow(31_000, enabled = true, afterMs = 30_000))
+        assertFalse(policy.wouldLockNow(1_000_000, enabled = false, afterMs = 0))
+    }
+
+    @Test
+    fun `wouldLockNow is true after the interval, with Immediately, and when locked`() {
+        unlockedAt(0)
+        policy.onStop(1_000)
+        assertTrue(policy.wouldLockNow(31_001, enabled = true, afterMs = 30_000))
+        assertTrue(policy.wouldLockNow(1_000, enabled = true, afterMs = 0))
+        val p = LockPolicy()
+        p.onStart(0, enabled = true)
+        assertTrue(p.wouldLockNow(1, enabled = true))
+    }
+
+    @Test
+    fun `wouldLockNow follows the handoff floor and changes nothing`() {
+        unlockedAt(0)
+        policy.handoff(1_000)
+        policy.onStop(1_100)
+        assertFalse(policy.wouldLockNow(20_000, enabled = true, afterMs = 0))
+        assertFalse(policy.wouldLockNow(20_000, enabled = true, afterMs = 0))
+        assertTrue(policy.wouldLockNow(31_101, enabled = true, afterMs = 0))
+        // onStart still decides the same afterwards.
+        assertTrue(policy.onStart(31_101, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `wouldLockNow while a prompt is up is just locked`() {
+        assertTrue(policy.onStart(0, enabled = true))
+        policy.authStarted()
+        assertTrue(policy.wouldLockNow(1, enabled = true))
+        policy.authFinished(success = true, now = 2)
+        assertFalse(policy.wouldLockNow(3, enabled = true))
+    }
+
+    // Two started activities can overlap (a notification's Open starts a second MainActivity).
+
+    @Test
+    fun `a second instance started before the first stops is not an absence`() {
+        unlockedAt(0)
+        policy.onStart(100, enabled = true, afterMs = 0)
+        policy.onStop(200)
+        assertTrue(policy.started)
+        assertFalse(policy.wouldLockNow(1_000_000, enabled = true, afterMs = 0))
+        // The last stop is the absence, and the absence counts from it.
+        policy.onStop(300)
+        assertFalse(policy.started)
+        assertTrue(policy.wouldLockNow(301, enabled = true, afterMs = 0))
+        assertTrue(policy.onStart(310, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `the absence counts from the last stop, not the first`() {
+        for ((back, locks) in listOf(30_300L to false, 30_301L to true)) {
+            val p = LockPolicy()
+            p.onStart(0, enabled = true)
+            p.authStarted()
+            p.authFinished(success = true, now = 0)
+            p.onStart(100, enabled = true)
+            p.onStop(200)
+            p.onStop(300)
+            assertEquals("back at $back", locks, p.onStart(back, enabled = true, afterMs = 30_000))
+        }
+    }
+
+    @Test
+    fun `the handoff mark waits for the real absence`() {
+        unlockedAt(0)
+        policy.onStart(100, enabled = true, afterMs = 0)
+        policy.handoff(150)
+        policy.onStop(200)
+        policy.onStop(300)
+        // Marked: the 30 s floor holds with Immediately.
+        assertFalse(policy.onStart(10_000, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `stops without starts do not count below zero`() {
+        policy.onStop(1)
+        policy.onStop(2)
+        unlockedAt(10)
+        assertTrue(policy.started)
+        policy.onStop(20)
+        assertFalse(policy.started)
+        assertTrue(policy.onStart(30, enabled = true, afterMs = 0))
     }
 }

@@ -28,10 +28,18 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
     private var leftAt: Long? = null
 
     /** A prompt is up: stops and starts are its own. */
-    private var authenticating = false
+    var authenticating = false
+        private set
 
-    /** The screen is in sight (between [onStart] and [onStop]). */
-    private var started = false
+    /**
+     * How many activities are started. Two can overlap (a notification's
+     * "Open" starts a second MainActivity: the old one stops after the new
+     * one has started), so the app is out of sight only at 0.
+     */
+    private var startedCount = 0
+
+    /** The screen is in sight: at least one activity is between [onStart] and [onStop]. */
+    val started: Boolean get() = startedCount > 0
 
     /** When the app launched a window of its own; taken by the next stop, stale after [HANDOFF_WINDOW_MS]. */
     private var handoffAt: Long? = null
@@ -44,7 +52,7 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
      * [afterMs]: the interval now chosen (0: any absence locks).
      */
     fun onStart(now: Long, enabled: Boolean, afterMs: Long = timeoutMs): Boolean {
-        started = true
+        startedCount++
         if (!enabled) {
             locked = false
             leftAt = null
@@ -53,15 +61,32 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
         if (authenticating) return locked
         val left = leftAt
         leftAt = null
-        val limit = if (leftByHandoff) maxOf(afterMs, HANDOFF_FLOOR_MS) else afterMs
-        val away = left != null && (limit <= 0 || now - left > limit)
-        if (!unlockedOnce || away) locked = true
+        if (engages(left, now, afterMs)) locked = true
         return locked
     }
 
-    /** The screen goes out of sight. */
+    /** The decision of [onStart]: never unlocked in this process, or away for more than the limit. */
+    private fun engages(left: Long?, now: Long, afterMs: Long): Boolean {
+        val limit = if (leftByHandoff) maxOf(afterMs, HANDOFF_FLOOR_MS) else afterMs
+        val away = left != null && (limit <= 0 || now - left > limit)
+        return !unlockedOnce || away
+    }
+
+    /**
+     * Whether a start at [now] would lock (what [onStart] decides, without
+     * changing anything): already locked, or the lock engages on return.
+     */
+    fun wouldLockNow(now: Long, enabled: Boolean, afterMs: Long = timeoutMs): Boolean {
+        if (!enabled) return false
+        if (authenticating) return locked
+        return locked || engages(leftAt, now, afterMs)
+    }
+
+    /** An activity stops; the screen goes out of sight when it was the last one started. */
     fun onStop(now: Long) {
-        started = false
+        if (startedCount > 0) startedCount--
+        // Another instance is still in sight: not an absence, and the handoff mark waits for the real one.
+        if (startedCount > 0) return
         val handoff = handoffAt
         handoffAt = null
         if (authenticating || locked) return

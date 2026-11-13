@@ -30,8 +30,8 @@ android {
         manifestPlaceholders["assistantBootReceiverEnabled"] = "true"
         testInstrumentationRunner = if (providers.gradleProperty("assistantChatComponentTests").orNull == "true")
             "ru.adsrv.frpjump.ui.settings.AssistantChatTestRunner" else "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 83
-        versionName = "0.3.71"
+        versionCode = 84
+        versionName = "0.3.72"
         // Shown in Settings › App; the binary is built by scripts/build-frpc.sh (FRP_VERSION).
         buildConfigField("String", "FRPC_VERSION", "\"0.70.0\"")
         // Settings › Version looks for newer releases here (public GitHub Releases, no token).
