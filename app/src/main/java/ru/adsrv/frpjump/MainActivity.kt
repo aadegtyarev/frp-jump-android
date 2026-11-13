@@ -20,6 +20,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -41,6 +42,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.ui.AppNav
+import ru.adsrv.frpjump.ui.ActionModes
+import ru.adsrv.frpjump.ui.LocalAppLocked
+import android.view.ActionMode
+import android.view.autofill.AutofillManager
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 
 /**
@@ -92,6 +97,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             app.lock.locked.collect { locked ->
                 if (locked) keepInputOut()
+                // Locked: no keyboard may attach to the window, whatever asks for it; every way out of the lock clears it.
+                blockIme(locked)
                 if (!locked) {
                     promptedForLock = false
                     lockMessage.value = null
@@ -105,7 +112,7 @@ class MainActivity : AppCompatActivity() {
             val theme = settings.theme
             val locked by app.lock.locked.collectAsState()
             // stringResource() reads the activity's resources, which AppCompat has updated by then.
-            CompositionLocalProvider(LocalConfiguration provides config) {
+            CompositionLocalProvider(LocalConfiguration provides config, LocalAppLocked provides locked) {
                 FrpJumpTheme(theme) {
                     val dark = isDark(theme)
                     LaunchedEffect(dark) {
@@ -116,6 +123,8 @@ class MainActivity : AppCompatActivity() {
                     Surface(Modifier.fillMaxSize(), color = AppTheme.colors.ground, contentColor = AppTheme.colors.ink) {
                         // Kept while locked (back stack, open pages, polling); hidden and silent.
                         Box(if (locked) Modifier.clearAndSetSemantics { } else Modifier) { AppNav() }
+                        // Test seam: a window made in the same composition as the screens (see LockedImeTest.aWrappedWindowOfTheRealActivityLeavesWithTheLockAndComesBack).
+                        windowProbe?.invoke()
                         if (locked) {
                             LockScreen(
                                 busy = authenticating.value,
@@ -139,8 +148,28 @@ class MainActivity : AppCompatActivity() {
      * the keyboard goes, and [dispatchKeyEvent] drops keys meanwhile.
      */
     private fun keepInputOut() {
+        actionModes.finishAll()
+        getSystemService(AutofillManager::class.java)?.cancel()
         currentFocus?.clearFocus()
         WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.ime())
+    }
+
+    private fun blockIme(blocked: Boolean) {
+        if (blocked) window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+    }
+
+    /** The floating selection toolbars (terminal, web page, text fields) are system action modes, not Compose windows. */
+    private val actionModes = ActionModes(locked = { app.lock.locked.value })
+
+    override fun onActionModeStarted(mode: ActionMode) {
+        super.onActionModeStarted(mode)
+        actionModes.started(mode)
+    }
+
+    override fun onActionModeFinished(mode: ActionMode) {
+        actionModes.finished(mode)
+        super.onActionModeFinished(mode)
     }
 
     /** While locked, hardware and injected keys stop here; Back (leave) and volume pass. */
@@ -287,6 +316,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        /**
+         * Tests only: content drawn inside the activity's own composition, where [LocalAppLocked] is provided, so a
+         * test can show a window there and see the lock take it away. Null in the app.
+         */
+        @androidx.annotation.VisibleForTesting
+        internal var windowProbe: (@androidx.compose.runtime.Composable () -> Unit)? by androidx.compose.runtime.mutableStateOf(null)
+
         private const val ACTION_OPEN_DEVICE = "ru.adsrv.frpjump.OPEN_DEVICE"
         private const val EXTRA_PROFILE = "profile"
         private const val EXTRA_DEVICE = "device"

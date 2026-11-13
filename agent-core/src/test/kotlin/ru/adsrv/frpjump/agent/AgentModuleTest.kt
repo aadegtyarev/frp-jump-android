@@ -35,6 +35,30 @@ class AgentModuleTest {
         assertEquals(AgentFinish.COMPLETE, result.finish); assertEquals(1, tools); assertEquals(2, requests)
     }
 
+    @Test fun `owner instructions reach every request unchanged and the base instructions stay as given`() = runBlocking {
+        val seen = ArrayList<AgentRequest>()
+        var steps = 0
+        AgentModule(true).run(AgentProvider { request ->
+            seen += request
+            if (steps++ == 0) AgentReply(calls = listOf(call())) else AgentReply("done")
+        }, listOf(tool { ToolOutput("result") }), "base", "user", ownerInstructions = "owner text")
+        assertEquals(2, seen.size)
+        assertTrue(seen.all { it.instructions == "base" && it.ownerInstructions == "owner text" })
+        val plain = ArrayList<AgentRequest>()
+        AgentModule(true).run(AgentProvider { request -> plain += request; AgentReply("done") }, emptyList(), "base", "user")
+        assertEquals("", plain.single().ownerInstructions)
+        assertEquals("base", plain.single().systemContent())
+        assertEquals("base\n\n$OWNER_INSTRUCTIONS_HEADER\nowner text", seen.first().systemContent())
+    }
+
+    @Test fun `owner instructions count against the window and never become the history`() {
+        val window = selectAgentWindow("skill", emptyList(), emptyList(), AgentTurn("current"), AgentLimits(contextTokens = 2048, outputReserveTokens = 100),
+            ownerInstructions = "o".repeat(300))
+        assertEquals("o".repeat(300), window.request!!.ownerInstructions)
+        assertTrue(window.request.turns.single().user == "current")
+        assertTrue(window.estimatedTokens > Utf8TokenEstimate.count(AgentRequest("skill", emptyList(), listOf(AgentTurn("current")), 100)))
+    }
+
     @Test fun `window drops whole old turns never the current request or instructions`() {
         val history = listOf(AgentTurn("old", listOf(exchange("x".repeat(500)))), AgentTurn("recent"))
         val window = selectAgentWindow("skill", emptyList(), history, AgentTurn("current"), AgentLimits(contextTokens = 512, outputReserveTokens = 100), textCounter)

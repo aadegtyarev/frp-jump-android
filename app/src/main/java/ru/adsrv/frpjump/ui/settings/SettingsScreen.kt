@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -33,7 +34,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -134,11 +134,16 @@ fun SettingsScreen(
     val assistantProvider by vm.assistantProvider.collectAsStateWithLifecycle()
     var toolsSetup by rememberSaveable { mutableStateOf(false) }
     var providerSetup by rememberSaveable { mutableStateOf(false) }
+    var ownerSetup by rememberSaveable { mutableStateOf(false) }
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
     // Above the licenses' early return, so the settings come back scrolled where they were.
     val scroll = rememberScrollState()
     if (toolsSetup) {
         AssistantToolsRoute(vm.tools, onBack = { toolsSetup = false })
+        return
+    }
+    if (ownerSetup) {
+        AssistantOwnerInstructionsScreen(settings.assistantOwnerInstructions, onSave = vm::setAssistantOwnerInstructions, onBack = { ownerSetup = false })
         return
     }
     if (providerSetup) {
@@ -274,6 +279,8 @@ fun SettingsScreen(
             AssistantChatEntry(onChat)
             RowDivider()
             AssistantToolsEntry { toolsSetup = true }
+            RowDivider()
+            AssistantOwnerInstructionsEntry(settings.assistantOwnerInstructions) { ownerSetup = true }
             RowDivider()
             AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
             RowDivider()
@@ -452,7 +459,7 @@ fun SettingsScreen(
                 onDismiss = { open = null },
             )
         }
-        Open.NEEDS_SCREEN_LOCK -> AlertDialog(
+        Open.NEEDS_SCREEN_LOCK -> AppAlertDialog(
             onDismissRequest = { open = null },
             title = { Text(stringResource(R.string.setting_app_lock)) },
             text = { Text(stringResource(R.string.lock_needs_screen_lock_text)) },
@@ -890,7 +897,7 @@ private fun Context.findActivity(): FragmentActivity? = when (this) {
 @Composable
 private fun PassphraseDialog(onImport: (String) -> Unit, onDismiss: () -> Unit) {
     var passphrase by remember { mutableStateOf("") }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.key_passphrase)) },
         text = {

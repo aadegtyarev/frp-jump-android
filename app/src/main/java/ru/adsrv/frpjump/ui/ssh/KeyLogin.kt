@@ -1,9 +1,9 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -144,7 +144,7 @@ fun KeyLoginDialogs(flow: KeyLoginFlow) {
     val where = "${t.device}:${t.port}"
     val title = stringResource(R.string.key_login_title, where)
     when (step) {
-        is KeyLoginStep.Working -> AlertDialog(
+        is KeyLoginStep.Working -> AppAlertDialog(
             // Bounded by the connect and command timeouts; Cancel closes the connection.
             onDismissRequest = {},
             title = { Text(title) },
@@ -183,7 +183,7 @@ fun KeyLoginDialogs(flow: KeyLoginFlow) {
                     flow.dismiss()
                 }
             } else {
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = flow::dismiss,
                     title = { Text(title) },
                     text = { Text(message) },

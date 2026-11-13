@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.content.Context
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -125,7 +125,7 @@ fun UpdateSheet(
     }
 
     if (askPermission) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { askPermission = false },
             title = { Text(stringResource(R.string.update_allow_title)) },
             text = { Text(stringResource(R.string.update_allow_text)) },

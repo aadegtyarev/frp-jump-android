@@ -22,9 +22,9 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test.
-        assertEquals(5, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(6, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("ae79a0777ceb609a2b7e748523e5540df17b3f8b6d31eb8f6510c326122b4627", sha256(asset("assistant/skill.md")))
+        assertEquals("55eed4979a903a1c218fd4daa8a25e297d5659d7bbbc1c85b555cfd4f98bb077", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 
@@ -99,6 +99,71 @@ class AssistantPromptsTest {
             assertTrue(requests.all { wire(it) == wire(requests.first()) })
             assertTrue(requests.all { it.tools == requests.first().tools })
         } finally { chat.close(); scope.cancel() }
+    }
+
+    private fun chatWithOwner(scope: CoroutineScope, owner: () -> String, provider: AgentProvider, onPrepare: () -> Unit = {}) =
+        AssistantConversation(scope, { AssistantAvailability(true, ownerInstructions = owner()) }, { snapshot }, { onPrepare(); provider }, {}, AgentModule(true),
+            io = Dispatchers.Unconfined, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+    private fun twoRequestsPerSend(requests: MutableList<AgentRequest>, between: () -> Unit = {}) = AgentProvider { request ->
+        requests += request
+        if (request.turns.last().exchanges.isEmpty()) { between(); AgentReply(calls = listOf(ToolCall("c${requests.size}", "no_such_tool", buildJsonObject {}))) }
+        else AgentReply("done")
+    }
+
+    @Test fun `empty or blank owner text leaves the request without the feature and non-empty text rides beside the unchanged base prompt`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        for (empty in listOf("", " \n  ")) {
+            val requests = CopyOnWriteArrayList<AgentRequest>()
+            val chat = chatWithOwner(scope, { empty }, twoRequestsPerSend(requests))
+            try {
+                assertNull(chat.sendAndWait("one").problem)
+                assertTrue(requests.all { it.instructions == TestPrompts.real.system && it.ownerInstructions == "" && it.systemContent() == TestPrompts.real.system })
+            } finally { chat.close() }
+        }
+        val requests = CopyOnWriteArrayList<AgentRequest>()
+        val chat = chatWithOwner(scope, { "Answer briefly.\nPrefer tmux." }, twoRequestsPerSend(requests))
+        try {
+            assertNull(chat.sendAndWait("one").problem); assertNull(chat.sendAndWait("two").problem)
+            assertEquals(4, requests.size)
+            assertTrue(requests.all { it.instructions == TestPrompts.real.system && it.ownerInstructions == "Answer briefly.\nPrefer tmux." })
+            assertEquals(TestPrompts.real.system + "\n\n## Owner's additional instructions\nAnswer briefly.\nPrefer tmux.", requests.first().systemContent())
+            // The owner's text is not chat history: no turn of any request carries it.
+            assertTrue(requests.none { r -> r.turns.any { t -> t.user.contains("Prefer tmux") || t.exchanges.any { e -> e.reply.text.contains("Prefer tmux") } } })
+        } finally { chat.close(); scope.cancel() }
+    }
+
+    @Test fun `owner text is captured at Send admission and a change mid-run affects only the next Send`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var current = "first"
+        val requests = CopyOnWriteArrayList<AgentRequest>()
+        val chat = chatWithOwner(scope, { current }, twoRequestsPerSend(requests, between = { current = "second" }))
+        try {
+            assertNull(chat.sendAndWait("one").problem)
+            assertEquals(listOf("first", "first"), requests.map { it.ownerInstructions })
+            assertNull(chat.sendAndWait("two").problem)
+            assertEquals(listOf("first", "first", "second", "second"), requests.map { it.ownerInstructions })
+        } finally { chat.close(); scope.cancel() }
+    }
+
+    @Test fun `a change between admission and the first request does not reach that Send`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var current = "first"
+        val requests = CopyOnWriteArrayList<AgentRequest>()
+        // Provider preparation runs after admission and before the kernel starts.
+        val chat = chatWithOwner(scope, { current }, twoRequestsPerSend(requests), onPrepare = { current = "second" })
+        try {
+            assertNull(chat.sendAndWait("one").problem)
+            assertEquals(listOf("first", "first"), requests.map { it.ownerInstructions })
+        } finally { chat.close(); scope.cancel() }
+    }
+
+    @Test fun `only the Send path and the settings and prompt wiring mention the owner text so permission code cannot read it`() {
+        val allowed = setOf("AppSettings.kt", "AssistantOwnerInstructions.kt", "AssistantOwnerInstructionsScreen.kt", "SettingsScreen.kt", "SettingsViewModel.kt",
+            "RunOwnership.kt", "TurnRunner.kt")
+        val hits = File("src/main/java").walkTopDown().filter { it.isFile && it.extension == "kt" }
+            .filter { Regex("(?i)ownerInstructions").containsMatchIn(it.readText()) }.map { it.name }.toSet()
+        assertTrue("unexpected readers: ${hits - allowed}", allowed.containsAll(hits))
+        assertTrue(hits.containsAll(setOf("AppSettings.kt", "RunOwnership.kt", "TurnRunner.kt")))
     }
 
     @Test fun `a broken asset fails before the provider is prepared so a key error cannot mask it`() = runBlocking {

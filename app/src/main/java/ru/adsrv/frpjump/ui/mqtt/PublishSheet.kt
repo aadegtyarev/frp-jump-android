@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -150,7 +151,7 @@ fun PublishSheet(
     val toCommand = target is CommandTarget.Itself || (target is CommandTarget.Elsewhere && !toStatus)
     val focus = remember { FocusRequester() }
     val payloadFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { (if (start.focusPayload) payloadFocus else focus).requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { (if (start.focusPayload) payloadFocus else focus).requestFocus() } }
     // An answer is about what was sent: any change makes it stale.
     fun changed() {
         answer = null

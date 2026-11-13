@@ -79,6 +79,23 @@ class AssistantSummaryTest {
         assertTrue(result.turns.first().exchanges.single().reply.text.contains("target=work-root"))
     }
 
+    @Test fun `the summary request never carries the owner text while the prepared main request keeps it`() = runBlocking {
+        val arguments=buildJsonObject { put("connection_id","work-root") }
+        val blocks=(0 until 40).map { i -> AgentExchange(AgentReply(calls=listOf(ToolCall("call-$i","ssh_command",arguments))),
+            listOf(ToolResult("call-$i","ssh_command",if(i==0) "target=work-root done=diagnostic unknown=upgrade" else "received $i "+"x".repeat(160),ToolOutcome.SUCCESS))) }
+        val turn=AgentTurn("Continue Work, not Home",blocks)
+        var doc=SavedChat(records=listOf(SavedTurn.of(turn)))
+        val summaryRequests=java.util.concurrent.CopyOnWriteArrayList<AgentRequest>()
+        val model=AgentProvider { summaryRequests+=it; AgentReply(facts(it.turns.single().user)) }
+        val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},model::complete,TestPrompts.real.summary)
+        val result=engine.prepare(AgentRequest("base",emptyList(),listOf(turn),512,ownerInstructions="OWNER-SECRET-STYLE"))
+        assertTrue(summaryRequests.isNotEmpty())
+        assertTrue(summaryRequests.all { it.instructions==TestPrompts.real.summary && it.ownerInstructions=="" && it.systemContent()==TestPrompts.real.summary })
+        assertTrue(summaryRequests.none { r -> r.instructions.contains("OWNER-SECRET") || r.turns.any { t -> t.user.contains("OWNER-SECRET") } })
+        assertFalse(doc.summary.toString().contains("OWNER-SECRET"))
+        assertEquals("OWNER-SECRET-STYLE",result.ownerInstructions)
+    }
+
     @Test fun `summary requests use the summary prompt without tools and the main request keeps the system prompt`() = runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined); val runtime=AssistantChatRuntime()
         val history=AssistantChatHistory(Memory(),Box(),scope,Dispatchers.Unconfined)
