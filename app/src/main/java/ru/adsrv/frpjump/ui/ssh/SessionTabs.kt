@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -21,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -175,7 +175,7 @@ private fun SessionTab(s: SshSession, label: String, on: Boolean, dot: Color, ac
                     .clearAndSetSemantics {},
             )
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+        AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.terminal_close_session)) }, onClick = {
                 menu = false
                 actions.close(s.id)

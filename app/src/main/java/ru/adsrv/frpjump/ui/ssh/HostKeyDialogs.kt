@@ -1,8 +1,8 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -16,7 +16,7 @@ import ru.adsrv.frpjump.ssh.PinnedHostKey
 /** First connection to [target] ("device:port"): show its host key, trust it or not. Used by the terminal and the file screen. */
 @Composable
 fun HostKeyTrustDialog(target: String, presented: PinnedHostKey, onTrust: () -> Unit, onCancel: () -> Unit) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = {},
         title = { Text(stringResource(R.string.host_key_trust_title)) },
         text = {
@@ -43,7 +43,7 @@ fun HostKeyChangedDialog(
     onForget: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = {},
         title = { Text(stringResource(R.string.host_key_changed_title), color = MaterialTheme.colorScheme.error) },
         text = {

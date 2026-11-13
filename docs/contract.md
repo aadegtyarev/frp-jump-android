@@ -559,6 +559,22 @@ version and update, MQTT plugins (scenario 12), components and licenses).
     saved is Cancelled at once ("Not unlocked. Tap “Unlock” to try again." /
     "Not turned on: not confirmed.").
   - A phone whose screen lock was removed turns the setting off.
+  - A locked app shows no window of its own. The screens stay composed under
+    the lock screen (back stack, open pages, polling), but every separate
+    window is left out and takes no touch, key or TalkBack focus: dialogs,
+    bottom sheets, dropdown menus, popups, and a web page's `alert`,
+    `confirm`, `prompt` and leave-page question. Their state stays with the
+    screen, so after unlock a dialog or sheet is back as it was, with what was
+    typed in it. A page's script waits for its question until then, and it is
+    cancelled when the page or screen goes away first. A menu or popup open at
+    the lock is simply closed. Selection toolbars (terminal, web page, text
+    fields) are system action modes: the lock ends them and the focus is
+    cleared. All of the app's windows are made through `AppAlertDialog`,
+    `AppDialog`, `AppModalBottomSheet`, `AppPopup` and `AppDropdownMenu`
+    (`ui/LockedWindows.kt`), which read `LocalAppLocked`; a unit test fails
+    on a direct use of a window API elsewhere. The biometric prompt and other
+    windows of the system are not affected. Messages and toasts are dropped
+    while locked.
 - Language: system (default), Russian, English.
 - Theme: system (default), light, dark.
 

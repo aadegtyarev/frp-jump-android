@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
 import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
@@ -34,7 +35,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -517,7 +517,7 @@ fun TerminalScreen(
                         IconButton(onClick = { barMenu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
                         }
-                        DropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false }) {
+                        AppDropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false }) {
                             // Text size stays here, not on the bar, so the device name fits; the menu stays open while sizing.
                             Row(
                                 Modifier.padding(start = 16.dp, end = 8.dp),

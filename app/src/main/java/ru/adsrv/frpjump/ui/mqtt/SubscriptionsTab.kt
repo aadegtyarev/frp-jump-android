@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,8 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -223,7 +223,7 @@ private fun SubscriptionRowView(
             IconButton(onClick = { menu = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.mqtt_subscription_actions, row.filter), tint = colors.muted)
             }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 if (row.rooted != null) {
                     DropdownMenuItem(
                         text = {
@@ -295,7 +295,7 @@ internal fun SubscribeDialog(onSubscribe: (String) -> FilterRefusal?, onDismiss:
         if (filterSkipsDollar(text)) add(stringResource(R.string.mqtt_filter_dollar))
         if (filterHasGlobChars(text)) add(stringResource(R.string.mqtt_filter_literal))
     }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.mqtt_subs_add)) },
         text = {

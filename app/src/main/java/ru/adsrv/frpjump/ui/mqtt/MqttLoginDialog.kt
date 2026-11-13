@@ -1,9 +1,9 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,7 +55,7 @@ fun MqttLoginDialog(
         autofill?.cancel()
         onDismiss()
     }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = dismiss,
         title = { Text(stringResource(R.string.mqtt_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {

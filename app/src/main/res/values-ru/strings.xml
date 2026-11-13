@@ -6,6 +6,12 @@
     <!-- Common -->
     <string name="back">Назад</string>
     <string name="cancel">Отмена</string>
+    <string name="js_ok">OK</string>
+    <string name="js_page">Страница</string>
+    <string name="js_mute">Не показывать больше диалоги этой страницы</string>
+    <string name="js_leave">Уйти</string>
+    <string name="js_stay">Остаться</string>
+    <string name="js_leave_text">Уйти со страницы? Внесённые изменения могут не сохраниться.</string>
     <string name="save">Сохранить</string>
     <string name="assistant_title">LLM-помощник</string>
     <string name="assistant_enabled">Включить модуль помощника</string>

@@ -41,6 +41,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.ui.AppNav
+import ru.adsrv.frpjump.ui.ActionModes
+import ru.adsrv.frpjump.ui.LocalAppLocked
+import android.view.ActionMode
+import android.view.autofill.AutofillManager
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 
 /**
@@ -105,7 +109,7 @@ class MainActivity : AppCompatActivity() {
             val theme = settings.theme
             val locked by app.lock.locked.collectAsState()
             // stringResource() reads the activity's resources, which AppCompat has updated by then.
-            CompositionLocalProvider(LocalConfiguration provides config) {
+            CompositionLocalProvider(LocalConfiguration provides config, LocalAppLocked provides locked) {
                 FrpJumpTheme(theme) {
                     val dark = isDark(theme)
                     LaunchedEffect(dark) {
@@ -139,8 +143,23 @@ class MainActivity : AppCompatActivity() {
      * the keyboard goes, and [dispatchKeyEvent] drops keys meanwhile.
      */
     private fun keepInputOut() {
+        actionModes.finishAll()
+        getSystemService(AutofillManager::class.java)?.cancel()
         currentFocus?.clearFocus()
         WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.ime())
+    }
+
+    /** The floating selection toolbars (terminal, web page, text fields) are system action modes, not Compose windows. */
+    private val actionModes = ActionModes(locked = { app.lock.locked.value })
+
+    override fun onActionModeStarted(mode: ActionMode) {
+        super.onActionModeStarted(mode)
+        actionModes.started(mode)
+    }
+
+    override fun onActionModeFinished(mode: ActionMode) {
+        actionModes.finished(mode)
+        super.onActionModeFinished(mode)
     }
 
     /** While locked, hardware and injected keys stop here; Back (leave) and volume pass. */

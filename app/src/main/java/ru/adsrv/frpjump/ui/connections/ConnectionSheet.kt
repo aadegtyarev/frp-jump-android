@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.connections
 
+import ru.adsrv.frpjump.ui.AppModalBottomSheet
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -123,7 +123,7 @@ fun ConnectionSheet(
     }
 
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    AppModalBottomSheet(
         onDismissRequest = { if (!busy) onDismiss() },
         sheetState = sheet,
         containerColor = colors.card,

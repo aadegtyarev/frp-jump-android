@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.connections
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import ru.adsrv.frpjump.ui.mqtt.PluginsSheet
 import android.Manifest
 import android.content.ActivityNotFoundException
@@ -24,11 +26,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
@@ -548,7 +548,7 @@ fun hasMenu(row: ConnectionRow): Boolean = row.saved
 @Composable
 fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, onDismiss: () -> Unit) {
     val kind = row.connection.kind
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+    AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         val item = @Composable { label: Int, action: (ConnectionRow) -> Unit ->
             DropdownMenuItem(text = { Text(stringResource(label)) }, onClick = {
                 onDismiss()
@@ -621,7 +621,7 @@ fun ConnectionDialogs(
     ui.direct?.let { row ->
         val kept = row.tunnel?.direct == DirectMode.KEPT
         val device = row.connection.device
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { ui.direct = null },
             title = { Text(stringResource(if (kept) R.string.state_kept_through_server else R.string.state_through_server)) },
             text = {

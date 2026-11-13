@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.devices
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -119,7 +119,7 @@ fun DeviceCardScreen(
                         IconButton(onClick = { menu = true }, modifier = Modifier.size(44.dp)) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more), tint = colors.ink)
                         }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.device_menu_label)) }, onClick = {
                                 menu = false
                                 editing = DisplayEdit.LABEL

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.AppDialog
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -50,7 +51,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
@@ -186,7 +186,7 @@ private fun ComposerField(value: TextFieldValue, onValueChange: (TextFieldValue)
 /** The same draft and selection, not a second editor buffer or a saved-state value. */
 @Composable
 fun FullscreenTerminalText(onCollapse: () -> Unit, content: @Composable () -> Unit) {
-    Dialog(
+    AppDialog(
         onDismissRequest = onCollapse,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
