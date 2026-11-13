@@ -77,7 +77,7 @@ internal fun AssistantChatContent(
         val live = conversation.state.value.draft
         if (field.text != live) field = TextFieldValue(live, TextRange(live.length))
     }
-    BackHandler { conversation.close(); onBack() }
+    BackHandler { onBack() }
     val setup = when {
         !enabled -> R.string.chat_disabled
         provider.problem != null -> R.string.assistant_provider_read_failed
@@ -110,7 +110,7 @@ internal fun AssistantChatContent(
         Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { conversation.close(); onBack() }, modifier = Modifier.testTag("chat_back")) {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("chat_back")) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                 }
                 Text(titleText, style = titleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("chat_title"))
@@ -221,7 +221,6 @@ internal fun AssistantChatContent(
                     ChatProblem.INVALID_REPLY -> R.string.chat_invalid_reply
                     ChatProblem.PROVIDER -> R.string.chat_provider_failed
                     ChatProblem.TOO_LONG -> R.string.chat_too_long
-                    ChatProblem.INTERRUPTED -> R.string.chat_interrupted
                     ChatProblem.SUMMARY -> R.string.chat_summary_failed
                     ChatProblem.HISTORY_FULL -> R.string.chat_history_full
                 }) + state.problemStatus?.takeIf { state.problem == ChatProblem.SUMMARY }?.let { " (HTTP $it)" }.orEmpty(), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }

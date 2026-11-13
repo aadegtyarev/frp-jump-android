@@ -25,7 +25,10 @@ class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: 
 }
 
 /** The slot a pending question waits in; lives in [ChatCells] under the runtime gate. */
-internal class ConfirmationSlot(val id: Long, val answer: CompletableDeferred<ConfirmationDecision>)
+internal class ConfirmationSlot(val id: Long, val answer: CompletableDeferred<ConfirmationDecision>, val startedAt: Long = 0) {
+    /** Real time, not the coroutine clock: the five minutes run on while the device sleeps and while no chat screen exists. */
+    fun expired(now: Long) = now - startedAt >= ru.adsrv.frpjump.settings.ConfirmationTexts.WAIT_LIMIT_MS
+}
 
 /**
  * The app-side pieces a chat needs to ask: the live policy (read at each call, never captured), session grants, persisting "off"

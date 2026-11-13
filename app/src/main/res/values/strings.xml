@@ -1248,7 +1248,7 @@
     <string name="confirm_session">For session</string>
     <string name="confirm_always">Always</string>
     <string name="confirm_decline">Decline</string>
-    <string name="confirm_session_hint">Any command on this connection until you leave Chat.</string>
+    <string name="confirm_session_hint">Any command on this connection until you leave Chat and the assistant finishes.</string>
     <string name="always_dialog_title">Turn off confirmations?</string>
     <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and connections. Turn them back on in %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Turn off</string>
@@ -1298,6 +1298,8 @@
     <string name="terminal_images_partly">%2$d of %1$d images were not sent: %3$s</string>
     <string name="terminal_images_cut">Only the first %1$d images are used.</string>
     <string name="tab_assistant">Assistant</string>
+    <string name="assistant_state_working">Working</string>
+    <string name="assistant_state_waiting">Waiting for your answer</string>
     <string name="terminal_ask_assistant">Ask the assistant</string>
     <string name="chat_quote_truncated">[start truncated]</string>
 </resources>

@@ -44,7 +44,10 @@ One chat screen, one conversation, reached three ways; the entry changes nothing
   appears and disappears with the setting without a restart, and opens the chat over the current section; Back returns to that
   section. All five labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
   down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,
-  not as an unselected tab.
+  not as an unselected tab. While an attempt runs (a confirmation wait included) the item shows a small dot that takes no room, and
+  TalkBack announces its state: "Working" / «Работает», or "Waiting for your answer" / «Ждёт ответа» while a card waits; the dot is gone
+  when the attempt ends. The chat itself has no bottom bar, so the dot is seen exactly when the chat is not on screen, with or without
+  the notification permission.
 - Terminal ⋮ → "Ask the assistant" / «Спросить помощника», offered only while the module is on. The text selected in the shown tab
   with the app's own selection (a selection made inside tmux copy mode lives on the server; the app does not see it and does not
   quote it) is read from the terminal view when ⋮ is used, never in the background, and goes into the chat draft as a fenced code
@@ -60,9 +63,9 @@ There is only ever one chat entry: opening it while it is already open (from the
 screens that were opened over it, such as a notification's device card) returns to that chat by closing the screens above it, so
 its conversation, its saved history and a running Send are never doubled or stopped. A waiting terminal quote is taken by the chat at
 once and kept in memory only; it goes after the draft once the saved draft has loaded and no Send runs, and it is dropped with the chat
-if the owner leaves first. If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
+screen if the owner leaves first (an attempt that goes on does not keep it). If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
 
-Whichever entry opened the chat, the app lock, Stop on leaving, "For session" lasting until the chat screen is left, a disabled
+Whichever entry opened the chat, the app lock, Stop, "For session" lasting while the chat is open or an attempt runs, a disabled
 module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
 works from every entry. The assistant never reads terminal tabs by itself.
 
@@ -393,7 +396,8 @@ provider setup. Recovery re-reads provider metadata without unsealing a key.
 Send explicitly owns one pending operation, including off-Main credential
 preparation and the HTTP request. Follow-ups reuse the same provider instance
 and complete historical protocol exchanges. Interrupted attempts retain received
-results and an explicit unknown-outcome note, never executable pending calls; a
+results and an explicit unknown-outcome note, shown once, as the grey line under the interrupted turn (no second notice above the
+field), never executable pending calls; a
 pending confirmation is not saved and is never restored or executed.
 Stop cancels that operation (including a confirmation wait, which runs nothing), not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
@@ -407,9 +411,22 @@ stays editable for explicit retry. Setup/read/key, timeout, context-full,
 invalid-answer and provider failures use fixed messages, never raw diagnostics.
 There is no automatic retry, streaming or provider/model fallback.
 
+**An attempt outlives the chat screen.** The conversation belongs to the app, not to the screen. It is built when the chat is first
+opened (never at app start) and lasts while a chat screen is open (anywhere on the back stack, including under Tools or a screen
+opened over it) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
+the "For session" grants are cleared and memory is released; the next opening restores the saved history. Leaving the chat (Back, the
+arrow, another section, another app, the lock, activity recreation, the activity finishing) does not stop an attempt: its reply and
+results are saved to the history and are there when the chat is opened again. Reopening while it runs shows that same attempt with its
+Stop; there is no second conversation and no second admission. The chat's reactions to a disabled assistant, a provider revision, the
+busy slot and a tool switched off belong to the conversation, not the screen, and work while no chat screen exists. An attempt is
+stopped only by Stop, by turning the assistant off (off/on included), by a provider change that revokes it, by its own limits, by the
+server removing this phone's profile (the REMOVED screen) and by process death (the existing unknown-outcome note; there is no
+foreground service and no journal). Clearing the history is not a stop path: Clear stays unavailable for the whole attempt, a card
+wait included; the owner presses Stop first.
+
 ### Saved history
 
-The back-stack ViewModel retains the conversation across configuration changes.
+The back-stack ViewModel keeps the chat screen attached to the app-owned conversation across configuration changes.
 The app owns one canonical saved conversation: messages, observed protocol
 exchanges, turn outcomes, sources and draft. UI text, tool-detail panels and model
 requests are derived from those records, not separately persisted histories.
@@ -417,9 +434,9 @@ It seals one atomic `noBackupFilesDir/assistant_chat.json` document using the
 existing AES-256-GCM Keystore box, alias `frpjump-assistant-chat-v1`. There is no
 cloud synchronization, Android backup, conversation Bundle or plaintext log.
 Encoding, crypto and file IO run off Main. Messages,
-received replies/results, outcomes and route exit trigger saving; editor keystrokes
+received replies/results, outcomes, leaving the chat screen (the draft) and closing the conversation trigger saving; editor keystrokes
 do not rewrite the conversation. Retry state contains data only, not a live API
-provider. Saves coalesce; accepted local saves may finish after route exit. Process restart
+provider. Saves coalesce; accepted local saves may finish after the screen or the conversation is gone. Process restart
 restores the last committed snapshot, not an unfinished write or running action.
 
 Read/decryption failure is not an empty conversation and blocks overwriting it;
@@ -558,7 +575,7 @@ writes keep committed switches/authority and show an inline error. Tools remain
 changeable while Chat is busy. Chat's Tools action opens the same screen
 without popping the conversation. The Tools arrow and system Back return to that
 same owner, draft and completed history, including across recreation; actual Chat
-pop still cancels work and releases route memory; accepted history remains encrypted.
+pop does not cancel a running Send (see the attempt's lifetime under Send) and releases the screen's memory; accepted history remains encrypted.
 
 Tools autosaves each switch; there is no Save button or optimistic checked value.
 Settings and Chat show the same switches with the same autosave.
@@ -606,8 +623,8 @@ runs.
 
 Admission, every model/public/image start check and every source/progress/answer/error
 publication still check the captured owner, provider revision and disable version.
-Stop/pop, assistant disable (including off/on), provider revision/read failures
-cancel exact work; the shared slot remains occupied through DNS, the HTTP exchange and body read,
+Stop, assistant disable (including off/on), provider revision/read failures and the removal of
+this phone's profile cancel exact work (leaving the chat does not); the shared slot remains occupied through DNS, the HTTP exchange and body read,
 parser, owned SSH worker/readers and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
 image preparation and settings IO run off Main. How start checks serialize with
 settings and provider commits is described in [Run authority](#run-authority).
@@ -644,7 +661,8 @@ every tool (no card, nothing runs).
 
 Answers: **Allow** (this call), **For session**, **Always**, **Decline**. For
 session covers the tool and the exact target (today a saved connection) until
-the chat screen is left, the assistant is disabled, the tool is switched off,
+the chat screen is left and no attempt runs (the conversation ends; it gives no new authority, and a session no longer ends in the
+middle of an attempt), the assistant is disabled, the tool is switched off,
 the history is cleared, or the target, or what it belongs to, is edited or
 removed (for a saved connection: the connection or its profile; a grant is
 stamped with the target's saved definition and dropped when it changes). A For session grant is in memory
@@ -652,11 +670,14 @@ only. Always turns the app-wide switch off after a second confirmation (a dialog
 says what is turned off and where to turn it back on; Cancel returns to the
 question, still waiting); if that cannot be saved, the call is allowed once, an
 inline note says so, and requests stay on. Decline, and five minutes without an
-answer, give the model a fixed text (`declined` outcome) and nothing runs. A
+answer (measured in real time, device sleep included), give the model a fixed text (`declined` outcome) and nothing runs. A
 declined call is saved as `DECLINED` (sent to the model as `declined`) and shown
 as "Declined", or "No answer, declined" when the wait ran out, never as a
-failure. Stop, Back, disable and provider changes during the wait cancel it and
-run nothing; a late answer or a stale card id is ignored. An Always answer may
+failure. Stop, disable, provider changes and the removal of this phone's profile during the wait cancel it and
+run nothing; a late answer or a stale card id is ignored. Leaving the chat does not cancel the wait: a card raised while the chat is
+not shown waits, is shown in the chat when the owner returns and never over other screens, and the lock leaves it waiting behind it.
+The five minutes run meanwhile, in real time with device sleep included: an answer after them is never run (the card ends as "No
+answer, declined" and nothing runs), and a card that ran out while no chat screen was shown is "No answer, declined" on return. An Always answer may
 still persist "off" when Stop races the call, and a For session answer racing
 Stop may record its grant; the call itself never runs. The wait is in neither
 the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts
@@ -918,8 +939,8 @@ The SSH start check uses the existing Chat authority guard. Client creation,
 credentials, connect/auth/exec/read and cleanup run off Main; a start whose
 check passed before a commit may begin, is re-checked for
 cancellation before the client, after connect, after authentication and after
-opening the session, and is then cancelled. Stop, disable, revision, pop and
-timeout disconnect only the owned client, including one
+opening the session, and is then cancelled. Stop, disable, revision, the profile's removal and
+timeout (not leaving the chat) disconnect only the owned client, including one
 constructed after cancellation, and keep the global slot through actual worker,
 readers and cleanup exit.
 Timeouts (30 s tool / 120 s of Send active time by default; the confirmation wait is in neither, and has its own 5-minute limit) are cancellation thresholds, not
@@ -948,7 +969,7 @@ search payload cache, TTL or cross-Send reuse. Repeats are ordinary attempts und
 the same quotas; completed history is retained, not used as a content cache. Both
 attempt admission before DNS and actual HTTP spacing after DNS are enforced.
 Already charged attempts and mandatory block cooldowns are not rolled back by
-Stop/pop or real revocation. There is no cooldown queue. Attempts include failures;
+Stop or real revocation. There is no cooldown queue. Attempts include failures;
 403/429/CAPTCHA blocks search for that
 Send and applies a shared minimum 15-minute cooldown, extended by Retry-After
 bounded to 24 hours. No silent resume. Process death resets these limits; this
@@ -1046,7 +1067,7 @@ search call, its generated query. These literal selectable details are shown
 directly, including while the next model reply is pending or after that provider
 request fails; an explanation from the model is not required. They accompany
 completed turns and interrupted history entries. Current-attempt presentation
-advances with the next attempt; route exit releases its memory, not the accepted
+advances with the next attempt; closing the conversation releases its memory, not the accepted
 checkpoint. Late unauthorized output remains suppressed. These details reference
 already budgeted call/result data, not a separate persistent diagnostic log.
 Raw internal exceptions, credentials and withheld late output are not added.
@@ -1087,7 +1108,7 @@ unconditional completion. The production-owner/API35 screen fixture also exercis
 these multiple-result and stale-data/provider-failure outcomes; this is not live
 LLM quality certification. Deterministic ownership tests cover both refresh
 endpoints across profiles, revoke/start ordering, held HTTP interceptor/body exit with Stop
-reaching the exact calls, Stop/pop, module off/on and provider authority changes, without revoking a Send
+reaching the exact calls, Stop, module off/on and provider authority changes (a pop of the screen no longer stops a Send, and tests prove the Send goes on), without revoking a Send
 for tool-switch-only changes. Synthetic SSH client/owner tests cover saved target/auth/trust, bounded dual streams, honest status, target loss, admission refusal and phase-by-phase cancellation, disconnect thread and actual cleanup under Stop/timeout/revocation; a loopback SSH server test covers disconnect unblocking a blocked exec. The shared Tools binding and component fixtures
 include all five tool switches and the confirmation switch, save errors, retained owners and explicit invocation.
 Existing kernel tests use fake providers/tools. Adapter tests use synthetic
@@ -1096,7 +1117,7 @@ malformed-field fallback, disable invalidation, credential/root binding,
 revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
-Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/close during the wait, stale and repeated answers, virtual-time five-minute and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the indicator and the Tools switch.
+Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the indicator and the Tools switch.
 Chat tests exercise the production conversation owner with controlled preparation,
 providers and cancellation, plus the real credential-store → adapter loopback
 path. Real-adapter loopback tests prove prompt cancellation (stalled response and
@@ -1106,7 +1127,10 @@ DNS) do the same. Slot retention across completion, failure, cancellation and au
 changes before explicit retry is proven with a fake provider built on `blockingCancellable`.
 Synthetic navigation/Compose checks use the production Settings chat entry,
 chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
-setup recovery, recreation and pop. The explicit test-only plain-Application
+setup recovery, recreation, Back with an attempt that goes on, and the close of an idle conversation. Owner tests (unit and
+component) cover: the reply of an attempt that outlived the screen, a reopen that gets the same attempt and its Stop, grants kept while
+the screen or an attempt remains and cleared when both have ended, disable, provider change and tool-off reactions with no screen,
+the profile's removal stopping the attempt, the one interrupted note, and the bottom navigation's dot and its TalkBack state. The explicit test-only plain-Application
 runner is selected by `-PassistantChatComponentTests=true` and an explicit chat
 class filter; ordinary discovery keeps the default runner. Only that explicit
 debug fixture disables BootReceiver in the merged manifest, preventing boot

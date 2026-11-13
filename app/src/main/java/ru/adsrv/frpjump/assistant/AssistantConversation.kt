@@ -33,11 +33,18 @@ class AssistantConversation(
     private val confirmations: ConfirmationSupport?,
     /** Millisecond clock of the Send's active-time limit; tests pass a virtual one. */
     private val activeClock: () -> Long = { System.nanoTime() / 1_000_000 },
+    /**
+     * Millisecond clock of the confirmation card's five-minute limit. Production passes the elapsed-realtime clock, which keeps counting
+     * while the device sleeps (the coroutine timers do not); tests pass a virtual one.
+     */
+    private val realtime: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Called (outside the gate, on the finishing thread) after a Send's owner has been released; the app-lived owner closes an unattended chat here. */
+    private val onSettled: () -> Unit = {},
 ) {
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
@@ -121,22 +128,43 @@ class AssistantConversation(
         cancel?.cancel()
     }
     fun stop() { val cancel = synchronized(gate) { if (c.closed) null else c.pending?.also(own::stopLocked)?.job }; cancel?.cancel() }
+    /** Stops any attempt and ends the conversation at once (app shutdown, tests). The app-lived owner uses [closeIfIdle] instead. */
     fun close() {
-        val cancel = synchronized(gate) {
-            if (c.closed) return
-            c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.confirmation = null
-            confirmations?.grants?.clear(); c.mutable.value = ChatState(); c.pending?.job
-        }; cancel?.cancel()
+        val cancel = synchronized(gate) { closeLocked() }; cancel?.cancel()
     }
+    /**
+     * Ends the conversation (draft saved, grants cleared, memory released) only when no attempt runs, a card wait included.
+     * True when it is closed (also when it already was); false while an attempt still owns it.
+     */
+    fun closeIfIdle(): Boolean = synchronized(gate) { if (!c.closed && c.pending != null) false else { closeLocked(); true } }
+    /** Caller holds the gate. */
+    private fun closeLocked(): Job? {
+        if (c.closed) return null
+        c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.confirmation = null
+        confirmations?.grants?.clear(); c.mutable.value = ChatState(); return c.pending?.job
+    }
+    /** Saves the draft as it is now (the screen was left); no-op while the history loads or cannot be read. */
+    fun saveDraft() { synchronized(gate) { c.persist() } }
 
-    /** The owner's answer to the pending card. A stale id, no pending card, a stopped or closed run, or [ConfirmationDecision.NO_ANSWER] is ignored. */
+    /**
+     * The owner's answer to the pending card. A stale id, no pending card, a stopped or closed run, or [ConfirmationDecision.NO_ANSWER]
+     * is ignored. A card older than five real minutes is never answered: the press ends it as "no answer" and nothing runs.
+     */
     fun answer(id: Long, decision: ConfirmationDecision) {
         if (decision == ConfirmationDecision.NO_ANSWER) return
         val slot = synchronized(gate) {
             if (c.closed || c.pending?.stopped != false) null
             else c.confirmation?.takeIf { it.id == id }?.also { c.clearConfirmation(id) }
         }
-        slot?.answer?.complete(decision)
+        slot?.answer?.complete(if (slot.expired(realtime())) ConfirmationDecision.NO_ANSWER else decision)
+    }
+    /** Ends a card whose five real minutes have run out (the screen came back, or the device woke): "no answer", nothing runs. */
+    fun expireCard() {
+        val slot = synchronized(gate) {
+            if (c.closed || c.pending?.stopped != false) null
+            else c.confirmation?.takeIf { it.expired(realtime()) }?.also { c.clearConfirmation(it.id) }
+        }
+        slot?.answer?.complete(ConfirmationDecision.NO_ANSWER)
     }
     /** A tool that is switched off loses its session grants (the Tools screen can be opened without leaving Chat). */
     fun toolsChanged(enabled: ru.adsrv.frpjump.settings.AssistantTools) {
@@ -154,7 +182,7 @@ class AssistantConversation(
     private fun launch(admission: Admission): Job {
         val owner = admission.owner
         owner.job = scope.launch(start = CoroutineStart.LAZY) { TurnRunner(env, admission).run() }
-        owner.job.invokeOnCompletion { own.completed(owner); runtime.notifyBusy(); repaint() }
+        owner.job.invokeOnCompletion { own.completed(owner); runtime.notifyBusy(); onSettled(); repaint() }
         return owner.job
     }
     companion object {

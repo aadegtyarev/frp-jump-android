@@ -12,7 +12,9 @@ internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
     val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
-    val clock: () -> Long = { System.nanoTime() / 1_000_000 }) {
+    val clock: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */
+    val realtime: () -> Long = { System.nanoTime() / 1_000_000 }) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
 
@@ -27,7 +29,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private val owner = a.owner
     private val own = env.own
     private val deadline = ActiveDeadline(SEND_LIMIT_MS, env.clock)
-    private companion object { const val SEND_LIMIT_MS = 120_000L }
+    private companion object { const val SEND_LIMIT_MS = 120_000L; const val CARD_POLL_MS = 5_000L }
     private var transportTimeout = false
     private var invalidReply = false
     private var summaryProblem: ChatProblem? = null
@@ -77,12 +79,19 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private suspend fun ask(request: ChangeRequest, info: ConfirmationTargetInfo?): ConfirmationDecision {
         val answer = CompletableDeferred<ConfirmationDecision>()
         val id = env.confirmIds.incrementAndGet()
+        val started = env.realtime()
+        val slot = ConfirmationSlot(id, answer, started)
         own.guarded(owner, "confirmation") {
-            confirmation = ConfirmationSlot(id, answer)
+            confirmation = slot
             mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info))
         } ?: throw CancellationException("Send no longer owned")
         try {
-            return withTimeoutOrNull(ConfirmationTexts.WAIT_LIMIT_MS) { answer.await() } ?: ConfirmationDecision.NO_ANSWER
+            // The coroutine timer does not count device sleep, so the wait also looks at the real clock every few seconds.
+            return withTimeoutOrNull(ConfirmationTexts.WAIT_LIMIT_MS) {
+                var decision: ConfirmationDecision? = null
+                while (decision == null && !slot.expired(env.realtime())) decision = withTimeoutOrNull(CARD_POLL_MS) { answer.await() }
+                decision
+            } ?: ConfirmationDecision.NO_ANSWER
         } finally {
             own.clearConfirmation(id)
         }

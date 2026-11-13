@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
@@ -38,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -97,7 +99,7 @@ class AssistantEntryNavTest {
             compose.waitUntil(10_000) { compose.runOnUiThread { nav.visibleEntries.value.none { it.destination.route in setOf(Routes.CHAT, Routes.PROVIDER) } } }
             compose.waitForIdle()
         }
-        compose.runOnIdle { app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
+        compose.runOnIdle { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.IDLE; app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
         // Whatever the chat saved on the way is dropped, then the device's own chat file comes back.
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
         chatFile.restore()
@@ -153,6 +155,32 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("chat_back").performClick()
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         assertEquals(0, chatEntries())
+    }
+
+    @Test fun theConversationLivesWhileAScreenIsOverTheChatAndAnIdleOneClosesWhenTheChatIsGone() {
+        host()
+        openFromNav()
+        compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
+        // A screen over the chat: the chat's entry is still on the back stack, its conversation stays.
+        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
+        // Another section from there pops the chat: nothing runs, so the conversation closes (draft saved, grants cleared).
+        compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+        compose.waitUntil(10_000) { compose.runOnUiThread { app.assistantChatOwner.confirmations == null } }
+    }
+
+    @Test fun theNavigationDotFollowsTheAssistantActivityAndNoAttemptLeavesIt() {
+        host()
+        navItem.assertIsDisplayed()
+        compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true).assertCountEquals(0)
+        compose.runOnUiThread { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.WORKING }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
+        assertEquals(text(R.string.assistant_state_working), navItem.fetchSemanticsNode().config[SemanticsProperties.StateDescription])
+        compose.runOnUiThread { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.WAITING }
+        compose.waitUntil(10_000) { runCatching { navItem.fetchSemanticsNode().config[SemanticsProperties.StateDescription] == text(R.string.assistant_state_waiting) }.getOrDefault(false) }
+        compose.runOnUiThread { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.IDLE }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun askingFromTheTerminalWhileToolsAreOpenReturnsToTheChatWithTheQuote() {

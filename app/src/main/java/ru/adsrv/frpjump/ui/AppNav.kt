@@ -122,7 +122,11 @@ fun AppNav() {
     val removed by removedFlow.collectAsStateWithLifecycle(false)
     // The server rejected the current profile's token: its polling has stopped; say so wherever we are.
     LaunchedEffect(removed) {
-        if (removed && nav.currentDestination?.route != Routes.REMOVED) nav.replaceAll(Routes.REMOVED)
+        if (removed && nav.currentDestination?.route != Routes.REMOVED) {
+            // The chat screen no longer owns the attempt, so leaving it does not stop it: the removal does.
+            app.stopAssistantAttempt()
+            nav.replaceAll(Routes.REMOVED)
+        }
     }
     // A notification's tap: that profile's device card, over whatever is shown.
     val openDevice by app.openDevice.collectAsStateWithLifecycle()
@@ -464,8 +468,9 @@ internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composabl
     UpdateAnnouncement(selected, snackbars) { nav.goToTab(Tab.SETTINGS) }
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val assistant = assistantEnabledNow(app)
+    val activity by app.assistantActivity.collectAsStateWithLifecycle()
     Scaffold(
-        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null) { if (it != selected) nav.goToTab(it) } },
+        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null, assistantActivity = activity) { if (it != selected) nav.goToTab(it) } },
         snackbarHost = { SnackbarHost(snackbars) },
         containerColor = AppTheme.colors.ground,
         contentWindowInsets = WindowInsets(0),

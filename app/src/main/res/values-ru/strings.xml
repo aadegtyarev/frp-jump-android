@@ -1296,7 +1296,7 @@
     <string name="confirm_session">Для сессии</string>
     <string name="confirm_always">Всегда</string>
     <string name="confirm_decline">Отклонить</string>
-    <string name="confirm_session_hint">Любые команды на этом соединении, пока вы не выйдете из чата.</string>
+    <string name="confirm_session_hint">Любые команды на этом соединении, пока вы не выйдете из чата и помощник не закончит.</string>
     <string name="always_dialog_title">Выключить подтверждения?</string>
     <string name="always_dialog_text">Изменяющие команды будут выполняться без вопроса во всём приложении, для всех инструментов и соединений. Включить снова: %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Выключить</string>
@@ -1346,6 +1346,8 @@
     <string name="terminal_images_partly">%2$d из %1$d изображений не отправлены: %3$s</string>
     <string name="terminal_images_cut">Использованы только первые %1$d изображений.</string>
     <string name="tab_assistant">Помощник</string>
+    <string name="assistant_state_working">Работает</string>
+    <string name="assistant_state_waiting">Ждёт ответа</string>
     <string name="terminal_ask_assistant">Спросить помощника</string>
     <string name="chat_quote_truncated">[начало обрезано]</string>
 </resources>

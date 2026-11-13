@@ -169,6 +169,18 @@ class FrpJumpApp : Application() {
         private set
     /** Read on first use from the Send's IO path, never on Main; a missing asset surfaces as a setup problem. */
     val assistantPrompts: Lazy<ru.adsrv.frpjump.assistant.AssistantPrompts> = lazy { ru.adsrv.frpjump.assistant.AssistantPrompts.load(assets::open) }
+    /** Whether an attempt runs or waits for an answer, for the bottom navigation's dot; exists from the start, the owner below does not. */
+    val assistantActivity = kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.assistant.ChatActivity.IDLE)
+    private val chatOwner = lazy {
+        ru.adsrv.frpjump.assistant.AssistantChatOwner(appScope, settings, assistantProvider, assistant, profileInformation, assistantSshCommands,
+            assistantHistory, pendingUndo, assistantPrompts,
+            prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
+            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity)
+    }
+    /** The app-lived owner of the chat conversation, built on the first chat opening (never at app start). */
+    val assistantChatOwner: ru.adsrv.frpjump.assistant.AssistantChatOwner get() = chatOwner.value
+    /** Stops a running assistant attempt without building the owner when no chat was ever opened (the server removed this phone's profile). */
+    fun stopAssistantAttempt() { if (chatOwner.isInitialized()) chatOwner.value.stop() }
     val assistantHistory by lazy {
         ru.adsrv.frpjump.assistant.AssistantChatHistory(AtomicTextFile(File(noBackupFilesDir, "assistant_chat.json")),
             KeystoreSecretBox("frpjump-assistant-chat-v1"), appScope)

@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.assistant.ChatActivity
 
 /** The app's sections, as the bottom navigation lists them. */
 enum class Tab(val label: Int, val icon: ImageVector) {
@@ -47,17 +51,21 @@ enum class Tab(val label: Int, val icon: ImageVector) {
 }
 
 /** One item of the bottom navigation: a section, or the assistant (never selected here: it opens over the section). */
-private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, val tag: String, val isTab: Boolean = true, val onClick: () -> Unit)
+private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, val tag: String, val isTab: Boolean = true, val state: Int? = null, val onClick: () -> Unit)
 
 /**
  * The bottom navigation of the mockups: equal items, the selected one in the accent with its icon on a pill. With [onAssistant]
  * a fifth item, "Assistant", opens the chat over the current section; without it (the assistant is off) there are four.
  */
 @Composable
-fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) -> Unit) {
+fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, assistantActivity: ChatActivity = ChatActivity.IDLE, onSelect: (Tab) -> Unit) {
     val colors = AppTheme.colors
     val entries = Tab.entries.map { NavEntry(it.label, it.icon, it == selected, "nav_" + it.name.lowercase()) { onSelect(it) } } +
-        listOfNotNull(onAssistant?.let { NavEntry(R.string.tab_assistant, ChatGlyph, false, "nav_assistant", isTab = false, onClick = it) })
+        listOfNotNull(onAssistant?.let { NavEntry(R.string.tab_assistant, ChatGlyph, false, "nav_assistant", isTab = false, state = when (assistantActivity) {
+            ChatActivity.IDLE -> null
+            ChatActivity.WORKING -> R.string.assistant_state_working
+            ChatActivity.WAITING -> R.string.assistant_state_waiting
+        }, onClick = it) })
     Surface(color = colors.card) {
         Column {
             HorizontalDivider(color = colors.divider)
@@ -73,11 +81,14 @@ fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) 
                     entries.forEach { tab ->
                         val on = tab.on
                         val tint = if (on) colors.accent else colors.muted
+                        val stateText = tab.state?.let { stringResource(it) }.orEmpty()
                         Column(
                             Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
                                 .testTag(tab.tag)
+                                // A running assistant is told to TalkBack too, not only by the dot.
+                                .then(if (tab.state != null) Modifier.semantics { stateDescription = stateText } else Modifier)
                                 .then(
                                     // A section is a tab; the assistant opens over it and is never selected, so it is a button, not an unselected tab.
                                     if (tab.isTab) Modifier.selectable(selected = on, role = Role.Tab, onClick = tab.onClick)
@@ -86,15 +97,22 @@ fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) 
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            Icon(
-                                tab.icon,
-                                contentDescription = null,
-                                tint = tint,
-                                modifier = Modifier
-                                    .background(if (on) colors.accentContainer else colors.card, CircleShape)
-                                    .padding(horizontal = 16.dp, vertical = 3.dp)
-                                    .size(20.dp),
-                            )
+                            Box {
+                                Icon(
+                                    tab.icon,
+                                    contentDescription = null,
+                                    tint = tint,
+                                    modifier = Modifier
+                                        .background(if (on) colors.accentContainer else colors.card, CircleShape)
+                                        .padding(horizontal = 16.dp, vertical = 3.dp)
+                                        .size(20.dp),
+                                )
+                                // The dot sits on the icon's corner and takes no room of its own, so the row does not move.
+                                if (tab.state != null) Box(
+                                    Modifier.align(Alignment.TopEnd).padding(end = 12.dp).size(8.dp)
+                                        .background(colors.accent, CircleShape).testTag("nav_assistant_dot"),
+                                )
+                            }
                             Text(
                                 stringResource(tab.label),
                                 color = tint,

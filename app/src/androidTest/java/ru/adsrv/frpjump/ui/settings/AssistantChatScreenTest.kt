@@ -112,7 +112,7 @@ class AssistantChatScreenTest {
             androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).hide(androidx.core.view.WindowInsetsCompat.Type.ime())
         }
     }
-    @org.junit.After fun closeInformationFixture() { hideKeyboard(); informationFixture?.close(); historyCleanup?.invoke() }
+    @org.junit.After fun closeInformationFixture() { hideKeyboard(); testOwner?.shutdown(); informationFixture?.close(); historyCleanup?.invoke() }
     private var information = ru.adsrv.frpjump.profiles.ProfileInformation(
         kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true,
             index = ru.adsrv.frpjump.profiles.ProfileIndex(listOf(ru.adsrv.frpjump.profiles.Profile("synthetic-profile", "Synthetic profile", "green", "never-export-alias"))))),
@@ -140,7 +140,14 @@ class AssistantChatScreenTest {
     private var windowHeightDp: Int? = null
     /** The shipped assets, read through the app under test. */
     private val prompts = lazy { AssistantPrompts.load(InstrumentationRegistry.getInstrumentation().targetContext.assets::open) }
-    private fun vm() = AssistantChatViewModel(settings, store, module, information, sshCommands, historyStore = history, prompts = prompts) {
+    /**
+     * The app-lived owner stands in for the application's: one per test, kept across the chat screens the test opens and closes, so a
+     * screen's pop does what it does in the app (an attempt goes on, an idle conversation closes). It is built when first needed, with the
+     * fixtures the test has set by then, and ended after the test.
+     */
+    private var testOwner: AssistantChatOwner? = null
+    private fun owner(): AssistantChatOwner = testOwner ?: AssistantChatOwner(CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), settings, store, module,
+        information, sshCommands, history, null, prompts, prepare = {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
         AgentProvider { request ->
             requests += request; calls++
@@ -207,7 +214,8 @@ class AssistantChatScreenTest {
                 else -> AgentReply("Complete answer $calls")
             }
         }
-    }
+    }, realtime = { SystemClock.elapsedRealtime() }).also { testOwner = it }
+    private fun vm() = AssistantChatViewModel(settings, store, owner())
     private fun summaryFacts(text: String) = listOf("target", "done", "unknown").joinToString("; ") { key ->
         "$key=" + (Regex("$key=([a-z-]+)").find(text)?.groupValues?.get(1) ?: error("Missing observed $key"))
     }
@@ -546,7 +554,7 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertNotNull(copySelection) }
     }
 
-    @Test fun recreationRetainsActualBackStackOwnerAndPopDiscards() {
+    @Test fun recreationRetainsActualBackStackOwnerAndPopOfAnIdleChatClosesIt() {
         install()
         input().performTextInput("First")
         sendAndAwait()
@@ -579,24 +587,30 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals(0, calls) }
     }
 
-    @Test fun popDuringPreparationAndReopenKeepsGlobalSlotWithoutOldText() {
+    @Test fun popDuringPreparationKeepsTheAttemptAndReopenShowsTheSameOneWithItsStop() {
         mode = "prepare"
         install()
         input().performTextInput("Private old draft")
         button("chat_send").performClick()
         assertTrue(prepEntered.await(3, java.util.concurrent.TimeUnit.SECONDS))
+        lateinit var running: AssistantConversation
+        compose.runOnIdle { running = owner!! }
         try {
             button("chat_back").performClick()
+            compose.onNodeWithText("Outside chat").assertExists()
+            // The screen is gone, the attempt is not: its conversation is still alive and busy.
+            compose.runOnIdle { assertTrue(running.state.value.busy); assertEquals("Private old draft", running.state.value.pendingText) }
             compose.onNodeWithTag("assistant_chat_entry").performClick()
-            button("chat_stop").assertIsDisplayed().assertIsNotEnabled()
-            compose.onNodeWithText("Private old draft").assertDoesNotExist()
-            compose.runOnIdle { assertEquals(0, calls); assertTrue(owner!!.state.value.turns.isEmpty()) }
+            // The same conversation and attempt, Stop live (not "Stopping"), the question still on the screen.
+            button("chat_stop").assertIsDisplayed().assertIsEnabled()
+            compose.runOnIdle { assertSame(running, owner); assertEquals("Private old draft", owner!!.state.value.pendingText); assertEquals(0, calls) }
         } finally { prepRelease.countDown() }
         awaitIdle()
+        compose.runOnIdle { assertEquals(1, calls); assertEquals("Private old draft", owner!!.state.value.turns.single().user) }
         compose.runOnIdle { mode = "answer" }
         input().performTextInput("New draft")
         sendAndAwait()
-        compose.runOnIdle { assertEquals(1, calls); assertEquals("New draft", owner!!.state.value.turns.single().user) }
+        compose.runOnIdle { assertEquals(2, calls); assertEquals(listOf("Private old draft", "New draft"), owner!!.state.value.turns.map { it.user }) }
         val russian = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag("ru")) }
         val resources = compose.activity.createConfigurationContext(russian).resources
         val hint = resources.getString(ru.adsrv.frpjump.R.string.assistant_provider_stage_hint)
@@ -1465,6 +1479,36 @@ class AssistantChatScreenTest {
         compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null }
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("Work · board1500 · Service admin")
         button("chat_stop").performClick(); awaitIdle()
+    }
+
+    @Test fun backWhileTheOwnerIsAskedKeepsTheCardWaitingAndItIsShownAndAnswerableOnReturn() {
+        val fixture = ProfileInformationFixture(); informationFixture = fixture
+        sshCommands = sshOver(fixture.state, fixture.hidden); sshTarget = "work" to "work-root"
+        startConfirmation()
+        lateinit var asking: AssistantConversation
+        compose.runOnIdle { asking = owner!! }
+        button("chat_back").performClick()
+        compose.onNodeWithText("Outside chat").assertExists()
+        compose.onAllNodesWithTag("chat_confirm_session").assertCountEquals(0)
+        compose.runOnIdle { assertNotNull(asking.state.value.confirmation); assertTrue(asking.state.value.busy) }
+        compose.onNodeWithTag("assistant_chat_entry").performClick()
+        shown("chat_confirm_session"); shown("chat_confirm_decline")
+        compose.runOnIdle { assertSame(asking, owner) }
+        button("chat_confirm_decline").performClick(); awaitIdle()
+        compose.runOnIdle { assertEquals(ToolOutcome.DECLINED, requests.last().turns.last().exchanges.single().results.single().outcome) }
+    }
+
+    @Test fun anInterruptedAttemptIsToldOnceUnderItsTurnAndNotAgainAboveTheField() {
+        val first = history ?: AssistantChatHistory(Memory(), object : SecretBox {
+            override fun seal(plain: String) = plain
+            override fun open(sealed: String) = sealed
+            override fun destroy() = Unit
+        }, CoroutineScope(SupervisorJob() + Dispatchers.Default)).also { history = it }
+        first.save(SavedChat(records = listOf(SavedTurn("Interrupted question", listOf(SavedExchange(SavedReply("partial"))), status = SavedTurnState.INTERRUPTED))))
+        install()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Interrupted question").fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText(localizedText(ru.adsrv.frpjump.R.string.chat_interrupted)).assertCountEquals(1)
+        compose.onAllNodesWithTag("chat_error").assertCountEquals(0)
     }
 
     @Test fun switchingTheToolOffInToolsEndsTheSessionGrantAndTheNextCallAsksAgain() {

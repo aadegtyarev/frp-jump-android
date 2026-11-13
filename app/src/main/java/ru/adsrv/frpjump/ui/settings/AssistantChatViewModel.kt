@@ -2,40 +2,47 @@ package ru.adsrv.frpjump.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import ru.adsrv.frpjump.settings.assistantTools
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.agent.AgentModule
 import ru.adsrv.frpjump.agent.AgentProvider
 import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.SettingsStore
 
-/** Back-stack scoped, without SavedStateHandle: recreation retains memory; pop releases it. */
+/**
+ * Back-stack scoped, without SavedStateHandle: recreation retains it; leaving the chat releases it. The conversation itself belongs to
+ * the app-lived [AssistantChatOwner]: this model only attaches to it and detaches in [onCleared], so a running attempt outlives the screen.
+ * A model built from its parts (tests) owns a private owner and ends it with itself.
+ */
 class AssistantChatViewModel(
     private val settingsStore: SettingsStore,
     providerStore: AssistantProviderStore,
-    module: AgentModule,
-    profileInformation: ru.adsrv.frpjump.profiles.ProfileInformation? = null,
-    sshCommands: AssistantSshCommands? = null,
-    historyStore: AssistantChatHistory? = null,
-    private val historyUndo: ru.adsrv.frpjump.undo.PendingUndo? = null,
-    prompts: Lazy<AssistantPrompts>,
-    prepare: (AssistantProviderSnapshot) -> AgentProvider = {
-        providerStore.provider(AssistantProviderDraft(checkNotNull(it.settings), it.revision))
-    },
+    private val owner: AssistantChatOwner,
+    private val ownsOwner: Boolean = false,
 ) : ViewModel() {
-    constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistant, app.profileInformation, app.assistantSshCommands,
-        app.assistantHistory, app.pendingUndo, app.assistantPrompts)
+    constructor(app: FrpJumpApp) : this(app.settings, app.assistantProvider, app.assistantChatOwner)
+    constructor(
+        settingsStore: SettingsStore,
+        providerStore: AssistantProviderStore,
+        module: AgentModule,
+        profileInformation: ru.adsrv.frpjump.profiles.ProfileInformation? = null,
+        sshCommands: AssistantSshCommands? = null,
+        historyStore: AssistantChatHistory? = null,
+        historyUndo: ru.adsrv.frpjump.undo.PendingUndo? = null,
+        prompts: Lazy<AssistantPrompts>,
+        prepare: (AssistantProviderSnapshot) -> AgentProvider = {
+            providerStore.provider(AssistantProviderDraft(checkNotNull(it.settings), it.revision))
+        },
+    ) : this(settingsStore, providerStore, AssistantChatOwner(CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), settingsStore, providerStore, module,
+        profileInformation, sshCommands, historyStore, historyUndo, prompts, prepare, { System.nanoTime() / 1_000_000 }), true)
     init { require(settingsStore.assistantChat === providerStore.chatRuntime) }
-    /** Always present in the app: a chat built here asks before a changing call. Only kernel tests build a conversation without it. */
-    internal val confirmations = ru.adsrv.frpjump.assistant.chat.chatConfirmationSupport(settingsStore, sshCommands)
-    val conversation = AssistantConversation(viewModelScope,
-        availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
-        prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands,
-        historyStore = historyStore, awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") }, prompts = prompts, confirmations = confirmations)
+    val conversation: AssistantConversation = owner.attach()
+    /** The live conversation's confirmation support: a chat built here asks before a changing call. */
+    internal val confirmations get() = owner.confirmations
     /** A terminal quote this chat has taken and not yet put in the draft. Memory only: it goes with the model, never saved or restored. */
     val heldQuote = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     /** Counts quotes taken, so the screen can come back from its Tools sub-screen when one arrives (the flow above is cleared once applied). */
@@ -46,20 +53,14 @@ class AssistantChatViewModel(
     }
     fun clearHistory() {
         if (!conversation.hideHistory()) return
-        if (historyUndo == null) viewModelScope.launch { conversation.deleteHistory() }
-        else historyUndo.enqueue("assistant-chat-history", commit = { conversation.deleteHistory() }, undo = { conversation.reloadHistory() })
+        val undo = owner.historyUndo
+        if (undo == null) viewModelScope.launch { conversation.deleteHistory() }
+        else undo.enqueue("assistant-chat-history", commit = { conversation.deleteHistory() }, undo = { conversation.reloadHistory() })
     }
     val settings = settingsStore.settings
     val provider = providerStore.state
-    init {
-        viewModelScope.launch { settingsStore.assistantDisables.collect { conversation.refresh() } }
-        viewModelScope.launch { settingsStore.assistantChat.busy.collect { conversation.refresh() } }
-        viewModelScope.launch { provider.collect { conversation.refresh() } }
-        // A tool that is switched off loses its session grants, even though the Tools screen opens without leaving Chat.
-        viewModelScope.launch { settingsStore.settings.map { it.assistantTools() }.distinctUntilChanged().collect { conversation.toolsChanged(it) } }
-    }
     /** Turns confirmation requests back on (the Chat indicator's action); the Tools switch does the same through its own binding. */
     fun turnConfirmationsOn() { tools.changeConfirmations(true) }
     internal val tools = AssistantToolsBinding(settingsStore, viewModelScope)
-    override fun onCleared() { conversation.close() }
+    override fun onCleared() { owner.detach(); if (ownsOwner) owner.shutdown() }
 }
