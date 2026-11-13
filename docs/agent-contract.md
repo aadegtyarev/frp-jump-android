@@ -3,9 +3,30 @@
 ## Boundary and availability
 
 This surface covers the optional assistant kernel, external API adapter and
-provider setup and a locally saved chat with optional public-read, profile-information and SSH-command tools. The owner uses Settings to opt in,
+provider setup and a locally saved chat with optional public-read,
+profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat; maintainers can supply provider/tool
-implementations to the kernel. Tunnel-control tools remain unavailable. The enabled SSH-command exception and read tools are described below. `ssh_command` and `profile_information` are assistant adapters over operations of the [operations surface](contracts/surfaces/operations.md); the texts and behavior below are unchanged by that layer. Calls of tools that change something (today `ssh_command`) ask the owner first unless the owner turned the question off or answered For session for that connection; see [Confirmation of changing calls](#confirmation-of-changing-calls).
+implementations to the kernel. Tunnel-control tools remain unavailable. Every
+tool is one row of the [tool table](#tool-table) and follows the common
+[tool policy](#tool-policy); a tool's own subsection describes only what is
+specific to it. `ssh_command` and `profile_information` are assistant adapters
+over operations of the [operations surface](contracts/surfaces/operations.md);
+the texts and behavior below are unchanged by that layer. Calls of tools that
+change something (today `ssh_command`) ask the owner first unless the owner
+turned the question off or answered For session for that tool and target; see
+[Confirmation of changing calls](#confirmation-of-changing-calls).
+
+What the assistant can never do. Each rule is stated where it applies:
+
+- Tunnels: no tunnel creation, start, reconfiguration or deletion is granted to
+  the agent. No tool starts or controls a tunnel ([tool policy](#tool-policy),
+  [tool table](#tool-table)).
+- Credentials: app-stored credentials are not tool arguments or results, and no
+  model credentials are accepted ([SSH command](#optional-ssh-command),
+  [profile information](#optional-profile-information)). No credentials are
+  automatically attached to requests ([Instructions](#instructions)). The
+  provider key is sent only to its configured target
+  ([External API adapter](#external-api-adapter)).
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -20,70 +41,62 @@ Settings → LLM assistant enables or disables the experimental module. It is
 **off by default**, including upgrades from versions without this setting.
 The preference is committed before the switch reports success. A failed
 write retains the previous preference and shows an error. A malformed new
-flag falls back to off without resetting unrelated settings. The opposite holds for the confirmation value (below): a malformed value falls back to ask (requests on).
+flag falls back to off without resetting unrelated settings. The opposite holds
+for the confirmation value ([below](#confirmation-of-changing-calls)): a
+malformed value falls back to ask (requests on).
 
 Settings → LLM assistant → Assistant provider configures one external
-OpenAI-compatible provider. Chat is available next to provider setup. SSH commands require their own default-off tool switch; tunnel control is **not available**. Enabling the module, opening settings or
-saving a provider performs no network request. Fetch models is an explicit
-user action and is available during setup even while the agent module is off.
-A saved provider is configuration, not evidence of a successful API call.
-See [provider settings and credentials](#provider-settings-and-credentials) for
+OpenAI-compatible provider. Chat is available next to provider setup. SSH
+commands require their own default-off tool switch; tunnel control is **not
+available**. Enabling the module, opening settings or saving a provider
+performs no network request. Fetch models is an explicit user action and is
+available during setup even while the agent module is off. A saved provider is
+configuration, not evidence of a successful API call. See
+[provider settings and credentials](#provider-settings-and-credentials) for
 Save, Fetch models and recovery behavior.
 
-## Separation
+## Kernel
 
-- `agent-core` is a plain Kotlin/JVM module: provider-neutral messages,
-  suspend provider/tool interfaces, one execution loop, bounded window and
-  results, cancellation (including the blocking-call and start-admission
-  primitives `blockingCancellable` and `SideEffectAdmission`) and observable
-  events. It has no Android, HTTP,
-  SSH, connection-discovery or credential dependency. It uses Kotlin
-  coroutines/JSON already used by the app, not an agent framework.
-- The app owns the opt-in setting and module lifetime. Every successfully
-  committed disable advances an in-memory invalidation version, even if a
-  conflated settings observer sees only the later enabled value. Admission and
-  run ownership check that authority directly; the observer cancels stale child
-  jobs outside the settings monitor. Failed writes do not invalidate work.
-  Enabling again cannot revive an old run. This version is process-local: no
-  execution survives process restart and no persistent journal is needed.
-  Neutral providers need no admission API: the app checks admission before each
-  provider call. Transports that start their own network work (public web,
-  image) check admission immediately before each start.
-- `agent-openai` implements non-streaming OpenAI-compatible Chat Completions
-  and model discovery. It is not constructed or called by enabling the module.
-- `AssistantProviderStore` owns the app-private atomic provider document and
-  Keystore-backed credential; its observable snapshot contains metadata only.
-- The kernel does not itself grant target access. Any connection-tool adapter
-  must bind to its admitted connection identity and must never resolve a
-  replacement client after a disconnect. The SSH adapter below owns one ordinary client; the information tool reads shared application state. Neither starts or controls tunnels.
-- The application skill is the base system prompt,
-  [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-  (version 5). Chat attaches it to every main chat-loop request as the first
-  message, unchanged and byte-stable within and across Sends. It is guidance for
-  the model, not a permission system or an executing script; the code enforces
-  every limit. The compact summarizer prompt is `assets/assistant/summary.md`
-  (version 2); summary requests open with it instead. Both are read strictly
-  (UTF-8, no byte order mark) and there is no compiled-in fallback prompt. Still
-  compiled into the app are the fixed image-inspection question wording, the
-  summary request framing text ("Earlier conversation summary", "Previous
-  summary / Observed conversation"), tool descriptions and schemas, and fixed
-  tool-result texts. No automatic app context is attached.
+`agent-core` is a plain Kotlin/JVM module: provider-neutral messages, suspend
+provider/tool interfaces, one execution loop, bounded window and results,
+cancellation (including the blocking-call and start-admission primitives
+`blockingCancellable` and `SideEffectAdmission`) and observable events. It has
+no Android, HTTP, SSH, connection-discovery or credential dependency. It uses
+Kotlin coroutines/JSON already used by the app, not an agent framework.
 
-## Minimal execution
+### Module lifetime and revocation
+
+The app owns the opt-in setting and module lifetime. Every successfully
+committed disable advances an in-memory invalidation version, even if a
+conflated settings observer sees only the later enabled value. Admission and
+run ownership check that authority directly; the observer cancels stale child
+jobs. Failed writes do not invalidate work. Enabling again cannot revive an old
+run. This version is process-local: no execution survives process restart and
+no persistent journal is needed. Neutral providers need no admission API: the
+app checks admission before each provider call. Transports that start their own
+network work (public web, image) check admission immediately before each start.
+
+### Turn loop
 
 One run at a time. A new request while one is running returns busy rather
 than waiting and silently running later. A stopped/noncooperative run keeps
 that slot until it exits. Runs own child jobs; stopping the assistant must
 not cancel unrelated application work.
 
-Each step is one provider request followed by the proposed tools, in order. A call of a changing tool may first wait for the owner (see Confirmation of changing calls); the calls stay in order.
-Tool calls and their results form one indivisible exchange. Duplicate call
-IDs within a run, incomplete exchanges, excessive replies and empty final
-responses are rejected. Unknown tools and tool failures are explicit results.
-Raw exception messages are not given to the model. There are no automatic
-provider/tool retries.
-Every tool checks the captured owner before validating its arguments, so an invalid-argument
-result is reported only for an owned call. The confirmation hook runs before the tool, only for known tools, and the owner is checked again after it returns, so a Stop or disable that raced the answer wins and nothing runs.
+Each step is one provider request followed by the proposed tools, in order. A
+call of a changing tool may first wait for the owner (see
+[Confirmation of changing calls](#confirmation-of-changing-calls)); the calls
+stay in order. Tool calls and their results form one indivisible exchange.
+Duplicate call IDs within a run, incomplete exchanges, excessive replies and
+empty final responses are rejected.
+
+Disabled and busy admission return without a provider/tool call. A run finishes
+with complete, context-full, step-limit, model-timeout, provider-failed or
+invalid-reply status; cancellation propagates to its caller. Tool outcomes are
+success, failed, timeout, unknown-tool or declined (the owner refused the call;
+nothing ran), distinct from the run's finish status.
+
+### Limits
 
 Execution defaults are finite, validated kernel parameters, not settings UI:
 
@@ -94,17 +107,9 @@ Execution defaults are finite, validated kernel parameters, not settings UI:
 | Model request timeout | 60 seconds |
 | Tool timeout | 30 seconds (the owner's confirmation wait is not part of it) |
 
-Disabled and busy admission return without a provider/tool call. A run finishes
-with complete, context-full, step-limit, model-timeout, provider-failed or
-invalid-reply status; cancellation propagates to its caller. Tool outcomes are
-success, failed, timeout, unknown-tool or declined (the owner refused the call; nothing ran), distinct from the run's finish status. The model timeout does not include the confirmation wait either.
+The model timeout does not include the confirmation wait either.
 
-Timeouts and cancellation are cooperative: adapters must support cancellation
-of their own I/O. An already performed remote change is not rolled back by
-Stop. A timed-out tool may have an uncertain remote outcome and must not be
-blindly repeated.
-
-## Sliding window, not compression
+### Sliding window, not compression
 
 The kernel builds an active request while retaining the caller's history
 unchanged. Instructions, tool schemas, the current user request and output
@@ -134,7 +139,132 @@ transport-buffer guarantee. Stream-reading adapters must cap capture as data
 arrives. The kernel does not own full UI history/storage or an unbounded
 background store; text chat owns its bounded encrypted history separately.
 
-## Text chat
+## Provider
+
+`agent-openai` implements non-streaming OpenAI-compatible Chat Completions and
+model discovery. It is not constructed or called by enabling the module.
+`AssistantProviderStore` owns the app-private atomic provider document and
+Keystore-backed credential; its observable snapshot contains metadata only.
+
+### Provider settings and credentials
+
+From Settings → LLM assistant → Assistant provider, enter the API root and key,
+then enter a model ID or use Fetch models and select one. Save commits the form;
+model discovery is not required to enter a manual model ID.
+
+The form accepts API root, model ID (manual or explicitly fetched), optional
+effort (provider default, presets or a manually entered value), model context
+window, output reserve and the output-token parameter spelling. It also accepts
+the summary trigger percentage (default 80, range 1–100) and an optional summary
+model ID; blank uses the chat model. The form explains the additional model
+request and shared provider/key/window requirements. Saving makes no request. The API key
+field is masked, never prefilled, and deliberately excluded from saved instance
+state. A restored form that lost a replacement key requires re-entry rather
+than silently falling back to the stored key. Draft metadata and the original
+revision survive recreation; an old draft cannot retarget newer settings.
+
+A blank key keeps the saved credential only for the same canonical API root.
+Changing the root requires explicit key entry, for both Save and Fetch models.
+The key and its canonical root are sealed together with AES-256-GCM through
+Android Keystore alias `frpjump-assistant-provider-v1`. Root binding is checked
+on unseal too, so changing plaintext metadata cannot redirect the saved key.
+One atomic file, `assistant_provider.json`, commits metadata plus sealed
+credential together. No plaintext key or sealed blob enters the public StateFlow.
+Unsealing happens only for explicit provider use; metadata-only saves keep the
+existing sealed bytes without decrypting them.
+
+Each commit has a new revision. Save, credential resolution and discovery
+completion check their originating revision, reading current storage rather
+than trusting an old UI snapshot. Read/decode failures are not treated as an
+empty profile and cannot overwrite unknown data.
+
+#### Failure and recovery
+
+Retry reads an unreadable provider document again; there is no destructive
+reset UI for it. An unreadable Keystore credential can be replaced by entering
+a new key without decrypting the old one.
+
+Save waits for commit and keeps the form/error on failure. Pending operations
+prevent duplicate input; disposed or duplicate callbacks cannot finish a newer
+operation. Leaving the form cancels model discovery. Failed discovery does not
+prevent a manual model ID. Errors use fixed messages/status codes, never raw
+server, crypto or storage exception content. No live credentials are required
+by tests. Deactivation stops agent work, not an explicitly requested settings
+inventory operation; saving/enabling never silently starts discovery or chat.
+
+### External API adapter
+
+`OpenAiConfig` selects the API root (usually ending in `/v1`), model ID,
+optional explicit `reasoning_effort`, output-token parameter spelling
+(`max_tokens` or `max_completion_tokens`) and finite byte bounds. Discovery
+can run before model selection. No provider/model capability is inferred
+from an ID; unsupported options produce a status error, not an implicit retry
+with different semantics. This is Chat Completions, not the Responses API.
+
+`OpenAiAgentProvider` receives a key in memory from the app-owned credential
+store; the transport itself performs no persistence. It sends Bearer
+authorization only to the configured target.
+Remote roots require HTTPS; HTTP is accepted only for loopback hosts. Roots
+with user information, query or fragment are rejected. Redirects and automatic
+connection retries are disabled. A transport guard also removes HTTP503 retry
+hints, because OkHttp4 otherwise replays `Retry-After: 0` despite its connection
+retry switch. No body/endpoint/key is included in adapter
+exceptions, and no external tracing or fallback is installed.
+
+Defaults: response body at most 1 MiB, request at most 2 MiB; configurable
+bounds 1 KiB–8 MiB. The response cap is enforced while reading, including
+chunked and transparently decompressed bodies. Requests are checked after
+JSON encoding, not claimed as a pre-allocation heap bound. JSON nesting is
+preflight-limited to 64 before parsing, including tool-argument JSON. Truncated,
+filtered, malformed or unsupported tool responses cannot authorize execution.
+Cancellation cancels the exact OkHttp Call; it does not cancel unrelated calls.
+
+Some compatible APIs require continuation state alongside assistant messages,
+including [DeepSeek reasoning tool calls](https://api-docs.deepseek.com/guides/thinking_mode/).
+Such returned state is opaque provider-owned data, not assistant UI text. It
+is budgeted with the reply and request, redacted in string representations,
+and returned through its owning provider instance. The app's encrypted checkpoint
+may export and rehydrate it for a new instance under the same API root/model,
+without displaying it or exposing credentials. Changing root/model starts a new
+active context while preserving readable history. Limit-only changes preserve
+continuation. Old state is not silently forwarded to another provider/model. Other callers must still reuse the
+provider or explicitly restore an appropriately bound checkpoint. This does not claim
+compatibility with every provider-specific thinking parameter.
+
+## Instructions
+
+The application skill is the base system prompt,
+[`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
+(version 5). Chat attaches it to every main chat-loop request as the first
+message, unchanged and byte-stable within and across Sends. It is guidance for
+the model, not a permission system or an executing script; the code enforces
+every limit. The compact summarizer prompt is `assets/assistant/summary.md`
+(version 2); summary requests open with it instead. Both are read strictly
+(UTF-8, no byte order mark) and there is no compiled-in fallback prompt. Still
+compiled into the app are the fixed image-inspection question wording, the
+summary request framing text ("Earlier conversation summary", "Previous
+summary / Observed conversation"), tool descriptions and schemas, and fixed
+tool-result texts. No automatic app context is attached.
+
+Requests contain explicit chat text/history, the base prompt (`skill.md`,
+version 5) and only enabled tool schemas. The prompt contains no profile,
+connection, enabled-tool list, date, version or language data; the same bytes
+open every main chat-loop request (summary requests open with `summary.md`).
+Tool schemas follow catalog order with stable JSON; summary, history and
+the current request follow the system message. No provider-specific cache
+parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
+with a byte order mark) or empty fails the Send as an ordinary setup problem,
+with no fallback text and no request. No profiles,
+connection data, files, credentials or diagnostics are automatically attached.
+Existing endpoint, redirect, retry, payload and sanitized-error protections
+remain.
+
+What the summarizer prompt retains, and the limits of summary requests, are
+described in [Automatic working summaries](#automatic-working-summaries).
+
+## Chat and history
+
+### Text chat
 
 The conversation is a quiet, left-aligned text dialogue on one background, not
 message bubbles or cards. Localized “You” and “Assistant” labels distinguish
@@ -158,17 +288,21 @@ provider setup. Recovery re-reads provider metadata without unsealing a key.
 Send explicitly owns one pending operation, including off-Main credential
 preparation and the HTTP request. Follow-ups reuse the same provider instance
 and complete historical protocol exchanges. Interrupted attempts retain received
-results and an explicit unknown-outcome note, never executable pending calls; a pending confirmation is not saved and is never restored or executed.
+results and an explicit unknown-outcome note, never executable pending calls; a
+pending confirmation is not saved and is never restored or executed.
 Stop cancels that operation (including a confirmation wait, which runs nothing), not unrelated
 app work; a noncooperative preparation/request keeps the slot and shows
 Stopping until it exits. An app-lived, text-free admission token spans preparation,
 the HTTP exchange including response-body read and close, post-kernel publication and actual job
 cleanup, even after pop/reopen; a new screen may restore saved text but cannot
-start a replacement while that slot is occupied. Cancellation closes the exact call promptly (from an IO thread), but the slot
+start a replacement while that slot is occupied. Cancellation closes the exact
+call promptly, but the slot
 is held until the blocking exchange has returned and the run coroutine has finished. No replacement send is queued. Failed/stopped input
 stays editable for explicit retry. Setup/read/key, timeout, context-full,
 invalid-answer and provider failures use fixed messages, never raw diagnostics.
 There is no automatic retry, streaming or provider/model fallback.
+
+### Saved history
 
 The back-stack ViewModel retains the conversation across configuration changes.
 The app owns one canonical saved conversation: messages, observed protocol
@@ -177,7 +311,7 @@ requests are derived from those records, not separately persisted histories.
 It seals one atomic `noBackupFilesDir/assistant_chat.json` document using the
 existing AES-256-GCM Keystore box, alias `frpjump-assistant-chat-v1`. There is no
 cloud synchronization, Android backup, conversation Bundle or plaintext log.
-Encoding, crypto and file IO run off Main, outside the authority guard. Messages,
+Encoding, crypto and file IO run off Main. Messages,
 received replies/results, outcomes and route exit trigger saving; editor keystrokes
 do not rewrite the conversation. Retry state contains data only, not a live API
 provider. Saves coalesce; accepted local saves may finish after route exit. Process restart
@@ -191,24 +325,6 @@ shared Undo; editing/sending waits while clearing/restoring. Undo restores the
 same data without a provider call. A committed clear outlives the original route;
 clear failure retains known data and offers retry. Only one load is admitted at a
 time, preventing duplicate reloads from replacing newer editor/model state.
-
-The active operation is bound to the provider revision and committed-disable
-version. A saved revision change or committed disable (including rapid off/on)
-cancels old work; enabling cannot revive it. Accepted saved history is retained
-when disabled. Execution revision is not conversation compatibility: changing
-context/output limits preserves the dialog and model history. Changing API root
-or model keeps old messages readable and starts a new active context, with an
-explicit notice; an index in the same document separates old records from new
-model input. No deletion is required and old opaque state is never retargeted.
-Failed settings writes retain prior authority. Admission and publication
-recheck current authority, including after the kernel returns. Successful settings
-and provider snapshot commits serialize with admission, every provider/public/image/
-profile-information/SSH start check and every guarded answer/draft/error/window publication on a shared guard.
-A start whose check passed before a commit may still begin; an HTTP exchange is then cancelled, while an
-uncancellable DNS lookup finishes and no HTTP request starts afterwards.
-Store IO/credential work happens outside that guard; state notifications and
-cancellation run outside store commit monitors. An old completion
-cannot publish an answer/error or release another owner's pending slot.
 
 The saved conversation keeps original records until explicit clearing, not just
 the model's request window. It admits at most 1,000 records and blocks a new Send
@@ -231,6 +347,25 @@ Opaque continuation stays internal and bounded, never UI text. On explicit Send,
 it is rehydrated for the current adapter only for the same API root/model.
 Changing window/output or summary settings preserves conversation continuity;
 opening history does not resolve the provider API key.
+
+### Run authority
+
+The active operation is bound to the provider revision and committed-disable
+version. A saved revision change or committed disable (including rapid off/on)
+cancels old work; enabling cannot revive it. Accepted saved history is retained
+when disabled. Execution revision is not conversation compatibility: changing
+context/output limits preserves the dialog and model history. Changing API root
+or model keeps old messages readable and starts a new active context, with an
+explicit notice; an index in the same document separates old records from new
+model input. No deletion is required and old opaque state is never retargeted.
+Failed settings writes retain prior authority. Admission and publication
+recheck current authority, including after the kernel returns. Successful settings
+and provider snapshot commits serialize with admission, every provider/public/image/
+profile-information/SSH start check and every guarded answer/draft/error/window publication on a shared guard.
+A start whose check passed before a commit may still begin; an HTTP exchange is then cancelled, while an
+uncancellable DNS lookup finishes and no HTTP request starts afterwards.
+An old completion
+cannot publish an answer/error or release another owner's pending slot.
 
 ### Automatic working summaries
 
@@ -278,22 +413,232 @@ requests: Stop/revocation suppress unauthorized late data and cannot release a
 replacement Send before real cleanup. Summary text is model-generated historical
 data, not verified truth or an owner/accounting source for SSH work.
 
-Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 5) and only enabled tool schemas. The prompt contains no profile,
-connection, enabled-tool list, date, version or language data; the same bytes
-open every main chat-loop request (summary requests open with `summary.md`).
-Tool schemas follow catalog order with stable JSON; summary, history and
-the current request follow the system message. No provider-specific cache
-parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
-with a byte order mark) or empty fails the Send as an ordinary setup problem,
-with no fallback text and no request. No profiles,
-connection data, files, credentials or diagnostics are automatically attached. Proposals unavailable in that Send's captured set
-return bounded explicit unknown-tool results without network; they do
-not grant authority. Existing endpoint, redirect, retry, payload and sanitized-error
-protections remain. Public content is acquired only through explicitly enabled
-operations below; completed conversation history remains after tools change.
+## Tool policy
 
-## Optional profile information
+Every tool is one row of the [tool table](#tool-table) and follows the rules
+below; its own subsection adds only what is specific to it.
+
+The kernel does not itself grant target access. Any connection-tool adapter
+must bind to its admitted connection identity and must never resolve a
+replacement client after a disconnect. The SSH adapter owns one ordinary
+client; the information tool reads shared application state. Neither starts or
+controls tunnels.
+
+### Adding a tool
+
+Any other future connection-tool prototype requires separate approval, an
+explicit full-access warning and, when its catalog effect changes something, a
+change description so that it asks the owner like `ssh_command`; availability
+does not waive that conditional safety requirement.
+
+### Tool switches
+
+Settings → LLM assistant → Tools has one independent persisted switch per tool
+of the [tool table](#tool-table), in table order, and, above them, the app-wide
+confirmation switch ("Ask before changing commands", on by default). Today the
+tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
+image (`inspect_image`), Profile information (`profile_information`) and SSH
+command (`ssh_command`). They default off on new installs/upgrades; malformed new
+values default independently without resetting unrelated preferences. Saving
+only booleans, opening this screen or enabling a tool makes no request. Failed
+writes keep committed switches/authority and show an inline error. Tools remain
+changeable while Chat is busy. Chat's Tools action opens the same screen
+without popping the conversation. The Tools arrow and system Back return to that
+same owner, draft and completed history, including across recreation; actual Chat
+pop still cancels work and releases route memory; accepted history remains encrypted.
+
+Tools autosaves each switch; there is no Save button or optimistic checked value.
+Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
+One immutable presentation snapshot contains the actual committed tool booleans
+(one per tool) and the confirmation switch,
+pending IDs and fixed inline save failures. Checked, progress/enabled and failure
+are rendered from that same snapshot, not independent checked/completion channels.
+Real storage work runs off Main. On completion, Main reads the latest canonical
+Store tools and publishes them together with clearing that operation's pending
+state and setting/clearing its error. It never assumes requested equals committed.
+Store notifications also read current canonical tools, not captured old emissions,
+while preserving pending/errors. External/concurrent writes cannot be rolled back
+by a delayed acknowledgement. Same-ID pending actions are ignored without a queue;
+different IDs may save independently, preserving unrelated settings.
+
+Back hides Tools without cancelling the parent-owned save; reopen and recreation
+retain that binding and pending/error state. Actual parent pop/clear cancels child
+operations and prevents old UI publication. Already executing blocking storage may
+still commit: cancellation does not promise rollback. A new owner reads actual Store
+state and notifications. There are no save completion/navigation callbacks or
+persistent copies of presentation state. Construction/opening does no storage IO,
+credential unseal or network operation. Current-Send admission still reads Store
+authority, never presentation; pending UI acknowledgement is not network authority.
+
+### Tool set captured at Send
+
+Each Send captures the committed tool booleans atomically at admission and keeps
+that fixed set throughout the run, including calls dispatched after a switch
+changes. Changes apply only to the next Send; the current Send may finish with
+its original tools (the confirmation switch and session grants are the exception:
+they are read at each call). They neither cancel work nor clear history, provider
+or draft. There is no tool-change epoch/revocation signal. Failed saves retain
+prior settings. Proposals unavailable in that Send's captured set return bounded
+explicit unknown-tool results without network; they do not grant authority.
+Public content is acquired only through explicitly enabled tools; completed
+conversation history remains after tools change.
+
+### Admission before parsing
+
+Every tool checks the captured owner before validating its arguments, so an
+invalid-argument result is reported only for an owned call. The confirmation
+hook runs before the tool, only for known tools, and the owner is checked again
+after it returns, so a Stop or disable that raced the answer wins and nothing
+runs.
+
+Admission, every model/public/image start check and every source/progress/answer/error
+publication still check the captured owner, provider revision and disable version.
+Stop/pop, assistant disable (including off/on), provider revision/read failures
+cancel exact work; the shared slot remains occupied through DNS, the HTTP exchange and body read,
+parser, owned SSH worker/readers and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
+image preparation and settings IO run off Main. How start checks serialize with
+settings and provider commits is described in [Run authority](#run-authority).
+
+### Confirmation of changing calls
+
+Before a call whose effect changes something runs, the owner is asked, unless
+the app-wide switch (Settings → LLM assistant → Tools → "Ask before changing
+commands") is off or a For session grant covers that call's tool and target.
+The effect is the tool's catalog effect; for a tool built on an operation the
+operation's effect and target are used, and a test pins its effect equal to the
+catalog's. Today the only changing tool is `ssh_command`, whose target is a
+saved connection. Calls whose effect only reads never ask. The default is on.
+
+The question is a card above the message field (the history takes the room the
+card and Stop leave; with the keyboard up at large font the history stays at
+least three lines high because the plain-text notices above and below it (never
+the setup or retry buttons) and the message field's height are capped; a capped
+notice region ends on a whole text line, shows at least one full line, and while
+more is below shows "▼ Scroll for more" / «▼ Прокрутите вниз»; the disabled
+message field is hidden while a question is open; each question opens at its
+top). The four answers are pinned at the bottom of the card; above them a
+section scrolls with the tool, the target by name, never by ID (for a saved
+connection: profile · device · connection; "Unknown connection" when
+unresolved), what the call will run and the tool's warning. For a command
+(today `ssh_command`) that is the full command (monospace, selectable, always
+left to right, in its own scrolling box with its line count; non-printing and
+disguising characters, including the whole default-ignorable set and long
+combining-mark runs, are shown as highlighted escapes, and a note says when it
+has right-to-left letters or Arabic digits; in the rendered text a left-to-right
+mark follows each of them, so the order shown is the order that runs) and the
+full-access warning. A string argument with an unpaired surrogate is invalid for
+every tool (no card, nothing runs).
+
+Answers: **Allow** (this call), **For session**, **Always**, **Decline**. For
+session covers the tool and the exact target (today a saved connection) until
+the chat screen is left, the assistant is disabled, the tool is switched off,
+the history is cleared, or the target is edited or removed (for a saved
+connection: the connection or its profile; a grant is stamped with the target's
+saved definition and dropped when it changes). A For session grant is in memory
+only. Always turns the app-wide switch off after a second confirmation (a dialog
+says what is turned off and where to turn it back on; Cancel returns to the
+question, still waiting); if that cannot be saved, the call is allowed once, an
+inline note says so, and requests stay on. Decline, and five minutes without an
+answer, give the model a fixed text (`declined` outcome) and nothing runs. A
+declined call is saved as `DECLINED` (sent to the model as `declined`) and shown
+as "Declined", or "No answer, declined" when the wait ran out, never as a
+failure. Stop, Back, disable and provider changes during the wait cancel it and
+run nothing; a late answer or a stale card id is ignored. An Always answer may
+still persist "off" when Stop races the call, and a For session answer racing
+Stop may record its grant; the call itself never runs. The wait is in neither
+the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts
+active time only).
+
+While requests are off, a compact warning icon in the Chat top bar (between the
+title and Tools) says so on tap or long press and offers "Turn on" (beside the
+Send/Stop button when the whole title does not fit next to it in the top bar);
+there is no banner or strip. Fail closed: a changing tool with valid arguments
+but no description, or a changing catalog tool that is not an `AppTool` (the
+common tool pipeline), is refused (nothing runs, no card), and so is every
+changing call when no confirmation support exists; invalid arguments ask nothing
+and run nothing; the policy is read live at each call. The setting is the
+`assistant_confirmations` object `{"version":1,"global":"ask"|"off"}`; ask is the
+default and is omitted from the file, any other or malformed value reads as ask,
+and per-device or per-target overrides may be added later (a stricter override
+needs a version bump). The prompt rule (`skill.md` v5) tells the model that a
+declined call must not be redone another way; it is guidance, not enforcement.
+A history written with a `declined` outcome cannot be read by app versions
+before this one; this version reads an unknown outcome name as a failure.
+
+### Timeouts
+
+Timeouts and cancellation are cooperative: adapters must support cancellation
+of their own I/O. Each tool call runs under the kernel tool timeout
+([Limits](#limits)). The whole Send deadline is 120 seconds of active time
+(paused while the owner is asked); existing kernel per-call limits also apply.
+The owner's confirmation wait is in none of these and has its own five-minute
+limit ([Confirmation of changing calls](#confirmation-of-changing-calls)).
+
+### Minimal execution
+
+Unknown tools and tool failures are explicit results. There are no automatic
+provider/tool retries.
+
+### Uncertain outcome
+
+An already performed remote change is not rolled back by Stop. A timed-out tool
+may have an uncertain remote outcome and must not be blindly repeated.
+`ssh_command` reports an unknown remote outcome explicitly; see
+[Optional SSH command](#optional-ssh-command).
+
+### Untrusted data
+
+Tool results are data, never instructions or new authority: remote SSH output,
+fetched pages, search results, image responses and the profile information
+read from servers alike. The per-tool rules are in
+[Optional SSH command](#optional-ssh-command),
+[Optional public Web tools](#optional-public-web-tools) and the
+[operations surface](contracts/surfaces/operations.md#security-and-privacy).
+Working summaries are model-generated historical data
+([Automatic working summaries](#automatic-working-summaries)). The base prompt
+explains these rules; it is guidance, and the code enforces every limit
+([Instructions](#instructions)).
+
+### Privacy disclosure
+
+The Tools notice explains DuckDuckGo query disclosure, selected public
+text/images and private profile/device/connection information sent to the
+configured LLM when tools are used, and ordinary model token charges, including
+image analysis. The separate SSH switch warns of FULL SSH ACCESS: commands can
+read/change the remote system and files within the account’s rights. Commands
+and output may contain secrets and are sent to the configured model with
+ordinary token charges. It grants no tunnel control or phone-file access. The
+enabled SSH tool has full access within the SSH account’s rights. Public tools
+carry the public-read/data-disclosure notice above, not a misleading full-access
+warning. The [tool table](#tool-table) lists what each tool discloses.
+
+### Errors told to the model
+
+Raw exception messages are not given to the model. A tool built on an operation
+words each typed refusal and failure as a fixed text. A typed domain error
+reaches the model only as its kind, and no adapter adds an exception message or
+secret of its own ([operations surface](contracts/surfaces/operations.md#interface)).
+The kinds `profile_information` sends, and the fixed texts of the other tools,
+are described in each tool's subsection.
+
+## Tool table
+
+| Tool | Effect | Operation | Arguments | Limits | Confirmation | Disclosure | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `web_search` | `READ_REMOTE` | none: public transport | `query`, at most 256 characters | at most 5 results; 3 searches per Send and 20 per hour, 10 s between attempts; block cooldown at least 15 minutes; shared public budget | never | the query goes to DuckDuckGo; the results go to the model | optional, default off |
+| `read_page` | `READ_REMOTE` | none: public transport | `url`: public HTTPS, port 443 | 8,000 text characters, 100 links and 20 image references per page; shared public budget | never | selected public text goes to the model | optional, default off |
+| `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
+| `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
+| `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr: at most 3,000 characters each, drained | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
+| tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
+
+Every tool also has the kernel limits ([Limits](#limits)) and the Send's 120
+seconds of active time. The public tools share one per-Send budget: 12 public
+HTTP requests including redirect hops, at most 3 redirects per fetch and 1 MiB
+per decoded page, search or image response
+([Search and static documents](#search-and-static-documents)).
+
+### Optional profile information
 
 The independent default-off `profile_information` tool accepts optional `query`
 (text up to 256 UTF-16 characters), exact `profile_id` (up to 256 characters) and
@@ -304,10 +649,9 @@ Each invocation performs one ordinary all-profile device-list pull, the same
 operation as Connections refresh, then reads the application's known state.
 Normal authenticated server requests, feature checks and cache writes still
 apply. Each information-owned request's start check is serialized with the
-existing Chat authority guard; the request itself, credential/storage work, body
-reading and cleanup run outside it. A start whose check passed before a commit may
+existing Chat authority guard. A start whose check passed before a commit may
 still begin and is then cancelled. Cancellation signals only those owned calls (the
-exact HTTP call, from an IO thread) and keeps the shared Chat slot until each HTTP
+exact HTTP call) and keeps the shared Chat slot until each HTTP
 exchange, including body read and close, has returned. Ordinary UI/background
 requests use the same call path without the start check; a cancelled caller waits
 for the actual exit of its HTTP call. It starts no extra tunnel poll, probe,
@@ -401,22 +745,29 @@ the next current attempt, their whole-turn eviction, revocation or close; late
 unauthorized output is still withheld. Information retained in successful chat
 exchanges follows the same bounded encrypted-history lifecycle; a later tool-switch change
 does not erase that history.
-This explicit informational exception does not authorize connection control,
-SSH, device HTTP, Files or MQTT tools. It has an accurate private-data disclosure,
-not a full-access claim. Other future connection-tool prototypes still require
-separate approval and the full-access warning described below.
+This informational tool does not authorize connection control, SSH, device
+HTTP, Files or MQTT tools. It has an accurate private-data disclosure, not a
+full-access claim. Other future connection-tool prototypes still require
+separate approval and the full-access warning; see
+[Adding a tool](#adding-a-tool).
 
-## Optional SSH command
+### Optional SSH command
 
 The independent default-off `ssh_command` tool accepts exactly `profile_id`,
-`connection_id` and one nonempty `command` string. Owner admission precedes this validation (see Minimal execution). Discover saved IDs through
+`connection_id` and one nonempty `command` string. Owner admission precedes this
+validation (see [Admission before parsing](#admission-before-parsing)). Discover
+saved IDs through
 `profile_information`; there is no additional catalogue or automatic attachment.
 One unambiguous saved SSH connection in any profile must already have a ready
 visible tunnel. Missing, non-SSH, hidden, removed, down or unavailable targets
 fail without starting/reviving a tunnel. No open terminal is required.
-The command runs through the `ssh_exec` operation; each of its typed refusals and failures has the one fixed text described here, and an unexpected error is always the fixed "remote outcome unknown" text, never the error message.
+The command runs through the `ssh_exec` operation; each of its typed refusals
+and failures has the one fixed text described here, and an unexpected error is
+always the fixed "remote outcome unknown" text, never the error message.
 
-Each invocation, once allowed (see Confirmation of changing calls), captures the saved connection, runtime, tunnel configuration and
+Each invocation, once allowed (see
+[Confirmation of changing calls](#confirmation-of-changing-calls)), captures the
+saved connection, runtime, tunnel configuration and
 one operation-owned ordinary SSHJ client; no client exists before the owner's answer. It never substitutes a Terminal/Files
 client or re-resolves a replacement after target loss. Operation-local observers
 stop owned work on target removal, pending Undo, profile loss or tunnel-plan loss;
@@ -447,97 +798,27 @@ signal is success; EOF, local close/join, nonzero/missing status and failures ar
 not invented remote success. Kernel/result/context limits continue to apply.
 
 The SSH start check uses the existing Chat authority guard. Client creation,
-credentials, connect/auth/exec/read and cleanup run off Main and outside that
-guard; a start whose check passed before a commit may begin, is re-checked for
+credentials, connect/auth/exec/read and cleanup run off Main; a start whose
+check passed before a commit may begin, is re-checked for
 cancellation before the client, after connect, after authentication and after
 opening the session, and is then cancelled. Stop, disable, revision, pop and
-timeout disconnect only the owned client (from an IO thread), including one
+timeout disconnect only the owned client, including one
 constructed after cancellation, and keep the global slot through actual worker,
 readers and cleanup exit. Tool-only changes affect the next Send, not admitted work; the confirmation switch and session grants are read at each call.
 Timeouts (30 s tool / 120 s of Send active time by default; the confirmation wait is in neither, and has its own 5-minute limit) are cancellation thresholds, not
 remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
 an admitted command’s effects may remain uncertain. Commands/output enter the
-same bounded encrypted Chat history and configured model requests, not app logs. A declined call is saved as `DECLINED` (sent to the model as `declined`) and shown as "Declined", or "No answer, declined" when the wait ran out, never as a failure. Arbitrary remote output can contain secrets and is not
+same bounded encrypted Chat history and configured model requests, not app logs.
+Arbitrary remote output can contain secrets and is not
 generically scrubbed. App-stored credentials/internal diagnostics are not tool
 arguments/results. Remote content remains untrusted data, never new authority.
 
-## Confirmation of changing calls
+### Optional public Web tools
 
-Before a call of a tool whose catalog effect changes something (today `ssh_command`; for a tool built on an operation the operation's effect and target are used, and a test pins its effect equal to the catalog's) runs, the owner is asked, unless the app-wide
-switch (Settings → LLM assistant → Tools → "Ask before changing commands") is off. Read tools never ask. The default is on.
+This covers Web search (`web_search`), Read page (`read_page`) and Inspect image
+(`inspect_image`). Public GET is not guaranteed free of remote effects.
 
-The question is a card above the message field (the history takes the room the card and Stop leave; with the keyboard up at large font the history stays at least three lines high because the plain-text notices above and below it (never the setup or retry buttons) and the message field's height are capped; a capped notice region ends on a whole text line, shows at least one full line, and while more is below shows "▼ Scroll for more" / «▼ Прокрутите вниз»;  the disabled message field is hidden while a question is open; each question opens at its top). The four answers are pinned at the bottom of the card; above them a section scrolls with the tool, the target names (profile · device · connection, never IDs; "Unknown
-connection" when unresolved), the full command (monospace, selectable, always left to right, in its own scrolling box with its line count; non-printing and disguising characters, including the whole default-ignorable set and long combining-mark runs, are shown as highlighted escapes, and a note says when it has right-to-left letters or Arabic digits; in the rendered text a left-to-right mark follows each of them, so the order shown is the order that runs) and the full-access warning. A string argument with an unpaired surrogate is invalid for every tool (no card, nothing runs). Answers: **Allow** (this
-call), **For session**, **Always**, **Decline**. For session covers the tool and the exact connection until the chat screen is left, the
-assistant is disabled, the tool is switched off, the history is cleared, or the connection or its profile is edited or removed (a grant
-is stamped with the saved definition and dropped when it changes); it is in memory only. Always turns the app-wide switch off after a second confirmation (a dialog
-says what is turned off and where to turn it back on; Cancel returns to the question, still waiting); if that cannot be saved, the call is allowed once, an inline note says so, and requests stay
-on. Decline, and five minutes without an answer, give the model a fixed text (`declined` outcome) and nothing runs. Stop, Back,
-disable and provider changes during the wait cancel it and run nothing; a late answer or a stale card id is ignored. An Always
-answer may still persist "off" when Stop races the call, and a For session answer racing Stop may record its grant; the call itself never
-runs. The wait is in neither the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts active time only).
-
-While requests are off, a compact warning icon in the Chat top bar (between the title and Tools) says so on tap or long press and
-offers "Turn on" (beside the Send/Stop button when the whole title does not fit next to it in the top bar); there is no banner or strip. Fail closed: a changing tool with valid arguments but no description, or a changing catalog tool that is not an AppTool, is refused (nothing runs, no card), and so is every changing call when no confirmation support exists; invalid arguments ask nothing and run nothing; the policy is read live at each call. The setting is the
-`assistant_confirmations` object `{"version":1,"global":"ask"|"off"}`; ask is the default and is omitted from the file, any other
-or malformed value reads as ask, and per-device or per-target overrides may be added later (a stricter override needs a version bump).
-The prompt rule (`skill.md` v5) tells the model that a declined call must not be redone another way; it is guidance, not enforcement.
-A history written with a `declined` outcome cannot be read by app versions before this one; this version reads an unknown outcome name
-as a failure.
-
-## Optional public Web tools
-
-Settings → LLM assistant → Tools has five independent persisted tool switches and, above them, the app-wide confirmation switch ("Ask before changing commands", on by default):
-Web search (`web_search`), Read page (`read_page`) and Inspect image
-(`inspect_image`), Profile information (`profile_information`) and SSH command (`ssh_command`). They default off on new installs/upgrades; malformed new
-values default independently without resetting unrelated preferences. Saving
-only booleans, opening this screen or enabling a tool makes no request. Failed
-writes keep committed switches/authority and show an inline error. Tools remain
-changeable while Chat is busy. Chat's Tools action opens the same screen
-without popping the conversation. The Tools arrow and system Back return to that
-same owner, draft and completed history, including across recreation; actual Chat
-pop still cancels work and releases route memory; accepted history remains encrypted. The notice explains DuckDuckGo query disclosure, selected public text/images and
-private profile/device/connection information sent to the configured LLM when
-tools are used, and ordinary model token charges, including image analysis.
-The separate SSH switch warns of FULL SSH ACCESS: commands can read/change the remote system and files within the account’s rights. Commands and output may contain secrets and are sent to the configured model with ordinary token charges. It grants no tunnel control or phone-file access.
-Public GET is not guaranteed free of remote effects.
-
-Tools autosaves each switch; there is no Save button or optimistic checked value.
-Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
-One immutable presentation snapshot contains the actual committed five tool booleans and the confirmation switch,
-pending IDs and fixed inline save failures. Checked, progress/enabled and failure
-are rendered from that same snapshot, not independent checked/completion channels.
-Real storage work runs off Main. On completion, Main reads the latest canonical
-Store tools and publishes them together with clearing that operation's pending
-state and setting/clearing its error. It never assumes requested equals committed.
-Store notifications also read current canonical tools, not captured old emissions,
-while preserving pending/errors. External/concurrent writes cannot be rolled back
-by a delayed acknowledgement. Same-ID pending actions are ignored without a queue;
-different IDs may save independently, preserving unrelated settings.
-
-Back hides Tools without cancelling the parent-owned save; reopen and recreation
-retain that binding and pending/error state. Actual parent pop/clear cancels child
-operations and prevents old UI publication. Already executing blocking storage may
-still commit: cancellation does not promise rollback. A new owner reads actual Store
-state and notifications. There are no save completion/navigation callbacks or
-persistent copies of presentation state. Construction/opening does no storage IO,
-credential unseal or network operation. Current-Send admission still reads Store
-authority, never presentation; pending UI acknowledgement is not network authority.
-
-Each Send captures the committed tool booleans atomically at admission and keeps
-that fixed set throughout the run, including calls dispatched after a switch
-changes. Changes apply only to the next Send; the current Send may finish with
-its original tools (the confirmation switch and session grants are the exception: they are read at each call). They neither cancel work nor clear history, provider or draft.
-There is no tool-change epoch/revocation signal. Failed saves retain prior settings.
-Admission, every model/public/image start check and every source/progress/answer/error
-publication still check the captured owner, provider revision and disable version.
-Stop/pop, assistant disable (including off/on), provider revision/read failures
-cancel exact work; the shared slot remains occupied through DNS, the HTTP exchange and body read,
-parser, owned SSH worker/readers and coroutine cleanup. No replacement is queued. Blocking DNS, parsing,
-image preparation and settings IO run off Main and outside commit guards. The
-whole Send deadline is 120 seconds of active time (paused while the owner is asked); existing kernel per-call limits also apply.
-
-### Search and static documents
+#### Search and static documents
 
 Search uses one unofficial, free, best-effort DuckDuckGo HTML endpoint. No API
 key/account, paid Search/Fetch, provider-search fallback, endpoint rotation,
@@ -602,7 +883,7 @@ including OkHttp's HTTP503 Retry-After:0 replay. Fetched content is untrusted
 evidence, never instructions/tool authority; prompts supplement, not replace,
 URL policy and start-admission checks.
 
-### Optimistic same-model images and provenance
+#### Optimistic same-model images and provenance
 
 Inspect image accepts an explicitly selected public JPEG/PNG under the same
 transport/authority/request budgets. At most 2 inspections per Send, 1 MiB per
@@ -629,6 +910,8 @@ the text loop may continue, disclosing limitations. Never strip the image and
 claim success, present alt text as visual inspection, replay the turn, retry
 implicitly, or choose another provider/model. Release transient bytes/base64 on
 every exit; only bounded model-response/provenance text enters history.
+
+#### Failures and sources in Chat
 
 Tool failures use short fixed understandable descriptions, with known numeric
 HTTP status/limits when available: public-address refusal, network/HTTP failure,
@@ -662,100 +945,15 @@ checkpoint. Download buffers and image pixels do not; none enter logs or Bundles
 There is no background fetching, uploads, RAG/vector database, browser framework,
 reader selector or private/tunnel/file authority for these public Web tools.
 
-## Provider settings and credentials
-
-From Settings → LLM assistant → Assistant provider, enter the API root and key,
-then enter a model ID or use Fetch models and select one. Save commits the form;
-model discovery is not required to enter a manual model ID.
-
-The form accepts API root, model ID (manual or explicitly fetched), optional
-effort (provider default, presets or a manually entered value), model context
-window, output reserve and the output-token parameter spelling. It also accepts
-the summary trigger percentage (default 80, range 1–100) and an optional summary
-model ID; blank uses the chat model. The form explains the additional model
-request and shared provider/key/window requirements. Saving makes no request. The API key
-field is masked, never prefilled, and deliberately excluded from saved instance
-state. A restored form that lost a replacement key requires re-entry rather
-than silently falling back to the stored key. Draft metadata and the original
-revision survive recreation; an old draft cannot retarget newer settings.
-
-A blank key keeps the saved credential only for the same canonical API root.
-Changing the root requires explicit key entry, for both Save and Fetch models.
-The key and its canonical root are sealed together with AES-256-GCM through
-Android Keystore alias `frpjump-assistant-provider-v1`. Root binding is checked
-on unseal too, so changing plaintext metadata cannot redirect the saved key.
-One atomic file, `assistant_provider.json`, commits metadata plus sealed
-credential together. No plaintext key or sealed blob enters the public StateFlow.
-Unsealing happens only for explicit provider use; metadata-only saves keep the
-existing sealed bytes without decrypting them.
-
-Each commit has a new revision. Save, credential resolution and discovery
-completion check their originating revision, reading current storage rather
-than trusting an old UI snapshot. Read/decode failures are not treated as an
-empty profile and cannot overwrite unknown data.
-
-### Failure and recovery
-
-Retry reads an unreadable provider document again; there is no destructive
-reset UI for it. An unreadable Keystore credential can be replaced by entering
-a new key without decrypting the old one.
-
-Save waits for commit and keeps the form/error on failure. Pending operations
-prevent duplicate input; disposed or duplicate callbacks cannot finish a newer
-operation. Leaving the form cancels model discovery. Failed discovery does not
-prevent a manual model ID. Errors use fixed messages/status codes, never raw
-server, crypto or storage exception content. No live credentials are required
-by tests. Deactivation stops agent work, not an explicitly requested settings
-inventory operation; saving/enabling never silently starts discovery or chat.
-
-## External API adapter
-
-`OpenAiConfig` selects the API root (usually ending in `/v1`), model ID,
-optional explicit `reasoning_effort`, output-token parameter spelling
-(`max_tokens` or `max_completion_tokens`) and finite byte bounds. Discovery
-can run before model selection. No provider/model capability is inferred
-from an ID; unsupported options produce a status error, not an implicit retry
-with different semantics. This is Chat Completions, not the Responses API.
-
-`OpenAiAgentProvider` receives a key in memory from the app-owned credential
-store; the transport itself performs no persistence. It sends Bearer
-authorization only to the configured target.
-Remote roots require HTTPS; HTTP is accepted only for loopback hosts. Roots
-with user information, query or fragment are rejected. Redirects and automatic
-connection retries are disabled. A transport guard also removes HTTP503 retry
-hints, because OkHttp4 otherwise replays `Retry-After: 0` despite its connection
-retry switch. No body/endpoint/key is included in adapter
-exceptions, and no external tracing or fallback is installed.
-
-Defaults: response body at most 1 MiB, request at most 2 MiB; configurable
-bounds 1 KiB–8 MiB. The response cap is enforced while reading, including
-chunked and transparently decompressed bodies. Requests are checked after
-JSON encoding, not claimed as a pre-allocation heap bound. JSON nesting is
-preflight-limited to 64 before parsing, including tool-argument JSON. Truncated,
-filtered, malformed or unsupported tool responses cannot authorize execution.
-Cancellation cancels the exact OkHttp Call; it does not cancel unrelated calls.
-
-Some compatible APIs require continuation state alongside assistant messages,
-including [DeepSeek reasoning tool calls](https://api-docs.deepseek.com/guides/thinking_mode/).
-Such returned state is opaque provider-owned data, not assistant UI text. It
-is budgeted with the reply and request, redacted in string representations,
-and returned through its owning provider instance. The app's encrypted checkpoint
-may export and rehydrate it for a new instance under the same API root/model,
-without displaying it or exposing credentials. Changing root/model starts a new
-active context while preserving readable history. Limit-only changes preserve
-continuation. Old state is not silently forwarded to another provider/model. Other callers must still reuse the
-provider or explicitly restore an appropriately bound checkpoint. This does not claim
-compatibility with every provider-specific thinking parameter.
-
 ## Verification and non-goals
 
 The app surface includes provider setup, chat, optional public-read tools and
 the profile-information and SSH-command tools above, and bounded automatic
 working summaries. Tunnel-control, dedicated Files/MQTT/TCP tools, evaluators, permission modes and
-subagents remain outside this surface. No tunnel creation, start, reconfiguration
-or deletion is granted to the agent. No permissions evaluator or confirmation modes beyond the single app-wide switch are shipped. The enabled SSH tool has full access within the SSH account’s rights. Public tools carry the public-read/data-disclosure notice above, not
-a misleading full-access warning. Any other future connection-tool prototype requires
-separate approval, an explicit full-access warning and, when its catalog effect changes something, a change description so that it asks the owner like `ssh_command`; availability does not waive that conditional safety requirement.
+subagents remain outside this surface. No permissions evaluator or confirmation
+modes beyond the single app-wide switch are shipped. Tunnel control and new
+connection tools are covered by the [boundary](#boundary-and-availability) and
+[Adding a tool](#adding-a-tool).
 
 Synthetic shared-source/projection tests cover multiple profiles, repeated device
 names, devices without connection rows, saved/unnamed tunnels, Undo, unavailable
@@ -805,9 +1003,13 @@ live LLM, SSH or broker compatibility, or physical-device/vendor behavior.
   settings and tunnel behavior. This surface adds explicit external-provider
   discovery; it is not a general permission to send app data off the phone.
 - [SSH persistence](ssh-persist-contract.md) owns terminal sessions and the shared connector/login/host-key policies also used by the assistant’s separate owned command client.
+- [Operations layer](contracts/surfaces/operations.md) owns the operations
+  under `ssh_command` and `profile_information`, their typed results and the
+  rules every adapter keeps.
 - [Kernel interfaces and limits](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentProtocol.kt),
-  [execution](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentModule.kt)
-  and [window selection](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentWindow.kt).
+  [execution](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentModule.kt),
+  [window selection](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentWindow.kt)
+  and [cancellation primitives](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/Cancellation.kt).
 - [External adapter](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiAgentProvider.kt)
   and [provider configuration](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiConfig.kt).
 - [Conversation owner](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantConversation.kt)
@@ -816,5 +1018,9 @@ live LLM, SSH or broker compatibility, or physical-device/vendor behavior.
   document and pure projection/error mapping, run ownership under the runtime
   gate, one Send in `TurnRunner`, per-Send tool list in `AssistantToolFactory`)
   and [chat screen](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantChatScreen.kt).
+- Lock order, and which work runs outside the chat gate and store monitors, is
+  documented in the KDoc of the
+  [chat runtime](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantChatRuntime.kt),
+  not in this contract.
 - [Provider store](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantProviderStore.kt)
   and [settings form](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantProviderScreen.kt).
