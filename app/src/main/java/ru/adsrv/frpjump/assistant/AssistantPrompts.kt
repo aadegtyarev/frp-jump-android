@@ -25,7 +25,7 @@ import java.nio.charset.CodingErrorAction
  */
 class AssistantPrompts(val system: String, val summary: String) {
     companion object {
-        const val SYSTEM_VERSION = 7
+        const val SYSTEM_VERSION = 8
         const val SUMMARY_VERSION = 2
         const val SYSTEM_ASSET = "assistant/skill.md"
         const val SUMMARY_ASSET = "assistant/summary.md"

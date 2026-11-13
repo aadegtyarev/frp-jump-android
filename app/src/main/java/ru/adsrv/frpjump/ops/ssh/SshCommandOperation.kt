@@ -135,22 +135,29 @@ internal class SshCommandOperation {
     }
 }
 
-/** Retain at most 3,000 UTF-16 characters per stream; keep draining excess to avoid channel deadlock. */
+/** Hard ceiling of retained UTF-16 characters per output stream (stdout and stderr each); never raise it: it is sent to the provider. */
+internal const val SSH_STREAM_LIMIT = 16_000
+
+/**
+ * Retain at most [SSH_STREAM_LIMIT] UTF-16 characters per stream; keep draining (and counting) the excess without
+ * retaining it, to avoid channel deadlock. A cut stream ends with "truncated: N of M characters" (N kept, M total).
+ */
 internal fun captureSshStream(stream: InputStream): String {
     val text = StringBuilder()
-    var omitted = false
+    var total = 0L
     val reader = stream.reader(Charsets.UTF_8)
     val buffer = CharArray(2048)
     while (true) {
         val n = reader.read(buffer)
         if (n < 0) break
-        val keep = minOf(n, 3000 - text.length)
+        total += n
+        val keep = minOf(n, SSH_STREAM_LIMIT - text.length)
         if (keep > 0) text.append(buffer, 0, keep)
-        if (keep < n) omitted = true
     }
-    if (omitted) {
+    if (total > text.length) {
+        // Never split a surrogate pair at the cut.
         if (text.isNotEmpty() && text.last().isHighSurrogate()) text.setLength(text.length - 1)
-        text.append("\n[… output omitted …]")
+        text.append("\n[truncated: ${text.length} of $total characters]")
     }
     return text.toString()
 }

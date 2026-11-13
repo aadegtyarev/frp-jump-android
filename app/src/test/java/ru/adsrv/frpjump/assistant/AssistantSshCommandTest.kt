@@ -218,8 +218,8 @@ class AssistantSshCommandTest {
             f.client.code = code; f.client.signal = signal
             f.client.out = "o".repeat(100_000); f.client.err = "e".repeat(100_000)
             val result = f.execute()
-            assertTrue(f.client.keyAuth); assertTrue(result.text.length < 8000)
-            assertEquals(2, Regex("output omitted").findAll(result.text).count())
+            assertTrue(f.client.keyAuth); assertTrue(result.text.length < 2 * SSH_STREAM_LIMIT + 400)
+            assertEquals(2, Regex("truncated: 16000 of 100000 characters").findAll(result.text).count())
             assertTrue(result.text.contains("exit_status: ${code ?: "unknown"}"))
             assertTrue(result.text.contains("exit_signal: ${signal?.name ?: "unknown"}"))
             assertEquals(if (code == 0) ToolOutcome.SUCCESS else ToolOutcome.FAILED, result.outcome)

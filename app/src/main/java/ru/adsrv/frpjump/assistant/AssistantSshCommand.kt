@@ -23,7 +23,7 @@ open class AssistantSshCommands(private val targets: SshTargets) {
 
 internal class AssistantSshCommandTool(commands: AssistantSshCommands) : OperationTool<SshExecInput, SshExecOutput>(
     AssistantToolId.SSH_COMMAND,
-    "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries.",
+    "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Each output stream (stdout, stderr) is limited to 16,000 characters and ends with \"truncated: N of M characters\" when cut. To read more, narrow the output (tail -n, head -n, grep), read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (and -E).",
     objectSchema { string("profile_id"); string("connection_id"); string("command") },
     commands.exec,
 ) {
