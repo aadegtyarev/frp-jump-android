@@ -301,10 +301,53 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   app does not crash. The error names only a short kind of failure in
   parentheses ("no space left", "no access" or "write error"), never a path,
   an exception message or a trace; the web certificate trust uses the same wording.
-- Use the phone's generated ed25519 key across profiles, with optional imported
-  identity tried first. Private keys, import passphrases and remembered
-  passwords are encrypted in app-private storage with the Keystore-backed
-  SSH secret box. Public keys and host fingerprints are not secrets.
+- Two keys: the phone's generated ed25519 key, shared by all profiles, and an
+  optional imported one, tried first when logging in. Private keys, import
+  passphrases and remembered passwords are encrypted in app-private storage
+  with the Keystore-backed SSH secret box. Public keys and host fingerprints
+  are not secrets. Settings › "SSH keys" shows both alike (name, type,
+  fingerprint, the `authorized_keys` line folded to 3 lines until tapped) with
+  Copy and Share for each; the imported one also has Replace and Remove. The
+  login memory keeps only the user and the method (Key or Password), never
+  which key.
+- "Use key login" (the "⋮" menu of a saved SSH connection and a session tab's
+  menu, offered while that login is by password) moves a login to a key, as
+  `ssh-copy-id` does, only by the owner's action and only for the chosen user:
+  - **Choice.** With two keys a dialog asks which to add (radio rows with name,
+    type and fingerprint, the phone's preselected, Cancel / Install); with one
+    key there is no extra step. The chosen key is bound to its public line; Retry,
+    host-key Trust and a changed user in the password dialog keep it, and Cancel
+    runs nothing. The working text and the password note name it.
+  - **Before any write** the chosen key is read and loaded. If that fails, or it
+    was removed or replaced in Settings since the choice (its public line no
+    longer matches), the run ends as "Could not read the chosen key. Nothing was
+    changed." and the script never runs.
+  - **Connection.** It runs over an open session of that user when there is
+    one, else over a password login (the remembered password, or the dialog asks
+    once and the password is not kept; a remembered one that is refused is kept
+    and the dialog asks); the tunnel is brought up if it is down. Host keys are
+    asked about as for the terminal.
+  - **Script.** One fixed `sh` script on one line (so csh login shells take it
+    too) reads the key line from stdin; nothing of the key is in the command
+    line. The line is checked first (a known type, a base64 key, no control
+    characters). A line with the same type and key already in
+    `~/.ssh/authorized_keys`, whatever its comment, ends it and changes nothing.
+    Otherwise it makes `~/.ssh` and the file if missing, makes them private
+    (700 / 600, not through a symlink; a failing chmod does not stop it) and
+    appends the line. A script still running after 30 s is closed and reported
+    as timed out; Cancel closes the connection and saves nothing. The imported
+    key's comment stays "imported".
+  - **Check.** Then a fresh login with the chosen key only (the other key is not
+    loaded or offered) must succeed. Only then the remembered method for that
+    device and port becomes Key and the remembered password of that user is
+    forgotten ("Key installed, key login works"; if forgetting the password
+    fails, it says so). Otherwise nothing in the app changes and a dialog says
+    why, with Retry: the key was refused (sshd forbids keys or reads another
+    `AuthorizedKeysFile`), the key could not be read, the command failed (the
+    first line it wrote to stderr), the connection failed, or saving the new
+    method failed. On the device there may remain `~/.ssh` and `authorized_keys`
+    made or made private, and the key line appended when the key was refused
+    after it was written.
 - Typed passwords remain in the tab's login object for reconnect; persist
   only on Remember. Remembered passwords are scoped to profile/device/port/user.
   A refusal is not permission to erase a remembered password or to keep

@@ -93,7 +93,11 @@ import ru.adsrv.frpjump.ui.ChoiceSheet
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.EyeOffGlyph
 import ru.adsrv.frpjump.ui.FingerprintGlyph
+import ru.adsrv.frpjump.ui.CopyGlyph
 import ru.adsrv.frpjump.ui.KeyGlyph
+import ru.adsrv.frpjump.ui.ShareGlyph
+import ru.adsrv.frpjump.ssh.SshKeySlot
+import ru.adsrv.frpjump.ui.ssh.keyTitle
 import ru.adsrv.frpjump.ui.RepeatGlyph
 import ru.adsrv.frpjump.ui.SwapGlyph
 import ru.adsrv.frpjump.ui.ThemeGlyph
@@ -304,8 +308,8 @@ fun SettingsScreen(
         Group(stringResource(R.string.settings_security)) {
             SettingRow(
                 tile = { IconTile(KeyGlyph) },
-                label = stringResource(R.string.ssh_public_key),
-                hint = state.sshKeySummary ?: state.sshPublicKeyError ?: "…",
+                label = stringResource(R.string.ssh_keys),
+                hint = sshKeysSummary(state) ?: state.sshPublicKeyError ?: "…",
                 hintColor = if (state.sshPublicKeyError != null) colors.error else colors.muted,
                 onClick = { open = Open.SSH_KEY },
             ) { Chevron() }
@@ -737,11 +741,10 @@ private fun PortsSheet(first: Int, last: Int, onSave: (Int?, Int?) -> PortRangeP
     }
 }
 
-/** The phone's SSH key: the line to add on devices, copy and share it; an imported key tried first. */
+/** The app's SSH keys, the phone's and an imported one, each with its line to add on devices: copy it, share it. */
 @Composable
 private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
     val colors = AppTheme.colors
     // A picked key file waits here for its passphrase; never saved across recreation.
     var pickedKey by remember { mutableStateOf<String?>(null) }
@@ -749,54 +752,31 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
         if (uri != null) pickedKey = readSmallText(context, uri)
         if (uri != null && pickedKey == null) context.notice(context.getString(R.string.key_file_unreadable), NoticeKind.WARN)
     }
-    AppSheet(title = stringResource(R.string.ssh_public_key), subtitle = state.sshKeySummary, onDismiss = onDismiss) {
-        Text(stringResource(R.string.ssh_public_key_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
-        Surface(color = colors.code, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-            SelectionContainer {
-                Text(
-                    state.sshPublicKey ?: state.sshPublicKeyError ?: "…",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    color = colors.onCode,
-                    modifier = Modifier.padding(12.dp),
-                )
-            }
-        }
-        state.sshPublicKey?.let { key ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = {
-                    clipboard.setText(AnnotatedString(key))
-                    // Android 13+ shows its own confirmation of a copy.
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                        context.notice(context.getString(R.string.copied), NoticeKind.DONE, key = "copied")
-                    }
-                }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.copy)) }
-                OutlinedButton(onClick = { shareText(context, key) }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.share)) }
-            }
+    AppSheet(title = stringResource(R.string.ssh_keys), subtitle = sshKeysSummary(state), onDismiss = onDismiss) {
+        Text(stringResource(R.string.ssh_keys_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+        if (state.sshPublicKey != null) {
+            KeyBlock(SshKeySlot.PHONE, state.sshPublicKey)
+        } else {
+            Text(state.sshPublicKeyError ?: "…", fontSize = 13.sp, color = if (state.sshPublicKeyError != null) colors.error else colors.muted)
         }
         HorizontalDivider(color = colors.divider)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val imported = state.importedKey
+        if (imported != null) {
+            KeyBlock(SshKeySlot.IMPORTED, imported)
+            Text(stringResource(R.string.imported_key_tried_first), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+        } else {
             Text(stringResource(R.string.imported_key), fontSize = 15.sp, fontWeight = FontWeight.Medium)
-            Text(
-                stringResource(if (state.importedKey != null) R.string.imported_key_tried_first else R.string.imported_key_hint),
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                color = colors.muted,
-            )
-            state.importedKey?.let {
-                Text(it, fontFamily = FontFamily.Monospace, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            state.importError?.let { Text(it, color = colors.error, fontSize = 13.sp) }
+            Text(stringResource(R.string.imported_key_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
         }
+        state.importError?.let { Text(it, color = colors.error, fontSize = 13.sp) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
                 vm.clearImportError()
                 pickKey.launch(arrayOf("*/*"))
             }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(if (state.importedKey == null) R.string.import_key else R.string.replace_key))
+                Text(stringResource(if (imported == null) R.string.import_key else R.string.replace_key))
             }
-            if (state.importedKey != null) {
+            if (imported != null) {
                 OutlinedButton(onClick = vm::removeImportedKey, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.remove_key)) }
             }
         }
@@ -811,6 +791,73 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
         )
     }
 }
+
+/** The row's and the sheet's summary: the one key's fingerprint, or which two keys there are. */
+@Composable
+private fun sshKeysSummary(state: SettingsUiState): String? =
+    if (state.importedKey != null) stringResource(R.string.ssh_keys_both) else state.sshKeySummary
+
+/**
+ * One key: its name, type and fingerprint with Copy and Share in the title
+ * row, then its line, folded to 3 lines when longer; a tap unfolds it.
+ */
+@Composable
+private fun KeyBlock(slot: SshKeySlot, line: String) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val colors = AppTheme.colors
+    val imported = slot == SshKeySlot.IMPORTED
+    val title = keyTitle(slot)
+    var expanded by rememberSaveable(slot.name) { mutableStateOf(false) }
+    var overflows by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                keySummary(line)?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
+            }
+            IconButton(onClick = {
+                clipboard.setText(AnnotatedString(line))
+                // Android 13+ shows its own confirmation of a copy.
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                    context.notice(context.getString(R.string.copied), NoticeKind.DONE, key = "copied")
+                }
+            }) {
+                Icon(CopyGlyph, contentDescription = stringResource(if (imported) R.string.copy_imported_key else R.string.copy_phone_key))
+            }
+            IconButton(onClick = { shareText(context, line, title) }) {
+                Icon(ShareGlyph, contentDescription = stringResource(if (imported) R.string.share_imported_key else R.string.share_phone_key))
+            }
+        }
+        Surface(
+            color = colors.code,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("ssh-key-line-${slot.name}")
+                .clickable(
+                    enabled = overflows || expanded,
+                    onClickLabel = if (expanded) null else stringResource(R.string.show_whole_key),
+                ) { expanded = !expanded },
+        ) {
+            SelectionContainer {
+                Text(
+                    line,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = colors.onCode,
+                    maxLines = if (expanded) Int.MAX_VALUE else KEY_LINE_FOLDED,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow },
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+        }
+    }
+}
+
+private const val KEY_LINE_FOLDED = 3
 
 /** The span of a poll interval, "30 s", "5 min", or "Off". */
 @Composable
@@ -929,9 +976,12 @@ private fun java.io.InputStream.readNBytesCompat(limit: Int): ByteArray {
     return out.toByteArray()
 }
 
-private fun shareText(context: Context, text: String) {
-    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-    context.startActivity(Intent.createChooser(send, context.getString(R.string.ssh_public_key)))
+/** The chooser that shares [text]; its title is [title], the key's name. */
+internal fun shareTextIntent(text: String, title: String): Intent =
+    Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), title)
+
+private fun shareText(context: Context, text: String, title: String) {
+    context.startActivity(shareTextIntent(text, title))
 }
 
 private const val MAX_KEY_FILE = 64 * 1024

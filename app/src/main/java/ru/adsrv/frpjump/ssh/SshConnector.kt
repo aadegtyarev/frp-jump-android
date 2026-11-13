@@ -9,7 +9,6 @@ import net.schmizz.sshj.common.KeyType
 import net.schmizz.sshj.transport.verification.HostKeyVerifier
 import net.schmizz.sshj.userauth.UserAuthException
 import net.schmizz.sshj.userauth.password.PasswordUtils
-import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import java.io.IOException
 import java.security.PublicKey
@@ -122,10 +121,7 @@ class SshConnector(
     )
 
     /** What to tell the owner after [UserAuthException]. */
-    fun authFailure(): String = when (val r = refusal()) {
-        LoginRefusal.KEY -> Texts.get(loginRefusalText(r), user, Texts.get(R.string.ssh_public_key))
-        else -> Texts.get(loginRefusalText(r), user)
-    }
+    fun authFailure(): String = Texts.get(loginRefusalText(refusal()), user)
 
     private class PinningVerifier(
         private val store: HostKeyStore,

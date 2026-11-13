@@ -346,8 +346,8 @@ The [SSH persistence](ssh-persist-contract.md),
 session, input and measurement guarantees. The entry points and common
 terminal behavior are summarized here.
 
-User + key or password, one generated ed25519 key per phone (shared
-by all profiles), host keys pinned per profile+device+port, passwords stored
+User + key or password, the phone's generated ed25519 key (shared by
+all profiles) and an optional imported one (tried first), host keys pinned per profile+device+port, passwords stored
 only on "remember", several sessions at once. A row of snippets (saved
 commands, owner-defined) above the extra keys; the sessions as a row of tabs
 above the terminal, where "+" opens another session to the same device with
@@ -557,7 +557,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 
 Settings are grouped by purpose: profile (name and colour, forget profile); tunnels
 (direct connection, local port range); background (poll interval, battery);
-security (phone SSH key, unlock with fingerprint, lock after); app (language, theme,
+security (SSH keys: the phone's and an imported one, unlock with fingerprint, lock after); app (language, theme,
 version and update, MQTT plugins (scenario 12), components and licenses).
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that

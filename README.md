@@ -585,11 +585,15 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   it again, rather than "wrong password".
 - "Use key login" (in the "⋮" menu of a saved SSH connection and in a
   session tab's long-press menu, while that login is by password) moves it
-  to the phone's key in one tap, as `ssh-copy-id` does. It runs over the
+  to a key in one tap, as `ssh-copy-id` does: with an imported key as well as
+  the phone's, a dialog first asks which one to add (the phone's is chosen). It runs over the
   open session as that user when there is one, else over a password login
   (the remembered password, or the dialog asks once; a remembered one that
   is refused is kept and the dialog asks; the tunnel is brought up if it
-  is down). One fixed `sh` script on one line (`ssh/KeyInstall.kt`, so csh
+  is down). The chosen key is read and loaded before anything is written;
+  if that fails, or the key was removed or replaced in Settings meanwhile,
+  nothing is written ("Could not read the chosen key. Nothing was
+  changed."). One fixed `sh` script on one line (`ssh/KeyInstall.kt`, so csh
   login shells take it too) reads the key line from stdin (checked first:
   a known type, a base64 key, no control characters). When the same key is
   in `~/.ssh/authorized_keys` already it ends there and changes nothing;
@@ -597,8 +601,8 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   private (700 / 600, not through a symlink, a chmod that fails does not
   stop it) and appends the key. A script still running after 30 s is
   closed and reported as timed out; Cancel in the progress dialog closes
-  the connection. Then a fresh login with the app's own key (not an
-  imported one) must succeed; only then the remembered method for that
+  the connection. Then a fresh login with the chosen key only (not the
+  other one) must succeed; only then the remembered method for that
   device and port becomes Key and the remembered password for the user is
   forgotten ("Key installed, key login works"; should forgetting the
   password fail, it says so). Otherwise nothing in the app changes and a

@@ -4,7 +4,7 @@ import ru.adsrv.frpjump.R
 
 /** Why a login was refused, as the owner is told it; a remembered password is never dropped for it. */
 enum class LoginRefusal {
-    /** The device did not take the phone's key. */
+    /** The device did not take any of the app's keys. */
     KEY,
 
     /** The password just typed. */
@@ -33,7 +33,7 @@ fun loginRefusal(key: Boolean, typed: Boolean, remembered: Boolean, readable: Bo
     else -> LoginRefusal.PASSWORD_SAVED
 }
 
-/** The text of a password refusal, taking the user's name; [LoginRefusal.KEY] takes the key's place in Settings too. */
+/** The text of a refusal, taking the user's name. */
 fun loginRefusalText(refusal: LoginRefusal): Int = when (refusal) {
     LoginRefusal.KEY -> R.string.ssh_key_refused
     LoginRefusal.PASSWORD_TYPED -> R.string.ssh_password_refused

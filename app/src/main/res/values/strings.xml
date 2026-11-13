@@ -261,7 +261,7 @@
     <!-- Connection rows and their actions -->
     <string name="connection_details">Port %1$d</string>
     <string name="connection_details_https">Port %1$d · HTTPS</string>
-    <string name="connection_details_ssh_key">Port %1$d · %2$s · phone key</string>
+    <string name="connection_details_ssh_key">Port %1$d · %2$s · key</string>
     <string name="connection_details_ssh_password">Port %1$d · %2$s · password</string>
     <string name="connection_unsaved">Port %d</string>
     <string name="connection_actions">Actions with “%s”</string>
@@ -452,9 +452,9 @@
     <!-- SSH console -->
     <string name="close">Close</string>
     <string name="key_login">Use key login</string>
-    <string name="key_login_title">Key login: %s</string>
-    <string name="key_install_working">Installing the phone’s key…</string>
-    <string name="key_install_password_note">The password is needed once, to add the phone’s key to ~/.ssh/authorized_keys on the device. It is not kept.</string>
+    <string name="key_login_title">Use key login: %s</string>
+    <string name="key_install_working">Installing %s…</string>
+    <string name="key_install_password_note">The password is needed once, to add %s to ~/.ssh/authorized_keys on the device. It is not kept.</string>
     <string name="key_install_confirm">Install key</string>
     <string name="key_install_done">Key installed, key login works</string>
     <string name="key_install_done_password_kept">Key login works and is now used, but the remembered password could not be forgotten: %s</string>
@@ -462,6 +462,12 @@
     <string name="key_install_command_failed">Could not add the key: %s. Logins stay with the password.</string>
     <string name="key_install_connection_failed">Could not connect: %s. Logins stay with the password.</string>
     <string name="key_install_save_failed">Key login works, but the app could not save it: %s. Logins stay with the password.</string>
+    <string name="key_install_unreadable">Could not read the chosen key. Nothing was changed.</string>
+    <string name="key_choose_question">Which key to add for user %s?</string>
+    <string name="key_choose_hint">I will add it to ~/.ssh/authorized_keys and check a login with it.</string>
+    <string name="key_choose_confirm">Install</string>
+    <string name="key_name_phone">the phone key</string>
+    <string name="key_name_imported">the imported key</string>
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
     <string name="terminal_text_size">Text size</string>
@@ -489,7 +495,7 @@
     <string name="ssh_method_password">Password</string>
     <string name="ssh_password_saved">•••••••• saved</string>
     <string name="ssh_remember_password">Remember on this phone</string>
-    <string name="ssh_login_key_hint">Uses this phone’s key (Settings › %s); the device must have it in ~/.ssh/authorized_keys.</string>
+    <string name="ssh_login_key_hint">Uses the keys in Settings › %s; the device needs a key’s line in ~/.ssh/authorized_keys.</string>
     <string name="secret_show">Show</string>
     <string name="secret_hide">Hide</string>
     <string name="ssh_closed">Closed.</string>
@@ -499,7 +505,7 @@
     <string name="ssh_note_host_key_changed">WARNING: the host key of %s has changed. Not connecting.</string>
     <string name="ssh_cannot_connect">Cannot connect: %s</string>
     <string name="ssh_failed">SSH failed: %s</string>
-    <string name="ssh_key_refused">The device did not accept this phone’s key for “%1$s”. Add the key from Settings › %2$s to ~/.ssh/authorized_keys there, or log in with a password.</string>
+    <string name="ssh_key_refused">No key worked for “%1$s”. Log in with a password, then choose “Use key login”.</string>
     <string name="ssh_password_refused">Wrong user name or password for “%s”.</string>
     <string name="ssh_saved_password_refused">The saved password didn’t work for “%s”; it is kept until you enter another.</string>
     <string name="ssh_saved_password_unreadable">The saved password for “%s” can’t be read on this phone. Enter it again.</string>
@@ -557,14 +563,20 @@
     <string name="background_poll_off_hint">Off: with the app closed, open tunnels keep running but nothing is checked; tunnels closed or devices disabled elsewhere are noticed when you open the app.</string>
     <string name="background_poll_on_hint">With the app closed, every %s while tunnels are up (the “Tunnels” notification is shown): keeps this phone online for the server and closes tunnels that were disconnected or disabled elsewhere.</string>
     <string name="background_poll_open_hint">While the app is open it checks every 2 s. Without tunnels nothing runs in the background.</string>
-    <string name="ssh_public_key">Phone SSH key</string>
-    <string name="ssh_public_key_hint">Add this line to ~/.ssh/authorized_keys on a device to log in with this phone’s key.</string>
+    <string name="ssh_keys">SSH keys</string>
+    <string name="ssh_keys_hint">Add a key’s line to ~/.ssh/authorized_keys on the device, or choose “Use key login” in an SSH tab’s menu.</string>
     <string name="ssh_key_failed">Cannot make or read the SSH key: %s</string>
+    <string name="ssh_keys_both">Phone and imported</string>
+    <string name="phone_key">Phone key</string>
+    <string name="copy_phone_key">Copy the phone key</string>
+    <string name="copy_imported_key">Copy the imported key</string>
+    <string name="share_phone_key">Share the phone key</string>
+    <string name="share_imported_key">Share the imported key</string>
+    <string name="show_whole_key">Show the whole key</string>
     <string name="copy">Copy</string>
-    <string name="share">Share</string>
-    <string name="imported_key">Imported private key</string>
-    <string name="imported_key_hint">Optional: an OpenSSH private key file you already use, tried before this phone’s key.</string>
-    <string name="imported_key_tried_first">Tried before this phone’s own key:</string>
+    <string name="imported_key">Imported key</string>
+    <string name="imported_key_hint">Optional: an OpenSSH private key file you already use. It is tried first when logging in.</string>
+    <string name="imported_key_tried_first">Tried first when logging in.</string>
     <string name="import_key">Import private key</string>
     <string name="import_key_short">Import</string>
     <string name="replace_key">Replace</string>
