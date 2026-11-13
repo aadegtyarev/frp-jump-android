@@ -571,6 +571,7 @@
     <string name="share_phone_key">Share the phone key</string>
     <string name="share_imported_key">Share the imported key</string>
     <string name="show_whole_key">Show the whole key</string>
+    <string name="fold_key">Fold</string>
     <string name="copy">Copy</string>
     <string name="imported_key">Imported key</string>
     <string name="imported_key_hint">Optional: an OpenSSH private key file you already use. It is tried first when logging in.</string>

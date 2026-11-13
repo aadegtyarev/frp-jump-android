@@ -375,9 +375,9 @@ is locked messages are dropped, and locking clears those waiting.
 
 Grouped as the mockup: the current profile (name and colour, forget),
 tunnels (direct connection, local ports), background (server checks,
-battery), security (the phone's SSH key, unlock with fingerprint, hide in Recents) and the
+battery), security (the SSH keys, unlock with fingerprint, hide in Recents) and the
 app (language, theme, version, components and licenses). Rows show their value; local ports, the
-check interval, the SSH key, language and theme open a sheet.
+check interval, the SSH keys, language and theme open a sheet.
 
 - Direct connection (P2P): see above; off is one `stcp` visitor per tunnel
   bound directly, as `frp-jump-client set-p2p off`, with no attempts and
@@ -563,8 +563,9 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   tmux yet): the terminal leaves any full-screen program's screen, writes
   "[New shell: the previous one ended with the connection]" under the old
   text, and the bar says the same until the owner types.
-- Key: the app makes one ed25519 key on first use; Settings shows its
-  `authorized_keys` line with Copy / Share. "Import private key" takes an
+- Keys: the app makes one ed25519 key on first use; Settings › "SSH keys"
+  shows its `authorized_keys` line with Copy / Share, and the same for the
+  imported key. "Import private key" takes an
   OpenSSH (or PEM) private key file and its passphrase; it is tried before
   the app's key. Private keys, passphrases and remembered passwords are
   sealed with a Keystore AES-GCM key of their own (`frpjump-ssh`), so
@@ -581,14 +582,15 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   it again, rather than "wrong password".
 - "Use key login" (in the "⋮" menu of a saved SSH connection and in a
   session tab's long-press menu, while that login is by password) moves it
-  to a key in one tap, as `ssh-copy-id` does: with an imported key as well as
-  the phone's, a dialog first asks which one to add (the phone's is chosen). It runs over the
+  to a key, as `ssh-copy-id` does: in one tap with one key; with an imported
+  key as well as the phone's, a dialog first asks which one to add (the
+  phone's is chosen). It runs over the
   open session as that user when there is one, else over a password login
   (the remembered password, or the dialog asks once; a remembered one that
   is refused is kept and the dialog asks; the tunnel is brought up if it
   is down). The chosen key is read and loaded before anything is written;
   if that fails, or the key was removed or replaced in Settings meanwhile,
-  nothing is written ("Could not read the chosen key. Nothing was
+  nothing is written (not even a connection or tunnel) ("Could not read the chosen key. Nothing was
   changed."). One fixed `sh` script on one line (`ssh/KeyInstall.kt`, so csh
   login shells take it too) reads the key line from stdin (checked first:
   a known type, a base64 key, no control characters). When the same key is
@@ -606,8 +608,9 @@ CPU timings; see the [diagnostics contract](docs/terminal-diagnostics-contract.m
   reads them from another `AuthorizedKeysFile`), the command failed (the
   first line it wrote to stderr), or the connection failed. What may be
   left on the device then: `~/.ssh` and `authorized_keys` made or made
-  private, and the key line appended (when the key was refused after it
-  was written). Host keys are asked about as for the terminal.
+  private, and the key line appended (whenever the script got that far:
+  after a refused or failed check, a timeout, a Cancel after the script, or a
+  failed save of the new method). Host keys are asked about as for the terminal.
 - Host keys are pinned per (profile, device name, target port) on first use, shown as
   OpenSSH `SHA256:` fingerprints. A different key blocks the connection and
   shows both fingerprints; "Forget the old key" drops the pin and asks again.

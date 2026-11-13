@@ -62,14 +62,19 @@ class SshKeyStore(private val storage: TextStorage, private val box: SecretBox) 
     @Synchronized
     fun identities(comment: String): List<SshIdentity> {
         publicLine(comment)
-        return listOfNotNull(keys.imported, keys.generated).mapNotNull { stored ->
-            try {
-                SshIdentity(box.open(stored.privateSealed), stored.passphraseSealed?.let(box::open), stored.publicLine)
-            } catch (e: Exception) {
-                Log.w(TAG, "cannot unseal an SSH key: ${e.javaClass.simpleName}")
-                null
-            }
-        }
+        return listOfNotNull(keys.imported, keys.generated).mapNotNull(::unseal)
+    }
+
+    /** The key whose public line is [publicLine], unsealed alone; null when there is none or it cannot be unsealed. */
+    @Synchronized
+    fun identity(publicLine: String): SshIdentity? =
+        listOfNotNull(keys.imported, keys.generated).firstOrNull { it.publicLine == publicLine }?.let(::unseal)
+
+    private fun unseal(stored: StoredKey): SshIdentity? = try {
+        SshIdentity(box.open(stored.privateSealed), stored.passphraseSealed?.let(box::open), stored.publicLine)
+    } catch (e: Exception) {
+        Log.w(TAG, "cannot unseal an SSH key: ${e.javaClass.simpleName}")
+        null
     }
 
     /** Stores an imported private key; [publicLine] comes from loading it (see [SshClients.publicLineOf]). */

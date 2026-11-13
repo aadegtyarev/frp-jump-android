@@ -78,6 +78,10 @@ class KeyInstallerRunTest {
     private val offered = CopyOnWriteArrayList<String>()
     private val scriptsRun = AtomicInteger()
 
+    /** Tunnel requests (the `localPort` lambda) and password logins the server saw: both 0 when a run stopped before any connection. */
+    private val tunnelsAsked = AtomicInteger()
+    private val passwordLogins = AtomicInteger()
+
     /** Whether keys in `authorized_keys` are accepted (false: sshd forbids key logins). */
     @Volatile
     private var acceptKeys = true
@@ -91,7 +95,10 @@ class KeyInstallerRunTest {
             host = "127.0.0.1"
             port = 0
             keyPairProvider = KeyPairProvider.wrap(hostKey)
-            passwordAuthenticator = org.apache.sshd.server.auth.password.PasswordAuthenticator { user, password, _ -> user == "test" && password == "test" }
+            passwordAuthenticator = org.apache.sshd.server.auth.password.PasswordAuthenticator { user, password, _ ->
+                passwordLogins.incrementAndGet()
+                user == "test" && password == "test"
+            }
             publickeyAuthenticator = PublickeyAuthenticator { user, key, _ ->
                 val blob = Base64.getEncoder().encodeToString(ByteArrayBuffer().apply { putRawPublicKey(key) }.compactData)
                 offered += blob
@@ -142,9 +149,17 @@ class KeyInstallerRunTest {
     }
 
     private fun target(key: SshKeyChoice?, user: String = "test") =
-        KeyInstallTarget("synthetic-profile", HostKeyStore(MemoryStorage()).apply { pin("dev", 22, pin) }, "dev", 22, user, logins, { server.port }, key = key)
+        KeyInstallTarget("synthetic-profile", HostKeyStore(MemoryStorage()).apply { pin("dev", 22, pin) }, "dev", 22, user, logins, { tunnelsAsked.incrementAndGet(); server.port }, key = key)
 
     private fun run(target: KeyInstallTarget, typed: String? = "test") = runBlocking { installer.install(target, typed) }
+
+    private fun assertNoConnection() {
+        assertEquals(0, tunnelsAsked.get())
+        assertEquals(0, passwordLogins.get())
+        assertEquals(0, scriptsRun.get())
+        assertFalse(authorized.exists())
+        assertTrue(offered.isEmpty())
+    }
 
     private fun authorizedBlobs() = authorized.takeIf { it.isFile }?.readLines().orEmpty().filter { it.isNotBlank() }.map { it.split(' ')[1] }
 
@@ -184,9 +199,7 @@ class KeyInstallerRunTest {
         logins.remember("dev", 22, SshLogin("test", SshAuthMethod.PASSWORD))
         env.passwords.remember("synthetic-profile", "dev", 22, "test", "test")
         assertEquals(KeyInstallResult.KeyUnreadable, run(target(SshKeyChoice(SshKeySlot.IMPORTED, broken.publicLine)), typed = null))
-        assertEquals(0, scriptsRun.get())
-        assertFalse(authorized.exists())
-        assertTrue(offered.isEmpty())
+        assertNoConnection()
         assertEquals(SshLogin("test", SshAuthMethod.PASSWORD), logins.stored("dev", 22))
         assertTrue(env.passwords.has("synthetic-profile", "dev", 22, "test"))
     }
@@ -197,8 +210,7 @@ class KeyInstallerRunTest {
         val chosen = target(imported)
         env.keys.removeImported()
         assertEquals(KeyInstallResult.KeyUnreadable, run(chosen))
-        assertEquals(0, scriptsRun.get())
-        assertFalse(authorized.exists())
+        assertNoConnection()
     }
 
     @Test
@@ -207,8 +219,7 @@ class KeyInstallerRunTest {
         val chosen = target(imported)
         importKey()
         assertEquals(KeyInstallResult.KeyUnreadable, run(chosen))
-        assertEquals(0, scriptsRun.get())
-        assertFalse(authorized.exists())
+        assertNoConnection()
     }
 
     @Test
@@ -224,11 +235,15 @@ class KeyInstallerRunTest {
     @Test
     fun `the password is forgotten and key login remembered only after the key login worked`() {
         val phone = phone()
+        val imported = importKey()
         env.passwords.remember("synthetic-profile", "dev", 22, "test", "test")
         logins.remember("dev", 22, SshLogin("test", SshAuthMethod.PASSWORD))
         acceptKeys = false
         assertEquals(KeyInstallResult.KeyRefused, run(target(phone), typed = null))
         assertEquals(listOf(blob(phone.publicLine)), authorizedBlobs())
+        // The refused check offered only the chosen key, never the imported one.
+        assertEquals(listOf(blob(phone.publicLine)), offered.distinct())
+        assertFalse(offered.contains(blob(imported.publicLine)))
         assertTrue(env.passwords.has("synthetic-profile", "dev", 22, "test"))
         assertEquals(SshLogin("test", SshAuthMethod.PASSWORD), logins.stored("dev", 22))
         acceptKeys = true
@@ -246,5 +261,59 @@ class KeyInstallerRunTest {
         assertEquals(imported, t.withKey(imported).key)
         assertEquals(null, t.withKey(null).key)
         assertEquals("other", t.withUser("other").user)
+    }
+
+    @Test
+    fun `a key whose private part is not the one of its line writes nothing`() {
+        val a = syntheticKey("a")
+        val b = syntheticKey("b")
+        env.keys.import(a.privateKey, null, b.publicLine)
+        assertEquals(KeyInstallResult.KeyUnreadable, run(target(SshKeyChoice(SshKeySlot.IMPORTED, b.publicLine))))
+        assertNoConnection()
+    }
+
+    /** An RSA key as encrypted PKCS#8 (PBE), the passphrase [pass]. */
+    private fun encryptedKey(comment: String, pass: String): SshKeyPair {
+        val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        val out = java.io.StringWriter()
+        val encryptor = org.bouncycastle.openssl.jcajce.JceOpenSSLPKCS8EncryptorBuilder(org.bouncycastle.openssl.PKCS8Generator.PBE_SHA1_3DES)
+            .setProvider(org.bouncycastle.jce.provider.BouncyCastleProvider())
+            .setPassword(pass.toCharArray())
+            .build()
+        org.bouncycastle.openssl.jcajce.JcaPEMWriter(out).use { it.writeObject(org.bouncycastle.openssl.jcajce.JcaPKCS8Generator(pair.private, encryptor)) }
+        val pem = out.toString()
+        return SshKeyPair(pem, publicLineOfPrivateKey(pem, pass, comment))
+    }
+
+    @Test
+    fun `an encrypted key is installed and checked with its passphrase`() {
+        val key = encryptedKey("imported", "s3cret")
+        env.keys.import(key.privateKey, "s3cret", key.publicLine)
+        assertEquals(KeyInstallResult.Installed, run(target(SshKeyChoice(SshKeySlot.IMPORTED, key.publicLine))))
+        assertEquals(listOf(blob(key.publicLine)), authorizedBlobs())
+        assertEquals(listOf(blob(key.publicLine)), offered.distinct())
+    }
+
+    @Test
+    fun `an encrypted key with a wrong passphrase is unreadable and writes nothing`() {
+        val key = encryptedKey("imported", "s3cret")
+        env.keys.import(key.privateKey, "wrong", key.publicLine)
+        assertEquals(KeyInstallResult.KeyUnreadable, run(target(SshKeyChoice(SshKeySlot.IMPORTED, key.publicLine))))
+        assertNoConnection()
+    }
+
+    /**
+     * The phone's own key, ed25519 as the app makes it. The test sshd has no EdDSA (it is not on the test classpath),
+     * so only the install is observed: the key loads, matches its line and its line is written; the check then
+     * cannot be answered by that server and ends as refused.
+     */
+    @Test
+    fun `the phones ed25519 key loads and its line is written`() {
+        val ownBox = FakeKeystore().box("synthetic-ssh-ed")
+        val ownEnv = SshEnvironment(SshKeyStore(MemoryStorage(), ownBox), SshPasswords(MemoryStorage(), ownBox), { "frp-jump@ed" }, TmuxNames(MemoryStorage()))
+        val phone = ownEnv.keys.choices("frp-jump@ed").first()
+        val result = runBlocking { KeyInstaller(ownEnv) { _, _, _, _ -> null }.install(target(phone), "test") }
+        assertEquals(KeyInstallResult.KeyRefused, result)
+        assertEquals(listOf(blob(phone.publicLine)), authorizedBlobs())
     }
 }

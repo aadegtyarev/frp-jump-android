@@ -318,10 +318,14 @@ that join timeout as a proven end-to-end maximum or remove the protection;
     key there is no extra step. The chosen key is bound to its public line; Retry,
     host-key Trust and a changed user in the password dialog keep it, and Cancel
     runs nothing. The working text and the password note name it.
-  - **Before any write** the chosen key is read and loaded. If that fails, or it
-    was removed or replaced in Settings since the choice (its public line no
-    longer matches), the run ends as "Could not read the chosen key. Nothing was
-    changed." and the script never runs.
+  - **Before any connection, tunnel or write** only the chosen key is unsealed,
+    read and loaded, and the key it holds must be the one its public line says.
+    If that fails (also a wrong passphrase), or it was removed or replaced in
+    Settings since the choice (its public line no longer matches), the run ends
+    as "Could not read the chosen key. Nothing was changed." and nothing runs;
+    Retry then starts again from the key choice, with the keys as they are now.
+    The keys are read off the main thread; if that read itself fails the run
+    goes on without a choice and reports the error as any other.
   - **Connection.** It runs over an open session of that user when there is
     one, else over a password login (the remembered password, or the dialog asks
     once and the password is not kept; a remembered one that is refused is kept
@@ -335,8 +339,10 @@ that join timeout as a proven end-to-end maximum or remove the protection;
     Otherwise it makes `~/.ssh` and the file if missing, makes them private
     (700 / 600, not through a symlink; a failing chmod does not stop it) and
     appends the line. A script still running after 30 s is closed and reported
-    as timed out; Cancel closes the connection and saves nothing. The imported
-    key's comment stays "imported".
+    as timed out; a command that failed says the first line it wrote to stderr,
+    or its exit status when stderr is empty. Cancel closes only what the run
+    opened (over an open session only its exec channel, never the session's
+    connection) and saves nothing. The imported key's comment stays "imported".
   - **Check.** Then a fresh login with the chosen key only (the other key is not
     loaded or offered) must succeed. Only then the remembered method for that
     device and port becomes Key and the remembered password of that user is
@@ -346,8 +352,9 @@ that join timeout as a proven end-to-end maximum or remove the protection;
     `AuthorizedKeysFile`), the key could not be read, the command failed (the
     first line it wrote to stderr), the connection failed, or saving the new
     method failed. On the device there may remain `~/.ssh` and `authorized_keys`
-    made or made private, and the key line appended when the key was refused
-    after it was written.
+    made or made private, and the key line appended: whenever the script got
+    that far, so also after a failed check, a timeout, a Cancel after the script
+    ran, or a failed save of the new method.
 - Typed passwords remain in the tab's login object for reconnect; persist
   only on Remember. Remembered passwords are scoped to profile/device/port/user.
   A refusal is not permission to erase a remembered password or to keep

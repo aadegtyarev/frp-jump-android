@@ -6,6 +6,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.connection.ConnectionException
 import net.schmizz.sshj.userauth.UserAuthException
 import net.schmizz.sshj.userauth.keyprovider.KeyProvider
@@ -262,9 +263,9 @@ class KeyInstaller internal constructor(
 
     private suspend fun run(t: KeyInstallTarget, typed: String?): KeyInstallResult {
         val comment = env.keyComment()
-        // Before anything is written: the chosen key, as the owner saw it, read and loaded.
+        // Before any connection, tunnel or write: the chosen key, as the owner saw it, read and loaded.
         val wanted = t.key?.publicLine ?: env.keys.publicLine(comment)
-        val identity = env.keys.identities(comment).firstOrNull { it.publicLine == wanted } ?: return KeyInstallResult.KeyUnreadable
+        val identity = env.keys.identity(wanted) ?: return KeyInstallResult.KeyUnreadable
         val key = try {
             loadKey(identity)
         } catch (e: Exception) {
@@ -322,12 +323,16 @@ class KeyInstaller internal constructor(
         }
     }
 
-    /** [identity] loaded as a login will; throws when it cannot be (the text is not a key, the passphrase is wrong). */
+    /**
+     * [identity] loaded as a login will; throws when it cannot be (the text is not a key, the passphrase is wrong) or
+     * when the key it holds is not the one its public line says.
+     */
     private fun loadKey(identity: SshIdentity): KeyProvider {
         val loader = env.clientFactory?.invoke() ?: SSHClient()
         val provider = loader.loadKeys(identity.privateKey, null, identity.passphrase?.let { PasswordUtils.createOneOff(it.toCharArray()) })
         // Reading it parses the key: a key that cannot be read fails here, not in the check.
-        requireNotNull(provider.public) { "no public key" }
+        val loaded = Buffer.PlainBuffer().putPublicKey(requireNotNull(provider.public) { "no public key" }).compactData
+        if (!loaded.contentEquals(blobOfPublicKeyLine(identity.publicLine))) throw IOException("the key is not the one of its line")
         return provider
     }
 

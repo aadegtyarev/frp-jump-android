@@ -98,6 +98,8 @@ class KeyChoiceDialogTest {
         compose.runOnUiThread {
             flow.start(KeyInstallTarget("synthetic", HostKeyStore(Mem()), "wb", 22, "root", SshLoginMemory(Mem()), { 1 }))
         }
+        // The keys are read off the main thread: the choice, or the run, follows.
+        compose.waitUntil(5_000) { flow.step is KeyLoginStep.Choose || installer.seen != null }
         compose.waitForIdle()
         return flow
     }

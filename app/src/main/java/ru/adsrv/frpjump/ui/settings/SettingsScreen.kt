@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -309,7 +310,7 @@ fun SettingsScreen(
             SettingRow(
                 tile = { IconTile(KeyGlyph) },
                 label = stringResource(R.string.ssh_keys),
-                hint = sshKeysSummary(state) ?: state.sshPublicKeyError ?: "…",
+                hint = sshKeysSummary(state) ?: "…",
                 hintColor = if (state.sshPublicKeyError != null) colors.error else colors.muted,
                 onClick = { open = Open.SSH_KEY },
             ) { Chevron() }
@@ -792,10 +793,10 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
     }
 }
 
-/** The row's and the sheet's summary: the one key's fingerprint, or which two keys there are. */
+/** The row's and the sheet's summary: why the phone's key is missing, else the one key's fingerprint, or which two keys there are. */
 @Composable
 private fun sshKeysSummary(state: SettingsUiState): String? =
-    if (state.importedKey != null) stringResource(R.string.ssh_keys_both) else state.sshKeySummary
+    state.sshPublicKeyError ?: if (state.importedKey != null) stringResource(R.string.ssh_keys_both) else state.sshKeySummary
 
 /**
  * One key: its name, type and fingerprint with Copy and Share in the title
@@ -825,9 +826,25 @@ private fun KeyBlock(slot: SshKeySlot, line: String) {
             }) {
                 Icon(CopyGlyph, contentDescription = stringResource(if (imported) R.string.copy_imported_key else R.string.copy_phone_key))
             }
-            IconButton(onClick = { shareText(context, line, title) }) {
+            val share = LocalShareText.current
+            IconButton(onClick = { share(context, line, title) }) {
                 Icon(ShareGlyph, contentDescription = stringResource(if (imported) R.string.share_imported_key else R.string.share_phone_key))
             }
+        }
+        // Clickable only when there is something to fold or unfold; selectable only when the whole line shows, so Select all never copies a cut key.
+        val foldable = overflows || expanded
+        val text: @Composable () -> Unit = {
+            Text(
+                line,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                color = colors.onCode,
+                maxLines = if (expanded) Int.MAX_VALUE else KEY_LINE_FOLDED,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow },
+                modifier = Modifier.padding(12.dp),
+            )
         }
         Surface(
             color = colors.code,
@@ -835,29 +852,23 @@ private fun KeyBlock(slot: SshKeySlot, line: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("ssh-key-line-${slot.name}")
-                .clickable(
-                    enabled = overflows || expanded,
-                    onClickLabel = if (expanded) null else stringResource(R.string.show_whole_key),
-                ) { expanded = !expanded },
+                .then(
+                    if (foldable) {
+                        Modifier.clickable(onClickLabel = stringResource(if (expanded) R.string.fold_key else R.string.show_whole_key)) { expanded = !expanded }
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
-            SelectionContainer {
-                Text(
-                    line,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    color = colors.onCode,
-                    maxLines = if (expanded) Int.MAX_VALUE else KEY_LINE_FOLDED,
-                    overflow = TextOverflow.Ellipsis,
-                    onTextLayout = { if (!expanded) overflows = it.hasVisualOverflow },
-                    modifier = Modifier.padding(12.dp),
-                )
-            }
+            if (expanded || !overflows) SelectionContainer { text() } else text()
         }
     }
 }
 
 private const val KEY_LINE_FOLDED = 3
+
+/** How a key line is shared (context, line, the key's name); a test swaps it to see what each key's icon hands over. */
+internal val LocalShareText = staticCompositionLocalOf<(Context, String, String) -> Unit> { { context, text, title -> shareText(context, text, title) } }
 
 /** The span of a poll interval, "30 s", "5 min", or "Off". */
 @Composable

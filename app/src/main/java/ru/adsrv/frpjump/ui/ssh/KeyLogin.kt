@@ -98,13 +98,23 @@ class KeyLoginFlow(
 
     /**
      * With two keys, asks which first ([choose]); with one, goes straight to
-     * installing it, as before there were two.
+     * installing it, as before there were two. The keys are read off the
+     * main thread (the phone's is made and sealed on first use); when that
+     * fails the run goes on without a choice and reports the error itself.
      */
     fun start(target: KeyInstallTarget) {
         if (step != null) return
         typed = null
-        val keys = installer.keys()
-        if (keys.size > 1) step = KeyLoginStep.Choose(target, keys) else run(target.withKey(keys.firstOrNull()))
+        step = KeyLoginStep.Working(target)
+        job = scope.launch(main) {
+            val keys = withContext(Dispatchers.IO) { runCatching { installer.keys() } }.getOrNull()
+            if (!isActive) return@launch
+            when {
+                keys == null -> run(target)
+                keys.size > 1 -> step = KeyLoginStep.Choose(target, keys)
+                else -> run(target.withKey(keys.firstOrNull()))
+            }
+        }
     }
 
     /** "Install" in the key choice: runs with [key]; the choice stays with the run through retries, host-key answers and a user change. */
@@ -139,11 +149,15 @@ class KeyLoginFlow(
         }
     }
 
-    /** "Retry" after a failure: from the start, as the first tap. */
+    /** "Retry" after a failure: from the start, as the first tap (after an unreadable key, from the key choice). */
     fun retry() {
         val s = step as? KeyLoginStep.Done ?: return
         typed = null
-        run(s.target)
+        if (s.result == KeyInstallResult.KeyUnreadable) {
+            // The chosen key is gone or unreadable: choose again from the keys as they are now.
+            step = null
+            start(s.target.withKey(null))
+        } else run(s.target)
     }
 
     fun dismiss() {

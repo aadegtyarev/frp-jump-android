@@ -601,6 +601,7 @@
     <string name="share_phone_key">Поделиться ключом телефона</string>
     <string name="share_imported_key">Поделиться импортированным ключом</string>
     <string name="show_whole_key">Показать ключ целиком</string>
+    <string name="fold_key">Свернуть</string>
     <string name="copy">Копировать</string>
     <string name="imported_key">Импортированный ключ</string>
     <string name="imported_key_hint">Необязательно: файл закрытого ключа OpenSSH, которым вы уже пользуетесь. При входе пробуется первым.</string>

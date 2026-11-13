@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
@@ -26,7 +27,7 @@ import java.util.Base64
 import java.util.Locale
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.ssh.generateEd25519
+import ru.adsrv.frpjump.ssh.publicLineOfPrivateKey
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 
 /**
@@ -41,8 +42,16 @@ class SshKeysSettingsUiTest {
     private fun text(id: Int) = compose.activity.getString(id)
     private var imported: String? = null
 
-    /** A long (RSA-sized) public line that folds to three lines at any font scale. */
-    private val longLine = "ssh-rsa " + Base64.getEncoder().encodeToString(ByteArray(400) { (it * 7 + 3).toByte() }) + " imported"
+    /** What each Share icon handed over: the key's line and the chooser's title. */
+    private val shared = java.util.concurrent.CopyOnWriteArrayList<Pair<String, String>>()
+
+    /** A real RSA 3072 pair: its public line (about 570 characters) folds to three lines at any font scale. */
+    private val rsa = run {
+        val pair = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(3072) }.generateKeyPair()
+        val pem = "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(pair.private.encoded) + "\n-----END PRIVATE KEY-----\n"
+        pem to publicLineOfPrivateKey(pem, null, "imported")
+    }
+    private val longLine = rsa.second
 
     @Before fun display() {
         val args = InstrumentationRegistry.getArguments()
@@ -71,14 +80,18 @@ class SshKeysSettingsUiTest {
     private fun show(withImported: Boolean) {
         if (withImported) {
             imported = longLine
-            app.sshKeys.import(generateEd25519("synthetic").privateKey, null, longLine)
+            app.sshKeys.import(rsa.first, null, longLine)
         }
         lateinit var vm: SettingsViewModel
         compose.runOnUiThread {
             vm = SettingsViewModel(app)
             models.put("ssh-keys-settings", vm)
         }
-        compose.setContent { FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) } }
+        compose.setContent {
+            CompositionLocalProvider(LocalShareText provides { _, line, title -> shared.add(line to title); Unit }) {
+                FrpJumpTheme { SettingsScreen(vm, null, null, {}, {}, onBack = null, onChat = {}) }
+            }
+        }
     }
 
     private fun phoneLine() = app.sshKeys.publicLine(app.sshKeyComment())
@@ -144,8 +157,14 @@ class SshKeysSettingsUiTest {
         assertEquals(phoneLine(), clipboardText())
     }
 
-    @Test fun shareIsTheChooserTitledWithTheKeysName() {
-        // The chooser itself is the system's; what the sheet hands it is checked here.
+    @Test fun eachShareIconHandsOverItsOwnLineAndNameAndTheChooserIsTitledWithIt() {
+        show(withImported = true)
+        openSheet()
+        compose.onNodeWithContentDescription(text(R.string.share_imported_key)).performScrollTo().performClick()
+        compose.onNodeWithContentDescription(text(R.string.share_phone_key)).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(listOf(longLine to text(R.string.imported_key), phoneLine() to text(R.string.phone_key)), shared.toList())
+        // The chooser itself is the system's; what it is built from is the key's line and name.
         val intent = shareTextIntent(longLine, text(R.string.imported_key))
         assertEquals(Intent.ACTION_CHOOSER, intent.action)
         assertEquals(text(R.string.imported_key), intent.getCharSequenceExtra(Intent.EXTRA_TITLE))
@@ -153,11 +172,6 @@ class SshKeysSettingsUiTest {
         val send = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
         assertEquals(longLine, send.getStringExtra(Intent.EXTRA_TEXT))
         assertEquals(Intent.ACTION_SEND, send.action)
-        // Both keys' icons are there to start it.
-        show(withImported = true)
-        openSheet()
-        compose.onNodeWithContentDescription(text(R.string.share_phone_key)).performScrollTo().assertHasClickAction()
-        compose.onNodeWithContentDescription(text(R.string.share_imported_key)).performScrollTo().assertHasClickAction()
     }
 
     @Test fun aLongLineIsFoldedToThreeLinesAndATapUnfoldsAndFoldsIt() {
@@ -172,8 +186,19 @@ class SshKeysSettingsUiTest {
         block.performClick()
         compose.waitForIdle()
         assertTrue("unfolded: ${lines()}", lines() > 3)
+        assertEquals(text(R.string.fold_key), block.fetchSemanticsNode().config.getOrNull(SemanticsActions.OnClick)?.label)
         block.performClick()
         compose.waitForIdle()
         assertEquals(3, lines())
+    }
+
+    @Test fun aShortLineHasNoFoldAction() {
+        show(withImported = false)
+        openSheet()
+        val phoneBlock = compose.onNodeWithTag("ssh-key-line-PHONE").performScrollTo()
+        // The phone's ed25519 line fits in three lines at 100%; at larger text it folds and then has the action.
+        val folded = layoutOf(compose.onNodeWithText(phoneLine(), useUnmergedTree = true)).hasVisualOverflow
+        val action = phoneBlock.fetchSemanticsNode().config.getOrNull(SemanticsActions.OnClick)
+        assertEquals(folded, action != null)
     }
 }
