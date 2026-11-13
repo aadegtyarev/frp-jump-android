@@ -1360,6 +1360,13 @@
     <string name="tab_assistant">Помощник</string>
     <string name="assistant_state_working">Работает</string>
     <string name="assistant_state_waiting">Ждёт ответа</string>
+    <string name="assistant_channel">Помощник</string>
+    <string name="assistant_notice_working">Помощник работает</string>
+    <string name="assistant_notice_waiting">Помощник ждёт ответа</string>
+    <string name="assistant_notice_answered">Помощник ответил</string>
+    <string name="assistant_notice_failed">Помощник не смог ответить</string>
+    <string name="assistant_notice_unanswered">Помощник остановился: вы не ответили</string>
+    <string name="assistant_notice_stop">Стоп</string>
     <string name="terminal_ask_assistant">Спросить помощника</string>
     <string name="chat_quote_truncated">[начало обрезано]</string>
 </resources>

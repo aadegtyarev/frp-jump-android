@@ -126,15 +126,14 @@ fun AppNav() {
             nav.replaceAll(Routes.REMOVED)
         }
     }
-    // A notification's tap: that profile's device card, over whatever is shown.
-    val openDevice by app.openDevice.collectAsStateWithLifecycle()
-    LaunchedEffect(openDevice) {
-        val request = openDevice ?: return@LaunchedEffect
+    // The assistant notification's tap (set in-process by its trampoline): the chat, once. The app lock has shown first, as for any launch.
+    val openChat by app.openAssistantRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(openChat) {
+        if (!openChat) return@LaunchedEffect
         val route = nav.currentBackStackEntryFlow.map { it.destination.route }.first { it != Routes.LOADING }
-        app.openDevice.value = null
-        if (route in setOf(Routes.ENROLL, Routes.REMOVED, Routes.STORAGE) || app.profiles.runtime(request.profile) == null) return@LaunchedEffect
-        app.profiles.setCurrent(request.profile)
-        nav.openDeviceCard(request.device)
+        app.openAssistantRequest.value = false
+        if (route in setOf(Routes.ENROLL, Routes.REMOVED, Routes.STORAGE) || !app.settings.assistantAvailability.enabled) return@LaunchedEffect
+        nav.openAssistant()
     }
     NavHost(navController = nav, startDestination = Routes.LOADING) {
         composable(Routes.LOADING) {
@@ -404,6 +403,12 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
         // Back from a saved state (the bottom bar keeps the popped entry's model): take the conversation again. When the entry is destroyed
         // for good, or saved and popped, the screen lets go; a configuration change keeps its hold (the same model comes straight back).
         val activity = LocalContext.current.findActivity()
+        // Shown means this route is RESUMED (top of the stack, the activity resumed); the lock is added by the app.
+        androidx.compose.runtime.DisposableEffect(entry) {
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, _ -> app.assistantChatResumed.value = entry.lifecycle.currentState == androidx.lifecycle.Lifecycle.State.RESUMED }
+            entry.lifecycle.addObserver(observer)
+            onDispose { entry.lifecycle.removeObserver(observer); app.assistantChatResumed.value = false }
+        }
         remember(entry) {
             vm.screenBack()
             androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -458,7 +463,7 @@ internal fun NavHostController.askAssistant(app: FrpJumpApp, quote: String?) {
     openAssistant()
 }
 
-/** A notification's device card, over whatever is shown. */
+/** A device's card, over whatever is shown (the Devices screen's own entry; tests use it too). */
 internal fun NavHostController.openDeviceCard(name: String) = navigate(Routes.device(name)) { popUpTo(Routes.DEVICE) { inclusive = true } }
 
 /** Whether Settings > LLM assistant is on, followed live. */

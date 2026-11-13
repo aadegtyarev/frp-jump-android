@@ -44,6 +44,8 @@ class AssistantConversation(
     private val screenAttachedAt: (Long) -> Boolean = { true },
     /** Told when an attempt ended that way; the app-lived owner keeps it for the notification. */
     private val onUnanswered: () -> Unit = {},
+    /** Told once when an attempt finished by itself (not stopped, disabled or removed): true for a reply, false for a failure or timeout. */
+    private val onEnded: (Boolean) -> Unit = {},
 ) {
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
@@ -186,7 +188,11 @@ class AssistantConversation(
     private fun launch(admission: Admission): Job {
         val owner = admission.owner
         owner.job = scope.launch(start = CoroutineStart.LAZY) { TurnRunner(env, admission).run() }
-        owner.job.invokeOnCompletion { own.completed(owner); runtime.notifyBusy(); onSettled(); repaint() }
+        owner.job.invokeOnCompletion {
+            // The end is told before the owner is released (so before the activity goes idle), and never for an attempt the owner stopped.
+            synchronized(gate) { owner.replied.takeIf { !owner.stopped } }?.let(onEnded)
+            own.completed(owner); runtime.notifyBusy(); onSettled(); repaint()
+        }
         return owner.job
     }
     companion object {
