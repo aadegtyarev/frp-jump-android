@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.mqtt
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -434,7 +435,8 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      */
     fun writeWb(owner: WbWriteOwner?, control: WbControl, payload: String) {
         val s = session ?: return
-        viewModelScope.launch { wbWrite(MqttWbWriteInput(MqttTarget(s.profile, s.connectionId), owner, control, payload)) }
+        // Started undispatched, as the taps are: the guards, the record and the send happen before this returns.
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) { wbWrite(MqttWbWriteInput(MqttTarget(s.profile, s.connectionId), owner, control, payload)) }
     }
 
     /** The open session as the MQTT write operations see it: its own members. */
@@ -683,9 +685,10 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     fun publish(request: PublishRequest, done: (PublishAnswer) -> Unit) {
         val s = session ?: return done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
         val memory = app.mqttPublished
-        viewModelScope.launch {
+        // Started undispatched: the send is posted before this returns.
+        viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             val answer = mqttPublish(MqttPublishInput(MqttTarget(s.profile, s.connectionId), request)).toPublishAnswer()
-            done(answer)
+            // The memory write is started before the sheet is told, so it does not depend on what [done] does.
             if (wasSent(answer)) {
                 launch(Dispatchers.IO) {
                     // Under the store's lock, so overlapping sends show in the order they were stored.
@@ -697,6 +700,7 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
                     }
                 }
             }
+            done(answer)
         }
     }
 

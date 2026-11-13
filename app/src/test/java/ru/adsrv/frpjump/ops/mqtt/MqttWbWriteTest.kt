@@ -10,7 +10,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.adsrv.frpjump.mqtt.MqttVersion
 import ru.adsrv.frpjump.mqtt.PublishAnswer
+import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.PublishFailure
 import ru.adsrv.frpjump.mqtt.WbWriteOwner
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.ControlMeta
@@ -18,8 +20,8 @@ import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbControl
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWriteBook
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.wbControlPath
 import ru.adsrv.frpjump.ops.Effect
-import ru.adsrv.frpjump.ops.MqttFailure
-import ru.adsrv.frpjump.ops.MqttRefusal
+import ru.adsrv.frpjump.ops.MqttWriteFailure
+import ru.adsrv.frpjump.ops.MqttWriteRefusal
 import ru.adsrv.frpjump.ops.OpResult
 import ru.adsrv.frpjump.ops.RemoteOutcome
 import java.io.File
@@ -44,11 +46,11 @@ class MqttWbWriteTest {
     }
 
     @Test fun `the owner and the writability are guarded and nothing is recorded or sent when they fail`() = runBlocking {
-        assertEquals(OpResult.Refused(MqttRefusal.NotOwner), refusedAtOnce { op(input("1", o = WbWriteOwner())) })
-        assertEquals(OpResult.Refused(MqttRefusal.NotOwner), refusedAtOnce { op(input("1", o = null)) })
+        assertEquals(OpResult.Refused(MqttWriteRefusal.NotOwner), refusedAtOnce { op(input("1", o = WbWriteOwner())) })
+        assertEquals(OpResult.Refused(MqttWriteRefusal.NotOwner), refusedAtOnce { op(input("1", o = null)) })
         session.writable = false
-        assertEquals(OpResult.Refused(MqttRefusal.NotWritable), refusedAtOnce { op(input("1")) })
-        assertEquals(OpResult.Refused(MqttRefusal.NotConnected), MqttWbWrite(FakeWriteHost(null), book)(input("1")))
+        assertEquals(OpResult.Refused(MqttWriteRefusal.NotWritable()), refusedAtOnce { op(input("1")) })
+        assertEquals(OpResult.Refused(MqttWriteRefusal.NotConnected()), MqttWbWrite(FakeWriteHost(null), book)(input("1")))
         assertTrue(session.sentWb.isEmpty())
         assertTrue(book.value.writes.isEmpty())
         assertEquals(0, sending)
@@ -71,7 +73,7 @@ class MqttWbWriteTest {
 
     @Test fun `a double tap while the control waits is blocked and sends nothing`() = runBlocking {
         val first = async(start = CoroutineStart.UNDISPATCHED) { op(input("1")) }
-        assertEquals(OpResult.Refused(MqttRefusal.Blocked), refusedAtOnce { op(input("2")) })
+        assertEquals(OpResult.Refused(MqttWriteRefusal.Blocked), refusedAtOnce { op(input("2")) })
         assertEquals(1, session.sentWb.size)
         assertEquals(1, sending)
         assertEquals("1", book.value.writes.getValue(path).asked)
@@ -124,10 +126,88 @@ class MqttWbWriteTest {
             session.pending[before](a)
             return job.await().also { assertEquals(a, book.value.writes.getValue(path).answer) }
         }
-        assertEquals(OpResult.Refused(MqttRefusal.NotWritable), answerWith(PublishAnswer.Failed(PublishFailure.CONTROL_NOT_WRITABLE)))
-        assertEquals(OpResult.Refused(MqttRefusal.NotConnected), answerWith(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED)))
-        assertEquals(OpResult.Failed(MqttFailure.NoAnswer, RemoteOutcome.UNKNOWN), answerWith(PublishAnswer.Failed(PublishFailure.TIMEOUT)))
-        assertEquals(OpResult.Failed(MqttFailure.BrokerRefused(0x87, null), RemoteOutcome.KNOWN), answerWith(PublishAnswer.Refused(0x87, null)))
+        assertEquals(OpResult.Refused(MqttWriteRefusal.NotWritable()), answerWith(PublishAnswer.Failed(PublishFailure.CONTROL_NOT_WRITABLE)))
+        assertEquals(OpResult.Refused(MqttWriteRefusal.NotConnected()), answerWith(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED)))
+        assertEquals(OpResult.Failed(MqttWriteFailure.NoAnswer(), RemoteOutcome.UNKNOWN), answerWith(PublishAnswer.Failed(PublishFailure.TIMEOUT)))
+        assertEquals(OpResult.Failed(MqttWriteFailure.BrokerRefused(0x87, null), RemoteOutcome.KNOWN), answerWith(PublishAnswer.Refused(0x87, null)))
+    }
+
+    @Test fun `the write is recorded and onSending has run before the session is asked to send`() = runBlocking {
+        var recorded: String? = "unset"
+        var sendingAtCall = -1
+        session.atPublishWb = { recorded = book.value.writes[path]?.asked; sendingAtCall = sending }
+        val job = async(start = CoroutineStart.UNDISPATCHED) { op(input("early")) }
+        assertEquals("early", recorded)
+        assertEquals(1, sendingAtCall)
+        session.pending.single()(PublishAnswer.Accepted)
+        job.await()
+        Unit
+    }
+
+    @Test fun `an unanswered write of another owner does not block this owner's write`() = runBlocking {
+        val o1 = owner
+        val first = async(start = CoroutineStart.UNDISPATCHED) { op(input("1", o = o1)) }
+        // The session's owner changes (a new accepted client); the old client's write is still waiting in the book.
+        val o2 = WbWriteOwner()
+        session.owner = o2
+        val second = async(start = CoroutineStart.UNDISPATCHED) { refusedAtOnce { op(input("2", o = o2)) } }
+        assertEquals(2, session.sentWb.size)
+        assertSame(o2, book.value.writes.getValue(path).owner)
+        session.pending[1](PublishAnswer.Accepted)
+        assertEquals(OpResult.Done(MqttDelivery.ACCEPTED), second.await())
+        first.cancel()
+        Unit
+    }
+
+    private val woSwitch = control.copy(meta = ControlMeta(type = "wo-switch"))
+    private val switch = control.copy(meta = ControlMeta(type = "switch"))
+    private fun inputOf(c: WbControl, payload: String) = MqttWbWriteInput(target, owner, c, payload)
+    private fun value(text: String) = TopicValue.of(text.toByteArray(), retain = true, qos = 1, at = 900, version = MqttVersion.V5, previous = null)
+
+    @Test fun `a wo-switch's sent value is kept after an accepted write and not after a refused one`() = runBlocking {
+        val ok = async(start = CoroutineStart.UNDISPATCHED) { op(inputOf(woSwitch, "1")) }
+        session.pending.single()(PublishAnswer.Accepted)
+        ok.await()
+        assertEquals("1", book.value.sent[path])
+        book.value = WbWriteBook()
+        val before = session.pending.size
+        val refused = async(start = CoroutineStart.UNDISPATCHED) { op(inputOf(woSwitch, "0")) }
+        session.pending[before](PublishAnswer.Refused(0x87, null))
+        refused.await()
+        assertNull(book.value.sent[path])
+        // A switch (not a wo-switch) keeps no sent value.
+        val sw = async(start = CoroutineStart.UNDISPATCHED) { op(inputOf(switch, "1")) }
+        session.pending.last()(PublishAnswer.Accepted)
+        sw.await()
+        assertNull(book.value.sent[path])
+        Unit
+    }
+
+    @Test fun `a wo-switch compares with what was sent, not with the status topic`() = runBlocking {
+        book.value = WbWriteBook(sent = mapOf(path to "1"))
+        session.history = listOf(value("0"))
+        val job = async(start = CoroutineStart.UNDISPATCHED) { op(inputOf(woSwitch, "1")) }
+        // A wo-switch never waits for an echo, whatever either shows.
+        assertFalse(book.value.writes.getValue(path).awaitsEcho)
+        session.pending.single()(PublishAnswer.Accepted)
+        job.await()
+        Unit
+    }
+
+    @Test fun `a switch waits for an echo only when its status topic does not already show the value`() = runBlocking {
+        session.history = listOf(value("1"))
+        val same = async(start = CoroutineStart.UNDISPATCHED) { op(inputOf(switch, "1")) }
+        assertFalse(book.value.writes.getValue(path).awaitsEcho)
+        session.pending.single()(PublishAnswer.Accepted)
+        same.await()
+        book.value = WbWriteBook()
+        session.history = listOf(value("0"))
+        val before = session.pending.size
+        val other = async(start = CoroutineStart.UNDISPATCHED) { op(inputOf(switch, "1")) }
+        assertTrue(book.value.writes.getValue(path).awaitsEcho)
+        session.pending[before](PublishAnswer.Accepted)
+        other.await()
+        Unit
     }
 
     @Test fun `the book is the ViewModel's own, the refresh speed-up is kept and no send logic is left there`() {

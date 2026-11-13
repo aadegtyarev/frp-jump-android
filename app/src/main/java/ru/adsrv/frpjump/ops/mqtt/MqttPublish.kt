@@ -10,8 +10,8 @@ import ru.adsrv.frpjump.mqtt.TopicValue
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbControl
 import ru.adsrv.frpjump.mqtt.WbWriteOwner
 import ru.adsrv.frpjump.ops.Effect
-import ru.adsrv.frpjump.ops.MqttFailure
-import ru.adsrv.frpjump.ops.MqttRefusal
+import ru.adsrv.frpjump.ops.MqttWriteFailure
+import ru.adsrv.frpjump.ops.MqttWriteRefusal
 import ru.adsrv.frpjump.ops.OpResult
 import ru.adsrv.frpjump.ops.Operation
 import ru.adsrv.frpjump.ops.RemoteOutcome
@@ -42,13 +42,13 @@ interface MqttWriteHost {
 fun PublishAnswer.toOpResult(): OpResult<MqttDelivery> = when (this) {
     PublishAnswer.Accepted -> OpResult.Done(MqttDelivery.ACCEPTED)
     PublishAnswer.Unconfirmed -> OpResult.Done(MqttDelivery.UNCONFIRMED)
-    is PublishAnswer.Refused -> OpResult.Failed(MqttFailure.BrokerRefused(code, reasonString), RemoteOutcome.KNOWN)
+    is PublishAnswer.Refused -> OpResult.Failed(MqttWriteFailure.BrokerRefused(code, reasonString), RemoteOutcome.KNOWN)
     is PublishAnswer.Failed -> when (failure) {
-        PublishFailure.NOT_CONNECTED -> OpResult.Refused(MqttRefusal.NotConnected)
-        PublishFailure.CONTROL_NOT_WRITABLE -> OpResult.Refused(MqttRefusal.NotWritable)
-        PublishFailure.LOST -> OpResult.Failed(MqttFailure.ConnectionLost, RemoteOutcome.UNKNOWN)
-        PublishFailure.TIMEOUT -> OpResult.Failed(MqttFailure.NoAnswer, RemoteOutcome.UNKNOWN)
-        PublishFailure.OTHER -> OpResult.Failed(MqttFailure.Other(detail), RemoteOutcome.UNKNOWN)
+        PublishFailure.NOT_CONNECTED -> OpResult.Refused(MqttWriteRefusal.NotConnected(detail))
+        PublishFailure.CONTROL_NOT_WRITABLE -> OpResult.Refused(MqttWriteRefusal.NotWritable(detail))
+        PublishFailure.LOST -> OpResult.Failed(MqttWriteFailure.ConnectionLost(detail), RemoteOutcome.UNKNOWN)
+        PublishFailure.TIMEOUT -> OpResult.Failed(MqttWriteFailure.NoAnswer(detail), RemoteOutcome.UNKNOWN)
+        PublishFailure.OTHER -> OpResult.Failed(MqttWriteFailure.Other(detail), RemoteOutcome.UNKNOWN)
     }
 }
 
@@ -70,7 +70,7 @@ class MqttPublish(private val host: MqttWriteHost) : Operation<MqttPublishInput,
     override val effect = Effect.CHANGE_REMOTE
 
     override suspend fun invoke(input: MqttPublishInput): OpResult<MqttDelivery> {
-        val session = host.session(input.target) ?: return OpResult.Refused(MqttRefusal.NotConnected)
+        val session = host.session(input.target) ?: return OpResult.Refused(MqttWriteRefusal.NotConnected())
         val r = input.request
         return awaitAnswer { done -> session.publish(r.topic, r.payload.toByteArray(Charsets.UTF_8), r.qos, r.retain, done) }.toOpResult()
     }

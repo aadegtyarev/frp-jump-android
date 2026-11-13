@@ -16,6 +16,8 @@ class FakeWriteSession : MqttWriteSession {
     var owner: WbWriteOwner? = null
     var writable = true
     var history: List<TopicValue> = emptyList()
+    /** Runs inside [publishWb], before it records the call: what the caller had done by then. */
+    var atPublishWb: () -> Unit = {}
 
     override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) {
         sent += Sent(topic, payload.toString(Charsets.UTF_8), qos, retain); pending += done
@@ -24,6 +26,7 @@ class FakeWriteSession : MqttWriteSession {
     override fun wbWritable(control: WbControl) = writable
     override fun history(path: MqttPath) = history
     override fun publishWb(owner: WbWriteOwner?, control: WbControl, payload: String, done: (PublishAnswer) -> Unit) {
+        atPublishWb()
         sentWb += control to payload; pending += done
     }
 }

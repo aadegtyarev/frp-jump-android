@@ -12,7 +12,7 @@ import ru.adsrv.frpjump.mqtt.plugins.wirenboard.currentValue
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.widgetOf
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.writeBlocked
 import ru.adsrv.frpjump.ops.Effect
-import ru.adsrv.frpjump.ops.MqttRefusal
+import ru.adsrv.frpjump.ops.MqttWriteRefusal
 import ru.adsrv.frpjump.ops.OpResult
 import ru.adsrv.frpjump.ops.Operation
 
@@ -22,7 +22,9 @@ data class MqttWbWriteInput(val target: MqttTarget, val owner: WbWriteOwner?, va
 /**
  * A Wiren Board control write (QoS 1, not retained). Before anything is sent it refuses, in this order: no open session
  * (`NotConnected`), a client that does not own the intent or a control that is not writable (`NotOwner`, `NotWritable`), and a
- * control whose last write has no outcome yet (`Blocked`, so a double tap sends once). Then it records the write in [book], sends,
+ * control whose last write has no outcome yet (`Blocked`, so a double tap sends once). The checks and the recording that follow them
+ * are not atomic: the operation is started from the main thread (the ViewModel's scope), as the taps are, so two taps cannot interleave
+ * between the check and the recording. Only the session's answer comes from another thread, and it changes the book by one CAS transform. Then it records the write in [book], sends,
  * and records the broker's answer on exactly that write, from the session's answer, even if the caller stopped waiting
  * (an answer after the owner is gone, or for a write a newer one replaced, changes nothing). The session checks owner and
  * writability once more in the same action as the send. [book] belongs to one ViewModel, as it always did: it is not the session's,
@@ -39,13 +41,13 @@ class MqttWbWrite(
     override val effect = Effect.CHANGE_REMOTE
 
     override suspend fun invoke(input: MqttWbWriteInput): OpResult<MqttDelivery> {
-        val s = host.session(input.target) ?: return OpResult.Refused(MqttRefusal.NotConnected)
+        val s = host.session(input.target) ?: return OpResult.Refused(MqttWriteRefusal.NotConnected())
         val (_, owner, control, payload) = input
-        if (!s.ownsWbWrites(owner)) return OpResult.Refused(MqttRefusal.NotOwner)
-        if (!s.wbWritable(control)) return OpResult.Refused(MqttRefusal.NotWritable)
+        if (!s.ownsWbWrites(owner)) return OpResult.Refused(MqttWriteRefusal.NotOwner)
+        if (!s.wbWritable(control)) return OpResult.Refused(MqttWriteRefusal.NotWritable())
         val now = clock()
         val history = s.history(control.path)
-        if (writeBlocked(book.value.writes[control.path]?.takeIf { it.owner === owner }, control.meta, history, now)) return OpResult.Refused(MqttRefusal.Blocked)
+        if (writeBlocked(book.value.writes[control.path]?.takeIf { it.owner === owner }, control.meta, history, now)) return OpResult.Refused(MqttWriteRefusal.Blocked)
         val widget = widgetOf(control.meta)
         val shown = if (widget == WbWidget.WO_SWITCH) book.value.sent[control.path] else currentValue(control.meta, history)
         val write = WbWrite(control.path, payload, awaitsEcho(control.meta, widget, shown, payload), now, owner = owner)

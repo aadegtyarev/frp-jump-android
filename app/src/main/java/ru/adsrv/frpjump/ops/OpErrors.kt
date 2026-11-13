@@ -60,24 +60,28 @@ sealed interface TunnelFailure : OpFailure {
     data class DeviceNotListening(val reason: DevicePortNotOpen) : TunnelFailure
 }
 
-sealed interface MqttRefusal : OpRefusal {
-    /** The session had no open connection (or none for the target); nothing was sent. */
-    data object NotConnected : MqttRefusal
-    /** WB write only: the control is not writable now (its meta changed or went); nothing was sent. */
-    data object NotWritable : MqttRefusal
-    /** WB write only: the accepted client that owned the intent is gone; nothing was sent. */
-    data object NotOwner : MqttRefusal
+sealed interface MqttWriteRefusal : OpRefusal {
+    /**
+     * The session had no open connection (or none for the target); nothing was sent. A Wiren Board write whose owner was lost between the
+     * operation's own check and the send (the session's re-check in `publishWb`) comes back as this, not as [NotOwner]. [detail] is the
+     * session's own detail, when it gave one.
+     */
+    data class NotConnected(val detail: String? = null) : MqttWriteRefusal
+    /** WB write only: the control is not writable now (its meta changed or went); nothing was sent. [detail] as above. */
+    data class NotWritable(val detail: String? = null) : MqttWriteRefusal
+    /** WB write only: the accepted client that owned the intent is gone, seen by the operation's own check before the send; nothing was sent. */
+    data object NotOwner : MqttWriteRefusal
     /** WB write only: the control's last write has no outcome yet (a double tap); nothing was sent. */
-    data object Blocked : MqttRefusal
+    data object Blocked : MqttWriteRefusal
 }
 
-sealed interface MqttFailure : OpFailure {
+sealed interface MqttWriteFailure : OpFailure {
     /** MQTT 5: the broker refused with an error reason [code] (and its [reasonString] when it sent one). The broker did not take it: `KNOWN`. */
-    data class BrokerRefused(val code: Int, val reasonString: String?) : MqttFailure
+    data class BrokerRefused(val code: Int, val reasonString: String?) : MqttWriteFailure
     /** The connection dropped before the broker answered; the message may have arrived (`UNKNOWN`). */
-    data object ConnectionLost : MqttFailure
+    data class ConnectionLost(val detail: String? = null) : MqttWriteFailure
     /** No answer within the publish timeout (`UNKNOWN`). */
-    data object NoAnswer : MqttFailure
+    data class NoAnswer(val detail: String? = null) : MqttWriteFailure
     /** Anything else; [detail] is the exception's class name (`UNKNOWN`). */
-    data class Other(val detail: String?) : MqttFailure
+    data class Other(val detail: String?) : MqttWriteFailure
 }
