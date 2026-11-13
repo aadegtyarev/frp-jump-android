@@ -34,4 +34,31 @@ class AssistantNavSourceGuardTest {
         assertTrue(app.contains("removed = currentProfileRemoved"))
         assertTrue(appNav.contains("app.currentProfileRemoved"))
     }
+
+    private fun block(from: String, to: String): String {
+        val start = appNav.indexOf(from); val end = appNav.indexOf(to, start + from.length)
+        assertTrue("$from found", start >= 0); assertTrue("$to found after $from", end > start)
+        return appNav.substring(start, end)
+    }
+
+    @Test fun `section screens are reached only through the bottom bar's tab switch or a full stack replace`() {
+        // TabFrame( appears in the four section routes and in its own declaration, nowhere else.
+        assertEquals(5, Regex("TabFrame\\(").findAll(appNav).count())
+        for ((route, next) in listOf("DEVICES" to "CONNECTIONS", "CONNECTIONS" to "SESSIONS", "SESSIONS" to "DEVICE", "SETTINGS" to "assistantRoutes")) {
+            val body = if (route == "SETTINGS") appNav.substring(appNav.indexOf("composable(Routes.SETTINGS)"), appNav.indexOf("internal fun NavGraphBuilder.assistantRoutes"))
+            else block("composable(Routes.$route)", "composable(Routes.$next")
+            assertEquals("TabFrame( only in the $route route", 1, Regex("TabFrame\\(").findAll(body).count())
+        }
+        val main = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
+        for (route in listOf("DEVICES", "CONNECTIONS", "SESSIONS", "SETTINGS"))
+            main.forEach { assertFalse("${it.name}: navigate(Routes.$route", it.readText().contains("navigate(Routes.$route")) }
+        // Routes.of( is used by goToTab alone.
+        assertEquals(1, main.sumOf { Regex("Routes\\.of\\(").findAll(it.readText()).count() })
+        val goToTab = block("fun NavHostController.goToTab", "\n}\n")
+        assertTrue(goToTab.contains("Routes.of(")); assertTrue(goToTab.contains("popUpTo(Routes.DEVICES)"))
+        assertTrue(block("fun NavHostController.replaceAll", "\n}\n").contains("popUpTo(graph.id) { inclusive = true }"))
+        // The chat and its provider screen are not section screens.
+        assertFalse(block("composable(Routes.CHAT)", "composable(Routes.PROVIDER)").contains("TabFrame("))
+        assertFalse(appNav.substring(appNav.indexOf("composable(Routes.PROVIDER)"), appNav.indexOf("internal fun NavHostController.openAssistant")).contains("TabFrame("))
+    }
 }
