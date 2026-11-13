@@ -151,12 +151,34 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        app.lock.onStart(app.settings.settings.value.appLock)
+        val settings = app.settings.settings.value
+        app.lock.onStart(settings.appLock, settings.appLockAfter.ms)
     }
 
     override fun onResume() {
         super.onResume()
         if (app.lock.locked.value && !promptedForLock && !authenticating.value) promptUnlock()
+    }
+
+    override fun onDestroy() {
+        // A prompt of this activity will never be answered (androidx drops it on destroy): let it go.
+        app.lock.onDestroy(this)
+        super.onDestroy()
+    }
+
+    // Windows the app opens itself (picker, share, installer, browser, SSH client) take the screen out of sight:
+    // the one place that marks them, see LockPolicy.handoff.
+    override fun startActivity(intent: Intent, options: Bundle?) {
+        super.startActivity(intent, options)
+        // After the launch took: one that throws (no such activity) opens no window.
+        app.lock.handoff()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        @Suppress("DEPRECATION")
+        super.startActivityForResult(intent, requestCode, options)
+        app.lock.handoff()
     }
 
     override fun onStop() {

@@ -525,13 +525,40 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 
 Settings are grouped by purpose: profile (name and colour, forget profile); tunnels
 (direct connection, local port range); background (poll interval, battery);
-security (phone SSH key, unlock with fingerprint); app (language, theme,
+security (phone SSH key, unlock with fingerprint, lock after); app (language, theme,
 version and update, MQTT plugins (scenario 12), components and licenses).
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that
   server (offline: local wipe only), wipes its credentials and cached lists.
-- Fingerprint unlock: off by default; when on, opening the app asks for the
-  device's biometrics or screen lock. Running tunnels are not affected.
+- Fingerprint unlock: off by default; when on, the app asks for the device's
+  biometrics or screen lock. Only the screen is locked: running tunnels, the
+  service and the notification's actions are not affected.
+  - It asks on every cold start of the process, and when the app comes back
+    after more than the interval out of sight. The interval is "Lock after"
+    (shown only while the lock is on; its value is kept when it goes off):
+    Immediately (any absence), 30 s (default), 1 min, 5 min, 15 min. There is
+    no "never" and no "only on start". The row's hint names the interval.
+  - Running tunnels keep the process alive, so a return to the app is not a
+    cold start. The prompt's own stops and starts are not an absence: while
+    it is up they are ignored, and if it ends with the screen out of sight
+    (the PIN screen of older Android is an activity of its own), that stop
+    counts like an app-opened window (next bullet), so Immediately does not
+    lock again at once.
+  - A window the app opened itself (photo or file picker, Share, installer,
+    system settings, an external browser or SSH client) counts as an absence
+    only after 30 s, or the chosen interval if that is longer. The app marks
+    such a launch at `MainActivity.startActivity` and `startActivityForResult`;
+    the mark is dropped if the screen does not go out of sight within 5 s.
+  - A prompt whose activity is destroyed before the answer (for example by a
+    font-scale change) is abandoned: its answer is lost in the system
+    library, so it is dropped without a result and unlocks nothing. A locked
+    app stays locked and the new activity asks again; a prompt to turn the
+    setting on does not turn it on. An answer that reaches the abandoned
+    request unlocks nothing. A prompt that replaces one still open ends the
+    old one as Cancelled. A prompt requested after the activity's state was
+    saved is Cancelled at once ("Not unlocked. Tap “Unlock” to try again." /
+    "Not turned on: not confirmed.").
+  - A phone whose screen lock was removed turns the setting off.
 - Language: system (default), Russian, English.
 - Theme: system (default), light, dark.
 
