@@ -62,7 +62,9 @@ import ru.adsrv.frpjump.assistant.tools.*
         } }
         return ChatTurn(user, if (status == SavedTurnState.COMPLETE) exchanges.lastOrNull()?.reply?.text.orEmpty() else "",
             sources.map { ChatSource(it.title, it.url) }, failures.isNotEmpty(), failures, information,
-            interrupted = status != SavedTurnState.COMPLETE, receipts = receipts)
+            interrupted = status != SavedTurnState.COMPLETE, receipts = receipts,
+            unanswered = status == SavedTurnState.INTERRUPTED && exchanges.lastOrNull()?.results?.lastOrNull()
+                ?.let { it.outcome == ToolOutcome.DECLINED.name && it.text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER } == true)
     }
     companion object {
         fun of(turn: AgentTurn, provider: AgentProvider? = null) = SavedTurn(turn.user, turn.exchanges.map {

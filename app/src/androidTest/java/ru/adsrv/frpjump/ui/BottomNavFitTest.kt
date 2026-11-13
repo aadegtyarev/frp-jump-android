@@ -9,11 +9,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,4 +72,37 @@ class BottomNavFitTest {
     }
     @Test fun ruAt320dpAtNormalFont() = check(320, "ru", 1f, Tab.DEVICES)
     @Test fun ruAt360dpAtNormalFont() = check(360, "ru", 1f, Tab.CONNECTIONS)
+
+    private fun dot(activity: ru.adsrv.frpjump.assistant.ChatActivity, lang: String) {
+        val base = compose.activity
+        val config = Configuration(base.resources.configuration).apply { setLocale(Locale(lang)) }
+        val localized = base.createConfigurationContext(config)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides config) {
+                FrpJumpTheme { Box(Modifier.width(360.dp)) { BottomNav(Tab.DEVICES, onAssistant = {}, assistantActivity = activity) {} } }
+            }
+        }
+        compose.waitForIdle()
+        val item = compose.onNodeWithTag("nav_assistant")
+        val dots = compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true)
+        when (activity) {
+            ru.adsrv.frpjump.assistant.ChatActivity.IDLE -> {
+                dots.assertCountEquals(0)
+                assertTrue(SemanticsProperties.StateDescription !in item.fetchSemanticsNode().config)
+            }
+            else -> {
+                dots.assertCountEquals(1)
+                val expected = localized.getString(if (activity == ru.adsrv.frpjump.assistant.ChatActivity.WORKING) R.string.assistant_state_working else R.string.assistant_state_waiting)
+                assertEquals(expected, item.fetchSemanticsNode().config[SemanticsProperties.StateDescription])
+            }
+        }
+        // The dot takes no room: all five labels stay whole with it, too.
+        for ((tag, label) in items) assertNavLabelWhole(compose, localized.getString(label), tag)
+    }
+
+    @Test fun noDotWhileIdle() = dot(ru.adsrv.frpjump.assistant.ChatActivity.IDLE, "en")
+    @Test fun dotAndWorkingStateWhileAnAttemptRunsEn() = dot(ru.adsrv.frpjump.assistant.ChatActivity.WORKING, "en")
+    @Test fun dotAndWorkingStateWhileAnAttemptRunsRu() = dot(ru.adsrv.frpjump.assistant.ChatActivity.WORKING, "ru")
+    @Test fun dotAndWaitingStateWhileACardWaitsEn() = dot(ru.adsrv.frpjump.assistant.ChatActivity.WAITING, "en")
+    @Test fun dotAndWaitingStateWhileACardWaitsRu() = dot(ru.adsrv.frpjump.assistant.ChatActivity.WAITING, "ru")
 }

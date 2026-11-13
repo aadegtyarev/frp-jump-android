@@ -14,7 +14,9 @@ data class ChatProfileInformation(val result: ToolResult, val page: JsonObject?)
 data class ChatToolReceipt(val call: ToolCall, val result: ToolResult? = null)
 data class ChatTurn(val user: String, val answer: String, val sources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
-    val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList())
+    val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList(),
+    /** The attempt ended because a question went unanswered while no chat screen was attached (Р43): its own note, not the interrupted one. */
+    val unanswered: Boolean = false)
 sealed interface ChatToolProgress {
     /** A call of a known tool is running. */
     data class Tool(val id: AssistantToolId) : ChatToolProgress
@@ -24,7 +26,7 @@ sealed interface ChatToolProgress {
 /** The progress line after a tool finished: nothing for success and for a decline (not a failure), the failed marker otherwise. */
 internal fun progressAfter(outcome: ToolOutcome): ChatToolProgress? =
     if (outcome == ToolOutcome.SUCCESS || outcome == ToolOutcome.DECLINED) null else ChatToolProgress.FAILED
-enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, INTERRUPTED, SUMMARY, HISTORY_FULL }
+enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, SUMMARY, HISTORY_FULL }
 data class ChatState(
     val turns: List<ChatTurn> = emptyList(), val draft: String = "", val pendingText: String? = null,
     val busy: Boolean = false, val stopping: Boolean = false, val omitted: Boolean = false,
