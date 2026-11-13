@@ -170,10 +170,11 @@ fun toneColors(tone: Tone): Pair<Color, Color> {
 
 /**
  * The state as a pill, as the device card shows it; [onClick] makes it a
- * button, with a "›" when [chevron] (an offer to act, not just details).
+ * button, with a "›" when [chevron] (an offer to act, not just details);
+ * [onClickLabel] says what the tap does, for screen readers.
  */
 @Composable
-fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: Boolean = true) {
+fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: Boolean = true, onClickLabel: String? = null) {
     val (ink, container) = toneColors(tone)
     Text(
         if (onClick != null && chevron) "$text  ›" else text,
@@ -185,7 +186,7 @@ fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: 
         modifier = Modifier
             .clip(CircleShape)
             .background(container, CircleShape)
-            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick) else Modifier)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }

@@ -223,6 +223,7 @@
     <!-- Direct or through the server -->
     <string name="setting_direct">Direct connection (P2P)</string>
     <string name="setting_direct_hint">Faster. If it does not work, connections go through the server.</string>
+    <string name="direct_or_server">Direct or through the server</string>
     <string name="direct_failed_text">%s already works through the server. The network does not seem to let direct connections through.</string>
     <string name="direct_kept_text">%s is kept through the server on this network.</string>
     <string name="retry_direct">Retry direct</string>

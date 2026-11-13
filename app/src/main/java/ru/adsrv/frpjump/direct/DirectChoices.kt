@@ -14,7 +14,7 @@ class DirectChoices(
     private val network: StateFlow<String?>,
 ) {
     /**
-     * "Keep through the server": no more attempts or offers for [device] of
+     * "Keep through the server": no more direct attempts for [device] of
      * [profile] on the current network; its tunnels switch to the server
      * alone (connections already going through it stay). False when the
      * phone is on no network it can tie the choice to: nothing changed.

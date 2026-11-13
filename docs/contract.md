@@ -332,9 +332,8 @@ Quick access to the saved connections of every device, active ones first.
   from the card.
 - A direct tunnel that drops mid-session falls back to the server the same
   way, shown on the card the same way.
-- No notifications for any of this (operator decision Р34): the notification
-  "Direct didn't work: <name>" and its actions are gone, and its channel is
-  deleted at start.
+- No notifications about direct or the server; the "direct" channel older
+  versions used is deleted at every start, with anything left shown on it.
 - Off: always through the server, no attempts, no notifications.
 - While a connection is up, its direct tunnel is kept open so it does not
   drop after idle.

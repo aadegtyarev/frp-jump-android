@@ -314,9 +314,6 @@ class FrpJumpApp : Application() {
             snippets.load()
             // Before any profile applies its tunnels.
             directKept.load()
-            // No notification is posted for a failed direct attempt: its channel goes, and with it any left shown.
-            getSystemService(NotificationManager::class.java)?.let { DirectChannel.retire(it::deleteNotificationChannel) }
-            File(filesDir, "direct_offered.json").delete()
             // Before any profile polls: which ones bring their tunnels back.
             val restoring = restoreRecord.load().isNotEmpty()
             network.start()
@@ -363,6 +360,11 @@ class FrpJumpApp : Application() {
         // Files handed to other apps a day ago or more (Open with, Share), and viewer copies
         // left behind when the process went: older than a few minutes, no viewer is reading them.
         appScope.launch(Dispatchers.IO) {
+            // Older versions' "Direct didn't work" channel (and with it what is still shown) and offers file.
+            DirectChannel.retireLegacy(
+                { id -> getSystemService(NotificationManager::class.java)?.deleteNotificationChannel(id) },
+                AtomicTextFile(File(filesDir, "direct_offered.json")),
+            )
             PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS)
             PhoneFiles.pruneViewCache(this@FrpJumpApp, VIEW_CACHE_AGE_MS)
         }

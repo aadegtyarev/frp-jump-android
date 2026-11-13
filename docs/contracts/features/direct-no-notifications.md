@@ -15,9 +15,12 @@ Affected surface contract: `docs/contract.md` §6 "Direct or through the server"
    - The app posts no notification on the "direct" channel: not on connect, and not when a direct tunnel drops mid-session.
    - The channel is deleted at every start (`NotificationManager.deleteNotificationChannel`), so it no longer shows in the system
      settings, and notifications already shown are removed on the first start after the update.
-   - The notification action receiver, its manifest entry and the offer storage (`direct_offered.json`) are removed.
+   - The notification action receiver, its manifest entry and the offer storage (`direct_offered.json`) are removed. The old
+     file is deleted at start through `AtomicTextFile`, so its `.new`/`.bak` leftovers go too.
 2. **Unchanged.**
-   - The card state "Through the server" and its tap, which offers "Retry direct" / "Keep through the server".
+   - The card state "Through the server" and its tap, which offers "Retry direct" / "Keep through the server". The state pill
+     gets a click label for screen readers, EN "Direct or through the server" / RU «Напрямую или через сервер»; its size and layout
+     do not change.
    - "Keep through the server" stops attempts for this device on the current network until the owner retries from the card
      (`DirectChoices`, `DirectKeptStore`).
    - The traffic path and the direct attempt (up to 10 s, then the server), the "Direct connection (P2P)" setting, the card
@@ -25,6 +28,7 @@ Affected surface contract: `docs/contract.md` §6 "Direct or through the server"
 
 ## Contract changes
 
+- §6 is worded as current behaviour, without the decision id. The promise "stops offering" became "stops trying direct".
 - §6: the state on the card and the choice on tap, no notifications. Removed promises (operator decision Р34): "a notification
   'Direct didn't work: <name>' offers Retry direct / Keep through the server", and "with the same notification" for a mid-session
   drop. "Off: ... no notifications" stays true.

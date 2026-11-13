@@ -233,6 +233,7 @@
     <!-- Direct or through the server -->
     <string name="setting_direct">Прямое соединение (P2P)</string>
     <string name="setting_direct_hint">Быстрее. Не вышло — работает через сервер.</string>
+    <string name="direct_or_server">Напрямую или через сервер</string>
     <string name="direct_failed_text">%s уже работает через сервер. Сеть, похоже, не пропускает P2P.</string>
     <string name="direct_kept_text">%s в этой сети работает через сервер.</string>
     <string name="retry_direct">Повторить напрямую</string>
