@@ -55,7 +55,7 @@ fun notificationTitle(tunnels: String, title: TunnelsTitle, sessions: Int, sessi
 
 /**
  * The launcher badge: the tunnels up, the same count the title says as "N tunnels". Connections
- * sharing one device port are one tunnel. While none is up (restoring, disconnecting) it is 0,
- * which a launcher shows as a plain dot.
+ * sharing one device port are one tunnel. While none is up (restoring, disconnecting) the
+ * notification carries no number (0); a launcher still badges it: a dot, or 1 where it shows numbers.
  */
 fun tunnelsBadge(summary: TunnelSummary): Int = summary.tunnels

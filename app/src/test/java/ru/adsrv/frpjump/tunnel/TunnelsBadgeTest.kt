@@ -22,8 +22,8 @@ class TunnelsBadgeTest {
     }
 
     @Test
-    fun `connections sharing one device port are one tunnel`() {
-        // Two saved connections to a:22 (root and another user) run on one tunnel, which the manager lists once.
+    fun `a tunnel listed once counts once`() {
+        // That connections sharing a device port are one tunnel is proved in ConnectionRowsTest.kt (line 31).
         val states = mapOf("p1" to TunnelsState(tunnels = listOf(tunnel("a", 22))))
         assertEquals(1, badge(states))
     }

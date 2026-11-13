@@ -285,12 +285,14 @@ class TunnelService : Service() {
 
 /** The tunnels channel ([TunnelService.CHANNEL]), created or renamed in [res]'s language. */
 fun tunnelsChannel(context: Context, res: Resources) {
-    context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-        NotificationChannel(TunnelService.CHANNEL, res.getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW)
-            // The launcher's badge (a number or a dot) rides on this channel's notification.
-            .apply { setShowBadge(true) },
-    )
+    context.getSystemService(NotificationManager::class.java).createNotificationChannel(newTunnelsChannel(res))
 }
+
+/** The tunnels channel as the app defines it, not yet registered. */
+internal fun newTunnelsChannel(res: Resources): NotificationChannel =
+    NotificationChannel(TunnelService.CHANNEL, res.getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW)
+        // The launcher's badge (a number or a dot) rides on this channel's notification.
+        .apply { setShowBadge(true) }
 
 /** The foreground notification; its number is the launcher badge ([tunnelsBadge]). */
 internal fun tunnelsNotification(
