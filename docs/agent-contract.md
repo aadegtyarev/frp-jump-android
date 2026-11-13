@@ -70,7 +70,7 @@ Kotlin coroutines/JSON already used by the app, not an agent framework.
 The app owns the opt-in setting and module lifetime. Every successfully
 committed disable revokes admitted work, even a rapid off/on that an observer
 sees only as enabled. Admission and
-run ownership check that authority directly; the observer cancels stale child
+run ownership check the committed disable directly; the observer cancels stale child
 jobs. Failed writes do not invalidate work. Enabling again cannot revive an old
 run. This revocation is process-local: no execution survives process restart and
 no persistent journal is needed. Neutral providers need no admission API: the
@@ -373,9 +373,10 @@ An old completion
 cannot publish an answer/error or release another owner's pending slot.
 
 The shared guard is held only for start checks and short publications, never
-across storage, credential, network, DNS, parsing, image or SSH work, so Stop,
-editing and commits never wait for that work; a settings or provider commit
-also does not wait for the work it cancels. Releasing the slot still waits for
+across storage, credential, network, DNS, parsing, image or SSH work, so Stop
+and editing never wait for that work, and a commit waits for it only on its own
+store's monitor, never on the shared guard; a settings or provider commit also
+does not wait for the work it cancels. Releasing the slot still waits for
 that work's actual exit, as described above. The lock order is in KDoc (see
 [Related surfaces](#related-surfaces-and-implementation-references)).
 
