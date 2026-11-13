@@ -295,7 +295,10 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   loopback address. First use requires explicit Trust of the presented
   algorithm/SHA256 fingerprint. Changed keys block login and show old/new
   keys; forgetting the old key leads to a new first-use decision, not silent
-  acceptance. Terminal and Files share those decisions.
+  acceptance. Terminal and Files share those decisions. If saving Trust or
+  forgetting the old key fails, nothing is trusted or forgotten: the terminal
+  ends with the error, Files and "Use key login" show it with Retry, and the
+  app does not crash.
 - Use the phone's generated ed25519 key across profiles, with optional imported
   identity tried first. Private keys, import passphrases and remembered
   passwords are encrypted in app-private storage with the Keystore-backed
