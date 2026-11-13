@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.files
 
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.R
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -31,6 +33,12 @@ import ru.adsrv.frpjump.files.RemoteEntry
 import ru.adsrv.frpjump.files.EntryType
 import ru.adsrv.frpjump.files.RowJobs
 import ru.adsrv.frpjump.files.TransferJobs
+import ru.adsrv.frpjump.files.FilesTarget
+import ru.adsrv.frpjump.ssh.HostKeyStore
+import ru.adsrv.frpjump.ssh.PinnedHostKey
+import ru.adsrv.frpjump.ssh.SshAuth
+import ru.adsrv.frpjump.store.TextStorage
+import java.io.IOException
 
 /** Real leave/resume/upload entry points, no SFTP, profiles, credentials, or phone-provider queries. */
 @RunWith(AndroidJUnit4::class)
@@ -188,6 +196,54 @@ class FilesSessionVisitTest {
         joinPreparation(session)
         assertEquals(listOf("synthetic.txt"), session.state.value.uploads.map { it.transfer.name })
         assertEquals(listOf("/fixture"), session.state.value.uploads.map { it.dir })
+    }
+
+    private class Disk(var text: String? = null, @Volatile var fail: Boolean = false) : TextStorage {
+        override fun read() = text
+        override fun write(text: String) {
+            if (fail) throw IOException("disk full")
+            this.text = text
+        }
+        override fun delete() { text = null }
+    }
+
+    @Test
+    fun failedTrustSaveShowsTheErrorTrustsNothingAndCanBeRetried() = failedHostKeySave(forget = false)
+
+    @Test
+    fun failedForgetSaveShowsTheErrorAndKeepsTheOldPin() = failedHostKeySave(forget = true)
+
+    private fun failedHostKeySave(forget: Boolean) {
+        val old = PinnedHostKey("synthetic-type", "synthetic-old")
+        val presented = PinnedHostKey("synthetic-type", "synthetic-presented")
+        val disk = Disk()
+        val keys = HostKeyStore(disk)
+        if (forget) keys.pin("dev", 22, old)
+        disk.fail = true
+        val session = main {
+            FilesSession(app, ABSENT_TARGET, Dispatchers.IO, hostKeysOverride = keys).also { sessions += it }
+        }
+        main {
+            FilesSession::class.java.getDeclaredField("target").apply { isAccessible = true }
+                .set(session, FilesTarget("synthetic-profile", "dev", 22, "root", SshAuth.Key))
+            field<MutableStateFlow<FilesUiState>>(session, "_state").value = FilesUiState(
+                status = if (forget) FilesStatus.HostKeyChanged(old, presented) else FilesStatus.HostKeyUnknown(presented),
+            )
+            if (forget) session.forgetOldHostKey() else session.trustHostKey()
+        }
+        runBlocking {
+            withTimeout(5_000) { while (session.state.value.status !is FilesStatus.Failed) delay(10) }
+        }
+        val failed = session.state.value.status as FilesStatus.Failed
+        assertTrue(failed.message, failed.message.contains(Texts.get(R.string.write_failed_other)) && !failed.message.contains("disk full"))
+        assertEquals(if (forget) old else null, keys.pinned("dev", 22))
+        // The owner can retry: the same answer works once the disk does.
+        disk.fail = false
+        main {
+            field<MutableStateFlow<FilesUiState>>(session, "_state").value = FilesUiState(status = FilesStatus.HostKeyUnknown(presented))
+            session.trustHostKey()
+        }
+        runBlocking { withTimeout(5_000) { while (keys.pinned("dev", 22) != presented) delay(10) } }
     }
 
     private fun lateMetadata(resume: Boolean) {
