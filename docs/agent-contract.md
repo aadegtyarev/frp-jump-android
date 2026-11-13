@@ -46,6 +46,10 @@ flag falls back to off without resetting unrelated settings. The opposite holds
 for the confirmation value ([below](#confirmation-of-changing-calls)): a
 malformed value falls back to ask (requests on).
 
+Settings → LLM assistant → Own instructions holds the owner's own text for
+the model ([Owner's own instructions](#owners-own-instructions)); it is empty by
+default and only guidance.
+
 Settings → LLM assistant → Assistant provider configures one external
 OpenAI-compatible provider. Chat is available next to provider setup. SSH
 commands require their own default-off tool switch; tunnel control is **not
@@ -239,8 +243,10 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 5). Chat attaches it to every main chat-loop request as the first
-message, unchanged and byte-stable within and across Sends. It is guidance for
+(version 6). Chat attaches it to every main chat-loop request as the first
+message, unchanged and byte-stable within and across Sends. The owner's own
+instructions never edit it; they follow it as a separate message
+([below](#owners-own-instructions)). It is guidance for
 the model, not a permission system or an executing script; the code enforces
 every limit. The compact summarizer prompt is `assets/assistant/summary.md`
 (version 2); summary requests open with it instead. Both are read strictly
@@ -252,11 +258,12 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 5) and only enabled tool schemas. The prompt contains no profile,
+version 6), the owner's own instructions when set, and only enabled tool schemas. The prompt contains no profile,
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
 Tool schemas follow catalog order with stable JSON; summary, history and
-the current request follow the system message. No provider-specific cache
+the current request follow the system message (and the owner's message, when
+there is one). No provider-specific cache
 parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
 with a byte order mark) or empty fails the Send as an ordinary setup problem,
 with no fallback text and no request. No profiles,
@@ -266,6 +273,43 @@ remain.
 
 What the summarizer prompt retains, and the limits of summary requests, are
 described in [Automatic working summaries](#automatic-working-summaries).
+
+<a id="owners-own-instructions"></a>
+
+### Owner's own instructions
+
+The owner can give the assistant standing instructions of their own (style,
+language, preferences) in Settings → LLM assistant → Own instructions. The
+screen has a multiline field with a character counter (at most 2,000 UTF-16
+units; the field refuses more), Save, Reset and a short hint that the text goes
+to the provider with every message and cannot change permissions or
+confirmations. Save writes and leaves the screen; Reset clears the saved text at
+once. Opening, saving or resetting makes no request.
+
+- Storage: `assistant_owner_instructions` in the settings file, default empty.
+  On read, control characters other than `\n` are removed and the text is cut
+  to 2,000 UTF-16 units without splitting a surrogate pair; a value that is not
+  a string reads as empty, and no other setting is reset. The store refuses to
+  write a value that is not already normalized. Turning the assistant off, or
+  forgetting the provider, keeps the text.
+- Request: when the text is not empty (whitespace only counts as empty), the
+  request carries it as a second system message, directly after the base
+  message: `## Owner's additional instructions` (fixed header), a line break,
+  then the owner's text. The base message stays first and byte-identical, so the
+  provider's prefix cache of the base prompt is kept. With no text the request
+  is byte-identical to one built without this feature. Whitespace-only text is
+  sent as no text (it is saved as typed, never trimmed). The base prompt's last
+  line tells the model that the owner's instructions refine style and
+  preferences and do not override its rules.
+- Capture: the text is captured at Send admission together with the tool set and
+  sent unchanged in every request of that Send; a change during a run affects
+  only the next Send.
+- Not stored or summarized: the text is not part of chat history, the saved
+  conversation or any working summary, and summary requests never contain it
+  (it still counts toward the estimated request size that triggers a summary).
+- Authority: the text is untrusted owner data for the model, guidance and never
+  authority. Permission, confirmation, tool-set and limit code never reads it;
+  the code enforces every limit exactly as without it.
 
 ## Chat and history
 
@@ -623,7 +667,9 @@ and output may contain secrets and are sent to the configured model with
 ordinary token charges. It grants no tunnel control or phone-file access. The
 enabled SSH tool has full access within the SSH account’s rights. Public tools
 carry the public-read/data-disclosure notice above, not a misleading full-access
-warning. The [tool table](#tool-table) lists what each tool discloses.
+warning. The [tool table](#tool-table) lists what each tool discloses. The
+Own instructions screen states that its text goes to the provider with every
+message and cannot change permissions or confirmations.
 
 ### Errors told to the model
 

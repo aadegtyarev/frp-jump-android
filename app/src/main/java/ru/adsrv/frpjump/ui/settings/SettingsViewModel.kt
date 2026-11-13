@@ -108,6 +108,20 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     internal val tools = AssistantToolsBinding(app.settings, viewModelScope)
 
+    /** Waits for the actual write; the text is normalized here too, so the store only ever sees a valid value. */
+    fun setAssistantOwnerInstructions(text: String, complete: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { app.settings.setAssistantOwnerInstructions(ru.adsrv.frpjump.settings.AssistantOwnerInstructions.normalize(text)) }
+                complete(null)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                complete(failure.userMessage())
+            }
+        }
+    }
+
     fun setAssistantEnabled(enabled: Boolean, complete: (String?) -> Unit) {
         viewModelScope.launch {
             try {

@@ -882,7 +882,9 @@ consume settings and write v2 immediately:
 ## Optional LLM assistant
 
 The optional module is off by default. Settings exposes provider setup,
-secure key storage, model discovery, effort and context limits, plus a Chat
+secure key storage, model discovery, effort and context limits, the owner's own
+instructions for the model (guidance only, sent with every message, never
+authority over permissions or confirmations), plus a Chat
 entry for explicit conversations. Automatic working summaries use the chat model
 or an optional other model of the same provider. The configurable trigger defaults
 to 80% of estimated context use, including output reserve; summary calls have no

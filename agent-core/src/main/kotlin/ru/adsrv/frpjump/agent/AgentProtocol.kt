@@ -29,7 +29,18 @@ data class AgentExchange(val reply: AgentReply, val results: List<ToolResult> = 
     }
 }
 data class AgentTurn(val user: String, val exchanges: List<AgentExchange> = emptyList())
-data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val turns: List<AgentTurn>, val maxOutputTokens: Int)
+/**
+ * [instructions] is the base prompt, sent as the first system message and never edited. [ownerInstructions] is the owner's own text
+ * (empty: none); an adapter sends it, when non-empty, as a separate system message after the base one, headed [OWNER_INSTRUCTIONS_HEADER].
+ */
+data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val turns: List<AgentTurn>, val maxOutputTokens: Int,
+    val ownerInstructions: String = "")
+
+/** Fixed, model-facing heading of the owner's own instructions; the text follows after one line break. */
+const val OWNER_INSTRUCTIONS_HEADER = "## Owner's additional instructions"
+
+/** The text of the owner's message, or null when the owner gave none. */
+fun AgentRequest.ownerInstructionsMessage(): String? = ownerInstructions.takeIf { it.isNotEmpty() }?.let { "$OWNER_INSTRUCTIONS_HEADER\n$it" }
 fun interface AgentProvider { suspend fun complete(request: AgentRequest): AgentReply }
 interface AgentTool {
     val spec: ToolSpec
@@ -43,6 +54,7 @@ object Utf8TokenEstimate : TokenCounter {
     override fun count(request: AgentRequest): Long {
         fun size(text: String) = text.toByteArray(Charsets.UTF_8).size.toLong()
         var total = 256L + size(request.instructions)
+        request.ownerInstructionsMessage()?.let { total += size(it) }
         request.tools.forEach { total += 128 + size(it.name) + size(it.description) + size(it.parameters.toString()) }
         request.turns.forEach { turn ->
             total += 64 + size(turn.user)

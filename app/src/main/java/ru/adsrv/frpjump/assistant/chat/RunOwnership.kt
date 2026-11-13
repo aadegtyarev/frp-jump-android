@@ -4,11 +4,14 @@ import kotlinx.coroutines.CancellationException
 import ru.adsrv.frpjump.agent.AgentProvider
 import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.AssistantAvailability
+import ru.adsrv.frpjump.settings.AssistantOwnerInstructions
 import ru.adsrv.frpjump.settings.AssistantTools
 
 /** What one admitted Send needs; captured under the gate, used outside it. */
 internal class Admission(val owner: Pending, val saved: AssistantProviderSnapshot, val settings: AssistantProviderSettings, val text: String,
-    val past: List<SavedTurn>, val tools: AssistantTools, val retained: AgentProvider?)
+    val past: List<SavedTurn>, val tools: AssistantTools, val retained: AgentProvider?,
+    /** The owner's own text captured at admission with the tool set; text for the model only. */
+    val ownerInstructions: String = "")
 
 /** Who may commit: authority refresh, stop, the ownership check and Send admission. Every method documents whether it needs the gate. */
 internal class RunOwnership(private val c: ChatCells, private val runtime: AssistantChatRuntime,
@@ -82,12 +85,12 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         c.document = c.document.bind(settings)
         if (!c.archive) c.document = c.document.completedOnly()
         val past = c.document.records.drop(c.document.contextStart)
-        val owner = Pending(saved.revision, availability().disableVersion); val enabledTools = availability().tools; val retained = c.provider
+        val owner = Pending(saved.revision, availability().disableVersion); val captured = availability(); val enabledTools = captured.tools; val retained = c.provider
         check(runtime.acquire(owner)); c.pending = owner
         c.document = c.document.withTurn(text, c.archive); c.persist()
         c.mutable.value = c.mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
             currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList(),
             confirmationNotSaved = false)
-        return Admission(owner, saved, settings, text, past, enabledTools, retained)
+        return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions))
     }
 }

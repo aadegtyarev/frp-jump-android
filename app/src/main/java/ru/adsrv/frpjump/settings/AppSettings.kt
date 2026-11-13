@@ -123,6 +123,8 @@ data class AppSettings(
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
     /** Ask before a changing assistant tool call: global value now, overrides later; absent or malformed means ask. */
     @SerialName("assistant_confirmations") val assistantConfirmations: ConfirmationPolicy = ConfirmationPolicy(),
+    /** The owner's own instructions for the assistant (at most [AssistantOwnerInstructions.MAX_CHARS]); empty means none. Guidance for the model only. */
+    @SerialName("assistant_owner_instructions") val assistantOwnerInstructions: String = "",
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -169,7 +171,9 @@ private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assista
     assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
-    val tools: AssistantTools = AssistantTools())
+    val tools: AssistantTools = AssistantTools(),
+    /** Captured at Send admission like [tools]; text for the model only, never read for a permission or confirmation. */
+    val ownerInstructions: String = "")
 
 /** The app's settings in one JSON file; unreadable or invalid content falls back to the defaults. */
 class SettingsStore(private val storage: TextStorage) {
@@ -178,7 +182,8 @@ class SettingsStore(private val storage: TextStorage) {
     private var committedSettings = _settings.value
     private val notifications = Any()
     val settings: StateFlow<AppSettings> = _settings
-    @Volatile var assistantAvailability = AssistantAvailability(_settings.value.assistantEnabled, tools = _settings.value.assistantTools())
+    @Volatile var assistantAvailability = AssistantAvailability(_settings.value.assistantEnabled, tools = _settings.value.assistantTools(),
+        ownerInstructions = _settings.value.assistantOwnerInstructions)
         private set
     private val _assistantDisables = MutableStateFlow(0L)
     val assistantDisables: StateFlow<Long> = _assistantDisables
@@ -190,6 +195,9 @@ class SettingsStore(private val storage: TextStorage) {
     /** Shared persisted confirmation switch: only the global value. Never revokes admitted work. */
     fun setAssistantConfirmations(mode: ConfirmationMode) = update { it.copy(assistantConfirmations = it.assistantConfirmations.copy(global = mode)) }
 
+    /** Shared persisted owner instructions; the caller passes normalized text (the store refuses anything else). */
+    fun setAssistantOwnerInstructions(text: String) = update { it.copy(assistantOwnerInstructions = text) }
+
     /** Shared persisted tool operation used by Settings and the retained Chat owner. */
     fun setAssistantTool(id: AssistantToolId, enabled: Boolean) = update { it.withAssistantTools(it.assistantTools().with(id, enabled)) }
 
@@ -200,13 +208,14 @@ class SettingsStore(private val storage: TextStorage) {
             require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
             require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
             require(validMqttCacheLimits(next.mqttCache)) { "invalid MQTT cache limits" }
+            require(next.assistantOwnerInstructions == AssistantOwnerInstructions.normalize(next.assistantOwnerInstructions)) { "invalid assistant owner instructions" }
             if (next == committedSettings) return
             storage.write(WireJson.encodeToString(next))
             synchronized(assistantChat.gate) {
                 val previous = assistantAvailability
                 assistantAvailability = AssistantAvailability(next.assistantEnabled,
                     previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0,
-                    next.assistantTools())
+                    next.assistantTools(), next.assistantOwnerInstructions)
                 committedSettings = next
                 assistantConfirmations = next.assistantConfirmations
                 assistantAvailability.disableVersion
@@ -243,6 +252,8 @@ class SettingsStore(private val storage: TextStorage) {
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
             ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
             ("assistant_confirmations" to normalizeConfirmations(json["assistant_confirmations"])) +
+            ("assistant_owner_instructions" to JsonPrimitive(
+                (json["assistant_owner_instructions"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(AssistantOwnerInstructions::normalize).orEmpty())) +
             ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))
         val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
