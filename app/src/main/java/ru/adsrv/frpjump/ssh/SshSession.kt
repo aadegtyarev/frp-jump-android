@@ -362,17 +362,19 @@ class SshSession(
     }
 
 
-    /** Tells the remote side the terminal's size (SSH `window-change`). */
-    fun resize(columns: Int, rows: Int) {
-        val s = shell ?: return
-        scope.launch(Dispatchers.IO) {
-            try {
-                s.changeWindowDimensions(columns, rows, 0, 0)
-            } catch (e: IOException) {
-                Log.w(TAG, "window-change failed: ${e.message}")
-            }
+    private val windowChange = WindowChangeSender(scope, send = { columns, rows ->
+        val s = shell
+        if (s == null) false else try {
+            s.changeWindowDimensions(columns, rows, 0, 0)
+            true
+        } catch (e: IOException) {
+            Log.w(TAG, "window-change failed: ${e.message}")
+            false
         }
-    }
+    })
+
+    /** Tells the remote side the terminal's size (SSH `window-change`) once it has settled (about 100 ms). */
+    fun resize(columns: Int, rows: Int) = windowChange.request(columns, rows)
 
     /**
      * The logged-in connection while the shell is open, for another channel
@@ -399,6 +401,7 @@ class SshSession(
             client = null
             c?.let { it to kill }
         }
+        windowChange.close()
         reconnect.stop()
         // Cleanup has no suspension points: even an already-canceled owner must enter and dispose it.
         if (closing != null) scope.launch(Dispatchers.IO, start = CoroutineStart.ATOMIC) {
@@ -524,6 +527,7 @@ class SshSession(
             val columns = terminal.columns
             val rows = terminal.rows
             channel.allocatePTY(TERM, columns, rows, 0, 0, emptyMap())
+            windowChange.sent(columns, rows)
             if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name))
             val resumeKind = synchronized(lifecycle) {
                 if (!current(attempt)) return

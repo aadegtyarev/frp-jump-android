@@ -49,7 +49,7 @@ This reference does not certify runtime conformance to those requirements.
 - Connect through the tunnel at `127.0.0.1:<local port>` with SSHJ. Connect
   timeout is 20 s; keep-alive interval is 20 s. Authenticate with the tab's
   user and key or password. Allocate an `xterm-256color` PTY at the terminal's
-  size and send window changes on resize.
+  size and send window changes on resize, once the size has settled (about 100 ms) and only if it changed.
 - With tmux enabled, probe on an exec channel at each connect/reconnect:
 
   ```sh
