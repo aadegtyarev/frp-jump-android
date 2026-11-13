@@ -8,7 +8,9 @@ import ru.adsrv.frpjump.assistant.ChatHistoryProblem
 import ru.adsrv.frpjump.settings.AssistantAvailability
 
 /** The one live run owner: its authority snapshot, its job and whether Stop was requested. */
-internal class Pending(val revision: String?, val version: Long) { lateinit var job: Job; var stopped = false }
+internal class Pending(val revision: String?, val version: Long) { lateinit var job: Job; var stopped = false
+    /** Set when the Send finished by itself while still owned: true for a reply, false for a failure or timeout (the notification's end). */
+    @Volatile var replied: Boolean? = null }
 
 /**
  * The conversation's mutable cells. They have no lock of their own: read and write them only while holding

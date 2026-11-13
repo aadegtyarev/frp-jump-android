@@ -209,7 +209,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     private fun finish(problem: ChatProblem?, category: String = "finish-error", status: Int? = null) {
         val value = own.guarded(owner, category) {
-            document = document.finished(problem, status, archive); persist(); document
+            document = document.finished(problem, status, archive); persist()
+            owner.replied = problem == null
+            document
         } ?: return
         project(value)
     }

@@ -3,7 +3,7 @@
 <!-- BEGIN ad-pi-addons contract workflow -->
 ## Contracts and feature work
 - Read `docs/contracts/meta-contract.md` before implementing or reviewing a feature.
-- Before implementation, agree on and save the approved feature contract under `docs/contracts/features/`; identify and read every affected surface contract at its actual repository path, including the legacy documents listed below. Prefer `docs/contracts/surfaces/` for new surface contracts when a distinct boundary justifies one.
+- Before implementing a large or risky feature (security, the assistant's permissions, stored data, or a cross-surface change), agree on and save the approved feature contract under `docs/contracts/features/`. Smaller work needs no feature contract. Always identify and read every affected surface contract at its actual repository path, including the legacy documents listed below. Prefer `docs/contracts/surfaces/` for new surface contracts when a distinct boundary justifies one.
 - Give the exact contract paths to the planner, implementer, and reviewer. If working directly, use the same contracts as the source of truth.
 - If implementation reveals a changed surface or acceptance scope, stop and get approval before proceeding. After verification, update affected surface contracts, mark the feature contract complete for final verification, then delete the temporary feature-contract file.
 - Preserve existing instructions and surface contracts; never overwrite or delete them silently. Feature contracts are temporary task artifacts and must not remain after verified completion.
@@ -29,8 +29,10 @@
   checked-case inventory, closure criteria and inspection limits. Worker fixes
   all applicable owned cases in one pass, validates the blast radius, and
   distinguishes complete-within-scope, partial and blocked outcomes.
-- For contract rewrites, account for old normative promises as retained, moved,
-  conditionally retained or removed with approved grounds. Removing a future
+- When a change alters a security, assistant-permission or stored-data
+  promise, account for each old promise as retained, moved, conditionally
+  retained or removed with approved grounds (an "old → new → basis" table in
+  the PR). Removing a future
   implementation plan must not remove its approved safety/data/compatibility
   constraints; implementation behavior alone cannot authorize weaker promises.
 - A later analogous instance is a same-class coverage failure, not automatically
@@ -56,6 +58,9 @@
   `docs/terminal-diagnostics-contract.md`. Link the affected legacy paths from
   feature contracts; do not silently move, replace or duplicate these documents.
   Empty `docs/contracts/surfaces/` does not mean surface contracts are absent.
+- Surface contracts record promises about security, the assistant's
+  permissions and stored data, plus each surface's core behavior. Layout and
+  small UI behavior details live in code and tests, not in contracts.
 - UI/UX must be concise, understandable and functional, with minimal steps.
   Keep common actions directly accessible and labels/messages short and clear.
   Do not remove functionality, accessibility, truthful feedback or required
@@ -76,7 +81,9 @@
   font scale to 1.0. Distinguish scoped emulator evidence from physical-device,
   vendor-IME and live-service validation. Use synthetic credentials/services;
   do not access production profiles, keys, providers, SSH, tunnels or brokers.
-- Small coherent checked PRs, independent review, then matched-head merge.
+- Small coherent checked PRs, then matched-head merge. An independent review
+  is required only for risky changes: security, the assistant's permissions,
+  stored data. Small UI changes go by the unit gate.
   The parent retains scope, acceptance, commit/PR/merge and release authority.
   Use one writer per worktree. Configured implementation role:
   `openai/gpt-6.1-sol:medium`; independent fresh read-only review:
@@ -93,9 +100,14 @@
   Environment: Pi
   Model: openai/gpt-6.1-sol
   ```
-- Merge each slice as its own PR after the unit gate, Gitleaks and an
-  independent review; run the emulator e2e matrix once per series on fresh
-  main, and release only from a main commit whose e2e passed (the release PR
-  carries only the version and notes). A slice that touches what unit tests
-  cannot catch (a gesture, drawing, a system dialog) may ask for one targeted
-  emulator set.
+- Merge each slice as its own PR after the unit gate and Gitleaks (plus an
+  independent review when the rule above requires one). Run the series e2e
+  once per series on fresh main in two configurations: portrait 1.0 RU and
+  landscape 200% EN. Run the full 8-configuration matrix every few releases,
+  or when the layout of shared screens changes. Release only from a main
+  commit whose series e2e passed; the release PR carries only the version and
+  notes. A flaky test gets one rerun; if it passes, release, name it flaky in
+  the notes and open an issue. Mutation testing only for security:
+  confirmations, login, permissions, secrets. A slice that touches what unit
+  tests cannot catch (a gesture, drawing, a system dialog) may ask for one
+  targeted emulator set.

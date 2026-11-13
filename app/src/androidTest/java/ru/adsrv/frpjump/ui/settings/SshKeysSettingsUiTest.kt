@@ -18,7 +18,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -32,7 +31,7 @@ import ru.adsrv.frpjump.ui.FrpJumpTheme
 
 /**
  * Settings › Security › SSH keys on the actual Settings screen: the row, and the sheet with the phone's key and an
- * imported one. The imported key is synthetic and removed again; a phone that already has one skips these tests.
+ * imported one. The imported key is synthetic: each test starts with none and removes the one it imported.
  */
 @RunWith(AndroidJUnit4::class)
 class SshKeysSettingsUiTest {
@@ -73,7 +72,9 @@ class SshKeysSettingsUiTest {
             assertEquals(lang, res.configuration.locales[0].language)
         }
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, 0.01f)
-        assumeTrue("the phone already has an imported key", app.sshKeys.importedPublicLine() == null)
+        // Start from a known state: a key left by an earlier run is test data and goes first.
+        app.sshKeys.removeImported()
+        assertNull(app.sshKeys.importedPublicLine())
     }
 
     @After fun cleanup() {

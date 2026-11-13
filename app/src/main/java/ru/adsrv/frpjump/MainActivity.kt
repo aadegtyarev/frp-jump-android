@@ -1,6 +1,5 @@
 package ru.adsrv.frpjump
 
-import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
@@ -77,6 +76,8 @@ class MainActivity : AppCompatActivity() {
     private var promptedForLock = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before anything reads the launch intent: Navigation follows deep-link extras in it, and this activity is exported (Р41).
+        setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
         super.onCreate(savedInstanceState)
         edgeToEdge()
         // The current profile polls every 2 s while this is visible (see Poller).
@@ -105,7 +106,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        takeOpenDevice(intent)
         setContent {
             val config = configuration.value ?: LocalConfiguration.current
             val settings by app.settings.settings.collectAsState()
@@ -289,21 +289,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        takeOpenDevice(intent)
-    }
-
-    /** A notification asked for a device card: the navigation shows it ([ru.adsrv.frpjump.ui.AppNav]). */
-    private fun takeOpenDevice(intent: Intent?) {
-        if (intent?.action != ACTION_OPEN_DEVICE) return
-        val profile = intent.getStringExtra(EXTRA_PROFILE) ?: return
-        val device = intent.getStringExtra(EXTRA_DEVICE) ?: return
-        (application as FrpJumpApp).openDevice.value = OpenDevice(profile, device)
-        // Once: not again when the activity is recreated from this intent.
-        intent.action = null
-    }
-
     /**
      * Dark mode switched while open (uiMode is handled here, not by
      * recreating): status bar icons follow it. A new language: the content
@@ -323,10 +308,6 @@ class MainActivity : AppCompatActivity() {
         @androidx.annotation.VisibleForTesting
         internal var windowProbe: (@androidx.compose.runtime.Composable () -> Unit)? by androidx.compose.runtime.mutableStateOf(null)
 
-        private const val ACTION_OPEN_DEVICE = "ru.adsrv.frpjump.OPEN_DEVICE"
-        private const val EXTRA_PROFILE = "profile"
-        private const val EXTRA_DEVICE = "device"
-
         private val KEYS_WHILE_LOCKED = setOf(
             KeyEvent.KEYCODE_BACK,
             KeyEvent.KEYCODE_VOLUME_UP,
@@ -337,13 +318,5 @@ class MainActivity : AppCompatActivity() {
         /** androidx.activity's own scrims for the three-button navigation bar. */
         private val LIGHT_SCRIM = android.graphics.Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
         private val DARK_SCRIM = android.graphics.Color.argb(0x80, 0x1B, 0x1B, 0x1B)
-
-        /** Opens [device]'s card in [profile], over whatever the app shows. */
-        fun openDevice(context: Context, profile: String, device: String): Intent =
-            Intent(context, MainActivity::class.java)
-                .setAction(ACTION_OPEN_DEVICE)
-                .putExtra(EXTRA_PROFILE, profile)
-                .putExtra(EXTRA_DEVICE, device)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
 }

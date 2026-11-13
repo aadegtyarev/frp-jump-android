@@ -34,8 +34,9 @@ class AssistantChatOwnerTest {
         override fun destroy() = Unit
     }
 
-    private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0) : AutoCloseable {
+    private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false) : AutoCloseable {
         val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
+        val stopping = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
         val requests = CopyOnWriteArrayList<AgentRequest>()
         @Volatile var now = 1_000L
@@ -66,13 +67,14 @@ class AssistantChatOwnerTest {
         val owner = AssistantChatOwner(scope, settings, store, module, null, ssh, history, null, TestPrompts.placeholder, {
             AgentProvider { request ->
                 requests += request
+                if (failing) throw IllegalStateException("synthetic failure")
                 if (requests.size == holdAt) { entered.complete(Unit); release.await() }
                 val done = request.turns.last().exchanges.size
                 if (done < calls.size) AgentReply(calls = listOf(ToolCall("c$done", "ssh_command", buildJsonObject {
                     put("profile_id", "p"); put("connection_id", "c"); put("command", calls[done].command)
                 }))) else AgentReply("done")
             }
-        }, { now }, removed = removed)
+        }, { now }, stoppingOut = stopping, removed = removed)
         init { live += this }
         override fun close() { owner.shutdown(); scope.cancel() }
         fun results() = requests.last().turns.last().exchanges.flatMap { it.results }
@@ -197,6 +199,55 @@ class AssistantChatOwnerTest {
         val turn = eventually("restored") { back.state.value.turns.singleOrNull() }
         assertTrue("its own note, not the interrupted one", turn.unanswered)
         assertEquals("seeing the chat again clears the end", ChatEnd.NONE, h.owner.lastEnd.value)
+    }
+
+    @Test fun `lastEnd tells a reply from the owner's Stop, and a new Send clears it`() {
+        val h = Harness(holdAt = 1)
+        val first = h.owner.attach(); h.send(first); runBlocking { withTimeout(5000) { h.entered.await() } }
+        h.owner.detach()
+        h.release.complete(Unit); h.idle()
+        assertEquals(ChatEnd.COMPLETED, h.owner.lastEnd.value)
+        val again = h.owner.attach()
+        assertEquals("a screen attaching clears the end", ChatEnd.NONE, h.owner.lastEnd.value)
+        eventually("restored") { again.state.value.turns.singleOrNull() }
+        h.owner.detach(); h.idle()
+
+        val stopped = Harness(holdAt = 1)
+        val chat = stopped.owner.attach(); stopped.send(chat); runBlocking { withTimeout(5000) { stopped.entered.await() } }
+        stopped.owner.detach()
+        stopped.owner.stop(); stopped.idle()
+        assertEquals("the owner's Stop reports no end", ChatEnd.NONE, stopped.owner.lastEnd.value)
+    }
+
+    @Test fun `a new Send clears the end of the previous attempt while the screen stays attached`() {
+        val h = Harness(holdAt = 2)
+        val chat = h.owner.attach(); h.send(chat)
+        eventually("the end is told") { h.owner.lastEnd.value.takeIf { it != ChatEnd.NONE } }
+        h.idle()
+        assertEquals(ChatEnd.COMPLETED, h.owner.lastEnd.value)
+        h.send(chat, "again"); runBlocking { withTimeout(5000) { h.entered.await() } }
+        eventually("the new attempt runs") { h.owner.activity.value.takeIf { it != ChatActivity.IDLE } }
+        assertEquals("the end of the first attempt is gone while the second runs", ChatEnd.NONE, h.owner.lastEnd.value)
+        h.release.complete(Unit)
+        eventually("the second end is told") { h.owner.lastEnd.value.takeIf { it == ChatEnd.COMPLETED } }
+    }
+
+    @Test fun `a Stop that the provider ignores leaves no end, even when its late reply arrives`() {
+        val h = Harness(holdAt = 1)
+        val chat = h.owner.attach(); h.send(chat); runBlocking { withTimeout(5000) { h.entered.await() } }
+        h.owner.stop()
+        eventually("stopping") { h.stopping.value.takeIf { it } }
+        h.release.complete(Unit); h.idle()
+        assertEquals(ChatEnd.NONE, h.owner.lastEnd.value)
+        assertFalse("stopping is cleared when the attempt is over", h.stopping.value)
+    }
+
+    @Test fun `a failed attempt reports FAILED`() {
+        val h = Harness(failing = true)
+        val chat = h.owner.attach(); h.send(chat)
+        eventually("the end is told") { h.owner.lastEnd.value.takeIf { it != ChatEnd.NONE } }
+        h.idle()
+        assertEquals(ChatEnd.FAILED, h.owner.lastEnd.value)
     }
 
     @Test fun `with the screen attached the same expiry only declines that call and the second card is raised`() {

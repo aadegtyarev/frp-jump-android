@@ -23,8 +23,11 @@ import ru.adsrv.frpjump.undo.PendingUndo
 /** What the assistant is doing right now, for the indicator that is seen while the chat is not: nothing, working, or waiting for a card's answer. */
 enum class ChatActivity { IDLE, WORKING, WAITING }
 
-/** How the last attempt that ended with no screen attached ended, for the notification (part B): nothing, or an unanswered question. */
-enum class ChatEnd { NONE, UNANSWERED }
+/**
+ * How the last attempt ended, for the notification: nothing (running, or stopped by the owner or a disable: no end to report), a reply,
+ * a failure or timeout, or an unanswered question that ended it with no screen attached.
+ */
+enum class ChatEnd { NONE, COMPLETED, FAILED, UNANSWERED }
 
 /**
  * The app-lived owner of the one chat conversation (Р32). A chat screen [attach]es and [detach]es; the conversation lasts while a screen
@@ -49,6 +52,9 @@ class AssistantChatOwner(
     /** Elapsed real time in milliseconds, device sleep included (`SystemClock::elapsedRealtime` in the app). */
     private val realtime: () -> Long,
     private val activityOut: MutableStateFlow<ChatActivity> = MutableStateFlow(ChatActivity.IDLE),
+    private val endOut: MutableStateFlow<ChatEnd> = MutableStateFlow(ChatEnd.NONE),
+    /** True while a Stop is requested for the running attempt and it is winding down (the notification goes at once). */
+    private val stoppingOut: MutableStateFlow<Boolean> = MutableStateFlow(false),
     /** True while the current profile's server has removed this phone (the REMOVED screen): a running attempt is stopped, screen or not. */
     private val removed: Flow<Boolean> = emptyFlow(),
 ) {
@@ -57,8 +63,7 @@ class AssistantChatOwner(
     private var live: Live? = null
     private var screens = 0
     val activity: StateFlow<ChatActivity> = activityOut
-    private val endOut = MutableStateFlow(ChatEnd.NONE)
-    /** [ChatEnd.UNANSWERED] after an attempt ended because a question ran out with no screen attached; back to NONE when a screen attaches or a Send starts. */
+    /** How the last attempt ended (see [ChatEnd]); back to NONE when a screen attaches or a Send starts. */
     val lastEnd: StateFlow<ChatEnd> = endOut
     /** Screen attach/detach moments (real time), newest last: whether a screen was attached at a past moment (a card's expiry). */
     private val moments = ArrayDeque<Pair<Long, Boolean>>()
@@ -94,7 +99,7 @@ class AssistantChatOwner(
 
     /** Ends everything now, attempt included (a test or a private owner going away). */
     fun shutdown() {
-        val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE } } ?: return
+        val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE; stoppingOut.value = false } } ?: return
         old.conversation.close(); old.scope.cancel()
     }
 
@@ -114,7 +119,7 @@ class AssistantChatOwner(
     private fun settled() {
         synchronized(lock) {
             val old = live ?: return
-            if (screens == 0 && old.conversation.closeIfIdle()) { live = null; old.scope.cancel(); activityOut.value = ChatActivity.IDLE }
+            if (screens == 0 && old.conversation.closeIfIdle()) { live = null; old.scope.cancel(); activityOut.value = ChatActivity.IDLE; stoppingOut.value = false }
         }
     }
 
@@ -127,16 +132,24 @@ class AssistantChatOwner(
             profileInformation = profileInformation, sshCommands = sshCommands, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,
-            onUnanswered = { synchronized(lock) { endOut.value = ChatEnd.UNANSWERED } })
+            onUnanswered = { synchronized(lock) { endOut.value = ChatEnd.UNANSWERED } },
+            onEnded = { replied -> synchronized(lock) { if (endOut.value != ChatEnd.UNANSWERED) endOut.value = if (replied) ChatEnd.COMPLETED else ChatEnd.FAILED } })
         child.launch { settingsStore.assistantDisables.collect { chat.refresh() } }
         child.launch { settingsStore.assistantChat.busy.collect { chat.refresh() } }
         child.launch { providerStore.state.collect { chat.refresh() } }
         // A tool that is switched off loses its session grants, even though the Tools screen opens without leaving Chat.
         child.launch { settingsStore.settings.map { it.assistantTools() }.distinctUntilChanged().collect { chat.toolsChanged(it) } }
         child.launch {
+            var before = ChatActivity.IDLE
             chat.state.map { if (!it.busy) ChatActivity.IDLE else if (it.confirmation != null && !it.stopping) ChatActivity.WAITING else ChatActivity.WORKING }
-                .distinctUntilChanged().collect { publish(chat, it); if (it == ChatActivity.WORKING) synchronized(lock) { if (live?.conversation === chat) endOut.value = ChatEnd.NONE } }
+                .distinctUntilChanged().collect {
+                    publish(chat, it)
+                    // A new Send (any step from idle) clears the last end; the WAITING to WORKING step of an attempt that ends unanswered does not.
+                    if (it != ChatActivity.IDLE && before == ChatActivity.IDLE) synchronized(lock) { if (live?.conversation === chat) endOut.value = ChatEnd.NONE }
+                    before = it
+                }
         }
+        child.launch { chat.state.map { it.busy && it.stopping }.distinctUntilChanged().collect { synchronized(lock) { if (live?.conversation === chat) stoppingOut.value = it } } }
         // The server removed this phone's profile: the attempt stops even when no screen (so no AppNav) is there to do it.
         child.launch { removed.collect { gone -> if (gone) chat.stop() } }
         return Live(chat, child, confirmations)
