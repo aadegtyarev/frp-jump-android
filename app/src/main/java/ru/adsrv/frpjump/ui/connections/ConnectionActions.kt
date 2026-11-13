@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui.connections
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +56,19 @@ import ru.adsrv.frpjump.ops.tunnel.TunnelUp
 import ru.adsrv.frpjump.ops.tunnel.TunnelUpHost
 import ru.adsrv.frpjump.ops.tunnel.TunnelUpInput
 import ru.adsrv.frpjump.ops.tunnel.TunnelUpTunnels
+import ru.adsrv.frpjump.ops.DirectRefusal
+import ru.adsrv.frpjump.ops.direct.DirectChoiceInput
+import ru.adsrv.frpjump.ops.direct.DirectKeep
+import ru.adsrv.frpjump.ops.direct.DirectRetry
+import ru.adsrv.frpjump.ops.tunnel.TunnelConnect
+import ru.adsrv.frpjump.ops.tunnel.TunnelConnectHost
+import ru.adsrv.frpjump.ops.tunnel.TunnelConnectInput
+import ru.adsrv.frpjump.ops.tunnel.TunnelConnectTunnels
+import ru.adsrv.frpjump.ops.tunnel.TunnelDown
+import ru.adsrv.frpjump.ops.tunnel.TunnelDownHost
+import ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget
+import ru.adsrv.frpjump.ui.tunnelActionNotice
+import ru.adsrv.frpjump.ui.userText
 import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.ui.tunnelNotice
 import java.io.IOException
@@ -95,6 +109,28 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         override suspend fun awaitDisconnected(tunnel: TunnelRef) = app.disconnects.awaitDisconnected(tunnel)
     })
 
+    private val tunnelConnect = TunnelConnect(object : TunnelConnectHost {
+        override fun tunnels(profile: String) = runtime(profile)?.tunnels?.let { manager ->
+            object : TunnelConnectTunnels {
+                override fun connectAsync(device: String, port: Int, kind: PortKind) { manager.connectAsync(device, port, kind) }
+            }
+        }
+        override fun revive(tunnel: TunnelRef) = app.disconnects.revive(tunnel)
+        override fun disconnecting(tunnel: TunnelRef) = app.disconnects.disconnecting(tunnel)
+        override suspend fun awaitDisconnected(tunnel: TunnelRef) = app.disconnects.awaitDisconnected(tunnel)
+    })
+
+    private val tunnelDown = TunnelDown(app.disconnects, object : TunnelDownHost {
+        override fun profiles() = app.profiles.state.value.runtimes.keys
+        override fun up(profile: String) = runtime(profile)?.tunnels?.state?.value?.tunnels.orEmpty().map { TunnelRef(profile, it.device, it.port) }
+        override fun restoring() = restoringProfiles(app.restoreRecord.profiles.value, app.profiles.state.value.runtimes.keys, app.profiles.tunnelsByProfileNow())
+        override fun tellAsync(profile: String) { runtime(profile)?.let { r -> app.appScope.launch { r.tunnels.disconnectAll() } } }
+        override suspend fun tellAll() { app.profiles.disconnectAll() }
+    })
+
+    private val directRetry = DirectRetry(app.directChoices)
+    private val directKeep = DirectKeep(app.directChoices)
+
     /** The local port of [row]'s tunnel, brought up when it is down; null when it does not come up (a notice says why). */
     private suspend fun tunnelPortOrNotice(row: ConnectionRow): Int? {
         val c = row.connection
@@ -112,22 +148,22 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     /** The sessions of every tunnel, for the SSH rows' counts of terminals. */
     val sessions: Flow<List<SessionOn>> = app.sessions.through
 
-    /** Connect; a tunnel whose disconnect waits for Undo is still up, and only stays so. */
+    /** Connect ([TunnelConnect]): a tunnel whose disconnect waits for Undo is still up, and only stays so. Main thread. */
     fun connect(row: ConnectionRow) {
         val c = row.connection
-        if (revive(row.profile, c.device, c.port)) return
-        val tunnels = runtime(row.profile)?.tunnels ?: return
-        val ref = TunnelRef(row.profile, c.device, c.port)
-        // Its disconnect is being done: connect once it is down, not into it (the tap is not lost).
-        if (app.disconnects.disconnecting(ref)) {
-            app.appScope.launch {
-                app.disconnects.awaitDisconnected(ref)
-                tunnels.connectAsync(c.device, c.port, c.kind)
-            }
-        } else {
-            tunnels.connectAsync(c.device, c.port, c.kind)
-        }
+        asked { tunnelConnect(TunnelConnectInput(row.profile, c.device, c.port, c.kind)) }
     }
+
+    /**
+     * Starts [block] in the app's scope without a suspension before its synchronous part, so what an operation does at once (a tunnel
+     * going dark, a connect asked) is done when this returns, as it was before the operations. Main thread.
+     */
+    private fun asked(block: suspend () -> Unit) {
+        app.appScope.launch(start = CoroutineStart.UNDISPATCHED) { block() }
+    }
+
+    /** Says why an operation of the screens refused, as a notice; says nothing on a clean result. */
+    private fun OpResult<Unit>.say() { tunnelActionNotice()?.let { app.notices.show(it, NoticeKind.WARN) } }
 
     /**
      * A tap on a card that is down: connects as [connect] does and returns
@@ -144,66 +180,38 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     /** A tunnel whose disconnect waits for Undo, used again from its row: it stays up ([TunnelDisconnects.revive]). Main thread. */
     private fun revive(profile: String, device: String, port: Int): Boolean = app.disconnects.revive(TunnelRef(profile, device, port))
 
-    /** Disconnect, with Undo ([TunnelDisconnects]): [row]'s tunnel shows down at once. Main thread. */
-    fun disconnect(row: ConnectionRow) = app.disconnects.disconnect(listOf(TunnelRef(row.profile, row.connection.device, row.connection.port)))
-
-    /** The tunnels of [profiles] up as the owner sees them: not those whose disconnect waits already. Main thread. */
-    private fun shownTunnels(profiles: Collection<ProfileRuntime>): List<TunnelRef> = app.disconnects.shown(upTunnels(profiles))
-
-    /** The tunnels of [profiles] up now, as their managers list them. */
-    private fun upTunnels(profiles: Collection<ProfileRuntime>): List<TunnelRef> =
-        profiles.flatMap { r -> r.tunnels.state.value.tunnels.map { TunnelRef(r.id, it.device, it.port) } }
+    /** Disconnect, with Undo ([TunnelDown]): [row]'s tunnel shows down at once. Main thread. */
+    fun disconnect(row: ConnectionRow) = asked {
+        tunnelDown(TunnelDownTarget.One(TunnelRef(row.profile, row.connection.device, row.connection.port)))
+    }
 
     /** "Retry direct" for [row]'s device: all its tunnels through the server try again, kept no more on this network. */
     fun retryDirect(row: ConnectionRow) {
-        app.appScope.launch { app.directChoices.retryDirect(row.profile, row.connection.device) }
+        app.appScope.launch { directRetry(DirectChoiceInput(row.profile, row.connection.device)) }
     }
 
     /** "Keep through the server" for [row]'s device on this network; says why when there is no network to tie it to. */
     fun keepThroughServer(row: ConnectionRow) {
         app.appScope.launch {
-            if (!app.directChoices.keepThroughServer(row.profile, row.connection.device)) {
-                app.notices.show(Texts.get(R.string.keep_no_network), NoticeKind.WARN, long = true)
-            }
+            val result = directKeep(DirectChoiceInput(row.profile, row.connection.device))
+            if (result is OpResult.Refused) app.notices.show((result.reason as DirectRefusal).userText(), NoticeKind.WARN, long = true)
         }
     }
 
     /**
-     * "Disconnect all": every tunnel of every profile up now, with Undo
-     * ([TunnelDisconnects]); [onDone] at once. Profiles whose tunnels are
-     * all still being restored after a restart have nothing on screen to
-     * wait for: their servers are told now. With none up anywhere, every
-     * server is told now, and [onDone] once it was asked (main thread).
+     * "Disconnect all" ([TunnelDown], [TunnelDownTarget.All]): [onDone] when it was asked: at once when something was up (every
+     * tunnel is then dark with Undo), else once every server was told. Main thread.
      */
-    fun disconnectAll(onDone: () -> Unit = {}) {
-        val runtimes = app.profiles.state.value.runtimes
-        val shown = shownTunnels(runtimes.values)
-        if (shown.isNotEmpty()) {
-            app.disconnects.disconnect(shown)
-            val restoring = restoringProfiles(app.restoreRecord.profiles.value, runtimes.keys, app.profiles.tunnelsByProfileNow())
-            restoring.mapNotNull(runtimes::get).forEach { r -> app.appScope.launch { r.tunnels.disconnectAll() } }
-            return onDone()
-        }
-        app.appScope.launch {
-            app.profiles.disconnectAll()
-            onDone()
-        }
+    fun disconnectAll(onDone: () -> Unit = {}) = asked {
+        tunnelDown(TunnelDownTarget.All)
+        onDone()
     }
 
     /** Every tunnel of [profile] up now (the power button on the Devices tab's bar), with Undo. Main thread. */
-    fun disconnectProfile(profile: String) {
-        val runtime = runtime(profile) ?: return app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
-        app.disconnects.disconnect(shownTunnels(listOf(runtime)))
-    }
+    fun disconnectProfile(profile: String) = asked { tunnelDown(TunnelDownTarget.Profile(profile)).say() }
 
-    /**
-     * Every tunnel of [profile] to [device] up now (the swipe on its row of
-     * the Devices tab, the power button on its card), with Undo. Main thread.
-     */
-    fun disconnectDevice(profile: String, device: String) {
-        val runtime = runtime(profile) ?: return app.notices.show(Texts.get(R.string.profile_gone), NoticeKind.WARN)
-        app.disconnects.disconnect(app.disconnects.shownOn(upTunnels(listOf(runtime)), profile, device))
-    }
+    /** Every tunnel of [profile] to [device] up now (the swipe on its row of the Devices tab, the power button on its card), with Undo. Main thread. */
+    fun disconnectDevice(profile: String, device: String) = asked { tunnelDown(TunnelDownTarget.Device(profile, device)).say() }
 
     /**
      * Saves [connection] in [profile] (new, or [previous] changed in place)

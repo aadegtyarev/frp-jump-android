@@ -8,7 +8,7 @@ surface covers the `ops/` package (the operation interface, results and typed re
 adapter must keep. It does not describe what each product surface does; see the related contracts.
 
 Consumers: the assistant tools `ssh_command` and `profile_information` (through `OperationTool`) and the Connections actions (through
-`ui/OpTexts.kt`). Maintainers add an operation by implementing `Operation` and one adapter per caller.
+`ui/OpTexts.kt`; `ConnectionActions` is their thin adapter and keeps the navigation glue: opening SSH, MQTT and Files, login at once). Maintainers add an operation by implementing `Operation` and one adapter per caller.
 
 ## Interface
 
@@ -41,6 +41,10 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
 | `ssh_exec` (`SshExec`) | `CHANGE_REMOTE` | tool `ssh_command` | `OpResult<SshExecOutput>` (streams, status, signal) | `SshRefusal`: `TargetUnavailable`, `NeedsSetup`, `TargetLostBeforeExec`, `ConnectFailed` | `SshFailure`: `TargetLost(exit?)`, `CommandFailed(exit?)`; `KNOWN` only when an exit was already reported, else `UNKNOWN`. `SshFailure.Unexpected` is never returned by the operation: it is the adapter's word for an exception that escaped it |
 | `profile_query` (`ProfileQuery`) | `READ_REMOTE` | tool `profile_information` | `OpResult<ProfileInformationState>` | none | `ProfileQueryFailure.Unavailable` (`UNKNOWN`) |
 | `tunnel_up` (`TunnelUp`) | `CHANGE_LOCAL` | UI only (Connections, device card, "Use key login") | `OpResult<Int>` (the local port) | `TunnelRefusal.ProfileGone` | `TunnelFailure`: `DidNotComeUp(error: DomainError?)` (`UNKNOWN`), `DeviceNotListening(reason: DevicePortNotOpen)` (`UNKNOWN`: the device either refused or did not answer in time, and the result does not say which) |
+| `tunnel_connect` (`TunnelConnect`) | `CHANGE_LOCAL` | UI only (Connections, device card) | `OpResult<Unit>`: the connect was asked, not waited for | `TunnelRefusal.ProfileGone` | none |
+| `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections, Devices, device card) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
+| `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (device card, Connections) | `OpResult<Unit>` | none | none |
+| `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (device card, Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
 
 ### `ssh_exec`
 
@@ -67,6 +71,31 @@ here). It does not come up: `DidNotComeUp` with the tunnel manager's last typed 
 port: `DeviceNotListening` with `DevicePortNotOpen(port)`, the port that is not open. The assistant does not get this operation:
 tunnels are not managed by the model. If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
 
+### `tunnel_connect`
+
+Asks a tunnel to connect for the connection's kind and returns without waiting for it ([`tunnel_up`](#tunnel_up) is the one that waits).
+In order: a tunnel whose disconnect waits for Undo is revived and only stays up; a profile that is gone is refused; a disconnect being done
+is awaited and the tunnel is connected after it, not into it; otherwise the connect is asked before the operation first suspends. The
+screens start it undispatched, so the ask is made when the tap returns. The target is a typed tunnel reference (profile, device, port,
+kind), not a `GrantTarget`. The assistant does not get it.
+
+### `tunnel_down`
+
+Disconnects with Undo, over `undo/TunnelDisconnects.kt`: one tunnel (a row), every tunnel of a device, of a profile, or of every profile.
+The effect is local and at once: before the operation first suspends the tunnels show down (hidden in `PendingUndo`), and the screens
+start it undispatched so the row goes dark when the tap returns. The server is told later, when the notice goes (or on `commitAll`:
+screens stopping, lock, before Forget), one commit after another; Undo restores and tells nothing; that later commit is not part of the
+result. A device or a profile that does not exist is refused. For "all": with something shown up, every tunnel goes dark under one notice
+and the profiles still being restored after a restart (nothing of them on screen to wait for) have their servers told at once, not
+waited for; with nothing shown up, every server is told and the result comes after each was asked (the "Disconnect all" spinner follows
+that). The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant does not get it.
+
+### `direct_retry` and `direct_keep`
+
+The owner's two answers to "Direct didn't work" over `direct/DirectChoices.kt`. Retry is always done (a missing profile changes nothing,
+as before). Keep is refused with `DirectRefusal.NoNetwork` when the phone is on no network the choice can be tied to: nothing changed.
+The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. The assistant does not get them.
+
 ## Adapters
 
 - **Assistant (`OperationTool`).** Keeps the `AppTool` pipeline: admission first, then strict parsing, then the operation; any exception
@@ -82,13 +111,13 @@ tunnels are not managed by the model. If that policy is ever lifted, a tunnel to
 
 ## Security and privacy
 
-- The operation layer adds no authority: the assistant still has only the tools in the catalog; none of them starts, changes or stops a tunnel.
+- The operation layer adds no authority: the assistant still has only the tools in the catalog; none of them starts, changes or stops a tunnel (`tunnel_connect`, `tunnel_down`, `direct_*` are UI only).
 - A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 
 ## Non-goals
 
-- No operation for Files, MQTT publishing or tunnel disconnect yet; each is a later feature with its own contract.
+- No operation for Files or MQTT publishing yet; each is a later feature with its own contract.
 - Wording of errors for the model is not owned here; changing it is a separate feature.
 - No provider-specific behavior.
 
