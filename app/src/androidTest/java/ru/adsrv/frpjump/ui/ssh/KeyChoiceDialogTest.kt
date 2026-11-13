@@ -172,7 +172,8 @@ class KeyChoiceDialogTest {
         compose.onNodeWithText(text(R.string.key_choose_confirm)).performClick()
         compose.waitForIdle()
         compose.waitUntil(5_000) { compose.onAllNodesWithText(text(R.string.key_install_password_note, keyName(imported))).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText(text(R.string.key_install_password_note, keyName(imported))).assertIsDisplayed()
+        // The dialog body scrolls when the window is short (landscape, 200% font): the user scrolls to the note.
+        compose.onNodeWithText(text(R.string.key_install_password_note, keyName(imported))).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.key_install_confirm)).assertIsDisplayed()
     }
 
