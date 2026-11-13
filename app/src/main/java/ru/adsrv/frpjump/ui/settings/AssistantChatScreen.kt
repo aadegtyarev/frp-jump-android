@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.assistant.chat.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -108,7 +109,7 @@ internal fun AssistantChatContent(
                         IconButton(onClick = { menu = true }, enabled = !state.busy && !state.loading) {
                             Icon(Icons.Default.MoreVert, stringResource(R.string.chat_history_actions))
                         }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.chat_history_clear)) }, onClick = { menu = false; clear() })
                         }
                     }

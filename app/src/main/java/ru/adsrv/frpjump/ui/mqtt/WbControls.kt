@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -34,7 +36,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
@@ -442,7 +443,7 @@ private fun InputDialog(control: WbControl, numeric: Boolean, onSend: (String) -
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
     var problem by remember { mutableStateOf<NumberProblem?>(null) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     val send = {
         if (!numeric) {
             onSend(field.text)
@@ -457,7 +458,7 @@ private fun InputDialog(control: WbControl, numeric: Boolean, onSend: (String) -
         control.meta.min?.let { stringResource(R.string.wb_number_min, it.toPlainString()) },
         control.meta.max?.let { stringResource(R.string.wb_number_max, it.toPlainString()) },
     ).joinToString(" · ").takeIf { numeric && it.isNotEmpty() }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(oneLineText(control.title)) },
         text = {
@@ -491,7 +492,7 @@ private fun numberProblemText(problem: NumberProblem): String = when (problem) {
 @Composable
 private fun EnumDialog(control: WbControl, language: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val current = control.value?.let { enumEntry(control.meta, it) }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(oneLineText(control.title)) },
         text = {
@@ -525,7 +526,7 @@ private fun RgbDialog(control: WbControl, onSend: (String) -> Unit, onDismiss: (
     var g by rememberSaveable { mutableIntStateOf(start.second) }
     var b by rememberSaveable { mutableIntStateOf(start.third) }
     val colors = AppTheme.colors
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(oneLineText(control.title)) },
         text = {

@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.ui.files
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
+import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,10 +23,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -226,7 +227,7 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
                         IconButton(onClick = { menu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.files_actions))
                         }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.files_show_hidden)) },
                                 trailingIcon = { Checkbox(checked = state.showHidden, onCheckedChange = null) },
@@ -355,7 +356,7 @@ fun FilesScreen(vm: FilesSession, onBack: () -> Unit) {
             }
         }
         if (answer == LeaveAnswer.ASK) {
-            AlertDialog(
+            AppAlertDialog(
                 onDismissRequest = { leaving = null },
                 title = { Text(pluralStringResource(R.plurals.files_leave_title, running, running)) },
                 text = { Text(stringResource(R.string.files_leave_text)) },
@@ -481,8 +482,8 @@ private fun EmptyFolder(state: FilesUiState) {
 private fun GoToFolderDialog(current: String, onGo: (String) -> Unit, onDismiss: () -> Unit) {
     var text by rememberSaveable { mutableStateOf(current) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-    AlertDialog(
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.files_go_to_folder)) },
         text = {

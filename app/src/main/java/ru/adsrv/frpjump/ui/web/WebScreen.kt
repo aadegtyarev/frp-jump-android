@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.ui.web
 
+import ru.adsrv.frpjump.ui.LocalAppLocked
+import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.DownloadManager
@@ -20,6 +23,8 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -45,8 +50,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -174,6 +177,9 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     val currentOnBack by rememberUpdatedState(onBack)
     val close = { currentOnBack() }
 
+    // A page's alert/confirm/prompt waits here; its dialog stays out while the app is locked.
+    val jsDialogs = remember(webView) { JsDialogs() }
+
     DisposableEffect(webView) {
         configure(
             webView, context, localPort,
@@ -181,6 +187,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                 when (event) {
                     PageEvent.FINISHED -> keep(goodPages.finished(pageUrl))
                     PageEvent.STARTED, PageEvent.HISTORY -> {
+                        jsDialogs.onPage(event)
                         if (event == PageEvent.STARTED) goodPages.started() else keep(goodPages.history(pageUrl))
                         if (pageUrl != url) {
                             sslErrorSeen = false
@@ -236,6 +243,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                     }
                 }
             },
+            onJsDialog = jsDialogs::show,
             onChooseFiles = { callback, params ->
                 files.start(callback, params)?.let { intent ->
                     try {
@@ -268,6 +276,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         }
         onDispose {
             alive = false
+            jsDialogs.cancelPending()
             files.deliver(Activity.RESULT_CANCELED, null)
             // A web view must leave its parent before destroy(); one whose renderer is gone
             // may only be destroyed.
@@ -348,7 +357,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                     IconButton(onClick = { setFullscreen(true) }) { Icon(FullscreenGlyph, contentDescription = stringResource(R.string.fullscreen), modifier = Modifier.size(20.dp)) }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             // The address, as the bar no longer shows it; tap copies it.
                             DropdownMenuItem(
                                 text = { Text(url, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = AppTheme.colors.muted) },
@@ -459,6 +468,14 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             if (fullscreen) CollapseButton { setFullscreen(false) }
         }
     }
+    JsDialogHost(jsDialogs)
+    // Locked: the page's text selection ends (its handles are popup windows of their own over the lock screen).
+    val locked = LocalAppLocked.current
+    LaunchedEffect(webView, locked) {
+        if (!locked) return@LaunchedEffect
+        webView.clearFocus()
+        runCatching { webView.evaluateJavascript("window.getSelection&&window.getSelection().removeAllRanges()", null) }
+    }
     question?.let { q ->
         CertDialog(
             device = device,
@@ -482,7 +499,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
 }
 
 /** What the web view tells of its pages: a main-frame load began or finished, or a history entry (also an in-page route). */
-private enum class PageEvent { STARTED, FINISHED, HISTORY }
+internal enum class PageEvent { STARTED, FINISHED, HISTORY }
 
 /** The page's pending `<input type=file>`: at most one, answered exactly once. */
 private class FileChooser {
@@ -511,7 +528,7 @@ private class FileChooser {
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun configure(
+internal fun configure(
     webView: WebView,
     context: Context,
     tunnelPort: Int,
@@ -523,6 +540,8 @@ private fun configure(
     onMainFrameError: (Int, String, String) -> Unit,
     onSslError: (SslErrorHandler, SslError) -> Unit,
     onChooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Unit,
+    /** A page's alert, confirm, prompt or leave-page question; the script waits for the answer. */
+    onJsDialog: (JsRequest) -> Unit,
 ) {
     if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
     with(webView.settings) {
@@ -589,6 +608,27 @@ private fun configure(
             fileChooserParams: FileChooserParams,
         ): Boolean {
             onChooseFiles(filePathCallback, fileChooserParams)
+            return true
+        }
+
+        override fun onJsAlert(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
+            onJsDialog(JsRequest(JsKind.ALERT, message.orEmpty(), null, jsOrigin(url), result.asAnswer()))
+            return true
+        }
+
+        override fun onJsConfirm(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
+            onJsDialog(JsRequest(JsKind.CONFIRM, message.orEmpty(), null, jsOrigin(url), result.asAnswer()))
+            return true
+        }
+
+        override fun onJsPrompt(view: WebView, url: String?, message: String?, defaultValue: String?, result: JsPromptResult): Boolean {
+            onJsDialog(JsRequest(JsKind.PROMPT, message.orEmpty(), defaultValue, jsOrigin(url), result.asAnswer()))
+            return true
+        }
+
+        /** Not WebView's own question window: it would sit over the lock screen. */
+        override fun onJsBeforeUnload(view: WebView, url: String?, message: String?, result: JsResult): Boolean {
+            onJsDialog(JsRequest(JsKind.BEFORE_UNLOAD, message.orEmpty(), null, jsOrigin(url), result.asAnswer()))
             return true
         }
 
@@ -671,7 +711,7 @@ private fun openExternally(context: Context, url: String) {
 @Composable
 private fun CertDialog(device: String, port: Int, question: CertQuestion, onTrust: () -> Unit, onRefuse: () -> Unit) {
     val changed = question.check as? CertCheck.Changed
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onRefuse,
         title = { Text(stringResource(if (changed != null) R.string.cert_changed_title else R.string.cert_unknown_title)) },
         text = {

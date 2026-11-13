@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.AppModalBottomSheet
 import ru.adsrv.frpjump.mqtt.plugins.Rule
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -25,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -163,7 +164,7 @@ fun TopicCard(
     val json = reading?.json
     val view = chosen?.takeIf { it != PayloadView.JSON || json != null } ?: reading?.view
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    AppModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheet,
         containerColor = colors.card,
@@ -369,11 +370,14 @@ private fun HexView(payload: ByteArray) {
 }
 
 /** Pretty JSON; a tap on an opening line folds what it holds, a tap again unfolds it. */
+private val FoldsSaver = listSaver<Set<Int>, Int>(save = { it.toList() }, restore = { it.toSet() })
+
 @Composable
 private fun JsonView(lines: List<JsonLine>) {
     val colors = AppTheme.colors
     // Folds belong to these lines: a value with another shape starts unfolded (equal lines keep them).
-    var folded by remember(lines) { mutableStateOf(emptySet<Int>()) }
+    // Saveable: the sheet's content is dropped while the app is locked and its folds come back after unlock.
+    var folded by rememberSaveable(lines, stateSaver = FoldsSaver) { mutableStateOf(emptySet<Int>()) }
     val visible = visibleJsonLines(lines, folded)
     Column {
         visible.take(JSON_LINES_SHOWN).forEach { (index, isFolded) ->

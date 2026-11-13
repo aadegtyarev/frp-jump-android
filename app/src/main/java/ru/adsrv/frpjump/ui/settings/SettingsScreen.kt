@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -33,7 +34,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -459,7 +459,7 @@ fun SettingsScreen(
                 onDismiss = { open = null },
             )
         }
-        Open.NEEDS_SCREEN_LOCK -> AlertDialog(
+        Open.NEEDS_SCREEN_LOCK -> AppAlertDialog(
             onDismissRequest = { open = null },
             title = { Text(stringResource(R.string.setting_app_lock)) },
             text = { Text(stringResource(R.string.lock_needs_screen_lock_text)) },
@@ -897,7 +897,7 @@ private fun Context.findActivity(): FragmentActivity? = when (this) {
 @Composable
 private fun PassphraseDialog(onImport: (String) -> Unit, onDismiss: () -> Unit) {
     var passphrase by remember { mutableStateOf("") }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.key_passphrase)) },
         text = {

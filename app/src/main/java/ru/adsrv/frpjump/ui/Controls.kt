@@ -44,7 +44,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -293,7 +292,7 @@ fun AppSheet(
     val colors = AppTheme.colors
     val canDismiss by rememberUpdatedState(dismissible)
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden || canDismiss })
-    ModalBottomSheet(
+    AppModalBottomSheet(
         onDismissRequest = { if (canDismiss) onDismiss() },
         sheetState = sheet,
         containerColor = colors.card,

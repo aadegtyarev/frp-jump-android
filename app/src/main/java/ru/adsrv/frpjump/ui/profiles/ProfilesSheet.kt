@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.ui.profiles
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.AppModalBottomSheet
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -18,14 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -71,7 +71,7 @@ fun ProfilesSheet(
     var confirm by rememberSaveable { mutableStateOf<String?>(null) }
     val colors = AppTheme.colors
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    AppModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheet,
         containerColor = colors.card,
@@ -214,7 +214,7 @@ private fun ProfileMenu(canForget: Boolean, onEdit: () -> Unit, onForget: () -> 
         IconButton(onClick = { open = true }) {
             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more), tint = AppTheme.colors.muted)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        AppDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.name_and_color)) }, onClick = {
                 open = false
                 onEdit()
@@ -268,7 +268,7 @@ private fun AddProfileRow(onClick: () -> Unit) {
 @Composable
 fun ForgetProfileDialog(item: ProfileItem, busyElsewhere: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val server = item.server
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.forget_title, item.name)) },
         text = {

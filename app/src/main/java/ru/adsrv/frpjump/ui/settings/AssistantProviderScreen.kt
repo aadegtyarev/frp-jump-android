@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -166,7 +167,7 @@ private fun AssistantProviderForm(
 
 @Composable
 private fun ChoiceDialog(title: String, values: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
+    AppAlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = {
         LazyColumn(Modifier.heightIn(max = 320.dp)) {
             items(values, key = { it }) { value -> TextButton(onClick = { onPick(value) }, modifier = Modifier.fillMaxWidth()) { Text(value) } }
         }
