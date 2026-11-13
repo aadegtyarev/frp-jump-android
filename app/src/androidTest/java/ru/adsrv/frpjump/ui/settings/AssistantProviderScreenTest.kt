@@ -34,6 +34,10 @@ class AssistantProviderScreenTest {
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, 0.01f)
     }
     private fun field(tag: String) = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText) and hasAnyAncestor(hasTestTag(tag)))
+    // The discovery button enables a frame after the key edit; a tap before that is silently dropped.
+    private fun awaitModelsEnabled() = compose.waitUntil(5_000) {
+        compose.onAllNodes(hasTestTag("assistant_models") and androidx.compose.ui.test.isEnabled()).fetchSemanticsNodes().isNotEmpty()
+    }
     private fun save() = compose.onNodeWithText(compose.activity.getString(R.string.save))
     private fun models() = compose.onNodeWithTag("assistant_models")
     private val configured = AssistantProviderSnapshot(AssistantProviderSettings("https://example.invalid/v1/", "existing"), "11111111-1111-1111-1111-111111111111")
@@ -94,7 +98,9 @@ class AssistantProviderScreenTest {
         } }
         compose.runOnIdle { assertEquals(0, count) }
         field("assistant_key").performTextReplacement("test-key")
+        awaitModelsEnabled()
         models().performScrollTo().performClick()
+        compose.waitUntil(5_000) { count == 1 && complete != null }
         compose.runOnIdle { assertEquals(1, count); complete!!(null, "Synthetic models unavailable") }
         field("assistant_model").performScrollTo().performTextReplacement("manual")
         save().assertIsEnabled()

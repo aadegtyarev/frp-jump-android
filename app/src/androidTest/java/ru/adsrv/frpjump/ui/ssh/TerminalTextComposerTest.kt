@@ -41,6 +41,8 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -334,6 +336,32 @@ class TerminalTextComposerTest {
         compose.onNodeWithTag("terminal_text_editor").assertExists()
     }
 
+    private val rootWithWindowFocus = object : org.hamcrest.TypeSafeMatcher<androidx.test.espresso.Root>() {
+        override fun describeTo(description: org.hamcrest.Description) { description.appendText("root with window focus") }
+        override fun matchesSafely(root: androidx.test.espresso.Root) = root.decorView.hasWindowFocus()
+    }
+
+    // Which window holds focus (dialog or landscape IME) varies, so Back goes to whichever root has it.
+    private fun pressBackOnFocusedRoot() = retryUntilRootExists {
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+            .inRoot(rootWithWindowFocus)
+            .perform(androidx.test.espresso.action.ViewActions.pressBack())
+    }
+
+    // A dialog root can appear a frame after its semantics node; retry while no matching root exists yet.
+    private fun retryUntilRootExists(action: () -> Unit) {
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (true) {
+            try { action(); return } catch (e: RuntimeException) {
+                val transient = e is androidx.test.espresso.NoMatchingRootException ||
+                    e.javaClass.simpleName == "RootViewWithoutFocusException"
+                if (!transient || SystemClock.uptimeMillis() > deadline) throw e
+            }
+            compose.waitForIdle()
+            SystemClock.sleep(50)
+        }
+    }
+
     @Test fun executeConfirmationWarnsAndCancelDoesNothingWhileJoinIsExplicit() {
         val open = mutableStateOf(true)
         compose.setContent {
@@ -347,7 +375,10 @@ class TerminalTextComposerTest {
         }
         compose.onNodeWithText(compose.activity.getString(R.string.terminal_paste_enter_warning), substring = true).assertExists()
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
-        Espresso.pressBack()
+        pressBackOnFocusedRoot()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText(compose.activity.getString(R.string.terminal_paste_enter_warning), substring = true).fetchSemanticsNodes().isEmpty()
+        }
         compose.onNodeWithText(compose.activity.getString(R.string.terminal_paste_enter_warning), substring = true).assertDoesNotExist()
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted); open.value = true }
         compose.onNodeWithText(compose.activity.getString(R.string.terminal_paste_join_enter)).performScrollTo().assertIsDisplayed().performClick()
@@ -397,9 +428,13 @@ class TerminalTextComposerTest {
         compose.onNodeWithTag("terminal_text_expand").performClick()
         // Fullscreen lives in a Dialog: the Activity root is deliberately unfocused.
         // Target the visible dialog for both real IME dismissal and Back dispatch.
-        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
-            .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
-            .perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard(), androidx.test.espresso.action.ViewActions.pressBack())
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("terminal_text_fullscreen").fetchSemanticsNodes().isNotEmpty() }
+        retryUntilRootExists {
+            Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                .perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard(), androidx.test.espresso.action.ViewActions.pressBack())
+        }
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("terminal_text_fullscreen").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("terminal_text_fullscreen").assertDoesNotExist()
         compose.onNodeWithTag("terminal_text_editor").assertTextContains("keep this draft")
         compose.runOnIdle { assertEquals(emptyList<String>(), inserted) }
