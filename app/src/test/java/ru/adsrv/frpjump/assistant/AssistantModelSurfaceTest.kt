@@ -360,7 +360,7 @@ class AssistantModelSurfaceTest {
         }
     }
 
-    @Test fun `ssh results format stdout stderr exit facts and clip each stream at 16000 characters`() = runBlocking {
+    @Test fun `ssh results format stdout stderr exit facts and share a bounded budget`() = runBlocking {
         SshFixture().use { f -> f.ready()
             assertEquals(ToolOutput("stdout:\nstdout synthetic\nstderr:\nstderr synthetic\nexit_status: 0\nexit_signal: unknown", ToolOutcome.SUCCESS), f.tool.execute(f.args))
         }
@@ -371,25 +371,64 @@ class AssistantModelSurfaceTest {
         )) SshFixture().use { f -> f.ready(); f.client.code = code; f.client.signal = signal
             assertEquals(ToolOutput("stdout:\nstdout synthetic\nstderr:\nstderr synthetic\n$tail", ToolOutcome.FAILED), f.tool.execute(f.args))
         }
-        val cap = SSH_STREAM_LIMIT
-        assertEquals(16_000, cap)
-        SshFixture().use { f -> f.ready(); f.client.out = "o".repeat(cap + 1); f.client.err = "e".repeat(cap)
-            assertEquals(ToolOutput("stdout:\n${"o".repeat(cap)}\n[truncated: $cap of ${cap + 1} characters]\nstderr:\n${"e".repeat(cap)}\nexit_status: 0\nexit_signal: unknown", ToolOutcome.SUCCESS), f.tool.execute(f.args))
+    }
+
+    private fun cap(text: String) = SshCapture(text.take(SSH_RESULT_BUDGET), text.length.toLong())
+    private fun fit(out: String, err: String) = fitSshStreams(cap(out), cap(err))
+
+    @Test fun `ssh stream budget is derived from the kernel cap and split with stdout taking what stderr leaves`() {
+        assertEquals(AgentLimits().maxToolChars, SSH_RESULT_BUDGET + SSH_RESULT_OVERHEAD)
+        assertEquals(7_800, SSH_RESULT_BUDGET); assertEquals(1_500, SSH_STDERR_MIN)
+        val budget = SSH_RESULT_BUDGET
+        // Under the budget: unchanged, no note.
+        assertEquals("a".repeat(100) to "b".repeat(100), fit("a".repeat(100), "b".repeat(100)))
+        assertEquals("a".repeat(budget) to "", fit("a".repeat(budget), ""))
+        // Only stdout large: stdout takes the whole budget.
+        assertEquals("a".repeat(budget) + "\n[truncated: $budget of 50000 characters]" to "", fit("a".repeat(50_000), ""))
+        // Only stderr large: stderr takes the whole budget.
+        assertEquals("" to "b".repeat(budget) + "\n[truncated: $budget of 50000 characters]", fit("", "b".repeat(50_000)))
+        // Both large: stderr keeps its minimum, stdout the rest.
+        assertEquals("a".repeat(budget - 1500) + "\n[truncated: ${budget - 1500} of 50000 characters]" to
+            "b".repeat(1500) + "\n[truncated: 1500 of 70000 characters]", fit("a".repeat(50_000), "b".repeat(70_000)))
+        // Short stderr gets exactly its length; stdout gets the rest.
+        assertEquals("a".repeat(budget - 10) + "\n[truncated: ${budget - 10} of 50000 characters]" to "b".repeat(10), fit("a".repeat(50_000), "b".repeat(10)))
+        // Stdout short, stderr large: stderr gets what stdout leaves.
+        assertEquals("a".repeat(3000) to "b".repeat(budget - 3000) + "\n[truncated: ${budget - 3000} of 9000 characters]", fit("a".repeat(3000), "b".repeat(9000)))
+        // A surrogate pair split at the cut loses its high half; the total counts both halves.
+        assertEquals("a".repeat(budget - 1) + "\n[truncated: ${budget - 1} of ${budget + 1} characters]" to "",
+            fit("a".repeat(budget - 1) + "😀", ""))
+        assertEquals("a".repeat(budget - 2) + "😀" to "", fit("a".repeat(budget - 2) + "😀", ""))
+    }
+
+    @Test fun `capture drains and counts a huge stream in full without keeping it`() {
+        val c = captureSshStream("a".repeat(3_000_000).byteInputStream())
+        assertEquals(SSH_RESULT_BUDGET, c.head.length); assertEquals(3_000_000L, c.total)
+    }
+
+    @Test fun `a budget above the kernel cap would make the kernel cut, so the pinned relation must hold`() {
+        // Worst case with both streams at the budget: the whole rendered result still fits the kernel cap.
+        val (o, e) = fit("a".repeat(5_000_000), "b".repeat(5_000_000))
+        val text = "stdout:\n$o\nstderr:\n$e\n" + "exit_status: unknown\nexit_signal: TERM"
+        assertTrue(text.length <= AgentLimits().maxToolChars)
+        assertTrue(SSH_RESULT_BUDGET + SSH_RESULT_OVERHEAD <= AgentLimits().maxToolChars)
+    }
+
+    @Test fun `ssh_command through the real kernel keeps both labels and notes and is never cut by the kernel`() = runBlocking {
+        SshFixture().use { f -> f.ready(); f.client.out = "o".repeat(100_000); f.client.err = "e".repeat(100_000)
+            var result: ToolResult? = null
+            val provider = AgentProvider { request ->
+                if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(ToolCall("c1", "ssh_command", f.args)))
+                else { result = request.turns.last().exchanges.single().results.single(); AgentReply("done") }
+            }
+            AgentModule(true).run(provider, listOf(f.tool), "prompt", "question", limits = AgentLimits())
+            val r = checkNotNull(result)
+            assertEquals(0, r.omittedChars)
+            assertTrue(r.text.length <= 8_000)
+            assertFalse(r.text.contains("\n[…]\n"))
+            assertTrue(r.text.contains("stdout:\n")); assertTrue(r.text.contains("\nstderr:\n")); assertTrue(r.text.contains("exit_status: 0"))
+            assertTrue(r.text.contains("[truncated: 6300 of 100000 characters]\nstderr:\n"))
+            assertTrue(r.text.contains("[truncated: 1500 of 100000 characters]\nexit_status"))
         }
-        // Both streams are cut independently, with their own counts.
-        SshFixture().use { f -> f.ready(); f.client.out = "o".repeat(cap + 5); f.client.err = "e".repeat(300_000)
-            val text = f.tool.execute(f.args).text
-            assertTrue(text.contains("[truncated: $cap of ${cap + 5} characters]\nstderr:\n"))
-            assertTrue(text.contains("[truncated: $cap of 300000 characters]\nexit_status"))
-        }
-        assertEquals("a".repeat(cap), captureSshStream("a".repeat(cap).byteInputStream()))
-        assertEquals("a".repeat(cap) + "\n[truncated: $cap of 50000 characters]", captureSshStream("a".repeat(50_000).byteInputStream()))
-        // A big stream is drained to its end (no hang) and counted in full.
-        assertEquals("a".repeat(cap) + "\n[truncated: $cap of 3000000 characters]", captureSshStream("a".repeat(3_000_000).byteInputStream()))
-        // A surrogate pair split by the limit drops its high half before the note; the total still counts both halves.
-        assertEquals("a".repeat(cap - 1) + "\n[truncated: ${cap - 1} of ${cap + 1} characters]", captureSshStream(("a".repeat(cap - 1) + "😀").byteInputStream()))
-        // A pair that fits is kept whole.
-        assertEquals("a".repeat(cap - 2) + "😀", captureSshStream(("a".repeat(cap - 2) + "😀").byteInputStream()))
     }
 
     // ---- Synthetic fixtures: a copy of AssistantSshCommandTest's private fixture; consolidate in the SSH phase (F5) ----

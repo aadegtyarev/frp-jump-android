@@ -56,7 +56,7 @@ tunnel, never asks a login question, never trusts a host key, takes no credentia
 stored login or host trust needs the ordinary SSH UI, or the connection could not be made. After the command may have started, loss of the
 target or any error is a failure, with the exit the channel already reported when there is one. The worker, the readers and every
 disconnect have exited before the call returns; stopping the caller, a timeout, revocation and target loss all disconnect the client.
-Each stream keeps at most 3000 UTF-16 characters and the rest is drained.
+Stdout and stderr share a budget of about 7,800 UTF-16 characters (stderr keeps at least 1,500 when present); the rest is drained and counted, and each cut stream ends with "truncated: N of M characters".
 
 ### `profile_query`
 

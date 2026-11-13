@@ -106,7 +106,7 @@ internal class SshCommandOperation {
                 val stdout = async(Dispatchers.IO) { captureSshStream(running.inputStream) }
                 val stderr = async(Dispatchers.IO) { captureSshStream(running.errorStream) }
                 try {
-                    val out = stdout.await(); val err = stderr.await()
+                    val (out, err) = fitSshStreams(stdout.await(), stderr.await())
                     running.join()
                     checkActive()
                     val status = running.exitStatus
@@ -135,14 +135,21 @@ internal class SshCommandOperation {
     }
 }
 
-/** Hard ceiling of retained UTF-16 characters per output stream (stdout and stderr each); never raise it: it is sent to the provider. */
-internal const val SSH_STREAM_LIMIT = 16_000
-
+/** Reserve for the labels, the two truncation notes and the exit facts inside the kernel's tool-result cap. */
+internal const val SSH_RESULT_OVERHEAD = 200
 /**
- * Retain at most [SSH_STREAM_LIMIT] UTF-16 characters per stream; keep draining (and counting) the excess without
- * retaining it, to avoid channel deadlock. A cut stream ends with "truncated: N of M characters" (N kept, M total).
+ * Stream text (stdout and stderr together) per result. Derived from the kernel's tool-result cap so the kernel never cuts
+ * an ssh_command result in the middle; the output goes to the provider, so never raise it above that cap.
  */
-internal fun captureSshStream(stream: InputStream): String {
+internal val SSH_RESULT_BUDGET = AgentLimits().maxToolChars - SSH_RESULT_OVERHEAD
+/** Stderr, when present, keeps at least this much (or its whole length if shorter); stdout gets the rest. */
+internal const val SSH_STDERR_MIN = 1_500
+
+/** The retained head of one stream and its exact total length, both in UTF-16 characters. */
+internal class SshCapture(val head: String, val total: Long)
+
+/** Retain at most [SSH_RESULT_BUDGET] characters; keep draining and counting the rest without retaining it (no channel deadlock). */
+internal fun captureSshStream(stream: InputStream): SshCapture {
     val text = StringBuilder()
     var total = 0L
     val reader = stream.reader(Charsets.UTF_8)
@@ -151,13 +158,23 @@ internal fun captureSshStream(stream: InputStream): String {
         val n = reader.read(buffer)
         if (n < 0) break
         total += n
-        val keep = minOf(n, SSH_STREAM_LIMIT - text.length)
+        val keep = minOf(n, SSH_RESULT_BUDGET - text.length)
         if (keep > 0) text.append(buffer, 0, keep)
     }
-    if (total > text.length) {
-        // Never split a surrogate pair at the cut.
-        if (text.isNotEmpty() && text.last().isHighSurrogate()) text.setLength(text.length - 1)
-        text.append("\n[truncated: ${text.length} of $total characters]")
-    }
-    return text.toString()
+    return SshCapture(text.toString(), total)
+}
+
+/** Cuts [text] to [keep] characters without splitting a surrogate pair; a cut stream ends with "truncated: N of M characters". */
+private fun clipSshStream(capture: SshCapture, keep: Int): String {
+    var n = minOf(keep, capture.head.length)
+    if (n >= capture.total) return capture.head.take(n)
+    if (n > 0 && capture.head[n - 1].isHighSurrogate()) n--
+    return capture.head.take(n) + "\n[truncated: $n of ${capture.total} characters]"
+}
+
+/** Shares [SSH_RESULT_BUDGET] between the streams: stderr keeps at least [SSH_STDERR_MIN] and stdout gets the rest. */
+internal fun fitSshStreams(out: SshCapture, err: SshCapture): Pair<String, String> {
+    val errKeep = minOf(err.head.length, maxOf(SSH_STDERR_MIN, SSH_RESULT_BUDGET - out.head.length))
+    val outKeep = minOf(out.head.length, SSH_RESULT_BUDGET - errKeep)
+    return clipSshStream(out, outKeep) to clipSshStream(err, errKeep)
 }
