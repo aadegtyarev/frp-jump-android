@@ -76,6 +76,8 @@ class MainActivity : AppCompatActivity() {
     private var promptedForLock = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before anything reads the launch intent: Navigation follows deep-link extras in it, and this activity is exported (Р41).
+        setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER))
         super.onCreate(savedInstanceState)
         edgeToEdge()
         // The current profile polls every 2 s while this is visible (see Poller).

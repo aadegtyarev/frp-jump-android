@@ -1,8 +1,18 @@
 package ru.adsrv.frpjump.ui
 
 import android.content.Intent
+import android.os.Bundle
 import android.os.SystemClock
+import android.app.PendingIntent
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertCountEquals
 import androidx.test.core.app.ActivityScenario
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
+import kotlinx.coroutines.launch
+import org.junit.Rule
+import ru.adsrv.frpjump.assistant.AssistantOpenActivity
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.CompletableDeferred
@@ -54,7 +64,12 @@ class AssistantNotificationTest {
         override fun delete() { text = null }
     }
 
-    @Before fun remember() { original = app.settings.settings.value }
+    @get:Rule val compose = createEmptyComposeRule()
+
+    @Before fun remember() {
+        original = app.settings.settings.value
+        app.settings.update { it.copy(assistantEnabled = true) }
+    }
 
     @After fun restore() {
         app.chatOwnerOverride = null
@@ -62,6 +77,7 @@ class AssistantNotificationTest {
         original?.let { old -> app.settings.update { old } }
         app.assistantActivity.value = ChatActivity.IDLE
         app.assistantEnd.value = ChatEnd.NONE
+        app.assistantStopping.value = false
         app.openAssistantRequest.value = false
     }
 
@@ -73,32 +89,45 @@ class AssistantNotificationTest {
 
     private fun stopBroadcast() = app.sendBroadcast(Intent(app, AssistantStopReceiver::class.java))
 
-    @Test fun theStopReceiverStopsTheRunningAttemptAndDoesNothingWithNone() {
+    private val held = CompletableDeferred<Unit>()
+    private val entered = CompletableDeferred<Unit>()
+    private val answered = java.util.concurrent.atomic.AtomicBoolean()
+
+    /** The app's owner stands in with a synthetic provider that holds until [held] is released. */
+    private fun installOwner(): AssistantChatOwner {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
         val store = AssistantProviderStore(Memory(), object : SecretBox {
             override fun seal(plain: String) = "synthetic-sealed"
             override fun open(sealed: String): String = error("no credentials")
             override fun destroy() = Unit
         }, settings.assistantChat).apply { save(AssistantProviderDraft(AssistantProviderSettings(model = "synthetic"), null, "synthetic-key")) }
-        val held = CompletableDeferred<Unit>()
-        val entered = CompletableDeferred<Unit>()
-        val answered = java.util.concurrent.atomic.AtomicBoolean()
         val chatScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
         val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
         val owner = AssistantChatOwner(chatScope, settings, store, module, null, null, null, null,
             lazy { AssistantPrompts("system", "summary") }, prepare = {
                 AgentProvider { entered.complete(Unit); held.await(); answered.set(true); AgentReply("never") }
-            }, realtime = SystemClock::elapsedRealtime, activityOut = app.assistantActivity, endOut = app.assistantEnd).also { this.owner = it }
+            }, realtime = SystemClock::elapsedRealtime, activityOut = app.assistantActivity, endOut = app.assistantEnd,
+            stoppingOut = app.assistantStopping).also { this.owner = it }
         app.chatOwnerOverride = owner
+        return owner
+    }
+
+    private fun startAttempt(owner: AssistantChatOwner): ru.adsrv.frpjump.assistant.AssistantConversation {
+        val chat = app.runOnMain { owner.attach() }
+        waitFor("history ready") { !chat.state.value.loading }
+        chat.edit("synthetic question"); chat.send()
+        waitFor("running") { app.assistantActivity.value == ChatActivity.WORKING && entered.isCompleted }
+        return chat
+    }
+
+    @Test fun theStopReceiverStopsTheRunningAttemptAndDoesNothingWithNone() {
+        val owner = installOwner()
 
         stopBroadcast()
         SystemClock.sleep(500)
         assertEquals("no attempt: nothing happens", ChatActivity.IDLE, app.assistantActivity.value)
 
-        val chat = app.runOnMain { owner.attach() }
-        waitFor("history ready") { !chat.state.value.loading }
-        chat.edit("synthetic question"); chat.send()
-        waitFor("running") { app.assistantActivity.value == ChatActivity.WORKING && entered.isCompleted }
+        val chat = startAttempt(owner)
         stopBroadcast()
         waitFor("stopped by the receiver") { app.assistantActivity.value == ChatActivity.IDLE }
         stopBroadcast()
@@ -116,25 +145,73 @@ class AssistantNotificationTest {
         return result!!.getOrThrow()
     }
 
-    private fun foreign(): Intent = Intent(app, MainActivity::class.java)
-        .setAction("ru.adsrv.frpjump.OPEN_DEVICE")
-        .putExtra("profile", "synthetic-profile").putExtra("device", "synthetic-device")
-        .putExtra("open_chat", true).putExtra("route", "assistant/chat").putExtra("stop", true)
-        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    private val chatId = ("android-app://androidx.navigation/" + Routes.CHAT).hashCode()
+    private val deviceId = ("android-app://androidx.navigation/" + Routes.device("synthetic-device")).hashCode()
+
+    /** Navigation's own deep-link keys (NavController.handleDeepLink), as another app could send them to the exported activity. */
+    private fun navKeys(ids: IntArray, withArgs: Boolean) = Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        .putExtra("android-support-nav:controller:deepLinkIds", ids).also { intent ->
+            if (withArgs) intent.putParcelableArrayListExtra("android-support-nav:controller:deepLinkArgs",
+                arrayListOf(Bundle().apply { putString("name", "synthetic-device") }, Bundle().apply { putString("name", "synthetic-device") }))
+        }
+
+    private fun foreign(): List<Intent> = listOf(
+        Intent(app, MainActivity::class.java).setAction("ru.adsrv.frpjump.OPEN_DEVICE")
+            .putExtra("profile", "synthetic-profile").putExtra("device", "synthetic-device")
+            .putExtra("open_chat", true).putExtra("route", "assistant/chat").putExtra("stop", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        navKeys(intArrayOf(chatId), false), navKeys(intArrayOf(0, chatId), false),
+        navKeys(intArrayOf(deviceId), true), navKeys(intArrayOf(0, deviceId), true),
+    )
+
+    private fun everSet(scope: CoroutineScope, flag: kotlinx.coroutines.flow.StateFlow<Boolean>, seen: java.util.concurrent.atomic.AtomicBoolean) =
+        scope.launch(Dispatchers.Unconfined) { flag.collect { if (it) seen.set(true) } }
 
     @Test fun aForeignIntentToMainActivityLeadsNowhereAndStopsNothing() {
-        app.assistantActivity.value = ChatActivity.WORKING
+        val owner = installOwner()
+        startAttempt(owner)
+        val seen = java.util.concurrent.atomic.AtomicBoolean()
+        val watcher = everSet(scope!!, app.openAssistantRequest, seen)
         val before = app.profiles.state.value.index.current
-        ActivityScenario.launch<MainActivity>(foreign()).use { scenario ->
-            waitFor("app visible") { app.visible.value }
-            SystemClock.sleep(1_500)
-            // Delivered again to the running activity too.
-            app.startActivity(foreign().addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
-            SystemClock.sleep(1_000)
+        for (intent in foreign()) {
+            ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+                waitFor("app visible") { app.visible.value }
+                SystemClock.sleep(1_000)
+                // And again to the running activity.
+                app.startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                SystemClock.sleep(500)
+                scenario.onActivity { assertEquals("the activity's intent carries no extras: ${intent.extras?.keySet()}", null, it.intent.extras) }
+                compose.onAllNodesWithTag("chat_title").assertCountEquals(0)
+            }
             assertFalse("no chat opened", app.assistantChatResumed.value)
-            assertFalse("no in-process request set", app.openAssistantRequest.value)
             assertEquals("the profile did not change", before, app.profiles.state.value.index.current)
             assertEquals("nothing stopped", ChatActivity.WORKING, app.assistantActivity.value)
+            assertFalse("no Stop requested", app.assistantStopping.value)
         }
+        watcher.cancel()
+        assertFalse("the in-process request was never set", seen.get())
+        assertFalse(app.openAssistantRequest.value)
+        assertFalse("the provider was never cancelled or released", held.isCompleted || answered.get())
+    }
+
+    private fun mainActivities(): List<android.app.Activity> = Stage.values().filter { it != Stage.DESTROYED && it != Stage.PRE_ON_CREATE }
+        .flatMap { ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(it) }.filterIsInstance<MainActivity>().distinct()
+
+    @Test fun theTapOpensTheAppOnceThroughTheTrampoline() {
+        val seen = java.util.concurrent.atomic.AtomicBoolean()
+        val watchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val watcher = everSet(watchScope, app.openAssistantRequest, seen)
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                waitFor("app visible") { app.visible.value }
+                SystemClock.sleep(1_500)
+                assertEquals(1, mainActivities().size)
+                // Exactly what the notification's PendingIntent is.
+                PendingIntent.getActivity(app, 0, Intent(app, AssistantOpenActivity::class.java), PendingIntent.FLAG_IMMUTABLE).send()
+                waitFor("the request was set") { seen.get() }
+                waitFor("the request was taken once") { !app.openAssistantRequest.value }
+                SystemClock.sleep(1_500)
+                assertEquals("one MainActivity, no second instance", 1, mainActivities().size)
+            }
+        } finally { watcher.cancel(); watchScope.cancel() }
     }
 }

@@ -426,24 +426,27 @@ foreground service and no journal). Clearing the history is not a stop path: Cle
 wait included; the owner presses Stop first.
 
 **The assistant's notification.** While an attempt runs (a confirmation wait included) and the chat is not on screen, the app shows one
-notification per attempt (one id) on its own channel "Assistant" / «Помощник»: low importance, silent, no launcher badge, which the owner
-can turn off in the system. "On screen" means the chat route is resumed and the app is not locked; the app not being visible, another
+notification per attempt (one id) on its own channel "Assistant" / «Помощник»: without sound or vibration, at default importance so it shows on the lock screen,
+no launcher badge; the owner can turn it off in the system. "On screen" means the chat route is resumed and the app is not locked; the app not being visible, another
 screen over the chat or the lock all count as not on screen. While it runs the notification is ongoing, titled "The assistant is working" /
 «Помощник работает», or "The assistant is waiting for your answer" / «Помощник ждёт ответа» while a card waits, with the action "Stop" /
 «Стоп» in both. When the attempt ends while the chat is not on screen the same notification is replaced by a dismissible, auto-cancel one:
 "The assistant answered" / «Помощник ответил» for a completed reply, "The assistant could not answer" / «Помощник не смог ответить» for a
 failed or timed-out attempt, and "The assistant stopped: no answer from you" / «Помощник остановился: вы не ответили» when a card ran out
 with no chat screen attached and ended the attempt. An end that happened while the chat was on screen is not announced afterwards. It is
-removed whenever the chat is shown, and after the owner's Stop (the chat's or the notification's) or a disable, with no final
-notification. It carries only its fixed title and, while ongoing, the action: never reply text, tool names, targets or commands (its lock
-screen visibility is public for that reason). Without the notification permission nothing is posted and there is no new permission prompt;
+removed whenever the chat is shown, at once when a Stop is requested (the chat's or the notification's; it is not posted again while the
+attempt winds down) and when the assistant is turned off (an earlier final notification goes too), with no final notification after a
+Stop or a disable. A notification left behind by a process that died is removed when the app starts, and Stop from it removes it when no
+attempt runs. It carries only its fixed title and, while ongoing, the action: never reply text, tool names, targets or commands (its lock
+screen visibility is public for that reason, which is also why Stop is always visible there). Without the notification permission nothing is posted and there is no new permission prompt;
 the navigation dot remains. Stop from the notification is the chat's Stop, also during a card wait (nothing runs) and from the lock
 screen (no authentication: stopping never widens anything); it is idempotent and does nothing when no attempt runs. It is a
 `PendingIntent.getBroadcast` to an explicit receiver of this app that is not exported and only calls the owner's `stop()`. A tap opens the
 app at the chat, behind the lock when one is set: a `PendingIntent.getActivity` to an explicit, not exported trampoline activity without UI
-(excluded from recents, no history) that sets an in-process request and starts MainActivity with a plain intent without extras; the
-navigation takes the request once. All its PendingIntents are immutable. MainActivity takes no navigation from a foreign intent's
-action, extras or data (there is no intent-driven navigation at all); source guards and an instrumented test prove that such an intent,
+(excluded from recents, no history) that sets an in-process request and starts MainActivity with the launcher intent (no extras; the app's existing task comes to the front, no second
+MainActivity); the navigation takes the request once. All its PendingIntents are immutable. MainActivity takes no navigation from a foreign intent's
+action, extras or data (there is no intent-driven navigation at all). MainActivity also replaces its launch intent with a clean launcher
+one before anything composes, so Navigation's own deep-link extras in a foreign intent lead nowhere on a cold start. Source guards and an instrumented test prove that such an intent,
 including the removed `OPEN_DEVICE` action with its extras, leads nowhere and stops nothing.
 
 ### Saved history
@@ -702,7 +705,7 @@ The five minutes run meanwhile, in real time with device sleep included: an answ
 answer, declined" and nothing runs). A card that runs out (measured at the moment of expiry) while no chat screen is attached ends the
 whole attempt as Stop does: nothing runs, no later question is raised, the turn is saved as interrupted with the call's "no answer" result
 and shows its own grey line ("The question was not answered, so the assistant stopped. Nothing more was run."), not the interrupted note,
-and the conversation closes once no screen remains. With the chat on screen, "No answer" only declines that call and the model goes on; a
+and the conversation closes once no screen remains. With a chat screen attached, "No answer" only declines that call and the model goes on; a
 card whose screen came back before the expiry keeps waiting. The model-facing declined text is unchanged. An Always answer may
 still persist "off" when Stop races the call, and a For session answer racing
 Stop may record its grant; the call itself never runs. The wait is in neither
@@ -1156,7 +1159,14 @@ chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
 setup recovery, recreation, Back with an attempt that goes on, and the close of an idle conversation. Owner tests (unit and
 component) cover: the reply of an attempt that outlived the screen, a reopen that gets the same attempt and its Stop, grants kept while
 the screen or an attempt remains and cleared when both have ended, disable, provider change and tool-off reactions with no screen,
-the profile's removal stopping the attempt, the one interrupted note, and the bottom navigation's dot and its TalkBack state. The explicit test-only plain-Application
+the profile's removal stopping the attempt, the one interrupted note, and the bottom navigation's dot and its TalkBack state. The
+notification is covered by: unit tests of its decision (off-screen working and waiting with Stop, none while shown or locked, each final
+text, none after Stop, a requested Stop or a disable, none without the permission, the end reset by a new Send, ends not told for an
+attempt that was stopped, disabled or revoked, a stale notification cancelled at start); source and manifest guards (not exported
+components, immutable explicit PendingIntents, the channel's importance, sound and vibration, no incoming intent read in MainActivity
+or the screens); and instrumented tests on the real activity (Stop from the receiver stops a running fake attempt, foreign intents
+including Navigation's deep-link keys lead nowhere and stop nothing, a tap through the trampoline leaves one MainActivity and consumes
+the request). Not verified: a real notification shade, OEM or locked-screen rendering, and a real tap through the lock. The explicit test-only plain-Application
 runner is selected by `-PassistantChatComponentTests=true` and an explicit chat
 class filter; ordinary discovery keeps the default runner. Only that explicit
 debug fixture disables BootReceiver in the merged manifest, preventing boot

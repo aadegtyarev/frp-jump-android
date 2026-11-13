@@ -43,7 +43,9 @@ class AssistantNotificationSurfaceGuardTest {
         assertFalse(receiver.contains("intent.")); assertFalse(receiver.contains("getStringExtra"))
         val trampoline = notifier.substringAfter("class AssistantOpenActivity")
         assertTrue(trampoline.contains("Intent(this, MainActivity::class.java)"))
-        assertFalse(trampoline.contains("putExtra")); assertFalse(trampoline.contains("setAction")); assertFalse(trampoline.contains("setData"))
+        assertTrue("the launcher intent", trampoline.contains("setAction(Intent.ACTION_MAIN)") && trampoline.contains("addCategory(Intent.CATEGORY_LAUNCHER)"))
+        assertTrue(trampoline.contains("FLAG_ACTIVITY_NEW_TASK") && trampoline.contains("FLAG_ACTIVITY_RESET_TASK_IF_NEEDED"))
+        assertFalse(trampoline.contains("putExtra")); assertFalse(trampoline.contains("setData")); assertFalse(trampoline.contains("SINGLE_TOP"))
     }
 
     @Test fun `MainActivity reads no extras, action or data of an intent for navigation`() {
@@ -53,5 +55,29 @@ class AssistantNotificationSurfaceGuardTest {
         // The two reads of an `intent.action` are the outgoing launches in startActivity and startActivityForResult (the lock's hold), not the launch intent.
         assertEquals(2, Regex("intent\\.action").findAll(main).count())
         assertTrue(main.substringBefore("override fun startActivity(").let { !it.contains("intent.action") })
+    }
+
+    @Test fun `onCreate replaces the launch intent with a clean launcher one before anything composes`() {
+        val create = main.substringAfter("override fun onCreate(").substringBefore("setContent")
+        val set = create.indexOf("setIntent(")
+        assertTrue("setIntent( is the first statement of onCreate", set >= 0 && create.substring(0, set).lines().all { it.isBlank() || it.trim().startsWith("//") || it.contains("Bundle?) {") })
+        val line = create.substring(set).lineSequence().first()
+        assertTrue(line.contains("Intent(this, MainActivity::class.java)") && line.contains("setAction(Intent.ACTION_MAIN)") && line.contains("addCategory(Intent.CATEGORY_LAUNCHER)"))
+        assertFalse("no extras copied", line.contains("putExtra") || line.contains("intent."))
+        assertEquals("one setIntent( in the activity", 1, Regex("setIntent\\(").findAll(main).count())
+    }
+
+    @Test fun `no screen or the activity reads an incoming intent`() {
+        val files = File("src/main/java/ru/adsrv/frpjump/ui").walkTopDown().filter { it.extension == "kt" }.toList() +
+            File("src/main/java/ru/adsrv/frpjump/MainActivity.kt")
+        val reads = Regex("""\bget\w*Extra\(|hasExtra|\.extras\b|getIntent|\.intent\b|onNewIntent|addOnNewIntentListener|(?<![=\w])\.clipData(?!\s*=)|\bdata\??\.clipData|\.categories|\.flags\b|\bintent\.action|\bintent\.data""")
+        // Narrow allowances: the activity-result `data` of a file chooser (a result the app asked for), the sensitive flag the viewer sets on its own outgoing clip, and the lock's outgoing launches.
+        val allowed = listOf("val clip = data?.clipData", "clip.description.extras = PersistableBundle()", "holdLaunch(this, intent.action,")
+        val found = files.flatMap { f -> f.readLines().mapIndexedNotNull { i, line ->
+            val t = line.trim()
+            if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) null
+            else if (reads.containsMatchIn(line) && allowed.none { line.contains(it) }) "${f.name}:${i + 1}: $t" else null
+        } }
+        assertEquals("incoming intent reads: $found", emptyList<String>(), found)
     }
 }

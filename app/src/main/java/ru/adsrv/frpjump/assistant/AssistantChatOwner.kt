@@ -53,6 +53,8 @@ class AssistantChatOwner(
     private val realtime: () -> Long,
     private val activityOut: MutableStateFlow<ChatActivity> = MutableStateFlow(ChatActivity.IDLE),
     private val endOut: MutableStateFlow<ChatEnd> = MutableStateFlow(ChatEnd.NONE),
+    /** True while a Stop is requested for the running attempt and it is winding down (the notification goes at once). */
+    private val stoppingOut: MutableStateFlow<Boolean> = MutableStateFlow(false),
     /** True while the current profile's server has removed this phone (the REMOVED screen): a running attempt is stopped, screen or not. */
     private val removed: Flow<Boolean> = emptyFlow(),
 ) {
@@ -97,7 +99,7 @@ class AssistantChatOwner(
 
     /** Ends everything now, attempt included (a test or a private owner going away). */
     fun shutdown() {
-        val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE } } ?: return
+        val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE; stoppingOut.value = false } } ?: return
         old.conversation.close(); old.scope.cancel()
     }
 
@@ -117,7 +119,7 @@ class AssistantChatOwner(
     private fun settled() {
         synchronized(lock) {
             val old = live ?: return
-            if (screens == 0 && old.conversation.closeIfIdle()) { live = null; old.scope.cancel(); activityOut.value = ChatActivity.IDLE }
+            if (screens == 0 && old.conversation.closeIfIdle()) { live = null; old.scope.cancel(); activityOut.value = ChatActivity.IDLE; stoppingOut.value = false }
         }
     }
 
@@ -142,11 +144,12 @@ class AssistantChatOwner(
             chat.state.map { if (!it.busy) ChatActivity.IDLE else if (it.confirmation != null && !it.stopping) ChatActivity.WAITING else ChatActivity.WORKING }
                 .distinctUntilChanged().collect {
                     publish(chat, it)
-                    // A new Send (from idle) clears the last end; the WAITING to WORKING step of an attempt that ends unanswered does not.
-                    if (it == ChatActivity.WORKING && before == ChatActivity.IDLE) synchronized(lock) { if (live?.conversation === chat) endOut.value = ChatEnd.NONE }
+                    // A new Send (any step from idle) clears the last end; the WAITING to WORKING step of an attempt that ends unanswered does not.
+                    if (it != ChatActivity.IDLE && before == ChatActivity.IDLE) synchronized(lock) { if (live?.conversation === chat) endOut.value = ChatEnd.NONE }
                     before = it
                 }
         }
+        child.launch { chat.state.map { it.busy && it.stopping }.distinctUntilChanged().collect { synchronized(lock) { if (live?.conversation === chat) stoppingOut.value = it } } }
         // The server removed this phone's profile: the attempt stops even when no screen (so no AppNav) is there to do it.
         child.launch { removed.collect { gone -> if (gone) chat.stop() } }
         return Live(chat, child, confirmations)

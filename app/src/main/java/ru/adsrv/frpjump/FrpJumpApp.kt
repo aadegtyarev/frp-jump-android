@@ -84,8 +84,6 @@ import ru.adsrv.frpjump.web.WebPageMemory
 import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
-/** A device card of a profile, to open from outside the app's screens. */
-
 class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
     val profileInformation by lazy { ru.adsrv.frpjump.profiles.ProfileInformation(profiles.state, pendingUndo.hidden) }
@@ -176,11 +174,13 @@ class FrpJumpApp : Application() {
     /** Tests only: an owner standing in for the app's (the notification's Stop reaches it through [stopAssistantAttempt]). */
     @androidx.annotation.VisibleForTesting
     internal var chatOwnerOverride: ru.adsrv.frpjump.assistant.AssistantChatOwner? = null
+    /** True while a Stop is requested for the running assistant attempt (the notification goes at once). */
+    val assistantStopping = kotlinx.coroutines.flow.MutableStateFlow(false)
     private val chatOwner = lazy {
         ru.adsrv.frpjump.assistant.AssistantChatOwner(appScope, settings, assistantProvider, assistant, profileInformation, assistantSshCommands,
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
-            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, removed = currentProfileRemoved)
+            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -409,7 +409,8 @@ class FrpJumpApp : Application() {
         }
         // The assistant's notification while the chat is off screen: it is shown when its route is resumed and the app is not locked.
         ru.adsrv.frpjump.assistant.AssistantNotifier(this).start(
-            appScope, assistantActivity, assistantEnd, combine(assistantChatResumed, lock.locked) { resumed, locked -> resumed && !locked }.distinctUntilChanged())
+            appScope, assistantActivity, assistantEnd, combine(assistantChatResumed, lock.locked) { resumed, locked -> ru.adsrv.frpjump.assistant.chatShown(resumed, locked) }.distinctUntilChanged(),
+            settings.settings.map { it.assistantEnabled }.distinctUntilChanged(), assistantStopping)
         // Undo's time counts from when its notice is on screen (a host draws it), not from the tap.
         appScope.launch {
             combine(notices.queue, notices.hosts) { queue, hosts -> queue.shown?.takeIf { it.key == UNDO_NOTICE && hosts.isNotEmpty() }?.id }

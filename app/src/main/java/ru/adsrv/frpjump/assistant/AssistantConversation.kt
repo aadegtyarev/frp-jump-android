@@ -50,7 +50,7 @@ class AssistantConversation(
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, onEnded)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
@@ -188,7 +188,11 @@ class AssistantConversation(
     private fun launch(admission: Admission): Job {
         val owner = admission.owner
         owner.job = scope.launch(start = CoroutineStart.LAZY) { TurnRunner(env, admission).run() }
-        owner.job.invokeOnCompletion { own.completed(owner); runtime.notifyBusy(); onSettled(); repaint() }
+        owner.job.invokeOnCompletion {
+            // The end is told before the owner is released (so before the activity goes idle), and never for an attempt the owner stopped.
+            synchronized(gate) { owner.replied.takeIf { !owner.stopped } }?.let(onEnded)
+            own.completed(owner); runtime.notifyBusy(); onSettled(); repaint()
+        }
         return owner.job
     }
     companion object {

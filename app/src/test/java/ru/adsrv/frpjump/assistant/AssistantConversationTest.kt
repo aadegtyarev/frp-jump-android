@@ -40,11 +40,13 @@ class AssistantConversationTest {
         val file = Memory(); val box = Box(); val store = AssistantProviderStore(file, box)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         var preparations = 0
+        /** Every end the conversation told (the notification's): true for a reply, false for a failure. */
+        val ends = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
         init { store.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic")) }
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
             preparations++; prepareGate?.invoke(); provider
-        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off, onEnded = { ends += it })
         suspend fun idle() = withTimeout(3000) { chat.state.first { !it.busy } }
         suspend fun send(text: String = "question"): ChatState { chat.edit(text); chat.send(); return idle() }
         fun revise() = store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), store.state.value.revision))
@@ -119,8 +121,14 @@ class AssistantConversationTest {
                 assertTrue("$action/$throws", f.chat.state.value.turns.isEmpty())
                 assertNull(f.chat.state.value.problem)
                 assertFalse(f.chat.state.value.busy)
+                assertEquals("$action/$throws: no end is told for an attempt that was stopped, disabled or revoked", emptyList<Boolean>(), f.ends.toList())
             }
         }
+    }
+
+    @Test fun `a reply and a failure each tell their end once`() = runBlocking {
+        Fixture(AgentProvider { AgentReply("answer") }).use { f -> f.send(); assertEquals(listOf(true), f.ends.toList()) }
+        Fixture(AgentProvider { error("synthetic") }).use { f -> f.send(); assertEquals(listOf(false), f.ends.toList()) }
     }
 
     @Test fun `committed revision and disable clear completed context while failed writes retain it`() = runBlocking {

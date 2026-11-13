@@ -26,32 +26,31 @@ import ru.adsrv.frpjump.locale.Texts
 /**
  * Posts the assistant's one notification per attempt (Р32) while the chat is not on screen, and removes it when the chat is shown or
  * nothing is left to say. What it shows is [assistantNotice]; the text is fixed (see [AssistantNotice]). Without the notification
- * permission nothing is posted.
+ * permission nothing is posted. The channel has default importance (so the notification and its Stop show on the lock screen) with no
+ * sound, no vibration and no badge.
  */
-class AssistantNotifier(private val context: Context) {
+class AssistantNotifier(private val context: Context) : AssistantNoticeSink {
     private val manager get() = context.getSystemService(NotificationManager::class.java)
 
-    fun start(scope: CoroutineScope, activity: Flow<ChatActivity>, end: Flow<ChatEnd>, shown: Flow<Boolean>) {
-        val tracker = AssistantNoticeTracker()
+    fun start(scope: CoroutineScope, activity: Flow<ChatActivity>, end: Flow<ChatEnd>, shown: Flow<Boolean>, enabled: Flow<Boolean>, stopping: Flow<Boolean>) {
+        val driver = AssistantNoticeDriver(this)
+        driver.start()
         scope.launch {
-            combine(activity, end, shown) { a, e, s -> Triple(a, e, s) }
-                .collect { (a, e, s) -> show(tracker.update(a, s, e, permitted())) }
+            combine(activity, end, shown, enabled, stopping) { a, e, s, on, st -> arrayOf<Any>(a, e, s, on, st) }
+                .collect { v ->
+                    driver.update(v[0] as ChatActivity, v[2] as Boolean, v[1] as ChatEnd, permitted(), v[3] as Boolean, v[4] as Boolean)
+                }
         }
     }
 
-    private var posted: AssistantNotice? = null
+    override fun cancel() { manager?.cancel(NOTIFICATION_ID) }
 
-    private fun show(notice: AssistantNotice?) {
-        if (notice == posted) return
-        posted = notice
-        if (notice == null) { manager?.cancel(NOTIFICATION_ID); return }
-        post(notice)
-    }
-
-    private fun post(notice: AssistantNotice) {
+    override fun post(notice: AssistantNotice) {
         val manager = manager ?: return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, Texts.get(R.string.assistant_channel), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
+            NotificationChannel(CHANNEL, Texts.get(R.string.assistant_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setShowBadge(false); setSound(null, null); enableVibration(false)
+            },
         )
         val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_jump)
@@ -88,19 +87,26 @@ class AssistantNotifier(private val context: Context) {
 /** The notification's Stop: the chat's Stop, nothing else. Not exported; idempotent (no attempt, nothing happens). */
 class AssistantStopReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        (context.applicationContext as FrpJumpApp).stopAssistantAttempt()
+        val app = context.applicationContext as FrpJumpApp
+        app.stopAssistantAttempt()
+        // No attempt runs (the process died with the notification up, or it just ended): nothing else will remove it.
+        if (app.assistantActivity.value == ChatActivity.IDLE) context.getSystemService(NotificationManager::class.java)?.cancel(AssistantNotifier.NOTIFICATION_ID)
     }
 }
 
 /**
- * The notification's tap: no UI. It sets the in-process request "open the chat" and brings up [MainActivity] with a plain intent
+ * The notification's tap: no UI. It sets the in-process request "open the chat" and brings up [MainActivity] with the launcher intent
  * (no extras); the app lock shows first, as for any launch.
  */
 class AssistantOpenActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         (application as FrpJumpApp).openAssistantRequest.value = true
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        // The launcher intent: the app's existing task comes to the front without a second MainActivity (a single-top flag never matches from here).
+        startActivity(
+            Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
+        )
         finish()
     }
 }

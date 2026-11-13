@@ -463,7 +463,7 @@ internal fun NavHostController.askAssistant(app: FrpJumpApp, quote: String?) {
     openAssistant()
 }
 
-/** A notification's device card, over whatever is shown. */
+/** A device's card, over whatever is shown (the Devices screen's own entry; tests use it too). */
 internal fun NavHostController.openDeviceCard(name: String) = navigate(Routes.device(name)) { popUpTo(Routes.DEVICE) { inclusive = true } }
 
 /** Whether Settings > LLM assistant is on, followed live. */

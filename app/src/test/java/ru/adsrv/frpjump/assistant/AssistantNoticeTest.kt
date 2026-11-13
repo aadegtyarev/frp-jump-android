@@ -70,4 +70,59 @@ class AssistantNoticeTest {
         assertTrue(source.contains("setContentTitle(Texts.get(notice.titleRes))"))
         assertTrue(source.contains("VISIBILITY_PUBLIC"))
     }
+
+    @Test fun `the chat is shown only while resumed and not locked`() {
+        assertTrue(chatShown(resumed = true, locked = false))
+        assertFalse(chatShown(resumed = true, locked = true))
+        assertFalse(chatShown(resumed = false, locked = false))
+        assertFalse(chatShown(resumed = false, locked = true))
+    }
+
+    @Test fun `a requested Stop removes the notification at once and it is not posted again while the job winds down`() {
+        for (a in ChatActivity.entries) for (e in ChatEnd.entries) assertNull("$a $e", assistantNotice(a, false, e, true, enabled = true, stopping = true))
+        val t = AssistantNoticeTracker()
+        assertEquals(AssistantNotice.WORKING, t.update(ChatActivity.WORKING, false, ChatEnd.NONE, true))
+        assertNull(t.update(ChatActivity.WORKING, false, ChatEnd.NONE, true, stopping = true))
+        assertNull(t.update(ChatActivity.IDLE, false, ChatEnd.NONE, true))
+    }
+
+    @Test fun `switching the assistant off removes any notification, a final one included`() {
+        for (a in ChatActivity.entries) for (e in ChatEnd.entries) assertNull("$a $e", assistantNotice(a, false, e, true, enabled = false))
+        val t = AssistantNoticeTracker()
+        t.update(ChatActivity.WORKING, false, ChatEnd.NONE, true)
+        assertEquals(AssistantNotice.ANSWERED, t.update(ChatActivity.IDLE, false, ChatEnd.COMPLETED, true))
+        assertNull(t.update(ChatActivity.IDLE, false, ChatEnd.COMPLETED, true, enabled = false))
+    }
+
+    private class Sink : AssistantNoticeSink {
+        val log = mutableListOf<String>()
+        override fun post(notice: AssistantNotice) { log += "post ${notice.name}" }
+        override fun cancel() { log += "cancel" }
+    }
+
+    @Test fun `starting cancels a notification a dead process left behind, then only changes reach the sink`() {
+        val sink = Sink(); val driver = AssistantNoticeDriver(sink)
+        driver.start()
+        assertEquals(listOf("cancel"), sink.log)
+        driver.update(ChatActivity.IDLE, false, ChatEnd.NONE, true, true, false)
+        assertEquals("nothing new to say: no second cancel", listOf("cancel"), sink.log)
+        driver.update(ChatActivity.WORKING, false, ChatEnd.NONE, true, true, false)
+        driver.update(ChatActivity.WORKING, false, ChatEnd.NONE, true, true, false)
+        driver.update(ChatActivity.WORKING, false, ChatEnd.NONE, true, true, true)
+        assertEquals(listOf("cancel", "post WORKING", "cancel"), sink.log)
+    }
+
+    @Test fun `the channel has default importance and no sound, vibration or badge`() {
+        val source = File("src/main/java/ru/adsrv/frpjump/assistant/AssistantNotifier.kt").readText()
+        assertTrue(source.contains("NotificationManager.IMPORTANCE_DEFAULT"))
+        for (other in listOf("IMPORTANCE_LOW", "IMPORTANCE_HIGH", "IMPORTANCE_MIN", "IMPORTANCE_MAX")) assertFalse(other, source.contains(other))
+        assertTrue(source.contains("setSound(null, null)")); assertTrue(source.contains("enableVibration(false)")); assertTrue(source.contains("setShowBadge(false)"))
+        assertTrue(source.contains(".setSilent(true)")); assertTrue(source.contains(".setOnlyAlertOnce(true)"))
+        assertTrue(source.contains("VISIBILITY_PUBLIC"))
+    }
+
+    @Test fun `FrpJumpApp derives shown from chatShown`() {
+        val app = File("src/main/java/ru/adsrv/frpjump/FrpJumpApp.kt").readText()
+        assertTrue(app.contains("ru.adsrv.frpjump.assistant.chatShown(resumed, locked)"))
+    }
 }
