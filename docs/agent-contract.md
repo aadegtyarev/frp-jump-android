@@ -413,7 +413,7 @@ There is no automatic retry, streaming or provider/model fallback.
 
 **An attempt outlives the chat screen.** The conversation belongs to the app, not to the screen. It is built when the chat is first
 opened (never at app start) and lasts while a chat screen is open (anywhere on the back stack, including under Tools or a screen
-opened over it; an entry popped with a saved state, as the bottom bar does, no longer counts) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
+opened over it; an entry that has left the back stack no longer counts, even if its state was saved) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
 the "For session" grants are cleared and memory is released; the next opening restores the saved history. Leaving the chat (Back, the
 arrow, another section, another app, the lock, activity recreation, the activity finishing) does not stop an attempt: its reply and
 results are saved to the history and are there when the chat is opened again. Reopening while it runs shows that same attempt with its

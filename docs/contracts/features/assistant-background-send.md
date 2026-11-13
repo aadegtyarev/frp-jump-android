@@ -58,8 +58,8 @@ field) and the question back in the draft. With the bottom-navigation entry, lea
    must be noticeable and stoppable without opening the chat).
    - **Indicator, required in this release.** While an attempt runs (a card wait included), the bottom navigation's "Assistant"
      item shows a small dot. TalkBack state: "Working" / «Работает», or "Waiting for your answer" / «Ждёт ответа» while a card
-     waits. The chat itself has no bottom bar, so the dot is seen exactly when the chat is not on screen. This works without the
-     notification permission.
+     waits. The chat has no bottom bar; the dot is shown on the bottom bar of the section screens. This works without the
+     notification permission. Done in part A.
    - **One notification per attempt**, on its own channel "Assistant" / «Помощник», silent (low importance), which the owner can
      turn off in the system:
      - While an attempt runs and the chat is not on screen, it is ongoing: "The assistant is working" / «Помощник работает», with
@@ -67,15 +67,22 @@ field) and the question back in the draft. With the bottom-navigation entry, lea
      - The same notification then changes to:
        - "The assistant answered" / «Помощник ответил» for a completed reply;
        - "The assistant could not answer" / «Помощник не смог ответить» for a failed or timed-out attempt;
-       - "The assistant is waiting for your answer" / «Помощник ждёт ответа» while a card waits (still with Stop).
+       - "The assistant is waiting for your answer" / «Помощник ждёт ответа» while a card waits (still with Stop);
+       - "The assistant stopped: no answer from you" / «Помощник остановился: вы не ответили» when a card ran out with no chat
+         screen attached and ended the attempt (Р43, text by Р45).
      - It never carries reply text, tool names or targets.
      - "Not on screen" means: the app is not visible, another screen is over the chat, or the app is locked.
      - It is removed when the chat is shown, and after a Stop or disable by the owner. No final notification is posted for those.
      - A tap opens the app (behind the lock when it is set) at the chat.
+     - Its PendingIntents (the tap and Stop) target explicit components of this app that are NOT exported (a trampoline activity or
+       a receiver that sets in-process state and brings up MainActivity). MainActivity takes no navigation from a foreign intent's
+       action, extras or data; a test proves that a foreign intent with the same action and extras leads nowhere and stops
+       nothing (Р41).
      - Stop from the notification is the chat's Stop, also during a card wait: nothing runs. It works from the lock screen; stopping
        never widens anything.
      - No new permission prompt: without the notification permission nothing is posted, and the dot remains.
-   - The notification may ship as a small PR right after this one if it makes this one large. The dot is required here.
+   - Part B (this item's notification) ships as its own PR after part A and before 0.3.80; A is not released without B. Its hooks
+     are `FrpJumpApp.assistantActivity`, the owner's `stop()` and the owner's `lastEnd`.
 5. **One interrupted note.** An interrupted last attempt is shown once: the grey line under its turn. The red notice above the
    field does not repeat it.
 
@@ -102,10 +109,12 @@ field) and the question back in the draft. With the bottom-navigation entry, lea
    - REMOVED stops it;
    - the interrupted note is shown once;
    - the dot and its TalkBack state while an attempt runs and while a card waits, gone when it ends;
-   - a card that expired while the chat was closed is "No answer, declined" on return, and no answer press runs it;
-   - the notification (if in this PR): ongoing "working" with Stop when off screen; none while on screen; it changes to the end
-     or waiting text; Stop from it stops the attempt and a waiting card runs nothing; removed on showing the chat; no content;
-     a tap opens the chat.
+   - a card that ran out while no chat screen was attached ended the whole attempt (Р43): nothing runs, no later card is raised,
+     the turn shows its own grey line on return, and no answer press runs it;
+   - the notification (part B): ongoing "working" with Stop when off screen; none while on screen; it changes to the end, the
+     waiting or the "no answer from you" text; Stop from it stops the attempt and a waiting card runs nothing, also from the lock
+     screen; removed on showing the chat and after the owner's Stop or disable, with no final notification; no content; a tap
+     opens the chat; a foreign intent does nothing.
 2. Existing tests that pinned "pop stops the Send" are changed to the new behavior, each listed in the PR, with the reason.
    Tests about Stop, disable, revision, slot and exact cleanup stay.
 3. Mutations killed:
