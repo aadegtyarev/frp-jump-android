@@ -1,8 +1,11 @@
 package ru.adsrv.frpjump.ssh
 
+import androidx.annotation.StringRes
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.api.WireJson
+import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.store.TextStorage
 
 /** A host key as it is pinned: its algorithm and OpenSSH SHA256 fingerprint. */
@@ -77,5 +80,25 @@ inline fun hostKeyWriteFailure(crossinline write: () -> Unit): Exception? = try 
     e
 }
 
-/** What a failed host-key write says to the owner: the error's own message, else its kind. One wording for every caller. */
-fun hostKeyWriteDetail(failure: Exception): String = failure.message ?: failure.javaClass.simpleName
+/** The short kind of a failed trust write: the only part of the failure the owner is shown. */
+enum class WriteFailureKind(@StringRes val res: Int) {
+    NO_SPACE(R.string.write_failed_no_space),
+    NO_ACCESS(R.string.write_failed_no_access),
+    OTHER(R.string.write_failed_other),
+}
+
+/** Maps a failed write to its kind. Never carries the exception's message, a path or a trace out. */
+fun writeFailureKind(failure: Throwable): WriteFailureKind {
+    val chain = generateSequence(failure) { it.cause }.take(8).toList()
+    val text = chain.joinToString(" ") { it.message.orEmpty() }.lowercase()
+    return when {
+        "enospc" in text || "no space left" in text || "edquot" in text || "quota exceeded" in text -> WriteFailureKind.NO_SPACE
+        chain.any { it is java.nio.file.AccessDeniedException || it is SecurityException } ||
+            "eacces" in text || "eperm" in text || "erofs" in text || "permission denied" in text ||
+            "access denied" in text || "not permitted" in text || "read-only file system" in text -> WriteFailureKind.NO_ACCESS
+        else -> WriteFailureKind.OTHER
+    }
+}
+
+/** What a failed trust write (host key; the web certificate maps its failure with [writeFailureKind]) says to the owner: its kind only. One wording for every caller. */
+fun hostKeyWriteDetail(failure: Exception): String = Texts.get(writeFailureKind(failure).res)

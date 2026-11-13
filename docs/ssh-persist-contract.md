@@ -298,7 +298,9 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   acceptance. Terminal and Files share those decisions. If saving Trust or
   forgetting the old key fails, nothing is trusted or forgotten: the terminal
   ends with the error, Files and "Use key login" show it with Retry, and the
-  app does not crash.
+  app does not crash. The error names only a short kind of failure in
+  parentheses ("no space left", "no access" or "write error"), never a path,
+  an exception message or a trace; the web certificate trust uses the same wording.
 - Use the phone's generated ed25519 key across profiles, with optional imported
   identity tried first. Private keys, import passphrases and remembered
   passwords are encrypted in app-private storage with the Keystore-backed
