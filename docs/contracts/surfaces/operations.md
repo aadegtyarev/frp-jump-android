@@ -73,7 +73,7 @@ tunnels are not managed by the model. If that policy is ever lifted, a tunnel to
 
 ### `tunnel_connect`
 
-Asks a tunnel to connect for the connection's kind and returns without waiting for it ([`tunnel_up`](#tunnel_up) is the one that waits).
+Asks a tunnel to connect for the connection's kind and returns without waiting for it (`tunnel_up`, above, is the one that waits).
 In order: a tunnel whose disconnect waits for Undo is revived and only stays up; a profile that is gone is refused; a disconnect being done
 is awaited and the tunnel is connected after it, not into it; otherwise the connect is asked before the operation first suspends. The
 screens start it undispatched, so the ask is made when the tap returns. The target is a typed tunnel reference (profile, device, port,
