@@ -32,7 +32,8 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
         private set
 
     /** The screen is in sight (between [onStart] and [onStop]). */
-    private var started = false
+    var started = false
+        private set
 
     /** When the app launched a window of its own; taken by the next stop, stale after [HANDOFF_WINDOW_MS]. */
     private var handoffAt: Long? = null
@@ -54,10 +55,25 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
         if (authenticating) return locked
         val left = leftAt
         leftAt = null
+        if (engages(left, now, afterMs)) locked = true
+        return locked
+    }
+
+    /** The decision of [onStart]: never unlocked in this process, or away for more than the limit. */
+    private fun engages(left: Long?, now: Long, afterMs: Long): Boolean {
         val limit = if (leftByHandoff) maxOf(afterMs, HANDOFF_FLOOR_MS) else afterMs
         val away = left != null && (limit <= 0 || now - left > limit)
-        if (!unlockedOnce || away) locked = true
-        return locked
+        return !unlockedOnce || away
+    }
+
+    /**
+     * Whether a start at [now] would lock (what [onStart] decides, without
+     * changing anything): already locked, or the lock engages on return.
+     */
+    fun wouldLockNow(now: Long, enabled: Boolean, afterMs: Long = timeoutMs): Boolean {
+        if (!enabled) return false
+        if (authenticating) return locked
+        return locked || engages(leftAt, now, afterMs)
     }
 
     /** The screen goes out of sight. */

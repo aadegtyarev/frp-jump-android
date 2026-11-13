@@ -1,11 +1,13 @@
 package ru.adsrv.frpjump.lock
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Intent
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.KeyEvent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -110,11 +112,41 @@ class LockedLaunchGateTest {
         }
     }
 
+    /**
+     * The `startActivityForResult` path (what a registry launcher uses, and androidx for the PIN fallback)
+     * holds too, and a dropped one is answered as cancelled, so nothing waits on it for good.
+     */
+    @Test fun aHeldResultLaunchIsHeldAndAnsweredCancelledWhenDropped() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lockedWithPrompt(scenario)
+            val results = java.util.Collections.synchronizedList(mutableListOf<Int>())
+            scenario.onActivity { a ->
+                val launcher = a.activityResultRegistry.register("lock-gate-test", ActivityResultContracts.StartActivityForResult()) {
+                    results += it.resultCode
+                }
+                launcher.launch(Intent(Settings.ACTION_SETTINGS))
+            }
+            SystemClock.sleep(2_500)
+            assertEquals("nothing opened over the lock screen", Lifecycle.State.RESUMED, scenario.state)
+            assertTrue(results.isEmpty())
+            scenario.recreate()
+            waitFor("the dropped launch is answered") { results.isNotEmpty() }
+            assertEquals(listOf(Activity.RESULT_CANCELED), results.toList())
+            waitFor("resumed again") { scenario.state == Lifecycle.State.RESUMED }
+            SystemClock.sleep(2_500)
+            typePin()
+            waitFor("unlocked") { !app.lock.locked.value }
+            SystemClock.sleep(3_000)
+            assertEquals("the dropped launch never ran", Lifecycle.State.RESUMED, scenario.state)
+        }
+    }
+
     /** The discriminator for the biometric fallback: the platform's own action, which the app never launches. */
     @Test fun theConfirmCredentialIntentIsTheOneTheGateExempts() {
         val keyguard = app.getSystemService(KeyguardManager::class.java)
         assumeTrue("needs a screen lock", keyguard.isDeviceSecure)
-        val intent = keyguard.createConfirmDeviceCredentialIntent("t", "d")
+        // What the app asks the system at run time (FrpJumpApp.lock): on API 35 it is one of the platform constants.
+        val intent = keyguard.createConfirmDeviceCredentialIntent(null, null)
         assertNotNull(intent)
         assertTrue("action ${intent.action}", intent.action in AppLock.CREDENTIAL_ACTIONS)
     }

@@ -549,17 +549,33 @@ version and update, MQTT plugins (scenario 12), components and licenses).
     only after 30 s, or the chosen interval if that is longer. The app marks
     such a launch at `MainActivity.startActivity` and `startActivityForResult`;
     the mark is dropped if the screen does not go out of sight within 5 s.
-  - While locked, a window the app launches by itself (a viewer or Share
-    after a download, the installer, a web page's redirect to an external
-    app) does not open over the lock screen. It is held at the same two
-    `MainActivity` calls: only the latest is kept, and after a successful
-    unlock it runs once, as an app-opened window (marked only if it really
-    started). It is dropped, and never runs later, when the screen goes out
-    of sight while locked (not the prompt's own stops), when the activity is
-    destroyed, and on "no screen lock any more". Unlocked, launches are
-    unchanged. The prompt's own screens are never held: the PIN fallback of
-    older Android (the system's confirm-credential screen, told by its
-    platform action while a prompt is open) must start.
+  - A window the app launches by itself (a viewer or Share after a download,
+    the installer, a web page's redirect to an external app) does not open
+    over the lock screen. It is held, at the same two `MainActivity` calls,
+    when the lock is engaged, and also when the screen is out of sight and
+    the lock would engage on return (the setting on and the interval, with
+    the app-opened floor, already elapsed). Only the latest is kept. The next
+    start locks as usual, and after a successful unlock the held launch runs
+    once, as an app-opened window (marked only if it really started). A held
+    launch that fails when it runs (no app for it) gives no message. It is
+    dropped, and never runs later, when:
+    - the app leaves the screen while locked, including while the prompt is
+      up: with the prompt up the drop comes when the prompt ends with the
+      screen out of sight, cancelled or answered. A launch held while out of
+      sight and not yet prompted is kept for the next start's lock and
+      prompt;
+    - the activity is destroyed;
+    - the lock goes off other than by a successful unlock ("no screen lock
+      any more", the setting turned off).
+
+    A held launch that expected a result (a web page's file chooser) is
+    answered as cancelled when it is dropped. Launches with the lock off, or
+    on screen and unlocked, or out of sight before the interval has elapsed,
+    are unchanged. The prompt's own screens are never held: the PIN fallback
+    of older Android is the system's confirm-credential screen, told by the
+    action the system itself gives (`KeyguardManager`; the platform constant
+    if it gives none), by action only, while our prompt is active and on the
+    result path only.
   - A prompt whose activity is destroyed before the answer (for example by a
     font-scale change) is abandoned: its answer is lost in the system
     library, so it is dropped without a result and unlocks nothing. A locked

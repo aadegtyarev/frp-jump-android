@@ -354,4 +354,47 @@ class LockPolicyTest {
         policy.onStop(200)
         assertTrue(policy.onStart(210, enabled = true, afterMs = 0))
     }
+
+    // wouldLockNow: what onStart would decide, changing nothing.
+
+    @Test
+    fun `wouldLockNow is false in sight, before the interval, and with the setting off`() {
+        unlockedAt(0)
+        assertFalse(policy.wouldLockNow(100_000, enabled = true))
+        policy.onStop(1_000)
+        assertFalse(policy.wouldLockNow(31_000, enabled = true, afterMs = 30_000))
+        assertFalse(policy.wouldLockNow(1_000_000, enabled = false, afterMs = 0))
+    }
+
+    @Test
+    fun `wouldLockNow is true after the interval, with Immediately, and when locked`() {
+        unlockedAt(0)
+        policy.onStop(1_000)
+        assertTrue(policy.wouldLockNow(31_001, enabled = true, afterMs = 30_000))
+        assertTrue(policy.wouldLockNow(1_000, enabled = true, afterMs = 0))
+        val p = LockPolicy()
+        p.onStart(0, enabled = true)
+        assertTrue(p.wouldLockNow(1, enabled = true))
+    }
+
+    @Test
+    fun `wouldLockNow follows the handoff floor and changes nothing`() {
+        unlockedAt(0)
+        policy.handoff(1_000)
+        policy.onStop(1_100)
+        assertFalse(policy.wouldLockNow(20_000, enabled = true, afterMs = 0))
+        assertFalse(policy.wouldLockNow(20_000, enabled = true, afterMs = 0))
+        assertTrue(policy.wouldLockNow(31_101, enabled = true, afterMs = 0))
+        // onStart still decides the same afterwards.
+        assertTrue(policy.onStart(31_101, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `wouldLockNow while a prompt is up is just locked`() {
+        assertTrue(policy.onStart(0, enabled = true))
+        policy.authStarted()
+        assertTrue(policy.wouldLockNow(1, enabled = true))
+        policy.authFinished(success = true, now = 2)
+        assertFalse(policy.wouldLockNow(3, enabled = true))
+    }
 }

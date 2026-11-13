@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -53,6 +54,8 @@ interface PromptHost {
 class AppLock(
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     private val host: PromptHost = AndroidPromptHost,
+    /** The system's own confirm-credential action (`KeyguardManager.createConfirmDeviceCredentialIntent(null, null)?.action`). */
+    private val systemCredentialAction: () -> String? = { null },
 ) {
     private val policy = LockPolicy()
     private val _locked = MutableStateFlow(false)
@@ -65,20 +68,41 @@ class AppLock(
     private var current: Prompt? = null
     private var lastId = 0
 
-    /** The app's own launch of an external window, held while locked (see [holdLaunch]). */
-    private class Held(val owner: Any, val launch: () -> Unit)
+    /**
+     * The app's own launch of an external window, held while locked (see
+     * [holdLaunch]). [onDrop] tells its owner that it will never run (a result
+     * launch is answered as cancelled, so nothing waits on it for good).
+     */
+    private class Held(val owner: Any, val launch: () -> Unit, val onDrop: (() -> Unit)?)
 
     private var held: Held? = null
 
     /** [afterMs]: Settings › Lock after, read at this start. */
     fun onStart(enabled: Boolean, afterMs: Long = LockPolicy.DEFAULT_TIMEOUT_MS) {
-        _locked.value = policy.onStart(clock(), enabled, afterMs)
+        setLocked(policy.onStart(clock(), enabled, afterMs))
     }
 
     fun onStop() {
         policy.onStop(clock())
-        // Out of sight while locked: the held launch is dropped, except for the prompt's own stops.
-        if (!policy.authenticating) held = null
+        // Out of sight while locked: the held launch is dropped, except for the prompt's own stops
+        // (an owner who left with the prompt up is caught when the prompt ends, see [authenticateFor]).
+        if (!policy.authenticating) dropHeld()
+    }
+
+    /** The one place [_locked] changes: it never goes false with a launch still held, unless the unlock runs it. */
+    private fun setLocked(locked: Boolean) {
+        _locked.value = locked
+        if (!locked) dropHeld()
+    }
+
+    private fun dropHeld() {
+        val h = held ?: return
+        held = null
+        try {
+            h.onDrop?.invoke()
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "held launch drop failed: ${e.javaClass.simpleName}")
+        }
     }
 
     /** The app is launching a window of its own; see [LockPolicy.handoff]. */
@@ -87,23 +111,44 @@ class AppLock(
     /** The setting went off, or there is no screen lock left to ask for. */
     fun unlock() {
         policy.unlocked()
-        _locked.value = false
-        // Nothing was protected (no screen lock any more, or the setting went off): no window opens later.
-        held = null
+        // Nothing was protected (no screen lock any more, or the setting went off): a held launch is dropped.
+        setLocked(false)
     }
 
     /**
      * The app is about to launch an external window ([launch] does it). While
      * locked it must not appear over the lock screen: [launch] is kept, the
      * latest only, and runs once after a successful unlock; true means "held",
-     * the caller must not launch. Dropped by [onStop] (not the prompt's own),
-     * [onDestroy] of [owner] and [unlock]. Not held: unlocked, and the prompt's
-     * own launch ([isPromptLaunch]).
+     * the caller must not launch. [forResult]: a result is awaited (the
+     * `startActivityForResult` path); [onDrop] runs if the launch never will.
+     * Dropped by [onStop] (not the prompt's own), when the prompt ends with the
+     * screen out of sight, [onDestroy] of [owner], and whenever the lock goes
+     * off other than by the prompt's success. A launch that fails when it runs
+     * gives no message.
      */
-    fun holdLaunch(owner: Any, action: String?, launch: () -> Unit): Boolean {
-        if (!_locked.value || isPromptLaunch(action)) return false
-        held = Held(owner, launch)
+    fun holdLaunch(
+        owner: Any,
+        action: String?,
+        forResult: Boolean,
+        enabled: Boolean,
+        afterMs: Long,
+        onDrop: (() -> Unit)? = null,
+        launch: () -> Unit,
+    ): Boolean {
+        if (!shouldHold(action, forResult, enabled, afterMs)) return false
+        dropHeld() // The older one is replaced: it never runs either.
+        held = Held(owner, launch, onDrop)
         return true
+    }
+
+    /**
+     * The one decision. Hold when the lock is engaged, or when the app is out
+     * of sight and the lock would engage on return (the setting on and the
+     * interval elapsed: [LockPolicy.wouldLockNow]); never the prompt's own launch.
+     */
+    private fun shouldHold(action: String?, forResult: Boolean, enabled: Boolean, afterMs: Long): Boolean {
+        val engaged = _locked.value || (!policy.started && policy.wouldLockNow(clock(), enabled, afterMs))
+        return engaged && !(forResult && isPromptLaunch(action))
     }
 
     /**
@@ -113,15 +158,25 @@ class AppLock(
      * open. It arrives at the activity as an ordinary startActivityForResult with
      * no marker of its fragment (the fragment goes through the activity result
      * registry, shared with the app's own pickers), so it is told by its platform
-     * action. The app itself never launches these actions.
+     * action (by action only, not by package), while our prompt is active and on
+     * the `startActivityForResult` path only. The app itself never launches these actions.
      */
-    fun isPromptLaunch(action: String?): Boolean = current != null && action in CREDENTIAL_ACTIONS
+    fun isPromptLaunch(action: String?): Boolean = policy.authenticating && action in credentialActions
+
+    /** The system's action if it says one, else the platform constants; asked once per process, when a prompt first needs it. */
+    private val credentialActions: Set<String> by lazy {
+        systemCredentialAction()?.let { setOf(it) } ?: CREDENTIAL_ACTIONS
+    }
 
     private fun runHeld() {
         val h = held ?: return
         held = null
-        // E.g. no activity for it any more: nothing to say, the owner can repeat the action.
-        runCatching { h.launch() }
+        try {
+            h.launch()
+        } catch (e: RuntimeException) {
+            // E.g. no activity for it any more: no message (the owner can repeat the action), nothing logged of it.
+            Log.w(TAG, "held launch failed: ${e.javaClass.simpleName}")
+        }
     }
 
     /**
@@ -129,7 +184,7 @@ class AppLock(
      * answered. It is dropped without a result and unlocks nothing.
      */
     fun onDestroy(owner: Any) {
-        if (held?.owner === owner) held = null
+        if (held?.owner === owner) dropHeld()
         val prompt = current ?: return
         if (prompt.owner !== owner) return
         current = null
@@ -161,6 +216,8 @@ class AppLock(
             if (current?.id != prompt.id) return
             current = null
             policy.authFinished(success = success, now = clock())
+            // The owner left while the prompt was up: nothing visible could open now, and it must not run at a later unlock.
+            if (!policy.started) dropHeld()
             if (success) _locked.value = false
             onResult(result)
             if (success) runHeld()
@@ -188,6 +245,8 @@ class AppLock(
     }
 
     companion object {
+        private const val TAG = "AppLock"
+
         /** `KeyguardManager.createConfirmDeviceCredentialIntent` actions (hidden constants), with and without a user. */
         val CREDENTIAL_ACTIONS = setOf(
             "android.app.action.CONFIRM_DEVICE_CREDENTIAL",
