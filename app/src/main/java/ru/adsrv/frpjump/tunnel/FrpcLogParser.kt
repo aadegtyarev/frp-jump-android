@@ -37,6 +37,8 @@ data class VisitorState(
     val waitingForDevice: Boolean = false,
     /** [TunnelStatus.FAILED]: the device did not register its proxy in [DEVICE_WAIT_MS]. */
     val deviceMissing: Boolean = false,
+    /** [TunnelStatus.FAILED] on a pinned local port another app holds: set by [TunnelManager], worded by the screens (retry every [TunnelManager.PINNED_RETRY_MS]). */
+    val pinnedPortTaken: Boolean = false,
 )
 
 /** quic-go gives up a dial after 5 s of silence (its handshake idle timeout); a little more. */

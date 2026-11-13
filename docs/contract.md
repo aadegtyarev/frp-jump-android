@@ -935,9 +935,10 @@ start checks use the existing Chat authority guard (a start admitted just before
 commit may begin and is then cancelled); cancellation retains its slot until the
 HTTP exchange has actually returned, without cancelling unrelated UI/background
 requests. Missing information stays
-unknown. Fixed error descriptions and typed app states are sent, not raw
-UI/server/exception diagnostics or credentials. It is not an atomic live inventory
-or proof of remote service readiness. The separate SSH-command tool executes one noninteractive command on a saved SSH
+unknown. A fixed error kind (`{"kind": ...}`, listed in the agent contract) and
+typed app states are sent, not raw UI/server/exception diagnostics or credentials.
+It is not an atomic live inventory or proof of remote service readiness. The
+separate SSH-command tool executes one noninteractive command on a saved SSH
 target from any profile over an already ready tunnel, with ordinary login/pinning,
 bounded separate stdout/stderr and honest exit/unknown status. It owns its client
 and cancellation/actual cleanup, not Terminal or Files clients. No tunnel-control

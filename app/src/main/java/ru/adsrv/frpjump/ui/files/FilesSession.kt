@@ -62,6 +62,8 @@ import ru.adsrv.frpjump.files.text.viewable
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.ui.userText
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
@@ -281,7 +283,7 @@ class FilesSession(
     @Volatile
     private var localPort: Int? = null
     private var tunnelConnecting = false
-    private var tunnelError: String? = null
+    private var tunnelError: DomainError? = null
 
     private val connectLock = Mutex()
     private var browser: SftpBrowser? = null
@@ -359,7 +361,7 @@ class FilesSession(
     }
 
     /** What the screen follows of its tunnel: up at a local port, coming up, or why it failed. */
-    private data class TunnelView(val localPort: Int?, val connecting: Boolean, val error: String?)
+    private data class TunnelView(val localPort: Int?, val connecting: Boolean, val error: DomainError?)
 
     private fun onTunnel(tunnel: TunnelView) {
         val before = localPort
@@ -1067,7 +1069,7 @@ class FilesSession(
     }
 
     /** Why there is no tunnel: its last connect's failure, else that it is not connected. */
-    private fun tunnelDown(): String = tunnelError ?: Texts.get(R.string.files_tunnel_down)
+    private fun tunnelDown(): String = tunnelError?.userText() ?: Texts.get(R.string.files_tunnel_down)
 
     private fun show(path: String?, entries: List<RemoteEntry>) {
         all = entries

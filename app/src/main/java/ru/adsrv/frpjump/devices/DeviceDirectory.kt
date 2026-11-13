@@ -23,7 +23,8 @@ import ru.adsrv.frpjump.api.Age
 import ru.adsrv.frpjump.api.presenceOf
 import ru.adsrv.frpjump.session.ProfileSession
 import ru.adsrv.frpjump.store.CredentialStore
-import ru.adsrv.frpjump.ui.userMessage
+import ru.adsrv.frpjump.errors.DomainError
+import ru.adsrv.frpjump.errors.toDomainError
 import java.time.Instant
 
 private const val TAG = "DeviceDirectory"
@@ -55,7 +56,7 @@ data class DeviceList(
     val updatedAt: Instant? = null,
     /** The server has not answered since [updatedAt]. */
     val stale: Boolean = false,
-    val error: String? = null,
+    val error: DomainError? = null,
     /** [error] is a network failure, not an answer from the server. */
     val unreachable: Boolean = false,
     /**
@@ -213,13 +214,13 @@ class DeviceDirectory(
             val known = last?.takeIf { it.controlUrl == credentials.controlUrl && it.deviceName == credentials.deviceName }
             _state.update {
                 if (known == null) {
-                    it.copy(error = e.userMessage(), unreachable = e is NetworkException)
+                    it.copy(error = e.toDomainError(), unreachable = e is NetworkException)
                 } else {
                     val fetchedAt = Instant.ofEpochMilli(known.fetchedAtMs)
                     it.copy(
                         devices = deviceRows(known.devices, credentials.deviceName, fetchedAt, Instant.now(), stale = true, display = it.display),
                         stale = true,
-                        error = e.userMessage(),
+                        error = e.toDomainError(),
                         unreachable = e is NetworkException,
                     )
                 }

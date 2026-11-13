@@ -86,14 +86,14 @@ class AssistantProfileResultsTest {
     @Test fun `profile operation facts survive paging even without a saved or visible connection row`() = runBlocking {
         val part = ProfileInformationPart("work", "Work", "green", false, true,
             devices = DeviceList(emptyList()), tunnels = TunnelsState(pending = mapOf("orphan:22" to ru.adsrv.frpjump.tunnel.PendingOp.CONNECTING),
-                errors = mapOf("orphan:22" to "private-raw-error")))
+                errors = mapOf("orphan:22" to ru.adsrv.frpjump.errors.DomainError.ServerError("private-raw-error"))))
         val output = tool(ProfileInformationState(loaded = true, profiles = listOf(part))).execute(buildJsonObject { put("query", "orphan") })
         val records = Json.parseToJsonElement(output.text).jsonObject["results"]!!.jsonArray
         assertEquals(1, records.size)
         val operation = records.single().jsonObject["operation"]!!.jsonObject
         assertEquals("orphan:22", operation["key"]!!.jsonPrimitive.content)
         assertEquals("CONNECTING", operation["pending"]!!.jsonPrimitive.content)
-        assertEquals("Connection operation failed", operation["error"]!!.jsonPrimitive.content)
+        assertEquals(buildJsonObject { put("kind", "SERVER_ERROR") }, operation["error"])
         assertFalse(output.text.contains("private-raw-error"))
     }
 

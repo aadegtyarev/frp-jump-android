@@ -2,9 +2,12 @@ package ru.adsrv.frpjump.ops
 
 /*
  * The typed reasons of every operation. Kotlin seals a hierarchy per package, so all of them live here; the operations and the
- * adapters that word them live next to their domain. A payload is a fact (an exit status, a message the tunnel manager made), never
+ * adapters that word them live next to their domain. A payload is a fact (an exit status, a typed domain error), never
  * wording owned by this layer.
  */
+
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
+import ru.adsrv.frpjump.errors.DomainError
 
 /** Nothing was started. */
 sealed interface OpRefusal
@@ -46,8 +49,8 @@ sealed interface TunnelRefusal : OpRefusal {
 }
 
 sealed interface TunnelFailure : OpFailure {
-    /** The tunnel did not come up in time; [detail] is the last error the tunnel manager kept for it, when there is one. */
-    data class DidNotComeUp(val detail: String?) : TunnelFailure
-    /** The tunnel is up but the device does not take connections on it; [detail] is the tunnel manager's explanation. */
-    data class DeviceNotListening(val detail: String) : TunnelFailure
+    /** The tunnel did not come up in time; [error] is the last error the tunnel manager kept for it, when there is one. */
+    data class DidNotComeUp(val error: DomainError?) : TunnelFailure
+    /** The tunnel is up but the device does not take connections on it; [reason] says which port is not open. */
+    data class DeviceNotListening(val reason: DevicePortNotOpen) : TunnelFailure
 }

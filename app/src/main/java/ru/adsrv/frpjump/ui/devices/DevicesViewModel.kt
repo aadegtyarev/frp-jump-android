@@ -18,13 +18,14 @@ import ru.adsrv.frpjump.devices.tunnelPorts
 import ru.adsrv.frpjump.devices.tunnelsFirst
 import ru.adsrv.frpjump.session.Notice
 import ru.adsrv.frpjump.ui.connections.ConnectionActions
+import ru.adsrv.frpjump.errors.DomainError
 import java.time.Instant
 
 data class DevicesUiState(
     /** Null until the first answer or the cached list. */
     val devices: List<DeviceRow>? = null,
     val refreshing: Boolean = false,
-    val error: String? = null,
+    val error: DomainError? = null,
     /** Set once a refresh of an old list failed: when the server last answered. */
     val staleSince: Instant? = null,
     /** The failure is the network, not the server. */

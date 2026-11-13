@@ -69,6 +69,8 @@ import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.filterDevices
 import ru.adsrv.frpjump.devices.portsShown
 import ru.adsrv.frpjump.ui.LinkGlyph
+import ru.adsrv.frpjump.ui.userText
+import ru.adsrv.frpjump.errors.DomainError
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.wasOnline
 import ru.adsrv.frpjump.ui.NotificationsOffLine
@@ -176,7 +178,7 @@ fun DevicesScreen(
             if (staleSince != null) {
                 OfflineBanner(staleSince, state.unreachable, state.error, onRetry = vm::pull)
             } else state.error?.let { error ->
-                Text(error, color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                Text(error.userText(), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
             }
             DeviceRows(state, query, openRow, vm::pull, onOpen, onDisconnect = { device -> current?.let { vm.actions.disconnectDevice(it.id, device) } })
         }
@@ -453,7 +455,7 @@ private fun TunnelPorts(ports: List<Int>) {
 
 /** The list is an old one: says since when, and why if known. Tap to try again. */
 @Composable
-private fun OfflineBanner(since: Instant, unreachable: Boolean, error: String?, onRetry: () -> Unit) {
+private fun OfflineBanner(since: Instant, unreachable: Boolean, error: DomainError?, onRetry: () -> Unit) {
     val colors = AppTheme.colors
     Surface(
         onClick = onRetry,
@@ -471,7 +473,7 @@ private fun OfflineBanner(since: Instant, unreachable: Boolean, error: String?, 
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                listOfNotNull(error, stringResource(R.string.tap_to_retry)).joinToString(" · "),
+                listOfNotNull(error?.userText(), stringResource(R.string.tap_to_retry)).joinToString(" · "),
                 color = colors.onWarningContainer,
                 fontSize = 13.sp,
             )

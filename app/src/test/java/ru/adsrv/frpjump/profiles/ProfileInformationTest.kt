@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.profiles
 
+import ru.adsrv.frpjump.errors.DomainError
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -120,7 +121,7 @@ class ProfileInformationTest {
             f.information.refreshAll()
             val stale = f.information.observe().first()
             assertEquals(4, f.deviceRequests.get()); assertEquals(4, f.versionRequests.get())
-            assertTrue(stale.profiles.all { it.devices!!.stale && it.devices.error == "private-server-secret" && it.devices.devices!!.size == 2 })
+            assertTrue(stale.profiles.all { it.devices!!.stale && it.devices.error == DomainError.ServerError("private-server-secret") && it.devices.devices!!.size == 2 })
             f.state.value = f.state.value.copy(index = ProfileIndex(f.profiles + Profile("pending", "Pending", "grey", "secret", true), "home"))
             val unavailable = f.information.observe().first()
             assertEquals("home", unavailable.current)
@@ -138,7 +139,7 @@ class ProfileInformationTest {
         val tunnels = TunnelsState(listOf(Tunnel("same", 22, "secret-grant", 40000, VisitorState(TunnelStatus.DIRECT)),
             Tunnel("other", 502, "secret-grant-2", 40001, VisitorState(TunnelStatus.RELAYED))))
         val devices = DeviceList(listOf(DeviceRow("no-connections", true, null, false), DeviceRow("same", false, null, false),
-            DeviceRow("other", false, null, false)), Instant.EPOCH, stale = true, error = "private-error", unreachable = true)
+            DeviceRow("other", false, null, false)), Instant.EPOCH, stale = true, error = DomainError.ServerError("private-error"), unreachable = true)
         val part = profileInformationPart(p, saved, tunnels, emptySet(), devices)
         val home = profileInformationPart(p.copy(id = "home", name = "Home"), saved, TunnelsState(), emptySet(), DeviceList())
         val information = ProfileInformationState(true, current = "work", profiles = listOf(part, home))
@@ -151,7 +152,7 @@ class ProfileInformationTest {
         val ui = devicesUiState(information, true)
         assertEquals(listOf("same", "other", "no-connections"), ui.devices!!.map { it.name })
         assertEquals(mapOf("same" to listOf(22), "other" to listOf(502)), ui.tunnelPorts)
-        assertEquals("private-error", ui.error); assertEquals(Instant.EPOCH, ui.staleSince); assertTrue(ui.refreshing); assertTrue(ui.unreachable)
+        assertEquals(DomainError.ServerError("private-error"), ui.error); assertEquals(Instant.EPOCH, ui.staleSince); assertTrue(ui.refreshing); assertTrue(ui.unreachable)
         assertNull(devicesUiState(information.copy(current = "home"), false).devices)
         val hidden = setOf(PendingUndo.connectionKey("work", "one"), PendingUndo.tunnelKey("work", "other", 502))
         val undone = profileInformationPart(p, saved, tunnels, hidden, devices)
