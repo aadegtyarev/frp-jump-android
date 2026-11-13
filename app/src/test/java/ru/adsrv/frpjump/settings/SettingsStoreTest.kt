@@ -191,4 +191,30 @@ class SettingsStoreTest {
         assertEquals(true, reread.filesShowHidden)
         assertEquals(folder, reread.filesDownloadFolder)
     }
+
+    @Test
+    fun `lock after is 30 s when missing, invalid or unknown, and other fields are kept`() {
+        assertEquals(AppLockAfter.SECONDS_30, SettingsStore(MemoryStorage()).settings.value.appLockAfter)
+        val bad = listOf("\"2h\"", "5", "null", "true", "{}", "[]", "\"\"", "\"30S\"")
+        for (raw in listOf("") + bad.map { ",\"app_lock_after\":$it" }) {
+            val s = SettingsStore(MemoryStorage("""{"direct":false,"app_lock":true,"theme":"dark"$raw}""")).settings.value
+            assertEquals(raw, AppLockAfter.SECONDS_30, s.appLockAfter)
+            assertEquals(raw, false, s.direct)
+            assertEquals(raw, true, s.appLock)
+            assertEquals(raw, ThemeMode.DARK, s.theme)
+        }
+    }
+
+    @Test
+    fun `every lock after interval is read and survives a rewrite`() {
+        for ((key, after) in mapOf("0s" to AppLockAfter.IMMEDIATELY, "30s" to AppLockAfter.SECONDS_30, "1m" to AppLockAfter.MINUTE_1,
+            "5m" to AppLockAfter.MINUTES_5, "15m" to AppLockAfter.MINUTES_15)) {
+            val storage = MemoryStorage("""{"app_lock":true,"app_lock_after":"$key"}""")
+            val store = SettingsStore(storage)
+            assertEquals(key, after, store.settings.value.appLockAfter)
+            store.update { it.copy(direct = false) }
+            assertEquals(key, after, SettingsStore(storage).settings.value.appLockAfter)
+        }
+        assertEquals(listOf(0L, 30_000L, 60_000L, 300_000L, 900_000L), AppLockAfter.entries.map { it.ms })
+    }
 }
