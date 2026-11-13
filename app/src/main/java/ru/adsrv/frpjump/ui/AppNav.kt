@@ -434,10 +434,8 @@ internal fun NavHostController.openAssistant() = navigate(Routes.CHAT) { launchS
 
 /** Whether Settings > LLM assistant is on, followed live. */
 @Composable
-internal fun assistantEnabledNow(app: FrpJumpApp): Boolean {
-    val flow = remember(app) { app.settings.settings.map { it.assistantEnabled }.distinctUntilChanged() }
-    return flow.collectAsStateWithLifecycle(app.settings.settings.value.assistantEnabled).value
-}
+internal fun assistantEnabledNow(app: FrpJumpApp): Boolean =
+    app.settings.settings.collectAsStateWithLifecycle().value.assistantEnabled
 
 /** A tab's screen above the bottom navigation; the screen keeps its own status bar padding. */
 @Composable
