@@ -41,7 +41,7 @@ class AssistantToolReceiptsTest {
         compose.onNodeWithTag("chat_tool_group_0_item_1").assertTextContains("gate7", substring = true)
         compose.onNodeWithTag("chat_tool_group_1").performClick()
         compose.onNodeWithTag("chat_tool_group_1_item_0").assertTextContains("uptime", substring = true)
-        compose.onNodeWithTag("chat_tool_group_1_item_1").assertTextContains("df -h /var/log/very-long-directory-na…", substring = true)
+        compose.onNodeWithTag("chat_tool_group_1_item_1").assertTextContains("df -h /var/log/very-long-directory-name/…", substring = true)
         compose.onNodeWithTag("chat_tool_group_1_item_2").assertTextContains("echo hidden", substring = true)
     }
 
