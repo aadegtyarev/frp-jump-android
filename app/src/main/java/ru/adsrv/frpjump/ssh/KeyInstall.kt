@@ -174,6 +174,12 @@ class KeyInstallTarget(
     fun withUser(other: String) = if (other == user) this else KeyInstallTarget(profile, hostKeys, device, port, other, logins, localPort)
 }
 
+/** What [KeyLoginFlow] needs of a key-login run; a seam so tests need no network. */
+interface KeyInstalling {
+    suspend fun install(target: KeyInstallTarget, typed: String?): KeyInstallResult
+    fun cancel()
+}
+
 /**
  * "Use key login": puts the phone's key into the device's
  * `authorized_keys` over an open session's connection (else a password
@@ -181,7 +187,7 @@ class KeyInstallTarget(
  * the remembered method and forgets the password. Anything short of that
  * leaves the app's logins as they were.
  */
-class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSessions) {
+class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSessions) : KeyInstalling {
     /** What the run going now has open: closed by [cancel]. */
     private val open = mutableListOf<Closeable>()
 
@@ -193,7 +199,7 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
      * session's, only the channel it ran on), which ends the blocked call.
      * Closing talks to the network, so it is done off the main thread.
      */
-    fun cancel() {
+    override fun cancel() {
         val now = synchronized(open) {
             cancelled = true
             open.toList().also { open.clear() }
@@ -217,7 +223,7 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
     }
 
     /** [typed] null: an open session's connection, else the remembered password. Runs on the IO dispatcher. */
-    suspend fun install(target: KeyInstallTarget, typed: String?): KeyInstallResult = withContext(Dispatchers.IO) {
+    override suspend fun install(target: KeyInstallTarget, typed: String?): KeyInstallResult = withContext(Dispatchers.IO) {
         synchronized(open) { cancelled = false }
         try {
             run(target, typed)

@@ -70,6 +70,7 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
+import ru.adsrv.frpjump.ssh.HostKeyStore
 import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.ssh.toAuth
@@ -251,6 +252,8 @@ class FilesSession(
     // Narrow scheduling/metadata seams; normal callers keep the same IO and phone-provider behavior.
     private val cleanupDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val pickFile: (Uri) -> PickedFile = { PhoneFiles.picked(app, it) },
+    // Test seam for the host-key answers; null: the profile's own store.
+    private val hostKeysOverride: HostKeyStore? = null,
 ) : FilesKeeper.Session {
     var target: FilesTarget? = app.fileTargets.get(targetId)
         private set
@@ -424,12 +427,14 @@ class FilesSession(
         runCatching { app.settings.update { it.copy(filesShowHidden = show) } }
     }
 
+    private fun hostKeys(): HostKeyStore? = hostKeysOverride ?: runtime?.hostKeys
+
     fun trustHostKey() {
         val s = _state.value.status as? FilesStatus.HostKeyUnknown ?: return
         val t = target ?: return
         _state.update { it.copy(status = FilesStatus.Starting) }
         scope.launch {
-            val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { runtime?.hostKeys?.pin(t.device, t.port, s.presented) } }
+            val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { hostKeys()?.pin(t.device, t.port, s.presented) } }
             if (failure != null) {
                 val message = Texts.get(R.string.host_key_save_failed, failure.userMessage())
                 _state.update { it.copy(status = FilesStatus.Failed(message)) }
@@ -442,7 +447,7 @@ class FilesSession(
         val t = target ?: return
         _state.update { it.copy(status = FilesStatus.Starting) }
         scope.launch {
-            val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { runtime?.hostKeys?.forget(t.device, t.port) } }
+            val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { hostKeys()?.forget(t.device, t.port) } }
             if (failure != null) {
                 val message = Texts.get(R.string.host_key_forget_failed, failure.userMessage())
                 _state.update { it.copy(status = FilesStatus.Failed(message)) }

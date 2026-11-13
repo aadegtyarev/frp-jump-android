@@ -30,7 +30,7 @@ import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
 import ru.adsrv.frpjump.ssh.KeyInstallResult
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
-import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.KeyInstalling
 import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.PinnedHostKey
 import ru.adsrv.frpjump.ssh.SshAuthMethod
@@ -61,7 +61,7 @@ sealed interface KeyLoginStep {
  * step its dialogs show. Main thread.
  */
 @Stable
-class KeyLoginFlow(private val installer: KeyInstaller, private val scope: CoroutineScope) {
+class KeyLoginFlow(private val installer: KeyInstalling, private val scope: CoroutineScope) {
     var step by mutableStateOf<KeyLoginStep?>(null)
         private set
 
