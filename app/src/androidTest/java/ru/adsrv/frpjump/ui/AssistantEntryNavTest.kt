@@ -116,7 +116,7 @@ class AssistantEntryNavTest {
                 nav = rememberNavController()
                 NavHost(nav, Routes.DEVICES) {
                     composable(Routes.DEVICES) { Section(Tab.DEVICES, "devices") }
-                    composable(Routes.SETTINGS) { Section(Tab.SETTINGS, "settings") }
+                    composable(Routes.SETTINGS) { Box(Modifier.testTag("screen_settings")) { Text("Screen settings") } }
                     assistantRoutes(nav, app)
                 }
             }
@@ -138,12 +138,39 @@ class AssistantEntryNavTest {
     private fun chatEntries() = compose.runOnUiThread { nav.currentBackStack.value.count { it.destination.route == Routes.CHAT } }
     private val draft get() = compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text
 
+    private fun settingsEntries() = compose.runOnUiThread { nav.currentBackStack.value.count { it.destination.route == Routes.SETTINGS } }
+
+    @Test fun settingsHasNoItemInTheBarAndOpensOnceWhateverIsAboveIt() {
+        host()
+        compose.onNodeWithTag("nav_settings").assertDoesNotExist()
+        compose.runOnUiThread { nav.openSettings(); nav.openSettings() }
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.waitForIdle()
+        assertEquals(1, settingsEntries())
+        // Settings -> chat above it -> Settings again: back to the same entry, the chat closed.
+        val settings = compose.runOnUiThread { nav.getBackStackEntry(Routes.SETTINGS) }
+        compose.runOnUiThread { nav.navigate(Routes.CHAT) }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.runOnUiThread { nav.openSettings() }
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.waitForIdle()
+        assertEquals(1, settingsEntries())
+        assertEquals(0, chatEntries())
+        assertSame(settings, compose.runOnUiThread { nav.getBackStackEntry(Routes.SETTINGS) })
+        // Back returns to the section it was opened from, with no bottom bar over Settings.
+        compose.onNodeWithTag("nav_devices").assertDoesNotExist()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        compose.onNodeWithTag("screen_devices").assertIsDisplayed()
+        assertEquals(0, settingsEntries())
+    }
+
     @Test fun theChatIsOpenedOnceWhateverIsAboveIt() {
         host()
         openFromNav()
         val chat = compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) }
         // Chat -> another screen above it (a notification's device card, say) -> the chat again: no second entry, the same one.
-        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.runOnUiThread { nav.openSettings() }
         compose.waitUntil(10_000) { route == Routes.SETTINGS }
         compose.runOnUiThread { nav.openAssistant() }
         compose.waitUntil(10_000) { route == Routes.CHAT }
@@ -190,7 +217,7 @@ class AssistantEntryNavTest {
             })[SettingsViewModel::class.java]
         }
         host()
-        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.runOnUiThread { nav.openSettings() }
         compose.waitUntil(10_000) { route == Routes.SETTINGS }
         compose.runOnUiThread { nav.navigate(Routes.CHAT) }
         compose.waitUntil(10_000) { route == Routes.CHAT }
@@ -260,11 +287,13 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("screen_devices").assertIsDisplayed()
     }
 
-    @Test fun theItemOpensTheChatOverAnotherSectionToo() {
+    @Test fun theChatOpensOverSettingsToo() {
         host()
-        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.runOnUiThread { nav.openSettings() }
         compose.waitUntil(10_000) { route == Routes.SETTINGS }
-        openFromNav()
+        // Settings has no bottom bar: the chat opens from Settings' own row, here by the navigation call that row makes.
+        compose.runOnUiThread { nav.openAssistant() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
         compose.onNodeWithTag("chat_back").performClick()
         compose.waitUntil(10_000) { route == Routes.SETTINGS }
     }
@@ -283,7 +312,7 @@ class AssistantEntryNavTest {
 
     @Test fun theProviderScreenStillWorksFromAChatOpenedThroughSettings() {
         host()
-        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.runOnUiThread { nav.openSettings() }
         compose.waitUntil(10_000) { route == Routes.SETTINGS }
         compose.runOnUiThread { nav.navigate(Routes.CHAT) }
         compose.waitUntil(10_000) { route == Routes.CHAT }
@@ -325,10 +354,10 @@ class AssistantEntryNavTest {
         assertEquals("", compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
     }
 
-    @Test fun theFiveLabelsAreNotCut() {
+    @Test fun theFourLabelsAreNotCut() {
         host()
         for ((tag, label) in listOf("nav_devices" to R.string.tab_devices, "nav_connections" to R.string.tab_connections,
-            "nav_sessions" to R.string.tab_sessions, "nav_settings" to R.string.tab_settings, "nav_assistant" to R.string.tab_assistant)) {
+            "nav_sessions" to R.string.tab_sessions, "nav_assistant" to R.string.tab_assistant)) {
             compose.onNodeWithTag(tag).assertIsDisplayed()
             assertNotCut(text(label), tag)
         }
