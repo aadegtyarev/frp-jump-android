@@ -40,14 +40,14 @@ and safety warnings; visual minimalism must not remove them.
 One chat screen, one conversation, reached three ways; the entry changes nothing about what the chat does.
 
 - Settings → LLM assistant → Chat.
-- The bottom navigation's fifth item, "Assistant" / «Помощник» (a neutral chat-bubble icon). It is shown only while the module is on,
+- The bottom navigation's item after the sections (Devices, Connections, Sessions), "Assistant" / «Помощник» (a neutral chat-bubble icon). It is shown only while the module is on,
   appears and disappears with the setting without a restart, and opens the chat over the current section; Back returns to that
-  section. All five labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
+  section. All the labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
   down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,
   not as an unselected tab. While an attempt runs (a confirmation wait included) the item shows a small dot that takes no room, and
   TalkBack announces its state: "Working" / «Работает», or "Waiting for your answer" / «Ждёт ответа» while a card waits; the dot is gone
   when the attempt ends. The chat has no bottom bar; the dot is shown on the bottom bar of the section screens (Devices, Connections,
-  Sessions, Settings) while an attempt runs, with or without the notification permission.
+  Sessions) while an attempt runs, with or without the notification permission.
 - Terminal ⋮ → "Ask the assistant" / «Спросить помощника», offered only while the module is on. The text selected in the shown tab
   with the app's own selection (a selection made inside tmux copy mode lives on the server; the app does not see it and does not
   quote it) is read from the terminal view when ⋮ is used, never in the background, and goes into the chat draft as a fenced code

@@ -42,16 +42,24 @@ class AssistantNavSourceGuardTest {
     }
 
     @Test fun `section screens are reached only through the bottom bar's tab switch or a full stack replace`() {
-        // TabFrame( appears in the four section routes and in its own declaration, nowhere else.
-        assertEquals(5, Regex("TabFrame\\(").findAll(appNav).count())
-        for ((route, next) in listOf("DEVICES" to "CONNECTIONS", "CONNECTIONS" to "SESSIONS", "SESSIONS" to "DEVICE", "SETTINGS" to "assistantRoutes")) {
-            val body = if (route == "SETTINGS") appNav.substring(appNav.indexOf("composable(Routes.SETTINGS)"), appNav.indexOf("internal fun NavGraphBuilder.assistantRoutes"))
-            else block("composable(Routes.$route)", "composable(Routes.$next")
+        // Sections are Devices, Connections and Sessions: TabFrame( appears in those three routes and in its own declaration, nowhere else.
+        assertEquals(4, Regex("TabFrame\\(").findAll(appNav).count())
+        for ((route, next) in listOf("DEVICES" to "CONNECTIONS", "CONNECTIONS" to "SESSIONS", "SESSIONS" to "DEVICE")) {
+            val body = block("composable(Routes.$route)", "composable(Routes.$next")
             assertEquals("TabFrame( only in the $route route", 1, Regex("TabFrame\\(").findAll(body).count())
         }
         val main = File("src/main/java").walkTopDown().filter { it.extension == "kt" }.toList()
-        for (route in listOf("DEVICES", "CONNECTIONS", "SESSIONS", "SETTINGS"))
+        for (route in listOf("DEVICES", "CONNECTIONS", "SESSIONS"))
             main.forEach { assertFalse("${it.name}: navigate(Routes.$route", it.readText().contains("navigate(Routes.$route")) }
+        // Settings is a stack screen with no bottom bar; it is entered by openSettings alone.
+        for (f in main) {
+            val n = Regex("navigate\\(Routes\\.SETTINGS").findAll(f.readText()).count()
+            assertEquals("${f.name}: navigate(Routes.SETTINGS", if (f.name == "SettingsNav.kt") 1 else 0, n)
+        }
+        val settingsNav = File("src/main/java/ru/adsrv/frpjump/ui/SettingsNav.kt").readText()
+        val open = settingsNav.substring(settingsNav.indexOf("fun NavHostController.openSettings"))
+        assertTrue(open.contains("navigate(Routes.SETTINGS"))
+        assertFalse(block("composable(Routes.SETTINGS)", "internal fun").contains("TabFrame("))
         // Routes.of( is used by goToTab alone.
         assertEquals(1, main.sumOf { Regex("Routes\\.of\\(").findAll(it.readText()).count() })
         val goToTab = block("fun NavHostController.goToTab", "\n}\n")

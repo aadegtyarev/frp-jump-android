@@ -60,6 +60,8 @@ import ru.adsrv.frpjump.ui.caption
 import ru.adsrv.frpjump.ui.devices.DeviceTile
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.SearchBar
+import ru.adsrv.frpjump.ui.SectionTitleRow
+import ru.adsrv.frpjump.ui.SettingsGear
 import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.wasOnline
 
@@ -77,6 +79,7 @@ fun ConnectionsScreen(
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
@@ -143,8 +146,7 @@ fun ConnectionsScreen(
                 item(key = "title") {
                     Column(Modifier.padding(start = 4.dp, top = if (searching) 0.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!searching) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.tab_connections), fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            SectionTitleRow(stringResource(R.string.tab_connections), Modifier.fillMaxWidth()) {
                                 if (all.any { it.active } || restoring != null || disconnecting) {
                                     DisconnectAllButton(busy = disconnecting, onClick = disconnectAll)
                                 }
@@ -156,6 +158,7 @@ fun ConnectionsScreen(
                                         Icon(SearchGlyph, contentDescription = stringResource(R.string.connections_search), tint = colors.ink, modifier = Modifier.size(22.dp))
                                     }
                                 }
+                                SettingsGear(onSettings)
                             }
                         }
                         // Where "Disconnect all" was tapped: why tunnels may come back, until they are back.
@@ -210,7 +213,7 @@ fun ConnectionsScreen(
     ConnectionDialogs(ui, vm.actions, existing = vm::connections, rows = all, onOpenTerminal = onOpenTerminal, onOpenFiles = onOpenFiles)
 }
 
-/** The power button of the Devices bar, for every profile's tunnels; a spinner while servers are told. */
+/** The power button of the Connections header, for every profile's tunnels; a spinner while servers are told. */
 @Composable
 private fun DisconnectAllButton(busy: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
