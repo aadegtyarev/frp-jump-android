@@ -88,6 +88,9 @@ sealed interface KeyInstallResult {
 
     /** Key login works, but the app could not save that it should use it: nothing changed. */
     data class SaveFailed(val detail: String) : KeyInstallResult
+
+    /** The owner's answer about the host key could not be saved: the key is still not trusted ([forgot]: the old key is still pinned). */
+    data class HostKeySaveFailed(val detail: String, val forgot: Boolean) : KeyInstallResult
 }
 
 /**
@@ -147,6 +150,8 @@ fun keyInstallText(result: KeyInstallResult, user: String): KeyInstallText? = wh
     is KeyInstallResult.CommandFailed -> KeyInstallText(R.string.key_install_command_failed, listOf(result.detail), ok = false)
     is KeyInstallResult.ConnectionFailed -> KeyInstallText(R.string.key_install_connection_failed, listOf(result.detail), ok = false)
     is KeyInstallResult.SaveFailed -> KeyInstallText(R.string.key_install_save_failed, listOf(result.detail), ok = false)
+    is KeyInstallResult.HostKeySaveFailed ->
+        KeyInstallText(if (result.forgot) R.string.host_key_forget_failed else R.string.host_key_save_failed, listOf(result.detail), ok = false)
     is KeyInstallResult.PasswordNeeded, is KeyInstallResult.HostKey -> null
 }
 

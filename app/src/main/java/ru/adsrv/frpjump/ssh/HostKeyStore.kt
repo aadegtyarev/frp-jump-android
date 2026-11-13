@@ -62,3 +62,17 @@ class HostKeyStore(private val storage: TextStorage) {
         keys = value
     }
 }
+
+/**
+ * Runs the write of the owner's host-key answer (pin or forget): null when it
+ * was saved, else the failure, so the caller can say that nothing changed.
+ * Cancellation is never swallowed.
+ */
+inline fun hostKeyWriteFailure(write: () -> Unit): Exception? = try {
+    write()
+    null
+} catch (e: kotlinx.coroutines.CancellationException) {
+    throw e
+} catch (e: Exception) {
+    e
+}
