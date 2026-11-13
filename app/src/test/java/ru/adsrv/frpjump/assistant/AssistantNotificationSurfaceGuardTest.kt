@@ -80,4 +80,11 @@ class AssistantNotificationSurfaceGuardTest {
         } }
         assertEquals("incoming intent reads: $found", emptyList<String>(), found)
     }
+
+    @Test fun `the notifier cancels a stale notification before it collects anything, and Stop cancels when no attempt runs`() {
+        val start = notifier.substringAfter("fun start(").substringBefore("override fun cancel")
+        assertTrue(start.indexOf("driver.start()") in 0 until start.indexOf("scope.launch"))
+        val receiver = notifier.substringAfter("class AssistantStopReceiver").substringBefore("class AssistantOpenActivity")
+        assertTrue(receiver.contains("ChatActivity.IDLE") && receiver.contains(".cancel(AssistantNotifier.NOTIFICATION_ID)"))
+    }
 }
