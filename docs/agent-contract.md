@@ -21,12 +21,13 @@ What the assistant can never do. Each rule is stated where it applies:
 - Tunnels: no tunnel creation, start, reconfiguration or deletion is granted to
   the agent. No tool starts or controls a tunnel ([tool policy](#tool-policy),
   [tool table](#tool-table)).
-- Credentials: app-stored credentials are not tool arguments or results, and no
-  model credentials are accepted ([SSH command](#optional-ssh-command),
-  [profile information](#optional-profile-information)). No credentials are
-  automatically attached to requests ([Instructions](#instructions)). The
-  provider key is sent only to its configured target
-  ([External API adapter](#external-api-adapter)).
+- Credentials: no current tool takes or returns app-stored credentials, and
+  `ssh_command` accepts no credentials from the model; the rules are in
+  [SSH command](#optional-ssh-command) and
+  [profile information](#optional-profile-information). No credentials are
+  automatically attached to model requests' content
+  ([Instructions](#instructions)). The provider key is sent only to its
+  configured target ([External API adapter](#external-api-adapter)).
 
 Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
@@ -67,11 +68,11 @@ Kotlin coroutines/JSON already used by the app, not an agent framework.
 ### Module lifetime and revocation
 
 The app owns the opt-in setting and module lifetime. Every successfully
-committed disable advances an in-memory invalidation version, even if a
-conflated settings observer sees only the later enabled value. Admission and
+committed disable revokes admitted work, even a rapid off/on that an observer
+sees only as enabled. Admission and
 run ownership check that authority directly; the observer cancels stale child
 jobs. Failed writes do not invalidate work. Enabling again cannot revive an old
-run. This version is process-local: no execution survives process restart and
+run. This revocation is process-local: no execution survives process restart and
 no persistent journal is needed. Neutral providers need no admission API: the
 app checks admission before each provider call. Transports that start their own
 network work (public web, image) check admission immediately before each start.
@@ -95,6 +96,9 @@ with complete, context-full, step-limit, model-timeout, provider-failed or
 invalid-reply status; cancellation propagates to its caller. Tool outcomes are
 success, failed, timeout, unknown-tool or declined (the owner refused the call;
 nothing ran), distinct from the run's finish status.
+
+Timeouts and cancellation are cooperative: provider and tool adapters must
+support cancellation of their own I/O.
 
 ### Limits
 
@@ -244,7 +248,8 @@ every limit. The compact summarizer prompt is `assets/assistant/summary.md`
 compiled into the app are the fixed image-inspection question wording, the
 summary request framing text ("Earlier conversation summary", "Previous
 summary / Observed conversation"), tool descriptions and schemas, and fixed
-tool-result texts. No automatic app context is attached.
+tool-result texts. No automatic app context is attached. A changed prompt asset
+gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
 version 5) and only enabled tool schemas. The prompt contains no profile,
@@ -367,6 +372,13 @@ uncancellable DNS lookup finishes and no HTTP request starts afterwards.
 An old completion
 cannot publish an answer/error or release another owner's pending slot.
 
+The shared guard is held only for start checks and short publications, never
+across storage, credential, network, DNS, parsing, image or SSH work, so Stop,
+editing and commits never wait for that work; a settings or provider commit
+also does not wait for the work it cancels. Releasing the slot still waits for
+that work's actual exit, as described above. The lock order is in KDoc (see
+[Related surfaces](#related-surfaces-and-implementation-references)).
+
 ### Automatic working summaries
 
 Before kernel window selection, Chat compares the estimated request size,
@@ -433,8 +445,8 @@ does not waive that conditional safety requirement.
 
 ### Tool switches
 
-Settings → LLM assistant → Tools has one independent persisted switch per tool
-of the [tool table](#tool-table), in table order, and, above them, the app-wide
+Settings → LLM assistant → Tools has one independent persisted switch per
+available tool of the [tool table](#tool-table) and, above them, the app-wide
 confirmation switch ("Ask before changing commands", on by default). Today the
 tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
 image (`inspect_image`), Profile information (`profile_information`) and SSH
@@ -448,21 +460,21 @@ same owner, draft and completed history, including across recreation; actual Cha
 pop still cancels work and releases route memory; accepted history remains encrypted.
 
 Tools autosaves each switch; there is no Save button or optimistic checked value.
-Both Settings and Chat use one shared Tools-specific binding per parent ViewModel.
+Settings and Chat show the same switches with the same autosave.
 One immutable presentation snapshot contains the actual committed tool booleans
 (one per tool) and the confirmation switch,
 pending IDs and fixed inline save failures. Checked, progress/enabled and failure
 are rendered from that same snapshot, not independent checked/completion channels.
-Real storage work runs off Main. On completion, Main reads the latest canonical
-Store tools and publishes them together with clearing that operation's pending
-state and setting/clearing its error. It never assumes requested equals committed.
-Store notifications also read current canonical tools, not captured old emissions,
-while preserving pending/errors. External/concurrent writes cannot be rolled back
+Real storage work runs off Main. On completion the shown values are the latest
+committed ones, published together with clearing that switch's pending state and
+setting or clearing its error. It never assumes requested equals committed.
+Store notifications show current committed values and keep pending and error
+state. External/concurrent writes cannot be rolled back
 by a delayed acknowledgement. Same-ID pending actions are ignored without a queue;
 different IDs may save independently, preserving unrelated settings.
 
 Back hides Tools without cancelling the parent-owned save; reopen and recreation
-retain that binding and pending/error state. Actual parent pop/clear cancels child
+retain the parent-owned autosave and its pending/error state. Actual parent pop/clear cancels child
 operations and prevents old UI publication. Already executing blocking storage may
 still commit: cancellation does not promise rollback. A new owner reads actual Store
 state and notifications. There are no save completion/navigation callbacks or
@@ -519,7 +531,7 @@ message field is hidden while a question is open; each question opens at its
 top). The four answers are pinned at the bottom of the card; above them a
 section scrolls with the tool, the target by name, never by ID (for a saved
 connection: profile · device · connection; "Unknown connection" when
-unresolved), what the call will run and the tool's warning. For a command
+unresolved), what the call will run, in full, and the tool's warning. For a command
 (today `ssh_command`) that is the full command (monospace, selectable, always
 left to right, in its own scrolling box with its line count; non-printing and
 disguising characters, including the whole default-ignorable set and long
@@ -532,9 +544,9 @@ every tool (no card, nothing runs).
 Answers: **Allow** (this call), **For session**, **Always**, **Decline**. For
 session covers the tool and the exact target (today a saved connection) until
 the chat screen is left, the assistant is disabled, the tool is switched off,
-the history is cleared, or the target is edited or removed (for a saved
-connection: the connection or its profile; a grant is stamped with the target's
-saved definition and dropped when it changes). A For session grant is in memory
+the history is cleared, or the target, or what it belongs to, is edited or
+removed (for a saved connection: the connection or its profile; a grant is
+stamped with the target's saved definition and dropped when it changes). A For session grant is in memory
 only. Always turns the app-wide switch off after a second confirmation (a dialog
 says what is turned off and where to turn it back on; Cancel returns to the
 question, still waiting); if that cannot be saved, the call is allowed once, an
@@ -567,8 +579,8 @@ before this one; this version reads an unknown outcome name as a failure.
 
 ### Timeouts
 
-Timeouts and cancellation are cooperative: adapters must support cancellation
-of their own I/O. Each tool call runs under the kernel tool timeout
+Timeouts and cancellation are cooperative for provider and tool adapters alike
+([Turn loop](#turn-loop)). Each tool call runs under the kernel tool timeout
 ([Limits](#limits)). The whole Send deadline is 120 seconds of active time
 (paused while the owner is asked); existing kernel per-call limits also apply.
 The owner's confirmation wait is in none of these and has its own five-minute
@@ -626,8 +638,8 @@ are described in each tool's subsection.
 | Tool | Effect | Operation | Arguments | Limits | Confirmation | Disclosure | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `web_search` | `READ_REMOTE` | none: public transport | `query`, at most 256 characters | at most 5 results; 3 searches per Send and 20 per hour, 10 s between attempts; block cooldown at least 15 minutes; shared public budget | never | the query goes to DuckDuckGo; the results go to the model | optional, default off |
-| `read_page` | `READ_REMOTE` | none: public transport | `url`: public HTTPS, port 443 | 8,000 text characters, 100 links and 20 image references per page; shared public budget | never | selected public text goes to the model | optional, default off |
-| `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
+| `read_page` | `READ_REMOTE` | none: public transport | `url`, at most 2,048 characters: public HTTPS, port 443 | 8,000 text characters, 100 links and 20 image references per page; shared public budget | never | selected public text goes to the model | optional, default off |
+| `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr: at most 3,000 characters each, drained | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
@@ -637,6 +649,10 @@ seconds of active time. The public tools share one per-Send budget: 12 public
 HTTP requests including redirect hops, at most 3 redirects per fetch and 1 MiB
 per decoded page, search or image response
 ([Search and static documents](#search-and-static-documents)).
+
+The table summarizes; each tool's subsection governs the details. Qualifiers
+such as "attempted dispatches", the 24-hour bound on Retry-After and UTF-16
+character counts are stated there.
 
 ### Optional profile information
 
@@ -747,9 +763,7 @@ exchanges follows the same bounded encrypted-history lifecycle; a later tool-swi
 does not erase that history.
 This informational tool does not authorize connection control, SSH, device
 HTTP, Files or MQTT tools. It has an accurate private-data disclosure, not a
-full-access claim. Other future connection-tool prototypes still require
-separate approval and the full-access warning; see
-[Adding a tool](#adding-a-tool).
+full-access claim.
 
 ### Optional SSH command
 
@@ -779,10 +793,10 @@ This is distinct from Stop, timeout or owner revocation, whose cancellation and
 stale-publication suppression remain unchanged. This is not an atomic inventory/freshness promise
 or a claim that grant IDs/local ports are unique across lifetimes.
 
-One owner, `SshTargets`, decides target readiness, target loss and the no-dialog
-login rule; the Connections tab's "connect without the dialog" uses the same rule,
-and the Terminal, Connections and Files login dialogs derive credentials from the
-chosen method through one function.
+The assistant's target readiness, target loss and login without a dialog follow
+one rule; the Connections tab's "connect without the dialog" uses the same login
+rule, and the Terminal, Connections and Files login dialogs derive credentials
+from the chosen method the same way.
 The existing connector enforces stored login/refusal and pinned host-key policy.
 The saved connection’s user and the port’s stored auth method apply. Remembered
 password authentication preserves Remember. Missing/unreadable/refused login or
@@ -804,7 +818,7 @@ cancellation before the client, after connect, after authentication and after
 opening the session, and is then cancelled. Stop, disable, revision, pop and
 timeout disconnect only the owned client, including one
 constructed after cancellation, and keep the global slot through actual worker,
-readers and cleanup exit. Tool-only changes affect the next Send, not admitted work; the confirmation switch and session grants are read at each call.
+readers and cleanup exit.
 Timeouts (30 s tool / 120 s of Send active time by default; the confirmation wait is in neither, and has its own 5-minute limit) are cancellation thresholds, not
 remote-kill or cleanup deadlines. No automatic command retry/replay or rollback;
 an admitted command’s effects may remain uncertain. Commands/output enter the
@@ -838,7 +852,8 @@ bounded to 24 hours. No silent resume. Process death resets these limits; this
 is not durable anti-abuse enforcement. Search targets are links, not evidence
 that those target pages were fetched.
 
-Read page accepts public HTTPS HTML, plain text and Markdown. HTML uses pinned
+Read page accepts public HTTPS HTML, plain text and Markdown; its `url` is at
+most 2,048 characters. HTML uses pinned
 jsoup 1.24.1 with desugar_jdk_libs 2.1.5/core-library desugaring for Android 29.
 Useful headings/lists/pre/code whitespace, title/final URL and resolved links/
 image URLs with labels are returned. At most 8,000 text characters, 100 links and
@@ -887,7 +902,8 @@ URL policy and start-admission checks.
 
 Inspect image accepts an explicitly selected public JPEG/PNG under the same
 transport/authority/request budgets. At most 2 inspections per Send, 1 MiB per
-image, 4 megapixels, question at most 1,000 characters. Actual MIME/encoding and
+image, 4 megapixels, `url` at most 2,048 characters, question at most 1,000
+characters. Actual MIME/encoding and
 dimensions are checked using bounds-only decode; animation is rejected, with no
 retained bitmap. A narrow adapter operation uses the same prepared provider,
 root-bound key, model and effort for one non-streaming user-role text + base64
@@ -1018,9 +1034,20 @@ live LLM, SSH or broker compatibility, or physical-device/vendor behavior.
   document and pure projection/error mapping, run ownership under the runtime
   gate, one Send in `TurnRunner`, per-Send tool list in `AssistantToolFactory`)
   and [chat screen](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantChatScreen.kt).
-- Lock order, and which work runs outside the chat gate and store monitors, is
-  documented in the KDoc of the
-  [chat runtime](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantChatRuntime.kt),
-  not in this contract.
+- Implementation mechanics are documented in KDoc, not in this contract: the
+  lock order and which work runs outside the chat gate and store monitors in
+  [`AssistantChatRuntime`](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantChatRuntime.kt),
+  [`bindAssistantLifecycle`](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantLifecycle.kt),
+  [`AssistantProviderStore`](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantProviderStore.kt),
+  [`FrpJumpApi.call`](../app/src/main/java/ru/adsrv/frpjump/api/FrpJumpApi.kt),
+  [`SshCommandOperation`](../app/src/main/java/ru/adsrv/frpjump/ops/ssh/SshCommandOperation.kt),
+  [`AssistantWebTools`](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantWebTools.kt)
+  and [`OpenAiAgentProvider.execute`](../agent-openai/src/main/kotlin/ru/adsrv/frpjump/agent/openai/OpenAiAgentProvider.kt);
+  the disable version in
+  [`AgentModule.refreshAvailability`](../agent-core/src/main/kotlin/ru/adsrv/frpjump/agent/AgentModule.kt);
+  the Tools autosave in
+  [`AssistantToolsBinding`](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantToolsBinding.kt);
+  the SSH target and login owner in
+  [`SshTargets`](../app/src/main/java/ru/adsrv/frpjump/ssh/SshTargets.kt).
 - [Provider store](../app/src/main/java/ru/adsrv/frpjump/assistant/AssistantProviderStore.kt)
   and [settings form](../app/src/main/java/ru/adsrv/frpjump/ui/settings/AssistantProviderScreen.kt).

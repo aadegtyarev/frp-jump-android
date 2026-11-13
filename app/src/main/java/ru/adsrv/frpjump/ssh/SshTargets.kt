@@ -33,6 +33,10 @@ sealed interface SshTargetResolution {
 /**
  * The one answer to "may this saved SSH connection be used now, and how does it log in without a dialog".
  * Never starts tunnels, never prompts, never trusts a host key.
+ * The one owner that decides the assistant's target readiness ([resolveSaved], [isAvailable]), target loss ([watchLost]) and the
+ * no-dialog login rule ([directLogin], [connector]); the Connections tab's "connect without the dialog" calls [directLogin]. The
+ * Terminal, Connections and Files login dialogs derive credentials from the chosen method through one function,
+ * [SshAuthMethod.toAuth] (`SshAuthMapping.kt`).
  */
 class SshTargets(
     private val profiles: StateFlow<ProfilesState>,

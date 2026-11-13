@@ -12,12 +12,13 @@ import ru.adsrv.frpjump.assistant.chat.ChatProbes
  * store's save job on the store's `io` dispatcher and cancels the previous save job. Encoding, sealing and the file write run
  * in that job, outside the gate when `io` dispatches (production uses `Dispatchers.IO`; tests that pass
  * `Dispatchers.Unconfined` run them inline under the gate).
- * Store IO and credential work never run under the gate: the settings store writes under its own monitor, the provider store
- * seals, unseals and writes under its own monitor, and each takes the gate last and only briefly to publish the committed value.
- * Notifications are emitted after store monitors/gate have been released, so state notifications and the cancellation of
- * stale work they trigger run outside store commit monitors.
- * Tool and transport work (requests, DNS, parsing, image preparation, SSH client work) also runs outside the gate: only the
- * start checks of [ru.adsrv.frpjump.agent.SideEffectAdmission] and short guarded publications take it, never the work itself.
+ * In production, store IO and credential work never run under the gate: the settings store writes under its own monitor, the
+ * provider store seals, unseals and writes under its own monitor, and each takes the gate last and only briefly to publish the
+ * committed value. Notifications are emitted after store monitors/gate have been released, so state notifications and the
+ * cancellation of stale work they trigger run outside store commit monitors.
+ * In production, tool and transport work (requests, DNS, parsing, image preparation, SSH client work) also runs outside the
+ * gate: only the start checks of [ru.adsrv.frpjump.agent.SideEffectAdmission] and short guarded publications take it, never
+ * the work itself.
  */
 class AssistantChatRuntime {
     internal val gate = Any()

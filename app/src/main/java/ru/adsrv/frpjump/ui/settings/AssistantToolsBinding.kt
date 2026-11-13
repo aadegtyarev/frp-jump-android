@@ -28,6 +28,10 @@ internal const val CONFIRMATIONS_KEY = "confirmations"
 /** Tools-only autosave owner in the parent ViewModel's Main scope, not the row's lifetime.
  * Pending admission and all presentation publications run in that one scope/context. Store
  * notifications are wakeups: never replay their possibly older AppSettings payload as checked.
+ * Settings and Chat each use this one shared Tools-specific binding, one per parent ViewModel.
+ * On completion of a save, Main reads the latest canonical Store tools after the IO write and publishes them in the same snapshot
+ * that clears that operation's pending state and sets or clears its error. Store notifications read the current canonical Store
+ * tools, never the captured payload of an old emission, and preserve pending and error state.
  */
 internal class AssistantToolsBinding(
     private val store: SettingsStore,
