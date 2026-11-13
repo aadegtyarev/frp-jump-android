@@ -221,13 +221,15 @@ class AssistantChatOwnerTest {
 
     @Test fun `a new Send clears the end of the previous attempt while the screen stays attached`() {
         val h = Harness(holdAt = 2)
-        val chat = h.owner.attach(); h.send(chat); h.idle()
+        val chat = h.owner.attach(); h.send(chat)
+        eventually("the end is told") { h.owner.lastEnd.value.takeIf { it != ChatEnd.NONE } }
+        h.idle()
         assertEquals(ChatEnd.COMPLETED, h.owner.lastEnd.value)
         h.send(chat, "again"); runBlocking { withTimeout(5000) { h.entered.await() } }
         eventually("the new attempt runs") { h.owner.activity.value.takeIf { it != ChatActivity.IDLE } }
         assertEquals("the end of the first attempt is gone while the second runs", ChatEnd.NONE, h.owner.lastEnd.value)
-        h.release.complete(Unit); h.idle()
-        assertEquals(ChatEnd.COMPLETED, h.owner.lastEnd.value)
+        h.release.complete(Unit)
+        eventually("the second end is told") { h.owner.lastEnd.value.takeIf { it == ChatEnd.COMPLETED } }
     }
 
     @Test fun `a Stop that the provider ignores leaves no end, even when its late reply arrives`() {
@@ -243,6 +245,7 @@ class AssistantChatOwnerTest {
     @Test fun `a failed attempt reports FAILED`() {
         val h = Harness(failing = true)
         val chat = h.owner.attach(); h.send(chat)
+        eventually("the end is told") { h.owner.lastEnd.value.takeIf { it != ChatEnd.NONE } }
         h.idle()
         assertEquals(ChatEnd.FAILED, h.owner.lastEnd.value)
     }
