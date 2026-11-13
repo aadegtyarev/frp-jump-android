@@ -69,6 +69,9 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ports.localPortKey
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
+import ru.adsrv.frpjump.ssh.HostKeyStore
+import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
+import ru.adsrv.frpjump.ssh.hostKeyWriteDetail
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.ssh.toAuth
 import ru.adsrv.frpjump.ssh.PinnedHostKey
@@ -249,6 +252,8 @@ class FilesSession(
     // Narrow scheduling/metadata seams; normal callers keep the same IO and phone-provider behavior.
     private val cleanupDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val pickFile: (Uri) -> PickedFile = { PhoneFiles.picked(app, it) },
+    // Test seam for the host-key answers; null: the profile's own store.
+    private val hostKeysOverride: HostKeyStore? = null,
 ) : FilesKeeper.Session {
     var target: FilesTarget? = app.fileTargets.get(targetId)
         private set
@@ -422,13 +427,18 @@ class FilesSession(
         runCatching { app.settings.update { it.copy(filesShowHidden = show) } }
     }
 
+    private fun hostKeys(): HostKeyStore? = hostKeysOverride ?: runtime?.hostKeys
+
     fun trustHostKey() {
         val s = _state.value.status as? FilesStatus.HostKeyUnknown ?: return
         val t = target ?: return
         _state.update { it.copy(status = FilesStatus.Starting) }
         scope.launch {
-            withContext(Dispatchers.IO) { runtime?.hostKeys?.pin(t.device, t.port, s.presented) }
-            load(_state.value.path, refresh = false)
+            val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { hostKeys()?.pin(t.device, t.port, s.presented) } }
+            if (failure != null) {
+                val message = Texts.get(R.string.host_key_save_failed, hostKeyWriteDetail(failure))
+                _state.update { it.copy(status = FilesStatus.Failed(message)) }
+            } else load(_state.value.path, refresh = false)
         }
     }
 
@@ -437,8 +447,11 @@ class FilesSession(
         val t = target ?: return
         _state.update { it.copy(status = FilesStatus.Starting) }
         scope.launch {
-            withContext(Dispatchers.IO) { runtime?.hostKeys?.forget(t.device, t.port) }
-            load(_state.value.path, refresh = false)
+            val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { hostKeys()?.forget(t.device, t.port) } }
+            if (failure != null) {
+                val message = Texts.get(R.string.host_key_forget_failed, hostKeyWriteDetail(failure))
+                _state.update { it.copy(status = FilesStatus.Failed(message)) }
+            } else load(_state.value.path, refresh = false)
         }
     }
 
@@ -1090,7 +1103,7 @@ class FilesSession(
     private suspend fun connected(port: Int): SftpBrowser = connectLock.withLock {
         browser?.takeIf { it.isOpen && it.connector.localPort == port }?.let { return it }
         val t = checkNotNull(target)
-        val hostKeys = checkNotNull(runtime).hostKeys
+        val hostKeys = hostKeysOverride ?: checkNotNull(runtime).hostKeys
         browser?.let { old -> withContext(Dispatchers.IO) { old.close() } }
         browser = null
         val made = SshConnector(t.profile, hostKeys, t.device, t.port, port, t.user, t.auth, app.sshEnv)

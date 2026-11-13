@@ -265,8 +265,11 @@ A folder that cannot be entered from an otherwise live listing reports the
 failure and leaves the current folder visible.
 
 Unknown or changed host keys stop access for the shared SSH trust decision;
-never silently accept a changed key. Refused authentication offers Change login
-rather than a blind retry. A target/login no longer available says the session
+never silently accept a changed key. If saving Trust (or forgetting the old key)
+fails, the key is not trusted (or the old one stays pinned), the screen shows
+that error with Retry, and nothing crashes. The error names only the kind of
+failure ("no space left", "no access" or "write error"), never a path or an exception message. Refused authentication offers
+Change login rather than a blind retry. A target/login no longer available says the session
 is gone, not that an empty folder was read successfully. A missing external app
 or unshareable cache URI produces a visible handover failure, not a crash.
 

@@ -222,7 +222,11 @@ profile without re-enrollment.
 - Rename, change and delete a connection from the card or the Connections tab.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
-  told as such, with "Open over HTTP". SSH → built-in terminal. MQTT → explorer. TCP → shows and copies the local address.
+  told as such, with "Open over HTTP". If saving Trust in the certificate fails,
+  the page stays closed (fail closed) and the owner sees "Could not save trust
+  in the certificate (<kind>). Not opened." with "Try again"; the kind is
+  "no space left", "no access" or "write error" (one wording, shared with host
+  keys), never a path or an exception message. SSH → built-in terminal. MQTT → explorer. TCP → shows and copies the local address.
   Existing TCP connections, including port 1883, stay TCP; “Open as MQTT”
   converts the kind and opens the explorer without changing the wire protocol
   or requiring an active tunnel to stop. See the [MQTT contract](mqtt-contract.md).
