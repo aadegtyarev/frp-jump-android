@@ -65,12 +65,21 @@ class AppLock(
     private var current: Prompt? = null
     private var lastId = 0
 
+    /** The app's own launch of an external window, held while locked (see [holdLaunch]). */
+    private class Held(val owner: Any, val launch: () -> Unit)
+
+    private var held: Held? = null
+
     /** [afterMs]: Settings › Lock after, read at this start. */
     fun onStart(enabled: Boolean, afterMs: Long = LockPolicy.DEFAULT_TIMEOUT_MS) {
         _locked.value = policy.onStart(clock(), enabled, afterMs)
     }
 
-    fun onStop() = policy.onStop(clock())
+    fun onStop() {
+        policy.onStop(clock())
+        // Out of sight while locked: the held launch is dropped, except for the prompt's own stops.
+        if (!policy.authenticating) held = null
+    }
 
     /** The app is launching a window of its own; see [LockPolicy.handoff]. */
     fun handoff() = policy.handoff(clock())
@@ -79,6 +88,40 @@ class AppLock(
     fun unlock() {
         policy.unlocked()
         _locked.value = false
+        // Nothing was protected (no screen lock any more, or the setting went off): no window opens later.
+        held = null
+    }
+
+    /**
+     * The app is about to launch an external window ([launch] does it). While
+     * locked it must not appear over the lock screen: [launch] is kept, the
+     * latest only, and runs once after a successful unlock; true means "held",
+     * the caller must not launch. Dropped by [onStop] (not the prompt's own),
+     * [onDestroy] of [owner] and [unlock]. Not held: unlocked, and the prompt's
+     * own launch ([isPromptLaunch]).
+     */
+    fun holdLaunch(owner: Any, action: String?, launch: () -> Unit): Boolean {
+        if (!_locked.value || isPromptLaunch(action)) return false
+        held = Held(owner, launch)
+        return true
+    }
+
+    /**
+     * The system's confirm-device-credential screen, which androidx.biometric
+     * starts for the PIN fallback (BiometricFragment: Fragment.startActivityForResult
+     * with KeyguardManager.createConfirmDeviceCredentialIntent) while a prompt is
+     * open. It arrives at the activity as an ordinary startActivityForResult with
+     * no marker of its fragment (the fragment goes through the activity result
+     * registry, shared with the app's own pickers), so it is told by its platform
+     * action. The app itself never launches these actions.
+     */
+    fun isPromptLaunch(action: String?): Boolean = current != null && action in CREDENTIAL_ACTIONS
+
+    private fun runHeld() {
+        val h = held ?: return
+        held = null
+        // E.g. no activity for it any more: nothing to say, the owner can repeat the action.
+        runCatching { h.launch() }
     }
 
     /**
@@ -86,6 +129,7 @@ class AppLock(
      * answered. It is dropped without a result and unlocks nothing.
      */
     fun onDestroy(owner: Any) {
+        if (held?.owner === owner) held = null
         val prompt = current ?: return
         if (prompt.owner !== owner) return
         current = null
@@ -119,6 +163,7 @@ class AppLock(
             policy.authFinished(success = success, now = clock())
             if (success) _locked.value = false
             onResult(result)
+            if (success) runHeld()
         }
         val listener = object : PromptListener {
             override fun succeeded() = end(true, AuthResult.Success)
@@ -143,6 +188,12 @@ class AppLock(
     }
 
     companion object {
+        /** `KeyguardManager.createConfirmDeviceCredentialIntent` actions (hidden constants), with and without a user. */
+        val CREDENTIAL_ACTIONS = setOf(
+            "android.app.action.CONFIRM_DEVICE_CREDENTIAL",
+            "android.app.action.CONFIRM_DEVICE_CREDENTIAL_WITH_USER",
+        )
+
         /** The phone has a PIN, pattern or password: the prompt always has something to ask for. */
         fun hasScreenLock(context: Context): Boolean =
             context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true

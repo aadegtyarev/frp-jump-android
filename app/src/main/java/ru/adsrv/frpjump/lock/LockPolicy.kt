@@ -28,7 +28,8 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
     private var leftAt: Long? = null
 
     /** A prompt is up: stops and starts are its own. */
-    private var authenticating = false
+    var authenticating = false
+        private set
 
     /** The screen is in sight (between [onStart] and [onStop]). */
     private var started = false

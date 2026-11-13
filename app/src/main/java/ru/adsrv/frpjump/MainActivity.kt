@@ -169,15 +169,22 @@ class MainActivity : AppCompatActivity() {
     // Windows the app opens itself (picker, share, installer, browser, SSH client) take the screen out of sight:
     // the one place that marks them, see LockPolicy.handoff.
     override fun startActivity(intent: Intent, options: Bundle?) {
-        super.startActivity(intent, options)
-        // After the launch took: one that throws (no such activity) opens no window.
-        app.lock.handoff()
+        // Locked: held until the unlock (or dropped), never over the lock screen.
+        if (app.lock.holdLaunch(this, intent.action) { launchAndMark { super.startActivity(intent, options) } }) return
+        launchAndMark { super.startActivity(intent, options) }
     }
 
     @Deprecated("Deprecated in Java")
     override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
         @Suppress("DEPRECATION")
-        super.startActivityForResult(intent, requestCode, options)
+        if (app.lock.holdLaunch(this, intent.action) { launchAndMark { super.startActivityForResult(intent, requestCode, options) } }) return
+        @Suppress("DEPRECATION")
+        launchAndMark { super.startActivityForResult(intent, requestCode, options) }
+    }
+
+    /** After the launch took: one that throws (no such activity) opens no window, so no handoff. */
+    private inline fun launchAndMark(launch: () -> Unit) {
+        launch()
         app.lock.handoff()
     }
 

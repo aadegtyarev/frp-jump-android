@@ -212,4 +212,125 @@ class AppLockTest {
         assertTrue(lock.locked.value)
         // Without the abandon the policy still thinks a prompt is up, and the start would return "unlocked".
     }
+
+    // Held launches: nothing the app opens may appear over the lock screen.
+
+    private var ran = 0
+    private fun hold(action: String? = "android.intent.action.VIEW", who: Any = owner) = lock.holdLaunch(who, action) { ran++ }
+    private val credential = "android.app.action.CONFIRM_DEVICE_CREDENTIAL"
+
+    @Test
+    fun `a launch is held while locked and runs once after a successful unlock`() {
+        coldStartAsking()
+        assertTrue(hold())
+        assertEquals(0, ran)
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+        // Not again: a later success (turning the setting on, say) has nothing held, with no stop in between.
+        ask()
+        host.listeners.last().succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `a launch is not held while unlocked`() {
+        lock.onStart(enabled = true)
+        lock.unlock()
+        assertFalse(hold())
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `only the latest held launch runs`() {
+        coldStartAsking()
+        val order = mutableListOf<String>()
+        assertTrue(lock.holdLaunch(owner, "a") { order += "first" })
+        assertTrue(lock.holdLaunch(owner, "b") { order += "second" })
+        host.listeners[0].succeeded()
+        assertEquals(listOf("second"), order)
+    }
+
+    @Test
+    fun `a failed or cancelled prompt runs nothing, the next success does`() {
+        coldStartAsking()
+        hold()
+        host.listeners[0].error(BiometricPrompt.ERROR_USER_CANCELED, "x")
+        assertEquals(0, ran)
+        ask()
+        host.listeners[1].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `a stop while locked drops the held launch`() {
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.onStop()
+        lock.onStart(enabled = true)
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `the prompt's own stop keeps the held launch`() {
+        coldStartAsking()
+        assertTrue(hold())
+        lock.onStop()
+        lock.onStart(enabled = true)
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+    }
+
+    @Test
+    fun `destroy of its owner drops the held launch, another owner's destroy does not`() {
+        coldStartAsking()
+        assertTrue(hold())
+        lock.onDestroy(Any())
+        host.listeners[0].succeeded()
+        assertEquals(1, ran)
+        ran = 0
+        lock.onStart(enabled = true, afterMs = 0)
+        lock.onStop()
+        lock.onStart(enabled = true, afterMs = 0)
+        assertTrue(lock.locked.value)
+        // The prompt belongs to another owner, so only the held launch (of [owner]) goes.
+        ask(Any())
+        assertTrue(hold())
+        lock.onDestroy(owner)
+        host.listeners.last().succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `no screen lock any more drops the held launch`() {
+        lock.onStart(enabled = true)
+        assertTrue(hold())
+        lock.unlock()
+        ask()
+        host.listeners[0].succeeded()
+        assertEquals(0, ran)
+    }
+
+    @Test
+    fun `the prompt's own credential screen is never held, an app launch with that action is when no prompt is open`() {
+        coldStartAsking()
+        assertFalse(hold(credential))
+        assertFalse(hold("android.app.action.CONFIRM_DEVICE_CREDENTIAL_WITH_USER"))
+        // Any other launch while the prompt is open is held.
+        assertTrue(hold("android.intent.action.VIEW"))
+        assertTrue(hold(null))
+        host.listeners[0].error(BiometricPrompt.ERROR_USER_CANCELED, "x")
+        // No prompt open: the action alone is not enough.
+        assertTrue(hold(credential))
+    }
+
+    @Test
+    fun `a held launch that throws at the unlock does not break the unlock`() {
+        coldStartAsking()
+        lock.holdLaunch(owner, "a") { throw IllegalStateException("no activity") }
+        host.listeners[0].succeeded()
+        assertFalse(lock.locked.value)
+        assertEquals(listOf<AuthResult>(AuthResult.Success), results)
+    }
 }
