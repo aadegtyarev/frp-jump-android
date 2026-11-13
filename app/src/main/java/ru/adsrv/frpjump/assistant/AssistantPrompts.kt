@@ -14,6 +14,9 @@ import java.nio.charset.CodingErrorAction
  * - [system] is byte-identical in every main chat-loop request of every Send; it holds no version, date, enabled-tool list,
  *   profile name or language;
  * - `tools` follow the fixed catalog order with stable JSON (see `AssistantToolFactory`);
+ * - the owner's own instructions, when set, are appended to the one system message after [system] (blank line, fixed header, text;
+ *   `AgentRequest.systemContent`), so [system] stays its exact byte prefix and there is never a second system message; without
+ *   them the message is exactly [system]; summary requests never carry the owner text;
  * - everything dynamic (summary, history, the current request) comes after the system message;
  * - no provider-specific cache parameter is sent (`OpenAiCacheNeutralityTest`), because not every compatible API accepts one.
  * A summary request uses [summary] instead of [system] and carries no tools.
@@ -22,7 +25,7 @@ import java.nio.charset.CodingErrorAction
  */
 class AssistantPrompts(val system: String, val summary: String) {
     companion object {
-        const val SYSTEM_VERSION = 5
+        const val SYSTEM_VERSION = 6
         const val SUMMARY_VERSION = 2
         const val SYSTEM_ASSET = "assistant/skill.md"
         const val SUMMARY_ASSET = "assistant/summary.md"

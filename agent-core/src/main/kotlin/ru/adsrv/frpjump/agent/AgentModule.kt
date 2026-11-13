@@ -56,6 +56,8 @@ class AgentModule(
         history: List<AgentTurn> = emptyList(),
         limits: AgentLimits = AgentLimits(),
         counter: TokenCounter = Utf8TokenEstimate,
+        /** The owner's own text, captured by the caller at Send admission; empty: none. Text for the model only: never read for a permission, confirmation or tool decision. */
+        ownerInstructions: String = "",
         prepareRequest: suspend (AgentRequest) -> AgentRequest = { it },
         onEvent: (AgentEvent) -> Unit = {},
         /**
@@ -94,14 +96,14 @@ class AgentModule(
                 checkOwner()
                 val prepared = try {
                     withTimeout(limits.modelTimeoutMs) {
-                        prepareRequest(AgentRequest(instructions, specs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens))
+                        prepareRequest(AgentRequest(instructions, specs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens, ownerInstructions))
                     }
                 } catch (timeout: TimeoutCancellationException) { checkOwner(); return@coroutineScope finish(AgentFinish.MODEL_TIMEOUT) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { checkOwner(); return@coroutineScope finish(AgentFinish.PROVIDER_FAILED) }
                 checkOwner()
-                require(prepared.instructions == instructions && prepared.tools == specs && prepared.maxOutputTokens == limits.outputReserveTokens && prepared.turns.last().user == user)
-                val window = selectAgentWindow(instructions, specs, prepared.turns.dropLast(1), prepared.turns.last(), limits, counter)
+                require(prepared.instructions == instructions && prepared.ownerInstructions == ownerInstructions && prepared.tools == specs && prepared.maxOutputTokens == limits.outputReserveTokens && prepared.turns.last().user == user)
+                val window = selectAgentWindow(instructions, specs, prepared.turns.dropLast(1), prepared.turns.last(), limits, counter, ownerInstructions)
                 val request = window.request ?: return@coroutineScope finish(AgentFinish.CONTEXT_FULL)
                 onEvent(AgentEvent.Window(window.omittedTurns, window.omittedExchanges, window.estimatedTokens))
                 checkOwner()

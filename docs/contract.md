@@ -925,7 +925,9 @@ consume settings and write v2 immediately:
 ## Optional LLM assistant
 
 The optional module is off by default. Settings exposes provider setup,
-secure key storage, model discovery, effort and context limits, plus a Chat
+secure key storage, model discovery, effort and context limits, the owner's own
+instructions for the model (guidance only, sent with every message, never
+authority over permissions or confirmations), plus a Chat
 entry for explicit conversations. Automatic working summaries use the chat model
 or an optional other model of the same provider. The configurable trigger defaults
 to 80% of estimated context use, including output reserve; summary calls have no
@@ -1045,7 +1047,8 @@ connection permissions. They cannot access local/tunnel/file targets and perform
 no background activity.
 Discovery and explicit chat send the provider credential only to its configured
 target under the [assistant contract](agent-contract.md). Discovery does not send
-chat; Chat sends explicit text/history, fixed instructions and enabled
+chat; Chat sends explicit text/history, fixed instructions, the owner's own
+instructions when the owner set them (they go with every message) and enabled
 tool schemas/results, including private profile/device/connection information only
 when the explicitly enabled information tool is invoked, and commands/output when
 the SSH tool is invoked. App/connection data is never automatically attached.

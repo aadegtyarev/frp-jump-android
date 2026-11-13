@@ -1214,6 +1214,14 @@
     <string name="chat_message">Сообщение</string>
     <string name="chat_stop">Остановить</string>
     <string name="chat_send">Отправить</string>
+    <string name="assistant_owner_title">Свои указания</string>
+    <string name="assistant_owner_hint">Уходят провайдеру с каждым сообщением и занимают место в контексте. Только стиль и предпочтения: разрешения и подтверждения они не меняют.</string>
+    <string name="assistant_owner_field">Указания</string>
+    <string name="assistant_owner_counter">%1$d / %2$d</string>
+    <string name="assistant_owner_counter_spoken">%1$d из %2$d символов</string>
+    <string name="assistant_owner_reset">Сбросить</string>
+    <string name="assistant_owner_set">Заданы</string>
+    <string name="assistant_owner_not_set">Не заданы</string>
     <string name="assistant_tools">Инструменты</string>
     <string name="assistant_tools_notice">При использовании включённых инструментов выбранные публичные тексты и изображения, а также частные сведения о профилях, устройствах и подключениях передаются настроенной модели. Веб-запросы идут в DuckDuckGo. Токены модели, включая анализ изображений, оплачиваются. Изменения — для следующего запроса; текущий может завершиться с прежними инструментами. История сохраняется. Открытие и изменение инструментов не запускает запросы.</string>
     <string name="tool_search">Поиск в интернете</string>
