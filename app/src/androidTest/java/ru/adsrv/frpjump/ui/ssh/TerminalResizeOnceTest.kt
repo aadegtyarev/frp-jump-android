@@ -123,7 +123,7 @@ class TerminalResizeOnceTest {
                 val modifiers = remember { Modifiers() }
                 var value by remember { mutableStateOf(TextFieldValue("")) }
                 Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
-                    SettledSizeBox(Modifier.weight(1f).fillMaxWidth().background(Color.Black).onSizeChanged { boxHeight = it.height }) {
+                    SettledSizeBox(expectKey = textMode, modifier = Modifier.weight(1f).fillMaxWidth().background(Color.Black).onSizeChanged { boxHeight = it.height }) {
                         AndroidView(factory = { input }, modifier = Modifier.fillMaxSize())
                     }
                     ExtraKeys(
@@ -221,11 +221,8 @@ class TerminalResizeOnceTest {
     }
 
     @Test fun composerOpenResizesOnce() {
-        // Not exact: the composer grows, then the keyboard it asks for starts as a separate animation
-        // whose frames the system staggers, so a few settles (2 on open, 4 to 6 on close) happen. Only
-        // the final state is pinned here; the counts are printed.
-        measure("composer open", true, exact = false) { compose.onNodeWithTag("terminal_keyboard").performTouchInput { longClick() } }
-        measure("composer close", false, exact = false) { textMode = false }
+        measure("composer open", true) { compose.onNodeWithTag("terminal_keyboard").performTouchInput { longClick() } }
+        measure("composer close", false) { textMode = false }
     }
 
     @Test fun keyboardShowAndHideResizeOnce() {

@@ -640,7 +640,8 @@ fun TerminalScreen(
                 // The grid is resized once when the keyboard, key panel or composer settle, not on
                 // every frame of their animation; the box clips the view (see SettledSizeBox).
                 SettledSizeBox(
-                    Modifier
+                    expectKey = draft.textMode,
+                    modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                         .background(Color.Black),
