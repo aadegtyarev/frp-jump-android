@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextRange
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -80,7 +81,11 @@ class AssistantOwnerInstructionsUiTest {
         assertTrue("wider than allowed: '${r.layoutInput.text}'", r.size.width <= r.layoutInput.constraints.maxWidth)
     }
 
-    private fun counter(shown: Int) = compose.activity.getString(R.string.assistant_owner_counter, shown, 2000)
+    /** The counter is spoken as "N of M characters" (its visible "N / M" is replaced for accessibility). */
+    private fun counter(shown: Int) = compose.activity.getString(R.string.assistant_owner_counter_spoken, shown, 2000)
+    private fun counterNode(shown: Int) = compose.onNode(hasContentDescription(counter(shown)), useUnmergedTree = true)
+    private fun field() = compose.onNode(hasSetTextAction())
+    private fun back() = compose.onNodeWithContentDescription(text(R.string.back)).performClick()
 
     @Test fun screenShowsFieldCounterHintSaveAndResetUncut() {
         show()
@@ -91,8 +96,7 @@ class AssistantOwnerInstructionsUiTest {
         compose.onNodeWithTag("assistant_owner_field").performScrollTo().assertIsDisplayed()
         val hint = compose.onNodeWithText(text(R.string.assistant_owner_hint), useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         assertNotCut(hint)
-        assertNotCut(compose.onNodeWithText(counter(0), useUnmergedTree = true).performScrollTo().assertIsDisplayed())
-        compose.onNodeWithText(counter(0), useUnmergedTree = true).assertExists()
+        counterNode(0).performScrollTo().assertIsDisplayed()
         assertNotCut(compose.onNodeWithText(text(R.string.assistant_owner_reset), useUnmergedTree = true).performScrollTo().assertIsDisplayed())
         val save = compose.onNodeWithText(text(R.string.save)).assertIsDisplayed()
         save.assertIsNotEnabled()
@@ -102,8 +106,8 @@ class AssistantOwnerInstructionsUiTest {
     @Test fun savingPersistsAndLeavesAndTheRowSaysSet() {
         show()
         open()
-        compose.onNode(hasSetTextAction()).performTextInput("Answer briefly.\nPrefer tmux.")
-        compose.onNodeWithText(counter(28), useUnmergedTree = true).assertExists()
+        field().performTextInput("Answer briefly.\nPrefer tmux.")
+        counterNode(28).assertExists()
         compose.onNodeWithText(text(R.string.save)).assertIsEnabled().performClick()
         compose.waitUntil(5000) { saved == "Answer briefly.\nPrefer tmux." }
         compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_owner_entry").fetchSemanticsNodes().isNotEmpty() }
@@ -113,24 +117,65 @@ class AssistantOwnerInstructionsUiTest {
         compose.onNodeWithText("Answer briefly.\nPrefer tmux.", useUnmergedTree = true).assertExists()
     }
 
-    @Test fun resetClearsTheSavedTextAndTheField() {
+    @Test fun resetClearsOnlyTheFieldSaveCommitsAndBackDiscards() {
         show("Prefer tmux.")
         open()
         compose.onNodeWithText("Prefer tmux.", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("assistant_owner_reset").performScrollTo().assertIsEnabled().performClick()
-        compose.waitUntil(5000) { saved == "" }
-        compose.onNodeWithText(counter(0), useUnmergedTree = true).assertExists()
+        // Only the field is cleared; nothing is saved yet, and Save is the way to keep it.
+        counterNode(0).assertExists()
+        assertEquals("Prefer tmux.", saved)
         compose.onNodeWithTag("assistant_owner_reset").assertIsNotEnabled()
-        compose.onNodeWithText(text(R.string.save)).assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.save)).assertIsEnabled()
+        // Back discards the unsaved edit: the saved text is still there and the row still says it is set.
+        back()
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_owner_entry").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("Prefer tmux.", saved)
+        compose.onNodeWithText(text(R.string.assistant_owner_set), useUnmergedTree = true).assertExists()
+        open()
+        compose.onNodeWithText("Prefer tmux.", useUnmergedTree = true).assertExists()
+        // Reset and Save: an empty field saved means no instructions.
+        compose.onNodeWithTag("assistant_owner_reset").performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.save)).assertIsEnabled().performClick()
+        compose.waitUntil(5000) { saved == "" }
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("assistant_owner_entry").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(text(R.string.assistant_owner_not_set), useUnmergedTree = true).assertExists()
     }
 
     @Test fun inputIsLimitedTo2000AndTheCounterShowsTheLimit() {
         show()
         open()
-        compose.onNode(hasSetTextAction()).performTextInput("x".repeat(2100))
-        compose.onNodeWithText(counter(2000), useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        field().performTextInput("x".repeat(2100))
+        counterNode(2000).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.save)).assertIsEnabled().performClick()
         compose.waitUntil(5000) { saved.length == 2000 }
         assertEquals("x".repeat(2000), saved)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun insertingAtTheStartOfAFullFieldKeepsTheLastCharacter() {
+        val full = "x".repeat(1997) + "END"
+        show(full)
+        open()
+        counterNode(2000).assertExists()
+        field().performTextInputSelection(TextRange(0))
+        field().performTextInput("Z")
+        counterNode(2000).assertExists()
+        // Nothing was inserted and nothing was cut from the end, so nothing changed and there is nothing to save.
+        compose.onNodeWithText(text(R.string.save)).assertIsNotEnabled()
+        // A paste in the middle keeps both ends of the old text.
+        field().performTextInputSelection(TextRange(1))
+        field().performTextInput("PPPP")
+        compose.onNodeWithText(text(R.string.save)).assertIsNotEnabled()
+        compose.runOnIdle { assertEquals(full, saved) }
+        // Deleting a character makes room; the next insertion is kept, still without cutting the end.
+        field().performTextInputSelection(TextRange(2000))
+        field().performTextReplacement(full.dropLast(1))
+        field().performTextInputSelection(TextRange(0))
+        field().performTextInput("Z")
+        compose.onNodeWithText(text(R.string.save)).assertIsEnabled().performClick()
+        compose.waitUntil(5000) { saved.length == 2000 }
+        assertEquals("Z" + full.dropLast(1), saved)
+        assertTrue(saved.endsWith("EN"))
     }
 }

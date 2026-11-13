@@ -56,7 +56,7 @@ class AgentModule(
         history: List<AgentTurn> = emptyList(),
         limits: AgentLimits = AgentLimits(),
         counter: TokenCounter = Utf8TokenEstimate,
-        /** The owner's own text, captured by the caller at Send admission; empty: none. Only a text for the model, never read for any decision. */
+        /** The owner's own text, captured by the caller at Send admission; empty: none. Text for the model only: never read for a permission, confirmation or tool decision. */
         ownerInstructions: String = "",
         prepareRequest: suspend (AgentRequest) -> AgentRequest = { it },
         onEvent: (AgentEvent) -> Unit = {},

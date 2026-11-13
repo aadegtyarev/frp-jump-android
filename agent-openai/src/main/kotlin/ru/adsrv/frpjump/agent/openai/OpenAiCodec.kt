@@ -31,8 +31,7 @@ internal object OpenAiCodec {
         put(config.outputLimitField.wire, request.maxOutputTokens)
         config.reasoningEffort?.let { put("reasoning_effort", it) }
         putJsonArray("messages") {
-            add(buildJsonObject { put("role", "system"); put("content", request.instructions) })
-            request.ownerInstructionsMessage()?.let { owner -> add(buildJsonObject { put("role", "system"); put("content", owner) }) }
+            add(buildJsonObject { put("role", "system"); put("content", request.systemContent()) })
             request.turns.forEach { turn ->
                 add(buildJsonObject { put("role", "user"); put("content", turn.user) })
                 turn.exchanges.forEach { exchange ->

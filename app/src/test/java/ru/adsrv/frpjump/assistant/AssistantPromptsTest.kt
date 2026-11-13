@@ -117,7 +117,7 @@ class AssistantPromptsTest {
             val chat = chatWithOwner(scope, { empty }, twoRequestsPerSend(requests))
             try {
                 assertNull(chat.sendAndWait("one").problem)
-                assertTrue(requests.all { it.instructions == TestPrompts.real.system && it.ownerInstructions == "" && it.ownerInstructionsMessage() == null })
+                assertTrue(requests.all { it.instructions == TestPrompts.real.system && it.ownerInstructions == "" && it.systemContent() == TestPrompts.real.system })
             } finally { chat.close() }
         }
         val requests = CopyOnWriteArrayList<AgentRequest>()
@@ -126,7 +126,7 @@ class AssistantPromptsTest {
             assertNull(chat.sendAndWait("one").problem); assertNull(chat.sendAndWait("two").problem)
             assertEquals(4, requests.size)
             assertTrue(requests.all { it.instructions == TestPrompts.real.system && it.ownerInstructions == "Answer briefly.\nPrefer tmux." })
-            assertEquals("## Owner's additional instructions\nAnswer briefly.\nPrefer tmux.", requests.first().ownerInstructionsMessage())
+            assertEquals(TestPrompts.real.system + "\n\n## Owner's additional instructions\nAnswer briefly.\nPrefer tmux.", requests.first().systemContent())
             // The owner's text is not chat history: no turn of any request carries it.
             assertTrue(requests.none { r -> r.turns.any { t -> t.user.contains("Prefer tmux") || t.exchanges.any { e -> e.reply.text.contains("Prefer tmux") } } })
         } finally { chat.close(); scope.cancel() }

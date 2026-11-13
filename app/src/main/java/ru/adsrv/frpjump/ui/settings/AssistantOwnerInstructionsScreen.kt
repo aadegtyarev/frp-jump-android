@@ -6,8 +6,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import ru.adsrv.frpjump.R
@@ -25,8 +28,10 @@ internal fun AssistantOwnerInstructionsEntry(saved: String, onClick: () -> Unit)
 }
 
 /**
- * The owner's own instructions: a multiline field with a counter, Save (writes and leaves) and Reset (clears the saved text at once).
- * Input is normalized as typed (no control characters but a line break, at most [AssistantOwnerInstructions.MAX_CHARS]).
+ * The owner's own instructions: a multiline field with a counter, Save (writes and leaves; an empty field saved means no
+ * instructions) and Reset (clears only the field, so it can be undone by Back, which discards every unsaved edit).
+ * Input is limited as typed: what is inserted loses control characters and invisible direction/tag characters, and is cut so the whole
+ * stays within [AssistantOwnerInstructions.MAX_CHARS] while the text around it is kept.
  * [onSave] completes with null on success or a message; the screen never reads the text for anything else.
  */
 @Composable
@@ -36,36 +41,41 @@ internal fun AssistantOwnerInstructionsScreen(saved: String, onSave: (String, (S
     var failure by remember { mutableStateOf<String?>(null) }
     var active by remember { mutableStateOf(true) }
     DisposableEffect(Unit) { onDispose { active = false } }
-    fun write(text: String, leave: Boolean) {
+    fun save() {
         if (busy) return
         busy = true; failure = null
         val complete: (String?) -> Unit = { error ->
             if (active) {
                 busy = false; failure = error
-                if (error == null) { if (leave) onBack() else value = TextFieldValue("") }
+                if (error == null) onBack()
             }
         }
-        try { onSave(text, complete) } catch (error: Exception) { complete(error.message ?: error.javaClass.simpleName) }
+        try { onSave(value.text, complete) } catch (error: Exception) { complete(error.message ?: error.javaClass.simpleName) }
     }
-    BackHandler(enabled = !busy, onBack = onBack)
+    BackHandler { if (!busy) onBack() }
+    val length = value.text.length
+    val spokenCount = stringResource(R.string.assistant_owner_counter_spoken, length, AssistantOwnerInstructions.MAX_CHARS)
     FormScreen(
         title = stringResource(R.string.assistant_owner_title), action = stringResource(R.string.save), busy = busy,
         actionEnabled = value.text != saved, error = failure, onBack = { if (!busy) onBack() },
-        onAction = { write(value.text, leave = true) },
+        onAction = ::save,
     ) {
         Text(stringResource(R.string.assistant_owner_hint), color = AppTheme.colors.muted)
         Field(stringResource(R.string.assistant_owner_field), value,
             { next ->
-                val text = AssistantOwnerInstructions.normalize(next.text)
-                value = if (text == next.text) next else TextFieldValue(text, TextRange(minOf(next.selection.end, text.length)))
+                val edit = AssistantOwnerInstructions.limitEdit(value.text, next.text, next.selection.end)
+                // As typed (the keyboard's composition kept), unless it had to change.
+                value = if (edit.text == next.text) next else TextFieldValue(edit.text, TextRange(edit.cursor))
                 failure = null
             },
             Modifier.testTag("assistant_owner_field"), singleLine = false, minLines = 6,
             counter = {
-                Text(stringResource(R.string.assistant_owner_counter, value.text.length, AssistantOwnerInstructions.MAX_CHARS),
-                    modifier = Modifier.testTag("assistant_owner_counter"))
+                Text(stringResource(R.string.assistant_owner_counter, length, AssistantOwnerInstructions.MAX_CHARS),
+                    // At the cap: a key that adds nothing more is seen to do so.
+                    color = if (length >= AssistantOwnerInstructions.MAX_CHARS) AppTheme.colors.error else Color.Unspecified,
+                    modifier = Modifier.testTag("assistant_owner_counter").clearAndSetSemantics { contentDescription = spokenCount })
             })
-        TextButton(onClick = { write("", leave = false) }, enabled = !busy && (value.text.isNotEmpty() || saved.isNotEmpty()),
+        TextButton(onClick = { value = TextFieldValue(""); failure = null }, enabled = !busy && value.text.isNotEmpty(),
             modifier = Modifier.testTag("assistant_owner_reset")) { Text(stringResource(R.string.assistant_owner_reset)) }
     }
 }

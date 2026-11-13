@@ -30,8 +30,8 @@ data class AgentExchange(val reply: AgentReply, val results: List<ToolResult> = 
 }
 data class AgentTurn(val user: String, val exchanges: List<AgentExchange> = emptyList())
 /**
- * [instructions] is the base prompt, sent as the first system message and never edited. [ownerInstructions] is the owner's own text
- * (empty: none); an adapter sends it, when non-empty, as a separate system message after the base one, headed [OWNER_INSTRUCTIONS_HEADER].
+ * [instructions] is the base prompt and never edited. [ownerInstructions] is the owner's own text (empty: none). An adapter sends
+ * [systemContent] as the one system message: the base prompt is its exact byte prefix, and without owner text it is the whole message.
  */
 data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val turns: List<AgentTurn>, val maxOutputTokens: Int,
     val ownerInstructions: String = "")
@@ -39,8 +39,15 @@ data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val
 /** Fixed, model-facing heading of the owner's own instructions; the text follows after one line break. */
 const val OWNER_INSTRUCTIONS_HEADER = "## Owner's additional instructions"
 
-/** The text of the owner's message, or null when the owner gave none. */
-fun AgentRequest.ownerInstructionsMessage(): String? = ownerInstructions.takeIf { it.isNotEmpty() }?.let { "$OWNER_INSTRUCTIONS_HEADER\n$it" }
+/** Estimate allowance for the separator and header the owner's text adds to the first message. */
+const val OWNER_FRAMING_TOKENS = 64L
+
+/**
+ * The content of the request's single system message: [AgentRequest.instructions] exactly when the owner gave no text, otherwise
+ * the base prompt followed by a blank line, [OWNER_INSTRUCTIONS_HEADER], a line break and the owner's text.
+ */
+fun AgentRequest.systemContent(): String =
+    if (ownerInstructions.isEmpty()) instructions else "$instructions\n\n$OWNER_INSTRUCTIONS_HEADER\n$ownerInstructions"
 fun interface AgentProvider { suspend fun complete(request: AgentRequest): AgentReply }
 interface AgentTool {
     val spec: ToolSpec
@@ -53,8 +60,8 @@ fun interface TokenCounter { fun count(request: AgentRequest): Long }
 object Utf8TokenEstimate : TokenCounter {
     override fun count(request: AgentRequest): Long {
         fun size(text: String) = text.toByteArray(Charsets.UTF_8).size.toLong()
-        var total = 256L + size(request.instructions)
-        request.ownerInstructionsMessage()?.let { total += size(it) }
+        // The owner's part (separator, header and text) is inside the first message; it adds a framing allowance only when present.
+        var total = 256L + size(request.systemContent()) + if (request.ownerInstructions.isEmpty()) 0 else OWNER_FRAMING_TOKENS
         request.tools.forEach { total += 128 + size(it.name) + size(it.description) + size(it.parameters.toString()) }
         request.turns.forEach { turn ->
             total += 64 + size(turn.user)

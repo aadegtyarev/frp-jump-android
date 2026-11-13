@@ -47,8 +47,8 @@ class AgentModuleTest {
         val plain = ArrayList<AgentRequest>()
         AgentModule(true).run(AgentProvider { request -> plain += request; AgentReply("done") }, emptyList(), "base", "user")
         assertEquals("", plain.single().ownerInstructions)
-        assertNull(plain.single().ownerInstructionsMessage())
-        assertEquals("$OWNER_INSTRUCTIONS_HEADER\nowner text", seen.first().ownerInstructionsMessage())
+        assertEquals("base", plain.single().systemContent())
+        assertEquals("base\n\n$OWNER_INSTRUCTIONS_HEADER\nowner text", seen.first().systemContent())
     }
 
     @Test fun `owner instructions count against the window and never become the history`() {

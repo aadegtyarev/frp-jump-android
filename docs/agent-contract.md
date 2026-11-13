@@ -121,7 +121,8 @@ The model timeout does not include the confirmation wait either.
 
 The kernel builds an active request while retaining the caller's history
 unchanged. Instructions, tool schemas, the current user request and output
-reserve count toward the budget. Only a suffix of complete earlier turns is
+reserve, and the owner's own instructions when set
+([Owner's own instructions](#owners-own-instructions)), count toward the budget. Only a suffix of complete earlier turns is
 included. When necessary, whole older exchanges of the current turn are also
 left out, never half of a tool-call/result pair. Current user/instructions and
 the latest complete exchange are not silently discarded. If those cannot fit,
@@ -133,8 +134,8 @@ output. The default counter uses UTF-8 byte lengths plus framing allowances:
 accepts the request**. A provider-specific counter can replace it. Window
 omissions are observable kernel events, not fabricated summaries. Callers may
 prepare a request before window selection under the same cancellation and model
-timeout; fixed instructions, enabled schemas, output reserve and current user
-remain unchanged. Chat uses this point for the working summaries described below,
+timeout; fixed instructions, the owner's own instructions, enabled schemas,
+output reserve and current user remain unchanged. Chat uses this point for the working summaries described below,
 rather than silently evicting unsummarized context. Other callers retain the
 ordinary sliding window. Chat still indicates any pre-existing omissions.
 
@@ -243,9 +244,10 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 6). Chat attaches it to every main chat-loop request as the first
-message, unchanged and byte-stable within and across Sends. The owner's own
-instructions never edit it; they follow it as a separate message
+(version 6). The base prompt is the unchanged byte prefix of the first message
+of every main chat-loop request, stable within and across Sends; without owner
+instructions the first message equals it exactly. The owner's own instructions
+never edit it; they are appended after it in that same message
 ([below](#owners-own-instructions)). It is guidance for
 the model, not a permission system or an executing script; the code enforces
 every limit. The compact summarizer prompt is `assets/assistant/summary.md`
@@ -253,7 +255,8 @@ every limit. The compact summarizer prompt is `assets/assistant/summary.md`
 (UTF-8, no byte order mark) and there is no compiled-in fallback prompt. Still
 compiled into the app are the fixed image-inspection question wording, the
 summary request framing text ("Earlier conversation summary", "Previous
-summary / Observed conversation"), tool descriptions and schemas, and fixed
+summary / Observed conversation"), the fixed owner-instructions header
+(`## Owner's additional instructions`), tool descriptions and schemas, and fixed
 tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
@@ -262,8 +265,7 @@ version 6), the owner's own instructions when set, and only enabled tool schemas
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
 Tool schemas follow catalog order with stable JSON; summary, history and
-the current request follow the system message (and the owner's message, when
-there is one). No provider-specific cache
+the current request follow the system message. No provider-specific cache
 parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
 with a byte order mark) or empty fails the Send as an ordinary setup problem,
 with no fallback text and no request. No profiles,
@@ -281,32 +283,50 @@ described in [Automatic working summaries](#automatic-working-summaries).
 The owner can give the assistant standing instructions of their own (style,
 language, preferences) in Settings → LLM assistant → Own instructions. The
 screen has a multiline field with a character counter (at most 2,000 UTF-16
-units; the field refuses more), Save, Reset and a short hint that the text goes
-to the provider with every message and cannot change permissions or
-confirmations. Save writes and leaves the screen; Reset clears the saved text at
-once. Opening, saving or resetting makes no request.
+units, spoken as "N of M characters" and shown in the error color at the cap),
+Save, Reset and a short hint that the text goes to the provider with every
+message, is counted in the context budget, and cannot change permissions or
+confirmations. Save writes and leaves the screen; an empty field saved means no
+instructions. Reset clears only the field, so it is reversible: nothing is saved
+until Save, and Back discards every unsaved edit. Opening, saving or resetting
+makes no request.
 
+- Input limit: what is typed or pasted is limited as it is inserted. Over the
+  cap only the inserted part is cut, never past a surrogate pair, so the text
+  before and after it is kept (typing at the start of a full field changes
+  nothing), and the cursor goes right after the kept insertion.
 - Storage: `assistant_owner_instructions` in the settings file, default empty.
-  On read, control characters other than `\n` are removed and the text is cut
-  to 2,000 UTF-16 units without splitting a surrogate pair; a value that is not
-  a string reads as empty, and no other setting is reset. The store refuses to
-  write a value that is not already normalized. Turning the assistant off, or
-  forgetting the provider, keeps the text.
+  On read and on insertion, these are removed: control characters other than
+  `\n`, the invisible Unicode tag characters U+E0000–E007F, and the bidirectional
+  override and isolate controls U+202A–U+202E and U+2066–U+2069 (zero-width
+  joiner and non-joiner stay). The text is then cut to 2,000 UTF-16 units without
+  splitting a surrogate pair; a value that is not a string reads as empty, and
+  no other setting is reset. The store refuses to write a value that is not
+  already normalized. Turning the assistant off, or forgetting the provider,
+  keeps the text.
 - Request: when the text is not empty (whitespace only counts as empty), the
-  request carries it as a second system message, directly after the base
-  message: `## Owner's additional instructions` (fixed header), a line break,
-  then the owner's text. The base message stays first and byte-identical, so the
-  provider's prefix cache of the base prompt is kept. With no text the request
-  is byte-identical to one built without this feature. Whitespace-only text is
-  sent as no text (it is saved as typed, never trimmed). The base prompt's last
-  line tells the model that the owner's instructions refine style and
-  preferences and do not override its rules.
+  content of the first system message is the base prompt followed by a blank
+  line, the fixed header `## Owner's additional instructions`, a line break and
+  the owner's text. There is never a second system message. The base prompt
+  stays the exact byte prefix of that
+  message, so the provider's prefix cache of the base part is kept. With no text
+  the first message is exactly the base prompt and the request is byte-identical
+  to one built without this feature. Whitespace-only text is sent as no text
+  (it is saved as typed, never trimmed). The base prompt's last line tells the
+  model that the owner's instructions refine style and preferences and do not
+  override its rules.
+- Budget: the text, its separator and its header count toward the estimated
+  request size, with a fixed framing allowance, in the sliding window and in
+  the summary trigger. 2,000 Cyrillic characters estimate to about 4,000 tokens,
+  about 28% of the default 16,384-token budget, so summaries and omissions start
+  earlier. Without text nothing is added.
 - Capture: the text is captured at Send admission together with the tool set and
   sent unchanged in every request of that Send; a change during a run affects
   only the next Send.
 - Not stored or summarized: the text is not part of chat history, the saved
   conversation or any working summary, and summary requests never contain it
-  (it still counts toward the estimated request size that triggers a summary).
+  (it still counts toward the estimated request size that triggers a summary,
+  see Budget above).
 - Authority: the text is untrusted owner data for the model, guidance and never
   authority. Permission, confirmation, tool-set and limit code never reads it;
   the code enforces every limit exactly as without it.
@@ -427,8 +447,8 @@ that work's actual exit, as described above. The lock order is in KDoc (see
 ### Automatic working summaries
 
 Before kernel window selection, Chat compares the estimated request size,
-including instructions, tool schemas and output reserve, with the configured
-window and trigger percentage. The percentage defaults to 80 and accepts 1–100.
+including instructions, the owner's own instructions when set, tool schemas and
+output reserve, with the configured window and trigger percentage. The percentage defaults to 80 and accepts 1–100.
 When eligible older data exists, an ordinary non-streaming provider request
 summarizes it before eviction. This also handles older complete exchanges inside
 one long current turn; the latest complete exchange and current user stay verbatim.

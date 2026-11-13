@@ -90,7 +90,7 @@ class AssistantSummaryTest {
         val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},model::complete,TestPrompts.real.summary)
         val result=engine.prepare(AgentRequest("base",emptyList(),listOf(turn),512,ownerInstructions="OWNER-SECRET-STYLE"))
         assertTrue(summaryRequests.isNotEmpty())
-        assertTrue(summaryRequests.all { it.instructions==TestPrompts.real.summary && it.ownerInstructions=="" && it.ownerInstructionsMessage()==null })
+        assertTrue(summaryRequests.all { it.instructions==TestPrompts.real.summary && it.ownerInstructions=="" && it.systemContent()==TestPrompts.real.summary })
         assertTrue(summaryRequests.none { r -> r.instructions.contains("OWNER-SECRET") || r.turns.any { t -> t.user.contains("OWNER-SECRET") } })
         assertFalse(doc.summary.toString().contains("OWNER-SECRET"))
         assertEquals("OWNER-SECRET-STYLE",result.ownerInstructions)

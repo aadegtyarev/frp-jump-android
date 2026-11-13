@@ -34,6 +34,61 @@ class AssistantOwnerInstructionsSettingsTest {
         assertEquals("abc\ndefg", value)
     }
 
+    @Test fun `invisible tag characters and bidi controls are removed but joiners stay`() {
+        val tag = "󠁁" // U+E0041, a tag letter
+        val value = "a${tag}b‮c‪d‬e⁦f⁩g‍h‌i󠁿"
+        assertEquals("abcdefg‍h‌i", AssistantOwnerInstructions.normalize(value))
+        // Just outside the removed ranges: U+E0080 and U+2065 and U+202F stay.
+        assertEquals("󠂀⁥ ", AssistantOwnerInstructions.normalize("󠂀⁥ "))
+        assertEquals("ab", read("""{"assistant_owner_instructions":"a‮b󠁁"}""").assistantOwnerInstructions)
+        val store = SettingsStore(MemoryStorage())
+        assertThrows(IllegalArgumentException::class.java) { store.setAssistantOwnerInstructions("a‮b") }
+        assertThrows(IllegalArgumentException::class.java) { store.setAssistantOwnerInstructions("a${tag}b") }
+    }
+
+    @Test fun `limitEdit keeps the text around an insertion and cuts only the inserted part`() {
+        val full = "x".repeat(1997) + "END"
+        // Typing at the start of a full field changes nothing; the last character survives.
+        val atStart = AssistantOwnerInstructions.limitEdit(full, "Z$full", 1)
+        assertEquals(full, atStart.text); assertEquals(0, atStart.cursor)
+        // A paste into the middle keeps both ends and the cursor goes right after the kept part.
+        val old = "S" + "m".repeat(1996) + "E"
+        val pasted = AssistantOwnerInstructions.limitEdit(old, "S" + "P".repeat(100) + old.substring(1), 101)
+        assertEquals(2000, pasted.text.length)
+        assertTrue(pasted.text.startsWith("SPP") && pasted.text.endsWith("mE"))
+        assertEquals("S" + "P".repeat(2) + old.substring(1), pasted.text)
+        assertEquals(3, pasted.cursor)
+        // Under the limit nothing changes and the cursor is the keyboard's.
+        assertEquals(AssistantOwnerInstructions.Edit("abXc", 3), AssistantOwnerInstructions.limitEdit("abc", "abXc", 3))
+        assertEquals(AssistantOwnerInstructions.Edit("ab", 1), AssistantOwnerInstructions.limitEdit("abc", "ab", 1))
+        // Exactly at the limit is allowed.
+        val atLimit = AssistantOwnerInstructions.limitEdit("x".repeat(1999), "x".repeat(1999) + "y", 2000)
+        assertEquals(2000, atLimit.text.length); assertEquals(2000, atLimit.cursor)
+        assertEquals("x".repeat(2000), AssistantOwnerInstructions.limitEdit("x".repeat(2000), "x".repeat(2000) + "y", 2001).text)
+    }
+
+    @Test fun `limitEdit sanitizes the insertion and puts the cursor after it`() {
+        val edit = AssistantOwnerInstructions.limitEdit("ab", "a\u0000‮xb", 4)
+        assertEquals("axb", edit.text); assertEquals(2, edit.cursor)
+        val tag = "󠁁"
+        assertEquals(AssistantOwnerInstructions.Edit("ab", 1), AssistantOwnerInstructions.limitEdit("ab", "a${tag}b", 3))
+    }
+
+    @Test fun `limitEdit never splits a surrogate pair`() {
+        val pair = "😀"
+        val old = "x".repeat(1999)
+        // One unit of room: the pair does not fit, none of it is kept.
+        val one = AssistantOwnerInstructions.limitEdit(old, pair + old, 2)
+        assertEquals(old, one.text)
+        // Two units of room: the pair fits whole.
+        val two = AssistantOwnerInstructions.limitEdit("x".repeat(1998), pair + "x".repeat(1998), 2)
+        assertEquals(pair + "x".repeat(1998), two.text); assertEquals(2, two.cursor)
+        // A pair after the common start is kept or dropped whole when cut in the middle of a paste.
+        val cut = AssistantOwnerInstructions.limitEdit("x".repeat(1997) + "E", "x".repeat(1997) + pair + pair + "E", 1999)
+        assertEquals("x".repeat(1997) + pair + "E", cut.text)
+        assertTrue(cut.text.none { it.isHighSurrogate() } || cut.text.windowed(2).none { it.length == 2 && it[0].isHighSurrogate() && !it[1].isLowSurrogate() })
+    }
+
     @Test fun `text is cut to 2000 UTF-16 units without splitting a surrogate pair`() {
         val plain = "x".repeat(2500)
         assertEquals(2000, read("""{"assistant_owner_instructions":"$plain"}""").assistantOwnerInstructions.length)

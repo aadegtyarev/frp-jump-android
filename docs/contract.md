@@ -1004,7 +1004,8 @@ connection permissions. They cannot access local/tunnel/file targets and perform
 no background activity.
 Discovery and explicit chat send the provider credential only to its configured
 target under the [assistant contract](agent-contract.md). Discovery does not send
-chat; Chat sends explicit text/history, fixed instructions and enabled
+chat; Chat sends explicit text/history, fixed instructions, the owner's own
+instructions when the owner set them (they go with every message) and enabled
 tool schemas/results, including private profile/device/connection information only
 when the explicitly enabled information tool is invoked, and commands/output when
 the SSH tool is invoked. App/connection data is never automatically attached.
