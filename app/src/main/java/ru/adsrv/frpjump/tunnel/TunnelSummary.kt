@@ -52,3 +52,10 @@ fun tunnelsTitle(summary: TunnelSummary): TunnelsTitle = when {
  */
 fun notificationTitle(tunnels: String, title: TunnelsTitle, sessions: Int, sessionsText: (Int) -> String): String =
     if (sessions > 0 && title is TunnelsTitle.Up) "$tunnels · ${sessionsText(sessions)}" else tunnels
+
+/**
+ * The launcher badge: the tunnels up, the same count the title says as "N tunnels". Connections
+ * sharing one device port are one tunnel. While none is up (restoring, disconnecting) it is 0,
+ * which a launcher shows as a plain dot.
+ */
+fun tunnelsBadge(summary: TunnelSummary): Int = summary.tunnels

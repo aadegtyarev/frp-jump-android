@@ -513,6 +513,18 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
   notification ("N tunnels in M profiles", "Open", "Disconnect all").
+- Launcher badge: the notification carries the number of tunnels up in all
+  profiles (`setNumber`), and its channel allows badges. Launchers that show
+  numbers (Samsung, Xiaomi) show it on the icon; stock and Pixel launchers show
+  a dot, with the number in the long-press menu. The icon is never swapped.
+  - It counts tunnels, not connections: several connections on one device port
+    share one tunnel, and a tunnel is what runs and what the service keeps
+    alive. It is the same number the title says as "N tunnels", so they never
+    disagree; tunnels hidden while their disconnect waits for Undo are not
+    counted, as in the title.
+  - While none is up (restoring after a restart, disconnecting) the number is
+    0, which launchers show as a plain dot; the service stops with the last
+    tunnel and the badge goes with its notification.
 - Background poll interval: off / 30 s / 1 min / 5 min / 15 min.
 - If Android kills the process, or the phone reboots, while tunnels were up:
   the service starts again by itself and brings back the same connections on

@@ -226,15 +226,9 @@ class TunnelService : Service() {
         val disconnectAll = PendingIntent.getService(
             this, 1, Intent(this, TunnelService::class.java).setAction(ACTION_DISCONNECT_ALL), PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_jump)
-            .setContentTitle(title(res, view))
-            .setContentText(text(res, view))
-            .setContentIntent(open)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .addAction(0, res.getString(R.string.disconnect_all), disconnectAll)
-            .build()
+        return tunnelsNotification(
+            this, view.summary, title(res, view), text(res, view), open, disconnectAll, res.getString(R.string.disconnect_all),
+        )
     }
 
     companion object {
@@ -292,6 +286,28 @@ class TunnelService : Service() {
 /** The tunnels channel ([TunnelService.CHANNEL]), created or renamed in [res]'s language. */
 fun tunnelsChannel(context: Context, res: Resources) {
     context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-        NotificationChannel(TunnelService.CHANNEL, res.getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW),
+        NotificationChannel(TunnelService.CHANNEL, res.getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW)
+            // The launcher's badge (a number or a dot) rides on this channel's notification.
+            .apply { setShowBadge(true) },
     )
 }
+
+/** The foreground notification; its number is the launcher badge ([tunnelsBadge]). */
+internal fun tunnelsNotification(
+    context: Context,
+    summary: TunnelSummary,
+    title: String,
+    text: String?,
+    open: PendingIntent,
+    disconnectAll: PendingIntent,
+    disconnectAllLabel: String,
+): Notification = NotificationCompat.Builder(context, TunnelService.CHANNEL)
+    .setSmallIcon(R.drawable.ic_stat_jump)
+    .setContentTitle(title)
+    .setContentText(text)
+    .setContentIntent(open)
+    .setOngoing(true)
+    .setOnlyAlertOnce(true)
+    .setNumber(tunnelsBadge(summary))
+    .addAction(0, disconnectAllLabel, disconnectAll)
+    .build()
