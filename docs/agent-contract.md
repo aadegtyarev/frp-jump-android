@@ -724,7 +724,7 @@ inline note says so, and requests stay on. Decline, and five minutes without an
 answer (measured in real time, device sleep included), give the model a fixed text (`declined` outcome) and nothing runs. A
 declined call is saved as `DECLINED` (sent to the model as `declined`) and shown
 as "Declined", or "No answer, declined" when the wait ran out, never as a
-failure. Stop, disable, provider changes and the removal of this phone's profile during the wait cancel it and
+failure. In "Tool calls and results", consecutive calls of one tool are one row with a counter ("Profile information ×2", read by TalkBack as "..., 2 calls"); each call shows a short detail taken from its saved arguments (SSH command, search query, page host and path, image name, profile query), cleaned to one line of at most 40 characters with control, bidi and invisible characters removed and never clickable. Older saved turns carry the same arguments; a call without a detail shows its tool name only. Stop, disable, provider changes and the removal of this phone's profile during the wait cancel it and
 run nothing; a late answer or a stale card id is ignored. Leaving the chat does not cancel the wait: a card raised while the chat is
 not shown waits, is shown in the chat when the owner returns and never over other screens, and the lock leaves it waiting behind it.
 The five minutes run meanwhile, in real time with device sleep included: an answer after them is never run (the card ends as "No
