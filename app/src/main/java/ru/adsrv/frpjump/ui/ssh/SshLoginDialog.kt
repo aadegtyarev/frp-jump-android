@@ -6,6 +6,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,7 +78,8 @@ fun SshLoginDialog(
         onDismissRequest = dismiss,
         title = { Text(title ?: stringResource(R.string.ssh_login_title, target), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // The text slot of the dialog does not scroll and clips what does not fit (landscape, 200% font): the body scrolls, the buttons stay.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Field(
                     label = stringResource(R.string.ssh_user),
                     value = user,
