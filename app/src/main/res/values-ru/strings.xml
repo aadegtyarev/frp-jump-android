@@ -1369,4 +1369,11 @@
     <string name="assistant_notice_stop">Стоп</string>
     <string name="terminal_ask_assistant">Спросить помощника</string>
     <string name="chat_quote_truncated">[начало обрезано]</string>
+    <string name="chat_receipt_group">%1$s ×%2$d</string>
+    <plurals name="chat_receipt_group_description">
+        <item quantity="one">%1$s, %2$d вызов</item>
+        <item quantity="few">%1$s, %2$d вызова</item>
+        <item quantity="many">%1$s, %2$d вызовов</item>
+        <item quantity="other">%1$s, %2$d вызова</item>
+    </plurals>
 </resources>

@@ -4,6 +4,11 @@ import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.assistant.chat.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -312,16 +317,43 @@ private fun ChatToolDeclines(receipts: List<ChatToolReceipt>) {
 }
 
 @Composable
-private fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
+internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
     if (receipts.isEmpty()) return
     var expanded by remember { mutableStateOf(false) }
     TextButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("chat_tool_receipts")) {
         Text(stringResource(R.string.chat_history_tool_results))
     }
-    if (expanded) receipts.forEach { receipt ->
-        val outcome = receipt.result?.outcome
-        SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(if (receipt.result.isNoAnswer()) R.string.chat_receipt_no_answer else R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
+    if (expanded) groupReceipts(receipts).forEachIndexed { index, group ->
+        val tool = AssistantToolId.fromWire(group.tool)
+        val title = tool?.let { stringResource(it.title()) } ?: receiptText(group.tool, RECEIPT_DETAIL_CHARS)
+        if (group.items.size == 1) {
+            val receipt = group.items.single()
+            Column(Modifier.testTag("chat_tool_receipt_$index")) {
+                Text(receiptDetail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelLarge)
+                ChatToolReceiptBody(receipt)
+            }
+        } else {
+            var open by remember { mutableStateOf(false) }
+            val count = group.items.size
+            val description = pluralStringResource(R.plurals.chat_receipt_group_description, count, title, count)
+            Row(Modifier.fillMaxWidth().testTag("chat_tool_group_$index").clickable(role = Role.Button) { open = !open }
+                .semantics(mergeDescendants = true) { contentDescription = description }.padding(vertical = 8.dp)) {
+                Text(stringResource(R.string.chat_receipt_group, title, count), style = MaterialTheme.typography.labelLarge)
+            }
+            if (open) group.items.forEachIndexed { n, receipt ->
+                Column(Modifier.testTag("chat_tool_group_${index}_item_$n")) {
+                    Text(receiptDetail(receipt.call) ?: group.tool, style = MaterialTheme.typography.labelLarge)
+                    ChatToolReceiptBody(receipt)
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun ChatToolReceiptBody(receipt: ChatToolReceipt) {
+    val outcome = receipt.result?.outcome
+    SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(if (receipt.result.isNoAnswer()) R.string.chat_receipt_no_answer else R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
 }
 
 @Composable
