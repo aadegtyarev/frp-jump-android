@@ -29,6 +29,13 @@ import ru.adsrv.frpjump.mqtt.PublishFailure
 import ru.adsrv.frpjump.mqtt.PublishRequest
 import ru.adsrv.frpjump.mqtt.SentTopic
 import ru.adsrv.frpjump.mqtt.wasSent
+import ru.adsrv.frpjump.ops.mqtt.MqttPublish
+import ru.adsrv.frpjump.ops.mqtt.MqttPublishInput
+import ru.adsrv.frpjump.ops.mqtt.MqttTarget
+import ru.adsrv.frpjump.ops.mqtt.MqttWbWrite
+import ru.adsrv.frpjump.ops.mqtt.MqttWbWriteInput
+import ru.adsrv.frpjump.ops.mqtt.MqttWriteHost
+import ru.adsrv.frpjump.ops.mqtt.MqttWriteSession
 import ru.adsrv.frpjump.mqtt.SnapshotState
 import ru.adsrv.frpjump.mqtt.SnapshotEnd
 import ru.adsrv.frpjump.mqtt.TopicNode
@@ -72,13 +79,7 @@ import ru.adsrv.frpjump.mqtt.WbWriteOwner
 import ru.adsrv.frpjump.mqtt.wbWritable
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWriteBook
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbControl
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWidget
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WbWrite
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.WriteView
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.awaitsEcho
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.currentValue
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.writeBlocked
-import ru.adsrv.frpjump.mqtt.plugins.wirenboard.widgetOf
 import ru.adsrv.frpjump.mqtt.plugins.wirenboard.writeView
 import kotlinx.coroutines.flow.update
 
@@ -433,24 +434,26 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
      */
     fun writeWb(owner: WbWriteOwner?, control: WbControl, payload: String) {
         val s = session ?: return
-        if (!s.ownsWbWrites(owner) || !wbWritable(s.tree, control)) return
-        val now = System.currentTimeMillis()
-        val history = s.tree.history(control.path)
-        if (writeBlocked(wbWrites.value.writes[control.path]?.takeIf { it.owner === owner }, control.meta, history, now)) return
-        val widget = widgetOf(control.meta)
-        val shown = if (widget == WbWidget.WO_SWITCH) wbWrites.value.sent[control.path] else currentValue(control.meta, history)
-        val write = WbWrite(control.path, payload, awaitsEcho(control.meta, widget, shown, payload), now, owner = owner)
-        wbWrites.update { it.copy(writes = it.writes + (control.path to write)) }
-        writeWaiting = true
-        s.publishWb(owner, control, payload) { answer ->
-            if (!s.ownsWbWrites(owner)) return@publishWb
-            val at = System.currentTimeMillis()
-            // Pure CAS transform: exact-write identity owns both answer and wo-switch feedback.
-            wbWrites.update { book ->
-                if (s.ownsWbWrites(owner)) book.answered(write, answer, at, widget == WbWidget.WO_SWITCH) else book
+        viewModelScope.launch { wbWrite(MqttWbWriteInput(MqttTarget(s.profile, s.connectionId), owner, control, payload)) }
+    }
+
+    /** The open session as the MQTT write operations see it: its own members. */
+    private val writeHost = object : MqttWriteHost {
+        override fun session(target: MqttTarget): MqttWriteSession? = session?.takeIf { it.profile == target.profile && it.connectionId == target.connectionId }?.let { s ->
+            object : MqttWriteSession {
+                override fun publish(topic: String, payload: ByteArray, qos: Int, retain: Boolean, done: (PublishAnswer) -> Unit) { s.publish(topic, payload, qos, retain, done) }
+                override fun ownsWbWrites(owner: WbWriteOwner?) = s.ownsWbWrites(owner)
+                override fun wbWritable(control: WbControl) = wbWritable(s.tree, control)
+                override fun history(path: MqttPath) = s.tree.history(path)
+                override fun publishWb(owner: WbWriteOwner?, control: WbControl, payload: String, done: (PublishAnswer) -> Unit) { s.publishWb(owner, control, payload, done) }
             }
         }
     }
+
+    private val mqttPublish = MqttPublish(writeHost)
+
+    /** The book is this ViewModel's, not the session's: answers do not outlive the screen. */
+    private val wbWrite = MqttWbWrite(writeHost, wbWrites, onSending = { writeWaiting = true })
 
     /** Back in a device: its list; the tree's branch is live again. */
     fun closeWbDevice() {
@@ -680,10 +683,11 @@ class MqttViewModel(private val app: FrpJumpApp, val sessionId: Int) : ViewModel
     fun publish(request: PublishRequest, done: (PublishAnswer) -> Unit) {
         val s = session ?: return done(PublishAnswer.Failed(PublishFailure.NOT_CONNECTED))
         val memory = app.mqttPublished
-        s.publish(request.topic, request.payload.toByteArray(Charsets.UTF_8), request.qos, request.retain) { answer ->
-            viewModelScope.launch(Dispatchers.Main) { done(answer) }
+        viewModelScope.launch {
+            val answer = mqttPublish(MqttPublishInput(MqttTarget(s.profile, s.connectionId), request)).toPublishAnswer()
+            done(answer)
             if (wasSent(answer)) {
-                viewModelScope.launch(Dispatchers.IO) {
+                launch(Dispatchers.IO) {
                     // Under the store's lock, so overlapping sends show in the order they were stored.
                     synchronized(memory) {
                         // A failed write (a full disk) keeps what was sent in memory; the send itself went.

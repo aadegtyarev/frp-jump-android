@@ -8,7 +8,7 @@ surface covers the `ops/` package (the operation interface, results and typed re
 adapter must keep. It does not describe what each product surface does; see the related contracts.
 
 Consumers: the assistant tools `ssh_command` and `profile_information` (through `OperationTool`) and the Connections actions (through
-`ui/OpTexts.kt`; `ConnectionActions` is their thin adapter and keeps the navigation glue: opening SSH, MQTT and Files, login at once). Maintainers add an operation by implementing `Operation` and one adapter per caller.
+`ui/OpTexts.kt`; `ConnectionActions` is their thin adapter and keeps the navigation glue: opening SSH, MQTT and Files, login at once). The MQTT publish sheet and Wiren Board devices tab use `mqtt_publish` and `wb_write` through `ui/mqtt/MqttPublishAnswers.kt` and `MqttViewModel`. Maintainers add an operation by implementing `Operation` and one adapter per caller.
 
 ## Interface
 
@@ -45,6 +45,8 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
 | `tunnel_down` (`TunnelDown`) | `CHANGE_LOCAL` (the commit tells the server later) | UI only (Connections, Devices, device card) | `OpResult<Unit>` | `TunnelRefusal.ProfileGone` (device and profile targets) | none |
 | `direct_retry` (`DirectRetry`) | `CHANGE_LOCAL` | UI only (device card, Connections) | `OpResult<Unit>` | none | none |
 | `direct_keep` (`DirectKeep`) | `CHANGE_LOCAL` | UI only (device card, Connections) | `OpResult<Unit>` | `DirectRefusal.NoNetwork` | none |
+| `mqtt_publish` (`MqttPublish`) | `CHANGE_REMOTE` | UI only (MQTT publish sheet) | `OpResult<MqttDelivery>` (`ACCEPTED`, `UNCONFIRMED`) | `MqttRefusal`: `NotConnected` | `MqttFailure`: `BrokerRefused(code, reasonString)` (`KNOWN`), `ConnectionLost`, `NoAnswer`, `Other(detail)` (`UNKNOWN`) |
+| `wb_write` (`MqttWbWrite`) | `CHANGE_REMOTE` | UI only (MQTT Wiren Board devices tab) | `OpResult<MqttDelivery>` | `MqttRefusal`: `NotConnected`, `NotOwner`, `NotWritable`, `Blocked` | as `mqtt_publish` |
 
 ### `ssh_exec`
 
@@ -91,6 +93,24 @@ waited for; with nothing shown up, every server is told now (restoring profiles 
 (the "Disconnect all" spinner follows that). The screens start these operations, and `tunnel_connect`, undispatched in the app scope, so
 leaving the screen cancels neither the awaited connect nor the "all" path. The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant does not get it.
 
+### `mqtt_publish` and `wb_write`
+
+Moved out of `ui/mqtt/MqttViewModel.kt` with no change of behavior; [MQTT](../../mqtt-contract.md) still owns what they do. The target is a typed `MqttTarget`
+(profile, connection id), not a `GrantTarget`; the open session is reached through `MqttWriteHost`, which returns none for another target.
+`MqttPublish` sends through `MqttSession.publish` (answered once on the session's thread, `NOT_CONNECTED` unless open, 10 s timeout, no WB
+read-only check) and maps each `PublishAnswer` without losing a case: `Accepted` and `Unconfirmed` are `Done`; a broker refusal is `Failed(BrokerRefused)`
+with `KNOWN`; `LOST`, `TIMEOUT` and `OTHER` are `Failed` with `UNKNOWN`; `NOT_CONNECTED` and `CONTROL_NOT_WRITABLE` are refusals. The publish
+sheet maps the result back to the same `PublishAnswer` (`ui/mqtt/MqttPublishAnswers.kt`) and keeps all wording (`PublishSheet.kt`).
+A send that left the phone cannot be taken back: stopping the caller stops only the wait. A message that left the phone is remembered
+(`PublishMemory`) by the ViewModel after the result, under `synchronized(memory)`, in its own scope: it is lost if the ViewModel is cleared first,
+as before.
+`MqttWbWrite` refuses, in order and before recording or sending anything: no session, a client that is not the exact owner (`ownsWbWrites`),
+a control that is not writable now (`wbWritable`), and a control whose last write has no outcome (`Blocked`: a double tap sends once). It then
+records the write in a `WbWriteBook`, sends with `publishWb` (the session checks owner and writability again in the same actor action as the
+send) and records the answer on exactly that write, from the session's answer even if the caller stopped waiting; an answer after the owner is
+gone or for a replaced write changes nothing. The book belongs to one ViewModel (not the session or the app), so answers do not outlive the screen.
+`onSending` lets the screen read the control more often while a write waits (250 ms). The assistant gets neither operation.
+
 ### `direct_retry` and `direct_keep`
 
 The owner's two answers to "Direct didn't work" over `direct/DirectChoices.kt`. Retry is always done: with a missing profile the tunnel retry is skipped, while `kept.release` and the `retried` bookkeeping still run,
@@ -112,13 +132,13 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
 
 ## Security and privacy
 
-- The operation layer adds no authority: the assistant still has only the tools in the catalog; none of them starts, changes or stops a tunnel (`tunnel_connect`, `tunnel_down`, `direct_*` are UI only).
+- The operation layer adds no authority: the assistant still has only the tools in the catalog; none of them starts, changes or stops a tunnel (`tunnel_connect`, `tunnel_down`, `direct_*`, `mqtt_publish`, `wb_write` are UI only).
 - A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 
 ## Non-goals
 
-- No operation for Files or MQTT publishing yet; each is a later feature with its own contract.
+- No operation for Files yet, and none for MQTT beyond `mqtt_publish` and `wb_write`; each is a later feature with its own contract.
 - Wording of errors for the model is not owned here; changing it is a separate feature.
 - No provider-specific behavior.
 

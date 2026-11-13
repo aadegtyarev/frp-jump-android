@@ -59,3 +59,25 @@ sealed interface TunnelFailure : OpFailure {
     /** The tunnel is up but the device does not take connections on it; [reason] says which port is not open. */
     data class DeviceNotListening(val reason: DevicePortNotOpen) : TunnelFailure
 }
+
+sealed interface MqttRefusal : OpRefusal {
+    /** The session had no open connection (or none for the target); nothing was sent. */
+    data object NotConnected : MqttRefusal
+    /** WB write only: the control is not writable now (its meta changed or went); nothing was sent. */
+    data object NotWritable : MqttRefusal
+    /** WB write only: the accepted client that owned the intent is gone; nothing was sent. */
+    data object NotOwner : MqttRefusal
+    /** WB write only: the control's last write has no outcome yet (a double tap); nothing was sent. */
+    data object Blocked : MqttRefusal
+}
+
+sealed interface MqttFailure : OpFailure {
+    /** MQTT 5: the broker refused with an error reason [code] (and its [reasonString] when it sent one). The broker did not take it: `KNOWN`. */
+    data class BrokerRefused(val code: Int, val reasonString: String?) : MqttFailure
+    /** The connection dropped before the broker answered; the message may have arrived (`UNKNOWN`). */
+    data object ConnectionLost : MqttFailure
+    /** No answer within the publish timeout (`UNKNOWN`). */
+    data object NoAnswer : MqttFailure
+    /** Anything else; [detail] is the exception's class name (`UNKNOWN`). */
+    data class Other(val detail: String?) : MqttFailure
+}
