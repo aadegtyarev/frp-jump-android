@@ -17,8 +17,10 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 This contract owns enrollment, profiles, device discovery/display, saved
 connections, shared local ports, tunnel lifecycle, app settings, updates and
 universal UI rules. Users consume these through Devices, Connections, Sessions,
-Settings and the foreground notification. The bottom navigation lists those four sections; while the
-[assistant](#optional-llm-assistant) is on it adds a fifth item, "Assistant" / «Помощник». Profile runtimes own each profile's
+Settings and the foreground notification. The bottom navigation lists Devices, Connections and Sessions; while the
+[assistant](#optional-llm-assistant) is on it adds a fourth item, "Assistant" / «Помощник». Settings is not a section of it: a gear
+(⚙, "Settings" / «Настройки») at the right end of the Devices, Connections and Sessions headers opens it over the section (scenario 9).
+Profile runtimes own each profile's
 server/session work; the application owns shared ports, sessions, settings and
 pending Undo actions. Screens are not the lifetime owners of running tunnels.
 
@@ -132,7 +134,13 @@ profile without re-enrollment.
 
 ### 2. Switching profiles
 
-- The device list shows one profile at a time; a switcher at the top changes it.
+- The device list shows one profile at a time; a switcher at the top changes it. The Devices header, left to right: the switcher,
+  the tunnel chip (only while this profile has tunnels up), the search magnifier (while there is a list to search) and the gear. The
+  icon buttons sit next to each other, each with its own 44 dp field; the 8 dp gap is only between the switcher and the rest. The
+  chip is the Connections section's link glyph and the number of this profile's tunnels up (tunnels whose disconnect waits for Undo
+  are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural forms kept), as a button that opens Connections. There
+  is no power button in this header: one profile's tunnels go down from a device row (swipe), the device card or Connections'
+  "Disconnect all". The switcher is never narrower than 126 dp at 100% font and 66 dp at 200% at 360 dp with one tunnel up.
 - The visible profile polls every 2 s while the app is open. Other profiles
   poll only while they have tunnels up, at the background interval.
 - "Connections" and the notification show tunnels of all profiles, each
@@ -176,7 +184,7 @@ profile without re-enrollment.
   opened when the network returns.
 - Pull to refresh; the banner goes away on the first good answer.
 - A device row with tunnels open swipes left to show the power button (the
-  bar's glyph and red tint): it disconnects only that device's tunnels of
+  power glyph in red): it disconnects only that device's tunnels of
   this profile, with Undo; the device card's bar has the same button. The row
   slides back on scroll, refresh, Back or a finger landing elsewhere on the
   screen; a tap on a row still opens the card. TalkBack offers it as the row's action
@@ -316,8 +324,13 @@ Quick access to the saved connections of every device, active ones first.
 - From 6 connections, a magnifier in the title opens search, as on Devices:
   it matches the device name or its label (all its connections) or a
   connection's name, compared as in Devices search; nothing found says so.
-- While any tunnel is up (or being restored), the title has the Devices
-  bar's power button: it disconnects every profile's tunnels, with Undo.
+- While any tunnel is up (or being restored), the title has a power button,
+  "Disconnect all": it disconnects every profile's tunnels, with Undo. The
+  header's icons (that button, the magnifier, the gear) are at the right end of
+  the title's row; when the title and the icons do not fit one row (200% font
+  in portrait at 360 dp, for example) the icons take a row of their own and
+  the title is below them, whole, never cut or broken inside a word. The
+  Sessions header is its title and the gear.
 - Nothing saved: "No saved connections yet. Open a device on Devices and tap
   “Connection”."
 
@@ -545,7 +558,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
   long-press menu shows the notification. The icon is never swapped.
   - It counts tunnels, not connections: several connections on one device port
     share one tunnel, and a tunnel is what runs and what the service keeps
-    alive. It is the same number the title says as "N tunnels", so they never
+    alive. It is the same number the Devices tunnel chip shows and TalkBack reads as "N tunnels", so they never
     disagree; tunnels hidden while their disconnect waits for Undo are not
     counted, as in the title.
   - While none is up (restoring after a restart, disconnecting) the
@@ -567,6 +580,13 @@ Settings are grouped by purpose: profile (name and colour, forget profile); tunn
 (direct connection, local port range); background (poll interval, battery);
 security (SSH keys: the phone's and an imported one, unlock with fingerprint, lock after); app (language, theme,
 version and update, MQTT plugins (scenario 12), components and licenses).
+
+- Settings is a screen of the back stack, not a section of the bottom navigation: the gear in the Devices, Connections and
+  Sessions headers opens it, its top bar has a back arrow ("Back" / «Назад») and the title, and there is no bottom navigation over it.
+  Back (the arrow or the system Back) returns to the section it was opened from, as it was. There is only one Settings in the
+  back stack: opening it while it is there returns to it and closes the screens above it. Screens opened from Settings (profile,
+  SSH keys, the assistant's chat and provider, MQTT plugins, licenses and the rest) return to it on Back. Every in-app path into
+  Settings (the update announcement's "Show", the chat's "Set up" while the assistant is off) opens this same screen.
 
 - "Forget profile": disconnects its tunnels, deletes the phone from that
   server (offline: local wipe only), wipes its credentials and cached lists.
@@ -664,6 +684,8 @@ version and update, MQTT plugins (scenario 12), components and licenses).
 - Release APKs are signed with one release key kept outside the repository.
 - Releases are published as GitHub Releases of this repository, which is
   public: the APK and its `<apk>.sha256`, read without a token.
+- A newer release is announced once per version by a snackbar on the section screens, "Show" opens Settings, where the version
+  row offers it. An announcement that arrives while Settings is shown is taken and not shown later: the row says it.
 - The app checks for a newer release on start and at most once a day, and
   when the owner asks from Settings; shows "Update to x.y.z" with the release
   notes, downloads the APK and hands it to the system installer. Nothing is

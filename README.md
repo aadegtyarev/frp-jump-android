@@ -111,8 +111,8 @@ port, which stay keyed by (profile, device, port).
   saved connection are listed too, as "Port N", so they can be
   disconnected.
 - Disconnect (a row, a device card), "Disconnect all" (Connections tab,
-  every profile) and the power button on the Devices bar (the profile
-  shown) do not ask. The tunnel goes dark at once: its rows show it down,
+  every profile) and the power button on a device row or card (that
+  device's tunnels) do not ask. The tunnel goes dark at once: its rows show it down,
   its port leaves the device row, the chip and the notification count it no
   more, and its terminal and MQTT sessions leave the tabs and the Sessions
   tab. A top notice "Disconnected: N · Undo" stays about 6 s. Only when it
@@ -138,7 +138,11 @@ port, which stay keyed by (profile, device, port).
 - The bottom navigation: Devices, Connections, Sessions (the open terminal
   and MQTT explorer sessions; a tap returns to one, ✕ at the row's end
   closes it with Undo: "Closed: N · Undo", the session ending only when
-  the notice goes), Settings.
+  the notice goes); Assistant is added while the assistant is on. Settings
+  is not in it: a gear at the right end of the Devices, Connections and
+  Sessions headers opens Settings as a screen with a back arrow. The Devices
+  header has no power button; its tunnel chip is the Connections glyph and
+  the number, read by TalkBack as "N tunnels".
 
 Upgrading from 0.2.0-beta1 (or 0.1.x) turns each profile's ports into
 connections on its first start: every port the owner added keeps its
