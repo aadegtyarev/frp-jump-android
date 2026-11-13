@@ -342,7 +342,7 @@ class SshSession(
         }
         scope.launch(Dispatchers.IO) {
             val failure = hostKeyWriteFailure { hostKeys.pin(device, port, presented) }
-            if (failure != null) fail(decision, Texts.get(R.string.host_key_save_failed, failure.detail()))
+            if (failure != null) fail(decision, Texts.get(R.string.host_key_save_failed, hostKeyWriteDetail(failure)))
             else connectOwned(retrying = false, expected = decision)
         }
     }
@@ -356,12 +356,11 @@ class SshSession(
         }
         scope.launch(Dispatchers.IO) {
             val failure = hostKeyWriteFailure { hostKeys.forget(device, port) }
-            if (failure != null) fail(decision, Texts.get(R.string.host_key_forget_failed, failure.detail()))
+            if (failure != null) fail(decision, Texts.get(R.string.host_key_forget_failed, hostKeyWriteDetail(failure)))
             else connectOwned(retrying = false, expected = decision)
         }
     }
 
-    private fun Exception.detail() = message ?: javaClass.simpleName
 
     /** Tells the remote side the terminal's size (SSH `window-change`). */
     fun resize(columns: Int, rows: Int) {

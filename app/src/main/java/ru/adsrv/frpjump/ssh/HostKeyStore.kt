@@ -68,7 +68,7 @@ class HostKeyStore(private val storage: TextStorage) {
  * was saved, else the failure, so the caller can say that nothing changed.
  * Cancellation is never swallowed.
  */
-inline fun hostKeyWriteFailure(write: () -> Unit): Exception? = try {
+inline fun hostKeyWriteFailure(crossinline write: () -> Unit): Exception? = try {
     write()
     null
 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -76,3 +76,6 @@ inline fun hostKeyWriteFailure(write: () -> Unit): Exception? = try {
 } catch (e: Exception) {
     e
 }
+
+/** What a failed host-key write says to the owner: the error's own message, else its kind. One wording for every caller. */
+fun hostKeyWriteDetail(failure: Exception): String = failure.message ?: failure.javaClass.simpleName

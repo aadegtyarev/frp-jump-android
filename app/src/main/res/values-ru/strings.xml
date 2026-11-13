@@ -371,7 +371,7 @@
     <string name="web_open_http">Открыть по HTTP</string>
     <string name="web_http_on_443">Открыто по HTTP только сейчас: порт 443 всегда открывается по HTTPS. Для HTTP укажите порт, на котором устройство его отдаёт.</string>
     <string name="web_not_tls_unsaved">Открыто по HTTP, но у подключения осталось HTTPS — измените его через «Изменить» в меню подключения.</string>
-    <string name="host_key_save_failed">Не удалось сохранить ключ хоста (%s). Ему не доверяют. Попробуйте ещё раз.</string>
+    <string name="host_key_save_failed">Не удалось сохранить ключ хоста (%s). Ключ не стал доверенным. Попробуйте ещё раз.</string>
     <string name="host_key_forget_failed">Не удалось забыть старый ключ хоста (%s). Он по-прежнему доверенный.</string>
     <string name="cert_refused">Не открыто: вы не доверились сертификату.</string>
     <string name="cert_try_again">Попробовать снова</string>

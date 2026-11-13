@@ -267,8 +267,8 @@ failure and leaves the current folder visible.
 Unknown or changed host keys stop access for the shared SSH trust decision;
 never silently accept a changed key. If saving Trust (or forgetting the old key)
 fails, the key is not trusted (or the old one stays pinned), the screen shows
-that error with Retry, and nothing crashes. Refused authentication offers Change login
-rather than a blind retry. A target/login no longer available says the session
+that error with Retry, and nothing crashes. Refused authentication offers
+Change login rather than a blind retry. A target/login no longer available says the session
 is gone, not that an empty folder was read successfully. A missing external app
 or unshareable cache URI produces a visible handover failure, not a crash.
 

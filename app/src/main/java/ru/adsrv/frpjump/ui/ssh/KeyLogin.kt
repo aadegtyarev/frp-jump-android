@@ -28,6 +28,7 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
+import ru.adsrv.frpjump.ssh.hostKeyWriteDetail
 import ru.adsrv.frpjump.ssh.KeyInstallResult
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
 import ru.adsrv.frpjump.ssh.KeyInstalling
@@ -39,7 +40,6 @@ import ru.adsrv.frpjump.ssh.keyInstallText
 import ru.adsrv.frpjump.ssh.loginRefusalText
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.notice
-import ru.adsrv.frpjump.ui.userMessage
 
 /** Where "Use key login" is: the dialog it shows, if any. */
 sealed interface KeyLoginStep {
@@ -98,7 +98,7 @@ class KeyLoginFlow(private val installer: KeyInstalling, private val scope: Coro
             }
             if (failure != null) {
                 // Nothing was trusted: the owner may retry from the start or close.
-                step = KeyLoginStep.Done(s.target, KeyInstallResult.HostKeySaveFailed(failure.userMessage(), forgot = s.check is HostKeyCheck.Changed))
+                step = KeyLoginStep.Done(s.target, KeyInstallResult.HostKeySaveFailed(hostKeyWriteDetail(failure), forgot = s.check is HostKeyCheck.Changed))
             } else run(s.target)
         }
     }

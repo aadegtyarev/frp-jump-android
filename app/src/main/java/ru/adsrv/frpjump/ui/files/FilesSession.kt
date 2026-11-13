@@ -62,7 +62,6 @@ import ru.adsrv.frpjump.files.text.viewable
 import ru.adsrv.frpjump.files.uploadInto
 import ru.adsrv.frpjump.files.visibleListing
 import ru.adsrv.frpjump.locale.Texts
-import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.errors.DomainError
 import ru.adsrv.frpjump.ui.userText
 import ru.adsrv.frpjump.notices.NoticeKind
@@ -72,6 +71,7 @@ import ru.adsrv.frpjump.ssh.HostKeyCheck
 import ru.adsrv.frpjump.ssh.HostKeyRejected
 import ru.adsrv.frpjump.ssh.HostKeyStore
 import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
+import ru.adsrv.frpjump.ssh.hostKeyWriteDetail
 import ru.adsrv.frpjump.ssh.offersSavedPassword
 import ru.adsrv.frpjump.ssh.toAuth
 import ru.adsrv.frpjump.ssh.PinnedHostKey
@@ -436,7 +436,7 @@ class FilesSession(
         scope.launch {
             val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { hostKeys()?.pin(t.device, t.port, s.presented) } }
             if (failure != null) {
-                val message = Texts.get(R.string.host_key_save_failed, failure.userMessage())
+                val message = Texts.get(R.string.host_key_save_failed, hostKeyWriteDetail(failure))
                 _state.update { it.copy(status = FilesStatus.Failed(message)) }
             } else load(_state.value.path, refresh = false)
         }
@@ -449,7 +449,7 @@ class FilesSession(
         scope.launch {
             val failure = withContext(Dispatchers.IO) { hostKeyWriteFailure { hostKeys()?.forget(t.device, t.port) } }
             if (failure != null) {
-                val message = Texts.get(R.string.host_key_forget_failed, failure.userMessage())
+                val message = Texts.get(R.string.host_key_forget_failed, hostKeyWriteDetail(failure))
                 _state.update { it.copy(status = FilesStatus.Failed(message)) }
             } else load(_state.value.path, refresh = false)
         }
@@ -1103,7 +1103,7 @@ class FilesSession(
     private suspend fun connected(port: Int): SftpBrowser = connectLock.withLock {
         browser?.takeIf { it.isOpen && it.connector.localPort == port }?.let { return it }
         val t = checkNotNull(target)
-        val hostKeys = checkNotNull(runtime).hostKeys
+        val hostKeys = hostKeysOverride ?: checkNotNull(runtime).hostKeys
         browser?.let { old -> withContext(Dispatchers.IO) { old.close() } }
         browser = null
         val made = SshConnector(t.profile, hostKeys, t.device, t.port, port, t.user, t.auth, app.sshEnv)
