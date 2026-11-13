@@ -146,6 +146,7 @@ fun ConnectionCard(
                             state.second,
                             onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) },
                             chevron = row.tunnel?.direct != DirectMode.KEPT,
+                            onClickLabel = stringResource(R.string.direct_or_server),
                         )
                         // Why Connect is off, where it is.
                         unreachable -> Text(stringResource(R.string.state_device_offline), fontSize = 13.sp, color = colors.muted)

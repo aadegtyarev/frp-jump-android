@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump
 
 import android.app.Application
+import android.app.NotificationManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
@@ -19,8 +20,7 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.api.FrpJumpApi
 import ru.adsrv.frpjump.direct.DirectChoices
 import ru.adsrv.frpjump.direct.DirectKeptStore
-import ru.adsrv.frpjump.direct.DirectOfferedStore
-import ru.adsrv.frpjump.direct.DirectNotifier
+import ru.adsrv.frpjump.direct.DirectChannel
 import ru.adsrv.frpjump.direct.NetworkWatcher
 import ru.adsrv.frpjump.files.FileTargets
 import ru.adsrv.frpjump.files.FilesKeeper
@@ -191,11 +191,8 @@ class FrpJumpApp : Application() {
         private set
     lateinit var directChoices: DirectChoices
         private set
-    lateinit var directNotifier: DirectNotifier
-        private set
     lateinit var restoreRecord: RestoreRecord
         private set
-    private lateinit var directOffered: DirectOfferedStore
 
     /** Settings › Version: newer releases on GitHub, their download and check. */
     lateinit var updater: Updater
@@ -293,7 +290,6 @@ class FrpJumpApp : Application() {
         directKept = DirectKeptStore(AtomicTextFile(File(filesDir, "direct_kept.json")))
         network = NetworkWatcher(this)
         restoreRecord = RestoreRecord(AtomicTextFile(File(filesDir, "restore.json")))
-        directOffered = DirectOfferedStore(AtomicTextFile(File(filesDir, "direct_offered.json")))
         snippets = SnippetStore(AtomicTextFile(File(filesDir, "snippets.json")), AtomicTextFile(File(filesDir, "snippets.corrupt.json")))
         val frpcRoot = File(noBackupFilesDir, "frpc")
         val shared = ProfileShared(
@@ -327,15 +323,12 @@ class FrpJumpApp : Application() {
         profiles = Profiles(store, restoreRecord.profiles, dark) { profile, profileStore, currentId ->
             ProfileRuntime(profile.id, profileStore.credentials(profile), profileStore.dir(profile.id), currentId, shared)
         }
-        directNotifier = DirectNotifier(this, profiles, directOffered, network.id, restoreRecord.profiles).also { it.start(appScope) }
-        directChoices = DirectChoices(profiles, directKept, network.id, directNotifier::retried)
+        directChoices = DirectChoices(profiles, directKept, network.id)
         // Keystore and disk (and the v1 upgrade): off the main thread. The UI waits for it.
         appScope.launch(Dispatchers.IO) {
             snippets.load()
             // Before any profile applies its tunnels.
             directKept.load()
-            // Before any tunnel comes back: offers made before a restart are not made again.
-            directOffered.load()
             // Before any profile polls: which ones bring their tunnels back.
             val restoring = restoreRecord.load().isNotEmpty()
             network.start()
@@ -382,6 +375,11 @@ class FrpJumpApp : Application() {
         // Files handed to other apps a day ago or more (Open with, Share), and viewer copies
         // left behind when the process went: older than a few minutes, no viewer is reading them.
         appScope.launch(Dispatchers.IO) {
+            // Older versions' "Direct didn't work" channel (and with it what is still shown) and offers file.
+            DirectChannel.retireLegacy(
+                { id -> getSystemService(NotificationManager::class.java)?.deleteNotificationChannel(id) },
+                AtomicTextFile(File(filesDir, "direct_offered.json")),
+            )
             PhoneFiles.pruneOpenCache(this@FrpJumpApp, OPEN_CACHE_AGE_MS)
             PhoneFiles.pruneViewCache(this@FrpJumpApp, VIEW_CACHE_AGE_MS)
         }

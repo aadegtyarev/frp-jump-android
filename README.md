@@ -9,8 +9,8 @@ Behaviour is defined in [docs/contract.md](docs/contract.md).
 
 Current stage: profiles (switcher, list, add, name and colour, forget), the
 device list, named connections on the device card and in the Connections
-tab, direct or through-the-server tunnels with the "Direct didn't work"
-notification, the in-app web view (HTTP and HTTPS), the SSH terminal and
+tab, direct or through-the-server tunnels (the card says "Through the server"
+and offers Retry direct / Keep through the server), the in-app web view (HTTP and HTTPS), the SSH terminal and
 settings (direct connection, local ports, background checks, battery
 optimisation, SSH keys), and tunnels coming back after the process is
 killed or the phone reboots, and enrolling by scanning the laptop's QR code. The app has its own light and dark colour scheme
@@ -232,11 +232,9 @@ same local ports, when Android kills the process or the phone reboots.
   optimisation, the app may always start it; Settings shows "Battery ·
   Android may stop tunnels · Fix" while it is not.
 - After a restore the direct-or-server logic runs as on a connect: "Trying
-  direct…", "Direct" or "Through the server". "Direct didn't work" is
-  offered once per device and network: the offers made are kept in
-  `direct_offered.json`, so tunnels brought back that fail the same way
-  do not offer it again. A device is offered again after all its tunnels
-  went direct there, its tunnels are gone, or "Retry direct".
+  direct…", "Direct" or "Through the server". A tunnel that
+  falls back to the server shows "Through the server" on its card; there
+  is no notification and no stored offer.
 - With notifications not allowed (13+) none of these notices can show:
   the device list says so in one line, with "Allow".
 - Force stop in the system settings disables all of this until the app is
@@ -308,17 +306,15 @@ connection never waits for the outcome.
 - A direct tunnel that dies (its periodic check or a connection logs `get
   tunnel connection error` / `open tunnel error`) is "Trying direct…"
   again while frpc punches anew, with the same outcomes.
-- Through the server after trying, for 3 s (a punch confirmed late
-  would otherwise flash it): one "Direct didn't work: <names>"
-  notification per device, naming its failed connections (own channel
-  "Direct connection", apart from the tunnels' one), with "Retry direct"
-  and "Keep through the server"; tapping it opens the device card. The
-  same two answers sit behind the "Through the server ›" state on the card
-  and in the Connections tab; a device kept through the server shows
-  "Kept through the server" (neutral), and tapping it offers "Retry
-  direct". The actions run in the app process, which the foreground
-  service keeps alive, so they work with the app closed; notifications a
-  dead process left behind are removed when it starts again.
+- Through the server after trying: the card shows "Through the server ›"
+  (warning colour; the state pill is a button labelled "Direct or through
+  the server"), in the device card and in the Connections tab. Tapping it
+  offers "Retry direct" and "Keep through the server"; a device kept
+  through the server shows "Kept through the server" (neutral), and
+  tapping it offers "Retry direct". No notification is posted about
+  direct or the server: the "direct" channel older versions used is
+  deleted at every start, with anything left shown on it, and so is their
+  `direct_offered.json`.
 - "Retry direct" acts on the whole device: each of its tunnels that is not
   direct gets its xtcp visitor renamed (`<grant>-xtcp-visitor-N`) and
   frpc reloads: only those visitors restart and punch again; connections
@@ -329,7 +325,7 @@ connection never waits for the outcome.
   cannot count for the new attempt.
 - "Keep through the server" switches the device's tunnels to a single
   stcp visitor on the current network (by reload, same as above): no more
-  attempts or notifications there until "Retry direct" from the card. The
+  direct attempts there until "Retry direct" from the card. The
   choices are kept in `direct_kept.json` per profile, device and network.
   The network is recognised without the location permission the Wi-Fi
   name needs: mobile data is one network; any other is its kind plus a

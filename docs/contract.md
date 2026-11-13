@@ -61,7 +61,8 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   seconds, the action still completes. This covers deleting a connection, a
   snippet or an MQTT pin; forgetting a saved password or login;
   disconnecting a tunnel or all tunnels (it goes dark at once; its terminal
-  and Files sessions close only when Undo is gone); closing a terminal tab
+  and Files sessions close only when Undo is gone; the operation is `tunnel_down`, see
+  [operations](contracts/surfaces/operations.md)); closing a terminal tab
   or a session on the Sessions tab (its shell ends when Undo is gone);
   deleting files; deleting retained MQTT
   topics. Two confirms are left: "Forget profile" (it wipes the phone's
@@ -325,15 +326,16 @@ Quick access to the saved connections of every device, active ones first.
 - Setting "Direct connection (P2P)", on by default.
 - On: connecting shows "Trying direct…" for up to 10 s. Success shows
   "Direct".
-- Direct failed: the connection works through the server right away, the
-  card says "Through the server", and a notification "Direct didn't work:
-  <name>" offers "Retry direct" and "Keep through the server". The second
-  one stops offering for this device on the current network (the Wi-Fi
-  network, recognised without the location permission, or mobile data)
-  until the owner retries from the card.
+- Direct failed: the connection works through the server right away and
+  the card says "Through the server". Tapping the state offers "Retry
+  direct" and "Keep through the server"; the second one stops trying direct
+  for this device on the current network (the Wi-Fi network, recognised
+  without the location permission, or mobile data) until the owner retries
+  from the card.
 - A direct tunnel that drops mid-session falls back to the server the same
-  way, with the same notification.
-- Tapping the state on the card offers the same two actions.
+  way, shown on the card the same way.
+- No notifications about direct or the server; the "direct" channel older
+  versions used is deleted at every start, with anything left shown on it.
 - Off: always through the server, no attempts, no notifications.
 - While a connection is up, its direct tunnel is kept open so it does not
   drop after idle.
@@ -1104,7 +1106,7 @@ These are review scenarios, not a record of tests run or releases published:
   the pending open, not the tunnel. Saved pins are restored for all profiles
   before any Auto allocation; storage failure is not reported as lost identity.
 - Failed direct access falls back to relay with Retry direct / Keep through
-  the server. An SSH session left idle for 10 minutes on a direct tunnel
+  the server on the card. An SSH session left idle for 10 minutes on a direct tunnel
   stays alive. Kill/reboot restores intended
   tunnels on the same local ports; Disconnect clears that intent.
 - QR enrollment works from a light or inverted terminal image and the gallery;

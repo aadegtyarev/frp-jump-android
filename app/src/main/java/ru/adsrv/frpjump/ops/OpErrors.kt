@@ -48,6 +48,11 @@ sealed interface TunnelRefusal : OpRefusal {
     data object ProfileGone : TunnelRefusal
 }
 
+sealed interface DirectRefusal : OpRefusal {
+    /** The phone is on no network the choice can be tied to; nothing changed. */
+    data object NoNetwork : DirectRefusal
+}
+
 sealed interface TunnelFailure : OpFailure {
     /** The tunnel did not come up in time; [error] is the last error the tunnel manager kept for it, when there is one. */
     data class DidNotComeUp(val error: DomainError?) : TunnelFailure
