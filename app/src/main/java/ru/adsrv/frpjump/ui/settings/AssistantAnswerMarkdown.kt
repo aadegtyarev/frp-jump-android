@@ -189,7 +189,7 @@ private fun AssistantTable(content: String, node: ASTNode, style: TextStyle, ann
                     for ((column, cell) in row.withIndex()) {
                         val text = remember(content, cell) {
                             if (cell == null) AnnotatedString("")
-                            else buildMarkdownAnnotatedString(content, cell, style, settings).trimmed()
+                            else content.buildMarkdownAnnotatedString(cell, style, settings).trimmed()
                         }
                         Box(
                             Modifier
