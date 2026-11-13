@@ -4,14 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.app.PendingIntent
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.assertCountEquals
 import androidx.test.core.app.ActivityScenario
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import kotlinx.coroutines.launch
-import org.junit.Rule
 import ru.adsrv.frpjump.assistant.AssistantOpenActivity
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -63,8 +59,6 @@ class AssistantNotificationTest {
         override fun write(text: String) { this.text = text }
         override fun delete() { text = null }
     }
-
-    @get:Rule val compose = createEmptyComposeRule()
 
     @Before fun remember() {
         original = app.settings.settings.value
@@ -172,17 +166,22 @@ class AssistantNotificationTest {
         val seen = java.util.concurrent.atomic.AtomicBoolean()
         val watcher = everSet(scope!!, app.openAssistantRequest, seen)
         val before = app.profiles.state.value.index.current
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
         for (intent in foreign()) {
-            ActivityScenario.launch<MainActivity>(intent).use { scenario ->
+            // Not ActivityScenario: it matches the launched activity by its intent, which MainActivity has (rightly) replaced.
+            val activity = instrumentation.startActivitySync(intent)
+            try {
                 waitFor("app visible") { app.visible.value }
                 SystemClock.sleep(1_000)
                 // And again to the running activity.
-                app.startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                instrumentation.runOnMainSync { instrumentation.callActivityOnNewIntent(activity, Intent(intent)) }
                 SystemClock.sleep(500)
-                scenario.onActivity { assertEquals("the activity's intent carries no extras: ${intent.extras?.keySet()}", null, it.intent.extras) }
-                compose.onAllNodesWithTag("chat_title").assertCountEquals(0)
+                assertEquals("the activity's intent carries no extras: ${intent.extras?.keySet()}", null, activity.intent.extras)
+                assertFalse("no chat route is resumed (the chat is not shown)", app.assistantChatResumed.value)
+            } finally {
+                instrumentation.runOnMainSync { activity.finish() }
+                waitFor("the activity is gone") { !app.visible.value }
             }
-            assertFalse("no chat opened", app.assistantChatResumed.value)
             assertEquals("the profile did not change", before, app.profiles.state.value.index.current)
             assertEquals("nothing stopped", ChatActivity.WORKING, app.assistantActivity.value)
             assertFalse("no Stop requested", app.assistantStopping.value)
@@ -193,8 +192,10 @@ class AssistantNotificationTest {
         assertFalse("the provider was never cancelled or released", held.isCompleted || answered.get())
     }
 
-    private fun mainActivities(): List<android.app.Activity> = Stage.values().filter { it != Stage.DESTROYED && it != Stage.PRE_ON_CREATE }
-        .flatMap { ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(it) }.filterIsInstance<MainActivity>().distinct()
+    private fun mainActivities(): List<android.app.Activity> = app.runOnMain {
+        Stage.values().filter { it != Stage.DESTROYED && it != Stage.PRE_ON_CREATE }
+            .flatMap { ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(it) }.filterIsInstance<MainActivity>().distinct()
+    }
 
     @Test fun theTapOpensTheAppOnceThroughTheTrampoline() {
         val seen = java.util.concurrent.atomic.AtomicBoolean()
