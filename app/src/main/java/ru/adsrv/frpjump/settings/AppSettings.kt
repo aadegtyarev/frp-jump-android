@@ -34,6 +34,20 @@ enum class BackgroundPoll(val ms: Long?) {
     @SerialName("15m") MINUTES_15(900_000L),
 }
 
+/**
+ * Settings › Lock after: how long the app may be out of sight before it asks
+ * again; [ms] 0 is any absence. A value this version does not know is
+ * [SECONDS_30] (see `normalizeAppLockAfter`).
+ */
+@Serializable
+enum class AppLockAfter(val ms: Long) {
+    @SerialName("0s") IMMEDIATELY(0L),
+    @SerialName("30s") SECONDS_30(30_000L),
+    @SerialName("1m") MINUTE_1(60_000L),
+    @SerialName("5m") MINUTES_5(300_000L),
+    @SerialName("15m") MINUTES_15(900_000L),
+}
+
 /** Settings › Theme: as the system, or light or dark whatever the system is. */
 @Serializable(with = ThemeModeSerializer::class)
 enum class ThemeMode(val key: String) {
@@ -78,6 +92,8 @@ data class AppSettings(
      * phone's biometrics or screen lock ([ru.adsrv.frpjump.lock.LockPolicy]).
      */
     @SerialName("app_lock") val appLock: Boolean = false,
+    /** Settings › Lock after: shown while [appLock] is on; kept when it goes off. */
+    @SerialName("app_lock_after") val appLockAfter: AppLockAfter = AppLockAfter.SECONDS_30,
     /**
      * Settings › Hide in Recents: no picture of the app there. Before
      * Android 13, and on some phones after it, that also blocks screenshots.
@@ -223,6 +239,7 @@ class SettingsStore(private val storage: TextStorage) {
             JsonPrimitive((json[key] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)
         }
         val normalized = JsonObject(json + toolFields + ("terminal_history_rows" to JsonPrimitive(history)) +
+            ("app_lock_after" to normalizeAppLockAfter(json["app_lock_after"])) +
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
             ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
             ("assistant_confirmations" to normalizeConfirmations(json["assistant_confirmations"])) +
@@ -231,6 +248,13 @@ class SettingsStore(private val storage: TextStorage) {
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
         return if ("direct" !in json && relayOnly != null) settings.copy(direct = !relayOnly) else settings
+    }
+
+    /** Missing, invalid or unknown is 30 s; nothing else resets. */
+    private fun normalizeAppLockAfter(raw: JsonElement?): JsonElement {
+        val key = (raw as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val known = AppLockAfter.entries.map { WireJson.encodeToJsonElement(it) }.firstOrNull { (it as JsonPrimitive).content == key }
+        return known ?: WireJson.encodeToJsonElement(AppLockAfter.SECONDS_30)
     }
 
     /** Fail closed: only a version-1 object with global exactly "off" turns requests off; anything else is ask. Overrides are not read yet. */

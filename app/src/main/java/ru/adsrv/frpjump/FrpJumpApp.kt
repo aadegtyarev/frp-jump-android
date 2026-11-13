@@ -195,7 +195,9 @@ class FrpJumpApp : Application() {
     val session = AppSession()
 
     /** Settings › Unlock with fingerprint: whether the screen is locked now. */
-    val lock = AppLock()
+    val lock = AppLock(systemCredentialAction = {
+        getSystemService(android.app.KeyguardManager::class.java)?.createConfirmDeviceCredentialIntent(null, null)?.action
+    })
 
     /** Set by the activity while it is started: the current profile then polls every 2 s. */
     val visible = MutableStateFlow(false)

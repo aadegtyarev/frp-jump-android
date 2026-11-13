@@ -17,6 +17,7 @@ import ru.adsrv.frpjump.mqtt.plugins.pluginsSummary
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.notices.NoticeKind
+import ru.adsrv.frpjump.settings.AppLockAfter
 import ru.adsrv.frpjump.settings.AppSettings
 import ru.adsrv.frpjump.settings.BackgroundPoll
 import ru.adsrv.frpjump.settings.PortRangeProblem
@@ -96,6 +97,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     fun clearUpdateError() = app.updater.clearDownloadError()
 
     fun setBackgroundPoll(poll: BackgroundPoll) = save { it.copy(backgroundPoll = poll) }
+
+    fun setAppLockAfter(after: AppLockAfter) = save { it.copy(appLockAfter = after) }
 
     fun setDirect(direct: Boolean) = save { it.copy(direct = direct) }
 

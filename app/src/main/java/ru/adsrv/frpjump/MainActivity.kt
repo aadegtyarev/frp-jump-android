@@ -151,12 +151,56 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        app.lock.onStart(app.settings.settings.value.appLock)
+        val settings = app.settings.settings.value
+        app.lock.onStart(settings.appLock, settings.appLockAfter.ms)
     }
 
     override fun onResume() {
         super.onResume()
         if (app.lock.locked.value && !promptedForLock && !authenticating.value) promptUnlock()
+    }
+
+    override fun onDestroy() {
+        // A prompt of this activity will never be answered (androidx drops it on destroy): let it go.
+        app.lock.onDestroy(this)
+        super.onDestroy()
+    }
+
+    // Windows the app opens itself (picker, share, installer, browser, SSH client) take the screen out of sight:
+    // the one place that marks them, see LockPolicy.handoff.
+    override fun startActivity(intent: Intent, options: Bundle?) {
+        // Held while the lock is (or on return would be) engaged: runs after the unlock or is dropped, never over the lock screen.
+        val settings = app.settings.settings.value
+        if (app.lock.holdLaunch(this, intent.action, forResult = false, settings.appLock, settings.appLockAfter.ms) {
+                launchAndMark { super.startActivity(intent, options) }
+            }
+        ) {
+            return
+        }
+        launchAndMark { super.startActivity(intent, options) }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        val settings = app.settings.settings.value
+        // A held result launch that never runs is answered as cancelled, so nothing waits on it (a web page's file chooser).
+        val dropped: (() -> Unit)? = if (requestCode >= 0) {
+            { activityResultRegistry.dispatchResult(requestCode, android.app.Activity.RESULT_CANCELED, null) }
+        } else {
+            null
+        }
+        val launch = {
+            @Suppress("DEPRECATION")
+            launchAndMark { super.startActivityForResult(intent, requestCode, options) }
+        }
+        if (app.lock.holdLaunch(this, intent.action, forResult = true, settings.appLock, settings.appLockAfter.ms, dropped, launch)) return
+        launch()
+    }
+
+    /** After the launch took: one that throws (no such activity) opens no window, so no handoff. */
+    private inline fun launchAndMark(launch: () -> Unit) {
+        launch()
+        app.lock.handoff()
     }
 
     override fun onStop() {

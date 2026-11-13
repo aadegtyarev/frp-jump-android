@@ -599,6 +599,10 @@
     <string name="settings_security">Безопасность</string>
     <string name="background_poll_row_hint">Пока открыты туннели</string>
     <string name="setting_app_lock">Вход по отпечатку</string>
+    <string name="setting_app_lock_hint_after">Отпечаток или код телефона при открытии приложения. Запирать через: %s. Туннели при этом работают.</string>
+    <string name="setting_lock_after">Запирать через</string>
+    <string name="lock_after_immediately">Сразу</string>
+    <string name="setting_lock_after_hint">Спрашивает при запуске приложения с нуля и когда оно было не на экране дольше выбранного времени. Туннели держат приложение запущенным, поэтому его закрытие не считается перезапуском. После окна, которое открыло само приложение (выбор фото или файла, «Поделиться», установщик, браузер), спрашивает не раньше чем через 30 с.</string>
     <string name="setting_app_lock_hint">Отпечаток или код телефона при открытии приложения. Туннели при этом работают.</string>
     <string name="setting_hide_in_recents">Скрывать в недавних</string>
     <string name="setting_hide_in_recents_hint">Без картинки в недавних. Может запретить скриншоты.</string>
