@@ -85,7 +85,6 @@ import ru.adsrv.frpjump.web.WebSiteMemory
 import java.io.File
 
 /** A device card of a profile, to open from outside the app's screens. */
-data class OpenDevice(val profile: String, val device: String)
 
 class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
@@ -172,11 +171,16 @@ class FrpJumpApp : Application() {
     val assistantPrompts: Lazy<ru.adsrv.frpjump.assistant.AssistantPrompts> = lazy { ru.adsrv.frpjump.assistant.AssistantPrompts.load(assets::open) }
     /** Whether an attempt runs or waits for an answer, for the bottom navigation's dot; exists from the start, the owner below does not. */
     val assistantActivity = kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.assistant.ChatActivity.IDLE)
+    /** How the last assistant attempt ended, for the notification; exists from the start, like [assistantActivity]. */
+    val assistantEnd = kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.assistant.ChatEnd.NONE)
+    /** Tests only: an owner standing in for the app's (the notification's Stop reaches it through [stopAssistantAttempt]). */
+    @androidx.annotation.VisibleForTesting
+    internal var chatOwnerOverride: ru.adsrv.frpjump.assistant.AssistantChatOwner? = null
     private val chatOwner = lazy {
         ru.adsrv.frpjump.assistant.AssistantChatOwner(appScope, settings, assistantProvider, assistant, profileInformation, assistantSshCommands,
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
-            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, removed = currentProfileRemoved)
+            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, removed = currentProfileRemoved)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -184,9 +188,9 @@ class FrpJumpApp : Application() {
         profiles.state.map { it.current }.distinctUntilChanged().flatMapLatest { it?.session?.removed ?: kotlinx.coroutines.flow.flowOf(false) }
     }
     /** The app-lived owner of the chat conversation, built on the first chat opening (never at app start). */
-    val assistantChatOwner: ru.adsrv.frpjump.assistant.AssistantChatOwner get() = chatOwner.value
+    val assistantChatOwner: ru.adsrv.frpjump.assistant.AssistantChatOwner get() = chatOwnerOverride ?: chatOwner.value
     /** Stops a running assistant attempt without building the owner when no chat was ever opened (the server removed this phone's profile). */
-    fun stopAssistantAttempt() { if (chatOwner.isInitialized()) chatOwner.value.stop() }
+    fun stopAssistantAttempt() { (chatOwnerOverride ?: if (chatOwner.isInitialized()) chatOwner.value else null)?.stop() }
     val assistantHistory by lazy {
         ru.adsrv.frpjump.assistant.AssistantChatHistory(AtomicTextFile(File(noBackupFilesDir, "assistant_chat.json")),
             KeystoreSecretBox("frpjump-assistant-chat-v1"), appScope)
@@ -204,8 +208,11 @@ class FrpJumpApp : Application() {
     lateinit var updater: Updater
         private set
 
-    /** A device card to show, asked for by a notification; taken by the navigation. */
-    val openDevice = MutableStateFlow<OpenDevice?>(null)
+    /** The assistant notification's tap asks to open the chat (set in-process by its trampoline); taken once by the navigation. */
+    val openAssistantRequest = MutableStateFlow(false)
+
+    /** True while the chat route is resumed (the top screen of a resumed activity); the chat is shown when also not locked. */
+    val assistantChatResumed = MutableStateFlow(false)
 
     /** A terminal selection quoted for the chat draft (Terminal › ⋮ › Ask the assistant); the chat takes it when it opens. */
     val assistantQuote = MutableStateFlow<String?>(null)
@@ -400,6 +407,9 @@ class FrpJumpApp : Application() {
                 }
             }
         }
+        // The assistant's notification while the chat is off screen: it is shown when its route is resumed and the app is not locked.
+        ru.adsrv.frpjump.assistant.AssistantNotifier(this).start(
+            appScope, assistantActivity, assistantEnd, combine(assistantChatResumed, lock.locked) { resumed, locked -> resumed && !locked }.distinctUntilChanged())
         // Undo's time counts from when its notice is on screen (a host draws it), not from the tap.
         appScope.launch {
             combine(notices.queue, notices.hosts) { queue, hosts -> queue.shown?.takeIf { it.key == UNDO_NOTICE && hosts.isNotEmpty() }?.id }

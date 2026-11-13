@@ -52,6 +52,18 @@
             </intent-filter>
         </activity>
 
+        <!-- The assistant's notification: Stop (a receiver) and the tap (a trampoline that sets an in-process request and starts
+             MainActivity with a plain intent). Neither is exported; MainActivity takes no navigation from a foreign intent. -->
+        <receiver
+            android:name=".assistant.AssistantStopReceiver"
+            android:exported="false" />
+        <activity
+            android:name=".assistant.AssistantOpenActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- After a reboot (once unlocked: the credentials need it), brings back tunnels that were up. -->
         <receiver
             android:name=".restore.BootReceiver"

@@ -952,7 +952,8 @@ scripts/build-frpc.sh        # upstream frpc 0.70.0 -> app/src/main/jniLibs/<abi
 ./gradlew :agent-core:test :agent-openai:test :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The optional [LLM assistant](docs/agent-contract.md) uses the separate
+The optional [LLM assistant](docs/agent-contract.md) keeps working when you leave the chat; while the chat is off screen a silent
+notification (fixed text, no content) shows that it works, with Stop, and how it ended; a tap opens the chat. It uses the separate
 `agent-core` JVM module and `agent-openai` protocol adapter. Its Settings
 switch is off by default. Settings provides secure provider setup, explicit
 model discovery and memory-only text chat. Requests start only with Send or

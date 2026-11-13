@@ -60,7 +60,7 @@ One chat screen, one conversation, reached three ways; the entry changes nothing
   model-facing text changes.
 
 There is only ever one chat entry: opening it while it is already open (from the navigation, Settings or the terminal menu, also from
-screens that were opened over it, such as a notification's device card) returns to that chat by closing the screens above it, so
+screens that were opened over it) returns to that chat by closing the screens above it, so
 its conversation, its saved history and a running Send are never doubled or stopped. A waiting terminal quote is taken by the chat at
 once and kept in memory only; it goes after the draft once the saved draft has loaded and no Send runs, and it is dropped with the chat
 screen if the owner leaves first (an attempt that goes on does not keep it). If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
@@ -424,6 +424,27 @@ server removing this phone's profile (the owner follows that removal itself, so 
 REMOVED screen stops it too) and by process death (the existing unknown-outcome note; there is no
 foreground service and no journal). Clearing the history is not a stop path: Clear stays unavailable for the whole attempt, a card
 wait included; the owner presses Stop first.
+
+**The assistant's notification.** While an attempt runs (a confirmation wait included) and the chat is not on screen, the app shows one
+notification per attempt (one id) on its own channel "Assistant" / «Помощник»: low importance, silent, no launcher badge, which the owner
+can turn off in the system. "On screen" means the chat route is resumed and the app is not locked; the app not being visible, another
+screen over the chat or the lock all count as not on screen. While it runs the notification is ongoing, titled "The assistant is working" /
+«Помощник работает», or "The assistant is waiting for your answer" / «Помощник ждёт ответа» while a card waits, with the action "Stop" /
+«Стоп» in both. When the attempt ends while the chat is not on screen the same notification is replaced by a dismissible, auto-cancel one:
+"The assistant answered" / «Помощник ответил» for a completed reply, "The assistant could not answer" / «Помощник не смог ответить» for a
+failed or timed-out attempt, and "The assistant stopped: no answer from you" / «Помощник остановился: вы не ответили» when a card ran out
+with no chat screen attached and ended the attempt. An end that happened while the chat was on screen is not announced afterwards. It is
+removed whenever the chat is shown, and after the owner's Stop (the chat's or the notification's) or a disable, with no final
+notification. It carries only its fixed title and, while ongoing, the action: never reply text, tool names, targets or commands (its lock
+screen visibility is public for that reason). Without the notification permission nothing is posted and there is no new permission prompt;
+the navigation dot remains. Stop from the notification is the chat's Stop, also during a card wait (nothing runs) and from the lock
+screen (no authentication: stopping never widens anything); it is idempotent and does nothing when no attempt runs. It is a
+`PendingIntent.getBroadcast` to an explicit receiver of this app that is not exported and only calls the owner's `stop()`. A tap opens the
+app at the chat, behind the lock when one is set: a `PendingIntent.getActivity` to an explicit, not exported trampoline activity without UI
+(excluded from recents, no history) that sets an in-process request and starts MainActivity with a plain intent without extras; the
+navigation takes the request once. All its PendingIntents are immutable. MainActivity takes no navigation from a foreign intent's
+action, extras or data (there is no intent-driven navigation at all); source guards and an instrumented test prove that such an intent,
+including the removed `OPEN_DEVICE` action with its extras, leads nowhere and stops nothing.
 
 ### Saved history
 

@@ -1312,6 +1312,13 @@
     <string name="tab_assistant">Assistant</string>
     <string name="assistant_state_working">Working</string>
     <string name="assistant_state_waiting">Waiting for your answer</string>
+    <string name="assistant_channel">Assistant</string>
+    <string name="assistant_notice_working">The assistant is working</string>
+    <string name="assistant_notice_waiting">The assistant is waiting for your answer</string>
+    <string name="assistant_notice_answered">The assistant answered</string>
+    <string name="assistant_notice_failed">The assistant could not answer</string>
+    <string name="assistant_notice_unanswered">The assistant stopped: no answer from you</string>
+    <string name="assistant_notice_stop">Stop</string>
     <string name="terminal_ask_assistant">Ask the assistant</string>
     <string name="chat_quote_truncated">[start truncated]</string>
 </resources>

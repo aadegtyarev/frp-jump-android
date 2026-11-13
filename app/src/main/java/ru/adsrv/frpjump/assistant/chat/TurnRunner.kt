@@ -18,7 +18,9 @@ internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime,
     /** Whether a chat screen was attached at that real time: a card that runs out while none was ends the attempt. */
     val screenAttachedAt: (Long) -> Boolean = { true },
     /** Told once when an attempt ended that way (the owner keeps it for the notification). */
-    val onUnanswered: () -> Unit = {}) {
+    val onUnanswered: () -> Unit = {},
+    /** Told once when the attempt finished by itself, still owned (not stopped or disabled): true for a reply, false for a failure or timeout. */
+    val onEnded: (Boolean) -> Unit = {}) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
 
@@ -211,6 +213,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         val value = own.guarded(owner, category) {
             document = document.finished(problem, status, archive); persist(); document
         } ?: return
+        env.onEnded(problem == null)
         project(value)
     }
 

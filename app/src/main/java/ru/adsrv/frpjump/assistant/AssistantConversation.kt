@@ -44,11 +44,13 @@ class AssistantConversation(
     private val screenAttachedAt: (Long) -> Boolean = { true },
     /** Told when an attempt ended that way; the app-lived owner keeps it for the notification. */
     private val onUnanswered: () -> Unit = {},
+    /** Told once when an attempt finished by itself (not stopped, disabled or removed): true for a reply, false for a failure or timeout. */
+    private val onEnded: (Boolean) -> Unit = {},
 ) {
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered, onEnded)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
