@@ -486,3 +486,20 @@ val ImageGlyph: ImageVector = glyph("Image") {
     moveTo(9f, 9f); horizontalLineTo(9.01f)
     moveTo(3f, 17f); lineTo(8.5f, 12f); lineTo(13f, 16f); lineTo(16f, 13.5f); lineTo(21f, 18f)
 }
+
+/** A speech bubble: the assistant. Neutral, no brand mark. */
+val ChatGlyph: ImageVector = glyph("Chat") {
+    moveTo(5f, 5f)
+    horizontalLineTo(19f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 21f, y1 = 7f)
+    verticalLineTo(14f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 16f)
+    horizontalLineTo(11f)
+    lineTo(6.5f, 20f)
+    verticalLineTo(16f)
+    horizontalLineTo(5f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 3f, y1 = 14f)
+    verticalLineTo(7f)
+    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 5f)
+    close()
+}

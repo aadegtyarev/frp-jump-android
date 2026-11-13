@@ -192,6 +192,9 @@ class FrpJumpApp : Application() {
     /** A device card to show, asked for by a notification; taken by the navigation. */
     val openDevice = MutableStateFlow<OpenDevice?>(null)
 
+    /** A terminal selection quoted for the chat draft (Terminal › ⋮ › Ask the assistant); the chat takes it when it opens. */
+    val assistantQuote = MutableStateFlow<String?>(null)
+
     val session = AppSession()
 
     /** Settings › Unlock with fingerprint: whether the screen is locked now. */

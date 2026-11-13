@@ -105,6 +105,17 @@ class AssistantConversation(
             else { c.document = c.document.copy(draft = text); c.mutable.value = c.mutable.value.copy(draft = text, problem = null) }
         }
     }
+    /**
+     * Puts [quote] after the draft (a terminal selection the owner asked to ask about). Like [edit]: nothing changes while the history
+     * loads or cannot be read, or while a Send runs; a result over [MAX_INPUT] is not applied and says "too long". True when applied.
+     */
+    fun appendToDraft(quote: String): Boolean = synchronized(gate) {
+        if (c.closed || c.pending != null || c.mutable.value.loading || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return false
+        val text = ChatQuote.appended(c.document.draft, quote)
+        if (text.length > MAX_INPUT) { c.mutable.value = c.mutable.value.copy(problem = ChatProblem.TOO_LONG); return false }
+        c.document = c.document.copy(draft = text); c.mutable.value = c.mutable.value.copy(draft = text, problem = null)
+        true
+    }
     fun refresh() {
         val cancel = synchronized(gate) { own.refreshLocked(); c.pending?.takeIf { it.stopped }?.job }
         cancel?.cancel()

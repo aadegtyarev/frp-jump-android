@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -75,7 +76,7 @@ import ru.adsrv.frpjump.ui.ssh.TerminalScreen
 import ru.adsrv.frpjump.ui.web.WebScreen
 import java.io.IOException
 
-private object Routes {
+internal object Routes {
     const val LOADING = "loading"
     const val ENROLL = "enroll"
     const val ADD_PROFILE = "profiles/add"
@@ -311,6 +312,7 @@ fun AppNav() {
         }
         composable(Routes.TERMINAL) { entry ->
             val profilesState by app.profiles.state.collectAsStateWithLifecycle()
+            val assistant = assistantEnabledNow(app)
             TerminalScreen(
                 sessions = app.ssh,
                 allSessions = app.sessions,
@@ -320,6 +322,10 @@ fun AppNav() {
                 profileColors = profilesState.index.profiles.associate { it.id to it.color },
                 initialId = entry.arguments?.getString("id")?.toIntOrNull() ?: 0,
                 onBack = { nav.popBackStack() },
+                onAskAssistant = if (assistant) ({ quote ->
+                    app.assistantQuote.value = quote
+                    nav.openAssistant()
+                }) else null,
                 onOpenFiles = { s ->
                     // The file session kept on this tunnel for this login, else a new one.
                     val id = app.files.kept(TunnelRef(s.profile, s.device, s.port), s.user)
@@ -369,24 +375,7 @@ fun AppNav() {
                 onBack = { nav.popBackStack() },
             )
         }
-        composable(Routes.CHAT) {
-            val vm = viewModel { ru.adsrv.frpjump.ui.settings.AssistantChatViewModel(app) }
-            ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
-                if (!app.settings.assistantAvailability.enabled) nav.popBackStack()
-                else nav.navigate(Routes.PROVIDER)
-            })
-        }
-        composable(Routes.PROVIDER) { entry ->
-            val settingsEntry = remember(entry) { nav.getBackStackEntry(Routes.SETTINGS) }
-            val vm = viewModel<SettingsViewModel>(settingsEntry) { SettingsViewModel(app) }
-            // Recovery re-reads metadata, never unseals the credential or starts provider traffic.
-            LaunchedEffect(Unit) { vm.reloadAssistantProvider().join() }
-            val provider by vm.assistantProvider.collectAsStateWithLifecycle()
-            ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider,
-                onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
-                onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
-                onBack = { nav.popBackStack() })
-        }
+        assistantRoutes(nav, app)
         composable(Routes.SETTINGS) {
             val profilesVm = viewModel { ProfilesViewModel(app) }
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
@@ -408,13 +397,57 @@ fun AppNav() {
     }
 }
 
+/** The chat and its provider screen: reached from Settings, the bottom navigation and the terminal menu alike. */
+internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJumpApp) {
+    composable(Routes.CHAT) {
+        val vm = viewModel { ru.adsrv.frpjump.ui.settings.AssistantChatViewModel(app) }
+        // A terminal selection waits in the app until the chat has its saved draft; then it goes after it (once).
+        val quote by app.assistantQuote.collectAsStateWithLifecycle()
+        val chat by vm.conversation.state.collectAsStateWithLifecycle()
+        LaunchedEffect(quote, chat.loading) {
+            val text = quote ?: return@LaunchedEffect
+            if (chat.loading) return@LaunchedEffect
+            app.assistantQuote.value = null
+            vm.conversation.appendToDraft(text)
+        }
+        ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
+            if (!app.settings.assistantAvailability.enabled) nav.popBackStack()
+            else nav.navigate(Routes.PROVIDER)
+        })
+    }
+    composable(Routes.PROVIDER) { entry ->
+        // Shares Settings' model while Settings is on the back stack; the chat can be opened from anywhere else, then it has its own.
+        val owner = remember(entry) { runCatching { nav.getBackStackEntry(Routes.SETTINGS) }.getOrDefault(entry) }
+        val vm = viewModel<SettingsViewModel>(owner) { SettingsViewModel(app) }
+        // Recovery re-reads metadata, never unseals the credential or starts provider traffic.
+        LaunchedEffect(Unit) { vm.reloadAssistantProvider().join() }
+        val provider by vm.assistantProvider.collectAsStateWithLifecycle()
+        ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider,
+            onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
+            onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
+            onBack = { nav.popBackStack() })
+    }
+}
+
+/** Opens the chat over the current screen, so Back returns to it; asking again while it is open changes nothing. */
+internal fun NavHostController.openAssistant() = navigate(Routes.CHAT) { launchSingleTop = true }
+
+/** Whether Settings > LLM assistant is on, followed live. */
+@Composable
+internal fun assistantEnabledNow(app: FrpJumpApp): Boolean {
+    val flow = remember(app) { app.settings.settings.map { it.assistantEnabled }.distinctUntilChanged() }
+    return flow.collectAsStateWithLifecycle(app.settings.settings.value.assistantEnabled).value
+}
+
 /** A tab's screen above the bottom navigation; the screen keeps its own status bar padding. */
 @Composable
-private fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
+internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
     val snackbars = remember { SnackbarHostState() }
     UpdateAnnouncement(selected, snackbars) { nav.goToTab(Tab.SETTINGS) }
+    val app = LocalContext.current.applicationContext as FrpJumpApp
+    val assistant = assistantEnabledNow(app)
     Scaffold(
-        bottomBar = { BottomNav(selected) { if (it != selected) nav.goToTab(it) } },
+        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null) { if (it != selected) nav.goToTab(it) } },
         snackbarHost = { SnackbarHost(snackbars) },
         containerColor = AppTheme.colors.ground,
         contentWindowInsets = WindowInsets(0),

@@ -1291,4 +1291,7 @@
     <string name="terminal_images_done">%1$d images inserted</string>
     <string name="terminal_images_partly">%2$d of %1$d images were not sent: %3$s</string>
     <string name="terminal_images_cut">Only the first %1$d images are used.</string>
+    <string name="tab_assistant">Assistant</string>
+    <string name="terminal_ask_assistant">Ask the assistant</string>
+    <string name="chat_quote_truncated">[truncated]</string>
 </resources>

@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -44,18 +45,23 @@ enum class Tab(val label: Int, val icon: ImageVector) {
     SETTINGS(R.string.tab_settings, Icons.Outlined.Settings),
 }
 
+/** One item of the bottom navigation: a section, or the assistant (never selected here: it opens over the section). */
+private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, val tag: String, val onClick: () -> Unit)
+
 /**
- * The bottom navigation of the mockups: four equal items, the selected one
- * in the accent with its icon on a pill.
+ * The bottom navigation of the mockups: equal items, the selected one in the accent with its icon on a pill. With [onAssistant]
+ * a fifth item, "Assistant", opens the chat over the current section; without it (the assistant is off) there are four.
  */
 @Composable
-fun BottomNav(selected: Tab, onSelect: (Tab) -> Unit) {
+fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) -> Unit) {
     val colors = AppTheme.colors
+    val entries = Tab.entries.map { NavEntry(it.label, it.icon, it == selected, "nav_" + it.name.lowercase()) { onSelect(it) } } +
+        listOfNotNull(onAssistant?.let { NavEntry(R.string.tab_assistant, ChatGlyph, false, "nav_assistant", it) })
     Surface(color = colors.card) {
         Column {
             HorizontalDivider(color = colors.divider)
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val labelSp = labelSize(Tab.entries.map { stringResource(it.label) }, (maxWidth - 8.dp) / Tab.entries.size - 4.dp)
+                val labelSp = labelSize(entries.map { stringResource(it.label) }, (maxWidth - 8.dp) / entries.size - 4.dp)
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -63,14 +69,15 @@ fun BottomNav(selected: Tab, onSelect: (Tab) -> Unit) {
                         .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)
                         .selectableGroup(),
                 ) {
-                    Tab.entries.forEach { tab ->
-                        val on = tab == selected
+                    entries.forEach { tab ->
+                        val on = tab.on
                         val tint = if (on) colors.accent else colors.muted
                         Column(
                             Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .selectable(selected = on, role = Role.Tab, onClick = { onSelect(tab) }),
+                                .testTag(tab.tag)
+                                .selectable(selected = on, role = Role.Tab, onClick = tab.onClick),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
