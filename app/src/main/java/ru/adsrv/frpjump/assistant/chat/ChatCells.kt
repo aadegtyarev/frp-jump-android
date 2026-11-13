@@ -33,8 +33,12 @@ internal class ChatCells(var document: SavedChat, var authority: AssistantAvaila
     var provider: AgentProvider? = null
     var closed = false
     var loading = false
+    /** From Clear until the clear is done or taken back and read again; the document is the new empty conversation, the store is not yet. */
+    var clearing = false
+    /** The clear of the last [clearing] period failed: a Send waiting for it must not go. */
+    var clearFailed = false
     var pending: Pending? = null
-    fun persist() { if (!closed && !loading && mutable.value.historyProblem != ChatHistoryProblem.READ) historyStore?.save(document) }
+    fun persist() { if (!closed && !loading && !clearing && mutable.value.historyProblem != ChatHistoryProblem.READ) historyStore?.save(document) }
     fun interrupt() { document = document.interrupted() }
     /** Only copies already projected data under the short guard. */
     fun render(value: SavedChat, projected: List<ChatTurn>) {

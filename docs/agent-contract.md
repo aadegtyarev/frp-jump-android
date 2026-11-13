@@ -279,7 +279,7 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 6). The base prompt is the unchanged byte prefix of the first message
+(version 7). The base prompt is the unchanged byte prefix of the first message
 of every main chat-loop request, stable within and across Sends; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
@@ -296,7 +296,7 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 6), the owner's own instructions when set, and only enabled tool schemas.
+version 7), the owner's own instructions when set, and only enabled tool schemas.
 The base prompt contains no profile,
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
@@ -304,7 +304,10 @@ Tool schemas follow catalog order with stable JSON; summary, history and
 the current request follow the system message. No provider-specific cache
 parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
 with a byte order mark) or empty fails the Send as an ordinary setup problem,
-with no fallback text and no request. No profiles,
+with no fallback text and no request. The base prompt also tells the model that
+when the task needs a tool that is not in the request, it names it and tells the
+owner it can be turned on in Chat › Tools (a temporary line; Р56 replaces it).
+No profiles,
 connection data, files, credentials or diagnostics are automatically attached.
 Existing endpoint, redirect, retry, payload and sanitized-error protections
 remain.
@@ -468,8 +471,18 @@ Read/decryption failure is not an empty conversation and blocks overwriting it;
 Retry reads again. Write failure keeps the latest accepted snapshot in memory,
 including across route reopening, with an unsaved warning until Retry succeeds.
 That memory cannot survive process death. Chat's menu clears history through
-shared Undo; editing/sending waits while clearing/restoring. Undo restores the
-same data without a provider call. A committed clear outlives the original route;
+shared Undo. While the Undo notice waits, the chat shows empty, the draft is
+free and editing never waits for the clear. A Send then commits the clear first
+(the notice goes and the history is deleted exactly as when the notice times
+out, through the shared Undo's own commit of that one action) and goes into the
+new, empty conversation: no earlier record reaches its model request. Sending
+waits only while a restore reads the saved chat back (Undo, or a failed clear);
+what was typed meanwhile stays the draft, and a Send that follows Undo goes into
+the restored conversation. Once a commit has started Undo is no longer offered,
+so a record is neither lost nor repeated. If the commit fails, nothing is sent,
+the message stays in the draft, the known data is read back and the clear-failed
+text shows. Undo restores the same data (and the draft saved at Clear) without a
+provider call. A committed clear outlives the original route;
 clear failure retains known data and offers retry. Only one load is admitted at a
 time, preventing duplicate reloads from replacing newer editor/model state.
 

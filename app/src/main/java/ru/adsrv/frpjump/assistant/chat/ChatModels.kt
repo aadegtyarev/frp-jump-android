@@ -31,7 +31,12 @@ data class ChatState(
     val turns: List<ChatTurn> = emptyList(), val draft: String = "", val pendingText: String? = null,
     val busy: Boolean = false, val stopping: Boolean = false, val omitted: Boolean = false,
     val problem: ChatProblem? = null, val toolProgress: ChatToolProgress? = null,
-    val loading: Boolean = false, val historyProblem: ChatHistoryProblem? = null, val contextChanged: Boolean = false,
+    val loading: Boolean = false,
+    /** A clear waits for its Undo to run out: the chat shows empty and the draft is free; a Send commits the clear first. */
+    val clearing: Boolean = false,
+    /** The saved chat is being read back (Undo, or a clear that failed): typing is free, Send waits. */
+    val restoring: Boolean = false,
+    val historyProblem: ChatHistoryProblem? = null, val contextChanged: Boolean = false,
     val summarized: Boolean = false, val problemStatus: Int? = null,
     val receipts: List<ChatToolReceipt> = emptyList(), val currentSources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),

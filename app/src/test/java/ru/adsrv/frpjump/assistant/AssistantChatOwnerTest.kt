@@ -34,7 +34,7 @@ class AssistantChatOwnerTest {
         override fun destroy() = Unit
     }
 
-    private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false) : AutoCloseable {
+    private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false, private val withProfiles: Boolean = false) : AutoCloseable {
         val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
         val stopping = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
@@ -64,7 +64,7 @@ class AssistantChatOwnerTest {
             override fun stamp(target: GrantTarget): Any? = "stamp-1"
         }
         val module = bindAssistantLifecycle(settings, scope)
-        val owner = AssistantChatOwner(scope, settings, store, module, null, ssh, history, null, TestPrompts.placeholder, {
+        val owner = AssistantChatOwner(scope, settings, store, module, if (withProfiles) synthetic.information else null, ssh, history, null, TestPrompts.placeholder, {
             AgentProvider { request ->
                 requests += request
                 if (failing) throw IllegalStateException("synthetic failure")
@@ -91,6 +91,20 @@ class AssistantChatOwnerTest {
     private fun Harness.send(chat: AssistantConversation, text: String = "go") {
         eventually("history loaded") { chat.state.value.takeIf { !it.loading } }
         chat.edit(text); chat.send()
+    }
+
+    @Test fun `each Send of the app-lived owner reads the Tools switches at that moment`() {
+        val h = Harness(withProfiles = true)
+        val chat = h.owner.attach()
+        h.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, true)
+        h.send(chat, "first"); eventually("first request") { h.requests.size.takeIf { it >= 1 } }; eventually("first done") { chat.state.value.takeIf { !it.busy } }
+        assertTrue(h.requests.last().tools.any { it.name == "profile_information" })
+        val before = h.requests.size
+        h.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, false)
+        h.send(chat, "second"); eventually("second request") { h.requests.size.takeIf { it > before } }
+        assertEquals(before + 1, h.requests.size)
+        assertTrue(h.requests.last().tools.none { it.name == "profile_information" })
+        h.owner.detach()
     }
 
     @Test fun `a Send outlives its screen and the reply is in the saved history on return`() {

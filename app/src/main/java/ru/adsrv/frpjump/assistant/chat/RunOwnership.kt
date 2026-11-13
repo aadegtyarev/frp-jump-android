@@ -77,7 +77,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
     /** Caller holds the gate. Returns null when nothing starts (and has recorded the visible reason, if any). */
     fun admit(): Admission? {
         refreshLocked()
-        if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return null
+        if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return null
         val saved = snapshot(); val settings = saved.settings; val text = c.document.draft
         if (!availability().enabled || settings == null || settings.model.isBlank() || saved.problem != null) {
             c.mutable.value = c.mutable.value.copy(problem = if (saved.problem == null) ChatProblem.SETUP else ChatProblem.READ); return null

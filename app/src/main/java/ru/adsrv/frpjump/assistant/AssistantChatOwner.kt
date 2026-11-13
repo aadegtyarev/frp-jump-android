@@ -130,7 +130,8 @@ class AssistantChatOwner(
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
             profileInformation = profileInformation, sshCommands = sshCommands, historyStore = historyStore,
-            awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") }, prompts = prompts, confirmations = confirmations,
+            awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
+            commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,
             onUnanswered = { synchronized(lock) { endOut.value = ChatEnd.UNANSWERED } },
             onEnded = { replied -> synchronized(lock) { if (endOut.value != ChatEnd.UNANSWERED) endOut.value = if (replied) ChatEnd.COMPLETED else ChatEnd.FAILED } })
@@ -153,6 +154,11 @@ class AssistantChatOwner(
         // The server removed this phone's profile: the attempt stops even when no screen (so no AppNav) is there to do it.
         child.launch { removed.collect { gone -> if (gone) chat.stop() } }
         return Live(chat, child, confirmations)
+    }
+
+    companion object {
+        /** The shared Undo key of a Clear of the saved chat. */
+        const val HISTORY_UNDO_KEY = "assistant-chat-history"
     }
 }
 

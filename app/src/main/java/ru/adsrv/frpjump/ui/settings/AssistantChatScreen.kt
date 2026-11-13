@@ -119,7 +119,7 @@ internal fun AssistantChatContent(
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
                     Box {
-                        IconButton(onClick = { menu = true }, enabled = !state.busy && !state.loading) {
+                        IconButton(onClick = { menu = true }, enabled = !state.busy && !state.loading && !state.restoring) {
                             Icon(Icons.Default.MoreVert, stringResource(R.string.chat_history_actions))
                         }
                         AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -128,7 +128,7 @@ internal fun AssistantChatContent(
                     }
                 }
             }
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading || state.restoring) LinearProgressIndicator(Modifier.fillMaxWidth())
             // Plain-text notices above and below the history are capped (and scroll) so that a long one at large font cannot squeeze the
             // history away; buttons (setup, retry) stay outside the cap and always visible.
             if (setup != null) {
@@ -242,7 +242,7 @@ internal fun AssistantChatContent(
                 if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
                     modifier = Modifier.weight(1f).testTag("chat_stop")) {
                     Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
-                } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank() && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
+                } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank() && !state.loading && !state.restoring && state.historyProblem != ChatHistoryProblem.READ,
                     modifier = Modifier.weight(1f).testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
             }
         }
