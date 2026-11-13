@@ -6,15 +6,12 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.profiles.Profiles
 
 /**
- * The owner's two answers to "Direct didn't work", from the notification
- * or the card: the same code either way.
+ * The owner's two answers to "Direct didn't work", from the card.
  */
 class DirectChoices(
     private val profiles: Profiles,
     private val kept: DirectKeptStore,
     private val network: StateFlow<String?>,
-    /** Storage: called on the IO dispatcher ([DirectNotifier.retried]). */
-    private val retried: (profile: String, device: String) -> Unit = { _, _ -> },
 ) {
     /**
      * "Keep through the server": no more attempts or offers for [device] of
@@ -32,7 +29,6 @@ class DirectChoices(
     suspend fun retryDirect(profile: String, device: String) {
         withContext(Dispatchers.IO) {
             kept.release(profile, device, network.value)
-            retried(profile, device)
         }
         profiles.runtime(profile)?.tunnels?.retryDirect(device)
     }
