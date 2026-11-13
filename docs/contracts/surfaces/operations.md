@@ -85,15 +85,16 @@ Disconnects with Undo, over `undo/TunnelDisconnects.kt`: one tunnel (a row), eve
 The effect is local and at once: before the operation first suspends the tunnels show down (hidden in `PendingUndo`), and the screens
 start it undispatched so the row goes dark when the tap returns. The server is told later, when the notice goes (or on `commitAll`:
 screens stopping, lock, before Forget), one commit after another; Undo restores and tells nothing; that later commit is not part of the
-result. A device or a profile that does not exist is refused. For "all": with something shown up, every tunnel goes dark under one notice
+result. A device or profile target whose profile does not exist is refused. An unknown device in an existing profile is Done with nothing queued. For "all": with something shown up, every tunnel goes dark under one notice
 and the profiles still being restored after a restart (nothing of them on screen to wait for) have their servers told at once, not
-waited for; with nothing shown up, every server is told and the result comes after each was asked (the "Disconnect all" spinner follows
-that). The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant does not get it.
+waited for; with nothing shown up, every server is told now (restoring profiles included) and the result comes after each was asked
+(the "Disconnect all" spinner follows that). The screens start these operations, and `tunnel_connect`, undispatched in the app scope, so
+leaving the screen cancels neither the awaited connect nor the "all" path. The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant does not get it.
 
 ### `direct_retry` and `direct_keep`
 
-The owner's two answers to "Direct didn't work" over `direct/DirectChoices.kt`. Retry is always done (a missing profile changes nothing,
-as before). Keep is refused with `DirectRefusal.NoNetwork` when the phone is on no network the choice can be tied to: nothing changed.
+The owner's two answers to "Direct didn't work" over `direct/DirectChoices.kt`. Retry is always done: with a missing profile the tunnel retry is skipped, while `kept.release` and the `retried` bookkeeping still run,
+as before. Keep is refused with `DirectRefusal.NoNetwork` when the phone is on no network the choice can be tied to: nothing changed.
 The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. The assistant does not get them.
 
 ## Adapters
@@ -107,7 +108,7 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
   the same texts as before the layer existed ([Optional SSH command](../../agent-contract.md#optional-ssh-command),
   [Optional profile information](../../agent-contract.md#optional-profile-information)).
 - **UI (`ui/OpTexts.kt`).** Words refusals and failures for the owner in the app's language; a payload written by the tunnel manager or the
-  server is shown as it is. Connections actions show it as a notice; "Use key login" throws an `IOException` with it, as before.
+  server is shown as it is. Connections actions show tunnel and direct refusals as a notice, except that Connect drops its `ProfileGone` refusal silently, as before; "Use key login" throws an `IOException` with it, as before.
 
 ## Security and privacy
 

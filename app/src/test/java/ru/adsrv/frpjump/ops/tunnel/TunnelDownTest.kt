@@ -90,18 +90,27 @@ class TunnelDownTest {
 
     @Test fun `a device takes its tunnels in its profile only, in order, and not those dark already`() = runBlocking {
         disconnects.disconnect(listOf(web))
-        assertEquals(OpResult.Done(Unit), op()(TunnelDownTarget.Device("p1", "dev-a")))
+        var result: OpResult<Unit>? = null
+        val job = undispatched(TunnelDownTarget.Device("p1", "dev-a")) { result = it }
+        // No yield since launch: dark and done at once.
         assertEquals(setOf("dev-a:22", "dev-a:80"), PendingUndo.darkTunnels(pending.hidden.value, "p1"))
         assertTrue(PendingUndo.darkTunnels(pending.hidden.value, "p2").isEmpty())
+        assertEquals(OpResult.Done(Unit), result)
+        job.join()
         expire()
         // Each commit runs after the one before: first the already waiting one.
         assertEquals(listOf(web, ssh), stopped)
     }
 
     @Test fun `a profile takes all its tunnels under one notice`() = runBlocking {
-        assertEquals(OpResult.Done(Unit), op()(TunnelDownTarget.Profile("p1")))
+        var result: OpResult<Unit>? = null
+        val job = undispatched(TunnelDownTarget.Profile("p1")) { result = it }
+        // No yield since launch: dark and done at once.
         assertEquals(mapOf(UndoKind.DISCONNECTED to 3), counts)
+        assertEquals(setOf("dev-a:22", "dev-a:80", "dev-b:22"), PendingUndo.darkTunnels(pending.hidden.value, "p1"))
         assertTrue(PendingUndo.darkTunnels(pending.hidden.value, "p2").isEmpty())
+        assertEquals(OpResult.Done(Unit), result)
+        job.join()
         expire()
         assertEquals(listOf(ssh, web, other), stopped)
     }
@@ -121,12 +130,16 @@ class TunnelDownTest {
     @Test fun `disconnect all with tunnels up darkens every one at once, tells restoring profiles now and does not wait`() = runBlocking {
         val host = Host(full.up, restoring = setOf("p2", "gone"))
         var result: OpResult<Unit>? = null
-        undispatched(TunnelDownTarget.All, host) { result = it }.join()
+        val job = undispatched(TunnelDownTarget.All, host) { result = it }
+        // No yield since launch: everything is dark, restoring profiles are told and the result is in.
         assertEquals(mapOf(UndoKind.DISCONNECTED to 4), counts)
+        assertEquals(setOf("dev-a:22", "dev-a:80", "dev-b:22"), PendingUndo.darkTunnels(pending.hidden.value, "p1"))
+        assertEquals(setOf("dev-a:22"), PendingUndo.darkTunnels(pending.hidden.value, "p2"))
         assertEquals(OpResult.Done(Unit), result)
         // Restoring profiles are told now (asynchronously); the others when the notice goes; tellAll is not used.
         assertEquals(listOf("async p2"), host.told)
         assertTrue(stopped.isEmpty())
+        job.join()
         expire()
         assertEquals(listOf(ssh, web, other, elsewhere), stopped)
     }
@@ -166,5 +179,15 @@ class TunnelDownTest {
         assertFalse(source.contains("directChoices."))
         assertFalse(source.contains("disconnects.shown"))
         assertFalse(source.contains("tunnels.connectAsync(c.device, c.port, c.kind)"))
+    }
+
+    @Test fun `the Connections adapter starts operations undispatched in the app scope and keeps its notices and spinner order`() {
+        val source = java.io.File("src/main/java/ru/adsrv/frpjump/ui/connections/ConnectionActions.kt").readText()
+        val asked = source.substringAfter("private fun asked(").substringBefore("\n    }")
+        assertTrue(asked.contains("app.appScope.launch(start = CoroutineStart.UNDISPATCHED)"))
+        assertTrue(source.contains("TunnelDownTarget.Profile(profile)).say()"))
+        assertTrue(source.contains("TunnelDownTarget.Device(profile, device)).say()"))
+        assertTrue(source.contains("NoticeKind.WARN, long = true)") && source.contains("(result.reason as DirectRefusal).userText(), NoticeKind.WARN, long = true"))
+        assertTrue(Regex("tunnelDown\\(TunnelDownTarget\\.All\\)\\s*onDone\\(\\)").containsMatchIn(source))
     }
 }

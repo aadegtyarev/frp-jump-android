@@ -71,6 +71,12 @@ class TunnelConnectTest {
         assertEquals(listOf("revive", "disconnecting", "await-start", "await-end", "connect"), host.log)
     }
 
+    @Test fun `a tunnel waiting for Undo is revived even when its profile is gone, before the profile check`() = runBlocking {
+        val host = Host(known = false, waiting = true)
+        assertEquals(OpResult.Done(Unit), TunnelConnect(host)(input))
+        assertEquals(listOf("revive"), host.log)
+    }
+
     @Test fun `a forgotten profile is refused and nothing is connected`() = runBlocking {
         val host = Host(known = false)
         assertEquals(OpResult.Refused(TunnelRefusal.ProfileGone), TunnelConnect(host)(input))

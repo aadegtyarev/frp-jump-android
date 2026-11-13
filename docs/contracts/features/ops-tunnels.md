@@ -13,7 +13,7 @@ refusals and failures, next to `tunnel_up`:
 - `tunnel_down`: disconnect one row, a device, a profile, or everything, over `undo/TunnelDisconnects.kt`.
   - The disconnect is Undo-based: the tunnel goes dark at once, and the server is told when the notice goes.
   - Restoring profiles are told now.
-  - With nothing up, every server is told and `onDone` runs after.
+  - With nothing up, every server is told now (restoring profiles included) and `onDone` runs after.
 - `direct_retry` and `direct_keep`: Retry direct and Keep through the server, over `direct/DirectChoices.kt`.
 
 The UI keeps all navigation glue (open SSH, MQTT, Files, login at once) and calls the operations through a thin adapter. Owner wording

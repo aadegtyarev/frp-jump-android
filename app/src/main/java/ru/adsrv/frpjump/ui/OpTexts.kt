@@ -26,7 +26,7 @@ fun DirectRefusal.userText(): String = when (this) {
     DirectRefusal.NoNetwork -> Texts.get(R.string.keep_no_network)
 }
 
-/** The notice for a result of `TunnelConnect` or `TunnelDown`; null when nothing is to be said. They only return tunnel refusals. */
+/** The notice for a result of `TunnelDown`; null when nothing is to be said. It only returns tunnel refusals. `TunnelConnect` is not worded: its refusal is dropped silently. */
 fun OpResult<Unit>.tunnelActionNotice(): String? = (this as? OpResult.Refused)?.let { (it.reason as TunnelRefusal).userText() }
 
 /** The notice for a result of `TunnelUp`; null when the tunnel is up. `TunnelUp` only returns tunnel refusals and failures. */
