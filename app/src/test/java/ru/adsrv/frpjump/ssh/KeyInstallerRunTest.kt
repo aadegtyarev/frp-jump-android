@@ -123,7 +123,11 @@ class KeyInstallerRunTest {
      */
     private fun syntheticKey(comment: String): SshKeyPair {
         val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        val pem = "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(pair.private.encoded) + "\n-----END PRIVATE KEY-----\n"
+        val pem = java.io.StringWriter().also { w ->
+            org.bouncycastle.util.io.pem.PemWriter(w).use {
+                it.writeObject(org.bouncycastle.util.io.pem.PemObject("PRIVATE KEY", pair.private.encoded))
+            }
+        }.toString()
         return SshKeyPair(pem, publicLineOfPrivateKey(pem, null, comment))
     }
 

@@ -48,7 +48,11 @@ class SshKeysSettingsUiTest {
     /** A real RSA 3072 pair: its public line (about 570 characters) folds to three lines at any font scale. */
     private val rsa = run {
         val pair = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(3072) }.generateKeyPair()
-        val pem = "-----BEGIN PRIVATE KEY-----\n" + Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(pair.private.encoded) + "\n-----END PRIVATE KEY-----\n"
+        val pem = java.io.StringWriter().also { w ->
+            org.bouncycastle.util.io.pem.PemWriter(w).use {
+                it.writeObject(org.bouncycastle.util.io.pem.PemObject("PRIVATE KEY", pair.private.encoded))
+            }
+        }.toString()
         pem to publicLineOfPrivateKey(pem, null, "imported")
     }
     private val longLine = rsa.second
