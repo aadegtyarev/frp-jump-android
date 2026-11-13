@@ -159,7 +159,7 @@ class AssistantSummaryTest {
         }
     }
 
-    @Test fun `a summarizing Send commits under every guarded category and each commit is already persisted`() = runBlocking {
+    @Test fun `a summarizing Send commits under every guarded category before each projection and each commit reaches the history file`() = runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined); val runtime=AssistantChatRuntime()
         // The store writes on real IO threads; every written document is published to a channel and the test waits for those
         // write events after Send, so no thread the writer or the conversation may need is ever blocked.
