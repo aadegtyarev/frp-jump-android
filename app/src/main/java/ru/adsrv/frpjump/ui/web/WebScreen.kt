@@ -99,11 +99,11 @@ import ru.adsrv.frpjump.ui.FullscreenOf
 import ru.adsrv.frpjump.ui.SystemBarsHidden
 import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
+import ru.adsrv.frpjump.ssh.writeFailureKind
 import ru.adsrv.frpjump.web.BackBounce
 import ru.adsrv.frpjump.web.Bounce
-import ru.adsrv.frpjump.ssh.WriteFailureKind
-import ru.adsrv.frpjump.ssh.writeFailureKind
 import ru.adsrv.frpjump.web.CertAnswer
+import ru.adsrv.frpjump.web.CertBanner
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.GoodPages
 import ru.adsrv.frpjump.web.WebBack
@@ -144,9 +144,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     var tunnelGone by remember { mutableStateOf(false) }
     val certs = remember(profile) { app.profiles.runtime(profile)?.webCerts }
     var question by remember { mutableStateOf<CertQuestion?>(null) }
-    var certRefused by remember { mutableStateOf(false) }
-    /** Why the pin could not be saved, when that (not the owner's refusal) closed the page. */
-    var certSaveFailure by remember { mutableStateOf<WriteFailureKind?>(null) }
+    /** Above the page: refused, or not saved (the pin), until "Try again". */
+    var certBanner by remember { mutableStateOf(CertBanner()) }
     /** An HTTPS connection whose device answers this port in plain HTTP (ERR_SSL_PROTOCOL_ERROR). */
     var notTls by remember { mutableStateOf(false) }
     /** The current load hit a certificate question or refusal: its handshake error is not "plain HTTP". */
@@ -222,7 +221,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             onRendererGone = { rendererGone = true },
             onMainFrameError = { code, description, failed ->
                 goodPages.failed()
-                if (answersInPlainHttp(code, description, failed, localPort, sslErrorSeen || certRefused || question != null)) notTls = true
+                if (answersInPlainHttp(code, description, failed, localPort, sslErrorSeen || certBanner.refused || question != null)) notTls = true
             },
             onSslError = { handler, error ->
                 sslErrorSeen = true
@@ -233,10 +232,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                     CertCheck.Trusted -> handler.proceed()
                     CertCheck.Refused -> {
                         handler.cancel()
-                        if (forTunnel) {
-                            certSaveFailure = null
-                            certRefused = true
-                        }
+                        if (forTunnel) certBanner = certBanner.refusedNow()
                     }
                     else -> {
                         val open = question
@@ -324,9 +320,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         bounce.cancel()
         notTls = false
         sslErrorSeen = false
-        if (certRefused) {
-            certRefused = false
-            certSaveFailure = null
+        if (certBanner.refused) {
+            certBanner = certBanner.tryAgain()
             webView.clearSslPreferences()
             webView.loadUrl(url)
         } else if (rendererGone) {
@@ -454,10 +449,10 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                         modifier = Modifier.padding(horizontal = 8.dp),
                     ) { Text(stringResource(R.string.web_open_http)) }
                 }
-                if (certRefused) {
+                if (certBanner.refused) {
                     // Above the page, which stays in place for "Try again".
                     Text(
-                        certSaveFailure?.let { stringResource(R.string.cert_save_failed, stringResource(it.res)) } ?: stringResource(R.string.cert_refused),
+                        certBanner.saveFailure?.let { stringResource(R.string.cert_save_failed, stringResource(it.res)) } ?: stringResource(R.string.cert_refused),
                         color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
                     TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.cert_try_again)) }
                 }
@@ -498,17 +493,13 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                 scope.launch {
                     val answers = q.handlers.map { h -> object : CertAnswer { override fun proceed() = h.proceed(); override fun cancel() = h.cancel() } }
                     val failure = answerCertTrust(answers) { certs?.pin(device, targetPort, q.fingerprint) }
-                    if (failure != null) {
-                        certSaveFailure = writeFailureKind(failure)
-                        certRefused = true
-                    }
+                    certBanner = if (failure == null) certBanner.saved() else certBanner.saveFailed(writeFailureKind(failure))
                 }
             },
             onRefuse = {
                 question = null
                 q.handlers.forEach { it.cancel() }
-                certSaveFailure = null
-                certRefused = true
+                certBanner = certBanner.refusedNow()
             },
         )
     }

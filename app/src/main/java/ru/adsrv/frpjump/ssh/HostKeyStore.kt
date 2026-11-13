@@ -92,12 +92,13 @@ fun writeFailureKind(failure: Throwable): WriteFailureKind {
     val chain = generateSequence(failure) { it.cause }.take(8).toList()
     val text = chain.joinToString(" ") { it.message.orEmpty() }.lowercase()
     return when {
-        "enospc" in text || "no space left" in text -> WriteFailureKind.NO_SPACE
+        "enospc" in text || "no space left" in text || "edquot" in text || "quota exceeded" in text -> WriteFailureKind.NO_SPACE
         chain.any { it is java.nio.file.AccessDeniedException || it is SecurityException } ||
-            "eacces" in text || "permission denied" in text || "access denied" in text -> WriteFailureKind.NO_ACCESS
+            "eacces" in text || "eperm" in text || "erofs" in text || "permission denied" in text ||
+            "access denied" in text || "not permitted" in text || "read-only file system" in text -> WriteFailureKind.NO_ACCESS
         else -> WriteFailureKind.OTHER
     }
 }
 
-/** What a failed trust write (host key or web certificate) says to the owner: its kind only. One wording for every caller. */
+/** What a failed trust write (host key; the web certificate maps its failure with [writeFailureKind]) says to the owner: its kind only. One wording for every caller. */
 fun hostKeyWriteDetail(failure: Exception): String = Texts.get(writeFailureKind(failure).res)

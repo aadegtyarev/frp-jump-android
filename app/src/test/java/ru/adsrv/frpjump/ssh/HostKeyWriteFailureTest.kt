@@ -78,6 +78,13 @@ class WriteFailureKindTest {
     }
 
     @Test
+    fun quotaIsNoSpaceAndPermissionOrReadOnlyIsNoAccess() {
+        assertEquals(WriteFailureKind.NO_SPACE, writeFailureKind(IOException("write failed: EDQUOT (Disk quota exceeded)")))
+        assertEquals(WriteFailureKind.NO_ACCESS, writeFailureKind(IOException("open failed: EPERM (Operation not permitted)")))
+        assertEquals(WriteFailureKind.NO_ACCESS, writeFailureKind(IOException("open failed: EROFS (Read-only file system)")))
+    }
+
+    @Test
     fun anythingElseIsAWriteError() {
         assertEquals(WriteFailureKind.OTHER, writeFailureKind(IOException("disk full")))
         assertEquals(WriteFailureKind.OTHER, writeFailureKind(IllegalStateException()))
