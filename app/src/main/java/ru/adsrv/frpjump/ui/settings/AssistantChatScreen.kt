@@ -30,6 +30,8 @@ import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.ui.AppTheme
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -41,6 +43,11 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     val provider by vm.provider.collectAsStateWithLifecycle()
     val toolsState by vm.tools.state.collectAsStateWithLifecycle()
     var toolsOpen by rememberSaveable { mutableStateOf(false) }
+    // A terminal quote (Ask the assistant) lands in the chat itself: the Tools sub-screen, if it was open, gives way to it.
+    // Only a quote taken since this screen last looked: coming back to the chat (or recreation) must not close Tools again.
+    val quotes by vm.quotesTaken.collectAsStateWithLifecycle()
+    var quotesSeen by rememberSaveable { mutableStateOf(quotes) }
+    LaunchedEffect(quotes) { if (quotes != quotesSeen) { quotesSeen = quotes; toolsOpen = false } }
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else {
@@ -63,6 +70,12 @@ internal fun AssistantChatContent(
     LaunchedEffect(state.turns.size, state.pendingText, state.toolFailures.size, state.information.size, state.confirmation?.id) {
         val count = state.turns.size + if (state.pendingText != null || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.currentSources.isNotEmpty()) 1 else 0
         if (count > 0) historyScroll.scrollToItem(count - 1)
+    }
+    // The field keeps its own cursor; a draft changed from outside (loaded, a quote added, cleared by Send) puts it at the end.
+    var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
+    LaunchedEffect(state.draft) {
+        val live = conversation.state.value.draft
+        if (field.text != live) field = TextFieldValue(live, TextRange(live.length))
     }
     BackHandler { conversation.close(); onBack() }
     val setup = when {
@@ -216,7 +229,12 @@ internal fun AssistantChatContent(
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
-            if (!asking) OutlinedTextField(value = state.draft, onValueChange = conversation::edit,
+            if (!asking) OutlinedTextField(value = field, onValueChange = { value ->
+                    if (value.text != field.text) conversation.edit(value.text)
+                    // The draft the conversation holds now: a refused edit (too long, a run) shows as it was.
+                    val live = conversation.state.value.draft
+                    field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
+                },
                 label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
                 minLines = 1, maxLines = if (density.fontScale > 1.3f) 2 else 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
             Row(verticalAlignment = Alignment.CenterVertically) {

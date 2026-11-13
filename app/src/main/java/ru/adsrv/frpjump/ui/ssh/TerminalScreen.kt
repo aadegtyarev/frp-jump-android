@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui.ssh
 
 import ru.adsrv.frpjump.ui.LocalAppLocked
 import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.assistant.chat.ChatQuote
 import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
@@ -69,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -150,6 +152,11 @@ fun TerminalScreen(
     profileColors: Map<String, String>,
     initialId: Int,
     onBack: () -> Unit,
+    /**
+     * Terminal > menu > "Ask the assistant": gets the text selected in the shown tab as a quote block for the chat draft, or null
+     * without a selection. Null here: the assistant is off and the item is not offered.
+     */
+    onAskAssistant: ((String?) -> Unit)? = null,
     /** "Files" for the selected session's device, port and login. */
     onOpenFiles: (SshSession) -> Unit,
     /** Keeps the login typed in the dialog of a long press on "+" for that session's device and port. */
@@ -206,6 +213,10 @@ fun TerminalScreen(
     }
     val fontSp by sessions.fontSize.collectAsStateWithLifecycle()
     var barMenu by remember { mutableStateOf(false) }
+    /** The terminal's selected text, read when the menu opened; kept only until the menu closes (by any item or a dismiss). */
+    var menuSelection by remember { mutableStateOf<String?>(null) }
+    // Ask takes it (and clears it) before it closes the menu, so this only drops what no item used.
+    LaunchedEffect(barMenu) { if (!barMenu) menuSelection = null }
     /** "Close all sessions of this phone" is asking the device. */
     var closingAll by remember { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf(initialId) }
@@ -528,10 +539,14 @@ fun TerminalScreen(
                         Icon(FullscreenGlyph, contentDescription = stringResource(R.string.fullscreen), modifier = Modifier.size(20.dp))
                     }
                     Box {
-                        IconButton(onClick = { barMenu = true }) {
+                        IconButton(onClick = {
+                            // The selection as it is when the menu is used, not later (the menu's own window can end it).
+                            menuSelection = if (onAskAssistant != null) view.selectedTerminalText() else null
+                            barMenu = true
+                        }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
                         }
-                        AppDropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false }) {
+                        AppDropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false; menuSelection = null }) {
                             // Text size stays here, not on the bar, so the device name fits; the menu stays open while sizing.
                             Row(
                                 Modifier.padding(start = 16.dp, end = 8.dp),
@@ -555,6 +570,16 @@ fun TerminalScreen(
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.snippets)) },
                                 onClick = { barMenu = false; managing = true },
+                            )
+                            if (onAskAssistant != null) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.terminal_ask_assistant)) },
+                                modifier = Modifier.testTag("terminal_ask_assistant"),
+                                onClick = {
+                                    barMenu = false
+                                    val quote = ChatQuote.block(menuSelection, context.getString(R.string.chat_quote_truncated))
+                                    menuSelection = null
+                                    onAskAssistant(quote)
+                                },
                             )
                             InsertImageMenuItem(
                                 enabled = canInsertImage,
@@ -966,3 +991,7 @@ private class ViewClient(
 
 internal const val MIN_FONT_SP = 8
 internal const val MAX_FONT_SP = 28
+
+/** The text selected in the terminal view now (selection mode on), else null. Read only on the owner's action. */
+internal fun TerminalView.selectedTerminalText(): String? =
+    if (isSelectingText) getSelectedText()?.takeIf { it.isNotEmpty() } else null

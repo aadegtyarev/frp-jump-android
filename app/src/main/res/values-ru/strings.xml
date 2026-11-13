@@ -1343,4 +1343,7 @@
     <string name="terminal_images_done">Вставлено изображений: %1$d</string>
     <string name="terminal_images_partly">%2$d из %1$d изображений не отправлены: %3$s</string>
     <string name="terminal_images_cut">Использованы только первые %1$d изображений.</string>
+    <string name="tab_assistant">Помощник</string>
+    <string name="terminal_ask_assistant">Спросить помощника</string>
+    <string name="chat_quote_truncated">[начало обрезано]</string>
 </resources>
