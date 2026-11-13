@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.files
 
+import ru.adsrv.frpjump.ui.AppModalBottomSheet
 import android.text.format.Formatter
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +20,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -74,7 +74,7 @@ fun FileCard(entry: RemoteEntry, transfer: Transfer?, online: Boolean, actions: 
     val colors = AppTheme.colors
     val context = LocalContext.current
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    AppModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheet,
         containerColor = colors.card,

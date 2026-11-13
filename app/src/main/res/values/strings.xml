@@ -5,6 +5,12 @@
     <!-- Common -->
     <string name="back">Back</string>
     <string name="cancel">Cancel</string>
+    <string name="js_ok">OK</string>
+    <string name="js_page">Page</string>
+    <string name="js_mute">Don\'t show more dialogs from this page</string>
+    <string name="js_leave">Leave</string>
+    <string name="js_stay">Stay</string>
+    <string name="js_leave_text">Leave this page? Changes you made may not be saved.</string>
     <string name="save">Save</string>
     <string name="assistant_title">LLM assistant</string>
     <string name="assistant_enabled">Enable assistant module</string>

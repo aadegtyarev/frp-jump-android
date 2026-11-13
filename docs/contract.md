@@ -225,6 +225,19 @@ profile without re-enrollment.
   Existing TCP connections, including port 1883, stay TCP; “Open as MQTT”
   converts the kind and opens the explorer without changing the wire protocol
   or requiring an active tunnel to stop. See the [MQTT contract](mqtt-contract.md).
+- A web page's `alert`, `confirm` and `prompt` (and the question when leaving
+  a page) are shown by the app, not by WebView, so a page cannot pose as one of
+  the app's own dialogs. The title is always the asking page's origin
+  (`scheme://host[:port]`, an international host in its ASCII form, never the
+  title the page sets), or "Page" when the origin is empty or opaque. The
+  message is plain text (no links or markup), cut at 1000 characters; a prompt
+  keeps its default value (cut the same way). `alert` has OK; `confirm` and
+  `prompt` have OK and Cancel; leaving a page asks "Leave this page? Changes
+  you made may not be saved." with Leave and Stay (the page's own wording is
+  not shown). From the second dialog of the same page on, the dialog has
+  "Don't show more dialogs from this page". Once chosen, the page's further
+  dialogs are answered at once until the page loads again or the screen is
+  left: alert OK, confirm and prompt Cancel, leaving the page allowed.
 - Back in the web view, system Back and the bar's arrow alike: full screen is
   left first, then the page's history is walked (in-page routes of single-page
   UIs too), and only with no page to go back to does the screen close. An
@@ -586,6 +599,36 @@ version and update, MQTT plugins (scenario 12), components and licenses).
     saved is Cancelled at once ("Not unlocked. Tap “Unlock” to try again." /
     "Not turned on: not confirmed.").
   - A phone whose screen lock was removed turns the setting off.
+  - A locked app shows none of its own separate windows. The screens stay
+    composed under the lock screen (back stack, open pages, polling), but the
+    windows they would draw are left out: they take no touch, key or TalkBack
+    focus. These are dialogs, bottom sheets, dropdown menus and popups, and a
+    web page's `alert`, `confirm`, `prompt` and leave-page question.
+    - A dialog or sheet comes back after unlock as it was, with what was typed
+      in it (state kept in the window's content is `rememberSaveable`). A menu
+      or popup of a screen that was open at the lock comes back too; a menu
+      inside a sheet may close instead. A page's script
+      waits for its question until then, and it is cancelled when the page or
+      screen goes away first.
+    - Windows that are not Compose windows are handled one by one: the
+      selection toolbars of the terminal, a web page and text fields (system
+      action modes) end at the lock, and one that starts while locked ends at
+      once; Termux's selection handles are stopped; the page's selection is
+      cleared; the focus is cleared and the soft keyboard is kept off the
+      window (`FLAG_ALT_FOCUSABLE_IM` while locked, cleared on every way out of
+      the lock; the keyboard and focus requests wait for the unlock); the
+      autofill popup is cancelled. Messages are dropped while locked, and the
+      toast fallback for messages (no screen of the app started) is dropped
+      too.
+    - The app's own windows are made through `AppAlertDialog`, `AppDialog`,
+      `AppModalBottomSheet`, `AppPopup` and `AppDropdownMenu`
+      (`ui/LockedWindows.kt`), which read `LocalAppLocked`. A source-scan unit
+      test flags a direct use of a listed window API elsewhere, as a tripwire:
+      it does not see windows made by other means.
+    - Not covered: the biometric prompt and other windows of the system are
+      not the app's and are not affected. WebView's own native pickers (such
+      as a date or time input), if Chromium shows one for a page, are not
+      held by this gate.
 - Language: system (default), Russian, English.
 - Theme: system (default), light, dark.
 

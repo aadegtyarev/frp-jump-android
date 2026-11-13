@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.files
 
+import ru.adsrv.frpjump.ui.AppDropdownMenu
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -25,7 +26,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -406,7 +406,7 @@ private fun ViewerMenu(
     onOpenWith: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+    AppDropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         if (ready) {
             DropdownMenuItem(
                 text = {

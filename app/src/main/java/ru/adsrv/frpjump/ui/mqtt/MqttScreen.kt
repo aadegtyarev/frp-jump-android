@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
+import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
@@ -20,9 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -234,7 +235,7 @@ fun MqttScreen(vm: MqttViewModel, onBack: () -> Unit) {
                             IconButton(onClick = { menu = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.mqtt_actions))
                             }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.mqtt_publish_here)) },
                                     enabled = state.state != MqttState.Ended,
@@ -940,9 +941,9 @@ private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (
     val text = field.text
     var problem by remember { mutableStateOf<TopicProblem?>(null) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     val go = { if (text.isNotEmpty()) problem = onGo(text) }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {

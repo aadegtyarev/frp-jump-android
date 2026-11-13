@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -155,7 +156,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             } else Column(Modifier.padding(12.dp)) { Section(Modifier.weight(1f, fill = false), withAnswers = true) }
         }
     }
-    if (askAlways) AlertDialog(
+    if (askAlways) AppAlertDialog(
         onDismissRequest = { askAlways = false },
         // A smaller title style, so a long word plus its question mark stays on one line at large font (no lone "?").
         title = { Text(stringResource(R.string.always_dialog_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("chat_always_dialog_title")) },
@@ -188,7 +189,7 @@ internal fun ConfirmationsOffIndicator(onTurnOn: () -> Unit, onTools: (() -> Uni
         .semantics { contentDescription = description }.testTag("chat_confirmations_off"), contentAlignment = Alignment.Center) {
         Icon(Icons.Filled.Warning, contentDescription = null, tint = AppTheme.colors.error)
     }
-    if (open) AlertDialog(
+    if (open) AppAlertDialog(
         onDismissRequest = { open = false },
         text = {
             // The error comes first (it is what just changed) and the text scrolls, so neither is cut off in a short window at large font.

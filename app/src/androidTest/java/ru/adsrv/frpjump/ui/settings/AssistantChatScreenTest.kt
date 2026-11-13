@@ -771,6 +771,34 @@ class AssistantChatScreenTest {
         compose.onNode(hasTestTag("chat_tool_failure_detail") and hasAnyAncestor(hasTestTag("chat_current_tool_failure"))).assertIsDisplayed().assertTextContains("Address refused", substring = true)
     }
 
+    /**
+     * The lock keeps the keyboard off the window with FLAG_ALT_FOCUSABLE_IM and clears it on unlock (MainActivity; see
+     * LockedImeTest). This is the chat's message field on that flag: no keyboard while it is set, and the keyboard
+     * for the same field once it is cleared, so the owner can type in the chat after an unlock.
+     */
+    @Test fun theMessageFieldTakesTheKeyboardAgainOnceTheLockClearsTheImeFlag() {
+        install()
+        fun imeUp(): Boolean { var up = false; compose.activityRule.scenario.onActivity { up = androidx.core.view.ViewCompat.getRootWindowInsets(it.window.decorView)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true }; return up }
+        fun flag(on: Boolean) = compose.activityRule.scenario.onActivity {
+            if (on) it.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM) else it.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        }
+        fun ime(show: Boolean) = compose.activityRule.scenario.onActivity {
+            val c = androidx.core.view.WindowCompat.getInsetsController(it.window, it.window.decorView)
+            if (show) c.show(androidx.core.view.WindowInsetsCompat.Type.ime()) else c.hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }
+        fun waitUp(up: Boolean, ms: Long): Boolean { val until = SystemClock.uptimeMillis() + ms; while (imeUp() != up && SystemClock.uptimeMillis() < until) SystemClock.sleep(100); return imeUp() == up }
+        ime(false); assertTrue(waitUp(false, 3000))
+        flag(true)
+        input().performClick(); ime(true)
+        SystemClock.sleep(1500)
+        assertFalse("the keyboard attached while the lock flag is set", imeUp())
+        flag(false)
+        input().performClick(); ime(true)
+        assertTrue("the message field gets no keyboard after the flag is cleared", waitUp(true, 8000))
+        input().performTextInput("typed after unlock")
+        compose.onNodeWithTag("chat_input").assertTextContains("typed after unlock", substring = true)
+    }
+
     @Test fun historyStaysReadableAndScrollableWithTheKeyboardUp() {
         mode = "tool-failure"
         settings.update { it.copy(assistantReadPage = true) }

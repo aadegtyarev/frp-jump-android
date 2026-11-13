@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.AppPopup
 import android.view.KeyEvent
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
@@ -71,7 +72,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.sp
 import com.termux.terminal.KeyHandler
@@ -313,7 +313,7 @@ fun ExtraKeys(
                 }
                 // The independent popup target ends above the main row. Its
                 // symbol, not the larger touch rectangle, follows the grid.
-                Popup(
+                AppPopup(
                     alignment = Alignment.TopEnd,
                     offset = disclosureOffset,
                     properties = PopupProperties(focusable = false, dismissOnBackPress = false, dismissOnClickOutside = false, clippingEnabled = false),
