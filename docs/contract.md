@@ -956,7 +956,7 @@ secure key storage, model discovery, effort and context limits, the owner's own
 instructions for the model (guidance only, sent with every message, never
 authority over permissions or confirmations), plus a Chat
 entry for explicit conversations. The same chat opens from the bottom navigation (an "Assistant" item shown only while the module is on:
-over the current section, Back returns to it) and from Terminal ⋮ → Ask the assistant (see [entry points](agent-contract.md#entry-points)). Automatic working summaries use the chat model
+over the current section, Back returns to it; on the section screens' bottom bar it shows a small dot, announced as "Working" / «Работает» or "Waiting for your answer" / «Ждёт ответа», while an assistant attempt runs or a confirmation card waits) and from Terminal ⋮ → Ask the assistant (see [entry points](agent-contract.md#entry-points)). Automatic working summaries use the chat model
 or an optional other model of the same provider. The configurable trigger defaults
 to 80% of estimated context use, including output reserve; summary calls have no
 tools and incur an additional model request. Tools offers independent, default-off Web
@@ -965,7 +965,7 @@ public/private-data disclosure and model token-charge notices. SSH command carri
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
 files within account rights; commands and output may contain secrets and go to
 the configured model. Before such a changing call runs, the owner is asked (Allow, For session, Always, Decline) unless the app-wide
-"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (until Chat is left); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
+"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (until Chat is left and no attempt runs); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
 or saving makes no request. Switches autosave through the same Tools binding in
 Settings and Chat. Actual committed values, pending progress and inline failures
 come from one snapshot; no Save button or pre-commit checked value. Storage runs
@@ -974,13 +974,14 @@ cleared together. Back/recreation retain parent-owned saves; actual parent pop
 cancels publication, without promising rollback of blocking storage.
 Each Send keeps its admitted tool snapshot and may
 finish with it; committed changes apply only to the next Send without clearing
-history or draft. Stop/pop, assistant disable and provider changes still revoke
-work. Search has no shared results cache; process quotas/cooldowns remain. Image
+history or draft. Stop, assistant disable, provider changes and the removal of this phone's profile still revoke
+work; leaving Chat does not. Search has no shared results cache; process quotas/cooldowns remain. Image
 requests return bounded unverified model text, including inability/refusal, not
 claims of visual understanding. Technical failures give understandable sanitized
 descriptions and known status/limits, never silent success or raw server errors. Chat also opens Tools without popping its conversation;
-returning from Tools keeps that owner/history. Actual Chat exit cancels execution
-and releases route memory; one encrypted local conversation is restored on return.
+returning from Tools keeps that owner/history. Leaving Chat does not cancel a running attempt (a Send, a confirmation wait included): the app keeps the conversation while a chat
+screen is open or an attempt runs, and its reply and results are saved to the history. When neither remains the conversation closes
+(draft saved, "For session" grants cleared, memory released) and one encrypted local conversation is restored on return.
 Restoring makes no provider/tool call. Chat's menu clears it with shared Undo;
 read/write failures stay visible and accepted unsaved data remains available in
 memory for retry. The file contains one canonical conversation, not separate UI

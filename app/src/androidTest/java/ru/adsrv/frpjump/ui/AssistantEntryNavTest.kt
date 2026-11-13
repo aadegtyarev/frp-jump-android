@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
@@ -38,6 +39,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -97,7 +100,7 @@ class AssistantEntryNavTest {
             compose.waitUntil(10_000) { compose.runOnUiThread { nav.visibleEntries.value.none { it.destination.route in setOf(Routes.CHAT, Routes.PROVIDER) } } }
             compose.waitForIdle()
         }
-        compose.runOnIdle { app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
+        compose.runOnIdle { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.IDLE; app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
         // Whatever the chat saved on the way is dropped, then the device's own chat file comes back.
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
         chatFile.restore()
@@ -153,6 +156,86 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("chat_back").performClick()
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         assertEquals(0, chatEntries())
+    }
+
+    @Test fun theConversationLivesWhileAScreenIsOverTheChatAndAnIdleOneClosesWhenTheChatIsLeft() {
+        host()
+        openFromNav()
+        // The chat has no bottom bar (its route is not in a TabFrame).
+        compose.onAllNodesWithTag("nav_assistant").assertCountEquals(0)
+        compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
+        // A screen over the chat: the chat's entry is still on the back stack, its conversation stays.
+        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
+        // Back from that screen, as a user does: the chat is on top again and still holds its conversation.
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
+        // Leaving the chat ends the screen's hold; an idle conversation closes (draft saved, grants cleared).
+        compose.onNodeWithTag("chat_back").performClick()
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        compose.waitUntil(10_000) { compose.runOnUiThread { app.assistantChatOwner.confirmations == null } }
+    }
+
+    private fun chatOnStack() = compose.runOnUiThread { runCatching { nav.getBackStackEntry(Routes.CHAT) }.isSuccess }
+
+    /** The invariant: no bottom bar (a section's [TabFrame]) is drawn while the chat is on the back stack. */
+    private fun assertNoBarWhileChatOnStack() {
+        compose.waitForIdle()
+        if (chatOnStack()) compose.onAllNodesWithTag("nav_devices").assertCountEquals(0)
+    }
+
+    @Test fun theBottomBarIsNeverShownWhileTheChatIsOnTheBackStack() {
+        host()
+        // 1. Opened from the bottom bar: the chat is on top, no bar.
+        openFromNav()
+        assertTrue(chatOnStack()); assertNoBarWhileChatOnStack()
+        // 2. Tools inside the chat, and back to the chat.
+        compose.onNodeWithTag("chat_tools").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("tools_back").fetchSemanticsNodes().isNotEmpty() }
+        assertNoBarWhileChatOnStack()
+        compose.onNodeWithTag("tools_back").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat_tools").fetchSemanticsNodes().isNotEmpty() }
+        assertNoBarWhileChatOnStack()
+        // 3. The provider screen over the chat (assistant on), and Back to the chat.
+        compose.onNodeWithTag("chat_setup").performClick()
+        compose.waitUntil(10_000) { route == Routes.PROVIDER }
+        assertTrue(chatOnStack()); assertNoBarWhileChatOnStack()
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        assertNoBarWhileChatOnStack()
+        // 4. Assistant off: the setup button pops the chat and opens Settings; the bar may be shown now, the chat is gone.
+        assistant(false)
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat_setup").fetchSemanticsNodes().isNotEmpty() }
+        assertNoBarWhileChatOnStack()
+        compose.onNodeWithTag("chat_setup").performClick()
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.waitForIdle()
+        assertFalse(chatOnStack())
+        // 5. Reopened, then left with the chat's own Back: the chat is off the stack.
+        assistant(true)
+        compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        openFromNav()
+        assertTrue(chatOnStack()); assertNoBarWhileChatOnStack()
+        compose.onNodeWithTag("chat_back").performClick()
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        compose.waitForIdle()
+        assertFalse(chatOnStack()); assertNoBarWhileChatOnStack()
+    }
+
+    @Test fun theNavigationDotFollowsTheAssistantActivityAndNoAttemptLeavesIt() {
+        host()
+        navItem.assertIsDisplayed()
+        compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true).assertCountEquals(0)
+        compose.runOnUiThread { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.WORKING }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
+        assertEquals(text(R.string.assistant_state_working), navItem.fetchSemanticsNode().config[SemanticsProperties.StateDescription])
+        compose.runOnUiThread { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.WAITING }
+        compose.waitUntil(10_000) { runCatching { navItem.fetchSemanticsNode().config[SemanticsProperties.StateDescription] == text(R.string.assistant_state_waiting) }.getOrDefault(false) }
+        compose.runOnUiThread { app.assistantActivity.value = ru.adsrv.frpjump.assistant.ChatActivity.IDLE }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("nav_assistant_dot", useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun askingFromTheTerminalWhileToolsAreOpenReturnsToTheChatWithTheQuote() {

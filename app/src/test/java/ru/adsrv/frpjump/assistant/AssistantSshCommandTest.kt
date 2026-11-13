@@ -451,8 +451,8 @@ class AssistantSshCommandTest {
             assertEquals(0, f.factories.get()); assertTrue(f.client.commands.isEmpty()); assertTrue(c.chat.state.value.turns.isEmpty())
         } }
     }
-    @Test fun `Chat Stop pop disable and provider change hold shared slot until owned cleanup exits`() = runBlocking {
-        for (revoke in listOf("stop", "pop", "disable", "provider")) Fixture().use { f -> f.ready(); Chat(f).use { c ->
+    @Test fun `Chat Stop forced close disable and provider change hold shared slot until owned cleanup exits`() = runBlocking {
+        for (revoke in listOf("stop", "force-close", "disable", "provider")) Fixture().use { f -> f.ready(); Chat(f).use { c ->
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
             f.client.beforeDisconnect = { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
             c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
@@ -461,7 +461,7 @@ class AssistantSshCommandTest {
                 assertTrue(entered.await(3, TimeUnit.SECONDS))
                 when (revoke) {
                     "stop" -> c.chat.stop()
-                    "pop" -> c.chat.close()
+                    "force-close" -> c.chat.close()
                     "disable" -> { c.settings.update { it.copy(assistantEnabled = false) }; c.chat.refresh() }
                     else -> { c.store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), c.store.currentSnapshot.revision)); c.chat.refresh() }
                 }
@@ -600,7 +600,7 @@ class AssistantSshCommandTest {
         }
     }
     @Test fun `SSH TARGET OUTCOME external owner revocation wins local failure race through cleanup`() = runBlocking {
-        for (revoke in listOf("stop", "pop", "disable", "off-on", "provider", "read-problem")) Fixture().use { f -> f.ready(); Chat(f).use { c ->
+        for (revoke in listOf("stop", "force-close", "disable", "off-on", "provider", "read-problem")) Fixture().use { f -> f.ready(); Chat(f).use { c ->
             val entered = CountDownLatch(1); val release = CountDownLatch(1)
             f.client.beforeDisconnect = { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
             c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); c.send()
@@ -609,7 +609,7 @@ class AssistantSshCommandTest {
                 f.loseTarget("hidden-connection")
                 when (revoke) {
                     "stop" -> c.chat.stop()
-                    "pop" -> c.chat.close()
+                    "force-close" -> c.chat.close()
                     "disable", "off-on" -> {
                         c.settings.update { it.copy(assistantEnabled = false) }
                         if (revoke == "off-on") c.settings.update { it.copy(assistantEnabled = true) }

@@ -84,7 +84,7 @@ class AssistantWebOwnershipTest {
         }
     }
 
-    @Test fun `public cleanup spans pop reopen and revoked source cannot be published`() = runBlocking {
+    @Test fun `public cleanup spans a forced close and a reopen and revoked source cannot be published`() = runBlocking {
         val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantReadPage = true) } }
         val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>(); var calls = 0
         settings.assistantChat.publicWeb = PublicFetcher { _, _, attempt ->
@@ -144,7 +144,7 @@ class AssistantWebOwnershipTest {
     }
 
     @Test fun `WEB-AUTH-04 source publication obeys real revocations and no payload is reused by a new owner`() = runBlocking {
-        val revocations = listOf("stop", "pop", "revision", "read-problem", "disable", "off-on")
+        val revocations = listOf("stop", "force-close", "revision", "read-problem", "disable", "off-on")
         for (revoke in revocations) for (revokeFirst in listOf(true, false)) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true, assistantSearch = true, assistantReadPage = true, assistantInspectImage = true) } }
             val file = Memory()
@@ -177,7 +177,7 @@ class AssistantWebOwnershipTest {
             val commit = Thread {
                 when (revoke) {
                     "stop" -> old.stop()
-                    "pop" -> old.close()
+                    "force-close" -> old.close()
                     "revision" -> store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), store.currentSnapshot.revision))
                     "read-problem" -> { file.text = "invalid"; store.reload() }
                     "disable", "off-on" -> { settings.update { it.copy(assistantEnabled = false) }; if (revoke == "off-on") settings.update { it.copy(assistantEnabled = true) } }

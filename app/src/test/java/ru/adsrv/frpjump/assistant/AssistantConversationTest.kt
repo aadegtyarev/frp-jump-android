@@ -99,8 +99,8 @@ class AssistantConversationTest {
         }
     }
 
-    @Test fun `noncooperative late answer and error cannot publish after Stop disable off-on revision or exit`() = runBlocking {
-        for (action in listOf("stop", "disable", "revision", "exit")) for (throws in listOf(false, true)) {
+    @Test fun `noncooperative late answer and error cannot publish after Stop disable off-on revision or a forced close`() = runBlocking {
+        for (action in listOf("stop", "disable", "revision", "force-close")) for (throws in listOf(false, true)) {
             val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
             Fixture(AgentProvider {
                 entered.complete(Unit)
@@ -112,7 +112,7 @@ class AssistantConversationTest {
                     "stop" -> f.chat.stop()
                     "disable" -> { f.settings.update { it.copy(assistantEnabled = false) }; f.settings.update { it.copy(assistantEnabled = true) } }
                     "revision" -> f.revise()
-                    "exit" -> f.chat.close()
+                    "force-close" -> f.chat.close()
                 }
                 // Intentionally no conversation observer: publication/admission must check current authority.
                 release.complete(Unit); f.idle()
@@ -186,7 +186,7 @@ class AssistantConversationTest {
         }
     }
 
-    @Test fun `pre-dispatch cancellation releases slot and close discards all memory`() = runBlocking {
+    @Test fun `pre-dispatch cancellation releases slot and a forced close discards all memory`() = runBlocking {
         Fixture().use { f ->
             f.send(); f.chat.edit("draft"); f.chat.close()
             assertEquals(ChatState(), f.chat.state.value); f.revise(); f.chat.refresh(); f.chat.stop(); f.chat.send(); assertEquals(ChatState(), f.chat.state.value)

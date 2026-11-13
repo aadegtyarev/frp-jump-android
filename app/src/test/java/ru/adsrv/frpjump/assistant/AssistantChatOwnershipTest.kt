@@ -35,7 +35,7 @@ class AssistantChatOwnershipTest {
     private suspend fun idle(chat: AssistantConversation) = withTimeout(4000) { chat.state.first { !it.busy } }
 
     @Test fun `app slot spans old and reopened owners through prep HTTP post-kernel and cleanup`() = runBlocking {
-        for (phase in listOf("prep", "http", "post")) for (action in listOf("exit", "stop", "disable", "revision")) for (failure in listOf(false, true)) {
+        for (phase in listOf("prep", "http", "post")) for (action in listOf("force-close", "stop", "disable", "revision")) for (failure in listOf(false, true)) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
             val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
             store.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic"))
@@ -71,7 +71,7 @@ class AssistantChatOwnershipTest {
                     assertFalse("$phase/$action/$failure fake HTTP must suspend before blocking", httpUnderGuard.get())
                 }
                 when (action) {
-                    "exit" -> old.close()
+                    "force-close" -> old.close()
                     "stop" -> old.stop()
                     "disable" -> { settings.update { it.copy(assistantEnabled = false) }; settings.update { it.copy(assistantEnabled = true) }; old.refresh() }
                     "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings(model = "next"), store.currentSnapshot.revision)); old.refresh() }
@@ -91,7 +91,7 @@ class AssistantChatOwnershipTest {
     }
 
     @Test fun `transport exit keeps app slot across completion cancellation and authority changes`() = runBlocking {
-        for (action in listOf("success", "error", "stop", "exit", "disable", "revision", "timeout")) {
+        for (action in listOf("success", "error", "stop", "force-close", "disable", "revision", "timeout")) {
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
             val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
             store.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic"))
@@ -112,7 +112,7 @@ class AssistantChatOwnershipTest {
                 old.edit("old private input"); old.send(); inside.entered()
                 when (action) {
                     "stop" -> old.stop()
-                    "exit" -> old.close()
+                    "force-close" -> old.close()
                     "disable" -> { settings.update { it.copy(assistantEnabled = false) }; settings.update { it.copy(assistantEnabled = true) }; old.refresh() }
                     "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings(model = "next"), store.currentSnapshot.revision)); old.refresh() }
                 }
@@ -173,7 +173,7 @@ class AssistantChatOwnershipTest {
     @Test fun `real adapter outcomes and cancellation release the slot only after exit`() = runBlocking {
         val outcomes = mapOf("success" to null, "error" to ChatProblem.PROVIDER, "invalid" to ChatProblem.INVALID_REPLY,
             "oversize" to ChatProblem.INVALID_REPLY, "network" to ChatProblem.PROVIDER, "timeout" to ChatProblem.TIMEOUT)
-        for (action in listOf("success", "error", "invalid", "oversize", "network", "timeout", "stop", "body-stop", "exit", "disable", "revision")) Loopback(action).use { loop ->
+        for (action in listOf("success", "error", "invalid", "oversize", "network", "timeout", "stop", "body-stop", "force-close", "disable", "revision")) Loopback(action).use { loop ->
             val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
             val store = AssistantProviderStore(Memory(), box, settings.assistantChat)
             store.save(AssistantProviderDraft(AssistantProviderSettings(loop.url, "m"), null, "synthetic"))
@@ -191,7 +191,7 @@ class AssistantChatOwnershipTest {
                 assertTrue("request $action", loop.received.await(4, TimeUnit.SECONDS))
                 when (action) {
                     "stop", "body-stop" -> old.stop()
-                    "exit" -> old.close()
+                    "force-close" -> old.close()
                     "disable" -> { settings.update { it.copy(assistantEnabled = false) }; settings.update { it.copy(assistantEnabled = true) }; old.refresh() }
                     "revision" -> { store.save(AssistantProviderDraft(AssistantProviderSettings(loop.url, "next"), store.currentSnapshot.revision)); old.refresh() }
                 }

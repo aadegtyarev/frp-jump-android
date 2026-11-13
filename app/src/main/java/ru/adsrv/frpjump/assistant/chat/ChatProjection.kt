@@ -8,8 +8,8 @@ internal fun projectChat(value: SavedChat, projected: List<ChatTurn>, archive: B
     val last = value.records.lastOrNull()
     val current = last?.takeIf { it.status == SavedTurnState.RUNNING || (!archive && it.status != SavedTurnState.COMPLETE) }
     val currentView = if (current == null) null else projected.lastOrNull()
+    // An interrupted last attempt is told once, by the grey line under its turn; no red notice repeats it.
     val problem = last?.problem?.let { ChatProblem.valueOf(it) }
-        ?: if (archive && last?.status == SavedTurnState.INTERRUPTED) ChatProblem.INTERRUPTED else null
     return previous.copy(
         turns = if (!archive) projected.filterIndexed { index, _ -> value.records[index].status == SavedTurnState.COMPLETE }
             else if (current == null) projected else projected.dropLast(1),

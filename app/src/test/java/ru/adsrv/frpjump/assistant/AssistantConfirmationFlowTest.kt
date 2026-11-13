@@ -27,7 +27,7 @@ class AssistantConfirmationFlowTest {
     private class Call(val profile: String, val connection: String, val command: String)
 
     private inner class Harness(private val calls: List<Call>, dispatcher: CoroutineDispatcher? = null, clock: (() -> Long)? = null,
-        persistFails: Boolean = false, enabledAtStart: Boolean = true, private val providerDelayMs: Long = 0, modelTimeoutMs: Long = 60_000,
+        persistFails: Boolean = false, realtime: (() -> Long)? = null, enabledAtStart: Boolean = true, private val providerDelayMs: Long = 0, modelTimeoutMs: Long = 60_000,
         private val custom: ((AgentRequest) -> AgentReply?)? = null, withSupport: Boolean = true) : AutoCloseable {
         @Volatile var snapshot = saved
         val executed = AtomicInteger()
@@ -73,7 +73,7 @@ class AssistantConfirmationFlowTest {
                 }
             }, {}, AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled }),
                 io = dispatcher ?: Dispatchers.Default, limits = { AgentLimits(modelTimeoutMs = modelTimeoutMs) }, runtime = settings.assistantChat, sshCommands = ssh, prompts = TestPrompts.placeholder,
-                confirmations = if (withSupport) support else null, activeClock = clock ?: { System.nanoTime() / 1_000_000 })
+                confirmations = if (withSupport) support else null, activeClock = clock ?: { System.nanoTime() / 1_000_000 }, realtime = realtime ?: clock ?: { System.nanoTime() / 1_000_000 })
             live += this
         }
         val state get() = chat.state.value
@@ -169,7 +169,7 @@ class AssistantConfirmationFlowTest {
         assertTrue(removed.asksAgain())
     }
 
-    @Test fun `closing the chat switching the tool off history clear and assistant disable end session grants`() {
+    @Test fun `closing the conversation switching the tool off history clear and assistant disable end session grants`() {
         val closed = granted(); closed.chat.close()
         assertFalse(closed.support.grants.has(GrantKey(AssistantToolId.SSH_COMMAND, GrantTarget("p", "c")), "stamp-1"))
         val off = granted()
@@ -227,7 +227,7 @@ class AssistantConfirmationFlowTest {
         Thread.sleep(100); assertEquals(0, h.executed.get())
     }
 
-    @Test fun `assistant disable and close during the wait run nothing and clear the card`() {
+    @Test fun `assistant disable and a forced close during the wait run nothing and clear the card`() {
         val disabled = Harness(one())
         disabled.send(); disabled.card()
         disabled.settings.update { it.copy(assistantEnabled = false) }; disabled.chat.refresh()
@@ -270,6 +270,22 @@ class AssistantConfirmationFlowTest {
         assertEquals(ToolOutcome.DECLINED, result.outcome); assertEquals(ConfirmationTexts.NO_ANSWER, result.text)
         assertNull("the wait did not time the Send out", h.state.problem); assertEquals("done", h.state.turns.single().answer)
         assertFalse("after the timeout the question is gone and the history is shown again", h.state.asking)
+    }
+
+    @Test fun `the wait ends at five real minutes even when the coroutine timer has not counted them (device sleep)`() {
+        val vt = VirtualTime(); var slept = 0L
+        val h = Harness(one(), dispatcher = vt, clock = { vt.now }, realtime = { vt.now + slept })
+        val endedAt = vt.run {
+            h.send()
+            until { h.state.confirmation != null }
+            slept = 300_000
+            until { !h.state.busy }
+            vt.now
+        }
+        assertTrue("ended on a short re-check, not after five minutes of timer time: $endedAt", endedAt < 60_000)
+        assertEquals(0, h.executed.get())
+        val result = h.results().single()
+        assertEquals(ToolOutcome.DECLINED, result.outcome); assertEquals(ConfirmationTexts.NO_ANSWER, result.text)
     }
 
     @Test fun `a long wait for the owner does not use up the 120 second Send limit`() {

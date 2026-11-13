@@ -116,13 +116,15 @@ internal object Routes {
 fun AppNav() {
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val nav = rememberNavController()
-    val removedFlow = remember {
-        app.profiles.state.map { it.current }.distinctUntilChanged().flatMapLatest { it?.session?.removed ?: flowOf(false) }
-    }
-    val removed by removedFlow.collectAsStateWithLifecycle(false)
+    val removed by app.currentProfileRemoved.collectAsStateWithLifecycle(false)
     // The server rejected the current profile's token: its polling has stopped; say so wherever we are.
     LaunchedEffect(removed) {
-        if (removed && nav.currentDestination?.route != Routes.REMOVED) nav.replaceAll(Routes.REMOVED)
+        if (removed && nav.currentDestination?.route != Routes.REMOVED) {
+            // The chat screen no longer owns the attempt, so leaving it does not stop it: the removal does. (The owner reacts to the same
+            // removal by itself, for when no screen is here; this is the explicit stop in the screen path.)
+            app.stopAssistantAttempt()
+            nav.replaceAll(Routes.REMOVED)
+        }
     }
     // A notification's tap: that profile's device card, over whatever is shown.
     val openDevice by app.openDevice.collectAsStateWithLifecycle()
@@ -397,8 +399,17 @@ fun AppNav() {
 
 /** The chat and its provider screen: reached from Settings, the bottom navigation and the terminal menu alike. */
 internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJumpApp) {
-    composable(Routes.CHAT) {
+    composable(Routes.CHAT) { entry ->
         val vm = viewModel { ru.adsrv.frpjump.ui.settings.AssistantChatViewModel(app) }
+        // Back from a saved state (the bottom bar keeps the popped entry's model): take the conversation again. When the entry is destroyed
+        // for good, or saved and popped, the screen lets go; a configuration change keeps its hold (the same model comes straight back).
+        val activity = LocalContext.current.findActivity()
+        remember(entry) {
+            vm.screenBack()
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY && activity?.isChangingConfigurations != true) vm.screenGone()
+            }.also(entry.lifecycle::addObserver)
+        }
         // A terminal selection waits in the app only until this chat takes it (at once); from then on it is the chat's, in memory, and
         // goes after the draft once the saved draft has loaded and no Send runs. It never outlives the chat: a Back drops it with the model.
         val waiting by app.assistantQuote.collectAsStateWithLifecycle()
@@ -433,8 +444,8 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
 
 /**
  * Opens the chat over the current screen, so Back returns to it. There is only ever one chat entry (one conversation on one history file
- * and one run slot): when the chat is already on the back stack, the screens above it are popped to reach it, and its own model (a running
- * Send included) goes on untouched; popping it and starting anew would stop that Send.
+ * and one run slot): when the chat is already on the back stack, the screens above it are popped to reach it and its conversation goes on
+ * untouched. (A Send does not depend on this: it outlives the screen, see [ru.adsrv.frpjump.assistant.AssistantChatOwner].)
  */
 internal fun NavHostController.openAssistant() {
     val open = runCatching { getBackStackEntry(Routes.CHAT) }.isSuccess
@@ -464,8 +475,9 @@ internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composabl
     UpdateAnnouncement(selected, snackbars) { nav.goToTab(Tab.SETTINGS) }
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val assistant = assistantEnabledNow(app)
+    val activity by app.assistantActivity.collectAsStateWithLifecycle()
     Scaffold(
-        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null) { if (it != selected) nav.goToTab(it) } },
+        bottomBar = { BottomNav(selected, onAssistant = if (assistant) ({ nav.openAssistant() }) else null, assistantActivity = activity) { if (it != selected) nav.goToTab(it) } },
         snackbarHost = { SnackbarHost(snackbars) },
         containerColor = AppTheme.colors.ground,
         contentWindowInsets = WindowInsets(0),

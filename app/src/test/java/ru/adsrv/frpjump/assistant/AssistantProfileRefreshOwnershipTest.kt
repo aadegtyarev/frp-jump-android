@@ -17,7 +17,7 @@ import ru.adsrv.frpjump.store.SecretBox
 
 /** Tests the actual ordinary HTTP starts/exits, not just eventual answer publication. */
 class AssistantProfileRefreshOwnershipTest {
-    private val causes = listOf("stop", "exit", "disable", "off-on", "revision", "read-problem")
+    private val causes = listOf("stop", "force-close", "disable", "off-on", "revision", "read-problem")
     private class Hold(count: Int = 1) {
         val entered = CountDownLatch(count)
         val release = CountDownLatch(1)
@@ -53,7 +53,7 @@ class AssistantProfileRefreshOwnershipTest {
         fun revoke(cause: String, refresh: Boolean = true) {
             when (cause) {
                 "stop" -> old.stop()
-                "exit" -> old.close()
+                "force-close" -> old.close()
                 "disable", "off-on" -> {
                     settings.update { it.copy(assistantEnabled = false) }
                     if (cause == "off-on") settings.update { it.copy(assistantEnabled = true) }

@@ -37,8 +37,9 @@ class ChatProjectionTest {
         val state = project(SavedChat(records = listOf(turn("q", SavedTurnState.RUNNING))), archive = true, running = false)
         assertNull(state.pendingText); assertTrue(state.turns.isEmpty())
     }
-    @Test fun `an interrupted archive turn reports INTERRUPTED unless it has its own problem`() {
-        assertEquals(ChatProblem.INTERRUPTED, project(SavedChat(records = listOf(turn("q", SavedTurnState.INTERRUPTED))), archive = true, running = false).problem)
+    @Test fun `an interrupted archive turn has no red problem of its own, its note is the turn's grey line`() {
+        val interrupted = project(SavedChat(records = listOf(turn("q", SavedTurnState.INTERRUPTED))), archive = true, running = false)
+        assertNull("one note, not two", interrupted.problem); assertTrue(interrupted.turns.single().interrupted)
         assertNull(project(SavedChat(records = listOf(turn("q", SavedTurnState.INTERRUPTED))), archive = false, running = false).problem)
         assertEquals(ChatProblem.KEY, project(SavedChat(records = listOf(turn("q", SavedTurnState.INTERRUPTED, problem = "KEY"))), archive = true, running = false).problem)
     }
