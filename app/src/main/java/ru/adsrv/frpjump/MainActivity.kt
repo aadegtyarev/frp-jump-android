@@ -123,7 +123,7 @@ class MainActivity : AppCompatActivity() {
                     Surface(Modifier.fillMaxSize(), color = AppTheme.colors.ground, contentColor = AppTheme.colors.ink) {
                         // Kept while locked (back stack, open pages, polling); hidden and silent.
                         Box(if (locked) Modifier.clearAndSetSemantics { } else Modifier) { AppNav() }
-                        // Test seam: a window made in the same composition as the screens (see LockedWindowsWiringTest).
+                        // Test seam: a window made in the same composition as the screens (see LockedImeTest.aWrappedWindowOfTheRealActivityLeavesWithTheLockAndComesBack).
                         windowProbe?.invoke()
                         if (locked) {
                             LockScreen(

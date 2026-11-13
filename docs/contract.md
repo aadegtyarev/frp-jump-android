@@ -606,7 +606,8 @@ version and update, MQTT plugins (scenario 12), components and licenses).
     web page's `alert`, `confirm`, `prompt` and leave-page question.
     - A dialog or sheet comes back after unlock as it was, with what was typed
       in it (state kept in the window's content is `rememberSaveable`). A menu
-      or popup that was open at the lock comes back too. A page's script
+      or popup of a screen that was open at the lock comes back too; a menu
+      inside a sheet may close instead. A page's script
       waits for its question until then, and it is cancelled when the page or
       screen goes away first.
     - Windows that are not Compose windows are handled one by one: the
