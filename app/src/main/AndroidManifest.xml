@@ -52,11 +52,6 @@
             </intent-filter>
         </activity>
 
-        <!-- The "Direct didn't work" notification's actions. -->
-        <receiver
-            android:name=".direct.DirectActionReceiver"
-            android:exported="false" />
-
         <!-- After a reboot (once unlocked: the credentials need it), brings back tunnels that were up. -->
         <receiver
             android:name=".restore.BootReceiver"
