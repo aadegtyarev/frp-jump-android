@@ -172,7 +172,7 @@ fun ConnectionCard(
 private const val DIMMED = 0.5f
 
 /**
- * "Port 80", "Port 22 · root · phone key", …: what the kind tile does not
+ * "Port 80", "Port 22 · root · key", …: what the kind tile does not
  * say already; null for a tunnel no connection names (its name says the port).
  */
 @Composable

@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /**
- * User name (remembered per device and port), then this phone's key or a
+ * User name (remembered per device and port), then the app's keys or a
  * password. A password is kept only if "Remember" is ticked; an empty
  * field with a remembered password uses that one. [passwordOnly] asks for
  * a password just once ("Use key login"): no method, nothing to remember,
@@ -94,7 +94,7 @@ fun SshLoginDialog(
                 note?.let { Text(it, fontSize = 13.sp, color = AppTheme.colors.muted) }
                 if (method == SshAuthMethod.KEY) {
                     Text(
-                        stringResource(R.string.ssh_login_key_hint, stringResource(R.string.ssh_public_key)),
+                        stringResource(R.string.ssh_login_key_hint, stringResource(R.string.ssh_keys)),
                         fontSize = 13.sp,
                         color = AppTheme.colors.muted,
                     )

@@ -232,6 +232,7 @@ class KeyInstallTest {
     fun `each final result has its text, the questions none`() {
         assertEquals(KeyInstallText(R.string.key_install_done, emptyList(), ok = true), keyInstallText(KeyInstallResult.Installed, "root"))
         assertEquals(KeyInstallText(R.string.key_install_refused, listOf("root"), ok = false), keyInstallText(KeyInstallResult.KeyRefused, "root"))
+        assertEquals(KeyInstallText(R.string.key_install_unreadable, emptyList(), ok = false), keyInstallText(KeyInstallResult.KeyUnreadable, "root"))
         assertEquals(R.string.key_install_command_failed, keyInstallText(KeyInstallResult.CommandFailed("x"), "root")?.res)
         assertEquals(R.string.key_install_connection_failed, keyInstallText(KeyInstallResult.ConnectionFailed("x"), "root")?.res)
         assertEquals(KeyInstallText(R.string.key_install_done_password_kept, listOf("x"), ok = true), keyInstallText(KeyInstallResult.InstalledPasswordKept("x"), "root"))
