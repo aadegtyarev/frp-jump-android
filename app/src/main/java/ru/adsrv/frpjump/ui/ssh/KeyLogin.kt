@@ -27,9 +27,11 @@ import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ssh.HostKeyCheck
+import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
+import ru.adsrv.frpjump.ssh.hostKeyWriteDetail
 import ru.adsrv.frpjump.ssh.KeyInstallResult
 import ru.adsrv.frpjump.ssh.KeyInstallTarget
-import ru.adsrv.frpjump.ssh.KeyInstaller
+import ru.adsrv.frpjump.ssh.KeyInstalling
 import ru.adsrv.frpjump.ssh.LoginRefusal
 import ru.adsrv.frpjump.ssh.PinnedHostKey
 import ru.adsrv.frpjump.ssh.SshAuthMethod
@@ -59,7 +61,7 @@ sealed interface KeyLoginStep {
  * step its dialogs show. Main thread.
  */
 @Stable
-class KeyLoginFlow(private val installer: KeyInstaller, private val scope: CoroutineScope) {
+class KeyLoginFlow(private val installer: KeyInstalling, private val scope: CoroutineScope) {
     var step by mutableStateOf<KeyLoginStep?>(null)
         private set
 
@@ -86,13 +88,18 @@ class KeyLoginFlow(private val installer: KeyInstaller, private val scope: Corou
         val s = step as? KeyLoginStep.HostKey ?: return
         step = KeyLoginStep.Working(s.target)
         job = scope.launch(Dispatchers.Main) {
-            withContext(Dispatchers.IO) {
-                when (s.check) {
-                    is HostKeyCheck.Changed -> s.target.hostKeys.forget(s.target.device, s.target.port)
-                    else -> s.target.hostKeys.pin(s.target.device, s.target.port, s.presented)
+            val failure = withContext(Dispatchers.IO) {
+                hostKeyWriteFailure {
+                    when (s.check) {
+                        is HostKeyCheck.Changed -> s.target.hostKeys.forget(s.target.device, s.target.port)
+                        else -> s.target.hostKeys.pin(s.target.device, s.target.port, s.presented)
+                    }
                 }
             }
-            run(s.target)
+            if (failure != null) {
+                // Nothing was trusted: the owner may retry from the start or close.
+                step = KeyLoginStep.Done(s.target, KeyInstallResult.HostKeySaveFailed(hostKeyWriteDetail(failure), forgot = s.check is HostKeyCheck.Changed))
+            } else run(s.target)
         }
     }
 

@@ -37,10 +37,12 @@ class SshSessionLifecycleTest {
     private class Memory : TextStorage {
         @Volatile var value: String? = null
         @Volatile var block = false
+        @Volatile var fail = false
         val reached = CountDownLatch(1)
         val release = CountDownLatch(1)
         override fun read() = value
         override fun write(text: String) {
+            if (fail) throw IOException("disk full")
             if (block) {
                 reached.countDown()
                 check(release.await(5, TimeUnit.SECONDS)) { "Storage gate not released" }
@@ -504,6 +506,39 @@ class SshSessionLifecycleTest {
             storage.release.countDown()
             root.cancel()
             main { session.close("closed") }
+        }
+    }
+
+    @Test fun failedTrustSaveEndsWithTheErrorAndTrustsNothing() = failedHostKeySave(forget = false)
+    @Test fun failedForgetSaveEndsWithTheErrorAndKeepsTheOldPin() = failedHostKeySave(forget = true)
+
+    private fun failedHostKeySave(forget: Boolean) = runBlocking {
+        val root = SupervisorJob()
+        val storage = Memory()
+        val session = session(root, storage)
+        val old = PinnedHostKey("synthetic-key-type", "synthetic-old")
+        val presented = PinnedHostKey("synthetic-key-type", "synthetic-presented")
+        try {
+            if (forget) session.hostKeys.pin("synthetic-device", 22, old)
+            storage.fail = true
+            @Suppress("UNCHECKED_CAST")
+            val state = SshSession::class.java.getDeclaredField("_state").apply { isAccessible = true }
+                .get(session) as MutableStateFlow<SshState>
+            main {
+                state.value = if (forget) SshState.HostKeyChanged(old, presented) else SshState.HostKeyUnknown(presented)
+                if (forget) session.forgetOldHostKey() else session.trustHostKey()
+            }
+            withTimeout(5_000) { while (session.state.value !is SshState.Ended) delay(10) }
+            val ended = session.state.value as SshState.Ended
+            assertTrue(ended.message, ended.message.contains("disk full"))
+            // Nothing trusted; on forget the old pin stays.
+            assertEquals(if (forget) old else null, session.hostKeys.pinned("synthetic-device", 22))
+            // The store is not broken: once the disk works the owner's retry (a new session on it) pins.
+            storage.fail = false
+            session.hostKeys.pin("synthetic-device", 22, presented)
+            assertEquals(presented, session.hostKeys.pinned("synthetic-device", 22))
+        } finally {
+            root.cancel(); main { session.close("closed") }
         }
     }
 }
