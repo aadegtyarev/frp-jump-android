@@ -141,6 +141,31 @@ class PendingUndo(
         cancelTimer?.invoke()
         cancelTimer = null
         announce(null) {}
+        runCommits(due)
+    }
+
+    /**
+     * Does the action of [key] alone now, as when its notice goes; the rest keep waiting (the notice counts them, or goes with none
+     * left). False when it does not wait (never enqueued, already undone, being done or done): Undo and this cannot both take it.
+     * Its commit runs in its own batch, outside the serialization of any batch already running ([commitAll] or an earlier call), and
+     * callers are on Main like the rest of this class.
+     */
+    @Synchronized
+    fun commit(key: String): Boolean {
+        val pending = waiting.firstOrNull { it.key == key } ?: return false
+        waiting.remove(pending)
+        if (waiting.isEmpty()) {
+            cancelTimer?.invoke()
+            cancelTimer = null
+            announce(null) {}
+        } else {
+            announceWaiting()
+        }
+        runCommits(listOf(pending))
+        return true
+    }
+
+    private fun runCommits(due: List<Pending>) {
         // One after another: two deletes on one tunnel see each other's result.
         run {
             due.forEach { pending ->

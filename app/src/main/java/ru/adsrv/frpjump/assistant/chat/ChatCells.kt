@@ -33,12 +33,24 @@ internal class ChatCells(var document: SavedChat, var authority: AssistantAvaila
     var provider: AgentProvider? = null
     var closed = false
     var loading = false
+    /**
+     * From Clear until the clear is done, or taken back and read again. The document is the new, empty conversation (the old records,
+     * summary and context start are not held here; Undo reads them back from the store); the store still has the old chat, so nothing
+     * is saved meanwhile (the owner keeps the conversation open, and saves the draft when this ends).
+     */
+    var clearing = false
+    /** The text of a Send waiting for the clear to be committed; it shows as sent and is not editable. Null when none waits. */
+    var settlingText: String? = null
+    /** The state with a waiting Send's text shown as sent. */
+    fun overlay(state: ChatState): ChatState = settlingText?.let { state.copy(sending = true, pendingText = it, draft = "") } ?: state
+    /** The clear of the last [clearing] period failed: a Send waiting for it must not go. */
+    var clearFailed = false
     var pending: Pending? = null
-    fun persist() { if (!closed && !loading && mutable.value.historyProblem != ChatHistoryProblem.READ) historyStore?.save(document) }
+    fun persist() { if (!closed && !loading && !clearing && mutable.value.historyProblem != ChatHistoryProblem.READ) historyStore?.save(document) }
     fun interrupt() { document = document.interrupted() }
     /** Only copies already projected data under the short guard. */
     fun render(value: SavedChat, projected: List<ChatTurn>) {
         if (closed || document !== value) return
-        mutable.value = projectChat(value, projected, archive, pending != null, mutable.value)
+        mutable.value = overlay(projectChat(value, projected, archive, pending != null, mutable.value))
     }
 }

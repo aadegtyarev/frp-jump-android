@@ -422,9 +422,9 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
         LaunchedEffect(waiting) { if (waiting != null) vm.hold(app.assistantQuote.getAndUpdate { null }) }
         val held by vm.heldQuote.collectAsStateWithLifecycle()
         val chat by vm.conversation.state.collectAsStateWithLifecycle()
-        LaunchedEffect(held, chat.loading, chat.busy) {
+        LaunchedEffect(held, chat.loading, chat.busy, chat.clearing, chat.restoring, chat.sending) {
             val text = held ?: return@LaunchedEffect
-            if (chat.loading || chat.busy) return@LaunchedEffect
+            if (chat.loading || chat.busy || chat.clearing || chat.restoring || chat.sending) return@LaunchedEffect
             vm.heldQuote.value = null
             // Refused (the history cannot be read, too long): the chat shows its own notice for that.
             vm.conversation.appendToDraft(text)

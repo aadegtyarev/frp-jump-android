@@ -42,7 +42,7 @@ class AssistantChatViewModel(
         if (!conversation.hideHistory()) return
         val undo = owner.historyUndo
         if (undo == null) viewModelScope.launch { conversation.deleteHistory() }
-        else undo.enqueue("assistant-chat-history", commit = { conversation.deleteHistory() }, undo = { conversation.reloadHistory() })
+        else undo.enqueue(AssistantChatOwner.HISTORY_UNDO_KEY, commit = { conversation.deleteHistory() }, undo = { conversation.reloadHistory() })
     }
     val settings = settingsStore.settings
     val provider = providerStore.state
