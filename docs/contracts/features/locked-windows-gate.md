@@ -1,6 +1,6 @@
 # Feature: no app windows over the lock screen
 
-Status: Approved by the operator via the peer session (Р20, 2026-11-13). Release 0.3.74. It is implemented in parallel with 0.3.72
+Status: Approved by the operator via the peer session (Р20, 2026-11-13). Release: the one after 0.3.74 (0.3.74 shipped as F11). It was implemented in parallel with 0.3.72
 (launch gate) and 0.3.73 (F10).
 
 ## Goal and user-visible behavior

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.devices
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -83,7 +84,7 @@ fun DeviceDisplaySheet(
 
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) {
+    LaunchedWhileUnlocked {
         if (focusLabel) {
             runCatching { focus.requestFocus() }
             keyboard?.show()

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.files
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.activity.compose.BackHandler
@@ -481,7 +482,7 @@ private fun EmptyFolder(state: FilesUiState) {
 private fun GoToFolderDialog(current: String, onGo: (String) -> Unit, onDismiss: () -> Unit) {
     var text by rememberSaveable { mutableStateOf(current) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.files_go_to_folder)) },

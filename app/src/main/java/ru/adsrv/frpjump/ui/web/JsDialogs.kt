@@ -2,7 +2,7 @@ package ru.adsrv.frpjump.ui.web
 
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,12 +70,20 @@ private fun format(scheme: String, rawHost: String, port: Int): String? {
 }
 
 /** The page's text, plain, and not so long that it hides the buttons or the origin. */
-fun jsMessage(text: String?): String {
-    val plain = text.orEmpty()
-    return if (plain.length > MAX_MESSAGE) plain.take(MAX_MESSAGE) + "…" else plain
-}
+fun jsMessage(text: String?): String = capped(text.orEmpty(), MAX_TEXT, ellipsis = true)
 
-private const val MAX_MESSAGE = 1000
+/** A prompt's default value: a page may send any length, so it is cut like the message (no "…" added to a value). */
+fun jsPromptDefault(text: String?): String = capped(text.orEmpty(), MAX_TEXT, ellipsis = false)
+
+private const val MAX_TEXT = 1000
+
+/** At most [max] UTF-16 units, never ending inside a surrogate pair. */
+private fun capped(text: String, max: Int, ellipsis: Boolean): String {
+    if (text.length <= max) return text
+    var end = max
+    if (Character.isHighSurrogate(text[end - 1])) end--
+    return text.substring(0, end) + if (ellipsis) "…" else ""
+}
 
 /**
  * The one JavaScript dialog a page waits for (its script is blocked until it is answered).
@@ -109,9 +117,13 @@ class JsDialogs {
         pending = JsPending(request, canMute = asked >= 2)
     }
 
-    /** The owner's answer: [ok] confirms (with [text] for a prompt), otherwise cancels; [mute]: no more dialogs from this page. */
-    fun answer(ok: Boolean, text: String? = null, mute: Boolean = false) {
+    /**
+     * The owner's answer to [request], the one on screen: [ok] confirms (with [text] for a prompt), otherwise
+     * cancels; [mute]: no more dialogs from this page. An answer to a request that is no longer the shown one is ignored.
+     */
+    fun answer(request: JsRequest, ok: Boolean, text: String? = null, mute: Boolean = false) {
         val current = pending?.request ?: return
+        if (current !== request) return
         pending = null
         if (mute) muted = true
         if (ok) current.answer.confirm(text) else current.answer.cancel()
@@ -140,6 +152,11 @@ class JsDialogs {
 
 class JsPending(val request: JsRequest, val canMute: Boolean)
 
+/** A main-frame load starting is a new document: the count, the mute and a waiting question end. */
+internal fun JsDialogs.onPage(event: PageEvent) {
+    if (event == PageEvent.STARTED) navigated()
+}
+
 fun JsResult.asAnswer(): JsAnswer {
     val result = this
     return object : JsAnswer {
@@ -155,11 +172,13 @@ fun JsResult.asAnswer(): JsAnswer {
 fun JsDialogHost(dialogs: JsDialogs) {
     val pending = dialogs.pending ?: return
     val request = pending.request
-    var text by rememberSaveable(request) { mutableStateOf(request.defaultValue.orEmpty()) }
-    var mute by rememberSaveable(request) { mutableStateOf(false) }
+    // Not saveable: the page controls the default's length, and a saved instance state that large crashes the app.
+    // A recreation cancels the request anyway.
+    var text by remember(request) { mutableStateOf(jsPromptDefault(request.defaultValue)) }
+    var mute by remember(request) { mutableStateOf(false) }
     val leaving = request.kind == JsKind.BEFORE_UNLOAD
     AppAlertDialog(
-        onDismissRequest = { dialogs.answer(false, mute = mute) },
+        onDismissRequest = { dialogs.answer(request, false, mute = mute) },
         // The page's origin, not a title the page sets: this window is the page's, not the app's.
         title = { Text(request.origin ?: stringResource(R.string.js_page)) },
         text = {
@@ -170,7 +189,7 @@ fun JsDialogHost(dialogs: JsDialogs) {
                 }
                 if (pending.canMute) {
                     Row(
-                        Modifier.fillMaxWidth().clickable(role = Role.Checkbox) { mute = !mute },
+                        Modifier.fillMaxWidth().toggleable(value = mute, role = Role.Checkbox, onValueChange = { mute = it }),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(checked = mute, onCheckedChange = null)
@@ -180,12 +199,12 @@ fun JsDialogHost(dialogs: JsDialogs) {
             }
         },
         confirmButton = {
-            TextButton(onClick = { dialogs.answer(true, text.takeIf { request.kind == JsKind.PROMPT }, mute) }) {
+            TextButton(onClick = { dialogs.answer(request, true, text.takeIf { request.kind == JsKind.PROMPT }, mute) }) {
                 Text(stringResource(if (leaving) R.string.js_leave else R.string.js_ok))
             }
         },
         dismissButton = if (request.kind == JsKind.ALERT) null else ({
-            TextButton(onClick = { dialogs.answer(false, mute = mute) }) {
+            TextButton(onClick = { dialogs.answer(request, false, mute = mute) }) {
                 Text(stringResource(if (leaving) R.string.js_stay else R.string.cancel))
             }
         }),

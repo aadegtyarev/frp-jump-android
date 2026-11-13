@@ -20,6 +20,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -96,6 +97,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             app.lock.locked.collect { locked ->
                 if (locked) keepInputOut()
+                // Locked: no keyboard may attach to the window, whatever asks for it; every way out of the lock clears it.
+                blockIme(locked)
                 if (!locked) {
                     promptedForLock = false
                     lockMessage.value = null
@@ -120,6 +123,8 @@ class MainActivity : AppCompatActivity() {
                     Surface(Modifier.fillMaxSize(), color = AppTheme.colors.ground, contentColor = AppTheme.colors.ink) {
                         // Kept while locked (back stack, open pages, polling); hidden and silent.
                         Box(if (locked) Modifier.clearAndSetSemantics { } else Modifier) { AppNav() }
+                        // Test seam: a window made in the same composition as the screens (see LockedWindowsWiringTest).
+                        windowProbe?.invoke()
                         if (locked) {
                             LockScreen(
                                 busy = authenticating.value,
@@ -147,6 +152,11 @@ class MainActivity : AppCompatActivity() {
         getSystemService(AutofillManager::class.java)?.cancel()
         currentFocus?.clearFocus()
         WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.ime())
+    }
+
+    private fun blockIme(blocked: Boolean) {
+        if (blocked) window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
     }
 
     /** The floating selection toolbars (terminal, web page, text fields) are system action modes, not Compose windows. */
@@ -306,6 +316,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        /**
+         * Tests only: content drawn inside the activity's own composition, where [LocalAppLocked] is provided, so a
+         * test can show a window there and see the lock take it away. Null in the app.
+         */
+        @androidx.annotation.VisibleForTesting
+        internal var windowProbe: (@androidx.compose.runtime.Composable () -> Unit)? by androidx.compose.runtime.mutableStateOf(null)
+
         private const val ACTION_OPEN_DEVICE = "ru.adsrv.frpjump.OPEN_DEVICE"
         private const val EXTRA_PROFILE = "profile"
         private const val EXTRA_DEVICE = "device"

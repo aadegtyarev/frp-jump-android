@@ -78,7 +78,7 @@ class LockedActionModeTest {
             assertEquals("a toolbar of an unlocked app stays", 0, open.destroyed.get())
 
             // The lock engages (a cold start of an app with the lock on does exactly this).
-            instrumentation.runOnMainSync { app.lock.onStart(true) }
+            instrumentation.runOnMainSync { app.lock.onStop(); app.lock.onStart(true, 0L) }
             waitFor("locked") { app.lock.locked.value }
             waitFor("the open toolbar was ended by the lock") { open.destroyed.get() == 1 }
 
@@ -86,6 +86,15 @@ class LockedActionModeTest {
             startToolbar(scenario, late)
             waitFor("a toolbar that starts while locked is ended at once") { late.created.get() == 1 && late.destroyed.get() == 1 }
             assertTrue(app.lock.locked.value)
+
+            // After the unlock a selection toolbar can start again and stays.
+            instrumentation.runOnMainSync { app.lock.unlock() }
+            waitFor("unlocked") { !app.lock.locked.value }
+            val again = Toolbar()
+            startToolbar(scenario, again)
+            waitFor("a toolbar starts after the unlock") { again.created.get() == 1 }
+            SystemClock.sleep(1_000)
+            assertEquals("and is not ended", 0, again.destroyed.get())
         }
     }
 }

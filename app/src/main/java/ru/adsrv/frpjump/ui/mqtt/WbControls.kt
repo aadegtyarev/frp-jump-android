@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -442,7 +443,7 @@ private fun InputDialog(control: WbControl, numeric: Boolean, onSend: (String) -
     var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length))) }
     var problem by remember { mutableStateOf<NumberProblem?>(null) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     val send = {
         if (!numeric) {
             onSend(field.text)

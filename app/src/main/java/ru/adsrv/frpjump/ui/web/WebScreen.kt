@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.web
 
+import ru.adsrv.frpjump.ui.LocalAppLocked
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import android.annotation.SuppressLint
@@ -186,7 +187,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                 when (event) {
                     PageEvent.FINISHED -> keep(goodPages.finished(pageUrl))
                     PageEvent.STARTED, PageEvent.HISTORY -> {
-                        if (event == PageEvent.STARTED) jsDialogs.navigated()
+                        jsDialogs.onPage(event)
                         if (event == PageEvent.STARTED) goodPages.started() else keep(goodPages.history(pageUrl))
                         if (pageUrl != url) {
                             sslErrorSeen = false
@@ -468,6 +469,13 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         }
     }
     JsDialogHost(jsDialogs)
+    // Locked: the page's text selection ends (its handles are popup windows of their own over the lock screen).
+    val locked = LocalAppLocked.current
+    LaunchedEffect(webView, locked) {
+        if (!locked) return@LaunchedEffect
+        webView.clearFocus()
+        runCatching { webView.evaluateJavascript("window.getSelection&&window.getSelection().removeAllRanges()", null) }
+    }
     question?.let { q ->
         CertDialog(
             device = device,
@@ -491,7 +499,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
 }
 
 /** What the web view tells of its pages: a main-frame load began or finished, or a history entry (also an in-page route). */
-private enum class PageEvent { STARTED, FINISHED, HISTORY }
+internal enum class PageEvent { STARTED, FINISHED, HISTORY }
 
 /** The page's pending `<input type=file>`: at most one, answered exactly once. */
 private class FileChooser {
@@ -520,7 +528,7 @@ private class FileChooser {
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun configure(
+internal fun configure(
     webView: WebView,
     context: Context,
     tunnelPort: Int,

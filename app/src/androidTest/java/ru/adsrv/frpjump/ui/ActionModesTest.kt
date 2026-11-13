@@ -28,7 +28,7 @@ class ActionModesTest {
     }
 
     private var locked = false
-    private val modes = ActionModes { locked }
+    private val modes = ActionModes(locked = { locked }, post = { it.run() })
 
     @Test fun lockEndsEveryOpenSelectionToolbar() {
         val a = FakeMode { modes }

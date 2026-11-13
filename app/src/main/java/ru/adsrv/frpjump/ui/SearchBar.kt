@@ -47,8 +47,10 @@ fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, foc
     val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     // [focus]: just opened by the magnifier; once done, a return to the screen leaves the keyboard down.
-    LaunchedEffect(focus) {
-        if (!focus) return@LaunchedEffect
+    val locked = LocalAppLocked.current
+    // Not while locked: the keyboard must not come up over the lock screen; it comes after unlock.
+    LaunchedEffect(focus, locked) {
+        if (!focus || locked) return@LaunchedEffect
         runCatching { requester.requestFocus() }
         keyboard?.show()
         onFocused()

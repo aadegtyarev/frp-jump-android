@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui
 
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BottomSheetDefaults
@@ -27,11 +29,23 @@ import androidx.compose.ui.window.PopupProperties
  * Every such window of the app is made through the wrappers below, which leave it out while locked.
  * Their callers keep the state, so the window returns after unlock as it was. State declared inside a
  * window's content survives too if it is `rememberSaveable` (each wrapper keeps a saveable-state holder
- * outside the window and provides it inside the window, whose composition has its own registry); a plain `remember` there is lost while locked, so window content uses `rememberSaveable`.
+ * outside the window and provides it inside the window, whose composition has its own registry);
+ * a plain `remember` there is lost while locked, so window content uses `rememberSaveable`.
  * Nothing else in `app/src/main` may use the platform window APIs (`LockedWindowsSourceScanTest` checks it).
  */
 val LocalAppLocked = compositionLocalOf { false }
 
+
+/**
+ * A focus or keyboard request ([block]) that waits while the app is locked and runs again, from the start,
+ * after unlock: the target may be inside a window that is not composed under the lock, and the keyboard must
+ * not come up over the lock screen. [keys] restart it as in `LaunchedEffect`.
+ */
+@Composable
+fun LaunchedWhileUnlocked(vararg keys: Any?, block: suspend CoroutineScope.() -> Unit) {
+    val locked = LocalAppLocked.current
+    LaunchedEffect(keys.toList(), locked) { if (!locked) block() }
+}
 
 /** [androidx.compose.material3.AlertDialog], not composed while locked. */
 @Composable

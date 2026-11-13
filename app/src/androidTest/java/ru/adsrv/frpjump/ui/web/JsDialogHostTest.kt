@@ -13,6 +13,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -127,5 +130,36 @@ class JsDialogHostTest {
         compose.onNodeWithText(text(R.string.js_leave)).performClick()
         compose.waitForIdle()
         assertEquals(listOf("confirm:null"), answer.log)
+    }
+
+    @Test fun aHugePromptDefaultDoesNotEnterTheSavedInstanceState() {
+        locked = false
+        show()
+        val answer = FakeAnswer()
+        compose.runOnIdle { dialogs.show(JsRequest(JsKind.PROMPT, "m", "x".repeat(700_000), "https://a.example", answer)) }
+        compose.waitForIdle()
+        val state = android.os.Bundle()
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().callActivityOnSaveInstanceState(compose.activity, state)
+        }
+        val parcel = android.os.Parcel.obtain()
+        parcel.writeBundle(state)
+        val size = parcel.dataSize()
+        parcel.recycle()
+        assertTrue("the saved instance state is $size bytes: a page controls this text and a large state crashes the app", size < 200_000)
+    }
+
+    @Test fun theStopOptionIsACheckboxThatExposesItsState() {
+        locked = false
+        show()
+        compose.runOnIdle { dialogs.show(JsRequest(JsKind.ALERT, "one", null, "https://a.example", FakeAnswer())) }
+        compose.waitForIdle()
+        compose.onNodeWithText(text(R.string.js_ok)).performClick()
+        compose.runOnIdle { dialogs.show(JsRequest(JsKind.CONFIRM, "two", null, "https://a.example", FakeAnswer())) }
+        compose.waitForIdle()
+        val box = compose.onNode(androidx.compose.ui.test.hasText(text(R.string.js_mute)).and(androidx.compose.ui.test.isToggleable()))
+        box.assertIsOff()
+        box.performClick()
+        box.assertIsOn()
     }
 }

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.activity.compose.BackHandler
@@ -940,7 +941,7 @@ private fun TopicDialog(title: String, initial: String, confirm: String, onGo: (
     val text = field.text
     var problem by remember { mutableStateOf<TopicProblem?>(null) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     val go = { if (text.isNotEmpty()) problem = onGo(text) }
     AppAlertDialog(
         onDismissRequest = onDismiss,

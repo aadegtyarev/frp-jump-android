@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.LocalAppLocked
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import android.app.Activity
 import android.content.Context
@@ -298,6 +299,7 @@ fun TerminalScreen(
     val editorFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val locked = LocalAppLocked.current
     val modifiers = remember { Modifiers() }
     val current = rememberUpdatedState(selected)
     val selectionToken = remember(selected.id) { Any() }
@@ -312,7 +314,7 @@ fun TerminalScreen(
     SideEffect {
         input.diagnostics = selected.terminal.metrics
         input.directInput = inputSettings.terminalDirectInput
-        input.onEditorKeyboard = if (draft.textMode) ({ editorFocus.requestFocus(); keyboard?.show(); Unit }) else null
+        input.onEditorKeyboard = if (draft.textMode) ({ if (!locked) { runCatching { editorFocus.requestFocus() }; keyboard?.show() }; Unit }) else null
     }
     val view = input.terminal
     // Captured destination and draft revision survive changing the selected tab.
@@ -456,7 +458,19 @@ fun TerminalScreen(
     LaunchedEffect(selected.id) {
         view.attachSession(selected.terminal.session)
         view.onScreenUpdated()
-        if (!draft.textMode) input.requestFocus()
+        if (!draft.textMode && !locked) input.requestFocus()
+    }
+    // Locked: the selection ends with its handles (they are popup windows of their own, over the lock screen,
+    // that finishing the action mode does not remove). After unlock the terminal takes the focus back.
+    val wasLocked = remember { mutableStateOf(false) }
+    LaunchedEffect(locked) {
+        if (locked) {
+            wasLocked.value = true
+            view.stopTextSelectionMode()
+        } else if (wasLocked.value) {
+            wasLocked.value = false
+            if (!draft.textMode) input.requestFocus()
+        }
     }
 
     // Landscape with the keyboard up leaves a sliver: give it all to the terminal.

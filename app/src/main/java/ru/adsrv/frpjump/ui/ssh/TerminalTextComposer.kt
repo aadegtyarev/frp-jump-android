@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.LocalAppLocked
 import ru.adsrv.frpjump.ui.AppDialog
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
@@ -79,8 +80,11 @@ fun TerminalTextComposer(
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    LaunchedEffect(sessionId, expanded, landscape) {
-        focus.requestFocus()
+    // Not while locked (no keyboard over the lock screen); the lock is a key, so it runs again after unlock.
+    val locked = LocalAppLocked.current
+    LaunchedEffect(sessionId, expanded, landscape, locked) {
+        if (locked) return@LaunchedEffect
+        runCatching { focus.requestFocus() }
         keyboard?.show()
     }
     val enabled = canInsert && value.text.isNotBlank()

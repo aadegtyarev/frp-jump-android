@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.mqtt
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.background
@@ -289,7 +290,7 @@ internal fun SubscribeDialog(onSubscribe: (String) -> FilterRefusal?, onDismiss:
     val text = field.text
     var refusal by remember { mutableStateOf<FilterRefusal?>(null) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     val go = { if (text.isNotEmpty()) refusal = onSubscribe(text) }
     val notes = buildList {
         if (filterSkipsDollar(text)) add(stringResource(R.string.mqtt_filter_dollar))

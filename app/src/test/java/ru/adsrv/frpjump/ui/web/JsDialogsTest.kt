@@ -16,13 +16,20 @@ class JsDialogsTest {
 
     private val dialogs = JsDialogs()
 
-    private fun request(kind: JsKind, answer: JsAnswer, default: String? = null) = JsRequest(kind, "m", default, "https://a.example", answer)
+    private var last: JsRequest? = null
+
+    private fun request(kind: JsKind, answer: JsAnswer, default: String? = null) =
+        JsRequest(kind, "m", default, "https://a.example", answer).also { last = it }
+
+    /** The owner answers the dialog on screen (or, with none, the last one made: a stale answer). */
+    private fun answerShown(ok: Boolean, text: String? = null, mute: Boolean = false) =
+        dialogs.answer(dialogs.pending?.request ?: last!!, ok, text, mute)
 
     @Test fun answerIsGivenOnce() {
         val a = FakeAnswer()
         dialogs.show(request(JsKind.PROMPT, a, "d"))
-        dialogs.answer(true, "x")
-        dialogs.answer(false)
+        answerShown(true, "x")
+        answerShown(false)
         dialogs.cancelPending()
         assertEquals(listOf("confirm:x"), a.log)
         assertNull(dialogs.pending)
@@ -48,20 +55,20 @@ class JsDialogsTest {
     @Test fun theMuteChoiceIsOfferedFromTheSecondDialogOn() {
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
         assertFalse(dialogs.pending!!.canMute)
-        dialogs.answer(true)
+        answerShown(true)
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
         assertTrue(dialogs.pending!!.canMute)
         assertEquals(2, dialogs.asked)
-        dialogs.answer(true)
+        answerShown(true)
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
         assertTrue(dialogs.pending!!.canMute)
     }
 
     @Test fun afterMuteTheDialogsAreAnsweredAtOncePerKind() {
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
-        dialogs.answer(true)
+        answerShown(true)
         dialogs.show(request(JsKind.CONFIRM, FakeAnswer()))
-        dialogs.answer(false, mute = true)
+        answerShown(false, mute = true)
         assertTrue(dialogs.muted)
 
         val alert = FakeAnswer()
@@ -81,19 +88,19 @@ class JsDialogsTest {
 
     @Test fun muteChosenWithOkAnswersThatDialogToo() {
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
-        dialogs.answer(true)
+        answerShown(true)
         val second = FakeAnswer()
         dialogs.show(request(JsKind.CONFIRM, second))
-        dialogs.answer(true, mute = true)
+        answerShown(true, mute = true)
         assertEquals(listOf("confirm:null"), second.log)
         assertTrue(dialogs.muted)
     }
 
     @Test fun aNewDocumentStartsTheCountAndTheMuteOver() {
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
-        dialogs.answer(true)
+        answerShown(true)
         dialogs.show(request(JsKind.ALERT, FakeAnswer()))
-        dialogs.answer(true, mute = true)
+        answerShown(true, mute = true)
         val waiting = FakeAnswer()
         dialogs.navigated()
         assertFalse(dialogs.muted)
@@ -138,5 +145,44 @@ class JsDialogsTest {
         assertEquals("", jsMessage(null))
         assertEquals(1001, jsMessage("a".repeat(5000)).length)
         assertTrue(jsMessage("a".repeat(5000)).endsWith("…"))
+    }
+
+    @Test fun anAnswerToAnotherRequestThanTheOneOnScreenIsIgnored() {
+        val old = FakeAnswer()
+        val shown = FakeAnswer()
+        val oldRequest = request(JsKind.CONFIRM, old)
+        dialogs.show(oldRequest)
+        dialogs.show(request(JsKind.CONFIRM, shown))
+        dialogs.answer(oldRequest, true)
+        assertEquals("the replaced request was cancelled once, not confirmed", listOf("cancel"), old.log)
+        assertEquals(emptyList<String>(), shown.log)
+        assertEquals("the one on screen is still waiting", "m", dialogs.pending?.request?.message)
+    }
+
+    @Test fun theMessageAndThePromptDefaultAreCutWithoutSplittingAPair() {
+        val pair = "\uD83D\uDE00"
+        val long = "a".repeat(999) + pair + "tail"
+        assertEquals("a".repeat(999) + "…", jsMessage(long))
+        assertEquals("a".repeat(999), jsPromptDefault(long))
+        assertEquals(1000, jsPromptDefault("x".repeat(700_000)).length)
+        assertEquals("short", jsPromptDefault("short"))
+        assertEquals("", jsPromptDefault(null))
+    }
+
+    @Test fun onlyAPageStartIsANewDocument() {
+        dialogs.show(request(JsKind.ALERT, FakeAnswer()))
+        answerShown(true)
+        dialogs.show(request(JsKind.ALERT, FakeAnswer()))
+        answerShown(true, mute = true)
+        dialogs.onPage(PageEvent.FINISHED)
+        dialogs.onPage(PageEvent.HISTORY)
+        assertTrue("a finished load or an in-page route is the same document", dialogs.muted)
+        val waiting = FakeAnswer()
+        dialogs.muted.let { dialogs.onPage(PageEvent.STARTED) }
+        assertFalse(dialogs.muted)
+        assertEquals(0, dialogs.asked)
+        dialogs.show(request(JsKind.CONFIRM, waiting))
+        dialogs.onPage(PageEvent.STARTED)
+        assertEquals("a waiting question goes with its page", listOf("cancel"), waiting.log)
     }
 }

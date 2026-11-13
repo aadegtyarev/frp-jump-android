@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import ru.adsrv.frpjump.ui.LaunchedWhileUnlocked
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -195,7 +196,7 @@ private fun SnippetDialog(initial: String, isNew: Boolean, onSave: (String) -> U
     var text by rememberSaveable { mutableStateOf(initial) }
     val focus = remember { FocusRequester() }
     // The keyboard comes up with the dialog: the command is what it is opened for.
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedWhileUnlocked { runCatching { focus.requestFocus() } }
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (isNew) R.string.snippet_add else R.string.snippet_change)) },

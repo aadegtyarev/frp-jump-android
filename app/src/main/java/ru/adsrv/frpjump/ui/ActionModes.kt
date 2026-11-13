@@ -1,5 +1,7 @@
 package ru.adsrv.frpjump.ui
 
+import android.os.Handler
+import android.os.Looper
 import android.view.ActionMode
 
 /**
@@ -7,12 +9,13 @@ import android.view.ActionMode
  * the text fields are system action modes, windows no Compose wrapper covers, so the lock ends them
  * here ([finishAll]) and one that starts while [locked] is ended at once. Main thread.
  */
-class ActionModes(private val locked: () -> Boolean) {
+class ActionModes(private val locked: () -> Boolean, private val post: (Runnable) -> Unit = { Handler(Looper.getMainLooper()).post(it) }) {
     private val open = mutableListOf<ActionMode>()
 
     fun started(mode: ActionMode) {
         open += mode
-        if (locked()) mode.finish()
+        // Not inside the callback of its own start: on the next turn of the loop.
+        if (locked()) post { mode.finish() }
     }
 
     fun finished(mode: ActionMode) {
