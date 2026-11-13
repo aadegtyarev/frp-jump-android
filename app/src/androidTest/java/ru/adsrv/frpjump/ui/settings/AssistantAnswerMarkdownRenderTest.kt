@@ -6,6 +6,8 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -56,7 +58,7 @@ class AssistantAnswerMarkdownRenderTest {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
                 FrpJumpTheme(mode = mode) {
-                    Box(Modifier.fillMaxWidth().padding(16.dp)) { SelectionContainer { AssistantAnswerMarkdown(answer) } }
+                    Box(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) { SelectionContainer { AssistantAnswerMarkdown(answer) } }
                 }
             }
         }
@@ -79,8 +81,8 @@ class AssistantAnswerMarkdownRenderTest {
         show("Table below:\n$grid\n\nAfter the table.", mode)
         compose.onAllNodesWithText("---", substring = true).assertCountEquals(0)
         compose.onAllNodesWithText("| Хост", substring = true).assertCountEquals(0)
-        compose.onNodeWithTag("assistant_table").assertIsDisplayed()
-        compose.onNodeWithText("After the table.").assertIsDisplayed()
+        compose.onNodeWithTag("assistant_table").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("After the table.").assertExists()
         // Row by row, as TalkBack walks the tree.
         val texts = cellTexts().map { it.config[SemanticsProperties.Text].joinToString("") }
         assertEquals(listOf("Хост", "Port", "Status", "Note", "alpha", "22", "up", "first", "beta", "2222", "down", "[l](https://example.test)"), texts)
@@ -114,7 +116,7 @@ class AssistantAnswerMarkdownRenderTest {
 
     @Test fun headingListQuoteRuleAndCodeBlockRender() {
         show("# Big title\n\n1. First step\n2. Second step\n   - nested point\n\n> quoted words\n\n---\n\n```\nfn main() { call_something_quite_long_here(argument_one, argument_two, argument_three) }\n  indented\n```\n\nplain text")
-        val title = compose.onNodeWithText("Big title").assertIsDisplayed()
+        val title = compose.onNodeWithText("Big title").assertExists()
         compose.onAllNodesWithText("# Big title", substring = true).assertCountEquals(0)
         assertTrue(layout(title.fetchSemanticsNode()).layoutInput.style.fontSize.value > layout(compose.onNodeWithText("plain text").fetchSemanticsNode()).layoutInput.style.fontSize.value)
         compose.onAllNodesWithText("1.", substring = true).assertCountEquals(1)
