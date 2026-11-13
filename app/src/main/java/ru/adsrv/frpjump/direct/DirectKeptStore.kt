@@ -18,8 +18,8 @@ data class KeptThroughServer(
 
 /**
  * Devices the owner chose to keep through the server, per profile and
- * network: their tunnels make no direct attempts and no "Direct didn't
- * work" notification there, until the owner retries direct. One small
+ * network: their tunnels make no direct attempts there, until the
+ * owner retries direct. One small
  * JSON list for all profiles, newest last, at most [MAX_ENTRIES].
  *
  * [load], [keep], [release] and [removeProfile] touch storage: call them
