@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.settings.assistantTools
 import ru.adsrv.frpjump.FrpJumpApp
@@ -35,6 +36,11 @@ class AssistantChatViewModel(
         availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
         prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat, profileInformation = profileInformation, sshCommands = sshCommands,
         historyStore = historyStore, awaitHistoryClear = { historyUndo?.awaitDone("assistant-chat-history") }, prompts = prompts, confirmations = confirmations)
+    /** A terminal quote this chat has taken and not yet put in the draft. Memory only: it goes with the model, never saved or restored. */
+    val heldQuote = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun hold(quote: String?) {
+        if (quote != null) heldQuote.update { old -> if (old == null) quote else ru.adsrv.frpjump.assistant.chat.ChatQuote.appended(old, quote) }
+    }
     fun clearHistory() {
         if (!conversation.hideHistory()) return
         if (historyUndo == null) viewModelScope.launch { conversation.deleteHistory() }

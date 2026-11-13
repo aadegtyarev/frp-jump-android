@@ -544,7 +544,7 @@ fun TerminalScreen(
                         }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
                         }
-                        AppDropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false }) {
+                        AppDropdownMenu(expanded = barMenu, onDismissRequest = { barMenu = false; menuSelection = null }) {
                             // Text size stays here, not on the bar, so the device name fits; the menu stays open while sizing.
                             Row(
                                 Modifier.padding(start = 16.dp, end = 8.dp),

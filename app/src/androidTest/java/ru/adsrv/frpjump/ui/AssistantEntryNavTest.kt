@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -20,9 +21,12 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -34,6 +38,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -43,18 +48,21 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.assistant.chat.ChatQuote
 import ru.adsrv.frpjump.settings.AppSettings
+import ru.adsrv.frpjump.ui.settings.SettingsViewModel
 import java.util.Locale
 
 /**
  * The assistant in the bottom navigation, on the app's own navigation pieces ([TabFrame], [assistantRoutes]) and the real chat
  * screen: shown only while the assistant is on, opens the chat over the section, Back returns, the provider screen works from
- * every entry, a terminal quote reaches the draft, and the five labels are not cut. The original preferences and chat file are restored.
+ * every entry, there is only ever one chat entry, a terminal quote reaches the draft (and never outlives its chat), and the five labels are not
+ * cut. The original preferences are restored and the app's sealed chat file is put back byte for byte ([ChatFileBackup]).
  */
 @RunWith(AndroidJUnit4::class)
 class AssistantEntryNavTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private val app get() = compose.activity.application as FrpJumpApp
     private var original: AppSettings? = null
+    private val chatFile by lazy { ChatFileBackup(app) }
     private lateinit var nav: NavHostController
     private fun text(id: Int) = compose.activity.getString(id)
 
@@ -75,12 +83,15 @@ class AssistantEntryNavTest {
         }
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, 0.01f)
         compose.runOnUiThread { original = app.settings.settings.value; app.assistantQuote.value = null }
+        chatFile.save()
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
     }
 
     @After fun restore() {
-        compose.runOnIdle { app.assistantQuote.value = null; original?.let { old -> app.settings.update { old } } }
+        compose.runOnIdle { app.assistantQuote.value = null; app.pendingUndo.withdraw("assistant-chat-history"); original?.let { old -> app.settings.update { old } } }
+        // Whatever the chat saved on the way is dropped, then the device's own chat file comes back.
         runBlocking(Dispatchers.IO) { app.assistantHistory.clear() }
+        chatFile.restore()
     }
 
     private fun assistant(on: Boolean) = compose.runOnUiThread { app.settings.update { it.copy(assistantEnabled = on) } }
@@ -113,13 +124,93 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("chat_title").assertIsDisplayed()
     }
 
-    private fun assertNotCut(label: String, tag: String) {
-        val node = compose.onNode(hasText(label) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).assertIsDisplayed()
-        val results = mutableListOf<TextLayoutResult>()
-        node.fetchSemanticsNode().config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results)
-        assertTrue("no text layout for '$label'", results.isNotEmpty())
-        val r = results.first()
-        assertTrue("'$label' is cut", (0 until r.lineCount).none { r.isLineEllipsized(it) } && !r.didOverflowHeight && !r.didOverflowWidth)
+    private fun assertNotCut(label: String, tag: String) = assertNavLabelWhole(compose, label, tag)
+
+    private fun chatEntries() = compose.runOnUiThread { nav.currentBackStack.value.count { it.destination.route == Routes.CHAT } }
+    private val draft get() = compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+
+    @Test fun theChatIsOpenedOnceWhateverIsAboveIt() {
+        host()
+        openFromNav()
+        val chat = compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) }
+        // Chat -> another screen above it (a notification's device card, say) -> the chat again: no second entry, the same one.
+        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.runOnUiThread { nav.openAssistant() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.waitForIdle()
+        assertEquals(1, chatEntries())
+        assertSame(chat, compose.runOnUiThread { nav.getBackStackEntry(Routes.CHAT) })
+        compose.onNodeWithTag("chat_back").performClick()
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        assertEquals(0, chatEntries())
+    }
+
+    @Test fun askingTwiceInARowOpensOneChat() {
+        host()
+        compose.runOnUiThread { nav.openAssistant(); nav.openAssistant() }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.waitForIdle()
+        assertEquals(1, chatEntries())
+        compose.runOnUiThread { nav.openAssistant() }
+        compose.waitForIdle()
+        assertEquals(1, chatEntries())
+        compose.onNodeWithTag("chat_back").performClick()
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+    }
+
+    @Test fun theProviderScreenSharesSettingsModelWhenSettingsIsBelowItAndHasItsOwnOtherwise() {
+        fun settingsModelOf(route: String): SettingsViewModel = compose.runOnUiThread {
+            // Asks the entry's own store only: a model that is not there is an error, not a new one.
+            ViewModelProvider(nav.getBackStackEntry(route), object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = error("no settings model in $route")
+            })[SettingsViewModel::class.java]
+        }
+        host()
+        compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
+        compose.waitUntil(10_000) { route == Routes.SETTINGS }
+        compose.runOnUiThread { nav.navigate(Routes.CHAT) }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        compose.runOnUiThread { nav.navigate(Routes.PROVIDER) }
+        compose.waitUntil(10_000) { route == Routes.PROVIDER }
+        compose.onNodeWithTag("assistant_root").assertIsDisplayed()
+        settingsModelOf(Routes.SETTINGS)
+        assertTrue(runCatching { settingsModelOf(Routes.PROVIDER) }.isFailure)
+        // From the navigation (Settings not on the stack) it keeps a model in its own entry.
+        compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        openFromNav()
+        compose.runOnUiThread { nav.navigate(Routes.PROVIDER) }
+        compose.waitUntil(10_000) { route == Routes.PROVIDER }
+        compose.onNodeWithTag("assistant_root").assertIsDisplayed()
+        settingsModelOf(Routes.PROVIDER)
+    }
+
+    @Test fun aQuoteWaitingForALoadingChatIsDroppedWithTheChatWhenBackIsPressed() {
+        host()
+        // The saved chat is "being cleared": the chat's load waits for it, so Back comes before the load ends.
+        compose.runOnUiThread { app.pendingUndo.enqueue("assistant-chat-history", commit = {}, undo = {}) }
+        val quote = ChatQuote.block("ls -l\ntotal 0", text(R.string.chat_quote_truncated))!!
+        compose.runOnUiThread { nav.askAssistant(app, quote) }
+        compose.waitUntil(10_000) { route == Routes.CHAT }
+        // The chat took it at once.
+        compose.waitUntil(10_000) { app.assistantQuote.value == null }
+        compose.runOnUiThread { nav.popBackStack() }
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
+        compose.runOnUiThread { app.pendingUndo.withdraw("assistant-chat-history") }
+        openFromNav()
+        compose.waitForIdle()
+        assertEquals("", draft)
+        assertNull(app.assistantQuote.value)
+    }
+
+    @Test fun theAssistantItemIsAButtonNotAnUnselectedTab() {
+        host()
+        val tab = compose.onNodeWithTag("nav_devices").fetchSemanticsNode().config
+        val item = navItem.fetchSemanticsNode().config
+        assertEquals(Role.Tab, tab.getOrNull(SemanticsProperties.Role))
+        assertEquals(Role.Button, item.getOrNull(SemanticsProperties.Role))
+        assertNull(item.getOrNull(SemanticsProperties.Selected))
     }
 
     @Test fun theItemFollowsTheSettingInBothDirections() {
@@ -181,7 +272,7 @@ class AssistantEntryNavTest {
     @Test fun aWaitingQuoteReachesTheDraftOnceWithTheCursorAfterIt() {
         host()
         val quote = ChatQuote.block("ls -l\ntotal 0", text(R.string.chat_quote_truncated))!!
-        compose.runOnUiThread { app.assistantQuote.value = quote; nav.openAssistant() }
+        compose.runOnUiThread { nav.askAssistant(app, quote) }
         compose.waitUntil(10_000) { route == Routes.CHAT }
         compose.waitUntil(10_000) { app.assistantQuote.value == null }
         compose.onNodeWithTag("chat_input").assertTextContains("total 0", substring = true)
@@ -191,7 +282,11 @@ class AssistantEntryNavTest {
         compose.onNodeWithTag("chat_input").performTextInput("what is this")
         compose.waitUntil(10_000) { compose.onNodeWithTag("chat_input").fetchSemanticsNode().config[SemanticsProperties.EditableText].text == quote + "what is this" }
         // Opening again with no quote waiting keeps the draft as it is.
-        compose.onNodeWithTag("chat_back").performClick()
+        // In landscape the chat is scrolled to its field with the keyboard up, so the header (and Back) is above the screen, as in any chat: put the keyboard away and scroll to it.
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
+        if (runCatching { compose.onNodeWithTag("chat_back").assertIsDisplayed() }.isFailure) compose.onNodeWithTag("chat_back").performScrollTo()
+        compose.onNodeWithTag("chat_back").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { route == Routes.DEVICES }
         assertNull(app.assistantQuote.value)
         openFromNav()

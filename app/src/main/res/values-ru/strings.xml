@@ -1341,5 +1341,5 @@
     <string name="terminal_images_cut">Использованы только первые %1$d изображений.</string>
     <string name="tab_assistant">Помощник</string>
     <string name="terminal_ask_assistant">Спросить помощника</string>
-    <string name="chat_quote_truncated">[обрезано]</string>
+    <string name="chat_quote_truncated">[начало обрезано]</string>
 </resources>

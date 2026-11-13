@@ -60,7 +60,7 @@ The same thing is called the same way on every screen:
   its kind to MQTT and opens the explorer. It works with the tunnel up:
   the wire protocol stays `tcp`, so the lock on changing the kind of a
   live connection does not apply.
-- The bottom bar has four items. **Sessions** lists terminal and MQTT
+- The bottom bar has four items (a fifth, "Assistant", is added while the assistant is on, see [contract.md](contract.md#optional-llm-assistant)). **Sessions** lists terminal and MQTT
   sessions together, each with its connection's name and kind.
 - Like the terminal, an explorer session lives in the app, not the screen:
   leaving keeps it connected (the tree keeps filling), with the notice

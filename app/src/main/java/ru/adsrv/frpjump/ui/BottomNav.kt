@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -46,7 +47,7 @@ enum class Tab(val label: Int, val icon: ImageVector) {
 }
 
 /** One item of the bottom navigation: a section, or the assistant (never selected here: it opens over the section). */
-private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, val tag: String, val onClick: () -> Unit)
+private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, val tag: String, val isTab: Boolean = true, val onClick: () -> Unit)
 
 /**
  * The bottom navigation of the mockups: equal items, the selected one in the accent with its icon on a pill. With [onAssistant]
@@ -56,7 +57,7 @@ private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, v
 fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) -> Unit) {
     val colors = AppTheme.colors
     val entries = Tab.entries.map { NavEntry(it.label, it.icon, it == selected, "nav_" + it.name.lowercase()) { onSelect(it) } } +
-        listOfNotNull(onAssistant?.let { NavEntry(R.string.tab_assistant, ChatGlyph, false, "nav_assistant", it) })
+        listOfNotNull(onAssistant?.let { NavEntry(R.string.tab_assistant, ChatGlyph, false, "nav_assistant", isTab = false, onClick = it) })
     Surface(color = colors.card) {
         Column {
             HorizontalDivider(color = colors.divider)
@@ -77,7 +78,11 @@ fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) 
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
                                 .testTag(tab.tag)
-                                .selectable(selected = on, role = Role.Tab, onClick = tab.onClick),
+                                .then(
+                                    // A section is a tab; the assistant opens over it and is never selected, so it is a button, not an unselected tab.
+                                    if (tab.isTab) Modifier.selectable(selected = on, role = Role.Tab, onClick = tab.onClick)
+                                    else Modifier.clickable(role = Role.Button, onClick = tab.onClick),
+                                ),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
@@ -95,6 +100,7 @@ fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) 
                                 color = tint,
                                 fontSize = labelSp.sp,
                                 fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                                letterSpacing = LABEL_SPACING,
                                 maxLines = 1,
                                 softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
@@ -119,8 +125,8 @@ fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) 
 private fun labelSize(labels: List<String>, width: Dp): Float {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    // As Text draws it: the theme's style (its letter spacing too), bold.
-    val style = LocalTextStyle.current.copy(fontWeight = FontWeight.SemiBold)
+    // As Text draws it: the theme's style with the labels' tight tracking, bold.
+    val style = LocalTextStyle.current.copy(fontWeight = FontWeight.SemiBold, letterSpacing = LABEL_SPACING)
     return remember(labels, width, density, style) {
         val px = with(density) { width.roundToPx() }
         // The floor is on screen, not in sp: a large system font may go down to what 9 sp is at 100 %.
@@ -131,5 +137,7 @@ private fun labelSize(labels: List<String>, width: Dp): Float {
     }
 }
 
+/** Labels are set tight (the theme's tracking would cost "Подключения" about 5 sp); the same value measures and draws. */
+private val LABEL_SPACING = 0.sp
 private const val LABEL_SP = 11f
 private const val MIN_LABEL_SP = 9f

@@ -14,7 +14,8 @@ Its own release.
    - With text selected in the shown tab, that text goes into the chat draft as a quoted code block, and the cursor is placed after it.
      Without a selection, the chat simply opens.
    - The quote is limited to a reasonable length, at most 4,000 characters, without splitting a surrogate pair.
-   - A cut quote ends with an honest localized note, for example "[truncated]" / «[обрезано]». The owner sees the draft and can edit it
+   - A cut quote keeps the END of the selection (the latest lines); its first line is an honest localized note, "[start truncated]" / «[начало обрезано]»,
+     visible in the draft before sending. The cut is on a line boundary (a single longer line: by characters). The owner sees the draft and can edit it
      before sending.
    - If the draft already has text, it is kept and the quote is appended after it.
    - The item exists only while the assistant is on.
@@ -42,6 +43,7 @@ Its own release.
 - [`docs/agent-contract.md`](../../agent-contract.md): the Settings flow and Boundary, for how the chat is reached. Wording only; promises
   are not weakened.
 - [`docs/terminal-panel-contract.md`](../../terminal-panel-contract.md), if it lists the ⋮ menu items.
+- [`docs/mqtt-contract.md`](../../mqtt-contract.md): its bottom-bar item count (four, plus the assistant item while it is on).
 
 ## Interfaces and constraints
 
@@ -67,6 +69,11 @@ Its own release.
    - no selection just opens the chat.
 5. Five nav labels uncut in RU and EN × portrait/landscape × 1.0/2.0.
 6. The contracts are updated.
+7. One chat entry only: chat, then a notification's device card, then the terminal, then Ask the assistant ends with exactly one chat entry
+   (the one that was open) and the quote in its draft. Opening the chat twice in a row opens one.
+8. A waiting quote is taken by the chat at once and dropped with it (Back before the load ends leaves nothing for a later chat); memory only.
+9. The quote keeps the end of a long selection, with the "start truncated" note first; tests at the threshold and one over it.
+10. Five labels whole also in 320 and 360 dp windows, RU, 200% font. The assistant item is a button, not an unselected tab.
 
 ## Validation
 
