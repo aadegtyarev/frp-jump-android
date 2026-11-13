@@ -6,8 +6,10 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.common.Buffer
 import net.schmizz.sshj.connection.ConnectionException
 import net.schmizz.sshj.userauth.UserAuthException
+import net.schmizz.sshj.userauth.keyprovider.KeyProvider
 import net.schmizz.sshj.userauth.password.PasswordUtils
 import ru.adsrv.frpjump.R
 import java.io.Closeable
@@ -81,6 +83,9 @@ sealed interface KeyInstallResult {
     /** The key was written, yet a key login was refused (sshd forbids keys, or reads them elsewhere). */
     data object KeyRefused : KeyInstallResult
 
+    /** The chosen key could not be read, or is no longer the one in Settings: nothing was written or changed. */
+    data object KeyUnreadable : KeyInstallResult
+
     /** The script failed: [detail] is the first line it wrote to stderr, its exit status, or that it timed out. */
     data class CommandFailed(val detail: String) : KeyInstallResult
 
@@ -147,6 +152,7 @@ fun keyInstallText(result: KeyInstallResult, user: String): KeyInstallText? = wh
     KeyInstallResult.Installed -> KeyInstallText(R.string.key_install_done, emptyList(), ok = true)
     is KeyInstallResult.InstalledPasswordKept -> KeyInstallText(R.string.key_install_done_password_kept, listOf(result.detail), ok = true)
     KeyInstallResult.KeyRefused -> KeyInstallText(R.string.key_install_refused, listOf(user), ok = false)
+    KeyInstallResult.KeyUnreadable -> KeyInstallText(R.string.key_install_unreadable, emptyList(), ok = false)
     is KeyInstallResult.CommandFailed -> KeyInstallText(R.string.key_install_command_failed, listOf(result.detail), ok = false)
     is KeyInstallResult.ConnectionFailed -> KeyInstallText(R.string.key_install_connection_failed, listOf(result.detail), ok = false)
     is KeyInstallResult.SaveFailed -> KeyInstallText(R.string.key_install_save_failed, listOf(result.detail), ok = false)
@@ -157,7 +163,10 @@ fun keyInstallText(result: KeyInstallResult, user: String): KeyInstallText? = wh
 
 private const val MAX_DETAIL = 200
 
-/** Where to install the key: a login of [profile] to [device]:[port] as [user]. */
+/**
+ * Where to install the key: a login of [profile] to [device]:[port] as [user].
+ * [key] is the one the owner chose, bound to its public line; null: the phone's.
+ */
 class KeyInstallTarget(
     val profile: String,
     val hostKeys: HostKeyStore,
@@ -169,25 +178,41 @@ class KeyInstallTarget(
     val localPort: suspend () -> Int,
     /** Key login works for [user] now; main thread (a session tab switches its own login to the key). */
     val onInstalled: () -> Unit = {},
+    val key: SshKeyChoice? = null,
 ) {
-    /** For another user: [onInstalled] belonged to this one's session, so it is not carried over. */
-    fun withUser(other: String) = if (other == user) this else KeyInstallTarget(profile, hostKeys, device, port, other, logins, localPort)
+    /** For another user: [onInstalled] belonged to this one's session, so it is not carried over; the chosen key is. */
+    fun withUser(other: String) = if (other == user) this else KeyInstallTarget(profile, hostKeys, device, port, other, logins, localPort, key = key)
+
+    /** The same run with [chosen] as the key. */
+    fun withKey(chosen: SshKeyChoice?) = KeyInstallTarget(profile, hostKeys, device, port, user, logins, localPort, onInstalled, chosen)
 }
 
 /** What [KeyLoginFlow] needs of a key-login run; a seam so tests need no network. */
 interface KeyInstalling {
+    /** The keys the owner may choose between, the phone's first; empty when it does not say (a run then installs the phone's). */
+    fun keys(): List<SshKeyChoice> = emptyList()
+
     suspend fun install(target: KeyInstallTarget, typed: String?): KeyInstallResult
     fun cancel()
 }
 
 /**
- * "Use key login": puts the phone's key into the device's
- * `authorized_keys` over an open session's connection (else a password
- * login), checks that a login with that key works, and only then makes Key
- * the remembered method and forgets the password. Anything short of that
- * leaves the app's logins as they were.
+ * "Use key login": puts the chosen key ([KeyInstallTarget.key]) into the
+ * device's `authorized_keys` over an open session's connection (else a
+ * password login), checks that a login with that key only works, and only
+ * then makes Key the remembered method and forgets the password. The key
+ * is read and loaded before anything is written; one that cannot be is
+ * [KeyInstallResult.KeyUnreadable]. Anything short of success leaves the
+ * app's logins as they were.
  */
-class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSessions) : KeyInstalling {
+class KeyInstaller internal constructor(
+    private val env: SshEnvironment,
+    private val liveClient: (profile: String, device: String, port: Int, user: String) -> SSHClient?,
+) : KeyInstalling {
+    constructor(env: SshEnvironment, sessions: SshSessions) : this(env, sessions::liveClient)
+
+    override fun keys(): List<SshKeyChoice> = env.keys.choices(env.keyComment())
+
     /** What the run going now has open: closed by [cancel]. */
     private val open = mutableListOf<Closeable>()
 
@@ -238,13 +263,20 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
 
     private suspend fun run(t: KeyInstallTarget, typed: String?): KeyInstallResult {
         val comment = env.keyComment()
-        val publicLine = env.keys.publicLine(comment)
+        // Before any connection, tunnel or write: the chosen key, as the owner saw it, read and loaded.
+        val wanted = t.key?.publicLine ?: env.keys.publicLine(comment)
+        val identity = env.keys.identity(wanted) ?: return KeyInstallResult.KeyUnreadable
+        val key = try {
+            loadKey(identity)
+        } catch (e: Exception) {
+            return KeyInstallResult.KeyUnreadable
+        }
         val input = try {
-            keyInstallInput(publicLine)
+            keyInstallInput(identity.publicLine)
         } catch (e: IllegalArgumentException) {
             return KeyInstallResult.CommandFailed(e.message ?: "bad key line")
         }
-        val live = if (typed == null) sessions.liveClient(t.profile, t.device, t.port, t.user) else null
+        val live = if (typed == null) liveClient(t.profile, t.device, t.port, t.user) else null
         val remembered = if (live == null && typed == null) env.passwords.get(t.profile, t.device, t.port, t.user) else null
         val password = typed ?: remembered
         if (live == null && password == null) {
@@ -275,7 +307,7 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
             }
         }
         currentCoroutineContext().ensureActive()
-        if (!keyLogs(connector, t.user, publicLine, comment)) return KeyInstallResult.KeyRefused
+        if (!keyLogs(connector, t.user, key)) return KeyInstallResult.KeyRefused
         // Cancelled meanwhile: nothing is saved.
         currentCoroutineContext().ensureActive()
         try {
@@ -291,14 +323,24 @@ class KeyInstaller(private val env: SshEnvironment, private val sessions: SshSes
         }
     }
 
-    /** Whether a fresh login with the installed key ([publicLine]) only, not an imported one, is accepted. */
-    private fun keyLogs(connector: SshConnector, user: String, publicLine: String, comment: String): Boolean {
-        val identity = env.keys.identities(comment).firstOrNull { it.publicLine == publicLine }
-            ?: throw IOException("the phone's key cannot be read")
+    /**
+     * [identity] loaded as a login will; throws when it cannot be (the text is not a key, the passphrase is wrong) or
+     * when the key it holds is not the one its public line says.
+     */
+    private fun loadKey(identity: SshIdentity): KeyProvider {
+        val loader = env.clientFactory?.invoke() ?: SSHClient()
+        val provider = loader.loadKeys(identity.privateKey, null, identity.passphrase?.let { PasswordUtils.createOneOff(it.toCharArray()) })
+        // Reading it parses the key: a key that cannot be read fails here, not in the check.
+        val loaded = Buffer.PlainBuffer().putPublicKey(requireNotNull(provider.public) { "no public key" }).compactData
+        if (!loaded.contentEquals(blobOfPublicKeyLine(identity.publicLine))) throw IOException("the key is not the one of its line")
+        return provider
+    }
+
+    /** Whether a fresh login with the installed [key] only, not the app's other one, is accepted. */
+    private fun keyLogs(connector: SshConnector, user: String, key: KeyProvider): Boolean {
         val check = hold(connector.newClient())
         try {
             connector.connect(check)
-            val key = check.loadKeys(identity.privateKey, null, identity.passphrase?.let { PasswordUtils.createOneOff(it.toCharArray()) })
             check.authPublickey(user, key)
             return true
         } catch (e: UserAuthException) {

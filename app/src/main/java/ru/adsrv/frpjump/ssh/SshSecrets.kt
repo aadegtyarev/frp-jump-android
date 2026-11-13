@@ -13,6 +13,16 @@ class SshIdentity(val privateKey: String, val passphrase: String?, val publicLin
     override fun toString() = "SshIdentity($publicLine)"
 }
 
+/** Which of the app's two keys: the one made on the phone, or the one the owner imported. */
+enum class SshKeySlot { PHONE, IMPORTED }
+
+/**
+ * A key the owner may pick for "Use key login", bound to its public line:
+ * the line, not the slot, says which key it is, so a key replaced in
+ * Settings meanwhile is no longer this one.
+ */
+data class SshKeyChoice(val slot: SshKeySlot, val publicLine: String)
+
 @Serializable
 private data class StoredKey(
     @SerialName("private_sealed") val privateSealed: String,
@@ -43,18 +53,28 @@ class SshKeyStore(private val storage: TextStorage, private val box: SecretBox) 
     @Synchronized
     fun importedPublicLine(): String? = keys.imported?.publicLine
 
+    /** The keys the owner may pick, the phone's first (the default), then the imported one when there is one. */
+    @Synchronized
+    fun choices(comment: String): List<SshKeyChoice> =
+        listOfNotNull(SshKeyChoice(SshKeySlot.PHONE, publicLine(comment)), keys.imported?.let { SshKeyChoice(SshKeySlot.IMPORTED, it.publicLine) })
+
     /** Keys to offer, the imported one first; a key that cannot be unsealed is skipped. */
     @Synchronized
     fun identities(comment: String): List<SshIdentity> {
         publicLine(comment)
-        return listOfNotNull(keys.imported, keys.generated).mapNotNull { stored ->
-            try {
-                SshIdentity(box.open(stored.privateSealed), stored.passphraseSealed?.let(box::open), stored.publicLine)
-            } catch (e: Exception) {
-                Log.w(TAG, "cannot unseal an SSH key: ${e.javaClass.simpleName}")
-                null
-            }
-        }
+        return listOfNotNull(keys.imported, keys.generated).mapNotNull(::unseal)
+    }
+
+    /** The key whose public line is [publicLine], unsealed alone; null when there is none or it cannot be unsealed. */
+    @Synchronized
+    fun identity(publicLine: String): SshIdentity? =
+        listOfNotNull(keys.imported, keys.generated).firstOrNull { it.publicLine == publicLine }?.let(::unseal)
+
+    private fun unseal(stored: StoredKey): SshIdentity? = try {
+        SshIdentity(box.open(stored.privateSealed), stored.passphraseSealed?.let(box::open), stored.publicLine)
+    } catch (e: Exception) {
+        Log.w(TAG, "cannot unseal an SSH key: ${e.javaClass.simpleName}")
+        null
     }
 
     /** Stores an imported private key; [publicLine] comes from loading it (see [SshClients.publicLineOf]). */
