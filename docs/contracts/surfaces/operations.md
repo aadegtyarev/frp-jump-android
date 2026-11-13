@@ -93,8 +93,8 @@ leaving the screen cancels neither the awaited connect nor the "all" path. The n
 
 ### `direct_retry` and `direct_keep`
 
-The owner's two answers to "Direct didn't work" over `direct/DirectChoices.kt`. Retry is always done: with a missing profile the tunnel retry is skipped, while `kept.release` and the `retried` bookkeeping still run,
-as before. Keep is refused with `DirectRefusal.NoNetwork` when the phone is on no network the choice can be tied to: nothing changed.
+The owner's two answers on the card's "Through the server" state, over `direct/DirectChoices.kt`. Retry is always done: with a missing
+profile the tunnel retry is skipped, while `kept.release` still runs, as before. Keep is refused with `DirectRefusal.NoNetwork` when the phone is on no network the choice can be tied to: nothing changed.
 The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. The assistant does not get them.
 
 ## Adapters

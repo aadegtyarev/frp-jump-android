@@ -34,8 +34,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import ru.adsrv.frpjump.R
 
 /**
- * One line while notifications are not allowed (13+): the tunnels', the
- * restore and the "Direct didn't work" notices would not show. "Allow"
+ * One line while notifications are not allowed (13+): the tunnels' and the
+ * restore notices would not show. "Allow"
  * asks; once Android no longer asks, it opens the app's notification
  * settings. Gone as soon as they are allowed.
  */
