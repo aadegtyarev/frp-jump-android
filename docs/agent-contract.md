@@ -471,18 +471,26 @@ Read/decryption failure is not an empty conversation and blocks overwriting it;
 Retry reads again. Write failure keeps the latest accepted snapshot in memory,
 including across route reopening, with an unsaved warning until Retry succeeds.
 That memory cannot survive process death. Chat's menu clears history through
-shared Undo. While the Undo notice waits, the chat shows empty, the draft is
-free and editing never waits for the clear. A Send then commits the clear first
-(the notice goes and the history is deleted exactly as when the notice times
-out, through the shared Undo's own commit of that one action) and goes into the
-new, empty conversation: no earlier record reaches its model request. Sending
+shared Undo. While the Undo notice waits, the chat shows empty (the conversation
+holds a new, empty document; the old chat stays in the store for Undo), the draft
+is free and editing never waits for the clear. The app-lived owner keeps the
+conversation open while a clear waits or is being done and while a Send waits for
+it, so leaving and reopening the chat meanwhile returns the same conversation, and
+the draft is saved when the clear ends. A Send commits the clear first (the clear's
+part of the notice goes, the notice staying with a smaller count if other actions
+wait; the history is deleted exactly as when the notice times out, through the
+shared Undo's commit of that one action) and goes into the new, empty
+conversation: no earlier record reaches its model request. The message shows as
+sent at once and cannot be edited until the Send starts or is refused. Sending
 waits only while a restore reads the saved chat back (Undo, or a failed clear);
-what was typed meanwhile stays the draft, and a Send that follows Undo goes into
-the restored conversation. Once a commit has started Undo is no longer offered,
-so a record is neither lost nor repeated. If the commit fails, nothing is sent,
-the message stays in the draft, the known data is read back and the clear-failed
-text shows. Undo restores the same data (and the draft saved at Clear) without a
-provider call. A committed clear outlives the original route;
+a Send that follows Undo goes into the restored conversation. Once a commit has
+started Undo is no longer offered, so a record is neither lost nor repeated. If
+the commit fails, nothing is sent, the message stays in the draft, the known data
+is read back and the clear-failed text shows; Retry keeps the draft. On Undo (or a
+failed clear) the draft is the draft saved at Clear, then a line break, then the
+text typed or quoted during the clear; if one of them is empty, the other alone.
+After a committed clear the draft is what was typed during it. Undo restores the
+same data without a provider call. A committed clear outlives the original route;
 clear failure retains known data and offers retry. Only one load is admitted at a
 time, preventing duplicate reloads from replacing newer editor/model state.
 

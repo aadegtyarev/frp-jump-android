@@ -250,37 +250,69 @@ class AssistantChatHistoryTest {
         owner.close(); scope.cancel()
     }
 
-    /** Р55: a Clear waiting for its Undo, with the shared Undo, a recording notice, a provider that records its requests and a history with one old record. */
-    private inner class Pending(val deferCommit: Boolean = false) : AutoCloseable {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val file = Memory(); val history = AssistantChatHistory(file, Box(), scope, Dispatchers.Unconfined)
+    /**
+     * Р55: a Clear waiting for its Undo, with the shared Undo, a recording notice, a provider that records its requests and a history with
+     * one old record. [real] runs the conversation and the store on a real dispatcher (the restore can then be held in flight).
+     */
+    private inner class Pending(val deferCommit: Boolean = false, real: Boolean = false) : AutoCloseable {
+        val dispatcher: CoroutineDispatcher = if (real) Dispatchers.Default else Dispatchers.Unconfined
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val file = Memory(); val history = AssistantChatHistory(file, Box(), scope, dispatcher)
         val key = "assistant-chat-history"
-        val notice = mutableListOf<Map<ru.adsrv.frpjump.undo.UndoKind, Int>?>()
+        val notice = java.util.concurrent.CopyOnWriteArrayList<Map<ru.adsrv.frpjump.undo.UndoKind, Int>?>()
         val held = mutableListOf<suspend () -> Unit>()
         val undo = ru.adsrv.frpjump.undo.PendingUndo(timer = { _, _ -> {} },
             run = { action -> if (deferCommit) held += action else { scope.launch { action() }; Unit } }, announce = { counts, _ -> notice += counts })
-        val requests = mutableListOf<AgentRequest>()
-        val owner = chat(scope, history, AgentProvider { request -> requests += request; AgentReply("answer ${requests.size}") },
-            awaitClear = { undo.awaitDone(key) }, commitClear = { undo.commit(key); undo.awaitDone(key) })
+        val requests = java.util.concurrent.CopyOnWriteArrayList<AgentRequest>()
+        val owner = AssistantConversation(scope, { AssistantAvailability(true) }, { snapshot }, { AgentProvider { request -> requests += request; AgentReply("answer ${requests.size}") } }, {}, AgentModule(true),
+            io = dispatcher, historyStore = history, awaitHistoryClear = { undo.awaitDone(key) },
+            commitHistoryClear = { undo.commit(key); undo.awaitDone(key) }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         init {
             runBlocking { owner.ready(); owner.edit("old question"); owner.send(); owner.ready() }
             requests.clear()
         }
         fun clear() { assertTrue(owner.hideHistory()); undo.enqueue(key, commit = { owner.deleteHistory() }, undo = owner::reloadHistory) }
-        suspend fun settled() = withTimeout(3000) { owner.state.first { !it.loading && !it.restoring && !it.clearing && !it.busy } }
+        suspend fun settled() = withTimeout(5000) { owner.state.first { !it.loading && !it.restoring && !it.clearing && !it.sending && !it.busy } }
         val noticeShown get() = notice.lastOrNull() != null
+        /** The saved file as the store wrote it: sealed, so it is opened before any check of its content. */
+        fun savedText(): String? = file.text?.let { Box().open(it) }
         override fun close() { owner.close(); scope.cancel() }
     }
 
-    @Test fun `typing is free while a Clear waits and the draft survives Undo`() = runBlocking {
+    @Test fun `typing is free while a Clear waits`() = runBlocking {
         Pending().use { f ->
-            f.owner.edit("saved draft"); f.clear()
-            assertTrue(f.owner.state.value.clearing); assertFalse(f.owner.state.value.loading)
-            assertTrue(f.owner.state.value.turns.isEmpty()); assertEquals("", f.owner.state.value.draft)
+            f.clear()
+            val state = f.owner.state.value
+            assertTrue(state.clearing); assertFalse(state.loading); assertTrue(state.fieldEnabled)
+            assertTrue(state.turns.isEmpty()); assertEquals("", state.draft)
             f.owner.edit("typed now"); assertEquals("typed now", f.owner.state.value.draft)
+            assertTrue(f.owner.state.value.sendEnabled(true))
+        }
+    }
+
+    @Test fun `the draft on Undo is the saved one, a line break, then what was typed during the clear`() = runBlocking {
+        Pending().use { f ->
+            f.owner.edit("saved draft"); f.clear(); f.owner.edit("typed now")
             f.undo.undoAll(); f.settled()
             assertEquals("old question", f.owner.state.value.turns.single().user)
-            assertEquals("typed now", f.owner.state.value.draft)
+            assertEquals("saved draft\ntyped now", f.owner.state.value.draft)
+        }
+        Pending().use { f ->
+            f.owner.edit("saved draft"); f.clear(); f.undo.undoAll(); f.settled()
+            assertEquals("saved draft", f.owner.state.value.draft)
+        }
+        Pending().use { f ->
+            f.clear(); f.owner.edit("typed only"); f.undo.undoAll(); f.settled()
+            assertEquals("typed only", f.owner.state.value.draft)
+        }
+    }
+
+    @Test fun `a quote added during the clear is part of the typed text`() = runBlocking {
+        Pending().use { f ->
+            f.owner.edit("saved draft"); f.clear()
+            assertTrue(f.owner.appendToDraft("quoted"))
+            f.undo.undoAll(); f.settled()
+            assertEquals("saved draft\nquoted", f.owner.state.value.draft)
         }
     }
 
@@ -294,6 +326,16 @@ class AssistantChatHistoryTest {
         }
     }
 
+    @Test fun `the old records are not held while the clear waits`() = runBlocking {
+        Pending().use { f ->
+            f.clear()
+            val state = f.owner.state.value
+            assertTrue(state.turns.isEmpty()); assertFalse(state.summarized); assertFalse(state.contextChanged)
+            f.owner.refresh()
+            assertFalse(f.owner.state.value.summarized); assertFalse(f.owner.state.value.contextChanged)
+        }
+    }
+
     @Test fun `a Send while the Clear waits commits it first and goes into an empty conversation`() = runBlocking {
         Pending().use { f ->
             f.clear(); assertTrue(f.noticeShown)
@@ -303,9 +345,22 @@ class AssistantChatHistoryTest {
             assertEquals(listOf("new question"), request.turns.map { it.user })
             assertEquals(listOf("new question"), f.owner.state.value.turns.map { it.user })
             f.history.load()
-            assertFalse(f.file.text!!.contains("old question"))
+            assertFalse(f.savedText()!!.contains("old question"))
             f.undo.undoAll(); f.settled()
             assertEquals(listOf("new question"), f.owner.state.value.turns.map { it.user })
+        }
+    }
+
+    @Test fun `a waiting Send shows as sent and is not editable until it starts`() = runBlocking {
+        Pending(deferCommit = true).use { f ->
+            f.clear(); f.owner.edit("new question"); f.owner.send()
+            val waiting = f.owner.state.value
+            assertTrue(waiting.sending); assertEquals("new question", waiting.pendingText); assertEquals("", waiting.draft)
+            assertFalse(waiting.fieldEnabled); assertFalse(waiting.sendEnabled(true)); assertFalse(waiting.menuEnabled)
+            f.owner.edit("ignored"); assertEquals("", f.owner.state.value.draft)
+            f.held.forEach { it() }; f.settled()
+            assertEquals(listOf("new question"), f.requests.single().turns.map { it.user })
+            assertFalse(f.owner.state.value.sending)
         }
     }
 
@@ -315,6 +370,24 @@ class AssistantChatHistoryTest {
             f.owner.edit("follow-up"); f.owner.send(); f.settled()
             assertEquals(listOf("old question", "follow-up"), f.requests.single().turns.map { it.user })
             assertEquals(listOf("old question", "follow-up"), f.owner.state.value.turns.map { it.user })
+        }
+    }
+
+    @Test fun `a Send right after Undo waits for the restore on a real dispatcher and goes into the restored chat`() = runBlocking {
+        Pending(real = true).use { f ->
+            f.clear()
+            val inRead = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+            f.file.beforeRead = { inRead.countDown(); release.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+            f.undo.undoAll()
+            assertTrue(inRead.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val restoring = f.owner.state.value
+            assertTrue(restoring.restoring); assertTrue(restoring.fieldEnabled); assertFalse(restoring.menuEnabled); assertFalse(restoring.sendEnabled(true))
+            f.owner.edit("follow-up"); assertEquals("follow-up", f.owner.state.value.draft)
+            f.owner.send()
+            release.countDown(); f.settled()
+            withTimeout(5000) { while (f.requests.isEmpty()) delay(5) }
+            f.settled()
+            assertEquals(listOf("old question", "follow-up"), f.requests.single().turns.map { it.user })
         }
     }
 
@@ -335,11 +408,27 @@ class AssistantChatHistoryTest {
             f.file.fail = true
             f.clear(); f.owner.edit("keep me"); f.owner.send(); f.settled()
             assertTrue(f.requests.isEmpty())
-            assertEquals("keep me", f.owner.state.value.draft)
+            assertEquals("keep me", f.owner.state.value.draft); assertFalse(f.owner.state.value.sending)
             assertEquals(ChatHistoryProblem.CLEAR, f.owner.state.value.historyProblem)
             assertEquals("old question", f.owner.state.value.turns.single().user)
+            assertFalse(f.owner.state.value.retryEnabled && f.owner.state.value.clearing)
+            // Retry clears the history and keeps the message in the draft.
             f.file.fail = false; f.owner.retryHistory(); f.settled()
             assertTrue(f.owner.state.value.turns.isEmpty())
+            assertEquals("keep me", f.owner.state.value.draft)
+        }
+    }
+
+    @Test fun `the conversation stays open while a clear waits and closes when it ends`() = runBlocking {
+        Pending().use { f ->
+            f.clear(); f.owner.edit("typed")
+            assertFalse(f.owner.closeIfIdle())
+            f.undo.commit(f.key); f.settled()
+            assertEquals("typed", f.owner.state.value.draft)
+            assertTrue(f.owner.closeIfIdle())
+            // The draft typed during the clear was saved when the conversation closed.
+            f.history.load()
+            assertEquals("typed", (f.history.load() ?: SavedChat()).draft)
         }
     }
 }

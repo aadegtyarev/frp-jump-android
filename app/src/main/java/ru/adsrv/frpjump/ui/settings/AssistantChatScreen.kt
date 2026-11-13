@@ -119,7 +119,7 @@ internal fun AssistantChatContent(
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
                     Box {
-                        IconButton(onClick = { menu = true }, enabled = !state.busy && !state.loading && !state.restoring) {
+                        IconButton(onClick = { menu = true }, enabled = state.menuEnabled) {
                             Icon(Icons.Default.MoreVert, stringResource(R.string.chat_history_actions))
                         }
                         AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -128,7 +128,7 @@ internal fun AssistantChatContent(
                     }
                 }
             }
-            if (state.loading || state.restoring) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (state.loading || state.restoring || state.sending) LinearProgressIndicator(Modifier.fillMaxWidth())
             // Plain-text notices above and below the history are capped (and scroll) so that a long one at large font cannot squeeze the
             // history away; buttons (setup, retry) stay outside the cap and always visible.
             if (setup != null) {
@@ -143,7 +143,7 @@ internal fun AssistantChatContent(
                     ChatHistoryProblem.WRITE -> R.string.chat_history_write_failed
                     ChatHistoryProblem.CLEAR -> R.string.chat_history_clear_failed
                 }), color = AppTheme.colors.error)
-                TextButton(onClick = conversation::retryHistory, enabled = !state.loading && !state.busy) { Text(stringResource(R.string.chat_history_retry)) }
+                TextButton(onClick = conversation::retryHistory, enabled = state.retryEnabled) { Text(stringResource(R.string.chat_history_retry)) }
             }
             if (state.summarized || state.contextChanged || state.omitted) CappedNotices(noticeMax, "chat_notices_above") {
                 if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
@@ -235,14 +235,14 @@ internal fun AssistantChatContent(
                     val live = conversation.state.value.draft
                     field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
                 },
-                label = { Text(stringResource(R.string.chat_message)) }, enabled = !state.busy && !state.loading && state.historyProblem != ChatHistoryProblem.READ,
+                label = { Text(stringResource(R.string.chat_message)) }, enabled = state.fieldEnabled,
                 minLines = 1, maxLines = if (density.fontScale > 1.3f) 2 else 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (!markInTopBar) mark()
                 if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
                     modifier = Modifier.weight(1f).testTag("chat_stop")) {
                     Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
-                } else Button(onClick = conversation::send, enabled = setup == null && state.draft.isNotBlank() && !state.loading && !state.restoring && state.historyProblem != ChatHistoryProblem.READ,
+                } else Button(onClick = conversation::send, enabled = state.sendEnabled(setup == null),
                     modifier = Modifier.weight(1f).testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
             }
         }

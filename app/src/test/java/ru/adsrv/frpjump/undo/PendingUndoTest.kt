@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.undo
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -187,5 +188,42 @@ class PendingUndoTest {
         assertEquals(emptySet<String>(), pending.hidden.value)
         pending.commitAll()
         assertTrue(done.isEmpty())
+    }
+
+    @Test
+    fun `commit of one key does only that one and leaves the others waiting with their timer`() {
+        delete("snippet:a"); pending.enqueue("tunnel:p/d/1", commit = { done += "tunnel" }, undo = { restored += "tunnel" }, kind = UndoKind.DISCONNECTED)
+        assertEquals(2, shown)
+        assertTrue(pending.commit("snippet:a"))
+        assertEquals(listOf("snippet:a"), done)
+        assertEquals(listOf("tunnel:p/d/1"), pending.waitingKeys())
+        // The rest is re-announced with the smaller count, and its timer still runs.
+        assertEquals(1, shown); assertEquals(mapOf(UndoKind.DISCONNECTED to 1), kinds)
+        assertNotNull(timer)
+        assertFalse("snippet:a" in pending.hidden.value); assertTrue("tunnel:p/d/1" in pending.hidden.value)
+        expire(); assertEquals(listOf("snippet:a", "tunnel"), done)
+    }
+
+    @Test
+    fun `commit of the last key hides the notice and stops the timer`() {
+        delete("snippet:a")
+        assertTrue(pending.commit("snippet:a"))
+        assertNull(shown); assertNull(timer); assertEquals(listOf("snippet:a"), done)
+    }
+
+    @Test
+    fun `committing is true while the commit runs and commit says false when the key does not wait`() {
+        var during = false
+        val held = mutableListOf<suspend () -> Unit>()
+        val deferred = PendingUndo(timer = { _, block -> val c: () -> Unit = {}; c }, run = { held += it }, announce = { _, _ -> })
+        deferred.enqueue("snippet:a", commit = { during = deferred.committing("snippet:a") }, undo = {})
+        assertTrue(deferred.commit("snippet:a"))
+        assertTrue(deferred.committing("snippet:a"))
+        assertFalse(deferred.commit("snippet:a"))
+        runBlocking { held.forEach { it() } }
+        assertTrue(during); assertFalse(deferred.committing("snippet:a"))
+        assertFalse(pending.commit("never-enqueued"))
+        delete("snippet:b"); pending.undoAll()
+        assertFalse(pending.commit("snippet:b")); assertTrue(done.isEmpty())
     }
 }

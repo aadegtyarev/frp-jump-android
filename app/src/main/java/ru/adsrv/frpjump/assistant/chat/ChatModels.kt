@@ -36,6 +36,8 @@ data class ChatState(
     val clearing: Boolean = false,
     /** The saved chat is being read back (Undo, or a clear that failed): typing is free, Send waits. */
     val restoring: Boolean = false,
+    /** A Send waits for a pending clear to be committed (or the restore to end): its text shows as sent, nothing more can be edited. */
+    val sending: Boolean = false,
     val historyProblem: ChatHistoryProblem? = null, val contextChanged: Boolean = false,
     val summarized: Boolean = false, val problemStatus: Int? = null,
     val receipts: List<ChatToolReceipt> = emptyList(), val currentSources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
@@ -55,3 +57,13 @@ object ChatLimits {
     const val MAX_TURNS = 32
     const val MAX_HISTORY_CHARS = 512_000
 }
+
+/** What the chat screen enables, in one place so a test can pin it. */
+val ChatState.fieldEnabled: Boolean get() = !busy && !loading && !sending && historyProblem != ChatHistoryProblem.READ
+/** The history menu: not while a Send runs or waits, the history reads back, or a clear already waits. */
+val ChatState.menuEnabled: Boolean get() = !busy && !loading && !restoring && !clearing && !sending
+/** The history Retry (a failed read, write or clear). */
+val ChatState.retryEnabled: Boolean get() = !loading && !busy && !restoring && !clearing && !sending
+/** Send: a draft, no read in progress and none waiting; a pending clear does not disable it (the Send commits it). */
+fun ChatState.sendEnabled(setupDone: Boolean): Boolean =
+    setupDone && draft.isNotBlank() && !loading && !restoring && !sending && historyProblem != ChatHistoryProblem.READ

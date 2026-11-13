@@ -28,13 +28,23 @@ class AssistantChatOwnerTest {
     @After fun cleanup() { live.forEach { it.close() } }
 
     private class Call(val command: String)
+    /** A saved-chat file whose delete can be held while it runs. */
+    class HoldableStorage : ru.adsrv.frpjump.store.TextStorage {
+        val inner = ru.adsrv.frpjump.ssh.MemoryStorage()
+        @Volatile var holdDelete: java.util.concurrent.CountDownLatch? = null
+        val inDelete = java.util.concurrent.CountDownLatch(1)
+        override fun read() = inner.read()
+        override fun write(text: String) = inner.write(text)
+        override fun delete() { inDelete.countDown(); holdDelete?.await(5, java.util.concurrent.TimeUnit.SECONDS); inner.delete() }
+    }
     private class Box : SecretBox {
         override fun seal(plain: String) = plain
         override fun open(sealed: String) = sealed
         override fun destroy() = Unit
     }
 
-    private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false, private val withProfiles: Boolean = false) : AutoCloseable {
+    private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false, private val withProfiles: Boolean = false,
+        private val withUndo: Boolean = false, val storage: HoldableStorage = HoldableStorage()) : AutoCloseable {
         val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
         val stopping = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
@@ -47,7 +57,9 @@ class AssistantChatOwnerTest {
         val store = AssistantProviderStore(ru.adsrv.frpjump.ssh.MemoryStorage(), Box(), settings.assistantChat)
             .also { it.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic")) }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val history = AssistantChatHistory(ru.adsrv.frpjump.ssh.MemoryStorage(), Box(), scope, Dispatchers.Unconfined)
+        val history = AssistantChatHistory(storage, Box(), scope, Dispatchers.Unconfined)
+        /** The shared Undo as the app wires it (Р55); its timer never fires, so only a Send or the test commits. */
+        val undo = if (withUndo) ru.adsrv.frpjump.undo.PendingUndo(timer = { _, _ -> {} }, run = { action -> scope.launch { action() }; Unit }, announce = { _, _ -> }) else null
         private val synthetic = SyntheticProfileInformation()
         private val box = FakeKeystore().box("synthetic-ssh")
         private val env = SshEnvironment(SshKeyStore(ru.adsrv.frpjump.ssh.MemoryStorage(), box), SshPasswords(ru.adsrv.frpjump.ssh.MemoryStorage(), box), { "synthetic" },
@@ -64,7 +76,7 @@ class AssistantChatOwnerTest {
             override fun stamp(target: GrantTarget): Any? = "stamp-1"
         }
         val module = bindAssistantLifecycle(settings, scope)
-        val owner = AssistantChatOwner(scope, settings, store, module, if (withProfiles) synthetic.information else null, ssh, history, null, TestPrompts.placeholder, {
+        val owner = AssistantChatOwner(scope, settings, store, module, if (withProfiles) synthetic.information else null, ssh, history, undo, TestPrompts.placeholder, {
             AgentProvider { request ->
                 requests += request
                 if (failing) throw IllegalStateException("synthetic failure")
@@ -92,6 +104,77 @@ class AssistantChatOwnerTest {
         eventually("history loaded") { chat.state.value.takeIf { !it.loading } }
         chat.edit(text); chat.send()
     }
+
+    /** What the chat's menu does on Clear (AssistantChatViewModel.clearHistory) with the app's shared Undo. */
+    private fun Harness.clear(chat: AssistantConversation) {
+        assertTrue(chat.hideHistory())
+        undo!!.enqueue(AssistantChatOwner.HISTORY_UNDO_KEY, commit = { chat.deleteHistory() }, undo = { chat.reloadHistory() })
+    }
+    private fun Harness.answered(chat: AssistantConversation, text: String) {
+        send(chat, text); eventually("answer") { chat.state.value.takeIf { it.turns.size == 1 && !it.busy } }
+        eventually("saved") { storage.inner.text?.takeIf { it.contains(text) } }
+        requests.clear()
+    }
+    /** The owner closes the idle conversation: attaching then gives a new one. */
+    private fun Harness.reopened(old: AssistantConversation): AssistantConversation =
+        eventually("conversation closed") { owner.attach().let { c -> if (c !== old) c else { owner.detach(); null } } }
+
+    @Test fun `leaving the chat during a pending clear keeps the conversation, the draft and reopening returns it`() {
+        val h = Harness(withUndo = true)
+        val chat = h.owner.attach(); h.answered(chat, "old question")
+        h.clear(chat); chat.edit("typed during clear")
+        h.owner.detach()
+        val again = h.owner.attach()
+        assertSame(chat, again)
+        assertTrue(again.state.value.clearing); assertFalse(again.state.value.loading); assertEquals("typed during clear", again.state.value.draft)
+        h.owner.detach()
+        h.undo!!.commit(AssistantChatOwner.HISTORY_UNDO_KEY)
+        eventually("draft saved at close") { h.storage.inner.text?.takeIf { it.contains("typed during clear") } }
+        val next = h.reopened(chat)
+        eventually("loaded") { next.state.value.takeIf { !it.loading && it.draft == "typed during clear" } }
+        assertTrue(next.state.value.turns.isEmpty())
+        h.owner.detach()
+    }
+
+    @Test fun `Undo after leaving the chat brings back the records and both drafts`() {
+        val h = Harness(withUndo = true)
+        val chat = h.owner.attach(); h.answered(chat, "old question")
+        chat.edit("saved draft")
+        h.clear(chat); chat.edit("typed during clear"); h.owner.detach()
+        h.undo!!.undoAll()
+        eventually("draft saved at close") { h.storage.inner.text?.takeIf { it.contains("typed during clear") } }
+        val next = h.reopened(chat)
+        eventually("loaded") { next.state.value.takeIf { !it.loading && !it.restoring && it.draft == "saved draft\ntyped during clear" } }
+        assertEquals(1, next.state.value.turns.size)
+        h.owner.detach()
+    }
+
+    @Test fun `a Send waiting for the commit is not lost when the chat is left while the clear runs`() {
+        val h = Harness(withUndo = true)
+        val chat = h.owner.attach(); h.answered(chat, "old question")
+        h.storage.holdDelete = java.util.concurrent.CountDownLatch(1)
+        h.clear(chat); chat.edit("new question"); chat.send()
+        assertTrue(h.storage.inDelete.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        h.owner.detach()
+        assertSame(chat, h.owner.attach()); h.owner.detach()
+        h.storage.holdDelete!!.countDown()
+        eventually("request") { h.requests.singleOrNull() }
+        assertEquals(listOf("new question"), h.requests.single().turns.map { it.user })
+        eventually("reply saved") { h.storage.inner.text?.takeIf { it.contains("new question") && !it.contains("old question") } }
+    }
+
+    @Test fun `with the real Undo wiring a Send during a pending clear commits at once`() {
+        val h = Harness(withUndo = true)
+        val chat = h.owner.attach(); h.answered(chat, "old question")
+        h.clear(chat)
+        assertEquals(listOf(AssistantChatOwner.HISTORY_UNDO_KEY), h.undo!!.waitingKeys())
+        chat.edit("go"); chat.send()
+        eventually("request without waiting for the notice") { h.requests.singleOrNull() }
+        assertEquals(listOf("go"), h.requests.single().turns.map { it.user })
+        assertTrue(h.undo.waitingKeys().isEmpty())
+        h.owner.detach()
+    }
+
 
     @Test fun `each Send of the app-lived owner reads the Tools switches at that moment`() {
         val h = Harness(withProfiles = true)

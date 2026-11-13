@@ -83,18 +83,19 @@ class AssistantConversation(
                 val projected = withContext(io) { value.views() }
                 synchronized(gate) {
                     if (!c.closed) {
-                        // What was typed while the clear waited is the draft now; otherwise the saved draft is back.
+                        // The draft saved at Clear, then what was typed or quoted while the clear waited; nothing of either is lost.
                         val typed = if (c.clearing) c.document.draft else ""
-                        c.document = value.bind(snapshot().settings).let { if (typed.isNotEmpty()) it.copy(draft = typed) else it }; c.provider = null
+                        val draft = listOf(value.draft, typed).filter { it.isNotEmpty() }.joinToString("\n")
+                        c.document = value.bind(snapshot().settings).copy(draft = draft); c.provider = null
                         c.clearing = false
-                        c.mutable.value = c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = historyStore.problem.value,
-                            busy = runtime.occupied(), stopping = runtime.occupied())
+                        c.mutable.value = c.overlay(c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = historyStore.problem.value,
+                            busy = runtime.occupied(), stopping = runtime.occupied()))
                         c.render(c.document, projected)
                     }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { synchronized(gate) { if (!c.closed) c.mutable.value = c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = ChatHistoryProblem.READ) } }
-            finally { synchronized(gate) { c.loading = false; c.clearing = false } }
+            finally { synchronized(gate) { c.loading = false; c.clearing = false }; onSettled() }
         }
     }
     fun retryHistory() {
@@ -109,30 +110,33 @@ class AssistantConversation(
         if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing) false else {
             // The saved chat (draft included) is written first, so Undo reads it all back; the document is the new empty conversation.
             c.persist(); c.clearing = true; c.clearFailed = false
-            c.document = c.document.copy(draft = ""); c.mutable.value = ChatState(clearing = true); true
+            c.document = SavedChat().bind(snapshot().settings); c.provider = null
+            c.mutable.value = ChatState(clearing = true); true
         }
     }
     suspend fun deleteHistory() {
         var stopWaiting: Job? = null
         try { historyStore?.clear() }
         catch (cancelled: CancellationException) {
-            synchronized(gate) { c.clearing = false; if (!c.closed) c.mutable.value = c.mutable.value.copy(clearing = false) }
+            // Not done and not known to be: read the saved chat back instead of unblocking with the empty document.
+            reloadHistory()
             throw cancelled
         }
         catch (_: Exception) { synchronized(gate) { c.clearFailed = true }; reloadHistory(); return }
         synchronized(gate) {
-            // What was typed while the clear waited goes into the new conversation.
-            val typed = if (c.clearing) c.document.draft else ""
-            c.document = SavedChat().bind(snapshot().settings).copy(draft = typed); c.provider = null; confirmations?.grants?.clear()
+            // The draft (typed while the clear waited, or kept through a Retry) goes into the new conversation.
+            val draft = c.document.draft
+            c.document = SavedChat().bind(snapshot().settings).copy(draft = draft); c.provider = null; confirmations?.grants?.clear()
             c.clearing = false; c.clearFailed = false
             // A running Send that is waiting for the owner is stopped (nothing runs) rather than left with its card wiped from the state.
             stopWaiting = if (c.confirmation != null) c.pending?.also(own::stopLocked)?.job else null
-            if (!c.closed) c.mutable.value = ChatState(draft = typed)
+            if (!c.closed) c.mutable.value = c.overlay(ChatState(draft = draft))
         }
         stopWaiting?.cancel()
+        onSettled()
     }
     fun edit(text: String) = synchronized(gate) {
-        if (!c.closed && c.pending == null && !c.mutable.value.loading && c.mutable.value.historyProblem != ChatHistoryProblem.READ) {
+        if (!c.closed && c.pending == null && c.settlingText == null && !c.mutable.value.loading && c.mutable.value.historyProblem != ChatHistoryProblem.READ) {
             if (text.length > MAX_INPUT) c.mutable.value = c.mutable.value.copy(problem = ChatProblem.TOO_LONG)
             else { c.document = c.document.copy(draft = text); c.mutable.value = c.mutable.value.copy(draft = text, problem = null) }
         }
@@ -142,7 +146,7 @@ class AssistantConversation(
      * loads or cannot be read, or while a Send runs; a result over [MAX_INPUT] is not applied and says "too long". True when applied.
      */
     fun appendToDraft(quote: String): Boolean = synchronized(gate) {
-        if (c.closed || c.pending != null || c.mutable.value.loading || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return false
+        if (c.closed || c.pending != null || c.settlingText != null || c.mutable.value.loading || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return false
         val text = ChatQuote.appended(c.document.draft, quote)
         if (text.length > MAX_INPUT) { c.mutable.value = c.mutable.value.copy(problem = ChatProblem.TOO_LONG); return false }
         c.document = c.document.copy(draft = text); c.mutable.value = c.mutable.value.copy(draft = text, problem = null)
@@ -158,10 +162,11 @@ class AssistantConversation(
         val cancel = synchronized(gate) { closeLocked() }; cancel?.cancel()
     }
     /**
-     * Ends the conversation (draft saved, grants cleared, memory released) only when no attempt runs, a card wait included.
+     * Ends the conversation (draft saved, grants cleared, memory released) only when no attempt runs, a card wait included, no clear
+     * waits for its Undo or is being done, and no Send waits for that clear: the typed draft and the waiting message are not lost.
      * True when it is closed (also when it already was); false while an attempt still owns it.
      */
-    fun closeIfIdle(): Boolean = synchronized(gate) { if (!c.closed && c.pending != null) false else { closeLocked(); true } }
+    fun closeIfIdle(): Boolean = synchronized(gate) { if (!c.closed && (c.pending != null || c.clearing || c.settlingText != null)) false else { closeLocked(); true } }
     /** Caller holds the gate. */
     private fun closeLocked(): Job? {
         if (c.closed) return null
@@ -204,13 +209,26 @@ class AssistantConversation(
      */
     fun send() {
         runtime.probes.before("admission")
-        if (synchronized(gate) { !c.closed && c.clearing }) {
-            scope.launch {
-                commitHistoryClear()
-                state.first { !it.clearing }
-                if (synchronized(gate) { !c.closed && !c.clearing && !c.clearFailed }) admitAndStart()
+        // 0: no clear waits, send as usual; 1: nothing to send or one already waits; 2: wait for the clear.
+        val mode = synchronized(gate) {
+            if (c.closed || !c.clearing) 0
+            else if (c.settlingText != null || c.document.draft.isBlank()) 1
+            else { c.settlingText = c.document.draft; c.mutable.value = c.overlay(c.mutable.value); 2 }
+        }
+        if (mode == 0) { admitAndStart(); return }
+        if (mode == 1) return
+        scope.launch {
+            commitHistoryClear()
+            state.first { !it.clearing }
+            var start: Job? = null
+            synchronized(gate) {
+                val ok = !c.closed && !c.clearing && !c.clearFailed && c.settlingText != null
+                c.settlingText = null
+                if (!c.closed) c.mutable.value = c.mutable.value.copy(sending = false, pendingText = null, draft = c.document.draft)
+                if (ok) start = own.admit()?.let(::launch)
             }
-        } else admitAndStart()
+            runtime.notifyBusy(); start?.start(); repaint(); onSettled()
+        }
     }
     private fun admitAndStart() {
         var start: Job? = null
