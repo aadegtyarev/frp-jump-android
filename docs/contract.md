@@ -17,7 +17,8 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 This contract owns enrollment, profiles, device discovery/display, saved
 connections, shared local ports, tunnel lifecycle, app settings, updates and
 universal UI rules. Users consume these through Devices, Connections, Sessions,
-Settings and the foreground notification. Profile runtimes own each profile's
+Settings and the foreground notification. The bottom navigation lists those four sections; while the
+[assistant](#optional-llm-assistant) is on it adds a fifth item, "Assistant" / «Помощник». Profile runtimes own each profile's
 server/session work; the application owns shared ports, sessions, settings and
 pending Undo actions. Screens are not the lifetime owners of running tunnels.
 
@@ -377,6 +378,11 @@ blank lines dropped, joined by a single space; no shell syntax, so a trailing
 session the bracketed flag is not trusted (tmux keeps it on toward the app
 whatever the pane asked), so several lines always show the sheet there; a
 multiplexer started by hand in a plain-shell tab can't be detected.
+
+**Ask the assistant.** ⋮ → "Ask the assistant" / «Спросить помощника» opens the assistant's chat. It exists only while the
+[assistant](#optional-llm-assistant) is on. The text selected in the shown tab, read from the terminal view when ⋮ is used (never in
+the background), goes into the chat draft as a quoted code block; without a selection the chat just opens. See the
+[assistant contract](agent-contract.md#entry-points).
 
 **Insert image.** ⋮ → Insert image opens the system photo picker (no storage
 permission) where up to 10 photos can be chosen (the platform's own lower limit
@@ -949,7 +955,8 @@ The optional module is off by default. Settings exposes provider setup,
 secure key storage, model discovery, effort and context limits, the owner's own
 instructions for the model (guidance only, sent with every message, never
 authority over permissions or confirmations), plus a Chat
-entry for explicit conversations. Automatic working summaries use the chat model
+entry for explicit conversations. The same chat opens from the bottom navigation (an "Assistant" item shown only while the module is on:
+over the current section, Back returns to it) and from Terminal ⋮ → Ask the assistant (see [entry points](agent-contract.md#entry-points)). Automatic working summaries use the chat model
 or an optional other model of the same provider. The configurable trigger defaults
 to 80% of estimated context use, including output reserve; summary calls have no
 tools and incur an additional model request. Tools offers independent, default-off Web

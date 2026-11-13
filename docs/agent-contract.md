@@ -5,7 +5,8 @@
 This surface covers the optional assistant kernel, external API adapter and
 provider setup and a locally saved chat with optional public-read,
 profile-information and SSH-command tools. The owner uses Settings to opt in,
-configure one provider and open Chat; maintainers can supply provider/tool
+configure one provider and open Chat (also from the bottom navigation and the
+terminal menu, see [Entry points](#entry-points)); maintainers can supply provider/tool
 implementations to the kernel. Tunnel-control tools remain unavailable. Every
 tool is one row of the [tool table](#tool-table) and follows the common
 [tool policy](#tool-policy); a tool's own subsection describes only what is
@@ -33,6 +34,37 @@ Assistant UI inherits the [shared UI rules](contract.md#ui-rules): concise,
 understandable and functional screens, minimal necessary steps, direct common
 actions and short labels/messages. Keep accessibility, waiting/error feedback
 and safety warnings; visual minimalism must not remove them.
+
+### Entry points
+
+One chat screen, one conversation, reached three ways; the entry changes nothing about what the chat does.
+
+- Settings → LLM assistant → Chat.
+- The bottom navigation's fifth item, "Assistant" / «Помощник» (a neutral chat-bubble icon). It is shown only while the module is on,
+  appears and disappears with the setting without a restart, and opens the chat over the current section; Back returns to that
+  section. All five labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
+  down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,
+  not as an unselected tab.
+- Terminal ⋮ → "Ask the assistant" / «Спросить помощника», offered only while the module is on. The text selected in the shown tab
+  with the app's own selection (a selection made inside tmux copy mode lives on the server; the app does not see it and does not
+  quote it) is read from the terminal view when ⋮ is used, never in the background, and goes into the chat draft as a fenced code
+  block; the cursor is after it, so the owner types the question below. The whole quote is at most 4,000 characters. A longer
+  selection keeps its END, the latest lines, which matter most in terminal output: the cut is on a line boundary (a single longer line
+  is cut by characters, never inside a surrogate pair) and the first line of the quote says "[start truncated]" / «[начало обрезано]»,
+  so the draft shows what is missing before Send. An existing draft is kept and the quote is appended after it; a result over the
+  message limit is not applied and the usual "too long" notice shows. The owner sees and may edit the draft; nothing is sent until
+  Send. Without a selection the chat just opens. The quote is the owner's own draft text, not an app instruction, and no
+  model-facing text changes.
+
+There is only ever one chat entry: opening it while it is already open (from the navigation, Settings or the terminal menu, also from
+screens that were opened over it, such as a notification's device card) returns to that chat by closing the screens above it, so
+its conversation, its saved history and a running Send are never doubled or stopped. A waiting terminal quote is taken by the chat at
+once and kept in memory only; it goes after the draft once the saved draft has loaded and no Send runs, and it is dropped with the chat
+if the owner leaves first. If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
+
+Whichever entry opened the chat, the app lock, Stop on leaving, "For session" lasting until the chat screen is left, a disabled
+module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
+works from every entry. The assistant never reads terminal tabs by itself.
 
 <a id="current-stage-kernel-external-adapter-and-provider-setup"></a>
 
