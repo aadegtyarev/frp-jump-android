@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * The coroutine cannot finish until the admitted worker, readers and every disconnect have really exited: the worker and
  * a closer are children of one scope. Stop, timeout, revocation and target loss all end in [disconnectClient] on an IO thread.
+ * Only the start check (`ssh-dispatch`, [admitSideEffect]) takes the chat gate; client creation, credentials, connect,
+ * authentication, exec, the stream reads and cleanup all run on IO outside it.
  */
 internal class SshCommandOperation {
     private val lock = Any()

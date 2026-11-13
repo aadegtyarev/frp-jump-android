@@ -32,6 +32,8 @@ class AgentModule(
     /** Cancel stale work after an app commit notification, even if off/on was conflated.
      * [disableVersion] must advance on every committed disable and never move backwards.
      * Ownership checks use it directly too, without waiting for this asynchronous notification.
+     * The version is an in-memory, process-local invalidation counter: every successfully committed disable advances it, even if a
+     * conflated settings observer sees only the later enabled value of a rapid off/on, so the advanced version still revokes the run.
      */
     fun refreshAvailability() {
         val stopped = synchronized(gate) {

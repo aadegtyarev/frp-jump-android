@@ -160,7 +160,9 @@ class FrpJumpApi(
     /**
      * The one request path. [admitSideEffect] only checks that the caller is active outside an owned (assistant) run.
      * The blocking exchange runs on IO; cancelling the caller cancels exactly this [Call] and the coroutine ends only after
-     * `execute()` has returned and the body is closed.
+     * `execute()` has returned and the body is closed. The cancel runs promptly on an IO worker ([blockingCancellable]).
+     * In an owned run only the start check of [admitSideEffect] takes the owner's guard; the callers' credential and storage
+     * work, the request itself, the body read and cleanup all run outside it.
      */
     private suspend fun call(request: Request): String {
         admitSideEffect(request.url.pathSegments.last())
