@@ -63,7 +63,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -638,16 +637,16 @@ fun TerminalScreen(
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }
-                AndroidView(
-                    factory = { input },
-                    // The Termux view draws its whole grid; without the clip it paints over the
-                    // extra keys when the keyboard leaves it only a few rows.
-                    modifier = Modifier
+                // The grid is resized once when the keyboard, key panel or composer settle, not on
+                // every frame of their animation; the box clips the view (see SettledSizeBox).
+                SettledSizeBox(
+                    Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .clipToBounds()
                         .background(Color.Black),
-                )
+                ) {
+                    AndroidView(factory = { input }, modifier = Modifier.fillMaxSize())
+                }
                 // Back after a drop in a fresh shell: said plainly until the owner types.
                 if (newShell && state == SshState.Open) {
                     Text(
