@@ -32,5 +32,5 @@ class DirectKeep(private val choices: DirectChoicesPort) : Operation<DirectChoic
     override val effect = Effect.CHANGE_LOCAL
 
     override suspend fun invoke(input: DirectChoiceInput): OpResult<Unit> =
-        OpResult.Done(Unit).also { choices.keepThroughServer(input.profile, input.device) }
+        if (choices.keepThroughServer(input.profile, input.device)) OpResult.Done(Unit) else OpResult.Refused(DirectRefusal.NoNetwork)
 }

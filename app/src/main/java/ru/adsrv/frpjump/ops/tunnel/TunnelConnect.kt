@@ -40,9 +40,10 @@ class TunnelConnect(private val host: TunnelConnectHost) : Operation<TunnelConne
     override suspend fun invoke(input: TunnelConnectInput): OpResult<Unit> {
         val (profile, device, port, kind) = input
         val ref = TunnelRef(profile, device, port)
-        host.revive(ref)
+        if (host.revive(ref)) return OpResult.Done(Unit)
         val tunnels = host.tunnels(profile) ?: return OpResult.Refused(TunnelRefusal.ProfileGone)
-        //MUT await removed
+        // Its disconnect is being done: connect once it is down, not into it (the tap is not lost).
+        if (host.disconnecting(ref)) host.awaitDisconnected(ref)
         tunnels.connectAsync(device, port, kind)
         return OpResult.Done(Unit)
     }

@@ -48,7 +48,6 @@ class TunnelDown(
     override val effect = Effect.CHANGE_LOCAL
 
     override suspend fun invoke(input: TunnelDownTarget): OpResult<Unit> {
-        kotlinx.coroutines.yield()
         when (input) {
             is TunnelDownTarget.One -> disconnects.disconnect(listOf(input.tunnel))
             is TunnelDownTarget.Profile -> {
