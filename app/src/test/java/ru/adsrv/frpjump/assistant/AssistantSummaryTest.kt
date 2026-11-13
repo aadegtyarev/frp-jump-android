@@ -161,8 +161,16 @@ class AssistantSummaryTest {
 
     @Test fun `a summarizing Send commits under every guarded category and each commit is already persisted`() = runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined); val runtime=AssistantChatRuntime()
-        // The store writes on real IO threads, so the probe can wait for the file while the conversation thread is blocked.
-        val file=Memory(); val history=AssistantChatHistory(file,Box(),CoroutineScope(SupervisorJob()+Dispatchers.IO),Dispatchers.IO)
+        // The store writes on real IO threads; every written document is published to a channel and the test waits for those
+        // write events after Send, so no thread the writer or the conversation may need is ever blocked.
+        val writes=kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+        val file=object : TextStorage {
+            private val inner=Memory()
+            override fun read()=inner.read()
+            override fun write(text: String) { inner.write(text); writes.trySend(String(Base64.getDecoder().decode(text))) }
+            override fun delete() = inner.delete()
+        }
+        val history=AssistantChatHistory(file,Box(),CoroutineScope(SupervisorJob()+Dispatchers.IO),Dispatchers.IO)
         val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
         history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
         val model=AgentProvider { request ->
@@ -171,25 +179,29 @@ class AssistantSummaryTest {
         val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,runtime=runtime,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
         val categories=Collections.synchronizedList(mutableListOf<String>()); var presentations=0
         val problems=Collections.synchronizedList(mutableListOf<String>())
-        fun awaitSaved(marker: String) {
-            val end=System.nanoTime()+10_000_000_000L
-            while(file.text?.let { String(Base64.getDecoder().decode(it)) }?.contains(marker)!=true) {
-                if(System.nanoTime()>end) { problems+="$marker was not saved before its projection"; return }
-                Thread.sleep(5)
-            }
-        }
         runtime.probes=ChatProbes(before={ category ->
-            // A projection follows its committed update/finish: that document must already be written to the history file
-            // (a finished Send clears the draft; the older records are COMPLETE already).
+            // A projection follows its committed update/finish (history, then answer); the probe only records the order.
+            // That the committed documents reach the history file is checked from the write events after Send.
             if(category=="presentation") {
                 val first=presentations++==0
                 if(categories.lastOrNull()!=(if(first) "history" else "answer")) problems+="projection after ${categories.lastOrNull()}"
-                awaitSaved(if(first) "final-answer" else "\"draft\":\"\"")
             }
             categories+=category
         })
         try {
-            chat.ready();chat.edit("Continue");chat.send();chat.ready()
+            chat.ready();chat.edit("Continue")
+            while(writes.tryReceive().isSuccess) { } // drop the writes of the setup; only those caused by Send count
+            chat.send();chat.ready()
+            // The finished answer and then the cleared draft are really written: wait for those write events (no timer is the
+            // pass criterion; the timeout is only a hang guard). A finished Send clears the draft; older records are complete.
+            withTimeout(60_000) {
+                var answered=false
+                while(true) {
+                    val doc=writes.receive()
+                    if(doc.contains("final-answer")) answered=true
+                    if(answered && doc.contains("final-answer") && doc.contains("\"draft\":\"\"")) break
+                }
+            }
             assertTrue("categories $categories",categories.containsAll(listOf("admission","dispatch","progress","summary","history","presentation","answer")))
             assertEquals(2,presentations); assertEquals(emptyList<String>(),problems.toList())
             assertTrue(chat.state.value.summarized)
