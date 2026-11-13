@@ -81,14 +81,14 @@ class TunnelUpTest {
         assertEquals(listOf(ref), going.revived); assertEquals(listOf(ref), going.awaited)
     }
 
-    @Test fun `a tunnel that does not come up in time fails with the manager's last error, or none, and its remote outcome unknown`() = runBlocking {
+    @Test fun `a tunnel that does not come up in time fails with the manager's last typed error, or none, and its remote outcome unknown`() = runBlocking {
         val key = localPortKey("wb", 22)
         val withError = Tunnels(TunnelsState(errors = mapOf(key to DomainError.ServerError("server said no"))))
         assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(DomainError.ServerError("server said no")), RemoteOutcome.UNKNOWN), TunnelUp(Host(withError), waitMs = 30)(input))
         assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(null), RemoteOutcome.UNKNOWN), TunnelUp(Host(Tunnels()), waitMs = 30)(input))
     }
 
-    @Test fun `a device that does not open the port fails with the manager's explanation and an unknown outcome`() = runBlocking {
+    @Test fun `a device that does not open the port fails with the port that is not open and an unknown outcome`() = runBlocking {
         val tunnels = Tunnels(TunnelsState(tunnels = listOf(tunnel())), deviceAnswer = DevicePortNotOpen(80))
         assertEquals(OpResult.Failed(TunnelFailure.DeviceNotListening(DevicePortNotOpen(80)), RemoteOutcome.UNKNOWN), TunnelUp(Host(tunnels))(input))
     }

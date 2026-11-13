@@ -158,6 +158,10 @@ class TunnelManager(
     private val refusalSettleMs: Long = REFUSAL_SETTLE_MS,
     /** All published profiles' authoritative pins and held allocations; read under the shared map gate. */
     private val reservations: () -> PortReservations? = { null },
+    /** How many polls [connect] makes, waiting for the server to list the grant. */
+    private val connectAttempts: Int = CONNECT_WAIT_SECONDS,
+    /** How long [connect] waits between those polls. */
+    private val connectRetryMs: Long = CONNECT_RETRY_MS,
 ) {
     /** A planning snapshot must not evict a live Auto allocation of another profile. */
     val heldReservations: Map<String, Int> get() {
@@ -566,8 +570,8 @@ class TunnelManager(
         val operation = begin(key, PendingOp.CONNECTING) ?: return
         try {
             val grant = api.connect(credentials, device, port, wireProtocolFor(kind, port))
-            repeat(CONNECT_WAIT_SECONDS) { attempt ->
-                if (attempt > 0) delay(1_000)
+            repeat(connectAttempts) { attempt ->
+                if (attempt > 0) delay(connectRetryMs)
                 val desired = sync()
                 if (desired != null && desired.consumed.any { it.grantId == grant.grantId }) return
             }
@@ -763,6 +767,7 @@ class TunnelManager(
 
         private const val TAG = "TunnelManager"
         private const val CONNECT_WAIT_SECONDS = 15
+        private const val CONNECT_RETRY_MS = 1_000L
         private const val EXPIRY_TICK_MS = 1_000L
         private const val PEER_RETRY_MS = 2_000L
         private const val DEVICE_PROBE_MS = 2_000L

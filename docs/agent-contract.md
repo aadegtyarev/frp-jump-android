@@ -385,7 +385,8 @@ Error kinds, and the fields each can appear in. `source_status.load_error` is
 | `PROTOCOL_UPDATE_APP` | the server speaks a newer protocol: the app is to be updated | `tunnel_state.mismatch` |
 | `PROTOCOL_UPDATE_SERVER` | the server speaks an older protocol: the server is to be updated | `tunnel_state.mismatch` |
 
-A kind outside a field's set is told as `UNEXPECTED`, so these sets stay true.
+In the four server-kind fields (`device_list.error`, `tunnel_state.sync_error`, `connection.error`, `operation.error`) a kind outside the
+field's set is told as `UNEXPECTED`, so these sets stay true. `load_error` and `mismatch` take only their own kinds.
 
 The tool uses the existing captured-per-Send set, progress/failure feedback,
 result/context/history bounds, omission, cancellation, slot and module ownership

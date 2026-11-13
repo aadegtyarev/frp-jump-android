@@ -10,8 +10,9 @@ import ru.adsrv.frpjump.errors.ErrorKind
 
 /**
  * The error fields of `profile_information` and the kinds each can hold: a model-visible format, listed in
- * `docs/agent-contract.md` ("Optional profile information"). A kind outside its field's set is told as [ErrorKind.UNEXPECTED], so the
- * listed sets stay true. The model gets the kind and nothing else: no server detail, host, message or class name.
+ * `docs/agent-contract.md` ("Optional profile information"). In the four server-kind fields (device list, synchronization, connection and
+ * operation errors) a kind outside the field's set is told as [ErrorKind.UNEXPECTED], so the listed sets stay true; the other two fields
+ * (load error, mismatch) take only their own kinds. The model gets the kind and nothing else: no server detail, host, message or class name.
  */
 internal enum class ProfileErrorField(val path: String, val kinds: Set<ErrorKind>) {
     LOAD_ERROR("source_status.load_error", setOf(ErrorKind.PROFILES_LOAD_FAILED)),
@@ -24,7 +25,10 @@ internal enum class ProfileErrorField(val path: String, val kinds: Set<ErrorKind
     /** `{"kind": "<KIND>"}` for [error], null for none. */
     fun json(error: DomainError?): JsonElement = error?.let { kind(it.kind) } ?: JsonNull
 
-    fun kind(kind: ErrorKind): JsonObject = buildJsonObject { put("kind", (kind.takeIf { it in kinds } ?: ErrorKind.UNEXPECTED).name) }
+    fun kind(kind: ErrorKind): JsonObject {
+        require(kind in kinds || ErrorKind.UNEXPECTED in kinds) { "$this does not list $kind" }
+        return buildJsonObject { put("kind", (kind.takeIf { it in kinds } ?: ErrorKind.UNEXPECTED).name) }
+    }
 }
 
 /** How a server or network call failed. */

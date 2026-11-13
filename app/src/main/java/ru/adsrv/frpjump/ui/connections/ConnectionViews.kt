@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui.connections
 
 import ru.adsrv.frpjump.ui.mqtt.PluginsSheet
 import ru.adsrv.frpjump.ui.userText
+import ru.adsrv.frpjump.errors.DevicePortNotOpen
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.tunnel.TunnelManager
 import android.Manifest
@@ -149,7 +150,7 @@ fun problemOf(row: ConnectionRow): String? = row.error?.userText() ?: row.tunnel
         when {
             // The typed flags, worded now: who holds a pinned port, or that the device has not opened its port.
             state.pinnedPortTaken -> Texts.get(R.string.local_port_taken_pinned, tunnel.localPort, TunnelManager.PINNED_RETRY_MS / 1000)
-            state.deviceMissing -> Texts.get(R.string.device_port_not_open, tunnel.port)
+            state.deviceMissing -> DevicePortNotOpen(tunnel.port).userText()
             else -> state.detail
         }
     }

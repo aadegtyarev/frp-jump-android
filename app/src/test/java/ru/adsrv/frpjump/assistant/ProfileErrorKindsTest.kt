@@ -10,6 +10,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.api.PROTOCOL_VERSION
@@ -91,7 +92,7 @@ class ProfileErrorKindsTest {
 
     @Test fun `no server detail, host, message or class name reaches the model, whatever the error`() {
         val kinds = mutableSetOf<String>()
-        for (error in everyKind()) for (mismatch in listOf(null, ProtocolMismatch(secrets[0].length + 9))) {
+        for (error in everyKind()) for (mismatch in listOf(null, ProtocolMismatch(PROTOCOL_VERSION + 1), ProtocolMismatch(PROTOCOL_VERSION - 1))) {
             val text = profileInformationText(information(error, mismatch, failure = "PrivateLoadException"))
             for (secret in secrets + listOf("PrivateLoadException", "41111", "42222")) assertFalse("$error leaks $secret", text.contains(secret))
             // Every error field is an object with the kind alone.
@@ -110,13 +111,16 @@ class ProfileErrorKindsTest {
                 check(profile["device_list"]!!.jsonObject["error"], ProfileErrorField.DEVICE_LIST_ERROR)
                 check(profile["tunnel_state"]!!.jsonObject["sync_error"], ProfileErrorField.SYNC_ERROR)
                 check(profile["tunnel_state"]!!.jsonObject["mismatch"], ProfileErrorField.MISMATCH)
+                profile["tunnel_state"]!!.jsonObject["mismatch"].let {
+                    if (mismatch == null) assertEquals(JsonNull, it) else assertEquals(mismatch.kind.name, it!!.jsonObject["kind"]!!.jsonPrimitive.content)
+                }
                 (record["connection"] as? JsonObject)?.let { check(it["error"], ProfileErrorField.CONNECTION_ERROR) }
                 (record["operation"] as? JsonObject)?.let { check(it["error"], ProfileErrorField.OPERATION_ERROR) }
             }
         }
         // Every kind the app can produce for these fields shows up, so the loop above covered each branch.
         assertTrue(kinds.containsAll(server))
-        assertTrue(kinds.containsAll(listOf("NOT_LISTED", "NO_FREE_PORT", "PROTOCOL_UPDATE_APP", "PROFILES_LOAD_FAILED")))
+        assertTrue(kinds.containsAll(listOf("NOT_LISTED", "NO_FREE_PORT", "PROTOCOL_UPDATE_APP", "PROTOCOL_UPDATE_SERVER", "PROFILES_LOAD_FAILED")))
     }
 
     @Test fun `the golden record has the kinds in the five error fields and nothing else changed`() {
@@ -136,6 +140,16 @@ class ProfileErrorKindsTest {
         assertEquals("""{"kind":"UNREACHABLE"}""", record["connection"]!!.jsonObject["error"].toString())
         val operation = page["results"]!!.jsonArray.map { it.jsonObject }.first { it["operation"] is JsonObject }["operation"]!!.jsonObject
         assertEquals("""{"kind":"UNREACHABLE"}""", operation["error"].toString())
+    }
+
+    @Test fun `a field that does not list unexpected refuses a kind it does not list`() {
+        for (field in listOf(ProfileErrorField.LOAD_ERROR, ProfileErrorField.MISMATCH)) {
+            assertFalse(ErrorKind.UNEXPECTED in field.kinds)
+            assertThrows(IllegalArgumentException::class.java) { field.kind(ErrorKind.SERVER_ERROR) }
+            assertThrows(IllegalArgumentException::class.java) { field.json(DomainError.NotListed) }
+        }
+        for (field in ProfileErrorField.entries - listOf(ProfileErrorField.LOAD_ERROR, ProfileErrorField.MISMATCH))
+            assertTrue(ErrorKind.UNEXPECTED in field.kinds)
     }
 
     @Test fun `no error is null in every field`() {
