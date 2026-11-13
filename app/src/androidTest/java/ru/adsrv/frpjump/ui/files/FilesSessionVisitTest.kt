@@ -233,7 +233,7 @@ class FilesSessionVisitTest {
             withTimeout(5_000) { while (session.state.value.status !is FilesStatus.Failed) delay(10) }
         }
         val failed = session.state.value.status as FilesStatus.Failed
-        assertTrue(failed.message, failed.message.contains("disk full"))
+        assertTrue(failed.message, failed.message.contains("write error") && !failed.message.contains("disk full"))
         assertEquals(if (forget) old else null, keys.pinned("dev", 22))
         // The owner can retry: the same answer works once the disk does.
         disk.fail = false

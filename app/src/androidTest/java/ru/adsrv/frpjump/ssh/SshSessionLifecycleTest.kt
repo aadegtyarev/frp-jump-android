@@ -530,7 +530,7 @@ class SshSessionLifecycleTest {
             }
             withTimeout(5_000) { while (session.state.value !is SshState.Ended) delay(10) }
             val ended = session.state.value as SshState.Ended
-            assertTrue(ended.message, ended.message.contains("disk full"))
+            assertTrue(ended.message, ended.message.contains("write error") && !ended.message.contains("disk full"))
             // Nothing trusted; on forget the old pin stays.
             assertEquals(if (forget) old else null, session.hostKeys.pinned("synthetic-device", 22))
             // The store is not broken: once the disk works the owner's retry (a new session on it) pins.

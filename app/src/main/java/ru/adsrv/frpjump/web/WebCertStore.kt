@@ -3,6 +3,10 @@ package ru.adsrv.frpjump.web
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
 import ru.adsrv.frpjump.store.TextStorage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.ssh.hostKeyWriteFailure
 import java.security.MessageDigest
 
 /** What to do with the certificate an HTTPS web connection presents. */
@@ -30,6 +34,28 @@ fun certCheck(pinned: String?, presented: String?, forTunnel: Boolean): CertChec
     pinned == null -> CertCheck.Unknown
     pinned == presented -> CertCheck.Trusted
     else -> CertCheck.Changed(pinned)
+}
+
+/** One request waiting on a certificate question (an SslErrorHandler in the app). */
+interface CertAnswer {
+    fun proceed()
+    fun cancel()
+}
+
+/**
+ * The owner pressed Trust: [save] the pin (off the main thread), then let every waiting request go on
+ * only when it was saved. A failed save cancels them (fail closed) and returns the failure, so the
+ * caller can tell the owner. Cancellation cancels them too and is rethrown, never swallowed.
+ */
+suspend fun answerCertTrust(handlers: List<CertAnswer>, save: () -> Unit): Exception? {
+    val failure = try {
+        withContext(Dispatchers.IO) { hostKeyWriteFailure(save) }
+    } catch (e: CancellationException) {
+        handlers.forEach { it.cancel() }
+        throw e
+    }
+    handlers.forEach { if (failure == null) it.proceed() else it.cancel() }
+    return failure
 }
 
 /** SHA-256 of a DER certificate as colon-separated upper-case hex, as browsers show it. */

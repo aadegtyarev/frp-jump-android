@@ -101,10 +101,14 @@ import ru.adsrv.frpjump.ui.notice
 import ru.adsrv.frpjump.ui.rememberFullscreen
 import ru.adsrv.frpjump.web.BackBounce
 import ru.adsrv.frpjump.web.Bounce
+import ru.adsrv.frpjump.ssh.WriteFailureKind
+import ru.adsrv.frpjump.ssh.writeFailureKind
+import ru.adsrv.frpjump.web.CertAnswer
 import ru.adsrv.frpjump.web.CertCheck
 import ru.adsrv.frpjump.web.GoodPages
 import ru.adsrv.frpjump.web.WebBack
 import ru.adsrv.frpjump.web.WebNavigation
+import ru.adsrv.frpjump.web.answerCertTrust
 import ru.adsrv.frpjump.web.answersInPlainHttp
 import ru.adsrv.frpjump.web.certFingerprint
 import ru.adsrv.frpjump.web.isLoopbackHttpUrl
@@ -141,6 +145,8 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
     val certs = remember(profile) { app.profiles.runtime(profile)?.webCerts }
     var question by remember { mutableStateOf<CertQuestion?>(null) }
     var certRefused by remember { mutableStateOf(false) }
+    /** Why the pin could not be saved, when that (not the owner's refusal) closed the page. */
+    var certSaveFailure by remember { mutableStateOf<WriteFailureKind?>(null) }
     /** An HTTPS connection whose device answers this port in plain HTTP (ERR_SSL_PROTOCOL_ERROR). */
     var notTls by remember { mutableStateOf(false) }
     /** The current load hit a certificate question or refusal: its handshake error is not "plain HTTP". */
@@ -227,7 +233,10 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                     CertCheck.Trusted -> handler.proceed()
                     CertCheck.Refused -> {
                         handler.cancel()
-                        if (forTunnel) certRefused = true
+                        if (forTunnel) {
+                            certSaveFailure = null
+                            certRefused = true
+                        }
                     }
                     else -> {
                         val open = question
@@ -317,6 +326,7 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
         sslErrorSeen = false
         if (certRefused) {
             certRefused = false
+            certSaveFailure = null
             webView.clearSslPreferences()
             webView.loadUrl(url)
         } else if (rendererGone) {
@@ -446,7 +456,9 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
                 }
                 if (certRefused) {
                     // Above the page, which stays in place for "Try again".
-                    Text(stringResource(R.string.cert_refused), color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                    Text(
+                        certSaveFailure?.let { stringResource(R.string.cert_save_failed, stringResource(it.res)) } ?: stringResource(R.string.cert_refused),
+                        color = AppTheme.colors.error, fontSize = 14.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
                     TextButton(onClick = reload, modifier = Modifier.padding(horizontal = 8.dp)) { Text(stringResource(R.string.cert_try_again)) }
                 }
                 if (tunnelGone) {
@@ -484,14 +496,18 @@ fun WebScreen(profile: String, device: String, localPort: Int, targetPort: Int, 
             onTrust = {
                 question = null
                 scope.launch {
-                    val pinned = runCatching { withContext(Dispatchers.IO) { certs?.pin(device, targetPort, q.fingerprint) } }.isSuccess
-                    q.handlers.forEach { if (pinned) it.proceed() else it.cancel() }
-                    if (!pinned) certRefused = true
+                    val answers = q.handlers.map { h -> object : CertAnswer { override fun proceed() = h.proceed(); override fun cancel() = h.cancel() } }
+                    val failure = answerCertTrust(answers) { certs?.pin(device, targetPort, q.fingerprint) }
+                    if (failure != null) {
+                        certSaveFailure = writeFailureKind(failure)
+                        certRefused = true
+                    }
                 }
             },
             onRefuse = {
                 question = null
                 q.handlers.forEach { it.cancel() }
+                certSaveFailure = null
                 certRefused = true
             },
         )

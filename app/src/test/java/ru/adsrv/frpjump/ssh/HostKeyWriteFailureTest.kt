@@ -60,3 +60,37 @@ class HostKeyWriteFailureTest {
         assertEquals(R.string.host_key_forget_failed, keyInstallText(KeyInstallResult.HostKeySaveFailed("x", forgot = true), "root")!!.res)
     }
 }
+
+class WriteFailureKindTest {
+    private val path = "/data/user/0/ru.adsrv.frpjump/files/host_keys.json"
+
+    @Test
+    fun noSpaceIsNoSpace() {
+        assertEquals(WriteFailureKind.NO_SPACE, writeFailureKind(IOException("write failed: ENOSPC (No space left on device)")))
+        assertEquals(WriteFailureKind.NO_SPACE, writeFailureKind(IOException("wrapped", IOException("No space left on device"))))
+    }
+
+    @Test
+    fun deniedIsNoAccess() {
+        assertEquals(WriteFailureKind.NO_ACCESS, writeFailureKind(java.nio.file.AccessDeniedException(path)))
+        assertEquals(WriteFailureKind.NO_ACCESS, writeFailureKind(java.io.FileNotFoundException("$path (Permission denied)")))
+        assertEquals(WriteFailureKind.NO_ACCESS, writeFailureKind(IOException("open failed: EACCES")))
+    }
+
+    @Test
+    fun anythingElseIsAWriteError() {
+        assertEquals(WriteFailureKind.OTHER, writeFailureKind(IOException("disk full")))
+        assertEquals(WriteFailureKind.OTHER, writeFailureKind(IllegalStateException()))
+    }
+
+    @Test
+    fun theTextHoldsNoPathOrMessage() {
+        // Texts is not initialised in a unit test: the only thing the owner can see is the kind's string resource.
+        val kinds = listOf(
+            writeFailureKind(IOException("$path: disk full")),
+            writeFailureKind(java.io.FileNotFoundException("$path (Permission denied)")),
+            writeFailureKind(IOException("$path: ENOSPC")),
+        )
+        assertEquals(listOf(R.string.write_failed_other, R.string.write_failed_no_access, R.string.write_failed_no_space), kinds.map { it.res })
+    }
+}

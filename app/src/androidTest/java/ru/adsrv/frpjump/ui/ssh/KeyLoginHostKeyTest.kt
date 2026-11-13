@@ -81,7 +81,7 @@ class KeyLoginHostKeyTest {
         await("error shown") { flow.step is KeyLoginStep.Done }
         val done = main { flow.step as KeyLoginStep.Done }
         val result = done.result as KeyInstallResult.HostKeySaveFailed
-        assertTrue(result.detail, result.detail.contains("disk full"))
+        assertTrue(result.detail, result.detail.contains("write error") && !result.detail.contains("disk full"))
         assertEquals(forget, result.forgot)
         assertEquals(1, installs.get())
         assertEquals(if (forget) old else null, keys.pinned("dev", 22))
