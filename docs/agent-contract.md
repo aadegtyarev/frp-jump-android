@@ -279,7 +279,7 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 7). The base prompt is the unchanged byte prefix of the first message
+(version 8). The base prompt is the unchanged byte prefix of the first message
 of every main chat-loop request, stable within and across Sends; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
@@ -296,7 +296,7 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 7), the owner's own instructions when set, and only enabled tool schemas.
+version 8), the owner's own instructions when set, and only enabled tool schemas.
 The base prompt contains no profile,
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
@@ -820,7 +820,7 @@ are described in each tool's subsection.
 | `read_page` | `READ_REMOTE` | none: public transport | `url`, at most 2,048 characters: public HTTPS, port 443 | 8,000 text characters, 100 links and 20 image references per page; shared public budget | never | selected public text goes to the model | optional, default off |
 | `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
-| `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr: at most 3,000 characters each, drained | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
+| `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
 
 Every tool also has the kernel limits ([Limits](#limits)) and the Send's 120
@@ -984,11 +984,30 @@ SSH UI. No model credentials, automatic trust or new input dialogue are accepted
 Normal credential reads, key generation and refusal bookkeeping still apply.
 
 Exec is noninteractive without PTY or tmux, with closed stdin. Stdout and stderr
-are drained concurrently, retaining at most 3,000 UTF-16 characters each as data
-arrives and visibly marking excess. They remain separately labelled, with actual
+are drained concurrently. Together they keep at most about 7,800 UTF-16
+characters, so that the labels, notes and exit facts fit in the kernel's
+8,000-character tool-result cap and the kernel never cuts an `ssh_command`
+result. The budget is derived from that cap. Stderr, when present, keeps at
+least 1,500 characters (or all of it, if shorter); stdout gets the rest. The
+excess is drained and counted, not retained; a cut stream ends with the note
+`[truncated: N of M characters]`, where N is what the model receives for that
+stream and M is the exact total, both in UTF-16 characters. A cut never splits
+a surrogate pair. The note is part of the result text for the model and the UI
+receipt. The stdout and stderr texts stay separately labelled, with actual
 nullable exit status/signal or explicit unknown. Only known exit 0 without a
-signal is success; EOF, local close/join, nonzero/missing status and failures are
-not invented remote success. Kernel/result/context limits continue to apply.
+signal is success; EOF, local close/join, nonzero/missing status and failures
+are not invented remote success. Kernel/result/context limits continue to apply.
+
+Model texts: the `ssh_command` description tells the model that output is
+limited to about 7,800 characters for both streams together (stderr at least
+1,500 when present), that a cut stream ends with "truncated: N of M characters",
+and how to read more (narrow with `tail -n`, `head -n`, `grep`; print only what
+the task needs; read big output in pieces; for tmux scrollback
+`tmux capture-pane -p -S -<N>`, with `-E <line>` for the end line). The base
+prompt's first paragraph also asks for brevity: "Answer briefly: give the answer
+first, do not retell raw output, and add no caveats beyond the required
+disclosures below unless asked; use a table only when it is clearer than a
+list."
 
 The SSH start check uses the existing Chat authority guard. Client creation,
 credentials, connect/auth/exec/read and cleanup run off Main; a start whose
