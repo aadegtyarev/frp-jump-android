@@ -89,4 +89,42 @@ class AssistantAnswerMarkdownTest {
         assertEquals(source, result.text)
         assertTrue(result.getLinkAnnotations(0, result.length).isEmpty())
     }
+
+    private val grid = "| a | b | c | d |\n| --- | :-: | --: | --- |\n| 1 | 2 | 3 | 4 |\n| x | y |"
+
+    @Test fun `a table after a text line gets one blank line so the library parses it`() {
+        val source = "Here it is:\n$grid\nTail"
+        val shown = assistantDisplayMarkdown(source)
+        assertEquals("Here it is:\n\n$grid\nTail", shown)
+        assertEquals(1, shown.length - source.length)
+        assertNotNull(node(parse(shown), org.intellij.markdown.flavours.gfm.GFMElementTypes.TABLE))
+        assertTrue(runCatching { node(parse(source), org.intellij.markdown.flavours.gfm.GFMElementTypes.TABLE) }.isFailure)
+    }
+
+    @Test fun `display copy leaves other text, fenced pipes and ready tables unchanged`() {
+        val ready = "Intro\n\n$grid"
+        val fenced = "```\nnote\n$grid\n```"
+        val tilde = "~~~\nnote\n$grid\n~~~"
+        val columns = "text\n| a | b |\n| --- |\n| 1 | 2 |"
+        for (text in listOf("", "no pipes\n--- \nhere", ready, fenced, tilde, columns, "a | b\nnot a delimiter"))
+            assertSame(text, assistantDisplayMarkdown(text))
+        assertEquals("one\n\nA | B\n--|--\n1 | 2", assistantDisplayMarkdown("one\nA | B\n--|--\n1 | 2"))
+        assertEquals("x\r\n\n| a |\r\n|---|\r\n| 1 |", assistantDisplayMarkdown("x\r\n| a |\r\n|---|\r\n| 1 |"))
+    }
+
+    @Test fun `table model keeps rows, pads short rows and reads alignment`() {
+        val source = grid
+        val table = node(parse(source), org.intellij.markdown.flavours.gfm.GFMElementTypes.TABLE)
+        val model = assistantTableModel(source, table)
+        assertEquals(4, model.columns)
+        assertEquals(2, model.rows.size)
+        assertTrue(model.rows.all { it.size == 4 })
+        assertEquals(listOf("a", "b", "c", "d"), model.header.map { source.substring(it!!.startOffset, it.endOffset).trim() })
+        assertEquals(listOf("1", "2", "3", "4"), model.rows[0].map { source.substring(it!!.startOffset, it.endOffset).trim() })
+        assertNull(model.rows[1][2]); assertNull(model.rows[1][3])
+        assertEquals(
+            listOf(AssistantColumnAlignment.START, AssistantColumnAlignment.CENTER, AssistantColumnAlignment.END, AssistantColumnAlignment.START),
+            model.alignments,
+        )
+    }
 }
