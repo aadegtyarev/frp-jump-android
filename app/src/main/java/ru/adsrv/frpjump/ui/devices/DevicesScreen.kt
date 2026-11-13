@@ -3,7 +3,10 @@ package ru.adsrv.frpjump.ui.devices
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.testTag
+import ru.adsrv.frpjump.ui.SettingsGear
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -90,7 +93,7 @@ import java.time.Instant
  * The current profile's devices under the profile switcher. [profiles]
  * feeds the switcher, the tunnel count and the line about profiles
  * removed on their servers; [onProfiles] opens the profile list,
- * [onTunnels] the Connections tab (the tunnel count's tap).
+ * [onTunnels] the Connections tab (the tunnel count's tap), [onSettings] Settings (the gear).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,6 +103,7 @@ fun DevicesScreen(
     onProfiles: () -> Unit,
     onOpen: (String) -> Unit,
     onTunnels: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
@@ -157,8 +161,7 @@ fun DevicesScreen(
                     hint = stringResource(R.string.devices_search_hint),
                 )
             } else {
-                // The bar's "disconnect all": this profile's tunnels, as its count shows, go down at once, with Undo.
-                Header(current, onProfiles, onTunnels, onDisconnect = { current?.let { vm.actions.disconnectProfile(it.id) } }, onSearch = {
+                DevicesHeader(current, onProfiles, onTunnels, onSettings, onSearch = {
                     searching = true
                     focusOnOpen = true
                 }.takeIf { !state.devices.isNullOrEmpty() })
@@ -186,16 +189,15 @@ fun DevicesScreen(
 }
 
 /**
- * The switcher, this profile's tunnel count (a tap: [onTunnels]) with the
- * power button that disconnects them all ([onDisconnect]), and search
- * ([onSearch], null while there is nothing to search); terminals and settings are tabs of their own.
+ * The switcher, this profile's tunnel count (a tap: [onTunnels]), search ([onSearch], null while there is nothing to search)
+ * and the gear ([onSettings]); the icon buttons sit next to each other, the gap is only after the switcher.
  */
 @Composable
-private fun Header(
+internal fun DevicesHeader(
     current: ProfileItem?,
     onProfiles: () -> Unit,
     onTunnels: () -> Unit,
-    onDisconnect: () -> Unit,
+    onSettings: () -> Unit,
     onSearch: (() -> Unit)?,
 ) {
     val colors = AppTheme.colors
@@ -204,37 +206,47 @@ private fun Header(
             .statusBarsPadding()
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.weight(1f)) { ProfileSwitcher(current, onProfiles) }
-        current?.tunnels?.takeIf { it > 0 }?.let {
-            TunnelsChip(it, onTunnels)
-            val label = stringResource(R.string.disconnect_all_tunnels)
-            IconButton(onClick = onDisconnect, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) {
-                Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
-            }
-        }
+        Box(Modifier.weight(1f).testTag(PROFILE_SWITCHER_TAG)) { ProfileSwitcher(current, onProfiles) }
+        Spacer(Modifier.width(8.dp))
+        current?.tunnels?.takeIf { it > 0 }?.let { TunnelsChip(it, onTunnels) }
         onSearch?.let {
             IconButton(onClick = it, modifier = Modifier.size(44.dp)) {
                 Icon(SearchGlyph, contentDescription = stringResource(R.string.devices_search), tint = colors.ink, modifier = Modifier.size(22.dp))
             }
         }
+        SettingsGear(onSettings)
     }
 }
 
-/** The tunnel count; a tap leads to Connections, open ones on top. Tall as the bar for the finger, the ripple on the chip. */
+const val PROFILE_SWITCHER_TAG = "profile_switcher"
+const val TUNNELS_CHIP_TAG = "tunnels_chip"
+
+/**
+ * The tunnel count as the Connections glyph and the number; a tap leads to Connections, open ones on top. TalkBack reads the plural
+ * text ("1 tunnel"). Tall as the bar for the finger, the ripple on the chip.
+ */
 @Composable
 private fun TunnelsChip(count: Int, onClick: () -> Unit) {
     val colors = AppTheme.colors
     val source = remember { MutableInteractionSource() }
+    val spoken = pluralStringResource(R.plurals.tunnels, count, count)
     Box(
         Modifier
             .heightIn(min = 44.dp)
-            .clickable(source, indication = null, role = Role.Button, onClickLabel = stringResource(R.string.tunnels_show), onClick = onClick),
+            .testTag(TUNNELS_CHIP_TAG)
+            .clickable(source, indication = null, role = Role.Button, onClickLabel = stringResource(R.string.tunnels_show), onClick = onClick)
+            .clearAndSetSemantics { contentDescription = spoken },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.clip(CircleShape).indication(source, ripple())) {
-            Chip(pluralStringResource(R.plurals.tunnels, count, count), colors.accentContainer, colors.onAccentContainer)
+        Row(
+            Modifier.clip(CircleShape).indication(source, ripple()).background(colors.accentContainer, CircleShape)
+                .padding(start = 8.dp, end = 10.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(LinkGlyph, contentDescription = null, tint = colors.onAccentContainer, modifier = Modifier.size(16.dp))
+            Text(count.toString(), color = colors.onAccentContainer, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
         }
     }
 }

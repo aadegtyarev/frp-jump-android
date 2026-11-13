@@ -48,6 +48,8 @@ import ru.adsrv.frpjump.sessions.SessionCloser
 import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.TunnelRef
+import ru.adsrv.frpjump.ui.SectionTitleRow
+import ru.adsrv.frpjump.ui.SettingsGear
 
 /**
  * The Sessions tab: the open terminal sessions, then the MQTT explorer
@@ -66,6 +68,7 @@ fun SessionsScreen(
     profileColors: Map<String, String>,
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val allTerminals by terminals.sessions.collectAsStateWithLifecycle()
     val allExplorers by mqtt.sessions.collectAsStateWithLifecycle()
@@ -85,12 +88,10 @@ fun SessionsScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "title") {
-            Text(
+            SectionTitleRow(
                 stringResource(R.string.tab_sessions),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp),
-            )
+                Modifier.fillMaxWidth().padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
+            ) { SettingsGear(onSettings) }
         }
         if (list.isEmpty() && explorers.isEmpty()) {
             item(key = "empty") {

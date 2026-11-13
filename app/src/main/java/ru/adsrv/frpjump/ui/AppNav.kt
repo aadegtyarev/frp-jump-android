@@ -107,7 +107,6 @@ internal object Routes {
         Tab.DEVICES -> DEVICES
         Tab.CONNECTIONS -> CONNECTIONS
         Tab.SESSIONS -> SESSIONS
-        Tab.SETTINGS -> SETTINGS
     }
 }
 
@@ -270,6 +269,7 @@ fun AppNav() {
                     onProfiles = { sheet = true },
                     onOpen = { nav.navigate(Routes.device(it)) },
                     onTunnels = { nav.goToTab(Tab.CONNECTIONS) },
+                    onSettings = { nav.openSettings() },
                 )
             }
             if (sheet) ProfileListSheet(profilesVm, nav, app, onDismiss = { sheet = false })
@@ -282,6 +282,7 @@ fun AppNav() {
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenFiles = { nav.navigate(Routes.files(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
+                    onSettings = { nav.openSettings() },
                 )
             }
         }
@@ -296,6 +297,7 @@ fun AppNav() {
                     profileColors = profilesState.index.profiles.associate { it.id to it.color },
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
+                    onSettings = { nav.openSettings() },
                 )
             }
         }
@@ -379,18 +381,17 @@ fun AppNav() {
             val profiles by profilesVm.items.collectAsStateWithLifecycle()
             val forget by profilesVm.forget.collectAsStateWithLifecycle()
             val scope = rememberCoroutineScope()
-            TabFrame(Tab.SETTINGS, nav) {
-                SettingsScreen(
-                    vm = viewModel { SettingsViewModel(app) },
-                    profile = profiles.firstOrNull { it.current },
-                    forget = forget,
-                    onEditProfile = { nav.navigate(Routes.profile(it)) },
-                    // The next profile, if any; else enroll.
-                    onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
-                    onBack = null,
-                    onChat = { nav.openAssistant() },
-                )
-            }
+            TakeUpdateAnnouncement()
+            SettingsScreen(
+                vm = viewModel { SettingsViewModel(app) },
+                profile = profiles.firstOrNull { it.current },
+                forget = forget,
+                onEditProfile = { nav.navigate(Routes.profile(it)) },
+                // The next profile, if any; else enroll.
+                onForget = { id -> profilesVm.forget(id) { scope.launch { nav.replaceAll(routeFor(app)) } } },
+                onBack = { nav.popBackStack() },
+                onChat = { nav.openAssistant() },
+            )
         }
     }
 }
@@ -413,7 +414,7 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
             vm.conversation.appendToDraft(text)
         }
         ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
-            if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.goToTab(Tab.SETTINGS) }
+            if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.openSettings() }
             else nav.navigate(Routes.PROVIDER)
         })
     }
@@ -461,7 +462,7 @@ internal fun assistantEnabledNow(app: FrpJumpApp): Boolean {
 @Composable
 internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composable () -> Unit) {
     val snackbars = remember { SnackbarHostState() }
-    UpdateAnnouncement(selected, snackbars) { nav.goToTab(Tab.SETTINGS) }
+    UpdateAnnouncement(snackbars) { nav.openSettings() }
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val assistant = assistantEnabledNow(app)
     Scaffold(
@@ -482,10 +483,10 @@ internal fun TabFrame(selected: Tab, nav: NavHostController, content: @Composabl
 /**
  * A newer release, once per version: a snackbar whose "Show" leads to
  * Settings, where the version row offers it. On Settings itself the row
- * says it already.
+ * says it already ([TakeUpdateAnnouncement]).
  */
 @Composable
-private fun UpdateAnnouncement(selected: Tab, snackbars: SnackbarHostState, onShow: () -> Unit) {
+private fun UpdateAnnouncement(snackbars: SnackbarHostState, onShow: () -> Unit) {
     val updater = (LocalContext.current.applicationContext as FrpJumpApp).updater
     val update by updater.state.collectAsStateWithLifecycle()
     // Taken from the updater at once (told once, whether or not the owner looks), then shown.
@@ -493,7 +494,7 @@ private fun UpdateAnnouncement(selected: Tab, snackbars: SnackbarHostState, onSh
     LaunchedEffect(update.announce) {
         val version = update.announce ?: return@LaunchedEffect
         updater.announced()
-        if (selected != Tab.SETTINGS) shown = version
+        shown = version
     }
     val text = shown?.let { stringResource(R.string.update_snackbar, it) }
     val action = stringResource(R.string.update_snackbar_show)
@@ -502,6 +503,14 @@ private fun UpdateAnnouncement(selected: Tab, snackbars: SnackbarHostState, onSh
         if (snackbars.showSnackbar(text, actionLabel = action, withDismissAction = true) == SnackbarResult.ActionPerformed) onShow()
         shown = null
     }
+}
+
+/** Settings is the shown screen: an announcement arriving now is taken and not shown later, the version row says it already. */
+@Composable
+private fun TakeUpdateAnnouncement() {
+    val updater = (LocalContext.current.applicationContext as FrpJumpApp).updater
+    val update by updater.state.collectAsStateWithLifecycle()
+    LaunchedEffect(update.announce) { if (update.announce != null) updater.announced() }
 }
 
 /** Switches tabs: one entry per tab on top of Devices, each keeping its state; Back leads to Devices. */

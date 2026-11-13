@@ -15,7 +15,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
@@ -43,7 +42,6 @@ enum class Tab(val label: Int, val icon: ImageVector) {
     DEVICES(R.string.tab_devices, DeviceGlyph),
     CONNECTIONS(R.string.tab_connections, LinkGlyph),
     SESSIONS(R.string.tab_sessions, TerminalGlyph),
-    SETTINGS(R.string.tab_settings, Icons.Outlined.Settings),
 }
 
 /** One item of the bottom navigation: a section, or the assistant (never selected here: it opens over the section). */
@@ -51,7 +49,7 @@ private class NavEntry(val label: Int, val icon: ImageVector, val on: Boolean, v
 
 /**
  * The bottom navigation of the mockups: equal items, the selected one in the accent with its icon on a pill. With [onAssistant]
- * a fifth item, "Assistant", opens the chat over the current section; without it (the assistant is off) there are four.
+ * a further item, "Assistant", opens the chat over the current section; without it (the assistant is off) there are three sections only.
  */
 @Composable
 fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, onSelect: (Tab) -> Unit) {
