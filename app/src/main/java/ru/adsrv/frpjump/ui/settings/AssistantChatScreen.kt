@@ -158,7 +158,8 @@ internal fun AssistantChatContent(
                         ChatUserMessage(turn.user)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
-                            if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
+                            if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
+                            else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
                             SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
                             if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
                             else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)

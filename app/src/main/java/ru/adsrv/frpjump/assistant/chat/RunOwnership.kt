@@ -44,6 +44,12 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
     /** Caller holds the gate. */
     fun stopLocked(owner: Pending) { owner.stopped = true; c.interrupt(); c.mutable.value = c.mutable.value.copy(stopping = true); c.persist() }
 
+    /** Stop by the run itself (a question that went unanswered with no screen): same as the owner's Stop, from inside the run. */
+    fun stop(owner: Pending) {
+        val job = synchronized(gate) { if (c.pending === owner && !owner.stopped) { stopLocked(owner); owner.job } else null }
+        job?.cancel()
+    }
+
     /** Caller holds the gate. */
     private fun owns(owner: Pending): Boolean {
         refreshLocked()

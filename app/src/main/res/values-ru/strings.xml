@@ -1276,6 +1276,7 @@
     <string name="chat_history_write_failed">Последние изменения не сохранены. Повторите сохранение перед выходом.</string>
     <string name="chat_context_changed">Провайдер или модель изменены. Переписка сохранена; новые сообщения начнут новый контекст модели.</string>
     <string name="chat_interrupted">Предыдущая попытка не завершена. Полученные результаты сохранены; исход остальных действий может быть неизвестен.</string>
+    <string name="chat_unanswered">Вопрос остался без ответа, помощник остановился. Больше ничего не выполнялось.</string>
     <string name="assistant_summary_percent">Суммаризация при % заполнения окна</string>
     <string name="assistant_summary_hint">От 1 до 100%, по умолчанию 80. Включает резерв ответа. Делает дополнительный запрос модели.</string>
     <string name="assistant_summary_model">Модель для сводки (необязательно)</string>

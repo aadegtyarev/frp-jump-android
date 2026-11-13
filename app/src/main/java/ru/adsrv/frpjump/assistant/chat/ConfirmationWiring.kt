@@ -7,7 +7,7 @@ import ru.adsrv.frpjump.settings.SettingsStore
 /**
  * The one place that connects a chat to the app: the policy is the settings store's committed value read at each call, "off" is committed
  * through the store, a session grant is refused for a tool that is switched off, and target names and stamps come from the saved
- * connections. The chat ViewModel builds its support here, so tests that use this function cover the production wiring.
+ * connections. The chat owner builds its support here, so tests that use this function cover the production wiring.
  */
 internal fun chatConfirmationSupport(settings: SettingsStore, ssh: AssistantSshCommands?) = ConfirmationSupport(
     policy = { settings.assistantConfirmations },

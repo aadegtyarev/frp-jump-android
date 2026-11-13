@@ -46,8 +46,8 @@ One chat screen, one conversation, reached three ways; the entry changes nothing
   down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,
   not as an unselected tab. While an attempt runs (a confirmation wait included) the item shows a small dot that takes no room, and
   TalkBack announces its state: "Working" / «Работает», or "Waiting for your answer" / «Ждёт ответа» while a card waits; the dot is gone
-  when the attempt ends. The chat itself has no bottom bar, so the dot is seen exactly when the chat is not on screen, with or without
-  the notification permission.
+  when the attempt ends. The chat has no bottom bar; the dot is shown on the bottom bar of the section screens (Devices, Connections,
+  Sessions, Settings) while an attempt runs, with or without the notification permission.
 - Terminal ⋮ → "Ask the assistant" / «Спросить помощника», offered only while the module is on. The text selected in the shown tab
   with the app's own selection (a selection made inside tmux copy mode lives on the server; the app does not see it and does not
   quote it) is read from the terminal view when ⋮ is used, never in the background, and goes into the chat draft as a fenced code
@@ -413,14 +413,15 @@ There is no automatic retry, streaming or provider/model fallback.
 
 **An attempt outlives the chat screen.** The conversation belongs to the app, not to the screen. It is built when the chat is first
 opened (never at app start) and lasts while a chat screen is open (anywhere on the back stack, including under Tools or a screen
-opened over it) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
+opened over it; an entry popped with a saved state, as the bottom bar does, no longer counts) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
 the "For session" grants are cleared and memory is released; the next opening restores the saved history. Leaving the chat (Back, the
 arrow, another section, another app, the lock, activity recreation, the activity finishing) does not stop an attempt: its reply and
 results are saved to the history and are there when the chat is opened again. Reopening while it runs shows that same attempt with its
 Stop; there is no second conversation and no second admission. The chat's reactions to a disabled assistant, a provider revision, the
 busy slot and a tool switched off belong to the conversation, not the screen, and work while no chat screen exists. An attempt is
 stopped only by Stop, by turning the assistant off (off/on included), by a provider change that revokes it, by its own limits, by the
-server removing this phone's profile (the REMOVED screen) and by process death (the existing unknown-outcome note; there is no
+server removing this phone's profile (the owner follows that removal itself, so it stops the attempt with or without a screen, and the
+REMOVED screen stops it too) and by process death (the existing unknown-outcome note; there is no
 foreground service and no journal). Clearing the history is not a stop path: Clear stays unavailable for the whole attempt, a card
 wait included; the owner presses Stop first.
 
@@ -677,7 +678,11 @@ failure. Stop, disable, provider changes and the removal of this phone's profile
 run nothing; a late answer or a stale card id is ignored. Leaving the chat does not cancel the wait: a card raised while the chat is
 not shown waits, is shown in the chat when the owner returns and never over other screens, and the lock leaves it waiting behind it.
 The five minutes run meanwhile, in real time with device sleep included: an answer after them is never run (the card ends as "No
-answer, declined" and nothing runs), and a card that ran out while no chat screen was shown is "No answer, declined" on return. An Always answer may
+answer, declined" and nothing runs). A card that runs out (measured at the moment of expiry) while no chat screen is attached ends the
+whole attempt as Stop does: nothing runs, no later question is raised, the turn is saved as interrupted with the call's "no answer" result
+and shows its own grey line ("The question was not answered, so the assistant stopped. Nothing more was run."), not the interrupted note,
+and the conversation closes once no screen remains. With the chat on screen, "No answer" only declines that call and the model goes on; a
+card whose screen came back before the expiry keeps waiting. The model-facing declined text is unchanged. An Always answer may
 still persist "off" when Stop races the call, and a For session answer racing
 Stop may record its grant; the call itself never runs. The wait is in neither
 the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts

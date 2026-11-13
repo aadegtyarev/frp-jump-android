@@ -7,7 +7,7 @@ import ru.adsrv.frpjump.assistant.chat.*
 import ru.adsrv.frpjump.settings.AssistantAvailability
 
 /**
- * Route-owned execution over one canonical document. File IO and projections run on IO.
+ * Execution over one canonical document, owned by the app-lived [AssistantChatOwner] (not by a screen). File IO and projections run on IO.
  * State lives in [ChatCells] under the runtime gate, ownership in [RunOwnership], one Send in [TurnRunner].
  */
 class AssistantConversation(
@@ -28,7 +28,7 @@ class AssistantConversation(
     private val prompts: Lazy<AssistantPrompts>,
     /**
      * Required, no default: leaving it out must be a compile error. Null refuses every changing call (nothing runs); a test that needs
-     * changing calls to run passes a support whose policy is off. The chat ViewModel always passes a real one.
+     * changing calls to run passes a support whose policy is off. The chat owner always passes a real one.
      */
     private val confirmations: ConfirmationSupport?,
     /** Millisecond clock of the Send's active-time limit; tests pass a virtual one. */
@@ -40,11 +40,15 @@ class AssistantConversation(
     private val realtime: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Called (outside the gate, on the finishing thread) after a Send's owner has been released; the app-lived owner closes an unattended chat here. */
     private val onSettled: () -> Unit = {},
+    /** Whether a chat screen was attached at the given real time; a card that runs out while none was ends the attempt (Р43). */
+    private val screenAttachedAt: (Long) -> Boolean = { true },
+    /** Told when an attempt ended that way; the app-lived owner keeps it for the notification. */
+    private val onUnanswered: () -> Unit = {},
 ) {
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
@@ -158,7 +162,7 @@ class AssistantConversation(
         }
         slot?.answer?.complete(if (slot.expired(realtime())) ConfirmationDecision.NO_ANSWER else decision)
     }
-    /** Ends a card whose five real minutes have run out (the screen came back, or the device woke): "no answer", nothing runs. */
+    /** Ends a card whose five real minutes have run out (the screen came back and looks): "no answer", nothing runs. */
     fun expireCard() {
         val slot = synchronized(gate) {
             if (c.closed || c.pending?.stopped != false) null

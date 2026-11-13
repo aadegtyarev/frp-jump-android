@@ -1228,6 +1228,7 @@
     <string name="chat_history_write_failed">Recent changes were not saved. Retry saving before leaving.</string>
     <string name="chat_context_changed">Provider or model changed. Earlier messages are kept; new messages use a new model context.</string>
     <string name="chat_interrupted">Previous attempt did not finish. Received results are retained; other actions may have an unknown outcome.</string>
+    <string name="chat_unanswered">The question was not answered, so the assistant stopped. Nothing more was run.</string>
     <string name="assistant_summary_percent">Summarize at % of context window</string>
     <string name="assistant_summary_hint">1–100%, default 80. Includes output reserve. Makes an additional model request.</string>
     <string name="assistant_summary_model">Summary model (optional)</string>

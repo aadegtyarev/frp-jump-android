@@ -956,7 +956,7 @@ secure key storage, model discovery, effort and context limits, the owner's own
 instructions for the model (guidance only, sent with every message, never
 authority over permissions or confirmations), plus a Chat
 entry for explicit conversations. The same chat opens from the bottom navigation (an "Assistant" item shown only while the module is on:
-over the current section, Back returns to it; it shows a small dot, announced as "Working" / «Работает» or "Waiting for your answer" / «Ждёт ответа», while an assistant attempt runs or a confirmation card waits) and from Terminal ⋮ → Ask the assistant (see [entry points](agent-contract.md#entry-points)). Automatic working summaries use the chat model
+over the current section, Back returns to it; on the section screens' bottom bar it shows a small dot, announced as "Working" / «Работает» or "Waiting for your answer" / «Ждёт ответа», while an assistant attempt runs or a confirmation card waits) and from Terminal ⋮ → Ask the assistant (see [entry points](agent-contract.md#entry-points)). Automatic working summaries use the chat model
 or an optional other model of the same provider. The configurable trigger defaults
 to 80% of estimated context use, including output reserve; summary calls have no
 tools and incur an additional model request. Tools offers independent, default-off Web

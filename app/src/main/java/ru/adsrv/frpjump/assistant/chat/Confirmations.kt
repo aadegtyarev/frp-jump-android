@@ -33,7 +33,7 @@ internal class ConfirmationSlot(val id: Long, val answer: CompletableDeferred<Co
 /**
  * The app-side pieces a chat needs to ask: the live policy (read at each call, never captured), session grants, persisting "off"
  * for the Always answer, target names for the card and a stamp that changes when a saved target is edited or removed.
- * An [AssistantConversation] built without it asks nothing (kernel-only tests); the chat ViewModel always supplies one.
+ * An [AssistantConversation] built without it asks nothing (kernel-only tests); the chat owner always supplies one.
  */
 class ConfirmationSupport(
     val policy: () -> ConfirmationPolicy,

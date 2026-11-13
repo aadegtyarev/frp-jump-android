@@ -35,6 +35,7 @@ class AssistantChatOwnerTest {
     }
 
     private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0) : AutoCloseable {
+        val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
         val requests = CopyOnWriteArrayList<AgentRequest>()
         @Volatile var now = 1_000L
@@ -71,14 +72,14 @@ class AssistantChatOwnerTest {
                     put("profile_id", "p"); put("connection_id", "c"); put("command", calls[done].command)
                 }))) else AgentReply("done")
             }
-        }, { now })
+        }, { now }, removed = removed)
         init { live += this }
         override fun close() { owner.shutdown(); scope.cancel() }
         fun results() = requests.last().turns.last().exchanges.flatMap { it.results }
     }
 
-    private fun <T> eventually(what: String, check: () -> T?): T {
-        val until = System.nanoTime() + 5_000_000_000L
+    private fun <T> eventually(what: String, seconds: Long = 5, check: () -> T?): T {
+        val until = System.nanoTime() + seconds * 1_000_000_000L
         while (System.nanoTime() < until) { check()?.let { return it }; Thread.sleep(5) }
         throw AssertionError("Timed out: $what")
     }
@@ -177,19 +178,65 @@ class AssistantChatOwnerTest {
         assertEquals(1, h.executed.get())
     }
 
-    @Test fun `a card that ran out while no screen was shown is no answer on return`() {
-        val h = Harness(listOf(Call("uptime")))
+    @Test fun `a card that runs out with no screen attached ends the whole attempt, the second call is never asked, and the conversation closes`() {
+        val h = Harness(listOf(Call("a"), Call("b")))
         val chat = h.owner.attach(); h.send(chat)
-        val card = chat.card()
+        chat.card()
         h.owner.detach()
-        h.now += 300_000
-        val back = h.owner.attach(); assertSame(chat, back)
-        h.idle()
-        assertNull(back.state.value.confirmation)
-        back.answer(card.id, ConfirmationDecision.ONCE)
-        assertEquals("no press runs the call", 0, h.executed.get())
-        val result = h.results().single()
-        assertEquals(ToolOutcome.DECLINED, result.outcome); assertEquals(ConfirmationTexts.NO_ANSWER, result.text)
+        h.now += 300_001
+        eventually("attempt ended", 15) { h.owner.activity.value.takeIf { it == ChatActivity.IDLE } }
+        assertEquals("nothing ran", 0, h.executed.get())
+        assertEquals("the second call was never proposed, so never asked", 1, h.requests.size)
+        assertNull("no screen and no attempt: the conversation closed", h.owner.confirmations)
+        assertEquals(ChatEnd.UNANSWERED, h.owner.lastEnd.value)
+        val saved = runBlocking { h.history.load()!!.records.single() }
+        assertEquals(SavedTurnState.INTERRUPTED, saved.status)
+        val result = saved.exchanges.last().results.single()
+        assertEquals(ToolOutcome.DECLINED.name, result.outcome); assertEquals(ConfirmationTexts.NO_ANSWER, result.text)
+        val back = h.owner.attach()
+        val turn = eventually("restored") { back.state.value.turns.singleOrNull() }
+        assertTrue("its own note, not the interrupted one", turn.unanswered)
+        assertEquals("seeing the chat again clears the end", ChatEnd.NONE, h.owner.lastEnd.value)
+    }
+
+    @Test fun `with the screen attached the same expiry only declines that call and the second card is raised`() {
+        val h = Harness(listOf(Call("a"), Call("b")))
+        val chat = h.owner.attach(); h.send(chat)
+        val first = chat.card()
+        h.now += 300_001
+        val second = eventually("second card", 15) { chat.state.value.confirmation?.takeIf { it.id != first.id } }
+        assertEquals("b", second.command); assertEquals(0, h.executed.get())
+        assertEquals(ChatEnd.NONE, h.owner.lastEnd.value)
+        chat.answer(second.id, ConfirmationDecision.DENY); h.idle()
+        val results = h.results()
+        assertEquals(ConfirmationTexts.NO_ANSWER, results.first().text); assertEquals(ConfirmationTexts.DECLINED, results.last().text)
+        assertEquals("done", chat.state.value.turns.singleOrNull()?.answer ?: "done")
+    }
+
+    @Test fun `a screen back before the expiry keeps the card waiting, and the expiry with it attached only declines`() {
+        val h = Harness(listOf(Call("a"), Call("b")))
+        val chat = h.owner.attach(); h.send(chat)
+        val first = chat.card()
+        h.owner.detach()
+        h.now += 100_000
+        assertSame(chat, h.owner.attach())
+        Thread.sleep(200)
+        assertEquals(first.id, chat.state.value.confirmation?.id); assertEquals(ChatActivity.WAITING, h.owner.activity.value)
+        h.now += 200_001
+        val second = eventually("second card", 15) { chat.state.value.confirmation?.takeIf { it.id != first.id } }
+        assertEquals("b", second.command); assertEquals(0, h.executed.get())
+        chat.answer(second.id, ConfirmationDecision.DENY); h.idle()
+    }
+
+    @Test fun `a card that ran out while away and is noticed after the return still ended the attempt`() {
+        val h = Harness(listOf(Call("a"), Call("b")))
+        val chat = h.owner.attach(); h.send(chat)
+        chat.card()
+        h.owner.detach()
+        h.now += 300_001
+        h.owner.attach()
+        eventually("attempt ended", 15) { chat.state.value.takeIf { !it.busy } }
+        assertEquals(0, h.executed.get()); assertEquals(1, h.requests.size)
     }
 
     @Test fun `disable acts with no screen, stops the attempt and nothing runs`() {
@@ -265,5 +312,74 @@ class AssistantChatOwnerTest {
         assertNull(h.owner.confirmations); assertEquals(ChatActivity.IDLE, h.owner.activity.value)
         h.owner.stop(); h.owner.detach()
         assertNull(h.owner.confirmations)
+    }
+
+    @Test fun `the removal of the profile stops the attempt with no screen and nothing runs`() {
+        val h = Harness(listOf(Call("uptime")))
+        val chat = h.owner.attach(); h.send(chat); chat.card()
+        h.owner.detach()
+        h.removed.value = true
+        h.idle()
+        assertEquals(0, h.executed.get())
+    }
+
+    @Test fun `a conversation that is no longer live cannot write the indicator`() {
+        val h = Harness()
+        val first = h.owner.attach()
+        h.owner.detach()
+        assertNull(h.owner.confirmations)
+        h.owner.publish(first, ChatActivity.WORKING)
+        assertEquals(ChatActivity.IDLE, h.owner.activity.value)
+        val second = h.owner.attach()
+        h.owner.publish(first, ChatActivity.WAITING)
+        assertEquals(ChatActivity.IDLE, h.owner.activity.value)
+        h.owner.publish(second, ChatActivity.WORKING)
+        assertEquals(ChatActivity.WORKING, h.owner.activity.value)
+        h.owner.detach()
+    }
+
+    @Test fun `the indicator is idle once the attempt ends while a screen stays attached`() {
+        val h = Harness(listOf(Call("uptime")))
+        val chat = h.owner.attach(); h.send(chat)
+        chat.answer(chat.card().id, ConfirmationDecision.ONCE)
+        eventually("not busy") { chat.state.value.takeIf { !it.busy } }
+        eventually("idle") { h.owner.activity.value.takeIf { it == ChatActivity.IDLE } }
+        assertSame(chat, h.owner.attach())
+        h.owner.detach(); h.owner.detach()
+    }
+
+    @Test fun `a lease keeps a running attempt through recreation and entry loss, and gone is idempotent`() {
+        val h = Harness(holdAt = 1)
+        val lease = AssistantChatLease(h.owner)
+        val chat = lease.conversation; h.send(chat); runBlocking { withTimeout(5000) { h.entered.await() } }
+        // Recreation: the same model, nothing happens to the lease.
+        assertSame(chat, lease.conversation)
+        // The entry is saved and popped (the model may stay), then restored while the attempt still runs.
+        lease.gone(); lease.gone()
+        assertSame(chat, lease.back()); assertSame(chat, lease.back())
+        lease.gone()
+        h.release.complete(Unit); h.idle()
+        assertNull("both ended with one hold given up (a second gone did not count twice)", h.owner.confirmations)
+        assertNotSame("an idle conversation was closed; coming back builds a new one", chat, lease.back())
+        lease.gone()
+    }
+
+    @Test fun `detaching against completion and attaching during a close never hands out a closed conversation`() {
+        repeat(60) { round ->
+            val h = Harness()
+            try {
+                val chat = h.owner.attach(); h.send(chat)
+                val back = java.util.concurrent.atomic.AtomicReference<AssistantConversation>()
+                val a = Thread { h.owner.detach() }
+                val b = Thread { Thread.sleep((round % 4).toLong()); back.set(h.owner.attach()) }
+                a.start(); b.start(); a.join(); b.join()
+                val taken = back.get()
+                // A closed conversation ignores edits; a live one takes them as soon as its history is read.
+                eventually("live conversation") { taken.edit("x"); taken.state.value.takeIf { it.draft == "x" } }
+                h.owner.detach()
+                h.idle()
+                assertNull(h.owner.confirmations)
+            } finally { h.close() }
+        }
     }
 }

@@ -14,7 +14,11 @@ internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */
-    val realtime: () -> Long = { System.nanoTime() / 1_000_000 }) {
+    val realtime: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Whether a chat screen was attached at that real time: a card that runs out while none was ends the attempt. */
+    val screenAttachedAt: (Long) -> Boolean = { true },
+    /** Told once when an attempt ended that way (the owner keeps it for the notification). */
+    val onUnanswered: () -> Unit = {}) {
     val confirmIds = java.util.concurrent.atomic.AtomicLong()
 }
 
@@ -35,6 +39,8 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private var summaryProblem: ChatProblem? = null
     private var summaryStatus: Int? = null
     private var summaryProvider: AgentProvider? = null
+    /** Set by [ask] when a question ran out of time with no chat screen attached. */
+    private var unanswered = false
 
     suspend fun run() {
         // Active time only: a pause (owner confirmation, from the next change on) does not count against the Send.
@@ -71,8 +77,10 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
     private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
-        return authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
+        val output = authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
             onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io)
+        if (unanswered) endUnanswered(call)
+        return output
     }
 
     /** Shows the card and waits at most five minutes; a timeout is [ConfirmationDecision.NO_ANSWER], never a cancellation. */
@@ -87,14 +95,34 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         } ?: throw CancellationException("Send no longer owned")
         try {
             // The coroutine timer does not count device sleep, so the wait also looks at the real clock every few seconds.
-            return withTimeoutOrNull(ConfirmationTexts.WAIT_LIMIT_MS) {
-                var decision: ConfirmationDecision? = null
-                while (decision == null && !slot.expired(env.realtime())) decision = withTimeoutOrNull(CARD_POLL_MS) { answer.await() }
-                decision
+            val decision = withTimeoutOrNull(ConfirmationTexts.WAIT_LIMIT_MS) {
+                var given: ConfirmationDecision? = null
+                while (given == null && !slot.expired(env.realtime())) given = withTimeoutOrNull(CARD_POLL_MS) { answer.await() }
+                given
             } ?: ConfirmationDecision.NO_ANSWER
+            // Only running out of time is NO_ANSWER. Whether it ended the attempt depends on the screen at the moment of expiry, not now.
+            if (decision == ConfirmationDecision.NO_ANSWER && !env.screenAttachedAt(slot.startedAt + ConfirmationTexts.WAIT_LIMIT_MS)) unanswered = true
+            return decision
         } finally {
             own.clearConfirmation(id)
         }
+    }
+
+    /**
+     * The question ran out with no chat screen attached: nothing runs and the whole attempt ends as Stop does. The call's "no answer" result
+     * is recorded (so the turn reads "No answer", and a later model request sees the usual declined result), then the run is stopped.
+     */
+    private fun endUnanswered(call: ToolCall) {
+        val result = SavedResult.of(ToolResult(call.id, call.name, ConfirmationTexts.NO_ANSWER, ToolOutcome.DECLINED))
+        own.guarded(owner, "history") {
+            document = document.withLast(archive) { turn ->
+                val last = turn.exchanges.lastOrNull() ?: return@withLast turn
+                turn.copy(exchanges = turn.exchanges.dropLast(1) + last.copy(results = last.results + result))
+            }
+            persist()
+        }
+        env.onUnanswered()
+        own.stop(owner)
     }
 
     private fun publishSource(source: ChatSource) {

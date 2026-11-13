@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -175,7 +176,12 @@ class FrpJumpApp : Application() {
         ru.adsrv.frpjump.assistant.AssistantChatOwner(appScope, settings, assistantProvider, assistant, profileInformation, assistantSshCommands,
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
-            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity)
+            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, removed = currentProfileRemoved)
+    }
+    /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val currentProfileRemoved: kotlinx.coroutines.flow.Flow<Boolean> by lazy {
+        profiles.state.map { it.current }.distinctUntilChanged().flatMapLatest { it?.session?.removed ?: kotlinx.coroutines.flow.flowOf(false) }
     }
     /** The app-lived owner of the chat conversation, built on the first chat opening (never at app start). */
     val assistantChatOwner: ru.adsrv.frpjump.assistant.AssistantChatOwner get() = chatOwner.value

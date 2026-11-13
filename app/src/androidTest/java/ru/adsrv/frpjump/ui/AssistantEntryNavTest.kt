@@ -157,16 +157,20 @@ class AssistantEntryNavTest {
         assertEquals(0, chatEntries())
     }
 
-    @Test fun theConversationLivesWhileAScreenIsOverTheChatAndAnIdleOneClosesWhenTheChatIsGone() {
+    @Test fun theConversationLivesWhileAScreenIsOverTheChatAndTheBottomBarTapClosesAnIdleOne() {
         host()
         openFromNav()
+        // The chat has no bottom bar (its route is not in a TabFrame).
+        compose.onAllNodesWithTag("nav_assistant").assertCountEquals(0)
         compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
         // A screen over the chat: the chat's entry is still on the back stack, its conversation stays.
         compose.runOnUiThread { nav.navigate(Routes.SETTINGS) }
         compose.waitUntil(10_000) { route == Routes.SETTINGS }
         compose.runOnUiThread { assertNotNull(app.assistantChatOwner.confirmations) }
-        // Another section from there pops the chat: nothing runs, so the conversation closes (draft saved, grants cleared).
-        compose.runOnUiThread { nav.popBackStack(Routes.DEVICES, inclusive = false) }
+        // The real bottom-bar tap (goToTab: popUpTo(DEVICES) with saveState) pops the chat's entry, possibly keeping its model with a saved
+        // state; the screen's hold ends with the entry, so an idle conversation closes (draft saved, grants cleared).
+        compose.onNodeWithTag("nav_devices").performClick()
+        compose.waitUntil(10_000) { route == Routes.DEVICES }
         compose.waitUntil(10_000) { compose.runOnUiThread { app.assistantChatOwner.confirmations == null } }
     }
 

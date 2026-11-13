@@ -14,7 +14,9 @@ data class ChatProfileInformation(val result: ToolResult, val page: JsonObject?)
 data class ChatToolReceipt(val call: ToolCall, val result: ToolResult? = null)
 data class ChatTurn(val user: String, val answer: String, val sources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
-    val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList())
+    val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList(),
+    /** The attempt ended because a question went unanswered while no chat screen was attached (Р43): its own note, not the interrupted one. */
+    val unanswered: Boolean = false)
 sealed interface ChatToolProgress {
     /** A call of a known tool is running. */
     data class Tool(val id: AssistantToolId) : ChatToolProgress
