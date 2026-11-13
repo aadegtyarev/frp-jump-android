@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ui
 
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.ops.DirectRefusal
 import ru.adsrv.frpjump.ops.OpResult
 import ru.adsrv.frpjump.ops.TunnelFailure
 import ru.adsrv.frpjump.ops.TunnelRefusal
@@ -20,6 +21,13 @@ fun TunnelFailure.userText(): String = when (this) {
     is TunnelFailure.DidNotComeUp -> error?.userText() ?: Texts.get(R.string.files_tunnel_down)
     is TunnelFailure.DeviceNotListening -> reason.userText()
 }
+
+fun DirectRefusal.userText(): String = when (this) {
+    DirectRefusal.NoNetwork -> Texts.get(R.string.keep_no_network)
+}
+
+/** The notice for a result of `TunnelDown`; null when nothing is to be said. It only returns tunnel refusals. `TunnelConnect` is not worded: its refusal is dropped silently. */
+fun OpResult<Unit>.tunnelActionNotice(): String? = (this as? OpResult.Refused)?.let { (it.reason as TunnelRefusal).userText() }
 
 /** The notice for a result of `TunnelUp`; null when the tunnel is up. `TunnelUp` only returns tunnel refusals and failures. */
 fun OpResult<Int>.tunnelNotice(): String? = when (this) {

@@ -61,7 +61,8 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   seconds, the action still completes. This covers deleting a connection, a
   snippet or an MQTT pin; forgetting a saved password or login;
   disconnecting a tunnel or all tunnels (it goes dark at once; its terminal
-  and Files sessions close only when Undo is gone); closing a terminal tab
+  and Files sessions close only when Undo is gone; the operation is `tunnel_down`, see
+  [operations](contracts/surfaces/operations.md)); closing a terminal tab
   or a session on the Sessions tab (its shell ends when Undo is gone);
   deleting files; deleting retained MQTT
   topics. Two confirms are left: "Forget profile" (it wipes the phone's
