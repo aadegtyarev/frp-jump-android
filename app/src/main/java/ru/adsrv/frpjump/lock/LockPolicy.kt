@@ -85,14 +85,17 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
     /**
      * The prompt is gone; [success] unlocks. Ended with the screen out of
      * sight (the owner left while it was up), the absence counts from [now]:
-     * its stop was the prompt's and was not counted.
+     * its stop was the prompt's and was not counted. The prompt's own screen
+     * (e.g. the PIN activity before Android 11) is like a window the app
+     * opened: the 30 s floor applies, so Immediately does not lock again at
+     * once and loop.
      */
     fun authFinished(success: Boolean, now: Long) {
         authenticating = false
         if (success) unlocked()
         if (!started && !locked) {
             leftAt = now
-            leftByHandoff = false
+            leftByHandoff = true
         }
     }
 

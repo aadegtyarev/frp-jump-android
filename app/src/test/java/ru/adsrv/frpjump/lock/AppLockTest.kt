@@ -110,9 +110,11 @@ class AppLockTest {
         lock.onStart(enabled = true)
         ask()
         ask()
+        // The replaced one was ended as Cancelled; its own late answer does nothing.
+        assertEquals(listOf<AuthResult>(AuthResult.Cancelled), results)
         host.listeners[0].succeeded()
         assertTrue(lock.locked.value)
-        assertTrue(results.isEmpty())
+        assertEquals(listOf<AuthResult>(AuthResult.Cancelled), results)
         host.listeners[1].succeeded()
         assertFalse(lock.locked.value)
     }
@@ -179,5 +181,35 @@ class AppLockTest {
         now = 20_000
         lock.onStart(enabled = true, afterMs = 0)
         assertFalse(lock.locked.value)
+    }
+
+    @Test
+    fun `a prompt that replaces an open one ends the old one as Cancelled`() {
+        lock.onStart(enabled = true)
+        val first = mutableListOf<AuthResult>()
+        lock.authenticateFor(owner, "t", "s") { first += it }
+        lock.authenticateFor(Any(), "t", "s") { results += it }
+        assertEquals(listOf<AuthResult>(AuthResult.Cancelled), first)
+        assertTrue(results.isEmpty())
+        assertTrue(lock.locked.value)
+        host.listeners[1].succeeded()
+        assertFalse(lock.locked.value)
+        assertEquals(listOf<AuthResult>(AuthResult.Success), results)
+        assertEquals(1, first.size)
+    }
+
+    @Test
+    fun `abandoning with the screen out of sight counts the absence from then`() {
+        // Abandon must go through the policy: with the setting off first, nothing is locked yet.
+        lock.onStart(enabled = false)
+        ask()
+        lock.onStop()
+        now = 1_000
+        lock.onDestroy(owner)
+        // A new activity after more than the interval (Immediately): asks, as the absence began at the abandon.
+        now = 2_000
+        lock.onStart(enabled = true, afterMs = 0)
+        assertTrue(lock.locked.value)
+        // Without the abandon the policy still thinks a prompt is up, and the start would return "unlocked".
     }
 }

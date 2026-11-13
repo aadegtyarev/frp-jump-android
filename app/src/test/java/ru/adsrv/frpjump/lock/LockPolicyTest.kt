@@ -265,4 +265,93 @@ class LockPolicyTest {
         policy.onStop(33_000)
         assertTrue(policy.onStart(63_001, enabled = true))
     }
+
+    // The prompt's own stop (a PIN screen that is an activity of its own, before Android 11).
+
+    @Test
+    fun `immediately a prompt that succeeds out of sight does not lock again at its own start`() {
+        assertTrue(policy.onStart(0, enabled = true, afterMs = 0))
+        policy.authStarted()
+        policy.onStop(100)
+        policy.authFinished(success = true, now = 150)
+        assertFalse(policy.onStart(300, enabled = true, afterMs = 0))
+        assertFalse(policy.locked)
+    }
+
+    @Test
+    fun `immediately turning it on that succeeds out of sight does not lock again at its own start`() {
+        unlockedAt(0)
+        policy.authStarted()
+        policy.onStop(100)
+        policy.authFinished(success = true, now = 150)
+        assertFalse(policy.onStart(300, enabled = true, afterMs = 0))
+        // A real absence after that still locks.
+        policy.onStop(400)
+        assertTrue(policy.onStart(410, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `the prompt's own stop counts like a handoff, 30 s at least, then locks`() {
+        for ((back, locks) in listOf(30_150L to false, 30_151L to true)) {
+            val p = LockPolicy()
+            p.onStart(0, enabled = true, afterMs = 0)
+            p.authStarted()
+            p.authFinished(success = true, now = 0)
+            p.authStarted()
+            p.onStop(100)
+            p.authFinished(success = false, now = 150)
+            assertEquals("back at $back", locks, p.onStart(back, enabled = true, afterMs = 0))
+        }
+    }
+
+    @Test
+    fun `a cancelled or abandoned prompt out of sight leaves a locked app locked`() {
+        assertTrue(policy.onStart(0, enabled = true, afterMs = 0))
+        policy.authStarted()
+        policy.onStop(100)
+        policy.authFinished(success = false, now = 150)
+        assertTrue(policy.onStart(200, enabled = true, afterMs = 0))
+        policy.authStarted()
+        policy.onStop(300)
+        policy.authAbandoned(now = 350)
+        assertTrue(policy.onStart(400, enabled = true, afterMs = 0))
+    }
+
+    // The handoff mark.
+
+    @Test
+    fun `a mark consumed by a stop while locked is not used after unlocking`() {
+        assertTrue(policy.onStart(0, enabled = true, afterMs = 0))
+        policy.handoff(10)
+        policy.onStop(20)
+        assertTrue(policy.onStart(30, enabled = true, afterMs = 0))
+        policy.authStarted()
+        policy.authFinished(success = true, now = 40)
+        policy.onStop(50)
+        assertTrue(policy.onStart(60, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `a mark consumed by the prompt's stop is not used for a later absence`() {
+        assertTrue(policy.onStart(0, enabled = true, afterMs = 0))
+        policy.authStarted()
+        policy.handoff(10)
+        policy.onStop(20)
+        policy.authFinished(success = true, now = 30)
+        assertFalse(policy.onStart(40, enabled = true, afterMs = 0))
+        policy.onStop(100)
+        assertTrue(policy.onStart(110, enabled = true, afterMs = 0))
+    }
+
+    @Test
+    fun `unlocking drops the pending absence`() {
+        unlockedAt(0)
+        policy.handoff(10)
+        policy.onStop(20)
+        // Unlocked from outside (the setting went off and on) before the return.
+        policy.unlocked()
+        assertFalse(policy.onStart(100, enabled = true, afterMs = 0))
+        policy.onStop(200)
+        assertTrue(policy.onStart(210, enabled = true, afterMs = 0))
+    }
 }

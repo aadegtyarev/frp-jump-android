@@ -60,7 +60,7 @@ class AppLock(
     /** True while the content must be hidden behind the lock screen. */
     val locked: StateFlow<Boolean> = _locked
 
-    private class Prompt(val id: Int, val owner: Any)
+    private class Prompt(val id: Int, val owner: Any, val onResult: (AuthResult) -> Unit)
 
     private var current: Prompt? = null
     private var lastId = 0
@@ -106,9 +106,12 @@ class AppLock(
             onResult(AuthResult.Cancelled)
             return
         }
-        val prompt = Prompt(++lastId, owner)
+        val prompt = Prompt(++lastId, owner, onResult)
+        val replaced = current
         current = prompt
         policy.authStarted()
+        // The replaced prompt's owner may be alive and waiting (another instance): do not leave it spinning.
+        replaced?.onResult?.invoke(AuthResult.Cancelled)
         // The prompt that is not the current one (abandoned, replaced) has no say.
         fun end(success: Boolean, result: AuthResult) {
             if (current?.id != prompt.id) return

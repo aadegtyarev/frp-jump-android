@@ -169,15 +169,16 @@ class MainActivity : AppCompatActivity() {
     // Windows the app opens itself (picker, share, installer, browser, SSH client) take the screen out of sight:
     // the one place that marks them, see LockPolicy.handoff.
     override fun startActivity(intent: Intent, options: Bundle?) {
-        app.lock.handoff()
         super.startActivity(intent, options)
+        // After the launch took: one that throws (no such activity) opens no window.
+        app.lock.handoff()
     }
 
     @Deprecated("Deprecated in Java")
     override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
-        app.lock.handoff()
         @Suppress("DEPRECATION")
         super.startActivityForResult(intent, requestCode, options)
+        app.lock.handoff()
     }
 
     override fun onStop() {

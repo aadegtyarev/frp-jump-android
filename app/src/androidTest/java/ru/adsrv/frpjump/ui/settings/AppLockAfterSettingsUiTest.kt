@@ -59,7 +59,8 @@ class AppLockAfterSettingsUiTest {
         lateinit var vm: SettingsViewModel
         compose.runOnUiThread {
             if (original == null) original = app.settings.settings.value
-            app.settings.update { it.copy(appLock = lockOn, appLockAfter = after) }
+            // The poll is off: its "5 min" would collide with this row's value.
+            app.settings.update { it.copy(appLock = lockOn, appLockAfter = after, backgroundPoll = ru.adsrv.frpjump.settings.BackgroundPoll.OFF) }
             vm = SettingsViewModel(app)
             models.put("lock-after-settings", vm)
         }
