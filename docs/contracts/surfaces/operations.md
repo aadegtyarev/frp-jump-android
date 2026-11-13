@@ -30,8 +30,9 @@ Consumers: the assistant tools `ssh_command` and `profile_information` (through 
   messages (`Other.text`, the detail of an unreachable or broken connection). The screens word it when they show it
   (`ui/DomainErrorTexts.kt`). None of that reaches the model: it gets the error's kind alone.
 - Cancellation propagates as `CancellationException`; it is never an `OpResult`. A caller that stops an operation gets no late result.
-- An adapter words every typed result itself and shows or sends nothing the types do not carry. For the model, and so for the assistant
-  adapter, that means no exception messages and no secrets, only kinds and facts.
+- An adapter words every typed result itself and shows or sends nothing the types do not carry; it adds no exception message or secret
+  of its own. The owner's screens show the payload a typed error keeps for them; the model gets only the error's kind, never that
+  payload.
 
 ## Operations today
 
@@ -63,8 +64,8 @@ Returns the local port of the tunnel to a device port, bringing it up when it is
 revived and stays up, otherwise a disconnect being done is awaited; when the tunnel is down and no connect is in flight it is asked to
 connect for the connection's kind; it is waited for up to 45 s; then the device is waited for (as a fresh tunnel when it was brought up
 here). It does not come up: `DidNotComeUp` with the tunnel manager's last typed error for it, when there is one. The device does not open the
-port: `DeviceNotListening` with `DevicePortNotOpen(port)`, the port that is not open. The assistant does not get this operation: tunnels are not managed by the model.
-If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
+port: `DeviceNotListening` with `DevicePortNotOpen(port)`, the port that is not open. The assistant does not get this operation:
+tunnels are not managed by the model. If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
 
 ## Adapters
 
