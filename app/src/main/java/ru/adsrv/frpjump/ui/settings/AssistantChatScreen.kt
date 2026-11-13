@@ -328,7 +328,7 @@ internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
         val title = tool?.let { stringResource(it.title()) } ?: receiptText(group.tool, RECEIPT_DETAIL_CHARS)
         if (group.items.size == 1) {
             val receipt = group.items.single()
-            Column(Modifier.testTag("chat_tool_receipt_$index")) {
+            Column(Modifier.testTag("chat_tool_receipt_$index").semantics(mergeDescendants = true) {}) {
                 Text(receiptDetail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelLarge)
                 ChatToolReceiptBody(receipt)
             }
@@ -341,7 +341,7 @@ internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
                 Text(stringResource(R.string.chat_receipt_group, title, count), style = MaterialTheme.typography.labelLarge)
             }
             if (open) group.items.forEachIndexed { n, receipt ->
-                Column(Modifier.testTag("chat_tool_group_${index}_item_$n")) {
+                Column(Modifier.testTag("chat_tool_group_${index}_item_$n").semantics(mergeDescendants = true) {}) {
                     Text(receiptDetail(receipt.call) ?: group.tool, style = MaterialTheme.typography.labelLarge)
                     ChatToolReceiptBody(receipt)
                 }
