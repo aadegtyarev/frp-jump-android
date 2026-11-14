@@ -44,6 +44,12 @@ internal const val EXPECT_GRACE_MS = 800L
  * yet", so the grace window covers the request and the inset animation covers the rest. If the
  * keyboard never comes (hardware keyboard) the final height is applied when the grace window ends.
  *
+ * Only a decrease of the height waits. When the slot grows (the keyboard, the panel or the composer
+ * closing) the content follows it on every frame, so there is no wait and no gap above; the
+ * keyboard and the grace window do not delay a growth. A change of direction in the middle of an
+ * animation is handled the same way: a growing frame follows at once, a shrinking one waits, and the
+ * settled height always ends equal to the slot. The SSH window-change is coalesced separately.
+ *
  * The first layout and a change of width (rotation, multi-window) apply at once: those are not
  * animations, and one resize is enough.
  */
@@ -51,7 +57,10 @@ internal const val EXPECT_GRACE_MS = 800L
 @Composable
 internal fun SettledSizeBox(modifier: Modifier = Modifier, expectKey: Any? = null, content: @Composable () -> Unit) {
     var live by remember { mutableStateOf(IntSize.Zero) }
-    var held by remember { mutableStateOf(IntSize.Zero) }
+    // Height the content has, and the last box size seen by the layout. Plain values: the layout
+    // pass itself applies a growth, so the content follows the box in the same frame, not one later.
+    val state = remember { IntArray(3) } // held height, last max height, last width
+    var tick by remember { mutableStateOf(0) }
     val density = LocalDensity.current
     val imeMoving by rememberUpdatedState(
         WindowInsets.ime.getBottom(density) != WindowInsets.imeAnimationTarget.getBottom(density),
@@ -63,24 +72,28 @@ internal fun SettledSizeBox(modifier: Modifier = Modifier, expectKey: Any? = nul
         graceUntil = System.nanoTime() + EXPECT_GRACE_MS * 1_000_000L
     }
     LaunchedEffect(live) {
-        if (held == IntSize.Zero || live.width != held.width) {
-            held = live
-        } else {
+        if (live != IntSize.Zero && state[0] != live.height) {
             var quiet = 0
             while (quiet < SETTLE_FRAMES) {
                 withFrameNanos { }
                 quiet = if (imeMoving || System.nanoTime() < graceUntil) 0 else quiet + 1
             }
-            held = live
+            state[0] = live.height
+            tick++
         }
     }
     Box(modifier.clipToBounds().onSizeChanged { live = it }) {
         Box(
             Modifier.layout { measurable, constraints ->
+                tick // read: the settle invalidates the layout
                 val width = constraints.maxWidth
-                val height = if (held == IntSize.Zero) constraints.maxHeight else held.height
+                val max = constraints.maxHeight
+                if (state[0] == 0 || width != state[2] || max > state[1]) state[0] = max
+                state[1] = max
+                state[2] = width
+                val height = state[0]
                 val placeable = measurable.measure(Constraints.fixed(width, height))
-                layout(width, constraints.maxHeight) { placeable.place(0, constraints.maxHeight - height) }
+                layout(width, max) { placeable.place(0, max - height) }
             },
         ) { content() }
     }
