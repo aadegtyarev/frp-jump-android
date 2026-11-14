@@ -927,7 +927,7 @@ class AssistantChatScreenTest {
         button("chat_history").performScrollToNode(hasText("HTTP 202", substring = true))
         compose.onNodeWithText("HTTP 202", substring = true).assertIsDisplayed()
         button("chat_history").performScrollToNode(hasText("synthetic generated documentation query", substring = true))
-        try { compose.onNodeWithText("synthetic generated documentation query", substring = true).assertIsDisplayed() } catch (e: AssertionError) { throw AssertionError("TREE " + compose.onRoot().printToString(60), e) }
+        compose.onNodeWithText("synthetic generated documentation query", substring = true).assertIsDisplayed()
     }
 
     @Test fun actualAndroidImageBoundsAndOptimisticObservationReleasePixelsAndFailTruthfully() = runBlocking {
