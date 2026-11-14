@@ -78,7 +78,10 @@ class AssistantToolRequestScreenTest {
         val until = SystemClock.uptimeMillis() + 5000
         while (compose.activity.resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT && SystemClock.uptimeMillis() < until) SystemClock.sleep(50)
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, .01f)
-        localized = compose.activity.createConfigurationContext(Configuration(compose.activity.resources.configuration).apply { setLocale(locale) })
+        // The language applies to the activity itself (as AssistantChatScreenTest does), so strings read here are the shown ones.
+        @Suppress("DEPRECATION")
+        compose.activity.resources.updateConfiguration(Configuration(compose.activity.resources.configuration).apply { setLocale(locale) }, compose.activity.resources.displayMetrics)
+        localized = compose.activity
     }
     @After fun cleanup() { conversation.close(); scope.cancel() }
 
