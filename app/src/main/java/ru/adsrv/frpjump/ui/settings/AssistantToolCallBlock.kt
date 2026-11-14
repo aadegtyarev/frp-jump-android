@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -24,6 +25,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.R
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import ru.adsrv.frpjump.agent.ToolCall
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
@@ -40,7 +46,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>, information: List<ChatProfileInformation> = emptyList(),
     running: Boolean = false, animate: Boolean = true, openFacts: Boolean = false) {
     if (receipts.isEmpty()) return
-    if (running) ChatRunningCalls(receipts, animate) else ChatCallsSummary(receipts, information, openFacts && information.isNotEmpty())
+    if (running) ChatRunningCalls(receipts, information, animate) else ChatCallsSummary(receipts, information, openFacts && information.isNotEmpty())
 }
 
 /** The title of a receipt group: a catalog tool's, the service tool's "Request to turn on a tool", else the cleaned wire name. */
@@ -48,14 +54,59 @@ internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>, information: List
 private fun receiptTitle(tool: String): String = AssistantToolId.fromWire(tool)?.let { stringResource(it.title()) }
     ?: if (tool == AssistantRequestTool.WIRE) stringResource(R.string.tool_request_title) else receiptText(tool, RECEIPT_DETAIL_CHARS)
 
+/**
+ * What a call asked for, in one short line (each part cut short): the model's own text for most tools; for profile information its query,
+ * profile (by the name the received facts hold, else the first characters of its id) and page, "all" when it asked for everything; for SSH
+ * the target's name where the facts give it, then the command; for a request to turn a tool on, that tool's title. UI text only.
+ */
 @Composable
-private fun ChatRunningCalls(receipts: List<ChatToolReceipt>, animate: Boolean) {
+private fun rememberDetail(information: List<ChatProfileInformation>): (ToolCall) -> String? {
+    val resources = LocalContext.current.resources
+    val all = stringResource(R.string.chat_detail_all)
+    val facts = remember(information) { ReceivedNames.of(information) }
+    return remember(resources, all, facts) {
+        val words = ReceiptWords(all, { resources.getString(R.string.chat_detail_from, it) },
+            toolTitle = { wire -> AssistantToolId.fromWire(wire)?.let { resources.getString(it.title()) } },
+            profileName = facts.profiles::get, connectionName = { profile, connection -> facts.connections[profile to connection] })
+        val detail: (ToolCall) -> String? = { call -> receiptDetail(call, words) }
+        detail
+    }
+}
+
+/** The names of profiles and connections this turn's received facts hold; ids the facts do not mention have no name here. */
+private class ReceivedNames(val profiles: Map<String, String>, val connections: Map<Pair<String, String>, String>) {
+    companion object {
+        fun of(information: List<ChatProfileInformation>): ReceivedNames {
+            val profiles = HashMap<String, String>(); val connections = HashMap<Pair<String, String>, String>()
+            fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+            information.forEach { info -> (info.page?.get("results") as? JsonArray)?.forEach { record ->
+                val rec = record as? JsonObject ?: return@forEach
+                val profile = rec["profile"] as? JsonObject
+                val connection = rec["connection"] as? JsonObject
+                val pid = profile?.text("id") ?: return@forEach
+                profile.text("name")?.let { profiles[pid] = it }
+                val cid = connection?.text("id") ?: return@forEach
+                (connection.text("name") ?: connection.text("device"))?.let { connections[pid to cid] = it }
+            } }
+            return ReceivedNames(profiles, connections)
+        }
+    }
+}
+
+/** One line per call, told apart by its parameters; consecutive calls equal in tool and detail share one line ("×2"). The progress mark sits on the line that still has a running call. */
+@Composable
+private fun ChatRunningCalls(receipts: List<ChatToolReceipt>, information: List<ChatProfileInformation>, animate: Boolean) {
+    val detail = rememberDetail(information)
     Column(Modifier.fillMaxWidth().testTag("chat_tool_calls_running"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        receipts.forEachIndexed { index, receipt ->
-            val current = receipt.result == null
-            val title = receiptTitle(receipt.call.name)
-            val line = receiptDetail(receipt.call)?.let { "$title · $it" } ?: title
-            Row(Modifier.fillMaxWidth().testTag("chat_tool_call_$index").semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        groupReceipts(receipts, sameDetail = true).forEachIndexed { index, group ->
+            val current = group.items.any { it.result == null }
+            val title = receiptTitle(group.tool)
+            val count = group.items.size
+            val line = if (count > 1) stringResource(R.string.chat_receipt_group, title, count)
+                else detail(group.items.first().call)?.let { "$title · $it" } ?: title
+            val spoken = if (count > 1) pluralStringResource(R.plurals.chat_receipt_group_description, count, title, count) else line
+            Row(Modifier.fillMaxWidth().testTag("chat_tool_call_$index").semantics(mergeDescendants = true) { contentDescription = spoken },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (current && animate) QuietProgress() else QuietDot()
                 Text(line, style = MaterialTheme.typography.bodySmall, color = if (current) AppTheme.colors.muted else AppTheme.colors.faint)
             }
@@ -85,6 +136,7 @@ private fun QuietDot() = Box(Modifier.size(10.dp), contentAlignment = Alignment.
 private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<ChatProfileInformation>, openFacts: Boolean) {
     var expanded by remember(openFacts) { mutableStateOf(openFacts) }
     val groups = groupReceipts(receipts)
+    val detail = rememberDetail(information)
     val titles = groups.map { receiptTitle(it.tool) }
     val summary = groups.mapIndexed { i, group -> if (group.items.size > 1) stringResource(R.string.chat_receipt_group, titles[i], group.items.size) else titles[i] }.joinToString(" · ")
     val spoken = stringResource(R.string.chat_calls_description, groups.mapIndexed { i, group ->
@@ -103,9 +155,12 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
             if (group.items.size == 1) {
                 val receipt = group.items.single()
                 Column(Modifier.testTag("chat_tool_receipt_$index").then(mergedUnlessFacts(receipt, information))) {
-                    Text(receiptDetail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
+                    Text(detail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
                     ChatReceiptResult(receipt, information)
                 }
+            } else if (groups.size == 1) {
+                // The summary line already named the only group: its calls show at once, without a second header to tap.
+                GroupItems(group, index, title, information, detail)
             } else {
                 val holdsFacts = group.items.any { receipt -> information.any { it.result.callId == receipt.result?.callId } }
                 var open by remember(openFacts) { mutableStateOf(openFacts && holdsFacts) }
@@ -117,12 +172,20 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
                     verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.chat_receipt_group, title, count), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
                 }
-                if (open) group.items.forEachIndexed { n, receipt ->
-                    Column(Modifier.testTag("chat_tool_group_${index}_item_$n").then(mergedUnlessFacts(receipt, information))) {
-                        Text(receiptDetail(receipt.call) ?: group.tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
-                        ChatReceiptResult(receipt, information)
-                    }
-                }
+                if (open) GroupItems(group, index, title, information, detail)
+            }
+        }
+    }
+}
+
+/** A group's calls, each under its own label: what the model asked for, else the tool's title (numbered: never the wire name). */
+@Composable
+private fun GroupItems(group: ReceiptGroup, index: Int, title: String, information: List<ChatProfileInformation>, detail: (ToolCall) -> String?) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        group.items.forEachIndexed { n, receipt ->
+            Column(Modifier.testTag("chat_tool_group_${index}_item_$n").then(mergedUnlessFacts(receipt, information))) {
+                Text(detail(receipt.call) ?: stringResource(R.string.chat_receipt_item, title, n + 1), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
+                ChatReceiptResult(receipt, information)
             }
         }
     }

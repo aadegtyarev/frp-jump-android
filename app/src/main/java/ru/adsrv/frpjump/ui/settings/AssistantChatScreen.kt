@@ -94,6 +94,10 @@ internal fun AssistantChatContent(
         val live = conversation.state.value.draft
         if (field.text != live) field = TextFieldValue(live, TextRange(live.length))
     }
+    // While the run goes on the sent text is already the user's line in the feed, so the field shows empty; the draft stays in the state
+    // (a failed run gives it back), and the text returns with the cursor at its end.
+    val sentShown = state.pendingText != null && state.draft == state.pendingText
+    LaunchedEffect(sentShown) { if (!sentShown) field = TextFieldValue(field.text, TextRange(field.text.length)) }
     BackHandler { onBack() }
     val setup = when {
         !enabled -> R.string.chat_disabled
@@ -249,7 +253,8 @@ internal fun AssistantChatContent(
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
-            ChatComposer(field, onValueChange = { value ->
+            ChatComposer(if (sentShown) TextFieldValue("") else field, onValueChange = { value ->
+                if (sentShown) return@ChatComposer
                 if (value.text != field.text) conversation.edit(value.text)
                 // The draft the conversation holds now: a refused edit (too long, a run) shows as it was.
                 val live = conversation.state.value.draft
