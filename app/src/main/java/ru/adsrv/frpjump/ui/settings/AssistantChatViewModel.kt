@@ -46,8 +46,7 @@ class AssistantChatViewModel(
     }
     val settings = settingsStore.settings
     val provider = providerStore.state
-    /** Turns confirmation requests back on (the Chat indicator's action); the Tools switch does the same through its own binding. */
-    fun turnConfirmationsOn() { tools.changeConfirmations(true) }
+    /** The Tools screen's binding (the chat's shield opens that screen); its confirmations switch saves through it. */
     internal val tools = AssistantToolsBinding(settingsStore, viewModelScope)
     private val toolRequest = AssistantToolRequest(settingsStore, tools, viewModelScope) { message -> conversation.sendOwnerMessage(message) }
     /** The "Turn on" button under a reply that asked for a tool that is off; see [AssistantToolRequest]. */

@@ -815,10 +815,13 @@ Stop may record its grant; the call itself never runs. The wait is in neither
 the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts
 active time only).
 
-While requests are off, a compact warning icon in the Chat top bar (between the
-title and Tools) says so on tap or long press and offers "Turn on" (beside the
-Send/Stop button when the whole title does not fit next to it in the top bar);
-there is no banner or strip. Fail closed: a changing tool with valid arguments
+The Chat top bar has one shield icon (in place of a Tools button) that opens the
+Tools screen at once: a check-mark shield while requests are on, a struck-through
+muted one while they are off, described to a screen reader as "Tools.
+Confirmations on" / "Tools. Confirmations off". It is a quiet state mark, not an
+alarm, and it adds no way to turn requests off or on from the chat: the
+confirmations switch is the first item on Tools; there is no banner, strip or
+dialog. Fail closed: a changing tool with valid arguments
 but no description, or a changing catalog tool that is not an `AppTool` (the
 common tool pipeline), is refused (nothing runs, no card), and so is every
 changing call when no confirmation support exists; invalid arguments ask nothing
@@ -1269,7 +1272,7 @@ malformed-field fallback, disable invalidation, credential/root binding,
 revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
-Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the indicator and the Tools switch.
+Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the shield and the Tools switch.
 Tool-request tests (production conversation, factory and kernel with a fake provider and a fetcher that fails when reached) cover: `request_tool`
 offered only while a tool is off with an enum of exactly the off tools and descriptions without schemas; an off tool called by name still
 unknown with no network; the three fixed answers and the invalid-call answer with no setting changed; the decline saved with the history,

@@ -1,11 +1,14 @@
 package ru.adsrv.frpjump.ui.settings
 
+import androidx.compose.ui.graphics.isUnspecified
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.annotator.DefaultAnnotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import org.intellij.markdown.MarkdownElementTypes
@@ -44,6 +47,10 @@ class AssistantAnswerMarkdownTest {
         assertEquals("Use C:\\ and   x  .", result.text)
         assertEquals(2, result.spanStyles.count { it.item.fontFamily == FontFamily.Monospace })
         assertTrue(result.getLinkAnnotations(0, result.length).isEmpty())
+        // The calm look: a smaller mono, no letter spacing, no accent colour of its own.
+        result.spanStyles.filter { it.item.fontFamily == FontFamily.Monospace }.forEach {
+            assertEquals(0.86.em, it.item.fontSize); assertEquals(0.sp, it.item.letterSpacing); assertTrue(it.item.color.isUnspecified)
+        }
     }
 
     @Test fun `fenced code keeps indentation backslashes and tick payload`() {

@@ -215,4 +215,13 @@ class ComponentsTest {
         assertTrue(desugar.licenses.any { it.asset == "licenses/desugar-ASSEMBLY_EXCEPTION.txt" })
     }
 
+    @Test fun `Lucide icons list ISC and the Feather MIT notice with the full text`() {
+        val lucide = componentsFrom(json).associateBy { it.id }.getValue("lucide:lucide-icons")
+        assertEquals("1.72.0", lucide.version)
+        assertTrue(lucide.licenses.any { it.asset == "licenses/Lucide.txt" })
+        val text = File(assets, "licenses/Lucide.txt").readText()
+        assertTrue(text.contains("ISC License"))
+        assertTrue(text.contains("Lucide Icons and Contributors"))
+        assertTrue(text.contains("The MIT License (MIT)") && text.contains("Cole Bemis"))
+    }
 }
