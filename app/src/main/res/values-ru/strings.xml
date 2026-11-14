@@ -1381,6 +1381,9 @@
     <string name="chat_calls_collapsed">Свёрнуто</string>
     <string name="chat_calls_description">Вызовы инструментов: %1$s</string>
     <string name="chat_receipt_group">%1$s ×%2$d</string>
+    <string name="chat_detail_all">все</string>
+    <string name="chat_detail_from">с %1$d-й записи</string>
+    <string name="chat_receipt_item">%1$s · %2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d вызов</item>
         <item quantity="few">%1$s, %2$d вызова</item>

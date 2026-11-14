@@ -191,6 +191,9 @@ class AssistantChatScreenTest {
                             "${record["profile"]!!.jsonObject["name"]!!.jsonPrimitive.content} · ${c["device"]!!.jsonPrimitive.content} · ${c["name"]!!.jsonPrimitive.content} · ${c["kind"]!!.jsonPrimitive.content}:${c["port"]!!.jsonPrimitive.int} · ${c["user"]!!.jsonPrimitive.content}"
                         })
                     }
+                "two-profile-calls" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(0, 13).mapIndexed { i, offset ->
+                    ToolCall("two-$i", "profile_information", buildJsonObject { put("query", "board150"); put("offset", offset) }) })
+                    else { heldProviderReply.await(); AgentReply("Both lookups found the same synthetic board.") }
                 "tool-information" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("information-$calls", "profile_information", kotlinx.serialization.json.buildJsonObject { })))
                     else if (request.turns.last().exchanges.single().results.single().outcome == ToolOutcome.UNKNOWN_TOOL)
@@ -476,6 +479,72 @@ class AssistantChatScreenTest {
         compose.runOnIdle { mode = "answer" }
         sendAndAwait()
         compose.runOnIdle { assertEquals(3, owner!!.state.value.turns.size); assertEquals(3, requests.last().turns.size) }
+    }
+
+    private fun assertFieldEmpty() = input().assert(SemanticsMatcher("the field shows no text") {
+        it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text == "" })
+
+    /** The sent text is the user's line in the feed; the field then shows its placeholder next to Stop, and gives the text back after a failure. */
+    @Test fun composerIsEmptyDuringARunAndGivesTheTextBackAfterAFailure() {
+        install()
+        compose.runOnIdle { mode = "wait" }
+        input().performTextInput("Sent text")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.busy }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("Sent text", owner!!.state.value.draft) }   // the conversation still keeps it for a retry
+        assertFieldEmpty()
+        input().assertIsNotEnabled()
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.chat_message)).assertExists()
+        compose.onAllNodesWithText("Sent text").assertCountEquals(1)   // the user's line only, not the field
+        button("chat_stop").assertIsDisplayed().performClick(); awaitIdle()
+        input().assertTextContains("Sent text")
+        compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange("Sent text".length) }
+        compose.runOnIdle { mode = "error" }
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.problem == ChatProblem.PROVIDER }
+        button("chat_error").assertIsDisplayed()
+        input().assertTextContains("Sent text").assertIsEnabled()
+        compose.waitUntil(WAIT_MS) { selection() == androidx.compose.ui.text.TextRange("Sent text".length) }
+    }
+
+    /** Two profile-information calls in a row: one running line with the count, a summary that opens straight onto the facts. */
+    @Test fun twoProfileCallsShowAsOneGroupWhileRunningAndWhenFinished() {
+        informationFixture = ProfileInformationFixture(); information = informationFixture!!.information
+        mode = "two-profile-calls"; settings.update { it.copy(assistantProfileInformation = true) }
+        // Two pages of facts are far over the default context budget; the turn must run to its answer, not fail on size.
+        store.currentSnapshot.let { snapshot -> store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens = 32_000, outputTokens = 512), snapshot.revision)) }
+        install()
+        input().performTextInput("Which tunnels are open?")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 2 && r.all { it.result != null } } }
+        compose.waitForIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_0"))
+        // Two pages of one search: two lines, told apart by the page ("from record 14"), not one "×2".
+        compose.onNodeWithTag("chat_tool_call_0").assertTextContains("board150", substring = true)
+        compose.onNodeWithTag("chat_tool_call_1").assertTextContains("14", substring = true).assertTextContains("board150", substring = true)
+        compose.onNode(hasTestTag("chat_tool_call_0") and hasText("14", substring = true)).assertDoesNotExist()
+        compose.onNodeWithTag("chat_tool_call_2").assertDoesNotExist()
+        assertFieldEmpty(); button("chat_stop").assertIsDisplayed()
+        shot("calls-running")
+        compose.runOnIdle { heldProviderReply.complete(Unit) }
+        awaitIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").assertTextContains("×2", substring = true).assertIsDisplayed()
+        compose.onNodeWithTag("chat_tool_calls_list").assertDoesNotExist()
+        shot("calls-collapsed")
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        compose.onNodeWithTag("chat_tool_group_0").assertDoesNotExist()
+        compose.onNodeWithTag("chat_tool_group_0_item_1").assertExists()
+        compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(2)
+        compose.onAllNodesWithText("profile_information", substring = true).assertCountEquals(0)
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_group_0_item_0"))
+        compose.onAllNodes(hasTestTag("chat_profile_information_facts"))[0].assertIsDisplayed()
+        shot("calls-expanded")
+        // The second page's label says where it starts; its facts follow.
+        compose.onNodeWithTag("chat_tool_group_0_item_1").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasAnyAncestor(hasTestTag("chat_tool_group_0_item_1")) and hasText(localizedText(ru.adsrv.frpjump.R.string.chat_detail_from).format(14), substring = true)).assertExists()
+        shot("calls-expanded-page2")
     }
 
     @Test fun formattedAndLongAnswersRemainSelectableAndOriginalHistoryIsUnchanged() {
@@ -1031,7 +1100,7 @@ class AssistantChatScreenTest {
             if (index % 2 == 0) compose.onNodeWithTag("tools_back").performScrollTo().performClick()
             else compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
             compose.runOnIdle { assertSame(retained, owner) }
-            input().assertTextContains("pending-$id")
+            assertFieldEmpty()   // the sent text is the user's line while the run goes on
             compose.runOnIdle { heldProviderReply.complete(Unit) }
             awaitIdle()
             compose.runOnIdle {
@@ -1057,7 +1126,7 @@ class AssistantChatScreenTest {
             compose.runOnIdle { assertFalse(committedTool(id)); assertTrue(retained.state.value.busy); assertEquals(count, retained.state.value.turns.size) }
             if (index % 2 == 0) compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
             else compose.onNodeWithTag("tools_back").performScrollTo().performClick()
-            input().assertTextContains("pending-off-$id")
+            assertFieldEmpty()
             compose.runOnIdle { heldProviderReply.complete(Unit) }; awaitIdle()
             compose.runOnIdle { assertSame(retained, owner); assertEquals(count + 1, retained.state.value.turns.size); assertEquals("", retained.state.value.draft); mode = "answer" }
             input().performTextInput("next-off-$id"); sendAndAwait()

@@ -3,21 +3,42 @@ package ru.adsrv.frpjump.assistant.chat
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import ru.adsrv.frpjump.agent.ToolCall
+import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 
 /** Consecutive receipts of one tool, shown as one row with a counter. */
 internal data class ReceiptGroup(val tool: String, val items: List<ChatToolReceipt>)
 
-/** Consecutive calls of the same tool become one group; a different tool in between starts a new one. Order is kept. */
-internal fun groupReceipts(receipts: List<ChatToolReceipt>): List<ReceiptGroup> {
+/**
+ * Consecutive calls of the same tool become one group; a different tool in between starts a new one. Order is kept. With [sameDetail] a
+ * call joins the group only when its detail ([receiptKey]) is equal too, so calls told apart by their parameters stay on their own lines.
+ */
+internal fun groupReceipts(receipts: List<ChatToolReceipt>, sameDetail: Boolean = false): List<ReceiptGroup> {
     val groups = ArrayList<ReceiptGroup>()
     for (receipt in receipts) {
         val last = groups.lastOrNull()
-        if (last != null && last.tool == receipt.call.name) groups[groups.lastIndex] = last.copy(items = last.items + receipt)
+        if (last != null && last.tool == receipt.call.name && (!sameDetail || receiptKey(last.items.last().call) == receiptKey(receipt.call)))
+            groups[groups.lastIndex] = last.copy(items = last.items + receipt)
         else groups += ReceiptGroup(receipt.call.name, listOf(receipt))
     }
     return groups
 }
+
+/** What tells two calls of one tool apart: the arguments the detail line is made of. */
+private fun receiptKey(call: ToolCall): String = when (call.name) {
+    AssistantToolId.PROFILE_INFORMATION.wire -> listOf("query", "profile_id", "offset").joinToString("\u0000") { call.arguments.text(it) ?: call.arguments.number(it).orEmpty() }
+    else -> receiptDetail(call).orEmpty()
+}
+
+/**
+ * What the detail lines need from the screen, all display text: the words of a profile-information detail (the chat's language), the human
+ * title of a tool by its wire name, and the names the received facts give to a profile and to a connection ("profile", "connection" ids).
+ * A test passes its own; the defaults know nothing.
+ */
+internal class ReceiptWords(
+    val all: String, val from: (Int) -> String, val toolTitle: (String) -> String? = { null },
+    val profileName: (String) -> String? = { null }, val connectionName: (String, String) -> String? = { _, _ -> null },
+)
 
 internal const val RECEIPT_DETAIL_CHARS = 40
 
@@ -25,21 +46,39 @@ internal const val RECEIPT_DETAIL_CHARS = 40
  * A short, one-line, display-only note on what the model asked a tool for, or null when the call has nothing to show (an unknown tool, or
  * an older saved turn whose arguments are empty). The text is the model's own, so it is cleaned by [receiptText]; it is never made clickable.
  */
-internal fun receiptDetail(call: ToolCall): String? {
+internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("all", { "from record $it" })): String? {
     val a = call.arguments
+    if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
     val raw = when (call.name) {
-        AssistantToolId.SSH_COMMAND.wire -> a.text("command")
+        // The target's name only where the received facts name it (never its ids), then the command; the cut keeps the command's start.
+        AssistantToolId.SSH_COMMAND.wire -> a.text("command")?.let { command ->
+            val target = words.connectionName(a.text("profile_id").orEmpty(), a.text("connection_id").orEmpty())?.let { receiptText(it, RECEIPT_PART_CHARS) }?.takeIf { it.isNotEmpty() }
+            if (target == null) command else "$target · ${receiptText(command, RECEIPT_DETAIL_CHARS)}"
+        }
+        AssistantRequestTool.WIRE -> a.text("name")?.let(words.toolTitle)
         AssistantToolId.WEB_SEARCH.wire -> a.text("query")
         AssistantToolId.READ_PAGE.wire -> a.text("url")?.let(::hostAndPath)
         AssistantToolId.INSPECT_IMAGE.wire -> a.text("url")?.let(::imageName)
-        AssistantToolId.PROFILE_INFORMATION.wire -> listOfNotNull(a.text("query")?.takeIf { it.isNotBlank() }, a.text("profile_id")?.takeIf { it.isNotBlank() })
-            .joinToString(" · ")
         else -> null
     }
     return raw?.let { receiptText(it, RECEIPT_DETAIL_CHARS) }?.takeIf { it.isNotEmpty() }
 }
 
+/**
+ * «query» · the profile's name (else the first 8 characters of its id) · "from record N" past the first page; "all" when there is neither
+ * a query nor a profile. Every part is cut on its own, so that the page part is never the one lost.
+ */
+private fun profileInformationDetail(a: JsonObject, words: ReceiptWords): String {
+    val query = a.text("query")?.let { receiptText(it, RECEIPT_PART_CHARS) }?.takeIf { it.isNotEmpty() }
+    val profile = a.text("profile_id")?.takeIf { it.isNotBlank() }?.let { id -> (words.profileName(id) ?: id.trim().take(8)).let { receiptText(it, RECEIPT_PART_CHARS) } }
+    val offset = a.number("offset")?.toIntOrNull()?.takeIf { it > 0 }
+    return listOfNotNull(query?.let { "«$it»" }, profile).ifEmpty { listOf(words.all) }.plus(listOfNotNull(offset?.let { words.from(it + 1) })).joinToString(" · ")
+}
+
+private const val RECEIPT_PART_CHARS = 24
+
 private fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+private fun JsonObject.number(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { !it.isString }?.content
 
 private fun uriOf(url: String): java.net.URI? = runCatching { java.net.URI(url.trim()) }.getOrNull()
 
