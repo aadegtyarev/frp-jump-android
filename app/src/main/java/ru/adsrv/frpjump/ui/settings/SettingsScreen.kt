@@ -295,6 +295,8 @@ fun SettingsScreen(
                 hint = if (assistantProvider.problem != null) stringResource(R.string.assistant_provider_read_failed)
                     else assistantProvider.settings?.model?.takeIf { it.isNotBlank() } ?: stringResource(R.string.assistant_provider_not_selected),
                 onClick = { providerSetup = true }) { Chevron() }
+            RowDivider()
+            AssistantChatTextSizeSetting(settings.assistantChatTextSize, vm::setAssistantChatTextSize)
         }
         Group(stringResource(R.string.settings_background)) {
             SettingRow(

@@ -85,6 +85,16 @@ Settings → LLM assistant → Own instructions holds the owner's own text for
 the model ([Owner's own instructions](#owners-own-instructions)); it is empty by
 default and only guidance.
 
+Settings → LLM assistant → Chat text size sets the size of the chat's text apart
+from the system one: 90, 100, 115, 130, 150, 175 or 200 percent (default 100) of the
+system font size, applied to the conversation feed only (answers, the user's
+messages, the tool block and status lines); the top bar, the message field and
+dialogs keep the system size. It is the integer `assistant_chat_text_size` in the
+settings file, omitted at 100; a missing, non-numeric or malformed value reads as
+100, any other number reads as the nearest step, and no other setting is reset.
+It is a display preference only: it changes no prompt, request, permission or
+confirmation, and makes no request.
+
 Settings → LLM assistant → Assistant provider configures one external
 OpenAI-compatible provider. Chat is available next to provider setup. SSH
 commands require their own default-off tool switch; tunnel control is **not

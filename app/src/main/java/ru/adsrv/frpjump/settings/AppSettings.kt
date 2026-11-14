@@ -127,6 +127,8 @@ data class AppSettings(
     @SerialName("assistant_confirmations") val assistantConfirmations: ConfirmationPolicy = ConfirmationPolicy(),
     /** The owner's own instructions for the assistant (at most [AssistantOwnerInstructions.MAX_CHARS]); empty means none. Guidance for the model only. */
     @SerialName("assistant_owner_instructions") val assistantOwnerInstructions: String = "",
+    /** The chat's text size in percent on top of the system size, one of [ChatTextSize.STEPS]; a display preference only. */
+    @SerialName("assistant_chat_text_size") val assistantChatTextSize: Int = ChatTextSize.DEFAULT,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -199,6 +201,9 @@ class SettingsStore(private val storage: TextStorage) {
     /** Shared persisted confirmation switch: only the global value. Never revokes admitted work. */
     fun setAssistantConfirmations(mode: ConfirmationMode) = update { it.copy(assistantConfirmations = it.assistantConfirmations.copy(global = mode)) }
 
+    /** The chat's text size; any number snaps to the nearest step. Display only: it revokes and captures nothing. */
+    fun setAssistantChatTextSize(percent: Int) = update { it.copy(assistantChatTextSize = ChatTextSize.snap(percent.toDouble())) }
+
     /** Shared persisted owner instructions; the caller passes normalized text (the store refuses anything else). */
     fun setAssistantOwnerInstructions(text: String) = update { it.copy(assistantOwnerInstructions = text) }
 
@@ -215,6 +220,7 @@ class SettingsStore(private val storage: TextStorage) {
             require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
             require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
             require(validMqttCacheLimits(next.mqttCache)) { "invalid MQTT cache limits" }
+            require(ChatTextSize.isStep(next.assistantChatTextSize)) { "invalid chat text size" }
             require(next.assistantOwnerInstructions == AssistantOwnerInstructions.normalize(next.assistantOwnerInstructions)) { "invalid assistant owner instructions" }
             if (next == committedSettings) return
             storage.write(WireJson.encodeToString(next))
@@ -259,6 +265,7 @@ class SettingsStore(private val storage: TextStorage) {
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
             ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
             ("assistant_confirmations" to normalizeConfirmations(json["assistant_confirmations"])) +
+            ("assistant_chat_text_size" to JsonPrimitive(ChatTextSize.normalize(json["assistant_chat_text_size"]))) +
             ("assistant_owner_instructions" to JsonPrimitive(
                 (json["assistant_owner_instructions"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(AssistantOwnerInstructions::normalize).orEmpty())) +
             ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))
