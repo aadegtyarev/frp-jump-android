@@ -101,12 +101,16 @@
   Model: openai/gpt-6.1-sol
   ```
 - Merge each slice as its own PR after the unit gate and Gitleaks (plus an
-  independent review when the rule above requires one). Run the series e2e
-  once per series on fresh main in two configurations: portrait 1.0 RU and
-  landscape 200% EN. Run the full 8-configuration matrix every few releases,
-  or when the layout of shared screens changes. Release only from a main
-  commit whose series e2e passed; the release PR carries only the version and
-  notes. A flaky test gets one rerun; if it passes, release, name it flaky in
+  independent review when the rule above requires one). Emulator checks are
+  scoped to what changed: each PR runs the test classes of the screens it
+  changes in portrait 1.0 RU, plus landscape 200% EN when it changes layout.
+  Before a release, run the changed screens' classes on main in both
+  configurations and look at screenshots of those screens at 1.0 and 200%
+  (tests save them; `ltest.sh` pulls them into `build/shots`): instrumentation
+  checks that nodes exist, not how a screen looks. Run the full suite only
+  when shared parts change (navigation, settings storage, app lock, tunnels)
+  or every few releases. Release only from a main commit that passed these
+  checks; the release PR carries only the version and notes. A flaky test gets one rerun; if it passes, release, name it flaky in
   the notes and open an issue. Mutation testing only for security:
   confirmations, login, permissions, secrets. A slice that touches what unit
   tests cannot catch (a gesture, drawing, a system dialog) may ask for one
