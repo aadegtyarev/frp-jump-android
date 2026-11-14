@@ -66,8 +66,8 @@ class AssistantToolRequestScreenTest {
         policy = { ru.adsrv.frpjump.settings.ConfirmationPolicy(global = ru.adsrv.frpjump.settings.ConfirmationMode.OFF) }, persistOff = { true }))
     private val binding = AssistantToolsBinding(settings, scope)
     private val request = AssistantToolRequest(settings, binding, scope) { message -> conversation.sendOwnerMessage(message) }
-    private val locale get() = Locale.forLanguageTag(args.getString("chatLocale") ?: "en")
-    private val russian get() = locale.language == "ru"
+    private val chosenLocale get() = Locale.forLanguageTag(args.getString("chatLocale") ?: "en")
+    private val russian get() = chosenLocale.language == "ru"
     private val enabled = mutableStateOf(true)
 
     private fun ask(id: String, tool: String) = ToolCall(id, "request_tool", buildJsonObject { put("name", tool); put("why", "synthetic reason") })
@@ -100,7 +100,7 @@ class AssistantToolRequestScreenTest {
     /** A context of the chosen language built from the app context (an Activity's own may keep the device language). */
     private fun localizedContext(): android.content.Context {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
-        return base.createConfigurationContext(Configuration(base.resources.configuration).apply { setLocale(locale) })
+        return base.createConfigurationContext(Configuration(base.resources.configuration).apply { setLocale(chosenLocale) })
     }
     private fun text(id: Int, vararg format: Any): String = localizedContext().getString(id, *format)
     private fun title(tool: AssistantToolId) = text(tool.title())
