@@ -86,7 +86,8 @@ class AssistantToolRequestScreenTest {
             CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
                 FrpJumpTheme {
                     val current by settings.settings.collectAsState()
-                    AssistantChatContent(conversation, enabled.value, store.state.value, onBack = {}, onSetup = {},
+                    val provider = remember { store.currentSnapshot }
+                    AssistantChatContent(conversation, enabled.value, provider, onBack = {}, onSetup = {},
                         tools = current.assistantTools(), onTurnOn = request::turnOn)
                 }
             }
