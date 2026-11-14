@@ -1170,8 +1170,8 @@
     <string name="chat_disabled">The assistant is off. Enable it in Settings.</string>
     <string name="chat_setup">Set up a provider and select a model.</string>
     <string name="chat_omitted">Some conversation context was omitted.</string>
-    <string name="chat_assistant">Assistant</string>
-    <string name="chat_you">You</string>
+    <string name="chat_assistant_says">Assistant:</string>
+    <string name="chat_you_says">You:</string>
     <string name="chat_stopping">Stopping…</string>
     <string name="chat_waiting">Waiting for answer…</string>
     <string name="chat_key">Could not read the key. Replace it in provider settings.</string>

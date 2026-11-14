@@ -520,3 +520,18 @@ val ShieldOffGlyph: ImageVector = pathGlyph(
         "M9.309 3.652A12.252 12.252 0 0 0 11.24 2.28a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1v7a9.784 9.784 0 0 1-.08 1.264",
     width = 2f,
 )
+
+// --- Lucide 1.72.0 (ISC, see licenses/Lucide.txt): the chat composer's action icons ---
+
+/** Lucide "arrow-up": Send. */
+val ArrowUpGlyph: ImageVector = pathGlyph("ArrowUp", "m5 12 7-7 7 7M12 19V5", width = 2f)
+
+/** Lucide "square", filled: Stop. */
+val StopGlyph: ImageVector = ImageVector.Builder("Stop", 24.dp, 24.dp, 24f, 24f).addPath(
+    pathData = addPathNodes("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"),
+    fill = SolidColor(Color.Black),
+    stroke = SolidColor(Color.Black),
+    strokeLineWidth = 2f,
+    strokeLineCap = StrokeCap.Round,
+    strokeLineJoin = StrokeJoin.Round,
+).build()

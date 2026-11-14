@@ -1218,8 +1218,8 @@
     <string name="chat_disabled">Ассистент выключен. Включите его в настройках.</string>
     <string name="chat_setup">Настройте провайдера и выберите модель.</string>
     <string name="chat_omitted">Часть контекста разговора пропущена.</string>
-    <string name="chat_assistant">Помощник</string>
-    <string name="chat_you">Вы</string>
+    <string name="chat_assistant_says">Помощник:</string>
+    <string name="chat_you_says">Вы:</string>
     <string name="chat_stopping">Остановка…</string>
     <string name="chat_waiting">Ожидание ответа…</string>
     <string name="chat_key">Не удалось прочитать ключ. Замените его в настройках провайдера.</string>
