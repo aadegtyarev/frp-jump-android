@@ -81,6 +81,38 @@ class AssistantToolRequestPressTest {
         }
     }
 
+    @Test fun `a failed press shows the tool's save error, keeps the buttons and sends nothing`() {
+        Fx().use { f ->
+            f.file.fail = true
+            f.press(AssistantToolId.SSH_COMMAND)
+            assertTrue("ssh_command" in f.binding.state.value.failed)
+            assertEquals(emptyList<String>(), f.sent); assertEquals(emptyList<AssistantToolId>(), f.on())
+            // The chat shows the failure for that key next to the buttons, which are still there.
+            assertEquals(listOf(AssistantToolId.SSH_COMMAND), requestedTools(ChatState(turns = listOf(ChatTurn("u", "a", askedTools = listOf("ssh_command")))), true, f.store.assistantAvailability.tools))
+            f.file.fail = false
+            f.press(AssistantToolId.SSH_COMMAND)
+            assertFalse("ssh_command" in f.binding.state.value.failed)
+            assertEquals(listOf("Turned on ssh_command"), f.sent)
+        }
+    }
+
+    @Test fun `the offer switch is saved through the same binding and hides the buttons`() {
+        Fx().use { f ->
+            assertTrue(f.binding.state.value.committed.offer)
+            f.binding.changeOffer(false); f.main.drain(); f.io.drain(); f.main.drain()
+            assertFalse(f.binding.state.value.committed.offer); assertFalse(SettingsStore(f.file).assistantAvailability.tools.offer)
+            assertTrue(OFFER_KEY !in f.binding.state.value.pending)
+            val asked = ChatState(turns = listOf(ChatTurn("u", "a", askedTools = listOf("ssh_command"))))
+            assertTrue(requestedTools(asked, true, f.binding.state.value.committed).isEmpty())
+            f.file.fail = true
+            f.binding.changeOffer(true); f.main.drain(); f.io.drain(); f.main.drain()
+            assertTrue(OFFER_KEY in f.binding.state.value.failed); assertFalse(f.binding.state.value.committed.offer)
+            f.file.fail = false
+            f.binding.changeOffer(true); f.main.drain(); f.io.drain(); f.main.drain()
+            assertTrue(f.binding.state.value.committed.offer); assertEquals(listOf(AssistantToolId.SSH_COMMAND), requestedTools(asked, true, f.binding.state.value.committed))
+        }
+    }
+
     // ---- When the buttons show ----
 
     private fun turn(asked: List<String>) = ChatTurn("u", "answer", askedTools = asked)

@@ -18,6 +18,6 @@ internal object AssistantToolFactory {
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
             AssistantProfileInformationTool(profileInformation)) else emptyList()) +
             (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList()) +
-            (if (off.isNotEmpty()) listOf(AssistantRequestTool(off, declined)) else emptyList())
+            (if (off.isNotEmpty() && enabled.offer) listOf(AssistantRequestTool(off, declined)) else emptyList())
     }
 }

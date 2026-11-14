@@ -1246,6 +1246,10 @@
     <string name="chat_request_decline">No thanks</string>
     <string name="chat_request_web">In this attempt the assistant read web pages</string>
     <string name="chat_request_turned_on_message">Turned on “%1$s”</string>
+    <string name="chat_request_decline_for">No thanks: %1$s</string>
+    <string name="tool_request_title">Request to turn on a tool</string>
+    <string name="offer_tools_setting">Offer to turn tools on</string>
+    <string name="offer_tools_setting_hint">Lets the assistant ask you to turn on a tool that is off. Turn this off for models that do not support tools.</string>
     <string name="assistant_summary_percent">Summarize at % of context window</string>
     <string name="assistant_summary_hint">1–100%, default 80. Includes output reserve. Makes an additional model request.</string>
     <string name="assistant_summary_model">Summary model (optional)</string>

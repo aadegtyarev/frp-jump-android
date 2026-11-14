@@ -40,11 +40,13 @@ class AssistantToolRequestScreenTest {
     private val args get() = InstrumentationRegistry.getArguments()
     private class Memory : TextStorage {
         @Volatile var value: String? = null
+        @Volatile var fail = false
         override fun read() = value
-        override fun write(text: String) { value = text }
+        override fun write(text: String) { if (fail) error("synthetic"); value = text }
         override fun delete() { value = null }
     }
-    private val settings = SettingsStore(Memory()).apply { update { it.copy(assistantEnabled = true) } }
+    private val settingsFile = Memory()
+    private val settings = SettingsStore(settingsFile).apply { update { it.copy(assistantEnabled = true) } }
     private val store = AssistantProviderStore(Memory(), object : SecretBox {
         override fun seal(plain: String) = "synthetic-sealed"
         override fun open(sealed: String): String = error("Fake provider must not resolve credentials")
@@ -73,25 +75,34 @@ class AssistantToolRequestScreenTest {
     private fun ask(id: String, tool: String) = ToolCall(id, "request_tool", buildJsonObject { put("name", tool); put("why", "synthetic reason") })
 
     @Before fun display() {
+        hideKeyboard()
         compose.activityRule.scenario.onActivity { it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         val until = SystemClock.uptimeMillis() + 5000
         while (compose.activity.resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT && SystemClock.uptimeMillis() < until) SystemClock.sleep(50)
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, .01f)
     }
-    @After fun cleanup() { conversation.close(); scope.cancel() }
+    /** Like AssistantChatScreenTest: the soft keyboard belongs to the window, so every test starts and ends with it hidden. */
+    private fun hideKeyboard() {
+        compose.activityRule.scenario.onActivity { activity ->
+            androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView).hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }
+    }
+    @After fun cleanup() { hideKeyboard(); conversation.close(); scope.cancel() }
 
-    private fun show() {
+    private fun show(content: @Composable () -> Unit = { Chat() }) {
         compose.setContent {
             val context = remember { localizedContext() }
             CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
-                FrpJumpTheme {
-                    val current by settings.settings.collectAsState()
-                    val provider = remember { store.currentSnapshot }
-                    AssistantChatContent(conversation, enabled.value, provider, onBack = {}, onSetup = {},
-                        tools = current.assistantTools(), onTurnOn = request::turnOn)
-                }
+                FrpJumpTheme { content() }
             }
         }
+    }
+    @Composable private fun Chat() {
+        val current by settings.settings.collectAsState()
+        val bound by binding.state.collectAsState()
+        val provider = remember { store.currentSnapshot }
+        AssistantChatContent(conversation, enabled.value, provider, onBack = {}, onSetup = {},
+            tools = current.assistantTools(), onTurnOn = request::turnOn, toolsFailed = bound.failed)
     }
     private fun send(text: String = "question") {
         compose.runOnIdle { conversation.edit(text); conversation.send() }
@@ -120,6 +131,9 @@ class AssistantToolRequestScreenTest {
             .assertTextContains(if (russian) "ПОЛНЫЙ ДОСТУП" else "FULL SSH ACCESS", substring = true)
         assertEquals(if (russian) "Не надо" else "No thanks", text(R.string.chat_request_decline))
         assertEquals(if (russian) "Включить „Команда SSH“" else "Turn on “SSH command”", text(R.string.chat_request_turn_on, title(AssistantToolId.SSH_COMMAND)))
+        compose.onNodeWithTag(tag("no_", AssistantToolId.SSH_COMMAND)).assertContentDescriptionEquals(
+            text(R.string.chat_request_decline_for, title(AssistantToolId.SSH_COMMAND)))
+        assertEquals(if (russian) "Не надо: Команда SSH" else "No thanks: SSH command", text(R.string.chat_request_decline_for, title(AssistantToolId.SSH_COMMAND)))
         // The model's own reason is not shown, and without web reading there is no mark.
         compose.onNodeWithText("synthetic reason", substring = true).assertDoesNotExist()
         compose.onNodeWithTag(tag("web_", AssistantToolId.SSH_COMMAND)).assertDoesNotExist()
@@ -177,5 +191,42 @@ class AssistantToolRequestScreenTest {
         settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
         compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("on_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isEmpty() }
         gone(AssistantToolId.SSH_COMMAND)
+    }
+
+    @Test fun aFailedPressShowsTheSaveErrorKeepsTheButtonsAndSendsNothing() {
+        asks = listOf(ask("a", "ssh_command"))
+        show(); send()
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("on_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isNotEmpty() }
+        val before = requests.size
+        settingsFile.fail = true
+        shown("on_", AssistantToolId.SSH_COMMAND).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("failed_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isNotEmpty() }
+        shown("failed_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.assistant_tool_save_failed))
+        shown("on_", AssistantToolId.SSH_COMMAND); shown("no_", AssistantToolId.SSH_COMMAND)
+        assertEquals(before, requests.size); assertEquals(1, conversation.state.value.turns.size)
+        assertFalse(settings.assistantAvailability.tools.sshCommand)
+        settingsFile.fail = false
+    }
+
+    @Test fun theReceiptTitlesTheRequest() {
+        asks = listOf(ask("a", "ssh_command"))
+        show(); send()
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("chat_tool_receipts").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("chat_tool_receipts").performScrollTo().performClick()
+        compose.onNodeWithTag("chat_tool_receipt_0").performScrollTo().assertTextContains(text(R.string.tool_request_title), substring = true)
+        assertEquals(if (russian) "Просьба включить инструмент" else "Request to turn on a tool", text(R.string.tool_request_title))
+    }
+
+    @Test fun theOfferSwitchRowRendersAndTurnsTheOfferOff() {
+        show { AssistantToolsRoute(binding, onBack = {}) }
+        compose.onNodeWithTag("tool_offer").performScrollTo().assertIsDisplayed()
+        val toggle = hasAnyAncestor(hasTestTag("tool_offer")) and isToggleable()
+        compose.onNode(toggle).assertTextContains(text(R.string.offer_tools_setting), substring = true)
+        compose.onNode(toggle).assertTextContains(text(R.string.offer_tools_setting_hint), substring = true)
+        assertEquals(if (russian) "Предлагать включить инструменты" else "Offer to turn tools on", text(R.string.offer_tools_setting))
+        assertTrue(settings.assistantAvailability.tools.offer)
+        compose.onNode(hasAnyAncestor(hasTestTag("tool_offer")) and isToggleable()).assertIsOn().performClick()
+        compose.waitUntil(15_000) { !settings.assistantAvailability.tools.offer }
+        compose.onNode(hasAnyAncestor(hasTestTag("tool_offer")) and isToggleable()).assertIsOff()
     }
 }

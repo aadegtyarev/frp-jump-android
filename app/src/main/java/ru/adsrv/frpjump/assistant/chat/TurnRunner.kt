@@ -176,8 +176,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()
             }
-            is AgentEvent.Calling -> own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress =
-                AssistantToolId.fromWire(event.call.name)?.let { ChatToolProgress.Tool(it) } ?: ChatToolProgress.FAILED) }
+            is AgentEvent.Calling -> own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = progressOnCall(event.call.name)) }
             is AgentEvent.FinishedTool -> {
                 val received = SavedResult.of(event.result)
                 val value = update { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }

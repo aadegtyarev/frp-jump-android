@@ -25,6 +25,8 @@ internal data class AssistantToolsUiState(
 )
 
 internal const val CONFIRMATIONS_KEY = "confirmations"
+/** The key of the "Offer to turn tools on" switch in [AssistantToolsUiState.pending] and [AssistantToolsUiState.failed]. */
+internal const val OFFER_KEY = "offer_tools"
 
 /** Tools-only autosave owner in the parent ViewModel's Main scope, not the row's lifetime.
  * Pending admission and all presentation publications run in that one scope/context. Store
@@ -53,6 +55,9 @@ internal class AssistantToolsBinding(
 
     /** The app-wide confirmation switch: same autosave, pending and inline failure as a tool switch. */
     fun changeConfirmations(on: Boolean) = save(CONFIRMATIONS_KEY) { store.setAssistantConfirmations(if (on) ConfirmationMode.ASK else ConfirmationMode.OFF) }
+
+    /** The "Offer to turn tools on" switch: same autosave, pending and inline failure as a tool switch. */
+    fun changeOffer(on: Boolean): Job = save(OFFER_KEY) { store.setAssistantOfferTools(on) }
 
     fun change(id: AssistantToolId, enabled: Boolean): Job = save(id.wire) { store.setAssistantTool(id, enabled) }
 

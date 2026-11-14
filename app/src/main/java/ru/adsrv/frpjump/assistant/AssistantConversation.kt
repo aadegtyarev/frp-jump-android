@@ -86,7 +86,10 @@ class AssistantConversation(
                         // The draft saved at Clear, then what was typed or quoted while the clear waited; nothing of either is lost.
                         val typed = if (c.clearing) c.document.draft else ""
                         val draft = listOf(value.draft, typed).filter { it.isNotEmpty() }.joinToString("\n")
-                        c.document = value.bind(snapshot().settings).copy(draft = draft); c.provider = null
+                        // A decline of a tool that is on now is over (it ends when the tool is turned on, also while no chat was open).
+                        val tools = availability().tools
+                        val declined = value.declinedTools.filter { wire -> AssistantToolId.fromWire(wire)?.let { !tools[it] } == true }
+                        c.document = value.bind(snapshot().settings).copy(draft = draft, declinedTools = declined); c.provider = null
                         c.clearing = false
                         c.mutable.value = c.overlay(c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = historyStore.problem.value,
                             busy = runtime.occupied(), stopping = runtime.occupied()))

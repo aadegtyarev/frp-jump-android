@@ -60,7 +60,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF, onConfirmationsOn = vm::turnConfirmationsOn,
             confirmationsOnFailed = CONFIRMATIONS_KEY in toolsState.failed,
-            tools = toolsState.committed, onTurnOn = vm::turnOnRequested)
+            tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed)
     }
 }
 
@@ -75,6 +75,8 @@ internal fun AssistantChatContent(
     tools: ru.adsrv.frpjump.settings.AssistantTools = ru.adsrv.frpjump.settings.AssistantTools(),
     /** The "Turn on" button: switches the tool on (the Tools path), then sends the fixed message (the second argument). Null: no button. */
     onTurnOn: ((AssistantToolId, String) -> Unit)? = null,
+    /** Tool keys whose switch could not be saved (the Tools binding's failures): shown near that tool's buttons. */
+    toolsFailed: Set<String> = emptySet(),
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -181,7 +183,7 @@ internal fun AssistantChatContent(
                             if (onTurnOn != null && index == state.turns.lastIndex) requestedTools(state, enabled, tools).forEach { id ->
                                 val title = stringResource(id.title())
                                 val message = stringResource(R.string.chat_request_turned_on_message, title)
-                                ChatToolRequest(id, turn.readWeb, onTurnOn = { onTurnOn(id, message) }, onDecline = { conversation.declineTool(id) })
+                                ChatToolRequest(id, turn.readWeb, failed = id.wire in toolsFailed, onTurnOn = { onTurnOn(id, message) }, onDecline = { conversation.declineTool(id) })
                             }
                             ChatToolReceipts(turn.receipts)
                         }
@@ -301,7 +303,7 @@ private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier
     if (failures.isEmpty()) return
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         failures.forEach { failure ->
-            val tool = stringResource(AssistantToolId.fromWire(failure.result.name)?.title() ?: R.string.tool_failure_unknown)
+            val tool = stringResource(toolTitle(failure.result.name))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(when (failure.result.outcome) {
                     ToolOutcome.TIMEOUT -> R.string.tool_failure_timeout
@@ -321,19 +323,25 @@ private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier
  * reason is never shown here. Stacked, so that the labels stay whole at large font.
  */
 @Composable
-private fun ChatToolRequest(id: AssistantToolId, readWeb: Boolean, onTurnOn: () -> Unit, onDecline: () -> Unit) {
+private fun ChatToolRequest(id: AssistantToolId, readWeb: Boolean, failed: Boolean, onTurnOn: () -> Unit, onDecline: () -> Unit) {
     Column(Modifier.fillMaxWidth().testTag("chat_tool_request_${id.wire}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(id.hint()), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_tool_request_warning_${id.wire}"))
         if (readWeb) Text(stringResource(R.string.chat_request_web), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted,
             modifier = Modifier.testTag("chat_tool_request_web_${id.wire}"))
+        if (failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_tool_request_failed_${id.wire}"))
         Button(onClick = onTurnOn, modifier = Modifier.fillMaxWidth().testTag("chat_tool_request_on_${id.wire}")) {
             Text(stringResource(R.string.chat_request_turn_on, stringResource(id.title())))
         }
-        OutlinedButton(onClick = onDecline, modifier = Modifier.fillMaxWidth().testTag("chat_tool_request_no_${id.wire}")) {
+        val decline = stringResource(R.string.chat_request_decline_for, stringResource(id.title()))
+        OutlinedButton(onClick = onDecline, modifier = Modifier.fillMaxWidth().testTag("chat_tool_request_no_${id.wire}").semantics { contentDescription = decline }) {
             Text(stringResource(R.string.chat_request_decline))
         }
     }
 }
+
+/** The title of a call's tool in the chat: a catalog tool's, the service tool's "Request to turn on a tool", else the generic one. */
+private fun toolTitle(name: String): Int = AssistantToolId.fromWire(name)?.title()
+    ?: if (name == ru.adsrv.frpjump.assistant.AssistantRequestTool.WIRE) R.string.tool_request_title else R.string.tool_failure_unknown
 
 /** A declined call is not a failure: a quiet line per call, visible without opening the receipts. */
 @Composable
@@ -343,7 +351,7 @@ private fun ChatToolDeclines(receipts: List<ChatToolReceipt>) {
     Column(Modifier.testTag("chat_tool_declined"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         declined.forEach { receipt ->
             Text(stringResource(if (receipt.result.isNoAnswer()) R.string.tool_failure_no_answer else R.string.tool_failure_declined,
-                stringResource(AssistantToolId.fromWire(receipt.call.name)?.title() ?: R.string.tool_failure_unknown)), color = AppTheme.colors.muted)
+                stringResource(toolTitle(receipt.call.name))), color = AppTheme.colors.muted)
         }
     }
 }
@@ -357,7 +365,7 @@ internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
     }
     if (expanded) groupReceipts(receipts).forEachIndexed { index, group ->
         val tool = AssistantToolId.fromWire(group.tool)
-        val title = tool?.let { stringResource(it.title()) } ?: receiptText(group.tool, RECEIPT_DETAIL_CHARS)
+        val title = tool?.let { stringResource(it.title()) } ?: if (group.tool == ru.adsrv.frpjump.assistant.AssistantRequestTool.WIRE) stringResource(R.string.tool_request_title) else receiptText(group.tool, RECEIPT_DETAIL_CHARS)
         if (group.items.size == 1) {
             val receipt = group.items.single()
             Column(Modifier.testTag("chat_tool_receipt_$index").semantics(mergeDescendants = true) {}) {

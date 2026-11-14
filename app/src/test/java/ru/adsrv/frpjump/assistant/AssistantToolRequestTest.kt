@@ -33,6 +33,7 @@ class AssistantToolRequestTest {
         dispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
         val storage: MemoryStorage = MemoryStorage(),
         val settings: SettingsStore = SettingsStore(MemoryStorage()).apply { update { it.copy(assistantEnabled = true) } },
+        val awaitLoad: Boolean = true,
         val script: (AgentRequest, Int) -> AgentReply,
     ) : AutoCloseable {
         val requests = java.util.concurrent.CopyOnWriteArrayList<AgentRequest>()
@@ -46,7 +47,7 @@ class AssistantToolRequestTest {
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
             AgentProvider { request -> requests += request; script(request, request.turns.last().exchanges.size) }
         }, store::requireRevision, module, Dispatchers.Unconfined, historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
-        init { runBlocking { withTimeout(3000) { chat.state.first { !it.loading } } } }
+        init { if (awaitLoad) runBlocking { withTimeout(3000) { chat.state.first { !it.loading } } } }
         suspend fun idle() = withTimeout(3000) { chat.state.first { !it.busy } }
         suspend fun send(text: String = "question"): ChatState { chat.edit(text); chat.send(); return idle() }
         fun tools() = settings.assistantAvailability.tools
@@ -276,5 +277,95 @@ class AssistantToolRequestTest {
         assertTrue(turn(listOf(odd) to listOf(result(odd, "The owner sees a button to turn on nonsense. It is off in this request."))).view().askedTools.isEmpty())
         val other = ToolCall("p", "web_search", args("name" to "ssh_command"))
         assertTrue(turn(listOf(other) to listOf(result(other, firstAsk))).view().askedTools.isEmpty())
+    }
+
+    // ---- "Offer to turn tools on" ----
+
+    @Test fun `with the offer switch off request_tool is in no request, and on by default it is`() = runBlocking {
+        Fx(script = asking()).use { f ->
+            assertTrue("on by default", f.tools().offer)
+            f.send()
+            assertEquals(listOf("request_tool"), f.requests.last().tools.map { it.name })
+            f.settings.setAssistantOfferTools(false)
+            f.send()
+            assertTrue("a plain chat request carries no tools at all", f.requests.last().tools.isEmpty())
+            f.on(AssistantToolId.READ_PAGE)
+            f.send()
+            assertEquals(listOf("read_page"), f.requests.last().tools.map { it.name })
+            f.settings.setAssistantOfferTools(true)
+            f.send()
+            assertEquals(listOf("read_page", "request_tool"), f.requests.last().tools.map { it.name })
+        }
+    }
+
+    @Test fun `the offer switch is saved with the settings, defaults on and survives tool switches`() {
+        val file = MemoryStorage()
+        assertTrue(SettingsStore(file).assistantAvailability.tools.offer)
+        SettingsStore(file).apply { setAssistantOfferTools(false); setAssistantTool(AssistantToolId.SSH_COMMAND, true) }
+        val again = SettingsStore(file).assistantAvailability.tools
+        assertFalse(again.offer); assertTrue(again.sshCommand)
+        assertTrue("a file written before the switch existed reads as on", SettingsStore(MemoryStorage("""{"assistant_enabled":true}""")).assistantAvailability.tools.offer)
+    }
+
+    // ---- Progress ----
+
+    @Test fun `a request_tool call shows the waiting line, not a failure`() = runBlocking {
+        assertNull(progressOnCall("request_tool"))
+        assertEquals(ChatToolProgress.Tool(AssistantToolId.READ_PAGE), progressOnCall("read_page"))
+        assertEquals(ChatToolProgress.FAILED, progressOnCall("nonsense"))
+        val seen = java.util.concurrent.CopyOnWriteArrayList<ChatToolProgress?>()
+        lateinit var chat: AssistantConversation
+        Fx(script = { _, done ->
+            if (done == 0) AgentReply(calls = listOf(ask("a", "read_page"))) else { seen += chat.state.value.toolProgress; AgentReply("done") }
+        }).use { f ->
+            chat = f.chat
+            f.send()
+            assertEquals(listOf<ChatToolProgress?>(null), seen.toList())
+        }
+    }
+
+    // ---- The fixed message is refused when a Send cannot start ----
+
+    @Test fun `the fixed message is refused while a Send runs, while the history loads and while a clear waits`() = runBlocking {
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        Fx(dispatcher = Dispatchers.Default, script = { _, done ->
+            if (done == 0) { entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
+            AgentReply("done")
+        }).use { f ->
+            f.chat.edit("q"); f.chat.send()
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            f.chat.sendOwnerMessage("Turned on x")
+            release.countDown(); f.idle()
+            assertEquals("a Send was running: the message was refused", 1, f.requests.size)
+            assertEquals(listOf("q"), f.chat.state.value.turns.map { it.user })
+            // A clear waits: refused, and the owner's draft is not touched.
+            assertTrue(f.chat.hideHistory())
+            f.chat.sendOwnerMessage("Turned on x")
+            assertEquals(1, f.requests.size)
+        }
+        // The history is still loading.
+        val gate = CountDownLatch(1)
+        val slow = object : ru.adsrv.frpjump.store.TextStorage {
+            override fun read(): String? { gate.await(5, TimeUnit.SECONDS); return null }
+            override fun write(text: String) = Unit
+            override fun delete() = Unit
+        }
+        val calls = AtomicInteger()
+        val settings = SettingsStore(MemoryStorage()).apply { update { it.copy(assistantEnabled = true) } }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val store = AssistantProviderStore(MemoryStorage(), Box(), settings.assistantChat)
+                .also { it.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic")) }
+            val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
+                AgentProvider { calls.incrementAndGet(); AgentReply("done") }
+            }, store::requireRevision, bindAssistantLifecycle(settings, scope), Dispatchers.Unconfined,
+                historyStore = AssistantChatHistory(slow, Box(), scope, Dispatchers.IO), prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+            assertTrue(chat.state.value.loading)
+            chat.sendOwnerMessage("Turned on x")
+            assertEquals(0, calls.get())
+            gate.countDown(); withTimeout(3000) { chat.state.first { !it.loading } }
+            assertTrue(chat.state.value.turns.isEmpty())
+            chat.close()
+        } finally { gate.countDown(); scope.cancel() }
     }
 }

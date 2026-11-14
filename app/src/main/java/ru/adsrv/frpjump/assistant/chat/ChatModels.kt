@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.assistant.chat
 
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.agent.*
+import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.ChatHistoryProblem
 import ru.adsrv.frpjump.assistant.ChatSource
@@ -30,6 +31,9 @@ sealed interface ChatToolProgress {
     data object SUMMARY : ChatToolProgress
     data object FAILED : ChatToolProgress
 }
+/** The progress line while a call runs: the service tool `request_tool` is not in the catalog and is no failure; it shows the waiting line (null). */
+internal fun progressOnCall(name: String): ChatToolProgress? =
+    if (name == AssistantRequestTool.WIRE) null else AssistantToolId.fromWire(name)?.let { ChatToolProgress.Tool(it) } ?: ChatToolProgress.FAILED
 /** The progress line after a tool finished: nothing for success and for a decline (not a failure), the failed marker otherwise. */
 internal fun progressAfter(outcome: ToolOutcome): ChatToolProgress? =
     if (outcome == ToolOutcome.SUCCESS || outcome == ToolOutcome.DECLINED) null else ChatToolProgress.FAILED

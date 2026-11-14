@@ -1294,6 +1294,10 @@
     <string name="chat_request_decline">Не надо</string>
     <string name="chat_request_web">В этой попытке помощник читал страницы из интернета</string>
     <string name="chat_request_turned_on_message">Включил „%1$s“</string>
+    <string name="chat_request_decline_for">Не надо: %1$s</string>
+    <string name="tool_request_title">Просьба включить инструмент</string>
+    <string name="offer_tools_setting">Предлагать включить инструменты</string>
+    <string name="offer_tools_setting_hint">Помощник сможет попросить включить выключенный инструмент. Выключите для моделей, которые не поддерживают инструменты.</string>
     <string name="assistant_summary_percent">Суммаризация при % заполнения окна</string>
     <string name="assistant_summary_hint">От 1 до 100%, по умолчанию 80. Включает резерв ответа. Делает дополнительный запрос модели.</string>
     <string name="assistant_summary_model">Модель для сводки (необязательно)</string>

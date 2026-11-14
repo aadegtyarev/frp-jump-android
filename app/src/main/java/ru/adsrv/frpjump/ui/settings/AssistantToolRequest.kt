@@ -38,7 +38,7 @@ internal class AssistantToolRequest(
  * What the latest completed attempt asked for comes from its saved calls and results, so nothing here is stored.
  */
 internal fun requestedTools(state: ChatState, enabled: Boolean, tools: AssistantTools): List<AssistantToolId> {
-    if (!enabled || state.busy || state.pendingText != null || state.loading || state.clearing) return emptyList()
+    if (!enabled || !tools.offer || state.busy || state.pendingText != null || state.loading || state.clearing) return emptyList()
     val turn = state.turns.lastOrNull() ?: return emptyList()
     return turn.askedTools.mapNotNull(AssistantToolId::fromWire).filter { !tools[it] && it.wire !in state.declinedTools }
 }
