@@ -1265,7 +1265,6 @@
     <string name="tool_ssh_command">Команда SSH</string>
     <string name="tool_ssh_command_hint">ПОЛНЫЙ ДОСТУП ПО SSH: команды могут читать и изменять удалённую систему и файлы в пределах прав SSH-аккаунта. Команды и вывод могут содержать секреты и передаются настроенной модели. Токены оплачиваются.</string>
     <string name="tool_ssh_command_progress">Выполняется команда SSH…</string>
-    <string name="profile_information_received">Полученные сведения о профилях</string>
     <string name="profile_information_query">Выборка: %1$s</string>
     <string name="profile_information_count">Записей на странице: %1$d · всего: %2$s</string>
     <string name="profile_information_partial">Часть источников недоступна, неизвестна или устарела. Результаты могут быть неполными.</string>
@@ -1284,7 +1283,6 @@
     <string name="chat_history_clear">Очистить историю</string>
     <string name="chat_history_retry">Повторить</string>
     <string name="chat_history_clear_failed">Не удалось очистить историю. Прежние данные сохранены; повторите очистку.</string>
-    <string name="chat_history_tool_results">Вызовы и результаты инструментов</string>
     <string name="chat_history_read_failed">Не удалось восстановить историю. Повторите чтение или очистите её для нового разговора.</string>
     <string name="chat_history_write_failed">Последние изменения не сохранены. Повторите сохранение перед выходом.</string>
     <string name="chat_context_changed">Провайдер или модель изменены. Переписка сохранена; новые сообщения начнут новый контекст модели.</string>
@@ -1377,6 +1375,9 @@
     <string name="assistant_notice_stop">Стоп</string>
     <string name="terminal_ask_assistant">Спросить помощника</string>
     <string name="chat_quote_truncated">[начало обрезано]</string>
+    <string name="chat_calls_expanded">Развёрнуто</string>
+    <string name="chat_calls_collapsed">Свёрнуто</string>
+    <string name="chat_calls_description">Вызовы инструментов: %1$s</string>
     <string name="chat_receipt_group">%1$s ×%2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d вызов</item>

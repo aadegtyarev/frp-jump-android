@@ -1217,7 +1217,6 @@
     <string name="tool_ssh_command">SSH command</string>
     <string name="tool_ssh_command_hint">FULL SSH ACCESS: commands can read and change the remote system and files within the SSH account’s rights. Commands and output may contain secrets and are shared with your configured model. Ordinary token charges apply.</string>
     <string name="tool_ssh_command_progress">Running SSH command…</string>
-    <string name="profile_information_received">Received profile information</string>
     <string name="profile_information_query">Selection: %1$s</string>
     <string name="profile_information_count">Records on this page: %1$d · total: %2$s</string>
     <string name="profile_information_partial">Some sources are unavailable, unknown or stale. These results may be incomplete.</string>
@@ -1236,7 +1235,6 @@
     <string name="chat_history_clear">Clear history</string>
     <string name="chat_history_retry">Retry</string>
     <string name="chat_history_clear_failed">Could not clear history. Previous data is kept; retry clearing.</string>
-    <string name="chat_history_tool_results">Tool calls and results</string>
     <string name="chat_history_read_failed">Could not restore history. Retry or clear it to start again.</string>
     <string name="chat_history_write_failed">Recent changes were not saved. Retry saving before leaving.</string>
     <string name="chat_context_changed">Provider or model changed. Earlier messages are kept; new messages use a new model context.</string>
@@ -1329,6 +1327,9 @@
     <string name="assistant_notice_stop">Stop</string>
     <string name="terminal_ask_assistant">Ask the assistant</string>
     <string name="chat_quote_truncated">[start truncated]</string>
+    <string name="chat_calls_expanded">Expanded</string>
+    <string name="chat_calls_collapsed">Collapsed</string>
+    <string name="chat_calls_description">Tool calls: %1$s</string>
     <string name="chat_receipt_group">%1$s ×%2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d call</item>
