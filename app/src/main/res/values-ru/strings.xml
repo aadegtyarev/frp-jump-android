@@ -1239,6 +1239,12 @@
     <string name="assistant_owner_reset">Сбросить</string>
     <string name="assistant_owner_set">Заданы</string>
     <string name="assistant_owner_not_set">Не заданы</string>
+    <string name="chat_text_size">Размер текста чата</string>
+    <string name="chat_text_size_value">%1$d%%</string>
+    <string name="chat_text_size_small">А</string>
+    <string name="chat_text_size_large">А</string>
+    <string name="chat_text_size_preview_user">› проверь обновление</string>
+    <string name="chat_text_size_preview_answer">Обновления есть: 23 пакета apt.</string>
     <string name="assistant_tools">Инструменты</string>
     <string name="assistant_tools_notice">При использовании включённых инструментов выбранные публичные тексты и изображения, а также частные сведения о профилях, устройствах и подключениях передаются настроенной модели. Веб-запросы идут в DuckDuckGo. Токены модели, включая анализ изображений, оплачиваются. Изменения — для следующего запроса; текущий может завершиться с прежними инструментами. История сохраняется. Открытие и изменение инструментов не запускает запросы.</string>
     <string name="tool_search">Поиск в интернете</string>

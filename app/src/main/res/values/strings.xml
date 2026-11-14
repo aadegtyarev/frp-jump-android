@@ -1191,6 +1191,12 @@
     <string name="assistant_owner_reset">Reset</string>
     <string name="assistant_owner_set">Set</string>
     <string name="assistant_owner_not_set">Not set</string>
+    <string name="chat_text_size">Chat text size</string>
+    <string name="chat_text_size_value">%1$d%%</string>
+    <string name="chat_text_size_small">A</string>
+    <string name="chat_text_size_large">A</string>
+    <string name="chat_text_size_preview_user">› check for updates</string>
+    <string name="chat_text_size_preview_answer">Updates are available: 23 apt packages.</string>
     <string name="assistant_tools">Tools</string>
     <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and connection information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
     <string name="tool_search">Web search</string>

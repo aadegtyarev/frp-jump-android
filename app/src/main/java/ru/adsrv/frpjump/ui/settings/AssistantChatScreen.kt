@@ -61,7 +61,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     LaunchedEffect(quotes) { if (quotes != quotesSeen) { quotesSeen = quotes; toolsOpen = false } }
     if (toolsOpen) {
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
-    } else {
+    } else CompositionLocalProvider(LocalChatTextScale provides ru.adsrv.frpjump.settings.ChatTextSize.factor(settings.assistantChatTextSize)) {
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF,
             tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed)
@@ -161,7 +161,7 @@ internal fun AssistantChatContent(
             }
             // While a question is open the message field (disabled during a run anyway) is hidden; Stop stays at the bottom.
             val asking = state.asking
-            val history: @Composable (Modifier) -> Unit = { modifier -> LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(TURN_GAP)) {
+            val history: @Composable (Modifier) -> Unit = { modifier -> ChatFeedScale { LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(TURN_GAP)) {
                 itemsIndexed(state.turns) { index, turn ->
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         ChatUserMessage(turn.user)
@@ -215,7 +215,7 @@ internal fun AssistantChatContent(
                         ChatToolDeclines(state.receipts)
                     }
                 }
-            } }
+            } } }
             // The question sits under the history, outside the list. It and Stop are measured first and the history takes what is left
             // (weight), shrinking to nothing only when the question needs the room. A fresh question gets a fresh card (key), so its scroll
             // state starts at the top.

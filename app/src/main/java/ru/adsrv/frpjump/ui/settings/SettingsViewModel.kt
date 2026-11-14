@@ -106,6 +106,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     fun setTerminalHistoryRows(rows: Int) = save { it.copy(terminalHistoryRows = rows) }
 
+    fun setAssistantChatTextSize(percent: Int) = save { it.copy(assistantChatTextSize = ru.adsrv.frpjump.settings.ChatTextSize.snap(percent.toDouble())) }
+
     internal val tools = AssistantToolsBinding(app.settings, viewModelScope)
 
     /** Waits for the actual write; the text is normalized here too, so the store only ever sees a valid value. */
