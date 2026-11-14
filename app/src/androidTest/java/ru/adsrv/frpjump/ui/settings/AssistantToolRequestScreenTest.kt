@@ -4,6 +4,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -68,7 +69,6 @@ class AssistantToolRequestScreenTest {
     private val request = AssistantToolRequest(settings, binding, scope) { message -> conversation.sendOwnerMessage(message) }
     private val locale get() = Locale.forLanguageTag(args.getString("chatLocale") ?: "en")
     private val russian get() = locale.language == "ru"
-    private lateinit var localized: android.content.Context
     private val enabled = mutableStateOf(true)
 
     private fun ask(id: String, tool: String) = ToolCall(id, "request_tool", buildJsonObject { put("name", tool); put("why", "synthetic reason") })
@@ -78,23 +78,22 @@ class AssistantToolRequestScreenTest {
         val until = SystemClock.uptimeMillis() + 5000
         while (compose.activity.resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT && SystemClock.uptimeMillis() < until) SystemClock.sleep(50)
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, .01f)
-        // The language applies to the activity itself (on its thread, as AssistantChatScreenTest does), so strings read here are the shown ones.
-        compose.activityRule.scenario.onActivity { activity ->
-            @Suppress("DEPRECATION")
-            activity.resources.updateConfiguration(Configuration(activity.resources.configuration).apply { setLocale(locale) }, activity.resources.displayMetrics)
-        }
-        localized = compose.activity.createConfigurationContext(Configuration(compose.activity.resources.configuration).apply { setLocale(locale) })
     }
     @After fun cleanup() { conversation.close(); scope.cancel() }
 
+    /** The language applies to the activity itself, on its thread, as AssistantChatScreenTest does; the screen is then set as that test sets its own. */
+    @Suppress("DEPRECATION")
     private fun show() {
-        compose.setContent {
-            val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
-            CompositionLocalProvider(LocalContext provides LocalContext.current.createConfigurationContext(configuration), LocalConfiguration provides configuration) {
-                FrpJumpTheme {
-                    val current by settings.settings.collectAsState()
-                    AssistantChatContent(conversation, enabled.value, store.state.value, onBack = {}, onSetup = {},
-                        tools = current.assistantTools(), onTurnOn = request::turnOn)
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.resources.updateConfiguration(Configuration(activity.resources.configuration).apply { setLocale(locale) }, activity.resources.displayMetrics)
+            activity.setContent {
+                val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
+                CompositionLocalProvider(LocalContext provides LocalContext.current.createConfigurationContext(configuration), LocalConfiguration provides configuration) {
+                    FrpJumpTheme {
+                        val current by settings.settings.collectAsState()
+                        AssistantChatContent(conversation, enabled.value, store.state.value, onBack = {}, onSetup = {},
+                            tools = current.assistantTools(), onTurnOn = request::turnOn)
+                    }
                 }
             }
         }
@@ -104,7 +103,10 @@ class AssistantToolRequestScreenTest {
         compose.waitUntil(15_000) { conversation.state.value.let { !it.busy && it.turns.isNotEmpty() } }
     }
     private fun tag(kind: String, tool: AssistantToolId) = "chat_tool_request_${kind}${tool.wire}"
-    private fun text(id: Int, vararg format: Any) = localized.getString(id, *format)
+    private fun text(id: Int, vararg format: Any): String {
+        val config = Configuration(compose.activity.resources.configuration).apply { setLocale(locale) }
+        return compose.activity.createConfigurationContext(config).getString(id, *format)
+    }
     private fun title(tool: AssistantToolId) = text(tool.title())
     private fun shown(kind: String, tool: AssistantToolId) = compose.onNodeWithTag(tag(kind, tool)).performScrollTo().assertIsDisplayed()
     private fun gone(tool: AssistantToolId) {
