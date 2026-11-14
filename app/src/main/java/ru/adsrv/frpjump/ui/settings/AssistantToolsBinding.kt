@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,8 @@ internal data class AssistantToolsUiState(
 )
 
 internal const val CONFIRMATIONS_KEY = "confirmations"
+/** The key of the "Offer to turn tools on" switch in [AssistantToolsUiState.pending] and [AssistantToolsUiState.failed]. */
+internal const val OFFER_KEY = "offer_tools"
 
 /** Tools-only autosave owner in the parent ViewModel's Main scope, not the row's lifetime.
  * Pending admission and all presentation publications run in that one scope/context. Store
@@ -53,10 +56,13 @@ internal class AssistantToolsBinding(
     /** The app-wide confirmation switch: same autosave, pending and inline failure as a tool switch. */
     fun changeConfirmations(on: Boolean) = save(CONFIRMATIONS_KEY) { store.setAssistantConfirmations(if (on) ConfirmationMode.ASK else ConfirmationMode.OFF) }
 
-    fun change(id: AssistantToolId, enabled: Boolean) = save(id.wire) { store.setAssistantTool(id, enabled) }
+    /** The "Offer to turn tools on" switch: same autosave, pending and inline failure as a tool switch. */
+    fun changeOffer(on: Boolean): Job = save(OFFER_KEY) { store.setAssistantOfferTools(on) }
 
-    private fun save(key: String, write: () -> Unit) {
-        scope.launch {
+    fun change(id: AssistantToolId, enabled: Boolean): Job = save(id.wire) { store.setAssistantTool(id, enabled) }
+
+    private fun save(key: String, write: () -> Unit): Job {
+        return scope.launch {
             ensureActive()
             if (key in mutable.value.pending) return@launch
             mutable.value = mutable.value.copy(pending = mutable.value.pending + key, failed = mutable.value.failed - key)

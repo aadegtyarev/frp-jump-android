@@ -60,11 +60,20 @@ import ru.adsrv.frpjump.assistant.tools.*
         val information = receipts.mapNotNull { receipt -> receipt.result?.takeIf { it.name == AssistantToolId.PROFILE_INFORMATION.wire && it.outcome == ToolOutcome.SUCCESS }?.let {
             ChatProfileInformation(it, runCatching { Json.parseToJsonElement(it.text) as? JsonObject }.getOrNull())
         } }
+        val webTools = setOf(AssistantToolId.WEB_SEARCH.wire, AssistantToolId.READ_PAGE.wire, AssistantToolId.INSPECT_IMAGE.wire)
+        // A first ask is told by its fixed result text, so a repeat ask, a declined one or an invalid call never counts.
+        val asked = if (status != SavedTurnState.COMPLETE) emptyList() else receipts.mapNotNull { receipt ->
+            val result = receipt.result ?: return@mapNotNull null
+            if (receipt.call.name != AssistantRequestTool.WIRE || result.outcome != ToolOutcome.SUCCESS) return@mapNotNull null
+            val name = try { StrictArgs(receipt.call.arguments).string("name") } catch (_: InvalidArguments) { return@mapNotNull null }
+            name.takeIf { AssistantToolId.fromWire(it) != null && result.text == AssistantRequestTool.askedText(it) }
+        }.distinct()
         return ChatTurn(user, if (status == SavedTurnState.COMPLETE) exchanges.lastOrNull()?.reply?.text.orEmpty() else "",
             sources.map { ChatSource(it.title, it.url) }, failures.isNotEmpty(), failures, information,
             interrupted = status != SavedTurnState.COMPLETE, receipts = receipts,
             unanswered = status == SavedTurnState.INTERRUPTED && exchanges.lastOrNull()?.results?.lastOrNull()
-                ?.let { it.outcome == ToolOutcome.DECLINED.name && it.text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER } == true)
+                ?.let { it.outcome == ToolOutcome.DECLINED.name && it.text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER } == true,
+            askedTools = asked, readWeb = receipts.any { it.call.name in webTools })
     }
     companion object {
         fun of(turn: AgentTurn, provider: AgentProvider? = null) = SavedTurn(turn.user, turn.exchanges.map {
@@ -76,8 +85,14 @@ import ru.adsrv.frpjump.assistant.tools.*
 @Serializable internal data class SavedSummary(val text: String, val turn: Int, val exchange: Int)
 
 /** The sole saved representation; UI and request windows are derived from these records. */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @Serializable internal data class SavedChat(val version: Int = 1, val binding: ChatBinding? = null, val records: List<SavedTurn> = emptyList(),
-    val draft: String = "", val omitted: Boolean = false, val contextStart: Int = 0, val summary: SavedSummary? = null) {
+    val draft: String = "", val omitted: Boolean = false, val contextStart: Int = 0, val summary: SavedSummary? = null,
+    /**
+     * Wire names of the tools the owner declined with "No thanks" in this conversation (Р56). Kept with the history, so it survives a
+     * restart and goes with a clear. Not written while empty, so a chat without one is byte-identical to an older saved chat.
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val declinedTools: List<String> = emptyList()) {
     fun bind(settings: AssistantProviderSettings?): SavedChat {
         if (settings == null) return this
         val next = ChatBinding(settings.baseUrl, settings.model)
@@ -95,6 +110,7 @@ import ru.adsrv.frpjump.assistant.tools.*
         require(version == 1 && draft.length <= ChatLimits.MAX_INPUT && contextStart in 0..records.size)
         require(records.size <= 1000)
         summary?.let { require(it.text.isNotBlank() && it.text.length <= 4000 && it.turn in contextStart..records.lastIndex && it.exchange in 0..records[it.turn].exchanges.size) }
-        return copy(records = records.map { if (it.status == SavedTurnState.RUNNING) it.copy(status = SavedTurnState.INTERRUPTED) else it })
+        return copy(records = records.map { if (it.status == SavedTurnState.RUNNING) it.copy(status = SavedTurnState.INTERRUPTED) else it },
+            declinedTools = declinedTools.filter { AssistantToolId.fromWire(it) != null }.distinct())
     }
 }

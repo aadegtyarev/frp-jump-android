@@ -28,7 +28,7 @@ class AssistantConversationTest {
         override fun destroy() = Unit
     }
     private fun windowLimits() = AgentLimits(contextTokens = Utf8TokenEstimate.count(
-        AgentRequest(TestPrompts.real.system, emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
+        AgentRequest(TestPrompts.real.system, listOf(requestToolSpec), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
     private class Fixture(
         val provider: AgentProvider = AgentProvider { AgentReply("answer") },
         val io: CoroutineDispatcher = Dispatchers.Unconfined,
@@ -65,7 +65,7 @@ class AssistantConversationTest {
             assertEquals(1, f.preparations); assertEquals(2, requests.size)
             assertSame(opaque, requests[1].turns[0].exchanges.single().reply.continuation)
             assertEquals(listOf("one", "two"), requests[1].turns.map { it.user })
-            assertTrue(requests.all { it.tools.isEmpty() && it.instructions == TestPrompts.real.system })
+            assertTrue(requests.all { it.tools.map { tool -> tool.name } == listOf("request_tool") && it.instructions == TestPrompts.real.system })
             assertEquals(listOf(ChatTurn("one", "complete"), ChatTurn("two", "complete")), f.chat.state.value.turns)
             assertFalse(f.chat.state.value.toString().contains("opaque"))
             assertFalse(f.file.text!!.contains("one")); assertFalse(f.settingsFile.text!!.contains("one"))
@@ -368,7 +368,7 @@ class AssistantConversationTest {
             val second = Json.parseToJsonElement(seen.remove()).jsonObject
             assertEquals(512, second["max_completion_tokens"]!!.jsonPrimitive.int)
             assertEquals("high", second["reasoning_effort"]!!.jsonPrimitive.content)
-            assertNull(second["tools"]); assertFalse(second.toString().contains("synthetic-key"))
+            assertEquals(listOf("request_tool"), second["tools"]!!.jsonArray.map { it.jsonObject["function"]!!.jsonObject["name"]!!.jsonPrimitive.content }); assertFalse(second.toString().contains("synthetic-key"))
             assertEquals(2, first["messages"]!!.jsonArray.size)
             val messages = second["messages"]!!.jsonArray
             assertEquals(listOf("system", "user", "assistant", "user"), messages.map { it.jsonObject["role"]!!.jsonPrimitive.content })
@@ -384,7 +384,7 @@ class AssistantConversationTest {
                 if (++calls == 1) AgentReply(calls = listOf(ToolCall("one", name, buildJsonObject {})))
                 else {
                     assertEquals(ToolOutcome.UNKNOWN_TOOL, request.turns.last().exchanges.single().results.single().outcome)
-                    assertTrue(request.tools.isEmpty()); AgentReply("Tool unavailable; answering from text")
+                    assertEquals(listOf("request_tool"), request.tools.map { it.name }); AgentReply("Tool unavailable; answering from text")
                 }
             }).use { f ->
                 val state = f.send(); assertNull(state.problem); assertTrue(state.turns.single().toolFailed)

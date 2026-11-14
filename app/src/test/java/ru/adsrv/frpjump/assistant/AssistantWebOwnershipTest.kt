@@ -76,9 +76,9 @@ class AssistantWebOwnershipTest {
                 release.complete(Unit); idle(chat)
                 assertEquals(1, fetches); assertEquals("current", chat.state.value.turns.single().user)
                 assertEquals("", chat.state.value.draft)
-                assertTrue(requests.take(2).all { it.tools.map { spec -> spec.name } == listOf("web_search", "read_page", "inspect_image") })
+                assertTrue(requests.take(2).all { it.tools.map { spec -> spec.name } == listOf("web_search", "read_page", "inspect_image", "request_tool") })
                 chat.edit("next"); chat.send(); idle(chat)
-                assertEquals(listOf("web_search", "read_page", "inspect_image").filter { it != tool }, requests.last().tools.map { it.name })
+                assertEquals(listOf("web_search", "read_page", "inspect_image").filter { it != tool } + "request_tool", requests.last().tools.map { it.name })
                 assertEquals(2, requests.last().turns.size); assertEquals(2, chat.state.value.turns.size)
             } finally { release.complete(Unit); chat.close(); scope.cancel() }
         }

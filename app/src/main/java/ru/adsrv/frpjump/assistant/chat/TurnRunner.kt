@@ -63,7 +63,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
-            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource)
+            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
@@ -176,8 +176,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()
             }
-            is AgentEvent.Calling -> own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress =
-                AssistantToolId.fromWire(event.call.name)?.let { ChatToolProgress.Tool(it) } ?: ChatToolProgress.FAILED) }
+            is AgentEvent.Calling -> own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = progressOnCall(event.call.name)) }
             is AgentEvent.FinishedTool -> {
                 val received = SavedResult.of(event.result)
                 val value = update { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }
@@ -209,7 +208,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     private fun finish(problem: ChatProblem?, category: String = "finish-error", status: Int? = null) {
         val value = own.guarded(owner, category) {
-            document = document.finished(problem, status, archive); persist()
+            document = document.finished(problem, status, archive, clearDraft = !a.fixedText); persist()
             owner.replied = problem == null
             document
         } ?: return

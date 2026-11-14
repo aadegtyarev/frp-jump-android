@@ -15,7 +15,7 @@ internal fun projectChat(value: SavedChat, projected: List<ChatTurn>, archive: B
             else if (current == null) projected else projected.dropLast(1),
         draft = value.draft, pendingText = current?.takeIf { it.status == SavedTurnState.RUNNING && running }?.user,
         problem = problem, omitted = value.omitted, contextChanged = value.contextStart > 0,
-        summarized = value.summary != null, problemStatus = last?.problemStatus,
+        summarized = value.summary != null, declinedTools = value.declinedTools.toSet(), problemStatus = last?.problemStatus,
         currentSources = currentView?.sources.orEmpty(), receipts = currentView?.receipts.orEmpty(),
         toolFailed = currentView?.toolFailed ?: false, toolFailures = currentView?.toolFailures.orEmpty(), information = currentView?.information.orEmpty())
 }

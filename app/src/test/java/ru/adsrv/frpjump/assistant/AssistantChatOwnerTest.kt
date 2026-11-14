@@ -44,7 +44,8 @@ class AssistantChatOwnerTest {
     }
 
     private inner class Harness(private val calls: List<Call> = emptyList(), private val holdAt: Int = 0, private val failing: Boolean = false, private val withProfiles: Boolean = false,
-        private val withUndo: Boolean = false, val storage: HoldableStorage = HoldableStorage()) : AutoCloseable {
+        private val withUndo: Boolean = false, val storage: HoldableStorage = HoldableStorage(), private val sshOn: Boolean = true,
+        private val script: ((AgentRequest) -> AgentReply)? = null) : AutoCloseable {
         val removed = kotlinx.coroutines.flow.MutableStateFlow(false)
         val stopping = kotlinx.coroutines.flow.MutableStateFlow(false)
         val executed = AtomicInteger()
@@ -53,7 +54,7 @@ class AssistantChatOwnerTest {
         /** The provider's first reply waits here while [hold] is set. */
         val release = CompletableDeferred<Unit>()
         val entered = CompletableDeferred<Unit>()
-        val settings = SettingsStore(ru.adsrv.frpjump.ssh.MemoryStorage()).apply { update { it.copy(assistantEnabled = true, assistantSshCommand = true) } }
+        val settings = SettingsStore(ru.adsrv.frpjump.ssh.MemoryStorage()).apply { update { it.copy(assistantEnabled = true, assistantSshCommand = sshOn) } }
         val store = AssistantProviderStore(ru.adsrv.frpjump.ssh.MemoryStorage(), Box(), settings.assistantChat)
             .also { it.save(AssistantProviderDraft(AssistantProviderSettings(model = "m"), null, "synthetic")) }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -79,6 +80,7 @@ class AssistantChatOwnerTest {
         val owner = AssistantChatOwner(scope, settings, store, module, if (withProfiles) synthetic.information else null, ssh, history, undo, TestPrompts.placeholder, {
             AgentProvider { request ->
                 requests += request
+                script?.let { return@AgentProvider it(request) }
                 if (failing) throw IllegalStateException("synthetic failure")
                 if (requests.size == holdAt) { entered.complete(Unit); release.await() }
                 val done = request.turns.last().exchanges.size
@@ -529,5 +531,43 @@ class AssistantChatOwnerTest {
                 assertNull(h.owner.confirmations)
             } finally { h.close() }
         }
+    }
+
+    // ---- Р56: the decline and the "Turn on" follow-up through the real owner wiring ----
+
+    @Test fun `a decline of a tool that is on is dropped when the history loads, and a live switch-on drops one too`() {
+        val h = Harness()
+        h.storage.inner.text = """{"version":1,"records":[],"draft":"","omitted":false,"contextStart":0,"declinedTools":["ssh_command","read_page","web_search"]}"""
+        val chat = h.owner.attach()
+        eventually("restored") { chat.state.value.takeIf { !it.loading && it.declinedTools.isNotEmpty() } }
+        assertEquals("ssh_command is on, the others are off", setOf("read_page", "web_search"), chat.state.value.declinedTools)
+        h.settings.setAssistantTool(AssistantToolId.READ_PAGE, true)
+        eventually("live") { chat.state.value.takeIf { it.declinedTools == setOf("web_search") } }
+        h.owner.detach()
+    }
+
+    @Test fun `a changing ssh_command call still asks after Turn on`() {
+        val ask = ToolCall("a", "request_tool", buildJsonObject { put("name", "ssh_command"); put("why", "synthetic") })
+        val run = ToolCall("c0", "ssh_command", buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("command", "uptime") })
+        val h = Harness(sshOn = false, script = { request ->
+            val done = request.turns.last().exchanges.size
+            when {
+                request.turns.size == 1 -> if (done == 0) AgentReply(calls = listOf(ask)) else AgentReply("Ask the owner")
+                done == 0 -> AgentReply(calls = listOf(run))
+                else -> AgentReply("done")
+            }
+        })
+        val chat = h.owner.attach()
+        h.send(chat, "first")
+        eventually("first answer") { chat.state.value.takeIf { it.turns.size == 1 && !it.busy } }
+        assertEquals(listOf("ssh_command"), chat.state.value.turns.single().askedTools)
+        h.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
+        chat.sendOwnerMessage("Turned on")
+        val card = chat.card()
+        assertEquals("nothing ran before the owner answered", 0, h.executed.get())
+        chat.answer(card.id, ConfirmationDecision.ONCE)
+        eventually("ran once") { h.executed.get().takeIf { it == 1 } }
+        h.idle()
+        h.owner.detach()
     }
 }

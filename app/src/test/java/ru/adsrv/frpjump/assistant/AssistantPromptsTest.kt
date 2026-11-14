@@ -22,9 +22,9 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test.
-        assertEquals(8, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(9, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("0af04c0253c3b0c843a56479d0f47bf35ba43f1d3e01b76c17a422f3340f198a", sha256(asset("assistant/skill.md")))
+        assertEquals("41900b50554a859bfd7c5e42232fd4b6eac5519d1f0f078306424c3e9f39974d", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 
@@ -93,7 +93,7 @@ class AssistantPromptsTest {
             assertNull(chat.sendAndWait("one").problem); assertNull(chat.sendAndWait("two").problem)
             assertEquals(4, requests.size)
             assertTrue(requests.all { it.instructions == TestPrompts.real.system })
-            assertEquals(listOf("web_search", "read_page"), requests.first().tools.map { it.name })
+            assertEquals(listOf("web_search", "read_page", "request_tool"), requests.first().tools.map { it.name })
             // Stable JSON: the schema text of every tool, in order, is identical in all four requests.
             fun wire(request: AgentRequest) = request.tools.map { "${it.name}|${it.description}|${it.parameters}" }
             assertTrue(requests.all { wire(it) == wire(requests.first()) })

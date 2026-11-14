@@ -16,12 +16,12 @@ internal fun SavedChat.interrupted(): SavedChat {
     return if (last.status == SavedTurnState.RUNNING) copy(records = records.dropLast(1) + last.copy(status = SavedTurnState.INTERRUPTED)) else this
 }
 
-/** A successful finish also clears the draft. */
-internal fun SavedChat.finished(problem: ChatProblem?, status: Int?, archive: Boolean): SavedChat {
+/** A successful finish also clears the draft, unless the Send was the app's fixed message ([clearDraft] false): the owner's own draft stays. */
+internal fun SavedChat.finished(problem: ChatProblem?, status: Int?, archive: Boolean, clearDraft: Boolean = true): SavedChat {
     val last = records.last()
     return copy(records = records.dropLast(1) + last.copy(
         status = if (problem == null) SavedTurnState.COMPLETE else SavedTurnState.FAILED, problem = problem?.name, problemStatus = status),
-        draft = if (problem == null) "" else draft).bounded(archive)
+        draft = if (problem == null && clearDraft) "" else draft).bounded(archive)
 }
 
 internal fun SavedChat.withSummary(value: SavedSummary): SavedChat = copy(summary = value)

@@ -376,6 +376,8 @@ class AssistantChatScreenTest {
         val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
         return compose.activity.createConfigurationContext(config).getString(id)
     }
+    /** The service tool `request_tool` follows the enabled tools while at least one of the five is off. */
+    private fun withRequestTool(enabled: List<String>) = if (enabled.size < 5) enabled + "request_tool" else enabled
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
         when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
     }
@@ -660,7 +662,7 @@ class AssistantChatScreenTest {
         input().performTextInput("Try the saved synthetic target")
         sendAndAwait()
         compose.runOnIdle {
-            assertEquals(listOf("ssh_command"), requests.last().tools.map { it.name })
+            assertEquals(listOf("ssh_command", "request_tool"), requests.last().tools.map { it.name })
             val result = requests.last().turns.last().exchanges.single().results.single()
             assertEquals(ToolOutcome.FAILED, result.outcome)
             assertTrue(result.text.contains("unavailable")); assertTrue(owner!!.state.value.turns.last().toolFailed)
@@ -676,7 +678,7 @@ class AssistantChatScreenTest {
         input().performTextInput("What does the app know?")
         sendAndAwait()
         compose.runOnIdle {
-            assertTrue(requests.first().tools.isEmpty())
+            assertEquals(listOf("request_tool"), requests.first().tools.map { it.name })
             assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome)
         }
         button("chat_history").performScrollToNode(hasText("Profile information is disabled"))
@@ -989,7 +991,7 @@ class AssistantChatScreenTest {
             compose.runOnIdle { heldProviderReply = CompletableDeferred(); mode = "held-answer" }
             input().performTextInput("pending-$id"); button("chat_send").performClick()
             compose.waitUntil(WAIT_MS) { retained.state.value.busy }
-            compose.runOnIdle { assertEquals(ids.take(index), requests.last().tools.map { it.name }) }
+            compose.runOnIdle { assertEquals(withRequestTool(ids.take(index)), requests.last().tools.map { it.name }) }
             button("chat_tools").performClick()
             compose.runOnIdle { settingsFile.failWrites = true }
             toolToggle(id).assertIsOff().performClick()
@@ -1019,7 +1021,7 @@ class AssistantChatScreenTest {
             input().performTextInput("next-$id"); sendAndAwait()
             compose.runOnIdle {
                 assertEquals(completeCount + 2, retained.state.value.turns.size)
-                assertEquals(ids.take(index + 1), requests.last().tools.map { it.name })
+                assertEquals(withRequestTool(ids.take(index + 1)), requests.last().tools.map { it.name })
                 assertEquals(completeCount + 2, requests.last().turns.size)
             }
         }
@@ -1038,7 +1040,7 @@ class AssistantChatScreenTest {
             compose.runOnIdle { heldProviderReply.complete(Unit) }; awaitIdle()
             compose.runOnIdle { assertSame(retained, owner); assertEquals(count + 1, retained.state.value.turns.size); assertEquals("", retained.state.value.draft); mode = "answer" }
             input().performTextInput("next-off-$id"); sendAndAwait()
-            compose.runOnIdle { assertEquals(ids.drop(index + 1), requests.last().tools.map { it.name }); assertEquals(count + 2, requests.last().turns.size) }
+            compose.runOnIdle { assertEquals(withRequestTool(ids.drop(index + 1)), requests.last().tools.map { it.name }); assertEquals(count + 2, requests.last().turns.size) }
         }
         input().performTextInput("Retained draft")
         button("chat_tools").performClick()

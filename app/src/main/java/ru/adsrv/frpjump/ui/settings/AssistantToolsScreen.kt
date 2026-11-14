@@ -28,12 +28,12 @@ internal fun AssistantToolsEntry(onTools: () -> Unit) {
 @Composable
 internal fun AssistantToolsRoute(binding: AssistantToolsBinding, onBack: () -> Unit) {
     val state by binding.state.collectAsStateWithLifecycle()
-    AssistantToolsScreen(state, binding::change, onBack, binding::changeConfirmations)
+    AssistantToolsScreen(state, binding::change, onBack, binding::changeConfirmations, binding::changeOffer)
 }
 
 @Composable
 internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (AssistantToolId, Boolean) -> Unit, onBack: () -> Unit,
-    onConfirmationsChange: (Boolean) -> Unit = {}) {
+    onConfirmationsChange: (Boolean) -> Unit = {}, onOfferChange: (Boolean) -> Unit = {}) {
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding()
         .verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -53,6 +53,13 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
             AssistantToolId.entries.forEachIndexed { index, id ->
                 if (index > 0) RowDivider()
                 ToolSwitch(id, state.committed[id], state, onChange)
+            }
+        }
+        Group(null) {
+            Column(Modifier.testTag("tool_offer")) {
+                SwitchRow(tile = { GlyphTile("+") }, label = stringResource(R.string.offer_tools_setting), hint = stringResource(R.string.offer_tools_setting_hint),
+                    checked = state.committed.offer, busy = OFFER_KEY in state.pending, onChange = onOfferChange)
+                if (OFFER_KEY in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)
             }
         }
     }

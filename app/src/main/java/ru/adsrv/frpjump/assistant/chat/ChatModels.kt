@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.assistant.chat
 
 import kotlinx.serialization.json.*
 import ru.adsrv.frpjump.agent.*
+import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.ChatHistoryProblem
 import ru.adsrv.frpjump.assistant.ChatSource
@@ -16,13 +17,23 @@ data class ChatTurn(val user: String, val answer: String, val sources: List<Chat
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
     val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList(),
     /** The attempt ended because a question went unanswered while no chat screen was attached (Р43): its own note, not the interrupted one. */
-    val unanswered: Boolean = false)
+    val unanswered: Boolean = false,
+    /**
+     * Wire names of off tools this attempt asked the owner to turn on (`request_tool`, first ask only; empty unless the attempt completed).
+     * The chat shows "Turn on" / "No thanks" for the latest turn only, and only while the tool is still off and not declined.
+     */
+    val askedTools: List<String> = emptyList(),
+    /** The attempt searched or read pages from the internet, so what it asked for may have been suggested by foreign text. */
+    val readWeb: Boolean = false)
 sealed interface ChatToolProgress {
     /** A call of a known tool is running. */
     data class Tool(val id: AssistantToolId) : ChatToolProgress
     data object SUMMARY : ChatToolProgress
     data object FAILED : ChatToolProgress
 }
+/** The progress line while a call runs: the service tool `request_tool` is not in the catalog and is no failure; it shows the waiting line (null). */
+internal fun progressOnCall(name: String): ChatToolProgress? =
+    if (name == AssistantRequestTool.WIRE) null else AssistantToolId.fromWire(name)?.let { ChatToolProgress.Tool(it) } ?: ChatToolProgress.FAILED
 /** The progress line after a tool finished: nothing for success and for a decline (not a failure), the failed marker otherwise. */
 internal fun progressAfter(outcome: ToolOutcome): ChatToolProgress? =
     if (outcome == ToolOutcome.SUCCESS || outcome == ToolOutcome.DECLINED) null else ChatToolProgress.FAILED
@@ -46,6 +57,8 @@ data class ChatState(
     val confirmation: PendingConfirmation? = null,
     /** "Always" could not be saved: that call was allowed once and requests stay on. Cleared by the next Send. */
     val confirmationNotSaved: Boolean = false,
+    /** Wire names of the tools the owner declined to turn on in this conversation (saved with the history). */
+    val declinedTools: Set<String> = emptySet(),
 )
 
 /** A question to the owner is on screen: the message field is hidden and the card takes the room. Ends with an answer, Stop or a timeout. */

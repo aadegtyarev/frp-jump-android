@@ -279,7 +279,7 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 8). The base prompt is the unchanged byte prefix of the first message
+(version 9). The base prompt is the unchanged byte prefix of the first message
 of every main chat-loop request, stable within and across Sends; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
@@ -296,7 +296,9 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 8), the owner's own instructions when set, and only enabled tool schemas.
+version 9), the owner's own instructions when set, only enabled tool schemas and,
+while some tool is off, the service tool `request_tool`
+([below](#asking-for-a-tool-that-is-off)).
 The base prompt contains no profile,
 connection, enabled-tool list, date, version or language data; the same bytes
 open every main chat-loop request (summary requests open with `summary.md`).
@@ -304,10 +306,8 @@ Tool schemas follow catalog order with stable JSON; summary, history and
 the current request follow the system message. No provider-specific cache
 parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or
 with a byte order mark) or empty fails the Send as an ordinary setup problem,
-with no fallback text and no request. The base prompt also tells the model that
-when the task needs a tool that is not in the request, it names it and tells the
-owner it can be turned on in Chat › Tools (a temporary line; Р56 replaces it).
-No profiles,
+with no fallback text and no request. A tool that is not in the request is
+asked for through `request_tool`, not by a line of the base prompt. No profiles,
 connection data, files, credentials or diagnostics are automatically attached.
 Existing endpoint, redirect, retry, payload and sanitized-error protections
 remain.
@@ -621,7 +621,9 @@ tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
 image (`inspect_image`), Profile information (`profile_information`) and SSH
 command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
-only booleans, opening this screen or enabling a tool makes no request. Failed
+only booleans, opening this screen or enabling a tool by its switch makes no
+request (the chat's "Turn on" button, below, then sends the owner's fixed
+message as a new Send). Failed
 writes keep committed switches/authority and show an inline error. Tools remain
 changeable while Chat is busy. Chat's Tools action opens the same screen
 without popping the conversation. The Tools arrow and system Back return to that
@@ -641,6 +643,20 @@ Store notifications show current committed values and keep pending and error
 state. External/concurrent writes cannot be rolled back
 by a delayed acknowledgement. Same-ID pending actions are ignored without a queue;
 different IDs may save independently, preserving unrelated settings.
+
+A tool is turned on only by the owner: by its switch in Tools, or by the "Turn
+on …" button under a reply that asked for it. That button writes the same
+persisted switch, then sends the owner's fixed message. `request_tool` runs
+nothing and grants nothing by itself. "No thanks" turns nothing on and sends
+nothing. `request_tool` is a row of the tool table without a tool switch of
+its own: the separate "Offer to turn tools on" switch (below its tools, on by
+default, saved like the others) governs it. While that switch is off,
+`request_tool` is in no request (a model without tool calling then works with
+plain chat) and no "Turn on" buttons show; its hint says it is for models that
+do not support tools. Like the tool switches it is captured at Send. A
+provider error about the tools field is not turned into a special hint: the
+adapter drops error bodies by design, and a bare HTTP 400 does not tell the
+cause.
 
 Back hides Tools without cancelling the parent-owned save; reopen and recreation
 retain the parent-owned autosave and its pending/error state. Actual parent pop/clear cancels child
@@ -663,6 +679,67 @@ prior settings. Proposals unavailable in that Send's captured set return bounded
 explicit unknown-tool results without network; they do not grant authority.
 Public content is acquired only through explicitly enabled tools; completed
 conversation history remains after tools change.
+
+### Asking for a tool that is off
+
+While the assistant is on, "Offer to turn tools on" is on and at least one tool
+is off, requests carry the service tool `request_tool(name, why)`; with every
+tool on, or the offer off, it is absent. `name`
+is an enum of exactly the tools that are off now, and `why` is one short
+sentence (at most 300 characters). The off tools reach the model only by name
+and one line each inside `request_tool`'s description, never with their schemas;
+a call of an off tool by name still returns the fixed unknown-tool result with
+no network. The description is: "Ask the owner to turn on one tool that is
+currently off, when the task cannot be done without it. Give the reason in one
+short sentence. The tool stays off in this request: finish your answer and say
+what you would do with it. The owner may turn it on and continue. Tools you can
+ask for: `<name - one line>; …`." `request_tool` runs nothing, changes no
+setting, makes no network request and returns at once with a fixed text:
+
+- first ask for a tool in this attempt: `The owner sees a button to turn on
+  <tool>. It is off in this request.`;
+- a repeat ask for the same tool in the same attempt: `Already asked in this
+  request. Do not ask again.` (no second button);
+- after the owner pressed "No thanks" for that tool in this conversation:
+  `The owner declined <tool> in this conversation. Do not ask again.` (no
+  buttons);
+- an invalid call (a `name` that is not a string, is not one of the tools that
+  are off now, or is a tool that is on; a missing `why` or `name`; an extra
+  argument; a `why` that is blank, over 300 characters or has a lone
+  surrogate): `Provide name (one of the listed tools) and why (one short
+  sentence) only.` (outcome failed). In receipts a `request_tool` call is titled
+  "Request to turn on a tool".
+
+The tool stays off for the rest of that request ("Tool set captured at Send"
+is unchanged).
+
+Under the reply of the latest completed attempt that asked, Chat shows two
+buttons per asked tool: "Turn on “<tool>”" and "No thanks", one line with the
+same disclosure warning that Tools shows under that tool's switch (FULL SSH
+ACCESS for `ssh_command`) and, when that attempt called a web tool, even if the
+call failed or was unknown, the mark "In this attempt the assistant read web
+pages". "No thanks" is announced with the tool's name ("No thanks: <tool>").
+`why` is never shown with the buttons; like every call argument it stays
+visible in the call's receipt. The buttons are not shown while an attempt
+runs, while the assistant is off, when the tool is on (they also go when it is
+turned on in Tools) or declined, after a new Send, or after a history clear;
+they are not saved, they follow from the saved reply and result.
+
+- "Turn on" writes the same persisted switch as Tools (the same save path, no
+  network), and only when the switch is on sends the owner's message "Turned on
+  “<tool>”" as a new Send, so the assistant continues with the tool on. The typed
+  draft is left as it is, and a fixed message that could not start (a Send
+  runs, the history loads or a clear waits) is neither sent nor put into the
+  draft. If the switch could not be saved, the tool's save error shows near the
+  buttons, the buttons stay and nothing is sent. A changing `ssh_command` call
+  still asks for confirmation as before while the confirmation switch is on.
+- "No thanks" hides the buttons; nothing is turned on and nothing is sent. The
+  decline is saved with the conversation (it survives screen recreation and
+  restart, like the history) until the history is cleared or the tool is turned
+  on, also when it is found on after the history loads. A chat saved before
+  this feature reads as no declines; a chat with none is written exactly as
+  before. An app version before this one cannot read a chat that stores a
+  decline (as for the `declined` outcome above); this version reads one without.
 
 ### Admission before parsing
 
@@ -821,6 +898,7 @@ are described in each tool's subsection.
 | `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
+| `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
 | tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
 
 Every tool also has the kernel limits ([Limits](#limits)) and the Send's 120
@@ -1192,6 +1270,16 @@ revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
 Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the indicator and the Tools switch.
+Tool-request tests (production conversation, factory and kernel with a fake provider and a fetcher that fails when reached) cover: `request_tool`
+offered only while a tool is off with an enum of exactly the off tools and descriptions without schemas; an off tool called by name still
+unknown with no network; the three fixed answers and the invalid-call answer with no setting changed; the decline saved with the history,
+restored after a restart, cleared by a clear and by turning the tool on, and an old saved chat reading with none; "Turn on" switching exactly
+that tool and sending the fixed message once, and "No thanks" sending and switching nothing; when the buttons show (never while an attempt
+runs, with the assistant off, for a tool on or declined, after a Send or a clear); the web-reading mark. Component checks (chat runner,
+portrait, 100% and 200% font, EN/RU) cover the buttons, the warning line, the mark and the press. Mutation runs (each run, then restored)
+covered a button that turns a tool on unpressed, the wrong tool turned on, `request_tool` granting a tool (the substitute for "`request_tool` turns
+something on", which cannot be written literally: the tool holds no handle to settings, so that promise rests on this structural argument plus the
+unchanged-settings and no-network checks), and "No thanks" turning on or sending.
 Chat tests exercise the production conversation owner with controlled preparation,
 providers and cancellation, plus the real credential-store → adapter loopback
 path. Real-adapter loopback tests prove prompt cancellation (stalled response and

@@ -157,7 +157,7 @@ class AssistantProfileRefreshOwnershipTest {
                 hold.release.countDown(); c.idle()
                 assertEquals("Old information answer", c.old.state.value.turns.single().answer)
                 assertEquals(2, c.requests.size); assertEquals(4, f.enqueues.size); assertTrue(f.canceled.isEmpty())
-                assertEquals(listOf("profile_information"), c.requests.last().tools.map { it.name })
+                assertEquals(listOf("profile_information", "request_tool"), c.requests.last().tools.map { it.name })
             } finally { hold.release.countDown() }
         } }
     }

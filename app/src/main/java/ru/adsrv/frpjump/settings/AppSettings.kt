@@ -121,6 +121,8 @@ data class AppSettings(
     @SerialName("assistant_profile_information") val assistantProfileInformation: Boolean = false,
     @SerialName("assistant_ssh_command") val assistantSshCommand: Boolean = false,
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
+    /** "Offer to turn tools on": the service tool `request_tool` may be offered to the model. On by default; off for models without tool calling. */
+    @SerialName("assistant_offer_tools") val assistantOfferTools: Boolean = true,
     /** Ask before a changing assistant tool call: global value now, overrides later; absent or malformed means ask. */
     @SerialName("assistant_confirmations") val assistantConfirmations: ConfirmationPolicy = ConfirmationPolicy(),
     /** The owner's own instructions for the assistant (at most [AssistantOwnerInstructions.MAX_CHARS]); empty means none. Guidance for the model only. */
@@ -150,7 +152,9 @@ fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
 }
 
 /** Independent opt-ins; there is no model capability registry or support probe. */
-data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false, val sshCommand: Boolean = false) {
+data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false, val sshCommand: Boolean = false,
+    /** "Offer to turn tools on": whether `request_tool` is offered while some tool is off. Captured at Send with the tool switches. */
+    val offer: Boolean = true) {
     operator fun get(id: AssistantToolId): Boolean = when (id) {
         AssistantToolId.WEB_SEARCH -> search
         AssistantToolId.READ_PAGE -> readPage
@@ -166,9 +170,9 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
     }
 }
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantOfferTools)
 private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
-    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand)
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantOfferTools = tools.offer)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools(),
@@ -200,6 +204,9 @@ class SettingsStore(private val storage: TextStorage) {
 
     /** Shared persisted tool operation used by Settings and the retained Chat owner. */
     fun setAssistantTool(id: AssistantToolId, enabled: Boolean) = update { it.withAssistantTools(it.assistantTools().with(id, enabled)) }
+
+    /** The "Offer to turn tools on" switch (same autosave path as the tool switches; applies from the next Send). */
+    fun setAssistantOfferTools(on: Boolean) = update { it.copy(assistantOfferTools = on) }
 
     fun update(change: (AppSettings) -> AppSettings) {
         val version = synchronized(this) {

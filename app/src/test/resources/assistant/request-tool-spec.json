@@ -1,0 +1,13 @@
+{
+  "name": "request_tool",
+  "description": "Ask the owner to turn on one tool that is currently off, when the task cannot be done without it. Give the reason in one short sentence. The tool stays off in this request: finish your answer and say what you would do with it. The owner may turn it on and continue. Tools you can ask for: web_search - search the public web; read_page - read a public web page; inspect_image - ask the model about a public image; profile_information - find the app's profiles, devices and saved connections; ssh_command - run one command on a saved SSH connection.",
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": { "type": "string", "enum": ["web_search", "read_page", "inspect_image", "profile_information", "ssh_command"] },
+      "why": { "type": "string", "maxLength": 300 }
+    },
+    "required": ["name", "why"]
+  }
+}

@@ -110,7 +110,7 @@ class AssistantSummaryTest {
             val summaries=seen.filter { it.instructions==TestPrompts.real.summary }; val mains=seen-summaries.toSet()
             assertTrue(summaries.isNotEmpty());assertTrue(summaries.all { it.tools.isEmpty() })
             assertEquals(1,mains.size);assertEquals(TestPrompts.real.system,mains.single().instructions)
-            assertEquals(listOf("web_search"),mains.single().tools.map { it.name })
+            assertEquals(listOf("web_search", "request_tool"),mains.single().tools.map { it.name })
             assertTrue(mains.single().turns.first().user.startsWith("Earlier conversation summary"))
         } finally { chat.close();scope.cancel() }
     }

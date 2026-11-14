@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class AssistantToolCatalogTest {
     private val withDefaults = Json { encodeDefaults = true }
     /** `assistant_*` settings that are not tool switches; list a new one here so it is not mistaken for a tool. */
-    private val nonToolKeys = setOf("assistant_enabled", "assistant_confirmations", "assistant_owner_instructions")
+    private val nonToolKeys = setOf("assistant_enabled", "assistant_confirmations", "assistant_owner_instructions", "assistant_offer_tools")
     private fun enabledFields(settings: AppSettings) = withDefaults.encodeToJsonElement(settings).jsonObject
         .filterKeys { it.startsWith("assistant_") && it !in nonToolKeys }
 
