@@ -752,8 +752,11 @@ class AssistantChatScreenTest {
         }
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").performClick()
-        button("chat_history").performScrollToNode(hasText("work / work-root") and hasAnyAncestor(hasTestTag("chat_profile_information_facts")))
-        compose.onNode(hasText("work / work-root") and hasAnyAncestor(hasTestTag("chat_profile_information_facts"))).assertIsDisplayed()
+        val fact = hasText("work / work-root") and hasAnyAncestor(hasTestTag("chat_profile_information_facts"))
+        button("chat_history").performScrollToNode(fact)
+        // At 200% in landscape the facts block is several times taller than the compact history; performScrollToNode stops short
+        // of a line deep inside one tall item, performScrollTo on the line itself brings it in.
+        compose.onNode(fact).performScrollTo().assertIsDisplayed()
         input().performTextInput("Продолжай с рабочим root-подключением")
         sendAndAwait()
         compose.runOnIdle {
