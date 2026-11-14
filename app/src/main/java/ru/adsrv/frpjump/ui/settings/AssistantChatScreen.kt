@@ -169,6 +169,8 @@ internal fun AssistantChatContent(
                 itemsIndexed(state.turns) { index, turn ->
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ChatUserMessage(turn.user)
+                        // The calls happened before the answer, so their block comes first.
+                        ChatToolReceipts(turn.receipts, turn.information)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
                             if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
@@ -176,7 +178,6 @@ internal fun AssistantChatContent(
                             SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
                             if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
                             else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
-                            ChatProfileInformationResults(turn.information)
                             ChatSources(turn.sources)
                             ChatToolDeclines(turn.receipts)
                             // Only under the latest reply; see requestedTools for when it shows.
@@ -185,33 +186,34 @@ internal fun AssistantChatContent(
                                 val message = stringResource(R.string.chat_request_turned_on_message, title)
                                 ChatToolRequest(id, turn.readWeb, failed = id.wire in toolsFailed, onTurnOn = { onTurnOn(id, message) }, onDecline = { conversation.declineTool(id) })
                             }
-                            ChatToolReceipts(turn.receipts)
                         }
                     }
                 }
                 state.pendingText?.let { text -> item {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         ChatUserMessage(text)
-                        Text(stringResource(if (state.stopping) R.string.chat_stopping else if (state.confirmation != null) R.string.confirm_waiting else when (val progress = state.toolProgress) {
+                        val progress = state.toolProgress
+                        val waiting = state.confirmation != null
+                        ChatToolReceipts(state.receipts, state.information, running = true, animate = !state.stopping && !waiting)
+                        // A running call shows as its own line with the progress mark; the status line then says nothing more.
+                        val callShown = progress is ChatToolProgress.Tool && !state.stopping && !waiting && state.receipts.any { it.result == null }
+                        if (!callShown) ChatRunStatus(if (state.stopping) R.string.chat_stopping else if (waiting) R.string.confirm_waiting else when (progress) {
                             is ChatToolProgress.Tool -> progress.id.progress()
                             ChatToolProgress.SUMMARY -> R.string.chat_summary_progress
                             ChatToolProgress.FAILED -> if (state.toolFailures.isEmpty()) R.string.tool_failed else R.string.chat_waiting
                             null -> R.string.chat_waiting
-                        }), color = AppTheme.colors.muted)
+                        }, spinning = !waiting)
                         ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
-                        ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
                         ChatToolDeclines(state.receipts)
-                        ChatToolReceipts(state.receipts)
                     }
                 } }
                 if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.receipts.isNotEmpty())) item {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChatToolReceipts(state.receipts, state.information, openFacts = state.problem != null)
                         ChatToolFailures(state.toolFailures, Modifier.testTag("chat_current_tool_failure"))
-                        ChatProfileInformationResults(state.information, state.problem != null)
                         ChatSources(state.currentSources)
                         ChatToolDeclines(state.receipts)
-                        ChatToolReceipts(state.receipts)
                     }
                 }
             } }
@@ -354,46 +356,6 @@ private fun ChatToolDeclines(receipts: List<ChatToolReceipt>) {
                 stringResource(toolTitle(receipt.call.name))), color = AppTheme.colors.muted)
         }
     }
-}
-
-@Composable
-internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>) {
-    if (receipts.isEmpty()) return
-    var expanded by remember { mutableStateOf(false) }
-    TextButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("chat_tool_receipts")) {
-        Text(stringResource(R.string.chat_history_tool_results))
-    }
-    if (expanded) groupReceipts(receipts).forEachIndexed { index, group ->
-        val tool = AssistantToolId.fromWire(group.tool)
-        val title = tool?.let { stringResource(it.title()) } ?: if (group.tool == ru.adsrv.frpjump.assistant.AssistantRequestTool.WIRE) stringResource(R.string.tool_request_title) else receiptText(group.tool, RECEIPT_DETAIL_CHARS)
-        if (group.items.size == 1) {
-            val receipt = group.items.single()
-            Column(Modifier.testTag("chat_tool_receipt_$index").semantics(mergeDescendants = true) {}) {
-                Text(receiptDetail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelLarge)
-                ChatToolReceiptBody(receipt)
-            }
-        } else {
-            var open by remember { mutableStateOf(false) }
-            val count = group.items.size
-            val description = pluralStringResource(R.plurals.chat_receipt_group_description, count, title, count)
-            Row(Modifier.fillMaxWidth().testTag("chat_tool_group_$index").clickable(role = Role.Button) { open = !open }
-                .semantics(mergeDescendants = true) { contentDescription = description }.padding(vertical = 8.dp)) {
-                Text(stringResource(R.string.chat_receipt_group, title, count), style = MaterialTheme.typography.labelLarge)
-            }
-            if (open) group.items.forEachIndexed { n, receipt ->
-                Column(Modifier.testTag("chat_tool_group_${index}_item_$n").semantics(mergeDescendants = true) {}) {
-                    Text(receiptDetail(receipt.call) ?: group.tool, style = MaterialTheme.typography.labelLarge)
-                    ChatToolReceiptBody(receipt)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChatToolReceiptBody(receipt: ChatToolReceipt) {
-    val outcome = receipt.result?.outcome
-    SelectionContainer { Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(if (receipt.result.isNoAnswer()) R.string.chat_receipt_no_answer else R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}") }
 }
 
 @Composable

