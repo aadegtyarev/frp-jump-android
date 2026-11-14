@@ -2,13 +2,10 @@ package ru.adsrv.frpjump.ui.settings
 
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,7 +16,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -172,38 +168,4 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 private fun Hint(label: String, text: String, tag: String) {
     Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$label: ") }; append(text) },
         style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag(tag))
-}
-
-/**
- * The compact mark shown while confirmation requests are off. Tap or long press explains it and offers turning requests back on;
- * there is no banner or strip. Sits between the title and the Tools action of the chat top bar. "Turn on" keeps the dialog open
- * until the setting is saved (the mark then disappears); if saving fails, [turnOnFailed] shows the error next to the button.
- */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-internal fun ConfirmationsOffIndicator(onTurnOn: () -> Unit, onTools: (() -> Unit)?, turnOnFailed: Boolean = false, modifier: Modifier = Modifier) {
-    var open by remember { mutableStateOf(false) }
-    val description = stringResource(R.string.confirmations_off_description)
-    val details = stringResource(R.string.confirmations_details)
-    Box(modifier.size(48.dp).combinedClickable(role = Role.Button, onClickLabel = details, onClick = { open = true }, onLongClickLabel = details, onLongClick = { open = true })
-        .semantics { contentDescription = description }.testTag("chat_confirmations_off"), contentAlignment = Alignment.Center) {
-        Icon(Icons.Filled.Warning, contentDescription = null, tint = AppTheme.colors.error)
-    }
-    if (open) AppAlertDialog(
-        onDismissRequest = { open = false },
-        text = {
-            // The error comes first (it is what just changed) and the text scrolls, so neither is cut off in a short window at large font.
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (turnOnFailed) Text(stringResource(R.string.confirmations_turn_on_failed), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirmations_turn_on_failed"))
-                Text(stringResource(R.string.confirmations_off_explanation), modifier = Modifier.testTag("chat_confirmations_off_text"))
-            }
-        },
-        confirmButton = { TextButton(onClick = onTurnOn, modifier = Modifier.testTag("chat_confirmations_turn_on")) { Text(stringResource(R.string.confirmations_turn_on)) } },
-        dismissButton = {
-            Row {
-                if (onTools != null) TextButton(onClick = { open = false; onTools() }, modifier = Modifier.testTag("chat_confirmations_tools")) { Text(stringResource(R.string.assistant_tools)) }
-                TextButton(onClick = { open = false }, modifier = Modifier.testTag("chat_confirmations_close")) { Text(stringResource(R.string.confirmations_close)) }
-            }
-        },
-    )
 }

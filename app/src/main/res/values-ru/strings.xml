@@ -1324,18 +1324,14 @@
     <string name="confirm_not_saved">Не удалось сохранить настройку. Этот вызов разрешён один раз.</string>
     <string name="chat_receipt_declined">Отклонено</string>
     <string name="tool_failure_declined">%1$s: отклонено</string>
+    <string name="chat_tools_confirmations_on">Инструменты. Подтверждения включены</string>
+    <string name="chat_tools_confirmations_off">Инструменты. Подтверждения выключены</string>
     <string name="confirmations_setting">Спрашивать перед изменяющими командами</string>
     <string name="confirmations_setting_hint">Спрашивает, прежде чем инструмент выполнит то, что может изменить систему. Выключено: вопросов нигде в приложении нет.</string>
-    <string name="confirmations_off_description">Подтверждения выключены</string>
-    <string name="confirmations_off_explanation">Подтверждения выключены: изменяющие команды выполняются без вопроса.</string>
-    <string name="confirmations_turn_on">Включить</string>
-    <string name="confirmations_close">Закрыть</string>
     <string name="confirm_lines">Строк: %1$d</string>
     <string name="confirm_more">▼ Прокрутите вниз</string>
     <string name="tool_failure_no_answer">%1$s: нет ответа, отклонено</string>
     <string name="chat_receipt_no_answer">Нет ответа, отклонено</string>
-    <string name="confirmations_details">Подробнее</string>
-    <string name="confirmations_turn_on_failed">Не удалось сохранить настройку. Повторите.</string>
     <!-- Терминал: вставка изображения (docs/contract.md, консоль SSH) -->
     <string name="terminal_image_insert">Вставить изображение</string>
     <string name="terminal_image_clipboard_empty_offer">буфер обмена пуст; долгое нажатие вставляет изображение</string>

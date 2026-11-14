@@ -54,7 +54,10 @@ import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.DarkPalette
 
 /** Presentation-only policy: no links, image loads, HTML execution or code unescaping. */
 internal val assistantMarkdownAnnotator: MarkdownAnnotator = assistantAnnotator(Color.Unspecified)
@@ -65,7 +68,9 @@ internal fun assistantAnnotator(codeBackground: Color): MarkdownAnnotator = mark
             val first = node.children.firstOrNull()
             val last = node.children.lastOrNull()
             if (first != null && last != null && first !== last) {
-                pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground))
+                // Inline code (the mockups' `code`): monospace a little smaller than the body, no letter spacing of its own, a quiet
+                // background and no accent colour (the text keeps the answer's colour). A span background is plain: no rounded corners.
+                pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.86.em, letterSpacing = 0.sp, background = codeBackground))
                 append(content.substring(first.endOffset, last.startOffset))
                 pop()
             } else append(content.substring(node.startOffset, node.endOffset))
@@ -273,7 +278,9 @@ internal fun AssistantAnswerMarkdown(answer: String, state: State) {
     val tile = AppTheme.colors.tile
     val typo = MaterialTheme.typography
     val mono = typo.bodyLarge.copy(fontFamily = FontFamily.Monospace, color = ink)
-    val annotator = remember(tile) { assistantAnnotator(tile) }
+    // Dark: the card colour over the chat's ground; light: the tile, a step darker than the ground (the white card would hardly show).
+    val inlineCodeBackground = if (AppTheme.colors.palette === DarkPalette) AppTheme.colors.card else tile
+    val annotator = remember(inlineCodeBackground) { assistantAnnotator(inlineCodeBackground) }
     lateinit var components: MarkdownComponents
     components = markdownComponents(
         codeFence = { AssistantCode(assistantFenceText(it.content, it.node), mono) },
@@ -294,7 +301,7 @@ internal fun AssistantAnswerMarkdown(answer: String, state: State) {
     Markdown(
         state = state,
         modifier = Modifier.fillMaxWidth().testTag("assistant_markdown_rendered"),
-        colors = markdownColor(text = ink, codeBackground = tile, inlineCodeBackground = tile, dividerColor = AppTheme.colors.outline),
+        colors = markdownColor(text = ink, codeBackground = tile, inlineCodeBackground = inlineCodeBackground, dividerColor = AppTheme.colors.outline),
         typography = markdownTypography(
             h1 = typo.titleLarge, h2 = typo.titleMedium, h3 = typo.titleSmall, h4 = bold, h5 = bold, h6 = bold,
             code = mono, inlineCode = mono,

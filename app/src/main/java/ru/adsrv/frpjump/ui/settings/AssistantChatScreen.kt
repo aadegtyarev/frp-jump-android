@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.ui.settings
 
 import ru.adsrv.frpjump.ui.AppDropdownMenu
+import ru.adsrv.frpjump.ui.ShieldCheckGlyph
+import ru.adsrv.frpjump.ui.ShieldOffGlyph
 import ru.adsrv.frpjump.assistant.chat.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -58,8 +60,7 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
         AssistantToolsRoute(vm.tools, onBack = { toolsOpen = false })
     } else {
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
-            confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF, onConfirmationsOn = vm::turnConfirmationsOn,
-            confirmationsOnFailed = CONFIRMATIONS_KEY in toolsState.failed,
+            confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF,
             tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed)
     }
 }
@@ -69,8 +70,8 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
 internal fun AssistantChatContent(
     conversation: AssistantConversation, enabled: Boolean, provider: AssistantProviderSnapshot,
     onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null, onClear: (() -> Unit)? = null,
-    /** While true the top bar shows the compact "confirmations are off" mark; [onConfirmationsOn] turns requests back on. */
-    confirmationsOff: Boolean = false, onConfirmationsOn: (() -> Unit)? = null, confirmationsOnFailed: Boolean = false,
+    /** Picks the shield in the top bar: struck through and muted while confirmation requests are off, a plain check mark otherwise. */
+    confirmationsOff: Boolean = false,
     /** The committed tool switches: "Turn on" is shown only for a tool that is off right now. */
     tools: ru.adsrv.frpjump.settings.AssistantTools = ru.adsrv.frpjump.settings.AssistantTools(),
     /** The "Turn on" button: switches the tool on (the Tools path), then sends the fixed message (the second argument). Null: no button. */
@@ -101,23 +102,9 @@ internal fun AssistantChatContent(
         val compact = maxHeight < 400.dp
         val noticeMax = if (compact) Dp.Infinity else maxHeight * 0.15f
         val cardInView = remember { BringIntoViewRequester() }
-        // Where the "confirmations are off" mark goes is decided by measuring, not by locale or font scale: in the top bar when the whole
-        // title still fits next to it, else beside the Send/Stop button (same tap and long press explanation). The widths come from the
-        // text measurer, so the decision does not depend on where the mark currently is (no flip-flop).
-        val measurer = rememberTextMeasurer()
-        val density = LocalDensity.current
         val titleText = stringResource(R.string.chat_title)
-        val toolsText = stringResource(R.string.assistant_tools)
         val titleStyle = MaterialTheme.typography.titleLarge
-        val toolsStyle = MaterialTheme.typography.labelLarge
-        val markInTopBar = remember(maxWidth, titleText, toolsText, titleStyle, toolsStyle, density, onTools != null, onClear != null) {
-            with(density) {
-                fun width(text: String, style: androidx.compose.ui.text.TextStyle) = measurer.measure(androidx.compose.ui.text.AnnotatedString(text), style).size.width.toDp()
-                val used = 48.dp + width(titleText, titleStyle) + (if (onTools != null) width(toolsText, toolsStyle) + 24.dp else 0.dp) + (if (onClear != null) 48.dp else 0.dp)
-                used + 48.dp + 8.dp <= maxWidth - 32.dp
-            }
-        }
-        val mark: @Composable () -> Unit = { if (confirmationsOff && onConfirmationsOn != null) ConfirmationsOffIndicator(onConfirmationsOn, onTools, confirmationsOnFailed) }
+        val density = LocalDensity.current
         // When a question appears in the compact (scrolling) layout, show it from its top: tool, target and command first.
         LaunchedEffect(state.confirmation?.id) { if (compact && state.confirmation != null) cardInView.bringIntoView() }
         Column(Modifier.fillMaxSize().then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp),
@@ -127,8 +114,14 @@ internal fun AssistantChatContent(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                 }
                 Text(titleText, style = titleStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).testTag("chat_title"))
-                if (markInTopBar) mark()
-                onTools?.let { action -> TextButton(onClick = action, modifier = Modifier.testTag("chat_tools")) { Text(stringResource(R.string.assistant_tools)) } }
+                // One icon for the Tools screen; its look says whether confirmation requests are on (no colour alarm: off is the usual state).
+                onTools?.let { action ->
+                    IconButton(onClick = action, modifier = Modifier.testTag("chat_tools")) {
+                        Icon(if (confirmationsOff) ShieldOffGlyph else ShieldCheckGlyph,
+                            stringResource(if (confirmationsOff) R.string.chat_tools_confirmations_off else R.string.chat_tools_confirmations_on),
+                            tint = if (confirmationsOff) AppTheme.colors.muted else AppTheme.colors.ink)
+                    }
+                }
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
                     Box {
@@ -259,7 +252,6 @@ internal fun AssistantChatContent(
                 label = { Text(stringResource(R.string.chat_message)) }, enabled = state.fieldEnabled,
                 minLines = 1, maxLines = if (density.fontScale > 1.3f) 2 else 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!markInTopBar) mark()
                 if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
                     modifier = Modifier.weight(1f).testTag("chat_stop")) {
                     Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))

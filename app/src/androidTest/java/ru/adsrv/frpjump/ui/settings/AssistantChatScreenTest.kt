@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.*
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.getOrNull
@@ -1151,7 +1152,7 @@ class AssistantChatScreenTest {
         val s = owner?.state?.value
         fun b(tag: String) = runCatching { bounds(tag).toString() }.getOrDefault("none")
         return "busy=${s?.busy} stopping=${s?.stopping} draft='${s?.draft}' pending=${s?.pendingText} problem=${s?.problem} requests=${requests.size} " +
-            "root=${runCatching { rootBounds() }.getOrNull()} send=${b("chat_send")} stop=${b("chat_stop")} input=${b("chat_input")} title=${b("chat_title")} mark=${b("chat_confirmations_off")}"
+            "root=${runCatching { rootBounds() }.getOrNull()} send=${b("chat_send")} stop=${b("chat_stop")} input=${b("chat_input")} title=${b("chat_title")} tools=${b("chat_tools")}"
     }
     private fun landscape() = compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     /** The node is displayed; in the compact landscape layout the screen column is scrolled to it first. */
@@ -1193,6 +1194,9 @@ class AssistantChatScreenTest {
     }
     /** The short-command case: tool, target, the command and the four answers are on screen together. */
     private fun assertCommandAndAllowVisible() = assertCommandStartAndAnswersVisible(1)
+    /** The chat top bar's shield (the Tools button): its description says whether confirmations are on. */
+    private fun shield(on: Boolean) = compose.onNode(hasTestTag("chat_tools") and hasContentDescription(localizedText(
+        if (on) ru.adsrv.frpjump.R.string.chat_tools_confirmations_on else ru.adsrv.frpjump.R.string.chat_tools_confirmations_off)))
     private fun confirmationsToggle() = compose.onNode(hasAnyAncestor(hasTestTag("tool_confirmations")) and isToggleable()).performScrollTo().assertIsDisplayed()
     private fun awaitConfirmations(mode: ru.adsrv.frpjump.settings.ConfirmationMode) = compose.waitUntil(WAIT_MS) { settings.assistantConfirmations.global == mode }
 
@@ -1247,7 +1251,7 @@ class AssistantChatScreenTest {
         }
     }
 
-    @Test fun alwaysAsksOnceMoreThenTurnsConfirmationsOffShowsTheIndicatorAndItTurnsThemBackOn() {
+    @Test fun alwaysAsksOnceMoreThenTurnsConfirmationsOffAndTheShieldShowsIt() {
         startConfirmation()
         val path = listOf(ru.adsrv.frpjump.R.string.settings, ru.adsrv.frpjump.R.string.assistant_title, ru.adsrv.frpjump.R.string.assistant_tools).joinToString(" › ") { localizedText(it) }
         // Always does not act at once: it asks for a second confirmation that says what is turned off and where to turn it back on.
@@ -1267,38 +1271,38 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_always_turn_off").performClick()
         awaitIdle()
         awaitConfirmations(ConfirmationMode.OFF)
-        compose.onNodeWithTag("chat_confirmations_off").assertIsDisplayed()
-        compose.onNodeWithTag("chat_tools").assertIsDisplayed(); compose.onNodeWithTag("chat_back").assertIsDisplayed()
+        shield(on = false).assertIsDisplayed(); compose.onNodeWithTag("chat_back").assertIsDisplayed()
         shot("indicator")
         // A later changing call no longer asks.
         input().performTextInput("Again"); sendAndAwait()
         compose.runOnIdle { assertNull(owner!!.state.value.confirmation); assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }
-        button("chat_confirmations_off").performClick()
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off_text").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("chat_confirmations_off_text").assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirmations_off_explanation))
-        shot("indicator-dialog", dialog = true)
-        compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
+        // The shield opens Tools at once (no dialog); turning the setting back on is the Tools switch.
+        button("chat_tools").performClick()
+        confirmationsToggle().assertIsOff().performClick()
         awaitConfirmations(ConfirmationMode.ASK)
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
     }
 
-    @Test fun longPressOnTheIndicatorExplainsAndClosesWithoutChange() {
-        settings.setAssistantConfirmations(ConfirmationMode.OFF)
+    @Test fun theShieldSaysWhetherConfirmationsAreOnOffAndOpensToolsWithTheSwitchFirst() {
         install()
-        button("chat_confirmations_off").assertIsDisplayed().performTouchInput { longClick() }
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off_text").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("chat_confirmations_off_text").assertIsDisplayed()
-        compose.onNodeWithTag("chat_confirmations_close").performClick()
-        compose.onNodeWithTag("chat_confirmations_off_text").assertDoesNotExist()
-        assertEquals(ConfirmationMode.OFF, settings.assistantConfirmations.global)
-        // The indicator must not push the other top bar actions out.
-        compose.onNodeWithTag("chat_tools").assertIsDisplayed(); compose.onNodeWithTag("chat_back").assertIsDisplayed()
+        shield(on = true).assertIsDisplayed()
+        shield(on = false).assertDoesNotExist()
+        compose.runOnIdle { settings.setAssistantConfirmations(ConfirmationMode.OFF) }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag("chat_tools") and hasContentDescription(localizedText(ru.adsrv.frpjump.R.string.chat_tools_confirmations_off))).fetchSemanticsNodes().isNotEmpty() }
+        // Neighbours are not pushed out; nothing in the bar is a dialog or a text button any more.
+        compose.onNodeWithTag("chat_back").assertIsDisplayed()
         shot("indicator-idle")
+        button("chat_tools").performClick()
+        // The confirmations switch is the first item on Tools, and still off.
+        confirmationsToggle().assertIsOff()
+        val toggleTop = compose.onNode(hasAnyAncestor(hasTestTag("tool_confirmations")) and isToggleable()).fetchSemanticsNode().positionInRoot.y
+        val otherTop = compose.onNodeWithTag("tool_${AssistantToolId.entries.first().wire}").fetchSemanticsNode().positionInRoot.y
+        assertTrue("the confirmations switch is above the tool switches", toggleTop < otherTop)
+        assertEquals(ConfirmationMode.OFF, settings.assistantConfirmations.global)
     }
 
     @Test fun toolsScreenHasTheConfirmationSwitchThatAutosavesAndDrivesTheIndicator() {
         install()
-        compose.onNodeWithTag("chat_confirmations_off").assertDoesNotExist()
+        shield(on = true).assertIsDisplayed()
         button("chat_tools").performClick()
         confirmationsToggle().assertIsOn()
         shot("tools-switch-on")
@@ -1308,7 +1312,7 @@ class AssistantChatScreenTest {
         confirmationsToggle().assertIsOff()
         shot("tools-switch-off")
         compose.onNodeWithTag("tools_back").performScrollTo().performClick()
-        compose.onNodeWithTag("chat_confirmations_off").assertIsDisplayed()
+        shield(on = false).assertIsDisplayed()
         button("chat_tools").performClick()
         confirmationsToggle().performClick(); awaitConfirmations(ConfirmationMode.ASK)
     }
@@ -1398,17 +1402,17 @@ class AssistantChatScreenTest {
         button("chat_confirm_decline").performClick(); awaitIdle()
     }
 
-    @Test fun titleIsNeverTruncatedAndTheOffMarkIsShownWhereItFits() {
+    @Test fun titleIsNeverTruncatedAndTheShieldFitsBesideIt() {
         settings.setAssistantConfirmations(ConfirmationMode.OFF)
         install()
         val layout = layoutOf("chat_title")
         assertFalse("the title is not cut off: ${layout.layoutInput.text.text}", layout.hasVisualOverflow)
         assertFalse(layout.isLineEllipsized(0)); assertEquals(1, layout.lineCount)
-        button("chat_confirmations_off").assertIsDisplayed()
-        // Neighbours are still there and not covered by the mark.
-        button("chat_back").assertIsDisplayed(); button("chat_tools").assertIsDisplayed()
-        val mark = bounds("chat_confirmations_off")
-        for (tag in listOf("chat_back", "chat_tools", "chat_title")) {
+        shield(on = false).assertIsDisplayed()
+        // Neighbours are still there and not covered by the shield.
+        button("chat_back").assertIsDisplayed()
+        val mark = bounds("chat_tools")
+        for (tag in listOf("chat_back", "chat_title")) {
             val b = bounds(tag)
             assertTrue("$tag does not overlap the mark: $b vs $mark", b.right <= mark.left + 1f || b.left >= mark.right - 1f || b.bottom <= mark.top + 1f || b.top >= mark.bottom - 1f)
         }
@@ -1448,20 +1452,18 @@ class AssistantChatScreenTest {
         button("chat_stop").performClick(); awaitIdle()
     }
 
-    @Test fun turnOnFromTheMarkShowsAFailedSaveInTheDialogAndSucceedsOnRetry() {
+    @Test fun turnOnFromToolsShowsAFailedSaveUnderTheSwitchAndSucceedsOnRetry() {
         settings.setAssistantConfirmations(ConfirmationMode.OFF)
         install()
-        button("chat_confirmations_off").performClick()
+        button("chat_tools").performClick()
         settingsFile.failWrites = true
-        compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_turn_on_failed").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("chat_confirmations_turn_on_failed").assertIsDisplayed()
+        confirmationsToggle().performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasText(localizedText(ru.adsrv.frpjump.R.string.assistant_tool_save_failed))).fetchSemanticsNodes().isNotEmpty() }
         compose.runOnIdle { assertEquals(ConfirmationMode.OFF, settings.assistantConfirmations.global) }
-        shot("turn-on-failed", dialog = true)
+        shot("turn-on-failed")
         settingsFile.failWrites = false
-        compose.onNodeWithTag("chat_confirmations_turn_on").performClick()
+        confirmationsToggle().performClick()
         awaitConfirmations(ConfirmationMode.ASK)
-        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("chat_confirmations_off").fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun cardShowsTheRealProfileDeviceAndConnectionNamesAndForSessionSkipsTheSameTargetNextTime() {

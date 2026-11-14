@@ -503,3 +503,20 @@ val ChatGlyph: ImageVector = glyph("Chat") {
     arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 5f)
     close()
 }
+
+/** Lucide `shield-check` 1.72.0 (ISC, see licenses/Lucide.txt): the chat's "confirmations are on" mark. */
+val ShieldCheckGlyph: ImageVector = pathGlyph(
+    "ShieldCheck",
+    "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" +
+        "M9 12l2 2 4-4",
+    width = 2f,
+)
+
+/** Lucide `shield-off` 1.72.0 (ISC, see licenses/Lucide.txt): the chat's "confirmations are off" mark, struck through. */
+val ShieldOffGlyph: ImageVector = pathGlyph(
+    "ShieldOff",
+    "M2 2l20 20" +
+        "M5 5a1 1 0 0 0-1 1v7c0 5 3.5 7.5 7.67 8.94a1 1 0 0 0 .67.01c2.35-.82 4.48-1.97 5.9-3.71" +
+        "M9.309 3.652A12.252 12.252 0 0 0 11.24 2.28a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1v7a9.784 9.784 0 0 1-.08 1.264",
+    width = 2f,
+)

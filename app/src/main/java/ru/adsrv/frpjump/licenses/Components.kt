@@ -54,6 +54,7 @@ fun licenseFor(key: String, license: LicenseEntry): ComponentLicense? {
         id == "GPL-2.0-with-Classpath-Exception" -> ComponentLicense("GNU GPL 2 with Classpath Exception", "GPL 2 + CE", "licenses/GPL-2.0-with-Classpath-Exception.txt")
         id == "Desugar-Additional-License-Info" -> ComponentLicense("OpenJDK licensing information", "Licensing info", "licenses/desugar-ADDITIONAL_LICENSE_INFO.txt")
         id == "Desugar-Assembly-Exception" -> ComponentLicense("OpenJDK Assembly Exception", "Assembly exception", "licenses/desugar-ASSEMBLY_EXCEPTION.txt")
+        key == "Lucide-ISC" -> ComponentLicense("ISC License (Lucide) and MIT License (Feather)", "ISC (Lucide)", "licenses/Lucide.txt")
         key == "jsoup-MIT" -> ComponentLicense("MIT License (jsoup copyright)", "MIT (jsoup)", "licenses/jsoup-MIT.txt")
         id == "MIT" -> ComponentLicense("MIT License", "MIT", "licenses/MIT.txt")
         id == "MIT-0" -> ComponentLicense("MIT No Attribution", "MIT-0", "licenses/MIT-0.txt")
