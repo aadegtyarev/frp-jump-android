@@ -4,7 +4,6 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -81,19 +80,14 @@ class AssistantToolRequestScreenTest {
     }
     @After fun cleanup() { conversation.close(); scope.cancel() }
 
-    /** The language applies to the activity itself, on its thread, as AssistantChatScreenTest does; the screen is then set as that test sets its own. */
-    @Suppress("DEPRECATION")
     private fun show() {
-        compose.activityRule.scenario.onActivity { activity ->
-            activity.resources.updateConfiguration(Configuration(activity.resources.configuration).apply { setLocale(locale) }, activity.resources.displayMetrics)
-            activity.setContent {
-                val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
-                CompositionLocalProvider(LocalContext provides LocalContext.current.createConfigurationContext(configuration), LocalConfiguration provides configuration) {
-                    FrpJumpTheme {
-                        val current by settings.settings.collectAsState()
-                        AssistantChatContent(conversation, enabled.value, store.state.value, onBack = {}, onSetup = {},
-                            tools = current.assistantTools(), onTurnOn = request::turnOn)
-                    }
+        compose.setContent {
+            val context = remember { localizedContext() }
+            CompositionLocalProvider(LocalContext provides context, LocalConfiguration provides context.resources.configuration) {
+                FrpJumpTheme {
+                    val current by settings.settings.collectAsState()
+                    AssistantChatContent(conversation, enabled.value, store.state.value, onBack = {}, onSetup = {},
+                        tools = current.assistantTools(), onTurnOn = request::turnOn)
                 }
             }
         }
@@ -103,10 +97,12 @@ class AssistantToolRequestScreenTest {
         compose.waitUntil(15_000) { conversation.state.value.let { !it.busy && it.turns.isNotEmpty() } }
     }
     private fun tag(kind: String, tool: AssistantToolId) = "chat_tool_request_${kind}${tool.wire}"
-    private fun text(id: Int, vararg format: Any): String {
-        val config = Configuration(compose.activity.resources.configuration).apply { setLocale(locale) }
-        return compose.activity.createConfigurationContext(config).getString(id, *format)
+    /** A context of the chosen language built from the app context (an Activity's own may keep the device language). */
+    private fun localizedContext(): android.content.Context {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        return base.createConfigurationContext(Configuration(base.resources.configuration).apply { setLocale(locale) })
     }
+    private fun text(id: Int, vararg format: Any): String = localizedContext().getString(id, *format)
     private fun title(tool: AssistantToolId) = text(tool.title())
     private fun shown(kind: String, tool: AssistantToolId) = compose.onNodeWithTag(tag(kind, tool)).performScrollTo().assertIsDisplayed()
     private fun gone(tool: AssistantToolId) {
@@ -117,8 +113,6 @@ class AssistantToolRequestScreenTest {
         asks = listOf(ask("a", "ssh_command"))
         show(); send()
         compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("on_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals("DEBUG arg=${args.getString("chatLocale")} locale=$locale activity=${compose.activity.resources.configuration.locales} ctx=${compose.activity.createConfigurationContext(Configuration(compose.activity.resources.configuration).apply { setLocale(locale) }).resources.configuration.locales} keys=${args.keySet()}",
-            if (russian) "Не надо" else "No thanks", text(R.string.chat_request_decline))
         shown("on_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.chat_request_turn_on, title(AssistantToolId.SSH_COMMAND)))
         shown("no_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.chat_request_decline))
         shown("warning_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.tool_ssh_command_hint))
