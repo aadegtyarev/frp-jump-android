@@ -1290,6 +1290,10 @@
     <string name="chat_context_changed">Провайдер или модель изменены. Переписка сохранена; новые сообщения начнут новый контекст модели.</string>
     <string name="chat_interrupted">Предыдущая попытка не завершена. Полученные результаты сохранены; исход остальных действий может быть неизвестен.</string>
     <string name="chat_unanswered">Вопрос остался без ответа, помощник остановился. Больше ничего не выполнялось.</string>
+    <string name="chat_request_turn_on">Включить „%1$s“</string>
+    <string name="chat_request_decline">Не надо</string>
+    <string name="chat_request_web">В этой попытке помощник читал страницы из интернета</string>
+    <string name="chat_request_turned_on_message">Включил „%1$s“</string>
     <string name="assistant_summary_percent">Суммаризация при % заполнения окна</string>
     <string name="assistant_summary_hint">От 1 до 100%, по умолчанию 80. Включает резерв ответа. Делает дополнительный запрос модели.</string>
     <string name="assistant_summary_model">Модель для сводки (необязательно)</string>

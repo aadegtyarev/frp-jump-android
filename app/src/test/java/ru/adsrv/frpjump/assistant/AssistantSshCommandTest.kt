@@ -428,7 +428,7 @@ class AssistantSshCommandTest {
         Fixture().use { f -> f.ready(); Chat(f).use { c ->
             c.send(); c.idle()
             assertEquals(ToolOutcome.UNKNOWN_TOOL, c.requests.last().turns.last().exchanges.single().results.single().outcome)
-            assertEquals(0, f.factories.get()); assertTrue(c.requests.first().tools.isEmpty())
+            assertEquals(0, f.factories.get()); assertEquals(listOf("request_tool"), c.requests.first().tools.map { it.name })
             f.client.beforeAuth = { assertFalse(Thread.holdsLock(c.settings.assistantChat.gate)) }
             c.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true); assertEquals(0, f.factories.get())
             c.heldReply = CompletableDeferred(); c.send()
@@ -438,7 +438,7 @@ class AssistantSshCommandTest {
             assertEquals(1, f.factories.get())
             assertEquals(ToolOutcome.SUCCESS, c.requests.last().turns.last().exchanges.single().results.single().outcome)
             assertEquals(2, c.chat.state.value.turns.size)
-            c.send(); c.idle(); assertTrue(c.requests.last().tools.isEmpty()); assertEquals(1, f.factories.get())
+            c.send(); c.idle(); assertEquals(listOf("request_tool"), c.requests.last().tools.map { it.name }); assertEquals(1, f.factories.get())
         } }
     }
     @Test fun `Chat guard revokes actual SSH admission before any worker starts`() = runBlocking {

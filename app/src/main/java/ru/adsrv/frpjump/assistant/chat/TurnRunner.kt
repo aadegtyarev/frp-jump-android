@@ -63,7 +63,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
-            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource)
+            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
@@ -209,7 +209,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     private fun finish(problem: ChatProblem?, category: String = "finish-error", status: Int? = null) {
         val value = own.guarded(owner, category) {
-            document = document.finished(problem, status, archive); persist()
+            document = document.finished(problem, status, archive, clearDraft = !a.fixedText); persist()
             owner.replied = problem == null
             document
         } ?: return

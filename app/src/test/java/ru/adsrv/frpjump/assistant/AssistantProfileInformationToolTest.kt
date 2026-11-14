@@ -50,7 +50,7 @@ class AssistantProfileInformationToolTest {
             }).use { c ->
                 assertEquals(0, f.deviceRequests.get())
                 c.send() // Disabled proposal follows ordinary unknown-tool path.
-                assertTrue(requests.first().tools.isEmpty())
+                assertEquals(listOf("request_tool"), requests.first().tools.map { it.name })
                 assertEquals(ToolOutcome.UNKNOWN_TOOL, requests.last().turns.last().exchanges.single().results.single().outcome)
                 assertEquals(0, f.deviceRequests.get())
                 c.settings.setAssistantTool(AssistantToolId.PROFILE_INFORMATION, true)
@@ -61,13 +61,13 @@ class AssistantProfileInformationToolTest {
                 held!!.complete(Unit); c.idle(); held = null
                 assertEquals(2, f.deviceRequests.get()); assertEquals(2, f.versionRequests.get())
                 val withResult = requests.last()
-                assertEquals(listOf("profile_information"), withResult.tools.map { it.name })
+                assertEquals(listOf("profile_information", "request_tool"), withResult.tools.map { it.name })
                 val output = withResult.turns.last().exchanges.single().results.single()
                 assertEquals(ToolOutcome.SUCCESS, output.outcome)
                 assertTrue(output.text.contains("no-connections")); assertTrue(output.text.contains("Work")); assertTrue(output.text.contains("Home"))
                 assertFalse(output.text.contains("secret-"))
                 assertTrue(c.chat.state.value.turns.size == 2)
-                c.send(); assertTrue(requests.last().tools.isEmpty()); assertEquals(2, f.deviceRequests.get())
+                c.send(); assertEquals(listOf("request_tool"), requests.last().tools.map { it.name }); assertEquals(2, f.deviceRequests.get())
             }
         }
     }

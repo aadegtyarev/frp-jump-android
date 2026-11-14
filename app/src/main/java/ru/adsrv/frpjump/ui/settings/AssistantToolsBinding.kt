@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,10 +54,10 @@ internal class AssistantToolsBinding(
     /** The app-wide confirmation switch: same autosave, pending and inline failure as a tool switch. */
     fun changeConfirmations(on: Boolean) = save(CONFIRMATIONS_KEY) { store.setAssistantConfirmations(if (on) ConfirmationMode.ASK else ConfirmationMode.OFF) }
 
-    fun change(id: AssistantToolId, enabled: Boolean) = save(id.wire) { store.setAssistantTool(id, enabled) }
+    fun change(id: AssistantToolId, enabled: Boolean): Job = save(id.wire) { store.setAssistantTool(id, enabled) }
 
-    private fun save(key: String, write: () -> Unit) {
-        scope.launch {
+    private fun save(key: String, write: () -> Unit): Job {
+        return scope.launch {
             ensureActive()
             if (key in mutable.value.pending) return@launch
             mutable.value = mutable.value.copy(pending = mutable.value.pending + key, failed = mutable.value.failed - key)

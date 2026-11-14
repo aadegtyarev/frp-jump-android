@@ -47,6 +47,8 @@ class AssistantToolPipelineTest {
             Case("ssh_command", ssh, obj("profile_id" to str("p"), "connection_id" to str("c"), "command" to str("true")),
                 obj("profile_id" to str("p"), "connection_id" to str(" "), "command" to str("true")),
                 "Provide profile_id, connection_id and one nonempty command only."),
+            Case("request_tool", AssistantRequestTool(listOf(AssistantToolId.WEB_SEARCH), emptySet()), obj("name" to str("web_search"), "why" to str("q")),
+                obj("name" to str("nonsense"), "why" to str("q")), "Provide name (one of the listed tools) and why (one short sentence) only."),
         )
     }
 
@@ -119,7 +121,7 @@ class AssistantToolPipelineTest {
         assertEquals(ToolOutput("invalid", ToolOutcome.FAILED), Echo { fail("must not run"); ToolOutput("") }.execute(obj("b" to str("x"))))
     }
 
-    @Test fun `the compact serialized text of all five specs is pinned`() {
+    @Test fun `the compact serialized text of all five specs and of request_tool is pinned`() {
         val compact = cases(Probe()).map { c ->
             val spec = c.tool.spec
             buildJsonObject { put("name", spec.name); put("description", spec.description); put("parameters", spec.parameters) }.toString()
@@ -133,6 +135,7 @@ class AssistantToolPipelineTest {
             "{\"name\":\"inspect_image\",\"description\":\"Request an unverified model response about a selected public JPEG/PNG; may fail. Extra model token charges apply.\",\"parameters\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"url\":{\"type\":\"string\"},\"question\":{\"type\":\"string\"}},\"required\":[\"url\",\"question\"]}}",
             "{\"name\":\"profile_information\",\"description\":\"Find app-known devices and saved connections across all profiles, refreshing device lists once per invocation. Optional query matches part of a device name/label, connection name or profile name (case/NFC insensitive); profile_id selects an exact profile. Empty arguments browse. Results are whole records: follow next_offset with the same query/profile_id when needed. Give a concise answer with all suitable variants, distinguished by profile/device/connection, not the whole catalogue or only the first match. Several matches are not a failure; ask for a choice only if needed for a subsequent action. Use exact profile.id and connection.id for saved targets. Disclose incomplete/stale sources; zero known matches is not absence from unknown sources. App state is not service readiness. Private information goes to the configured model.\",\"parameters\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"query\":{\"type\":\"string\",\"maxLength\":256},\"profile_id\":{\"type\":\"string\",\"maxLength\":256},\"offset\":{\"type\":\"integer\",\"minimum\":0}}}}",
             "{\"name\":\"ssh_command\",\"description\":\"Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about 7,800 characters for stdout and stderr together (stderr keeps at least 1,500 when present); a cut stream ends with \\\"truncated: N of M characters\\\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).\",\"parameters\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"profile_id\":{\"type\":\"string\"},\"connection_id\":{\"type\":\"string\"},\"command\":{\"type\":\"string\"}},\"required\":[\"profile_id\",\"connection_id\",\"command\"]}}",
+            "{\"name\":\"request_tool\",\"description\":\"Ask the owner to turn on one tool that is currently off, when the task cannot be done without it. Give the reason in one short sentence. The tool stays off in this request: finish your answer and say what you would do with it. The owner may turn it on and continue. Tools you can ask for: web_search - search the public web.\",\"parameters\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"name\":{\"type\":\"string\",\"enum\":[\"web_search\"]},\"why\":{\"type\":\"string\",\"maxLength\":300}},\"required\":[\"name\",\"why\"]}}",
         )
     }
 }

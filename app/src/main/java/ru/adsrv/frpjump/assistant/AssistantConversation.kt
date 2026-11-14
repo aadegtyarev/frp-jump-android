@@ -198,8 +198,30 @@ class AssistantConversation(
     }
     /** A tool that is switched off loses its session grants (the Tools screen can be opened without leaving Chat). */
     fun toolsChanged(enabled: ru.adsrv.frpjump.settings.AssistantTools) {
-        val grants = confirmations?.grants ?: return
-        for (id in AssistantToolId.entries) if (!enabled[id]) grants.clear(id)
+        confirmations?.grants?.let { grants -> for (id in AssistantToolId.entries) if (!enabled[id]) grants.clear(id) }
+        // A tool that is on is no longer declined: turning it on (in Tools) ends that "No thanks" (Р56).
+        val changed = synchronized(gate) {
+            val on = c.document.declinedTools.filter { wire -> AssistantToolId.fromWire(wire)?.let { enabled[it] } == true }
+            if (c.closed || on.isEmpty()) false else { setDeclined(c.document.declinedTools - on.toSet()); true }
+        }
+        if (changed) repaint()
+    }
+
+    /**
+     * The owner pressed "No thanks" under a reply that asked for [id]: nothing is turned on and nothing is sent; the decline is saved with the
+     * conversation, so `request_tool` answers the model with the fixed text until the history is cleared or the tool is turned on.
+     * Ignored while a Send runs, the history loads, a clear waits or the history cannot be read.
+     */
+    fun declineTool(id: AssistantToolId) {
+        synchronized(gate) {
+            if (c.closed || c.pending != null || c.settlingText != null || c.clearing || c.mutable.value.loading || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return
+            if (id.wire !in c.document.declinedTools) setDeclined(c.document.declinedTools + id.wire)
+        }
+    }
+    /** Caller holds the gate. */
+    private fun setDeclined(names: List<String>) {
+        c.document = c.document.copy(declinedTools = names); c.persist()
+        c.mutable.value = c.mutable.value.copy(declinedTools = names.toSet())
     }
 
     /**
@@ -230,9 +252,17 @@ class AssistantConversation(
             runtime.notifyBusy(); start?.start(); repaint(); onSettled()
         }
     }
-    private fun admitAndStart() {
+    /**
+     * The "Turn on" button's follow-up: [text] (the app's fixed "Turned on ..." message) goes as the owner's new Send and the typed draft is
+     * left alone. Like [send], it starts nothing while a Send runs, the history loads or a clear waits.
+     */
+    fun sendOwnerMessage(text: String) {
+        runtime.probes.before("admission")
+        admitAndStart(text)
+    }
+    private fun admitAndStart(fixed: String? = null) {
         var start: Job? = null
-        synchronized(gate) { start = own.admit()?.let(::launch) }
+        synchronized(gate) { start = own.admit(fixed)?.let(::launch) }
         runtime.notifyBusy(); start?.start()
     }
     /** Under the gate: the lazy job and its completion hook exist before the owner is visible to anyone else. */

@@ -280,7 +280,7 @@ class AssistantChatOwnershipTest {
                         if (triggerSetup) throw ProviderSetupException(ProviderSetupProblem.CRYPTO_FAILED)
                         AgentProvider { calls++; if (category == "finish-error") error("synthetic"); AgentReply("answer".repeat(20)) }
                     }, store::requireRevision, AgentModule(true), limits = { AgentLimits(contextTokens = Utf8TokenEstimate.count(AgentRequest(TestPrompts.real.system,
-                        emptyList(), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+                        listOf(requestToolSpec), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
                     if (category == "window") { chat.edit("x".repeat(100)); chat.send(); idle(chat) }
                     triggerSetup = category == "setup-error"
                     val hold = Gate()

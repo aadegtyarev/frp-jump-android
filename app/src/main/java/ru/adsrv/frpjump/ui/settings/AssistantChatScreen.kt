@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -58,7 +59,8 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     } else {
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF, onConfirmationsOn = vm::turnConfirmationsOn,
-            confirmationsOnFailed = CONFIRMATIONS_KEY in toolsState.failed)
+            confirmationsOnFailed = CONFIRMATIONS_KEY in toolsState.failed,
+            tools = toolsState.committed, onTurnOn = vm::turnOnRequested)
     }
 }
 
@@ -69,6 +71,10 @@ internal fun AssistantChatContent(
     onBack: () -> Unit, onSetup: () -> Unit, onTools: (() -> Unit)? = null, onClear: (() -> Unit)? = null,
     /** While true the top bar shows the compact "confirmations are off" mark; [onConfirmationsOn] turns requests back on. */
     confirmationsOff: Boolean = false, onConfirmationsOn: (() -> Unit)? = null, confirmationsOnFailed: Boolean = false,
+    /** The committed tool switches: "Turn on" is shown only for a tool that is off right now. */
+    tools: ru.adsrv.frpjump.settings.AssistantTools = ru.adsrv.frpjump.settings.AssistantTools(),
+    /** The "Turn on" button: switches the tool on (the Tools path), then sends the fixed message (the second argument). Null: no button. */
+    onTurnOn: ((AssistantToolId, String) -> Unit)? = null,
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -158,7 +164,7 @@ internal fun AssistantChatContent(
             // While a question is open the message field (disabled during a run anyway) is hidden; Stop stays at the bottom.
             val asking = state.asking
             val history: @Composable (Modifier) -> Unit = { modifier -> LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                items(state.turns) { turn ->
+                itemsIndexed(state.turns) { index, turn ->
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ChatUserMessage(turn.user)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -171,6 +177,12 @@ internal fun AssistantChatContent(
                             ChatProfileInformationResults(turn.information)
                             ChatSources(turn.sources)
                             ChatToolDeclines(turn.receipts)
+                            // Only under the latest reply; see requestedTools for when it shows.
+                            if (onTurnOn != null && index == state.turns.lastIndex) requestedTools(state, enabled, tools).forEach { id ->
+                                val title = stringResource(id.title())
+                                val message = stringResource(R.string.chat_request_turned_on_message, title)
+                                ChatToolRequest(id, turn.readWeb, onTurnOn = { onTurnOn(id, message) }, onDecline = { conversation.declineTool(id) })
+                            }
                             ChatToolReceipts(turn.receipts)
                         }
                     }
@@ -299,6 +311,26 @@ private fun ChatToolFailures(failures: List<ChatToolFailure>, modifier: Modifier
                 failure.query?.let { SelectionContainer { Text(stringResource(R.string.tool_failure_query, it)) } }
                 SelectionContainer { Text(failure.result.text, modifier = Modifier.testTag("chat_tool_failure_detail")) }
             }
+        }
+    }
+}
+
+/**
+ * "Turn on" and "No thanks" under the reply that asked for a tool that is off (Р56): the same disclosure warning as under that tool's
+ * switch in Tools, and, when the attempt read the internet, a mark that foreign text may have suggested the request. The model's own
+ * reason is never shown here. Stacked, so that the labels stay whole at large font.
+ */
+@Composable
+private fun ChatToolRequest(id: AssistantToolId, readWeb: Boolean, onTurnOn: () -> Unit, onDecline: () -> Unit) {
+    Column(Modifier.fillMaxWidth().testTag("chat_tool_request_${id.wire}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(id.hint()), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_tool_request_warning_${id.wire}"))
+        if (readWeb) Text(stringResource(R.string.chat_request_web), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted,
+            modifier = Modifier.testTag("chat_tool_request_web_${id.wire}"))
+        Button(onClick = onTurnOn, modifier = Modifier.fillMaxWidth().testTag("chat_tool_request_on_${id.wire}")) {
+            Text(stringResource(R.string.chat_request_turn_on, stringResource(id.title())))
+        }
+        OutlinedButton(onClick = onDecline, modifier = Modifier.fillMaxWidth().testTag("chat_tool_request_no_${id.wire}")) {
+            Text(stringResource(R.string.chat_request_decline))
         }
     }
 }

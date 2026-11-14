@@ -11,7 +11,11 @@ import ru.adsrv.frpjump.settings.AssistantTools
 internal class Admission(val owner: Pending, val saved: AssistantProviderSnapshot, val settings: AssistantProviderSettings, val text: String,
     val past: List<SavedTurn>, val tools: AssistantTools, val retained: AgentProvider?,
     /** The owner's own text captured at admission with the tool set; text for the model only. */
-    val ownerInstructions: String = "")
+    val ownerInstructions: String = "",
+    /** The wire names the owner declined to turn on in this conversation (read by `request_tool`). */
+    val declinedTools: Set<String> = emptySet(),
+    /** True when [text] is the app's fixed message and not the owner's draft: the draft is then left as it is. */
+    val fixedText: Boolean = false)
 
 /** Who may commit: authority refresh, stop, the ownership check and Send admission. Every method documents whether it needs the gate. */
 internal class RunOwnership(private val c: ChatCells, private val runtime: AssistantChatRuntime,
@@ -74,11 +78,14 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         }
     }
 
-    /** Caller holds the gate. Returns null when nothing starts (and has recorded the visible reason, if any). */
-    fun admit(): Admission? {
+    /**
+     * Caller holds the gate. Returns null when nothing starts (and has recorded the visible reason, if any). [fixed] is the app's own
+     * message sent as the owner's new Send (the "Turn on" button): it replaces the draft as the text, and the draft is neither used nor cleared.
+     */
+    fun admit(fixed: String? = null): Admission? {
         refreshLocked()
         if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return null
-        val saved = snapshot(); val settings = saved.settings; val text = c.document.draft
+        val saved = snapshot(); val settings = saved.settings; val text = fixed ?: c.document.draft
         if (!availability().enabled || settings == null || settings.model.isBlank() || saved.problem != null) {
             c.mutable.value = c.mutable.value.copy(problem = if (saved.problem == null) ChatProblem.SETUP else ChatProblem.READ); return null
         }
@@ -97,6 +104,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         c.mutable.value = c.mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
             currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList(),
             confirmationNotSaved = false)
-        return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions))
+        return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions),
+            c.document.declinedTools.toSet(), fixed != null)
     }
 }
