@@ -117,6 +117,8 @@ class AssistantToolRequestScreenTest {
         asks = listOf(ask("a", "ssh_command"))
         show(); send()
         compose.waitUntil(15_000) { compose.onAllNodesWithTag(tag("on_", AssistantToolId.SSH_COMMAND)).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("DEBUG arg=${args.getString("chatLocale")} locale=$locale activity=${compose.activity.resources.configuration.locales} ctx=${compose.activity.createConfigurationContext(Configuration(compose.activity.resources.configuration).apply { setLocale(locale) }).resources.configuration.locales} keys=${args.keySet()}",
+            if (russian) "Не надо" else "No thanks", text(R.string.chat_request_decline))
         shown("on_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.chat_request_turn_on, title(AssistantToolId.SSH_COMMAND)))
         shown("no_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.chat_request_decline))
         shown("warning_", AssistantToolId.SSH_COMMAND).assertTextContains(text(R.string.tool_ssh_command_hint))
