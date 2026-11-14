@@ -13,7 +13,7 @@ Components and licenses (which component is under which comes from
 - `BouncyCastle.txt`: Bouncy Castle (MIT-style)
 - `BSD-3-Clause-libyuv.txt`: libyuv, inside CameraX's camera-core
 - `BSD-3-Clause-Go.txt`: the Go standard library and golang.org/x packages inside frpc
-- `Lucide.txt`: Lucide icons (ISC; MIT for the icons derived from Feather), the chat's shield icons
+- `Lucide.txt`: Lucide icons (ISC; MIT for the icons derived from Feather), the chat's shield and composer icons
 - `TextMate-Bundle.txt`: the TextMate bundles some grammars come from
 - `frpc/`: the Go modules built into frpc (`modules.json`) and their license
   and NOTICE files, one per distinct text; made by `scripts/build-frpc.sh`,

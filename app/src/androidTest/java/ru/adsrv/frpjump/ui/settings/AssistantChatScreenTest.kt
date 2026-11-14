@@ -436,6 +436,23 @@ class AssistantChatScreenTest {
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithTag("assistant_markdown_rendered").fetchSemanticsNodes().isNotEmpty() }
     }
 
+    /** Р61: no visible role labels; TalkBack still hears who wrote each message. Send sits in the field and is off while it is empty. */
+    @Test fun messagesKeepRolesForTalkBackAndSendFollowsTheField() {
+        install()
+        button("chat_send").assertIsNotEnabled()
+        input().performTextInput("Who wrote this")
+        button("chat_send").assertIsEnabled()
+        sendAndAwait()
+        button("chat_history").performScrollToNode(hasText("Complete answer 1"))
+        compose.onNodeWithText("Who wrote this").assertIsDisplayed()
+        compose.onNodeWithText("Complete answer 1").assertIsDisplayed()
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.chat_you_says)).assertDoesNotExist()
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.chat_assistant_says)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(localizedText(ru.adsrv.frpjump.R.string.chat_you_says)).assertExists()
+        compose.onNodeWithContentDescription(localizedText(ru.adsrv.frpjump.R.string.chat_assistant_says)).assertExists()
+        button("chat_send").assertIsNotEnabled()
+    }
+
     @Test fun sendFollowupStopErrorAndRecovery() {
         install()
         compose.runOnIdle { assertEquals(0, calls) }
@@ -882,7 +899,7 @@ class AssistantChatScreenTest {
         // Landscape is the compact layout: the whole screen scrolls, so "in the window" and "below" are not promises there.
         if (args.getString("composerOrientation") != "landscape") {
             assertTrue("the field overlaps the history", bounds("chat_input").top >= history.bottom - 1f)
-            assertTrue("Send is below the field", bounds("chat_send").top >= bounds("chat_input").bottom - 1f)
+            assertTrue("Send is inside the field", bounds("chat_send").top >= bounds("chat_input").top - 1f && bounds("chat_send").bottom <= bounds("chat_input").bottom + 1f)
             assertTrue("Send is outside the window", bounds("chat_send").bottom <= rootBounds().bottom + 1f)
         }
         // The error under the history: its region ends on a line boundary (never a half line) and, when it cannot show all of the error, says

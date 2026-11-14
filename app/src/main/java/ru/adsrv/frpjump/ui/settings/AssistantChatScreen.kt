@@ -11,6 +11,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -158,32 +161,35 @@ internal fun AssistantChatContent(
             }
             // While a question is open the message field (disabled during a run anyway) is hidden; Stop stays at the bottom.
             val asking = state.asking
-            val history: @Composable (Modifier) -> Unit = { modifier -> LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            val history: @Composable (Modifier) -> Unit = { modifier -> LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(TURN_GAP)) {
                 itemsIndexed(state.turns) { index, turn ->
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         ChatUserMessage(turn.user)
                         // The calls happened before the answer, so their block comes first.
                         ChatToolReceipts(turn.receipts, turn.information)
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(stringResource(R.string.chat_assistant), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted)
-                            if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
-                            else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
-                            SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
-                            if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
-                            else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
-                            ChatSources(turn.sources)
-                            ChatToolDeclines(turn.receipts)
-                            // Only under the latest reply; see requestedTools for when it shows.
-                            if (onTurnOn != null && index == state.turns.lastIndex) requestedTools(state, enabled, tools).forEach { id ->
-                                val title = stringResource(id.title())
-                                val message = stringResource(R.string.chat_request_turned_on_message, title)
-                                ChatToolRequest(id, turn.readWeb, failed = id.wire in toolsFailed, onTurnOn = { onTurnOn(id, message) }, onDecline = { conversation.declineTool(id) })
+                        // The role is not drawn (Р61); the marker keeps it for TalkBack.
+                        Box {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (turn.unanswered) Text(stringResource(R.string.chat_unanswered), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_unanswered"))
+                                else if (turn.interrupted) Text(stringResource(R.string.chat_interrupted), color = AppTheme.colors.muted)
+                                SelectionContainer { AssistantAnswerMarkdown(turn.answer) }
+                                if (turn.toolFailures.isNotEmpty()) ChatToolFailures(turn.toolFailures)
+                                else if (turn.toolFailed) Text(stringResource(R.string.tool_failed), color = AppTheme.colors.muted)
+                                ChatSources(turn.sources)
+                                ChatToolDeclines(turn.receipts)
+                                // Only under the latest reply; see requestedTools for when it shows.
+                                if (onTurnOn != null && index == state.turns.lastIndex) requestedTools(state, enabled, tools).forEach { id ->
+                                    val title = stringResource(id.title())
+                                    val message = stringResource(R.string.chat_request_turned_on_message, title)
+                                    ChatToolRequest(id, turn.readWeb, failed = id.wire in toolsFailed, onTurnOn = { onTurnOn(id, message) }, onDecline = { conversation.declineTool(id) })
+                                }
                             }
+                            RoleMarker(stringResource(R.string.chat_assistant_says))
                         }
                     }
                 }
                 state.pendingText?.let { text -> item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
                         ChatUserMessage(text)
                         val progress = state.toolProgress
                         val waiting = state.confirmation != null
@@ -243,21 +249,13 @@ internal fun AssistantChatContent(
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }
             }
-            if (!asking) OutlinedTextField(value = field, onValueChange = { value ->
-                    if (value.text != field.text) conversation.edit(value.text)
-                    // The draft the conversation holds now: a refused edit (too long, a run) shows as it was.
-                    val live = conversation.state.value.draft
-                    field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
-                },
-                label = { Text(stringResource(R.string.chat_message)) }, enabled = state.fieldEnabled,
-                minLines = 1, maxLines = if (density.fontScale > 1.3f) 2 else 3, modifier = Modifier.fillMaxWidth().testTag("chat_input"))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.busy) OutlinedButton(onClick = conversation::stop, enabled = !state.stopping,
-                    modifier = Modifier.weight(1f).testTag("chat_stop")) {
-                    Text(stringResource(if (state.stopping) R.string.chat_stopping else R.string.chat_stop))
-                } else Button(onClick = conversation::send, enabled = state.sendEnabled(setup == null),
-                    modifier = Modifier.weight(1f).testTag("chat_send")) { Text(stringResource(R.string.chat_send)) }
-            }
+            ChatComposer(field, onValueChange = { value ->
+                if (value.text != field.text) conversation.edit(value.text)
+                // The draft the conversation holds now: a refused edit (too long, a run) shows as it was.
+                val live = conversation.state.value.draft
+                field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
+            }, state = state, asking = asking, canSend = state.sendEnabled(setup == null), onSend = conversation::send, onStop = conversation::stop,
+                maxLines = if (density.fontScale > 1.3f) 3 else 5)
         }
     }
 }
@@ -284,12 +282,31 @@ private fun CappedNotices(max: Dp, tag: String, content: @Composable ColumnScope
     }
 }
 
+/** The user's own line: muted and a little smaller than the answer, after a faint "›"; no label, no plate (Р61). */
 @Composable
 private fun ChatUserMessage(text: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.chat_you), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.accent)
-        SelectionContainer { Text(text, color = AppTheme.colors.accent) }
+    Box {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("›", style = USER_STYLE, color = AppTheme.colors.faint, modifier = Modifier.clearAndSetSemantics { })
+            SelectionContainer { Text(text, style = USER_STYLE, color = AppTheme.colors.muted, modifier = Modifier.weight(1f, fill = false)) }
+        }
+        RoleMarker(stringResource(R.string.chat_you_says))
     }
+}
+
+private val USER_STYLE @Composable get() = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp)
+
+/** Between turns, and between the parts of one turn (the user's line, the tool block, the answer). */
+private val TURN_GAP = 28.dp
+private val PART_GAP = 10.dp
+
+/**
+ * Who wrote a message, for TalkBack only: a one-dp heading that sits over the corner of the message and reads "You:" / "Assistant:"
+ * before it. It takes no room in the layout and does not touch the text, so selection works as before.
+ */
+@Composable
+private fun BoxScope.RoleMarker(who: String) {
+    Box(Modifier.size(1.dp).align(Alignment.TopStart).semantics { contentDescription = who; heading() })
 }
 
 @Composable
