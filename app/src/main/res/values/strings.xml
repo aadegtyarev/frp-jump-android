@@ -1249,11 +1249,10 @@
     <string name="tool_wait_for_progress">Setting up a wait…</string>
     <string name="tool_wait_for_receipt">Wait</string>
     <string name="assistant_limits_title">Limits</string>
-    <string name="assistant_limits_hint">Waits, event replies and the wait after input</string>
+    <string name="assistant_limits_hint">Waits and event replies</string>
     <string name="limit_waits_at_once">Waits at once</string>
     <string name="limit_wait_max_minutes">Longest wait, min</string>
     <string name="limit_event_replies">Event replies in a row</string>
-    <string name="limit_after_input_seconds">Wait after input, s</string>
     <string name="limit_decrease">Decrease</string>
     <string name="limit_increase">Increase</string>
     <string name="wait_tab_connected">tab \"%1$s\" connects</string>

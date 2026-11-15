@@ -65,8 +65,6 @@ class AssistantWaitsTest {
         for ((spec, _) in specs) { eventually("awaited $spec") { spec in f.sources.awaited }; f.sources.fire(spec) }
         eventually("all delivered") { f.delivered.size == specs.size }
         assertEquals(specs.map { it.second }.toSet(), f.delivered.flatten().map { it.message() }.toSet())
-        // The quiet time is the owner's wait-after-input setting, as the registry read it when the wait was added.
-        assertEquals(AssistantLimits.DEFAULT_AFTER_INPUT_SECONDS, f.sources.quietSecondsSeen)
     }
 
     @Test fun `a time wait ends when its time is up, and others end with the time-out message`() {

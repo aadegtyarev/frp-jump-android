@@ -173,8 +173,6 @@ class AssistantTerminalTabs internal constructor(
     private val copyProbeTimeoutMs: Long = COPY_PROBE_TIMEOUT_MS,
     private val quietMs: Long = QUIET_MS,
     private val maxWaitMs: Long = MAX_WAIT_MS,
-    /** The owner's "wait after input" setting, read at each wait when given (it replaces [maxWaitMs]). */
-    private val maxWait: (() -> Long)? = null,
     /** Milliseconds on a clock that only moves forward; the age of a program probe. */
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -352,7 +350,7 @@ class AssistantTerminalTabs internal constructor(
             val now = System.nanoTime()
             if (tabState(handle.state) != TabState.CONNECTED) return true
             if (now - maxOf(wroteAt, handle.lastOutputNanos) >= quietMs * NANOS_PER_MS) return true
-            if (now - wroteAt >= (maxWait?.invoke() ?: maxWaitMs) * NANOS_PER_MS) return false
+            if (now - wroteAt >= maxWaitMs * NANOS_PER_MS) return false
             delay(POLL_MS)
         }
     }
@@ -364,8 +362,7 @@ class AssistantTerminalTabs internal constructor(
         const val TYPE = "terminal-input"
         const val COPY_PROBE_TIMEOUT_MS = 3_000L
         const val QUIET_MS = 700L
-        /** The fallback of the wait after input when no setting is given: the setting's own default. */
-        const val MAX_WAIT_MS = ru.adsrv.frpjump.settings.AssistantLimits.DEFAULT_AFTER_INPUT_SECONDS * 1000L
+        const val MAX_WAIT_MS = 10_000L
         /** How old a `terminal_tabs` probe may be for the typing card to show its program. */
         const val PROGRAM_FRESH_MS = 60_000L
         private const val POLL_MS = 25L

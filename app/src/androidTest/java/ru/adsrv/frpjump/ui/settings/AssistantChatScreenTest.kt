@@ -161,7 +161,7 @@ class AssistantChatScreenTest {
     private class SyntheticWaits : ru.adsrv.frpjump.assistant.WaitSources {
         private val results = java.util.concurrent.ConcurrentHashMap<ru.adsrv.frpjump.assistant.WaitSpec, kotlinx.coroutines.CompletableDeferred<ru.adsrv.frpjump.assistant.SourceResult>>()
         override fun subject(spec: ru.adsrv.frpjump.assistant.WaitSpec) = if (spec.tabId == 3) "logs" else null
-        override suspend fun await(spec: ru.adsrv.frpjump.assistant.WaitSpec, quietSeconds: Int) = results.getOrPut(spec) { kotlinx.coroutines.CompletableDeferred() }.await()
+        override suspend fun await(spec: ru.adsrv.frpjump.assistant.WaitSpec) = results.getOrPut(spec) { kotlinx.coroutines.CompletableDeferred() }.await()
         fun fire(spec: ru.adsrv.frpjump.assistant.WaitSpec) { results.getOrPut(spec) { kotlinx.coroutines.CompletableDeferred() }.complete(ru.adsrv.frpjump.assistant.SourceResult.FIRED) }
     }
     private val waitSources = SyntheticWaits()

@@ -98,7 +98,6 @@ class FrpJumpApp : Application() {
             hidden = { pendingUndo.hidden.value },
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
             connectionName = { profile, device, port -> savedSshConnection(profile, device, port)?.customName },
-            maxWait = { settings.settings.value.assistantLimits.afterInputSeconds * 1000L },
             connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id })
     }
 

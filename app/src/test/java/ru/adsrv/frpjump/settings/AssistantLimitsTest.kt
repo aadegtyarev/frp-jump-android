@@ -14,14 +14,12 @@ import ru.adsrv.frpjump.ssh.MemoryStorage
 class AssistantLimitsTest {
     @Test fun `defaults and ranges are the approved ones`() {
         val d = AssistantLimits()
-        assertEquals(listOf(3, 30, 5, 10), listOf(d.waitsAtOnce, d.waitMaxMinutes, d.eventReplies, d.afterInputSeconds))
-        // The wait after input ends inside one tool call, which the core cuts at its limit: up to two thirds of it, in whole seconds.
-        assertEquals(20, AssistantLimits.AFTER_INPUT_SECONDS_MAX)
-        assertEquals(listOf(1..10, 1..120, 1..20, 2..20), listOf(AssistantLimits.WAITS_AT_ONCE_RANGE, AssistantLimits.WAIT_MAX_MINUTES_RANGE, AssistantLimits.EVENT_REPLIES_RANGE, AssistantLimits.AFTER_INPUT_SECONDS_RANGE))
+        assertEquals(listOf(3, 30, 5), listOf(d.waitsAtOnce, d.waitMaxMinutes, d.eventReplies))
+        assertEquals(listOf(1..10, 1..120, 1..20), listOf(AssistantLimits.WAITS_AT_ONCE_RANGE, AssistantLimits.WAIT_MAX_MINUTES_RANGE, AssistantLimits.EVENT_REPLIES_RANGE))
         assertTrue(validAssistantLimits(d))
         for (bad in listOf(d.copy(waitsAtOnce = 0), d.copy(waitsAtOnce = 11), d.copy(waitMaxMinutes = 0), d.copy(waitMaxMinutes = 121),
-            d.copy(eventReplies = 0), d.copy(eventReplies = 21), d.copy(afterInputSeconds = 1), d.copy(afterInputSeconds = 21))) assertFalse(bad.toString(), validAssistantLimits(bad))
-        for (edge in listOf(d.copy(waitsAtOnce = 1), d.copy(waitsAtOnce = 10), d.copy(waitMaxMinutes = 120), d.copy(eventReplies = 20), d.copy(afterInputSeconds = 2), d.copy(afterInputSeconds = 20))) assertTrue(validAssistantLimits(edge))
+            d.copy(eventReplies = 0), d.copy(eventReplies = 21))) assertFalse(bad.toString(), validAssistantLimits(bad))
+        for (edge in listOf(d.copy(waitsAtOnce = 1), d.copy(waitsAtOnce = 10), d.copy(waitMaxMinutes = 120), d.copy(eventReplies = 20))) assertTrue(validAssistantLimits(edge))
         assertFalse(AppSettings().assistantWaits)
     }
 
@@ -29,11 +27,11 @@ class AssistantLimitsTest {
         val file = MemoryStorage()
         val store = SettingsStore(file)
         assertEquals(AssistantLimits(), store.assistantAvailability.limits)
-        store.setAssistantLimits(AssistantLimits(waitsAtOnce = 7, waitMaxMinutes = 90, eventReplies = 2, afterInputSeconds = 15))
+        store.setAssistantLimits(AssistantLimits(waitsAtOnce = 7, waitMaxMinutes = 90, eventReplies = 2))
         assertEquals(7, store.assistantAvailability.limits.waitsAtOnce)
         val stored = Json.parseToJsonElement(file.text!!).jsonObject.getValue("assistant_limits").jsonObject
-        assertEquals(JsonPrimitive(90), stored["wait_max_minutes"]); assertEquals(JsonPrimitive(15), stored["after_input_seconds"])
-        assertEquals(AssistantLimits(7, 90, 2, 15), SettingsStore(file).settings.value.assistantLimits)
+        assertEquals(JsonPrimitive(90), stored["wait_max_minutes"]); assertEquals(null, stored["after_input_seconds"])
+        assertEquals(AssistantLimits(7, 90, 2), SettingsStore(file).settings.value.assistantLimits)
         // The wait switch is saved with the other tool switches.
         store.setAssistantTool(ru.adsrv.frpjump.assistant.AssistantToolId.WAIT_FOR, true)
         assertTrue(SettingsStore(file).settings.value.assistantWaits)
@@ -44,7 +42,7 @@ class AssistantLimitsTest {
         val file = MemoryStorage()
         val store = SettingsStore(file)
         assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(AssistantLimits(waitsAtOnce = 11)) }
-        assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(AssistantLimits(afterInputSeconds = 1)) }
+        assertThrows(IllegalArgumentException::class.java) { store.setAssistantLimits(AssistantLimits(eventReplies = 21)) }
         assertEquals(AssistantLimits(), store.settings.value.assistantLimits)
         assertEquals(null, file.text)
     }
@@ -54,13 +52,11 @@ class AssistantLimitsTest {
         assertEquals(AssistantLimits(), old.settings.value.assistantLimits)
         assertTrue(old.settings.value.assistantEnabled && old.settings.value.assistantSearch)
         assertFalse(old.settings.value.assistantWaits)
-        val mixed = SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4,"wait_max_minutes":500,"event_replies":"many","after_input_seconds":15},"assistant_waits":true,"assistant_search":true}"""))
-        assertEquals(AssistantLimits(waitsAtOnce = 4, waitMaxMinutes = 30, eventReplies = 5, afterInputSeconds = 15), mixed.settings.value.assistantLimits)
+        val mixed = SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4,"wait_max_minutes":500,"event_replies":"many"},"assistant_waits":true,"assistant_search":true}"""))
+        assertEquals(AssistantLimits(waitsAtOnce = 4, waitMaxMinutes = 30, eventReplies = 5), mixed.settings.value.assistantLimits)
         assertTrue(mixed.settings.value.assistantWaits && mixed.settings.value.assistantSearch)
-        // The wait after input above what one tool call can hold is clamped to the most, not reset; below the least it is the default.
-        val clamp = SettingsStore(MemoryStorage("""{"assistant_limits":{"after_input_seconds":45}}""")).settings.value.assistantLimits
-        assertEquals(20, clamp.afterInputSeconds)
-        assertEquals(10, SettingsStore(MemoryStorage("""{"assistant_limits":{"after_input_seconds":1}}""")).settings.value.assistantLimits.afterInputSeconds)
+        // A file written by an earlier build of this change may still carry the removed key: it is ignored.
+        assertEquals(AssistantLimits(), SettingsStore(MemoryStorage("""{"assistant_limits":{"after_input_seconds":15}}""")).settings.value.assistantLimits)
         // Not an object at all.
         assertEquals(AssistantLimits(), SettingsStore(MemoryStorage("""{"assistant_limits":7}""")).settings.value.assistantLimits)
     }

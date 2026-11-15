@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,7 +40,6 @@ class AssistantLimitsScreenTest {
         compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("3")
         compose.onNodeWithTag("limit_wait_max_minutes_value").assertTextEquals("30")
         compose.onNodeWithTag("limit_event_replies_value").assertTextEquals("5")
-        compose.onNodeWithTag("limit_after_input_seconds_value").assertTextEquals("10")
         // TalkBack reads the label and the value; the buttons read Decrease and Increase.
         compose.onNode(hasContentDescription(text(R.string.limit_waits_at_once) + ": 3")).assertExists()
         compose.onNodeWithTag("limit_waits_at_once_plus").assertContentDescriptionEquals(text(R.string.limit_increase))
@@ -47,8 +47,8 @@ class AssistantLimitsScreenTest {
         capture("limits-defaults")
         compose.onNodeWithTag("limit_waits_at_once_plus").performClick()
         compose.onNodeWithTag("limit_event_replies_minus").performScrollTo().performClick()
-        compose.onNodeWithTag("limit_after_input_seconds_minus").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(listOf(4, 4, 9), listOf(limits.value.waitsAtOnce, limits.value.eventReplies, limits.value.afterInputSeconds)); assertEquals(3, changes.size) }
+        compose.onNodeWithTag("limit_wait_max_minutes_plus").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(4, 4, 31), listOf(limits.value.waitsAtOnce, limits.value.eventReplies, limits.value.waitMaxMinutes)); assertEquals(3, changes.size) }
         compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("4")
         // A long press repeats until the end of the range, where the button is off.
         compose.onNodeWithTag("limit_waits_at_once_plus").performTouchInput { down(center); advanceEventTime(2_500); up() }
@@ -60,13 +60,17 @@ class AssistantLimitsScreenTest {
         val before = changes.size
         compose.onNodeWithTag("limit_waits_at_once_plus").performClick()
         compose.runOnIdle { assertEquals("a button at its end does nothing", before, changes.size) }
-        // The wait after input stops where one tool call can hold it.
-        compose.onNodeWithTag("limit_after_input_seconds_plus").performScrollTo().performTouchInput { down(center); advanceEventTime(8_000); up() }
-        compose.runOnIdle { assertEquals(AssistantLimits.AFTER_INPUT_SECONDS_MAX, limits.value.afterInputSeconds) }
-        compose.onNodeWithTag("limit_after_input_seconds_plus").assertIsNotEnabled()
+        // The longest wait stops at its end too.
+        compose.onNodeWithTag("limit_wait_max_minutes_plus").performScrollTo().performTouchInput { down(center); advanceEventTime(12_000); up() }
+        compose.runOnIdle { assertEquals(AssistantLimits.WAIT_MAX_MINUTES_RANGE.last, limits.value.waitMaxMinutes) }
+        compose.onNodeWithTag("limit_wait_max_minutes_plus").assertIsNotEnabled()
     }
 
     private fun capture(name: String) {
+        // The first row is drawn and the frame settled before the screen is taken (a screenshot right after setContent can be blank).
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("limit_waits_at_once_value").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+        android.os.SystemClock.sleep(300)
         compose.waitForIdle()
         val shot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
         File(compose.activity.getExternalFilesDir(null), "$name.png").outputStream().use { shot.compress(Bitmap.CompressFormat.PNG, 100, it) }

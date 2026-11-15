@@ -49,9 +49,9 @@ interface WaitSources {
     fun subject(spec: WaitSpec): String?
     /**
      * Suspends until the event of [spec] happens ([SourceResult.FIRED]; a tab or tunnel already in the state waited for fires at once) or the
-     * target is gone ([SourceResult.GONE]). Cancelled when the wait ends otherwise. [quietSeconds] is the quiet time of `tab_quiet`.
+     * target is gone ([SourceResult.GONE]). Cancelled when the wait ends otherwise.
      */
-    suspend fun await(spec: WaitSpec, quietSeconds: Int): SourceResult
+    suspend fun await(spec: WaitSpec): SourceResult
 }
 
 /** What the `wait_for` tool needs: to add one wait. The conversation hands the tool a guarded one (see [AssistantConversation]); a test passes the registry. */
@@ -102,7 +102,7 @@ class AssistantWaits(
         synchronized(jobs) {
             if (_waits.value.size >= limit.waitsAtOnce) return AddWait.TooMany(limit.waitsAtOnce)
             wait = ActiveWait(ids.incrementAndGet(), spec, subject, wallClock() + spec.minutes * MS_PER_MINUTE)
-            job = scope.launch(start = CoroutineStart.LAZY) { run(wait, limit.afterInputSeconds) }
+            job = scope.launch(start = CoroutineStart.LAZY) { run(wait) }
             jobs[wait.id] = job
             _waits.update { it + wait }
         }
@@ -111,11 +111,11 @@ class AssistantWaits(
         return AddWait.Added(wait)
     }
 
-    private suspend fun run(wait: ActiveWait, quietSeconds: Int) {
+    private suspend fun run(wait: ActiveWait) {
         val spec = wait.spec
         val result = CompletableDeferred<SourceResult?>()
         // A time wait has nothing to watch: only its timer ends it.
-        val watcher = scope.launch { if (spec.kind != WaitKind.TIME) result.complete(sources.await(spec, quietSeconds)) }
+        val watcher = scope.launch { if (spec.kind != WaitKind.TIME) result.complete(sources.await(spec)) }
         // The time is the wall clock's: a sleep that did not count the time the device slept ends, and the check below lets it end late rather than never.
         val timer = scope.launch {
             while (wallClock() < wait.untilMs) sleep(minOf(tickMs, wait.untilMs - wallClock()))

@@ -1297,11 +1297,10 @@
     <string name="tool_wait_for_progress">Ставлю ожидание…</string>
     <string name="tool_wait_for_receipt">Ожидание</string>
     <string name="assistant_limits_title">Пределы</string>
-    <string name="assistant_limits_hint">Ожидания, ответы по событиям и ожидание после ввода</string>
+    <string name="assistant_limits_hint">Ожидания и ответы по событиям</string>
     <string name="limit_waits_at_once">Ожиданий одновременно</string>
     <string name="limit_wait_max_minutes">Самое долгое ожидание, мин</string>
     <string name="limit_event_replies">Ответов по событиям подряд</string>
-    <string name="limit_after_input_seconds">Ожидание после ввода, с</string>
     <string name="limit_decrease">Меньше</string>
     <string name="limit_increase">Больше</string>
     <string name="wait_tab_connected">вкладка «%1$s» подключится</string>

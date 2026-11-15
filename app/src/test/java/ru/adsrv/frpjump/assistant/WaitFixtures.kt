@@ -16,7 +16,6 @@ internal class FakeWaitSources : WaitSources {
     val tunnels = ConcurrentHashMap<Pair<String, String>, String>()
     private val results = ConcurrentHashMap<WaitSpec, CompletableDeferred<SourceResult>>()
     val awaited = java.util.concurrent.CopyOnWriteArrayList<WaitSpec>()
-    var quietSecondsSeen: Int? = null
 
     override fun subject(spec: WaitSpec): String? = when {
         spec.kind.isTab -> tabs[spec.tabId]
@@ -24,8 +23,7 @@ internal class FakeWaitSources : WaitSources {
         else -> null
     }
 
-    override suspend fun await(spec: WaitSpec, quietSeconds: Int): SourceResult {
-        quietSecondsSeen = quietSeconds
+    override suspend fun await(spec: WaitSpec): SourceResult {
         awaited += spec
         return results.getOrPut(spec) { CompletableDeferred() }.await()
     }

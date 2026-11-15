@@ -86,11 +86,11 @@ class AssistantTerminalInputTest {
 
     private var now = 0L
 
-    private fun tabs(vararg list: TypeTab, hidden: Set<String> = emptySet(), saved: Boolean = true, maxWaitMs: Long = 400, copyProbeMs: Long = 2_000, maxWait: (() -> Long)? = null) = AssistantTerminalTabs(
+    private fun tabs(vararg list: TypeTab, hidden: Set<String> = emptySet(), saved: Boolean = true, maxWaitMs: Long = 400, copyProbeMs: Long = 2_000) = AssistantTerminalTabs(
         tabs = { list.toList() }, hidden = { hidden }, profileName = { if (it == "p1") "Home" else null },
         connectionName = { _, _, _ -> null }, connectionId = { p, _, _ -> if (saved && p == "p1") "c1" else null },
         io = Dispatchers.IO, main = Dispatchers.Unconfined, copyProbeTimeoutMs = copyProbeMs, readTimeoutMs = 2_000,
-        quietMs = 40, maxWaitMs = maxWaitMs, maxWait = maxWait, clockMs = { now },
+        quietMs = 40, maxWaitMs = maxWaitMs, clockMs = { now },
     )
 
     private fun args(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
@@ -342,22 +342,6 @@ class AssistantTerminalInputTest {
         } finally { stop.set(true) }
     }
 
-    @Test fun `the wait after input is the owner's setting, read at each wait`() {
-        val busy = TypeTab(1)
-        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
-        val ticker = Thread { while (!stop.get()) { busy.lastOutputNanos = System.nanoTime(); Thread.sleep(5) } }.apply { isDaemon = true; start() }
-        var seconds = 0.3
-        try {
-            // The constructor's own wait is long; the setting wins, and a change of it applies to the next wait.
-            val tabs = tabs(busy, maxWaitMs = 60_000, maxWait = { (seconds * 1000).toLong() })
-            val started = System.nanoTime()
-            val changing = send(AssistantTerminalInputTool(tabs, afterInputSeconds = 7), typing(1, "tail -f log\n"))
-            assertTrue("ended near the setting, not the constructor's wait", (System.nanoTime() - started) < 5_000_000_000L)
-            // The text names the setting the tool was made with.
-            assertEquals("tab 1: Home · root@pi #1, app buffer\n\$ ready\nscreen still changing after 7 s", changing.text)
-        } finally { stop.set(true) }
-    }
-
     @Test fun `output right after the write postpones the answer until it is quiet`() {
         val tab = TypeTab(1)
         tab.afterType = { tab.lastOutputNanos = System.nanoTime() }
@@ -410,12 +394,7 @@ class AssistantTerminalInputTest {
         assertEquals(700L, AssistantTerminalTabs.QUIET_MS)
         assertEquals(10_000L, AssistantTerminalTabs.MAX_WAIT_MS); assertEquals(3_000L, AssistantTerminalTabs.COPY_PROBE_TIMEOUT_MS)
         assertEquals(60_000L, AssistantTerminalTabs.PROGRAM_FRESH_MS)
-        // The wait after input is the owner's setting (default 10, range 2 to 60); the tool's texts read it, nothing else holds the number.
-        assertEquals("screen still changing after 10 s", AssistantTerminalInputTool.stillChanging(10))
-        assertEquals("screen still changing after 25 s", AssistantTerminalInputTool.stillChanging(25))
-        assertTrue("at most 25 seconds" in AssistantTerminalInputTool.inputDescription(25) && "at most 10 seconds" in AssistantTerminalInputTool.inputDescription(10))
-        assertEquals(ru.adsrv.frpjump.settings.AssistantLimits.DEFAULT_AFTER_INPUT_SECONDS * 1000L, AssistantTerminalTabs.MAX_WAIT_MS)
-        assertEquals("(at most 7 seconds)", Regex("\\(at most \\d+ seconds\\)").find(AssistantTerminalInputTool(tabs(), 7).spec.description)?.value)
+        assertEquals("screen still changing after 10 s", AssistantTerminalInputTool.STILL_CHANGING)
     }
 
     // ---- what happens after the bytes are queued ----

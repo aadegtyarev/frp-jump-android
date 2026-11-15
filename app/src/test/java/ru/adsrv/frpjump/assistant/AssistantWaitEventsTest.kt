@@ -212,7 +212,10 @@ class AssistantWaitEventsTest {
         assertSame(h.chat, h.owner.attach())
         h.owner.detach()
         h.chat.cancelAllWaits()
-        eventually("closed when idle") { h.owner.attach().takeIf { it !== h.chat } }
+        // The end is settled off the caller's thread; attaching earlier would itself hold the conversation open.
+        eventually("no waits counted") { h.owner.waitCount.value.takeIf { it == 0 } }
+        Thread.sleep(300)
+        assertFalse("a new conversation after the last wait ended", h.owner.attach() === h.chat)
     }
 
     @Test fun `the waiting count follows the waits for the notification`() {
