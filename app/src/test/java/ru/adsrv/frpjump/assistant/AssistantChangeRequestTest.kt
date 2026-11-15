@@ -47,7 +47,8 @@ class AssistantChangeRequestTest {
         assertEquals(AssistantToolId.entries.toSet(), valid.keys)
         for ((id, tool) in tools()) {
             val check = tool.changeCheck(valid.getValue(id))
-            if (id.effect.changes) {
+            // The tab rename changes only a local label and is catalogued as not confirming: no card, so no description.
+            if (id.effect.changes && id.confirms) {
                 assertTrue("$id changes but is not a Change: $check", check is ChangeCheck.Change)
                 assertEquals(id, (check as ChangeCheck.Change).request.tool)
                 // A command's target is a saved connection; typing has one only when the tab matches a saved connection (none among no tabs).

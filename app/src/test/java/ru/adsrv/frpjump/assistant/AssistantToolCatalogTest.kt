@@ -28,14 +28,16 @@ class AssistantToolCatalogTest {
             AssistantToolId.switches.map { it.settingKey })
         assertEquals(listOf(AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME), AssistantToolId.entries.filter { !it.ownsSwitch })
         assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_RENAME.settingKey)
-        // An app-local label change: not a change that asks, not a remote one.
-        assertEquals(ru.adsrv.frpjump.ops.Effect.READ_LOCAL, AssistantToolId.TERMINAL_RENAME.effect)
+        // An app-local label change: a changing tool, but a local one, and the only one that does not confirm.
+        assertEquals(ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL, AssistantToolId.TERMINAL_RENAME.effect)
+        assertEquals(listOf(AssistantToolId.TERMINAL_RENAME), AssistantToolId.entries.filter { it.effect.changes && !it.confirms })
+        assertTrue(AssistantToolId.entries.filter { it != AssistantToolId.TERMINAL_RENAME }.all { it.confirms })
         assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_READ.settingKey)
         assertEquals(AssistantToolId.entries.size, AssistantToolId.entries.map { it.wire }.toSet().size)
         assertEquals(AssistantToolId.switches.size, AssistantToolId.switches.map { it.settingKey }.toSet().size)
-        assertEquals(listOf(AssistantToolId.TERMINAL_INPUT, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
+        assertEquals(listOf(AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_INPUT, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
         assertEquals(Effect.CHANGE_REMOTE, AssistantToolId.TERMINAL_INPUT.effect)
-        assertEquals(setOf(Effect.READ_REMOTE, Effect.READ_LOCAL), AssistantToolId.entries.filter { !it.effect.changes }.map { it.effect }.toSet())
+        assertEquals(setOf(Effect.READ_REMOTE), AssistantToolId.entries.filter { !it.effect.changes }.map { it.effect }.toSet())
         assertFalse(Effect.READ_LOCAL.changes); assertFalse(Effect.READ_REMOTE.changes)
         assertTrue(Effect.CHANGE_LOCAL.changes); assertTrue(Effect.CHANGE_REMOTE.changes)
     }

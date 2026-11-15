@@ -34,6 +34,8 @@ class ConfirmationPolicyTest {
         assertTrue(mustAsk(ssh, key, ask, grants))
         for (read in AssistantToolId.entries.filter { !it.effect.changes }) assertFalse(read.name, mustAsk(read, GrantKey(read, null), ask, grants))
         assertFalse(mustAsk(null, null, ask, grants))
+        // The tab rename changes a local label and is the one changing tool that never asks.
+        assertFalse(mustAsk(AssistantToolId.TERMINAL_RENAME, GrantKey(AssistantToolId.TERMINAL_RENAME, null), ask, grants))
         assertFalse(mustAsk(ssh, key, off, grants))
         grants.grant(key)
         assertFalse(mustAsk(ssh, key, ask, grants))

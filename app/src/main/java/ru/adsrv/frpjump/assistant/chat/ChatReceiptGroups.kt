@@ -10,6 +10,7 @@ import ru.adsrv.frpjump.assistant.TerminalKey
 import ru.adsrv.frpjump.ssh.TAB_NAME_MAX
 import ru.adsrv.frpjump.ssh.TabNameCheck
 import ru.adsrv.frpjump.ssh.checkTabName
+import ru.adsrv.frpjump.ssh.isolateName
 
 /** Consecutive receipts of one tool, shown as one row with a counter. */
 internal data class ReceiptGroup(val tool: String, val items: List<ChatToolReceipt>)
@@ -50,10 +51,10 @@ internal class ReceiptWords(
     /** "profile · user@device #n" in the chat's language, and the plain "tab <id>" for a tab no result names. */
     val tabNamed: (String, String, String, Int) -> String = { profile, user, device, number -> "$profile · $user@$device #$number" },
     val tabPlain: (Int) -> String = { "tab $it" },
-    /** "name · profile · user@device #n": a tab that has a name, which is only ever shown with its user and device. */
-    val tabNamedAs: (String, String, String, String, Int) -> String = { name, profile, user, device, number -> "\"$name\" · $profile · $user@$device #$number" },
-    /** "name · user@device #n": the line of a rename call. */
-    val tabRenamed: (String, String, String, Int) -> String = { name, user, device, number -> "\"$name\" · $user@$device #$number" },
+    /** "profile · user@device #n · name": a tab that has a name, which is only ever shown after its identity, bidi-isolated and in quotes. */
+    val tabNamedAs: (String, String, String, String, Int) -> String = { name, profile, user, device, number -> "$profile · $user@$device #$number · \"$name\"" },
+    /** "user@device #n · name": the line of a rename call. */
+    val tabRenamed: (String, String, String, Int) -> String = { name, user, device, number -> "$user@$device #$number · \"$name\"" },
 )
 
 /** A tab as a `terminal_tabs` result names it: display text only. */
@@ -131,11 +132,11 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
     // A name is shown with the tab's user and device, never alone: the name is the owner's or the model's text, not proof of what the tab is.
     val name = label.name?.let { receiptText(it, TAB_NAME_MAX) }?.takeIf { it.isNotEmpty() }
         ?: return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
-    return words.tabNamedAs(name, part(label.profile), part(label.user), part(label.device), label.number)
+    return words.tabNamedAs(isolateName(name), part(label.profile), part(label.user), part(label.device), label.number)
 }
 
 /**
- * "name · user@device #n" for a rename call, the tab's user and device as this turn's `terminal_tabs` result names them; "profile · user@device #n"
+ * "user@device #n · name" for a rename call, the tab's user and device as this turn's `terminal_tabs` result names them; "profile · user@device #n"
  * when the call brings the automatic name back; "tab <id>" alone when no result names the tab (the name is then not shown: it would stand alone).
  */
 private fun terminalRenameDetail(a: JsonObject, words: ReceiptWords): String? {
@@ -144,7 +145,7 @@ private fun terminalRenameDetail(a: JsonObject, words: ReceiptWords): String? {
     fun part(raw: String) = receiptText(raw, RECEIPT_PART_CHARS)
     val name = newTabName(a)?.let { receiptText(it, TAB_NAME_MAX) }?.takeIf { it.isNotEmpty() }
         ?: return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
-    return words.tabRenamed(name, part(label.user), part(label.device), label.number)
+    return words.tabRenamed(isolateName(name), part(label.user), part(label.device), label.number)
 }
 
 /** The name a `terminal_rename` call asks for as the tool would take it (trimmed, valid), null for the automatic one or an invalid one. */

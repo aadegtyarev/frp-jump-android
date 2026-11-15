@@ -406,7 +406,7 @@ class AssistantTerminalToolsTest {
         assertTrue(names(AssistantTools(terminalTabs = true), null).none { it.spec.name.startsWith("terminal_") })
         // Off: one entry, wire terminal_tabs, never terminal_read.
         val off = names(AssistantTools()).last()
-        assertTrue("terminal_tabs - read the owner's open terminal tabs" in off.spec.description)
+        assertTrue("terminal_tabs - read and rename the owner's open terminal tabs" in off.spec.description)
         assertFalse("terminal_read" in off.spec.description)
         assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "ssh_command"), enumOf(off))
     }

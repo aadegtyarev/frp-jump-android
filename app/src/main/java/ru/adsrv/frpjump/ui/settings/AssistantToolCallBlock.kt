@@ -34,6 +34,7 @@ import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.chat.*
+import ru.adsrv.frpjump.ssh.isolateName
 import ru.adsrv.frpjump.ui.AppTheme
 
 /**
@@ -225,9 +226,16 @@ private fun ChatToolReceiptBody(receipt: ChatToolReceipt, rename: TabRename? = n
     // "before → after" of a rename, each as the name (quoted) or the automatic user@device #n: the tab's user and device are always in it.
     val renameLine = rename?.let { r ->
         val label = r.label
-        val auto = resources.getString(R.string.chat_detail_tab_auto, receiptText(label.user, RECEIPT_DETAIL_CHARS), receiptText(label.device, RECEIPT_DETAIL_CHARS), label.number)
-        fun shown(name: String?) = name?.let { resources.getString(R.string.chat_detail_name_quoted, receiptText(it, RECEIPT_DETAIL_CHARS)) } ?: auto
-        resources.getString(R.string.chat_receipt_rename, shown(r.before), shown(r.after))
+        fun shown(name: String?) = name?.let { resources.getString(R.string.chat_detail_name_quoted, isolateName(receiptText(it, RECEIPT_DETAIL_CHARS))) }
+            ?: resources.getString(R.string.chat_detail_name_auto)
+        resources.getString(R.string.chat_receipt_rename, receiptText(label.profile, RECEIPT_DETAIL_CHARS), receiptText(label.user, RECEIPT_DETAIL_CHARS),
+            receiptText(label.device, RECEIPT_DETAIL_CHARS), label.number, shown(r.before), shown(r.after))
+    }
+    // A rename whose tab no `terminal_tabs` result of the turn names: the tab's id alone. Its reply holds the name, which must not stand alone.
+    if (rename == null && receipt.call.name == AssistantToolId.TERMINAL_RENAME.wire && result?.outcome == ToolOutcome.SUCCESS) {
+        val id = (receipt.call.arguments["tab_id"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+        SelectionContainer { Text(resources.getString(R.string.chat_detail_tab, id ?: 0), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted) }
+        return
     }
     val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) }, renameLine = renameLine)
     if (body.isEmpty()) return

@@ -107,8 +107,9 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val user get() = session.user
     override val number get() = session.number
     override val state get() = session.state.value
-    override val customName get() = session.tabName.value
-    override fun rename(name: String?) = session.rename(name)
+    override val customName get() = session.tabName.value?.text
+    // Named by the assistant: the tab's chip shows it together with the automatic label until the owner saves it.
+    override fun rename(name: String?) = session.rename(name, ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT)
     override val tmuxName get() = session.tmux.assigned?.takeIf { session.tmux.inUse }
     override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? = session.openClient()?.let { execOutputTail(it, command, maxBytes, lease) }
     override fun bufferText(lines: Int): String = terminalBufferText(session.terminal.session.emulator, lines)
@@ -211,11 +212,12 @@ class AssistantTerminalTabs internal constructor(
      * valid ([ru.adsrv.frpjump.ssh.checkTabName]), null for the automatic label. [TabNotOpen] when the tab is unknown, hidden or closed:
      * nothing changes then. Only the tab's label changes; its connection is not touched.
      */
-    internal suspend fun rename(id: Int, name: String?): TerminalTab {
+    internal suspend fun rename(id: Int, name: String?): TerminalTab = withContext(main) {
+        // Looked up again where the rename happens: a tab closed, hidden or ended since the call began is not renamed.
         val handle = visible().firstOrNull { it.id == id } ?: throw TabNotOpen()
         if (tabState(handle.state) == TabState.CLOSED) throw TabNotOpen()
-        withContext(main) { handle.rename(name) }
-        return describe(handle)
+        handle.rename(name)
+        describe(handle)
     }
 
     /**

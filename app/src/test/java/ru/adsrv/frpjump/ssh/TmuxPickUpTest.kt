@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.ssh
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -171,5 +172,21 @@ class TmuxPickUpTest {
         val out = process.inputStream.bufferedReader().readText()
         process.waitFor()
         return out
+    }
+
+    @Test
+    fun `a listing counts only with exit 0 or no server to ask`() {
+        // Exit 0: its output, even an empty one.
+        assertEquals("a\nb\n", tmuxListing(ExecResult("a\nb\n", "", 0)))
+        assertEquals("", tmuxListing(ExecResult("", "", 0)))
+        // No server: nothing runs, an empty listing.
+        assertEquals("", tmuxListing(ExecResult("", "no server running on /tmp/tmux-1000/default", 1)))
+        assertEquals("", tmuxListing(ExecResult("", "error connecting to /tmp/tmux-1000/default (No such file or directory)", 1)))
+        // Anything else says nothing, so nothing may be forgotten from it: a missing tmux, another failure, no exit status.
+        assertNull(tmuxListing(ExecResult("", "sh: 1: tmux: not found", 127)))
+        assertNull(tmuxListing(ExecResult("", "", 1)))
+        assertNull(tmuxListing(ExecResult("", "unknown option", 1)))
+        assertNull(tmuxListing(ExecResult("", "", null)))
+        assertNull(tmuxListing(ExecResult("a\n", "no server running", null)))
     }
 }

@@ -68,8 +68,9 @@ class AssistantTerminalRenameTest {
         // The length in the schema and the text is the owner's rule's own, not a second number.
         assertEquals(TAB_NAME_MAX, props.getValue("name").jsonObject.getValue("maxLength").jsonPrimitive.content.toInt())
         assertEquals(listOf("tab_id", "name"), tool.spec.parameters.getValue("required").jsonArray.map { it.jsonPrimitive.content })
-        assertEquals(ru.adsrv.frpjump.ops.Effect.READ_LOCAL, tool.effect)
-        // No confirmation card: an app-local label is not a change that asks.
+        assertEquals(ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL, tool.effect)
+        assertFalse(AssistantToolId.TERMINAL_RENAME.confirms)
+        // No confirmation card: a local label change that the catalog marks as not confirming.
         assertTrue(tool.changeCheck(buildJsonObject { put("tab_id", 1); put("name", "x") }) is ru.adsrv.frpjump.assistant.tools.ChangeCheck.ReadOnly)
     }
 
@@ -167,14 +168,26 @@ class AssistantTerminalRenameTest {
         val words = ReceiptWords("all", { "from $it" }, tabLabel = labels::get)
         val read = ToolCall("r", "terminal_read", buildJsonObject { put("tab_id", 2) })
         val input = ToolCall("i", "terminal_input", buildJsonObject { put("tab_id", 2); put("text", "ls") })
-        assertEquals("\"old\" · Home · pi@wb7 #2", receiptDetail(read, words))
-        assertEquals("\"old\" · Home · pi@wb7 #2", receiptDetail(input, words))
-        assertEquals("\"logs\" · pi@wb7 #2", receiptDetail(renameCall("c", 2, "logs"), words))
+        // The identity first, the name last: bidi-isolated and in quotes.
+        assertEquals("Home · pi@wb7 #2 · \"\u2068old\u2069\"", receiptDetail(read, words))
+        assertEquals("Home · pi@wb7 #2 · \"\u2068old\u2069\"", receiptDetail(input, words))
+        assertEquals("pi@wb7 #2 · \"\u2068logs\u2069\"", receiptDetail(renameCall("c", 2, "logs"), words))
         // The automatic name again: no name to show, the tab by profile, user and device.
         assertEquals("Home · pi@wb7 #2", receiptDetail(renameCall("c", 2, ""), words))
         // No listing names the tab: the id alone, never the model's name by itself.
         assertEquals("tab 9", receiptDetail(renameCall("c", 9, "root@prod"), words))
         assertEquals("tab 2", receiptDetail(renameCall("c", 2, "root@prod")))
+    }
+
+    @Test fun `a rename that finds the tab closed where it runs renames nothing`() {
+        val tab = Tab(1)
+        // The main dispatcher is where the rename runs: the tab ends between the lookup before and the work there.
+        val main = object : kotlinx.coroutines.CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { tab.state = SshState.Ended("gone"); block.run() }
+        }
+        val owner = AssistantTerminalTabs(tabs = { listOf(tab) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null }, io = Dispatchers.IO, main = main)
+        assertEquals("Tab 1 is closed. Nothing was renamed.", rename(owner, 1).text)
+        assertTrue(tab.renames.isEmpty())
     }
 
     @Test fun `the expanded rename shows before and after, following earlier renames of the turn`() {

@@ -234,6 +234,8 @@ class AssistantChatScreenTest {
                     1 -> AgentReply(calls = listOf(ToolCall("rename-1", "terminal_rename", buildJsonObject { put("tab_id", 2); put("name", "logs") })))
                     else -> { heldProviderReply.await(); AgentReply("Renamed the tab.") }
                 }
+                "terminal-rename-unlisted" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("rename-1", "terminal_rename", buildJsonObject { put("tab_id", 2); put("name", "logs") }))) else { heldProviderReply.await(); AgentReply("Renamed the tab.") }
                 "terminal-input" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("input-$calls", "terminal_input", buildJsonObject {
                         put("tab_id", 2); put("text", typedText)
@@ -642,26 +644,48 @@ class AssistantChatScreenTest {
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_1"))
         // The name is never alone: the tab's user and device are on the line.
         compose.onNodeWithTag("chat_tool_call_1").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_rename_receipt), substring = true)
-            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name, "logs", "pi", "synthetic-device", 2), substring = true)
+            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name, ru.adsrv.frpjump.ssh.isolateName("logs"), "pi", "synthetic-device", 2), substring = true)
         compose.runOnIdle { assertEquals("logs", renamed.customName); assertNull(other.customName) }
         shot("terminal-rename-running")
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").performClick()
-        val before = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, "old")
-        val after = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, "logs")
-        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_receipt_rename, before, after), substring = true)
+        val before = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("old"))
+        val after = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("logs"))
+        // Identity first (profile, user@device, number), then before -> after.
+        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains(
+            localizedFormat(ru.adsrv.frpjump.R.string.chat_receipt_rename, "Synthetic profile", "pi", "synthetic-device", 2, before, after), substring = true)
             .assertTextContains("Tab 2 is now named \"logs\".", substring = true)
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
         shot("terminal-rename-expanded")
+    }
+
+    /** A rename with no `terminal_tabs` result in the turn: the call line and the expanded receipt show the tab's id only, never the name alone. */
+    @Test fun aRenameOfAnUnlistedTabNeverShowsTheNameAlone() {
+        val renamed = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")
+        terminalTabs = AssistantTerminalTabs(tabs = { listOf(SyntheticTab(1, 1, null, ""), renamed) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> null })
+        mode = "terminal-rename-unlisted"; settings.update { it.copy(assistantTerminalTabs = true) }
+        install()
+        input().performTextInput("Call the second tab logs")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 1 && r.all { it.result != null } } }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("logs", renamed.customName) }
+        compose.runOnIdle { heldProviderReply.complete(Unit) }
+        awaitIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        val text = compose.onNodeWithTag("chat_tool_receipt_0").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+        assertTrue(text, text.contains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab, 2)))
+        assertFalse("the name stands alone in: $text", text.contains("logs"))
     }
 
     /** The question before typing into a tab that has a name: the name, with the tab's profile, user and device. */
     @Test fun theTypingCardShowsATabNameWithItsUserAndDevice() {
         startTypingConfirmation("logs")
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true)
-            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name_named, "logs", "Synthetic profile", "pi", "synthetic-device", 2), substring = true)
+            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName("logs"), "Synthetic profile", "pi", "synthetic-device", 2), substring = true)
         shot("card-terminal-input-named")
     }
 

@@ -49,7 +49,8 @@ internal abstract class AppTool<A : Any>(
      */
     fun changeCheck(arguments: JsonObject): ChangeCheck {
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return ChangeCheck.Invalid }
-        if (!(effect.changes || id.effect.changes)) return ChangeCheck.ReadOnly
+        // A changing tool that is catalogued as not confirming (the tab rename) never asks.
+        if (!((effect.changes || id.effect.changes) && id.confirms)) return ChangeCheck.ReadOnly
         val described = try { describeChange(parsed) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
         return ChangeCheck.Change(described ?: ChangeRequest(id, null, "", described = false))
     }
