@@ -117,8 +117,8 @@ class SectionHeadersTest {
         compose.onNodeWithTag(SETTINGS_GEAR_TAG).assertIsDisplayed()
     }
 
-    @Composable private fun connectionsTitle() {
-        SectionTitleRow(string(R.string.tab_connections), Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+    @Composable private fun connectionsTitle(text: String = string(R.string.tab_connections)) {
+        SectionTitleRow(text, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             IconButton(onClick = {}, modifier = Modifier.size(44.dp)) {
                 Icon(PowerGlyph, contentDescription = string(R.string.disconnect_all_tunnels), modifier = Modifier.size(20.dp))
             }
@@ -129,8 +129,8 @@ class SectionHeadersTest {
         }
     }
 
-    private fun connectionsChecks(lang: String, fontScale: Float, stacked: Boolean) {
-        host(360, lang, fontScale) { connectionsTitle() }
+    private fun connectionsChecks(lang: String, fontScale: Float, stacked: Boolean, text: String? = null) {
+        host(360, lang, fontScale) { if (text == null) connectionsTitle() else connectionsTitle(text) }
         val title = compose.onNodeWithTag(SECTION_TITLE_TAG).assertIsDisplayed()
         val results = mutableListOf<TextLayoutResult>()
         title.fetchSemanticsNode().config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results)
@@ -147,8 +147,10 @@ class SectionHeadersTest {
 
     @Test fun connectionsTitleIsOnOneRowAtNormalFont() = connectionsChecks("en", 1f, stacked = false)
     @Test fun connectionsTitleIsOnOneRowAtNormalFontRu() = connectionsChecks("ru", 1f, stacked = false)
-    @Test fun connectionsTitleIsUnderTheIconsAtDoubleFont() = connectionsChecks("en", 2f, stacked = true)
-    @Test fun connectionsTitleIsUnderTheIconsAtDoubleFontRu() = connectionsChecks("ru", 2f, stacked = true)
+    @Test fun connectionsTitleIsOnOneRowAtDoubleFont() = connectionsChecks("en", 2f, stacked = false)
+    @Test fun connectionsTitleIsOnOneRowAtDoubleFontRu() = connectionsChecks("ru", 2f, stacked = false)
+    /** A title too long for the icons' row still goes under the icons, whole, on one line. */
+    @Test fun longTitleIsUnderTheIconsAtDoubleFont() = connectionsChecks("en", 2f, stacked = true, text = "Connections")
 
     @Test fun sessionsHeaderHasTheGear() {
         var opened = 0
