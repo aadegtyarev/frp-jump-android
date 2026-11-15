@@ -1164,14 +1164,14 @@
     <string name="terminal_paste_enter_warning">This action also sends Enter after pasting, including when line breaks are removed.</string>
     <string name="terminal_paste_run_enter">Paste + Enter</string>
     <string name="terminal_paste_join_enter">Remove line breaks + Enter</string>
-    <string name="connection_saved_title">Tunnel saved</string>
+    <string name="connection_saved_title">Connection saved</string>
     <string name="wb_control_not_writable">Control is read-only, unavailable, or its metadata changed. Reopen the control before sending.</string>
     <string name="connection_saved_port_repair">Tunnel saved. Its local-port reservation will be restored before the next tunnel allocation; there is no need to add the tunnel again.</string>
     <string name="connection_saved_inactive">%1$s is saved, but could not start (%2$s). Retry starting it; do not add it again.</string>
     <string name="connection_saved_waiting">%1$s is saved but not started. Start it below; another QR code or enrollment token is not needed.</string>
     <string name="connection_retry_start">Retry start</string>
     <string name="connection_pending">Saved · tap to start</string>
-    <string name="connection_no_longer_saved">This saved tunnel was removed or changed. Choose it again.</string>
+    <string name="connection_no_longer_saved">This saved connection was removed or changed. Choose it again.</string>
     <string name="mqtt_login_not_saved">Could not save the login. You may need to enter it again after reopening this session.</string>
     <string name="mqtt_login_not_removed">Could not remove the saved login. The previous login may still be stored on this phone.</string>
     <string name="chat_title">Chat</string>
