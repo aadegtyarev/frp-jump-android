@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.BotGlyph
 
 private class AssistantSaveOwner { var live = true; var pending: Any? = null }
 
@@ -18,7 +19,7 @@ internal fun AssistantModuleSetting(enabled: Boolean, onSave: (Boolean, (String?
     DisposableEffect(owner) { onDispose { owner.live = false; owner.pending = null } }
     Column {
         SwitchRow(
-            tile = { GlyphTile("LLM") },
+            tile = { IconTile(BotGlyph) },
             label = stringResource(R.string.assistant_enabled),
             hint = stringResource(R.string.assistant_foundation_hint),
             checked = enabled,

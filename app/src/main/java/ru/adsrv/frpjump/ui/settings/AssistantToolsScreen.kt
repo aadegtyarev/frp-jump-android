@@ -17,10 +17,13 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.ShieldCheckGlyph
+import ru.adsrv.frpjump.ui.LightbulbGlyph
+import ru.adsrv.frpjump.ui.WrenchGlyph
 
 @Composable
 internal fun AssistantToolsEntry(onTools: () -> Unit) {
-    SettingRow(tile = { GlyphTile("W") }, label = stringResource(R.string.assistant_tools),
+    SettingRow(tile = { IconTile(WrenchGlyph) }, label = stringResource(R.string.assistant_tools),
         modifier = Modifier.testTag("assistant_tools_entry"), onClick = onTools) { Chevron() }
 }
 
@@ -44,7 +47,7 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
         Text(stringResource(R.string.assistant_tools_notice))
         Group(null) {
             Column(Modifier.testTag("tool_confirmations")) {
-                SwitchRow(tile = { GlyphTile("?") }, label = stringResource(R.string.confirmations_setting), hint = stringResource(R.string.confirmations_setting_hint),
+                SwitchRow(tile = { IconTile(ShieldCheckGlyph) }, label = stringResource(R.string.confirmations_setting), hint = stringResource(R.string.confirmations_setting_hint),
                     checked = state.confirmations, busy = CONFIRMATIONS_KEY in state.pending, onChange = onConfirmationsChange)
                 if (CONFIRMATIONS_KEY in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)
             }
@@ -57,7 +60,7 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
         }
         Group(null) {
             Column(Modifier.testTag("tool_offer")) {
-                SwitchRow(tile = { GlyphTile("+") }, label = stringResource(R.string.offer_tools_setting), hint = stringResource(R.string.offer_tools_setting_hint),
+                SwitchRow(tile = { IconTile(LightbulbGlyph) }, label = stringResource(R.string.offer_tools_setting), hint = stringResource(R.string.offer_tools_setting_hint),
                     checked = state.committed.offer, busy = OFFER_KEY in state.pending, onChange = onOfferChange)
                 if (OFFER_KEY in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)
             }
@@ -70,7 +73,7 @@ private fun ToolSwitch(id: AssistantToolId, checked: Boolean, state: AssistantTo
     Column(Modifier.testTag("tool_${id.wire}")) {
         // A switch that works only together with another one is greyed while that one is off, and says so.
         val hint = if (enabled) stringResource(id.hint()) else stringResource(id.hint()) + " " + stringResource(R.string.tool_needs_tabs)
-        SwitchRow(tile = { GlyphTile("W") }, label = stringResource(id.title()), hint = hint, checked = checked,
+        SwitchRow(tile = { IconTile(id.glyph()) }, label = stringResource(id.title()), hint = hint, checked = checked,
             busy = id.wire in state.pending, onChange = { onChange(id, it) }, enabled = enabled)
         if (id.wire in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)
     }

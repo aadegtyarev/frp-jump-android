@@ -1,7 +1,16 @@
 package ru.adsrv.frpjump.ui.settings
 
+import androidx.compose.ui.graphics.vector.ImageVector
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.ui.CommandGlyph
+import ru.adsrv.frpjump.ui.DeviceGlyph
+import ru.adsrv.frpjump.ui.GlobeGlyph
+import ru.adsrv.frpjump.ui.ImageGlyph
+import ru.adsrv.frpjump.ui.KeyboardGlyph
+import ru.adsrv.frpjump.ui.LinkGlyph
+import ru.adsrv.frpjump.ui.SearchGlyph
+import ru.adsrv.frpjump.ui.TerminalGlyph
 
 /** The only mapping from an assistant tool to its texts; exhaustive, so a new tool cannot be forgotten. */
 internal fun AssistantToolId.title(): Int = when (this) {
@@ -13,6 +22,18 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command
+}
+
+/** The only mapping from an assistant tool to its row icon; exhaustive, so a new tool must pick one. */
+internal fun AssistantToolId.glyph(): ImageVector = when (this) {
+    AssistantToolId.WEB_SEARCH -> SearchGlyph
+    AssistantToolId.READ_PAGE -> GlobeGlyph
+    AssistantToolId.INSPECT_IMAGE -> ImageGlyph
+    AssistantToolId.PROFILE_INFORMATION -> DeviceGlyph
+    AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> LinkGlyph
+    AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> TerminalGlyph
+    AssistantToolId.TERMINAL_INPUT -> KeyboardGlyph
+    AssistantToolId.SSH_COMMAND -> CommandGlyph
 }
 
 /** The Tools-screen hint; for SSH it is the FULL SSH ACCESS warning. */

@@ -21,7 +21,7 @@ private val WirenBoardGlyph = pathGlyph(
 )
 
 /** Two rack units with their lights. */
-private val ServerGlyph = pathGlyph(
+private val RackServerGlyph = pathGlyph(
     "Server",
     "M5 4h14a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" +
         "M5 14h14a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zM7.5 7h.01M7.5 17h.01M11 7h5.5M11 17h5.5",
@@ -71,7 +71,7 @@ val DeviceIcon?.glyph: ImageVector
         null -> DeviceGlyph
         DeviceIcon.LINUX -> LinuxGlyph
         DeviceIcon.WIRENBOARD -> WirenBoardGlyph
-        DeviceIcon.SERVER -> ServerGlyph
+        DeviceIcon.SERVER -> RackServerGlyph
         DeviceIcon.PC -> ComputerGlyph
         DeviceIcon.LAPTOP -> LaptopGlyph
         DeviceIcon.ROUTER -> RouterGlyph

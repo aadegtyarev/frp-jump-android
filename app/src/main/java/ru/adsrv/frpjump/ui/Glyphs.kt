@@ -535,3 +535,85 @@ val StopGlyph: ImageVector = ImageVector.Builder("Stop", 24.dp, 24.dp, 24f, 24f)
     strokeLineCap = StrokeCap.Round,
     strokeLineJoin = StrokeJoin.Round,
 ).build()
+
+// --- Lucide 1.72.0 (ISC, see licenses/Lucide.txt): the icons of the settings and assistant-tools rows ---
+
+/** Lucide "wrench": the assistant's tools. */
+val WrenchGlyph: ImageVector = pathGlyph(
+    "Wrench",
+    "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
+)
+
+/** Lucide "lightbulb": "Offer to turn tools on". */
+val LightbulbGlyph: ImageVector = pathGlyph(
+    "Lightbulb",
+    "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" +
+        "M9 18h6" +
+        "M10 22h4",
+)
+
+/** Lucide "globe": the tool that reads a web page. */
+val GlobeGlyph: ImageVector = pathGlyph(
+    "Globe",
+    "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20" +
+        "M12 2a14.5 14.5 0 0 0 0 20a14.5 14.5 0 0 0 0-20" +
+        "M2 12h20",
+)
+
+/** Lucide "keyboard": typing into a terminal. */
+val KeyboardGlyph: ImageVector = pathGlyph(
+    "Keyboard",
+    "M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" +
+        "M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10",
+)
+
+/** Lucide "chevrons-right": a command, apart from the framed [TerminalGlyph] (the SSH-command tool). */
+val CommandGlyph: ImageVector = pathGlyph(
+    "Command",
+    "m6 17 5-5-5-5M13 17l5-5-5-5",
+)
+
+/** Lucide "clock": for the event-waits tool. */
+val ClockGlyph: ImageVector = pathGlyph(
+    "Clock",
+    "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20" +
+        "M12 6v6l4 2",
+)
+
+/** Lucide "ethernet-port": the local ports. */
+val PortGlyph: ImageVector = pathGlyph(
+    "Port",
+    "m15 20 3-3h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2l3 3z" +
+        "M6 8v1M10 8v1M14 8v1M18 8v1",
+)
+
+/** Lucide "history": the terminal's history. */
+val HistoryGlyph: ImageVector = pathGlyph(
+    "History",
+    "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" +
+        "M3 3v5h5" +
+        "M12 7v5l4 2",
+)
+
+/** Lucide "server": the assistant's provider. */
+val ServerGlyph: ImageVector = pathGlyph(
+    "Server",
+    "M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" +
+        "M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2z" +
+        "M6 6h.01M6 18h.01",
+)
+
+/** Lucide "bot": the assistant module. */
+val BotGlyph: ImageVector = pathGlyph(
+    "Bot",
+    "M12 8V4H8" +
+        "M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" +
+        "M2 14h2M20 14h2M15 13v2M9 13v2",
+)
+
+/** Lucide "pencil": the owner's instructions. */
+val PencilGlyph: ImageVector = pathGlyph(
+    "Pencil",
+    "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" +
+        "m15 5 4 4",
+)
