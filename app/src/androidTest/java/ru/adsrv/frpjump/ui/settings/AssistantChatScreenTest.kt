@@ -404,7 +404,11 @@ class AssistantChatScreenTest {
     }
     private fun toolToggle(id: String) = compose.onNode(hasAnyAncestor(hasTestTag("tool_$id")) and isToggleable())
         .performScrollTo().assertIsDisplayed()
-    private fun localizedText(id: Int, vararg format: Any): String {
+    private fun localizedText(id: Int): String {
+        val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
+        return compose.activity.createConfigurationContext(config).getString(id)
+    }
+    private fun localizedFormat(id: Int, vararg format: Any): String {
         val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
         return compose.activity.createConfigurationContext(config).getString(id, *format)
     }
@@ -668,7 +672,7 @@ class AssistantChatScreenTest {
         compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_needs_tabs), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_input"))).assertExists()
         shot("tools-terminal-input-disabled")
         // Terminal tabs on: the same switch works, autosaves, and the extra sentence is gone.
-        toolToggle("terminal_tabs").performClick(); awaitToolSaved("terminal_tabs", true)
+        toolToggle("terminal_tabs").performClick(); awaitTabsSwitch(true)
         compose.onNode(switch).performScrollTo().assertIsOff().assertIsEnabled()
         compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_needs_tabs), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_input"))).assertDoesNotExist()
         compose.onNode(switch).performClick()
@@ -678,10 +682,16 @@ class AssistantChatScreenTest {
         assertTrue(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
         shot("tools-terminal-input-on")
         // Turning the tabs off again keeps the owner's choice but greys the switch and takes the tool out of effect.
-        toolToggle("terminal_tabs").performClick(); awaitToolSaved("terminal_tabs", false)
+        toolToggle("terminal_tabs").performClick(); awaitTabsSwitch(false)
         compose.onNode(switch).performScrollTo().assertIsOn().assertIsNotEnabled()
         assertFalse(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
         assertTrue(settings.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_INPUT))
+    }
+
+    private fun awaitTabsSwitch(on: Boolean) {
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.terminalTabs == on }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { "terminal_tabs" !in it.pending } == true }
+        compose.waitForIdle()
     }
 
     private fun startTypingConfirmation(): SyntheticTab {
@@ -735,7 +745,7 @@ class AssistantChatScreenTest {
         val receipt = compose.onNodeWithTag("chat_tool_receipt_0")
         receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt), substring = true)
         receipt.assertTextContains("ls -l\u23CE", substring = true)
-        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_keys, "Ctrl+C, Enter"), substring = true)
+        receipt.assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_receipt_keys, "Ctrl+C, Enter"), substring = true)
         val text = receipt.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
         for (raw in listOf("terminal_input", "tab_id", "ctrl_c", "SUCCESS")) assertFalse("$raw in: $text", text.contains(raw))
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
