@@ -138,12 +138,22 @@ class AssistantChatScreenTest {
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
-        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? = "htop\n"
+        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? = if ("pane_in_mode" in command) "0\n" else "htop\n"
         override fun bufferText(lines: Int) = screen
+        /** What the assistant typed into this tab, as text (the bytes are the tests' own business: see AssistantTerminalInputTest). */
+        val typed = java.util.concurrent.CopyOnWriteArrayList<String>()
+        private val pin = object : InputPin {}
+        override val lastOutputNanos: Long get() = System.nanoTime() - 10_000_000_000L
+        override fun capturePin(): InputPin? = pin
+        override fun pinCurrent(pin: InputPin) = pin === this.pin
+        override fun type(bytes: ByteArray, pin: InputPin): com.termux.terminal.RemoteTerminal.TypeOutcome {
+            typed += String(bytes, Charsets.UTF_8); return com.termux.terminal.RemoteTerminal.TypeOutcome.QUEUED
+        }
     }
     private var sshCommands = sshOver(kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true)), kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
     private var sshTarget = "synthetic" to "ssh"
     private var sshCommandText = "printf synthetic"
+    private var typedText = "ls -l\n"
     /** The whole screen laid out right to left, as on a phone set to Arabic or Hebrew: only an explicit left-to-right command keeps its order. */
     private var forceRtl = false
     private var windowHeightDp: Int? = null
@@ -216,6 +226,11 @@ class AssistantChatScreenTest {
                     1 -> AgentReply(calls = listOf(ToolCall("tabs-2", "terminal_read", buildJsonObject { put("tab_id", 1); put("lines", 50) })))
                     else -> { heldProviderReply.await(); AgentReply("The first tab shows a synthetic prompt and two files.") }
                 }
+                "terminal-input" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("input-$calls", "terminal_input", buildJsonObject {
+                        put("tab_id", 2); put("text", typedText)
+                        put("keys", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("ctrl_c"), kotlinx.serialization.json.JsonPrimitive("enter"))))
+                    }))) else AgentReply("Typed into the tab.")
                 "wait" -> awaitCancellation()
                 "held-answer" -> { heldProviderReply.await(); AgentReply("late reply") }
                 "error" -> error("synthetic-private-error")
@@ -389,13 +404,13 @@ class AssistantChatScreenTest {
     }
     private fun toolToggle(id: String) = compose.onNode(hasAnyAncestor(hasTestTag("tool_$id")) and isToggleable())
         .performScrollTo().assertIsDisplayed()
-    private fun localizedText(id: Int): String {
+    private fun localizedText(id: Int, vararg format: Any): String {
         val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
-        return compose.activity.createConfigurationContext(config).getString(id)
+        return compose.activity.createConfigurationContext(config).getString(id, *format)
     }
-    /** The service tool `request_tool` follows the enabled tools while at least one of the six switches is off; the terminal switch brings two tools. */
+    /** The service tool `request_tool` follows the enabled tools while at least one of the seven switches is off (these tests never turn on typing into tabs); the terminal switch brings two tools. */
     private fun withRequestTool(enabled: List<String>) =
-        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read") else listOf(it) } + (if (enabled.size < 6) listOf("request_tool") else emptyList())
+        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read") else listOf(it) } + (if (enabled.size < 6 || "terminal_input" !in enabled) listOf("request_tool") else emptyList())
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
         when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "terminal_tabs" -> it.terminalTabs; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
     }
@@ -639,6 +654,119 @@ class AssistantChatScreenTest {
         compose.onNode(switch).assertIsOn()
         assertTrue(settings.assistantAvailability.tools.terminalTabs)
         shot("tools-terminal-tabs-on")
+    }
+
+    @Test fun toolsScreenShowsTypingIntoTabsDisabledWhileTabsAreOffAndWorkingWhenTheyAreOn() {
+        install()
+        button("chat_tools").performClick()
+        val switch = hasAnyAncestor(hasTestTag("tool_terminal_input")) and isToggleable()
+        compose.onNodeWithTag("tool_terminal_input").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input)) and hasAnyAncestor(hasTestTag("tool_terminal_input"))).assertExists()
+        // The terminal tabs are off: the switch is there, off and not touchable, and the hint says why.
+        compose.onNode(switch).assertIsOff().assertIsNotEnabled()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_input"))).assertExists()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_needs_tabs), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_input"))).assertExists()
+        shot("tools-terminal-input-disabled")
+        // Terminal tabs on: the same switch works, autosaves, and the extra sentence is gone.
+        toolToggle("terminal_tabs").performClick(); awaitToolSaved("terminal_tabs", true)
+        compose.onNode(switch).performScrollTo().assertIsOff().assertIsEnabled()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_needs_tabs), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_input"))).assertDoesNotExist()
+        compose.onNode(switch).performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.terminalInput }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { "terminal_input" !in it.pending } == true }
+        compose.onNode(switch).assertIsOn()
+        assertTrue(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
+        shot("tools-terminal-input-on")
+        // Turning the tabs off again keeps the owner's choice but greys the switch and takes the tool out of effect.
+        toolToggle("terminal_tabs").performClick(); awaitToolSaved("terminal_tabs", false)
+        compose.onNode(switch).performScrollTo().assertIsOn().assertIsNotEnabled()
+        assertFalse(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
+        assertTrue(settings.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_INPUT))
+    }
+
+    private fun startTypingConfirmation(): SyntheticTab {
+        val plain = SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ")
+        val tmuxTab = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")
+        terminalTabs = AssistantTerminalTabs(tabs = { listOf(plain, tmuxTab) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" },
+            quietMs = 50, minAfterWriteMs = 20)
+        settings.update { it.copy(assistantTerminalTabs = true, assistantTerminalInput = true) }
+        // The program of the tab as `terminal_tabs` last saw it, so that the card has its line.
+        runBlocking { terminalTabs!!.programs() }
+        install()
+        compose.runOnIdle { mode = "terminal-input" }
+        input().performTextInput("Interrupt the program and press Enter")
+        button("chat_send").performClick()
+        try { compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null } }
+        catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("no question appeared: " + diagnose("no-question"), e) }
+        compose.waitForIdle()
+        return tmuxTab
+    }
+
+    /** The question before typing: tab, program, text with its Enter mark, keys and the four answers; nothing is typed until Allow. */
+    @Test fun typingIntoATabAsksWithTheTabTheProgramTheTextAndTheKeysThenTypesOnAllow() {
+        val tab = startTypingConfirmation()
+        shown("chat_confirm_card")
+        compose.runOnIdle { assertEquals(1, calls); assertTrue("nothing is typed while the question is open", tab.typed.isEmpty()) }
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt))
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_tab), substring = true)
+            .assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
+        compose.onNodeWithTag("chat_confirm_program", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_program), substring = true)
+            .assertTextContains("htop", substring = true)
+        compose.onNodeWithTag("chat_confirm_text_label", useUnmergedTree = true).assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirm_text))
+        compose.onNodeWithTag("chat_confirm_command", useUnmergedTree = true).assertTextContains("ls -l\u23CE", substring = true)
+        compose.onNodeWithTag("chat_confirm_keys", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_keys), substring = true)
+            .assertTextContains("Ctrl+C, Enter", substring = true)
+        compose.onNodeWithTag("chat_confirm_warning", useUnmergedTree = true).assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirm_input_warning))
+        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) shown(tag).assertHasClickAction()
+        // No saved connection in this fixture: "For session" is not offered.
+        compose.onNodeWithTag("chat_confirm_session").assertDoesNotExist()
+        shot("card-terminal-input")
+        shown("chat_confirm_allow").performClick()
+        awaitIdle()
+        compose.runOnIdle {
+            assertEquals(listOf("ls -l\r\u0003\r"), tab.typed.toList())
+            val result = requests.last().turns.last().exchanges.single().results.single()
+            assertEquals(ToolOutcome.SUCCESS, result.outcome)
+            assertTrue(result.text, result.text.startsWith("tab 2: Synthetic profile · pi@synthetic-device #2, tmux"))
+        }
+        // The receipt: titled for typing, naming the tab; expanded it shows the text with its Enter mark, the keys, then the screen.
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        val receipt = compose.onNodeWithTag("chat_tool_receipt_0")
+        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt), substring = true)
+        receipt.assertTextContains("ls -l\u23CE", substring = true)
+        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_keys, "Ctrl+C, Enter"), substring = true)
+        val text = receipt.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+        for (raw in listOf("terminal_input", "tab_id", "ctrl_c", "SUCCESS")) assertFalse("$raw in: $text", text.contains(raw))
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
+        shot("receipt-terminal-input-expanded")
+    }
+
+    /** A long text is shown whole: the box scrolls, with its line count and the scroll mark, and Decline types nothing. */
+    @Test fun aLongTypedTextScrollsInTheCardAndDeclineTypesNothing() {
+        typedText = (1..14).joinToString("\n") { "echo synthetic-line-$it" } + "\n"
+        val tab = startTypingConfirmation()
+        shown("chat_confirm_card")
+        compose.onNodeWithTag("chat_confirm_lines", useUnmergedTree = true).assertTextContains("14", substring = true)
+        compose.onNodeWithTag("chat_confirm_more", useUnmergedTree = true).assertExists()
+        assertEquals("the text box opens at its top", 0f, scrollOf("chat_confirm_command_box"), 0.5f)
+        shot("card-terminal-input-long")
+        val box = compose.onNodeWithTag("chat_confirm_command_box", useUnmergedTree = true)
+        var before = -1f; var swipes = 0
+        while (swipes++ < 80) {
+            box.performTouchInput { swipeUp() }; compose.waitForIdle()
+            val now = scrollOf("chat_confirm_command_box")
+            if (now == before) break
+            before = now
+        }
+        compose.onNode(hasText("echo synthetic-line-14", substring = true) and hasTestTag("chat_confirm_command"), useUnmergedTree = true).assertExists()
+        shot("card-terminal-input-long-end")
+        shown("chat_confirm_decline").performClick()
+        awaitIdle()
+        compose.runOnIdle {
+            assertTrue(tab.typed.isEmpty())
+            assertEquals(ToolOutcome.DECLINED, requests.last().turns.last().exchanges.single().results.single().outcome)
+        }
     }
 
     @Test fun formattedAndLongAnswersRemainSelectableAndOriginalHistoryIsUnchanged() {

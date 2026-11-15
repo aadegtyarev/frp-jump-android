@@ -55,6 +55,24 @@ private fun isRtlOrArabicDigit(cp: Int): Boolean = when (Character.getDirectiona
     else -> false
 }
 
+/**
+ * Text that is going to be TYPED into a terminal, as the owner reads it: [displayCommandSpans] for each line, and every line break (any
+ * kind: it is typed as one Enter) shown as a highlighted ⏎ mark followed by the line break itself, so that an Enter at the very end is
+ * visible too. A typed ⏎ is escaped like our other marks.
+ */
+internal fun displayTypedSpans(raw: String, forRender: Boolean = false): List<DisplaySpan> {
+    val lines = raw.replace("\r\n", "\n").replace('\r', '\n').split('\n')
+    val spans = ArrayList<DisplaySpan>()
+    lines.forEachIndexed { index, line ->
+        spans += displayCommandSpans(line, forRender)
+        if (index < lines.lastIndex) { spans += DisplaySpan(ENTER_GLYPH, true); spans += DisplaySpan("\n", false) }
+    }
+    return spans
+}
+
+/** [displayTypedSpans] as plain text. */
+internal fun displayTyped(raw: String): String = displayTypedSpans(raw).joinToString("") { it.text }
+
 /** The displayed command as plain text (the escapes without their highlight, no direction marks). */
 internal fun displayCommand(raw: String): String = displayCommandSpans(raw).joinToString("") { it.text }
 
@@ -72,7 +90,11 @@ private fun needsEscape(cp: Int): Boolean = when (Character.getType(cp).toByte()
 }
 
 /** The characters our own escapes are made of; a command that contains them is shown with them escaped. */
-private val OWN_GLYPHS = setOf(0x27E8, 0x27E9, 0x2409, 0x240D, 0x241B, 0x2400, 0x2421)
+private val OWN_GLYPHS = setOf(0x27E8, 0x27E9, 0x2409, 0x240D, 0x241B, 0x2400, 0x2421, ENTER_GLYPH_CP)
+
+/** The mark [displayTypedSpans] puts at each Enter of typed text. */
+private const val ENTER_GLYPH_CP = 0x23CE
+internal const val ENTER_GLYPH = "⏎"
 
 /** Unicode Default_Ignorable_Code_Point, written out so that it does not depend on the runtime's Unicode version. */
 internal fun isDefaultIgnorable(cp: Int): Boolean =

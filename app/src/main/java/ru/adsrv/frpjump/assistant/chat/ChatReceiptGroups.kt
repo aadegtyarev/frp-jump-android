@@ -6,6 +6,7 @@ import ru.adsrv.frpjump.agent.ToolCall
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.assistant.TerminalKey
 
 /** Consecutive receipts of one tool, shown as one row with a counter. */
 internal data class ReceiptGroup(val tool: String, val items: List<ChatToolReceipt>)
@@ -28,6 +29,8 @@ internal fun groupReceipts(receipts: List<ChatToolReceipt>, sameDetail: Boolean 
 /** What tells two calls of one tool apart: the arguments the detail line is made of. */
 private fun receiptKey(call: ToolCall): String = when (call.name) {
     AssistantToolId.PROFILE_INFORMATION.wire -> listOf("query", "profile_id", "offset").joinToString("\u0000") { call.arguments.text(it) ?: call.arguments.number(it).orEmpty() }
+    // Typing into one tab twice is two lines: what was typed is part of what tells the calls apart.
+    AssistantToolId.TERMINAL_INPUT.wire -> listOf(receiptDetail(call).orEmpty(), call.arguments.text("text").orEmpty(), typedKeys(call.arguments).joinToString(",")).joinToString("\u0000")
     else -> receiptDetail(call).orEmpty()
 }
 
@@ -82,7 +85,7 @@ internal const val RECEIPT_DETAIL_CHARS = 40
 internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("all", { "from record $it" })): String? {
     val a = call.arguments
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
-    if (call.name == AssistantToolId.TERMINAL_READ.wire) return terminalReadDetail(a, words)
+    if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire) return terminalReadDetail(a, words)
     val raw = when (call.name) {
         // The target's name only where the received facts name it (never its ids), then the command; the cut keeps the command's start.
         AssistantToolId.SSH_COMMAND.wire -> a.text("command")?.let { command ->
@@ -122,13 +125,22 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
 
 /**
  * The body of one expanded call, display only: for `ssh_command` the full command as `$ <command>` (hidden characters shown as visible
- * escapes; the label above cuts it), then [outcome] when there is something to say (null for a success), then the result text. No wire
- * name and no raw arguments: the label says what was called.
+ * escapes; the label above cuts it); for `terminal_input` the typed text the same way (every Enter marked) and a line with the keys
+ * ([keysLine] words it in the chat's language); then [outcome] when there is something to say (null for a success), then the result text.
+ * No wire name and no raw arguments: the label says what was called.
  */
-internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String): String {
+internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String, keysLine: (List<String>) -> String = { "Keys: " + it.joinToString(", ") }): String {
     val command = if (call.name == AssistantToolId.SSH_COMMAND.wire) call.arguments.text("command")?.let { "$ " + displayCommand(it) } else null
-    return listOfNotNull(command, outcome, resultText.takeIf { it.isNotEmpty() }).joinToString("\n")
+    val typed = if (call.name == AssistantToolId.TERMINAL_INPUT.wire) call.arguments.text("text")?.takeIf { it.isNotEmpty() }?.let { displayTyped(it).trimEnd('\n') } else null
+    val keys = if (call.name == AssistantToolId.TERMINAL_INPUT.wire) typedKeys(call.arguments).takeIf { it.isNotEmpty() }?.let(keysLine) else null
+    return listOfNotNull(command, typed, keys, outcome, resultText.takeIf { it.isNotEmpty() }).joinToString("\n")
 }
+
+/** The names of the keys a `terminal_input` call asked for, in order; an item that is no known key is left out. Display only. */
+private fun typedKeys(a: JsonObject): List<String> =
+    (a["keys"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { item ->
+        (item as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(TerminalKey::fromWire)?.label
+    }.orEmpty()
 
 private const val RECEIPT_PART_CHARS = 24
 

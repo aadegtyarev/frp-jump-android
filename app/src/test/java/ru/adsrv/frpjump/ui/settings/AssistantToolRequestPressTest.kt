@@ -53,10 +53,21 @@ class AssistantToolRequestPressTest {
 
     @Test fun `Turn on switches on exactly that tool, persisted, then sends the fixed message once`() {
         for (id in AssistantToolId.switches) Fx().use { f ->
+            // Typing into tabs is offered only while the tabs are on; the press then turns on that one switch, not the tabs.
+            if (id == AssistantToolId.TERMINAL_INPUT) f.store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true)
+            val before = f.on()
             f.press(id, "Turned on ${id.wire}")
-            assertEquals(listOf(id), f.on())
+            assertEquals(before + id, f.on())
             assertEquals(listOf("Turned on ${id.wire}"), f.sent)
-            assertEquals("the same persisted switch as Tools", listOf(id), AssistantToolId.switches.filter { SettingsStore(f.file).assistantAvailability.tools[it] })
+            assertEquals("the same persisted switch as Tools", before + id, AssistantToolId.switches.filter { SettingsStore(f.file).assistantAvailability.tools[it] })
+        }
+    }
+
+    @Test fun `Turn on for typing into tabs does nothing while the terminal tabs are off`() {
+        Fx().use { f ->
+            f.press(AssistantToolId.TERMINAL_INPUT)
+            assertEquals(emptyList<AssistantToolId>(), f.on()); assertEquals(emptyList<String>(), f.sent)
+            assertFalse("nothing was saved either", f.store.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_INPUT))
         }
     }
 
@@ -124,6 +135,14 @@ class AssistantToolRequestPressTest {
         assertEquals(listOf(AssistantToolId.SSH_COMMAND), requestedTools(state(), true, AssistantTools(readPage = true)))
         assertEquals(listOf(AssistantToolId.READ_PAGE), requestedTools(state(), true, AssistantTools(sshCommand = true)))
         assertEquals(listOf(AssistantToolId.READ_PAGE), requestedTools(state(declined = setOf("ssh_command")), true, AssistantTools()))
+    }
+
+    @Test fun `the button for typing into tabs shows only while the terminal tabs are on`() {
+        val asked = state(asked = listOf("terminal_input"))
+        assertTrue("the tabs are off: the model must ask for those first", requestedTools(asked, true, AssistantTools()).isEmpty())
+        assertTrue(requestedTools(asked, true, AssistantTools(terminalInput = true)).isEmpty())
+        assertEquals(listOf(AssistantToolId.TERMINAL_INPUT), requestedTools(asked, true, AssistantTools(terminalTabs = true)))
+        assertTrue("on and in effect: nothing to ask", requestedTools(asked, true, AssistantTools(terminalTabs = true, terminalInput = true)).isEmpty())
     }
 
     @Test fun `no buttons while an attempt runs, with the assistant off, for tools that are on, after a new Send or a clear`() {

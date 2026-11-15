@@ -15,6 +15,11 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     TERMINAL_TABS("terminal_tabs", "assistant_terminal_tabs", Effect.READ_REMOTE),
     /** Reads one tab. No switch of its own: it is on and off with [TERMINAL_TABS] (same setting key), and the Tools screen and `request_tool` show one entry. */
     TERMINAL_READ("terminal_read", "assistant_terminal_tabs", Effect.READ_REMOTE, ownsSwitch = false),
+    /**
+     * Types into one open tab. Its own switch (default off), but effective only while [TERMINAL_TABS] is on too: the tab list is how
+     * the model finds a tab (see [ru.adsrv.frpjump.settings.AssistantTools.get]).
+     */
+    TERMINAL_INPUT("terminal_input", "assistant_terminal_input", Effect.CHANGE_REMOTE),
     /** Arbitrary command: may change the remote system. */
     SSH_COMMAND("ssh_command", "assistant_ssh_command", Effect.CHANGE_REMOTE);
 

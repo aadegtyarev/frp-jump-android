@@ -23,7 +23,7 @@ class AssistantChangeRequestTest {
         val box = FakeKeystore().box("synthetic-ssh")
         val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { throw AssertionError("must not construct a client") })
-        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
+        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true, terminalInput = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
             synthetic.information, AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)), { }, terminalTabs = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null }))
         return all.associate { tool -> AssistantToolId.fromWire(tool.spec.name)!! to (tool as AppTool<*>) }
     }
@@ -40,6 +40,7 @@ class AssistantChangeRequestTest {
             AssistantToolId.PROFILE_INFORMATION to obj(),
             AssistantToolId.TERMINAL_TABS to obj(),
             AssistantToolId.TERMINAL_READ to obj("tab_id" to JsonPrimitive(1)),
+            AssistantToolId.TERMINAL_INPUT to obj("tab_id" to JsonPrimitive(1), "text" to JsonPrimitive("ls\n")),
             AssistantToolId.SSH_COMMAND to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("uptime")),
         )
         assertEquals(AssistantToolId.entries.toSet(), valid.keys)
@@ -48,7 +49,9 @@ class AssistantChangeRequestTest {
             if (id.effect.changes) {
                 assertTrue("$id changes but is not a Change: $check", check is ChangeCheck.Change)
                 assertEquals(id, (check as ChangeCheck.Change).request.tool)
-                assertNotNull("$id must describe its target", check.request.target)
+                // A command's target is a saved connection; typing has one only when the tab matches a saved connection (none among no tabs).
+                if (id == AssistantToolId.SSH_COMMAND) assertNotNull("$id must describe its target", check.request.target)
+                else assertNull("$id has no tab here", check.request.target)
             } else assertSame("$id", ChangeCheck.ReadOnly, check)
         }
     }

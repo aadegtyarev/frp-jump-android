@@ -96,12 +96,16 @@ class FrpJumpApp : Application() {
             tabs = { ssh.sessions.value.map { ru.adsrv.frpjump.assistant.SessionTab(it) } },
             hidden = { pendingUndo.hidden.value },
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
-            connectionName = { profile, device, port ->
-                val hiddenNow = pendingUndo.hidden.value
-                profiles.state.value.runtimes[profile]?.connections?.connections?.value
-                    ?.firstOrNull { it.kind == ru.adsrv.frpjump.ports.PortKind.SSH && it.device == device && it.port == port &&
-                        ru.adsrv.frpjump.undo.PendingUndo.connectionKey(profile, it.id) !in hiddenNow }?.customName
-            })
+            connectionName = { profile, device, port -> savedSshConnection(profile, device, port)?.customName },
+            connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id })
+    }
+
+    /** The saved SSH connection of a tab's profile, device and port that is not hidden by an Undo; null when none matches. */
+    private fun savedSshConnection(profile: String, device: String, port: Int): ru.adsrv.frpjump.connections.Connection? {
+        val hiddenNow = pendingUndo.hidden.value
+        return profiles.state.value.runtimes[profile]?.connections?.connections?.value
+            ?.firstOrNull { it.kind == ru.adsrv.frpjump.ports.PortKind.SSH && it.device == device && it.port == port &&
+                ru.adsrv.frpjump.undo.PendingUndo.connectionKey(profile, it.id) !in hiddenNow }
     }
 
     val assistantSshCommands by lazy { ru.adsrv.frpjump.assistant.AssistantSshCommands(sshTargets) }

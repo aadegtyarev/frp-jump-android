@@ -1274,6 +1274,11 @@
     <string name="tool_terminal_read_progress">Чтение вкладки…</string>
     <string name="tool_terminal_tabs_receipt">Список вкладок</string>
     <string name="tool_terminal_read_receipt">Чтение вкладки</string>
+    <string name="tool_terminal_input">Ввод во вкладки</string>
+    <string name="tool_terminal_input_hint">Помощник вводит текст и нажимает клавиши в открытых вкладках терминала, как вы с клавиатуры. Перед вводом спрашивает, если включено «Спрашивать перед изменяющими командами».</string>
+    <string name="tool_needs_tabs">Работает вместе с «Вкладками терминала».</string>
+    <string name="tool_terminal_input_progress">Ввод во вкладку…</string>
+    <string name="tool_terminal_input_receipt">Ввод во вкладку</string>
     <string name="tool_ssh_command">Команда SSH</string>
     <string name="tool_ssh_command_hint">ПОЛНЫЙ ДОСТУП ПО SSH: команды могут читать и изменять удалённую систему и файлы в пределах прав SSH-аккаунта. Команды и вывод могут содержать секреты и передаются настроенной модели. Токены оплачиваются.</string>
     <string name="tool_ssh_command_progress">Выполняется команда SSH…</string>
@@ -1333,6 +1338,14 @@
     <string name="always_dialog_cancel">Отмена</string>
     <string name="confirm_waiting">Ждём вашего ответа…</string>
     <string name="confirm_command">Команда</string>
+    <string name="confirm_input_title">Ввести в эту вкладку?</string>
+    <string name="confirm_input_warning">Вводится так, как будто вы сделали это сами. Экран после ввода передаётся модели.</string>
+    <string name="confirm_input_session_hint">Любой ввод во вкладки этого соединения, пока вы не выйдете из чата и помощник не закончит.</string>
+    <string name="confirm_tab">Вкладка</string>
+    <string name="confirm_program">Программа</string>
+    <string name="confirm_text">Текст</string>
+    <string name="confirm_keys">Клавиши</string>
+    <string name="chat_receipt_keys">Клавиши: %1$s</string>
     <string name="confirm_not_saved">Не удалось сохранить настройку. Этот вызов разрешён один раз.</string>
     <string name="chat_receipt_failed">Не удалось</string>
     <string name="chat_receipt_timeout">Время вышло</string>

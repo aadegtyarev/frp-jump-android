@@ -91,7 +91,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         val slot = ConfirmationSlot(id, answer, started)
         own.guarded(owner, "confirmation") {
             confirmation = slot
-            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info))
+            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info, request.typing))
         } ?: throw CancellationException("Send no longer owned")
         try {
             // The coroutine timer does not count device sleep, so the wait also looks at the real clock every few seconds.

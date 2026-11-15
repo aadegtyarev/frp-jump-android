@@ -68,7 +68,8 @@ class AssistantToolRequestTest {
         Fx(script = asking()).use { f ->
             f.send()
             assertEquals(listOf("request_tool"), f.requests.last().tools.map { it.name })
-            val all = AssistantToolId.switches.map { it.wire }
+            // Typing into tabs is not offered while the tabs are off: the model asks for terminal_tabs first.
+            val all = AssistantToolId.switches.map { it.wire } - "terminal_input"
             assertEquals(all, enum(f.requests.last().tools.single()))
             f.on(AssistantToolId.READ_PAGE, AssistantToolId.SSH_COMMAND)
             f.send()
@@ -76,6 +77,11 @@ class AssistantToolRequestTest {
             assertEquals(listOf("read_page", "request_tool"), f.requests.last().tools.map { it.name })
             assertEquals(all - "read_page" - "ssh_command", enum(f.requests.last().tools.last()))
             f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION, AssistantToolId.TERMINAL_TABS)
+            f.send()
+            // The tabs are on now, so typing into them may be asked for; every other tool is on.
+            assertEquals(listOf("web_search", "read_page", "inspect_image", "request_tool"), f.requests.last().tools.map { it.name })
+            assertEquals(listOf("terminal_input"), enum(f.requests.last().tools.last()))
+            f.on(AssistantToolId.TERMINAL_INPUT)
             f.send()
             assertEquals("every tool is on, so there is nothing to ask for", listOf("web_search", "read_page", "inspect_image"), f.requests.last().tools.map { it.name })
             f.settings.setAssistantTool(AssistantToolId.READ_PAGE, false)

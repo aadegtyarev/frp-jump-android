@@ -14,11 +14,21 @@ enum class ConfirmationDecision { ONCE, SESSION, ALWAYS, DENY, NO_ANSWER }
 class ConfirmationTargetInfo(val profileName: String, val connection: Connection)
 
 /**
+ * What the card of a call that types into a terminal tab shows besides the text (which is the request's command): the tab by names, the
+ * program in its foreground when a recent `terminal_tabs` probe knows it, and the keys by their names. Display text; names are null when
+ * the tab is not known. Not a data class: its toString never prints names, program or keys.
+ */
+class TypingCard(val tabId: Int, val profile: String?, val user: String?, val device: String?, val number: Int?, val program: String?,
+    val keys: List<String>) {
+    override fun toString() = "TypingCard(tab=$tabId)"
+}
+
+/**
  * The question shown to the owner. Not a data class: [command] may hold secrets and its toString must never print it.
  * Equality is by [id] only, so a state update never compares or prints the command.
  */
 class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: String, val target: GrantTarget?,
-    val info: ConfirmationTargetInfo?) {
+    val info: ConfirmationTargetInfo?, val typing: TypingCard? = null) {
     override fun equals(other: Any?) = other is PendingConfirmation && other.id == id
     override fun hashCode() = id.hashCode()
     override fun toString() = "PendingConfirmation(id=$id, tool=$tool)"

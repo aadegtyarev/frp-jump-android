@@ -22,10 +22,19 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test.
-        assertEquals(11, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(12, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("6f6969d49e9897b895c0a8eb2ec3fba49a459a058df5936716f32cf371d537d3", sha256(asset("assistant/skill.md")))
+        assertEquals("b95ca09390464dd4770d5495606b33cf2419536df5f3a2a5f829e7aec3fe8e8f", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
+    }
+
+    @Test fun `the skill tells the model how to use terminal_input`() {
+        val line = "- terminal_input (if provided) types into an open tab, the way the owner would. Use it for what needs that tab: an interactive program, a prompt waiting for an answer, the session the user points to; run separate commands with ssh_command. Read the tab before typing and check the screen it returns. If the screen asks for a password, stop and tell the user."
+        val lines = TestPrompts.real.system.lines()
+        // Right after the terminal_tabs / terminal_read item, in the Tools section.
+        val tabs = lines.indexOfFirst { it.startsWith("- terminal_tabs and terminal_read (if provided)") }
+        assertTrue(tabs >= 0)
+        assertEquals(line, lines[tabs + 1])
     }
 
     @Test fun `both assets are strict UTF-8 without BOM or CR and end with exactly one newline`() {
@@ -37,7 +46,7 @@ class AssistantPromptsTest {
             assertFalse("$path CR", text.contains('\r'))
             assertTrue("$path final newline", text.endsWith("\n") && text.trimEnd() == text.dropLast(1))
         }
-        assertTrue(asset("assistant/skill.md").size <= 4096)
+        assertTrue(asset("assistant/skill.md").size <= 6144)
         assertEquals(String(asset("assistant/summary.md"), Charsets.UTF_8).removeSuffix("\n"), TestPrompts.real.summary)
         assertEquals(String(asset("assistant/skill.md"), Charsets.UTF_8).removeSuffix("\n"), TestPrompts.real.system)
     }
@@ -52,9 +61,9 @@ class AssistantPromptsTest {
         assertThrows(IllegalArgumentException::class.java) { load("ok".toByteArray(), ByteArray(0)) }
     }
 
-    @Test fun `system prompt fits 4096 bytes and has no volatile content`() {
+    @Test fun `system prompt fits 6144 bytes and has no volatile content`() {
         val bytes = asset("assistant/skill.md")
-        assertTrue("skill.md is ${bytes.size} bytes", bytes.size <= 4096)
+        assertTrue("skill.md is ${bytes.size} bytes", bytes.size <= 6144)
         assertFalse(bytes.any { it == '\r'.code.toByte() })
         val text = TestPrompts.real.system
         assertEquals(String(bytes, Charsets.UTF_8).trimEnd(), text)

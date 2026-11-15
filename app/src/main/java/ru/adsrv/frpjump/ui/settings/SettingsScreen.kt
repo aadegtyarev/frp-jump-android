@@ -626,6 +626,8 @@ internal fun SwitchRow(
     onChange: (Boolean) -> Unit,
     hintColor: Color = AppTheme.colors.muted,
     busy: Boolean = false,
+    /** False: the switch shows its value and cannot be toggled (a calm grey, no error). */
+    enabled: Boolean = true,
 ) {
     SettingRow(
         tile = tile,
@@ -633,14 +635,14 @@ internal fun SwitchRow(
         hint = hint,
         hintColor = hintColor,
         onClick = null,
-        modifier = Modifier.toggleable(value = checked, enabled = !busy, role = Role.Switch, onValueChange = onChange),
+        modifier = Modifier.toggleable(value = checked, enabled = enabled && !busy, role = Role.Switch, onValueChange = onChange),
     ) {
         if (busy) {
             Box(Modifier.size(width = 52.dp, height = 32.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             }
         } else {
-            Switch(checked = checked, onCheckedChange = null)
+            Switch(checked = checked, onCheckedChange = null, enabled = enabled)
         }
     }
 }

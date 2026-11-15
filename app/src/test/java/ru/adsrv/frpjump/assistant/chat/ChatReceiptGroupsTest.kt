@@ -82,7 +82,7 @@ class ChatReceiptGroupsTest {
             "profile_information" to emptyMap(), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
             AssistantRequestTool.WIRE to mapOf("name" to "web_search", "why" to "x"))
         // terminal_tabs takes no arguments, so there is nothing to tell its calls apart by; terminal_read has its own test below.
-        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read"
+        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read" - "terminal_input"
         catalogue.forEach { wire ->
             val args = typical[wire] ?: error("no typical arguments for $wire: add them here and a detail in receiptDetail")
             val text = receiptDetail(call(wire, *args.map { it.key to it.value }.toTypedArray()).call, title)
@@ -140,6 +140,41 @@ class ChatReceiptGroupsTest {
         assertEquals("a result", receiptBody(call("web_search", "query" to "q").call, null, "a result"))
         // An ssh call without a command (an older saved call) shows no command line.
         assertEquals("r", receiptBody(call("ssh_command").call, null, "r"))
+    }
+
+    private fun input(id: Int, text: String? = null, vararg keys: String) = ToolCall("c", "terminal_input", buildJsonObject {
+        put("tab_id", id)
+        if (text != null) put("text", text)
+        if (keys.isNotEmpty()) put("keys", kotlinx.serialization.json.JsonArray(keys.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+    })
+
+    @Test fun `terminal_input names its tab like terminal_read, by the same turn's terminal_tabs result`() {
+        val labels = tabLabels(listOf(tabsResult("tab_id: 3 | profile: Дача (profile_id: p1) | device: щиток | user: root | tab: 2 | state: connected | tmux: no")))
+        val ru = ReceiptWords("все", { "с $it" }, tabLabel = labels::get, tabNamed = { p, u, d, n -> "$p · $u@$d №$n" }, tabPlain = { "вкладка $it" })
+        assertEquals("Дача · root@щиток №2", receiptDetail(input(3, "ls"), ru))
+        assertEquals("вкладка 9", receiptDetail(input(9, "ls"), ru))
+        assertEquals("tab 3", receiptDetail(input(3, "ls")))
+        assertNull(receiptDetail(ToolCall("c", "terminal_input", buildJsonObject { put("text", "x") })))
+    }
+
+    @Test fun `terminal_input receipts differ by what was typed`() {
+        val calls = listOf(input(3, "ls"), input(3, "ls"), input(3, "pwd"), input(3, null, "enter"), input(4, "ls")).map { ChatToolReceipt(it) }
+        assertEquals(listOf(2, 1, 1, 1), groupReceipts(calls, sameDetail = true).map { it.items.size })
+    }
+
+    @Test fun `the terminal_input body shows the typed text with visible escapes, then the keys, then the outcome and the result`() {
+        assertEquals("ls -l${ENTER_GLYPH}\ntab 3: x", receiptBody(input(3, "ls -l\n"), null, "tab 3: x"))
+        assertEquals("echo a${ENTER_GLYPH}\necho b\nKeys: Enter, Ctrl+C\nFailed\nTab 3 is not open.",
+            receiptBody(input(3, "echo a\r\necho b", "enter", "ctrl_c"), "Failed", "Tab 3 is not open."))
+        // Hidden characters are escapes, never invisible; keys alone give only the keys line.
+        assertEquals("a${displayCommand("\u202e")}b", receiptBody(input(3, "a\u202eb"), null, ""))
+        assertEquals("Keys: Up, PgDn", receiptBody(input(3, null, "up", "page_down"), null, ""))
+        assertEquals("Клавиши: Enter", receiptBody(input(3, null, "enter"), null, "", keysLine = { "Клавиши: " + it.joinToString(", ") }))
+        // A typed ⏎ is not mistaken for our mark; an unknown key name is left out.
+        assertEquals("a⟨U+23CE⟩b", receiptBody(input(3, "a⏎b"), null, ""))
+        assertEquals("Keys: Tab", receiptBody(input(3, null, "tab", "f5"), null, ""))
+        // Other tools never show typed text.
+        assertEquals("r", receiptBody(call("terminal_read", "text" to "x").call, null, "r"))
     }
 
     @Test fun `running grouping joins only calls equal in tool and detail`() {
