@@ -1044,8 +1044,9 @@ It is not an atomic live inventory or proof of remote service readiness. The
 separate SSH-command tool executes one noninteractive command on a saved SSH
 target from any profile over an already ready tunnel, with ordinary login/pinning,
 bounded separate stdout/stderr and honest exit/unknown status. It owns its client
-and cancellation/actual cleanup, not Terminal or Files clients. No tunnel-control
-tools are available.
+and cancellation/actual cleanup, not Terminal or Files clients. The only tunnel-control
+tools are `start_tunnel` and `stop_tunnel` behind their own default-off switch (see the
+[agent contract](agent-contract.md#optional-tunnel-tools)); `ssh_command` never starts a tunnel.
 Enabling, opening settings and saving do not start provider requests. Fetch models
 is an explicit setup action, available even while the module is off. Its target-bound credentials,
 cancellation and current execution boundaries belong to the
@@ -1165,7 +1166,7 @@ the SSH account’s rights (after the owner's confirmation unless that is turned
 and additional UI languages are not promised. x86_64 builds are for local
 debug/minified validation, not the arm64 release target. Assistant chat is
 locally saved and encrypted, with optional public-read, profile-information and
-SSH-command tools but no tunnel control, cloud synchronization or automatic action
+SSH-command tools and, behind a default-off switch, starting and stopping saved tunnels (no tunnel creation, reconfiguration or deletion), no cloud synchronization or automatic action
 replay. Model context remains bounded, with automatic working summaries rather
 than an unbounded window. Summaries are model-generated notes, not verified truth
 or independent background task/session management. Public tools do not execute/render JavaScript or

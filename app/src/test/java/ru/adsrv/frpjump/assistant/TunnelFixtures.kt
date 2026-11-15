@@ -17,6 +17,8 @@ import ru.adsrv.frpjump.ports.PortKind
 internal class FakeSavedTunnels : SavedTunnelHost {
     val saved = mutableMapOf<SavedTunnelIds, SavedTunnel>()
     val on = mutableSetOf<SavedTunnelIds>()
+    /** Going down: the owner's Stop waits for Undo, or it is being disconnected. Not on while it is. */
+    val stopping = mutableSetOf<SavedTunnelIds>()
     /** Bumped to make the pin of a tunnel differ (edited, restarted). */
     val versions = mutableMapOf<SavedTunnelIds, Int>()
     var tabCount = 0
@@ -28,17 +30,18 @@ internal class FakeSavedTunnels : SavedTunnelHost {
         return ids
     }
     override fun find(ids: SavedTunnelIds) = saved[ids]
-    override fun isOn(tunnel: SavedTunnel) = SavedTunnelIds(tunnel.profileId, tunnel.connectionId) in on
+    override fun isStopping(tunnel: SavedTunnel) = SavedTunnelIds(tunnel.profileId, tunnel.connectionId) in stopping
+    override fun isOn(tunnel: SavedTunnel) = SavedTunnelIds(tunnel.profileId, tunnel.connectionId) in on && !isStopping(tunnel)
     override fun pin(ids: SavedTunnelIds): Any? = saved[ids]?.let { listOf(it, ids in on, versions[ids] ?: 0) }
     override fun tabs(tunnel: SavedTunnel) = tabCount
 }
 
 /** [TunnelUp] as the tests need it: records what it was asked and answers [result]; [onCall] may change the world meanwhile. */
-internal class FakeUp(var result: OpResult<Int> = OpResult.Done(40001), var onCall: (TunnelUpInput) -> Unit = {}) : Operation<TunnelUpInput, Int> {
+internal class FakeUp(var result: OpResult<Int> = OpResult.Done(40001), var onCall: (TunnelUpInput) -> Unit = {}, var delayMs: Long = 0) : Operation<TunnelUpInput, Int> {
     override val name = "tunnel_up"
     override val effect = Effect.CHANGE_LOCAL
     val calls = ArrayList<TunnelUpInput>()
-    override suspend fun invoke(input: TunnelUpInput): OpResult<Int> { calls += input; onCall(input); return result }
+    override suspend fun invoke(input: TunnelUpInput): OpResult<Int> { calls += input; onCall(input); if (delayMs > 0) kotlinx.coroutines.delay(delayMs); return result }
     companion object {
         fun notListening() = OpResult.Failed(TunnelFailure.DeviceNotListening(DevicePortNotOpen(22)), RemoteOutcome.UNKNOWN)
         fun didNotComeUp() = OpResult.Failed(TunnelFailure.DidNotComeUp(null), RemoteOutcome.UNKNOWN)

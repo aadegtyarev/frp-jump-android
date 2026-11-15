@@ -54,7 +54,7 @@
   },
   {
     "name": "stop_tunnel",
-    "description": "Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and file tabs on it close; tmux sessions on the device stay. The owner may be asked before it runs.",
+    "description": "Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and MQTT sessions on it close; tmux sessions on the device stay. The owner may be asked before it runs.",
     "parameters": {
       "type": "object",
       "additionalProperties": false,

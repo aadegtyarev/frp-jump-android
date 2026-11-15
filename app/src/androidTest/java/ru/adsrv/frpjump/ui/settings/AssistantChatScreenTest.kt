@@ -142,6 +142,7 @@ class AssistantChatScreenTest {
         val started = java.util.concurrent.CopyOnWriteArrayList<String>()
         val stopped = java.util.concurrent.CopyOnWriteArrayList<ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget>()
         override fun find(ids: ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds) = saved.takeIf { ids == this.ids }
+        override fun isStopping(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = false
         override fun isOn(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = on
         override fun pin(ids: ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds): Any? = find(ids)?.let { listOf(it, on) }
         override fun tabs(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = tabs
@@ -768,7 +769,9 @@ class AssistantChatScreenTest {
         compose.waitForIdle()
         compose.runOnIdle { assertNull("no question for a start", owner!!.state.value.confirmation); assertEquals(listOf("synthetic-device"), tunnelsHost.started.toList()) }
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_0"))
+        // The tunnel's name is on the line, whole (from the reply: no facts were received in this turn), with no profile id in front of it.
         compose.onNodeWithTag("chat_tool_call_0").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_start_tunnel_receipt), substring = true)
+            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("pi ssh")), substring = true)
         shot("tunnel-start-line")
         compose.runOnIdle { heldProviderReply.complete(Unit) }
         awaitIdle()

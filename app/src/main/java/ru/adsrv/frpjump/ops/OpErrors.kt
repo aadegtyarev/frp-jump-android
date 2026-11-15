@@ -54,6 +54,8 @@ sealed interface TunnelToolRefusal : OpRefusal {
     data object Unknown : TunnelToolRefusal
     /** Stop: the tunnel [name] was not on; nothing was stopped. */
     data class NotOn(val name: String) : TunnelToolRefusal
+    /** Start: the tunnel [name] is being stopped (the owner's Stop waits for Undo, or it is going down); nothing was started and the owner's Undo stays. */
+    data class Stopping(val name: String) : TunnelToolRefusal
     /** Stop: the tunnel is not the one the owner was asked about (removed, edited, restarted or already stopping); nothing was stopped. */
     data object Changed : TunnelToolRefusal
 }
@@ -62,8 +64,8 @@ sealed interface TunnelToolRefusal : OpRefusal {
 sealed interface TunnelToolFailure : OpFailure {
     /** The tunnel [name] is on but the device does not take connections on it yet. */
     data class NoConnections(val name: String) : TunnelToolFailure
-    /** The tunnel [name] did not come up in time. */
-    data class DidNotComeUp(val name: String) : TunnelToolFailure
+    /** The tunnel [name] did not start in time. */
+    data class DidNotStart(val name: String) : TunnelToolFailure
     /** An unexpected exception. */
     data object Unexpected : TunnelToolFailure
 }

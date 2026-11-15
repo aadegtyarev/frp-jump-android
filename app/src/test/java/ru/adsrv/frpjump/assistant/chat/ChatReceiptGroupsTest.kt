@@ -79,16 +79,35 @@ class ChatReceiptGroupsTest {
         val typical = mapOf(
             "web_search" to mapOf("query" to "kernel news"), "read_page" to mapOf("url" to "https://example.org/a"),
             "inspect_image" to mapOf("url" to "https://example.org/cat.png", "question" to "what"),
-            "profile_information" to emptyMap(), "start_tunnel" to mapOf("profile_id" to "p", "connection_id" to "c"), "stop_tunnel" to mapOf("profile_id" to "p", "connection_id" to "c"), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
+            "profile_information" to emptyMap(), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
             AssistantRequestTool.WIRE to mapOf("name" to "web_search", "why" to "x"))
         // terminal_tabs takes no arguments, so there is nothing to tell its calls apart by; terminal_read has its own test below.
-        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read" - "terminal_rename" - "terminal_input"
+        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read" - "terminal_rename" - "terminal_input" - "start_tunnel" - "stop_tunnel"
         catalogue.forEach { wire ->
             val args = typical[wire] ?: error("no typical arguments for $wire: add them here and a detail in receiptDetail")
             val text = receiptDetail(call(wire, *args.map { it.key to it.value }.toTypedArray()).call, title)
             assertTrue("$wire has no detail", !text.isNullOrBlank())
             assertFalse("$wire detail shows the wire name: $text", text!!.contains(wire))
         }
+    }
+
+    @Test fun `the call line of a tunnel tool is the tunnel's name alone, whole, and nothing before it is known`() {
+        val start = ToolCall("s1", "start_tunnel", buildJsonObject { put("profile_id", "p1"); put("connection_id", "c1") })
+        val stop = ToolCall("s2", "stop_tunnel", buildJsonObject { put("profile_id", "p1"); put("connection_id", "c1") })
+        // Nothing names the tunnel yet: the title alone (no profile id cut to eight characters).
+        assertNull(receiptDetail(start)); assertNull(receiptDetail(stop))
+        // The received facts of profile_information name it.
+        val facts = ReceiptWords("all", { "from $it" }, connectionName = { p, c -> if (p == "p1" && c == "c1") "pi ssh" else null })
+        assertEquals("\"\u2068pi ssh\u2069\"", receiptDetail(start, facts))
+        // Else its own reply does.
+        val replies = tunnelNames(listOf(ChatToolReceipt(start, ToolResult("s1", "start_tunnel", "Tunnel pi ssh is on. The device takes connections.", ToolOutcome.SUCCESS)),
+            ChatToolReceipt(stop, ToolResult("s2", "stop_tunnel", "Tunnel pi ssh is off. Its terminal and MQTT sessions closed; tmux sessions on the device stay.", ToolOutcome.SUCCESS)),
+            ChatToolReceipt(ToolCall("s3", "stop_tunnel", buildJsonObject { }), ToolResult("s3", "stop_tunnel", "Tunnel a b was not on. Nothing was stopped.", ToolOutcome.FAILED))))
+        assertEquals(mapOf("s1" to "pi ssh", "s2" to "pi ssh", "s3" to "a b"), replies)
+        assertEquals("\"\u2068pi ssh\u2069\"", receiptDetail(stop, ReceiptWords("all", { "from $it" }, tunnelName = replies::get)))
+        // A long name is shown up to the call-line limit, not cut to a few characters.
+        val long = ReceiptWords("all", { "from $it" }, tunnelName = { "n".repeat(30) })
+        assertEquals("\"\u2068${"n".repeat(30)}\u2069\"", receiptDetail(start, long))
     }
 
     private fun read(id: Int) = ToolCall("c", "terminal_read", buildJsonObject { put("tab_id", id) })

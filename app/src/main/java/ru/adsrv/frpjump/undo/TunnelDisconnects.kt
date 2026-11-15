@@ -1,5 +1,8 @@
 package ru.adsrv.frpjump.undo
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import ru.adsrv.frpjump.ports.profilePortKey
 import ru.adsrv.frpjump.tunnel.TunnelRef
 
@@ -25,19 +28,33 @@ class TunnelDisconnects(
         pendingUndo.enqueue(key(t), commit = { if (isUp(t)) disconnectNow(t) }, kind = UndoKind.DISCONNECTED)
     }
 
-    /** [tunnel] disconnected now, with no Undo (the assistant's Stop, answered on its card); returns once done. One already down is left. */
+    /** The tunnels being disconnected at once ([disconnectAtOnce]), until each is down: they have no Undo to show it by. */
+    private val stoppingNow = MutableStateFlow<Set<TunnelRef>>(emptySet())
+
+    /**
+     * [tunnel] disconnected now, with no Undo (the assistant's Stop, answered on its card); returns once done. One already down is left.
+     * It counts as [disconnecting] from the start until it is down, so that whoever asks sees the tunnel going down.
+     */
     suspend fun disconnectAtOnce(tunnel: TunnelRef) {
-        if (isUp(tunnel)) disconnectNow(tunnel)
+        stoppingNow.update { it + tunnel }
+        try {
+            if (isUp(tunnel)) disconnectNow(tunnel)
+        } finally {
+            stoppingNow.update { it - tunnel }
+        }
     }
 
-    /** Whether [tunnel]'s disconnect is being done now: Undo is gone, it is going down. */
-    fun disconnecting(tunnel: TunnelRef): Boolean = pendingUndo.committing(key(tunnel))
+    /** Whether [tunnel]'s disconnect is being done now: Undo is gone (or there was none), it is going down. */
+    fun disconnecting(tunnel: TunnelRef): Boolean = pendingUndo.committing(key(tunnel)) || tunnel in stoppingNow.value
 
     /**
      * Suspends while [tunnel]'s disconnect is being done, so what uses it
      * next connects afresh rather than onto a tunnel going down.
      */
-    suspend fun awaitDisconnected(tunnel: TunnelRef) = pendingUndo.awaitDone(key(tunnel))
+    suspend fun awaitDisconnected(tunnel: TunnelRef) {
+        pendingUndo.awaitDone(key(tunnel))
+        stoppingNow.first { tunnel !in it }
+    }
 
     /**
      * Every tunnel went down at once by other means (the notification's

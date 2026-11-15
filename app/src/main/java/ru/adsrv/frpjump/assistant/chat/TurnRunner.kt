@@ -63,11 +63,13 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
-            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels)
+            val limits = env.limits(a.settings)
+            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
+                limits.toolTimeoutMs)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
-                env.limits(a.settings), ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
+                limits, ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
                 authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)
             val problem = finishProblem(summaryProblem, result.finish, transportTimeout, invalidReply)

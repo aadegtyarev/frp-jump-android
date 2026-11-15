@@ -56,7 +56,7 @@ class AssistantTunnelToolsTest {
         val f = TunnelFixture()
         val start = StartTunnelTool(f.tunnels); val stop = StopTunnelTool(f.tunnels)
         assertEquals("Start one saved tunnel from profile_information (profile_id, connection_id), as the owner's Start button does, and wait until the device takes connections through it. Changes only this app, nothing on the device.", start.spec.description)
-        assertEquals("Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and file tabs on it close; tmux sessions on the device stay. The owner may be asked before it runs.", stop.spec.description)
+        assertEquals("Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and MQTT sessions on it close; tmux sessions on the device stay. The owner may be asked before it runs.", stop.spec.description)
         for (tool in listOf(start, stop)) {
             assertEquals(listOf("profile_id", "connection_id"), tool.spec.parameters.getValue("required").jsonArray.map { it.jsonPrimitive.content })
             assertEquals(setOf("profile_id", "connection_id"), tool.spec.parameters.getValue("properties").jsonObject.keys)
@@ -84,8 +84,8 @@ class AssistantTunnelToolsTest {
         val f = TunnelFixture(up = FakeUp(FakeUp.notListening())); f.host.add()
         assertEquals(ToolOutput("Tunnel pi ssh is on, but the device does not take connections yet.", ToolOutcome.FAILED), start(f))
         val g = TunnelFixture(up = FakeUp(FakeUp.didNotComeUp())); g.host.add()
-        // Proposed wording (not in the approved list): pinned here so a change is seen.
-        assertEquals(ToolOutput("Tunnel pi ssh did not come up. Nothing else was changed.", ToolOutcome.FAILED), start(g))
+        // Proposed wording (pending operator approval): pinned here so a change is seen.
+        assertEquals(ToolOutput("Tunnel pi ssh did not start. Nothing else was changed.", ToolOutcome.FAILED), start(g))
     }
 
     @Test fun `start refuses unknown ids and bad arguments and asks the operation nothing`() {
@@ -96,6 +96,28 @@ class AssistantTunnelToolsTest {
         assertEquals(provide, start(f, buildJsonObject { put("profile_id", "p1") }))
         assertEquals(provide, start(f, buildJsonObject { put("profile_id", "p1"); put("connection_id", "c1"); put("x", "y") }))
         assertTrue(f.up.calls.isEmpty())
+    }
+
+    @Test fun `start of a tunnel that is being stopped refuses and changes nothing`() {
+        val f = TunnelFixture(); val ids = f.host.add(isOn = true); f.host.stopping += ids
+        assertEquals(ToolOutput("Tunnel pi ssh is being stopped. Nothing was started.", ToolOutcome.FAILED), start(f))
+        assertTrue(f.up.calls.isEmpty())
+        // Not on while it is going down: a stop of it has nothing to stop.
+        val out = Asker().kernel(StopTunnelTool(f.tunnels), args())
+        assertEquals("Tunnel pi ssh was not on. Nothing was stopped.", out.text)
+        assertTrue(f.down.targets.isEmpty())
+    }
+
+    @Test fun `the whole wait of a start ends inside the core's tool limit`() {
+        val limit = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs
+        assertTrue(StartTunnelTool.startWaitMs(limit) in 1 until limit)
+        // A slow start is cut at the wait derived from the limit it is given: not on yet, it did not start; on, but not taking connections.
+        val slow = TunnelFixture(up = FakeUp(delayMs = 5_000)); slow.host.add()
+        val cut = runBlocking { StartTunnelTool(slow.tunnels, toolTimeoutMs = 400).execute(args()) }
+        assertEquals(ToolOutput("Tunnel pi ssh did not start. Nothing else was changed.", ToolOutcome.FAILED), cut)
+        val half = TunnelFixture(up = FakeUp(delayMs = 5_000)); half.host.add(isOn = true)
+        assertEquals(ToolOutput("Tunnel pi ssh is on, but the device does not take connections yet.", ToolOutcome.FAILED),
+            runBlocking { StartTunnelTool(half.tunnels, toolTimeoutMs = 400).execute(args()) })
     }
 
     @Test fun `start never asks, with the question on, and runs`() {
@@ -114,7 +136,7 @@ class AssistantTunnelToolsTest {
             val f = TunnelFixture(); f.host.add(isOn = true); f.host.tabCount = 2
             val asker = Asker(answer)
             val out = asker.kernel(StopTunnelTool(f.tunnels), args())
-            assertEquals(answer.name, ToolOutput("Tunnel pi ssh is off. Its tabs closed; tmux sessions on the device stay."), out)
+            assertEquals(answer.name, ToolOutput("Tunnel pi ssh is off. Its terminal and MQTT sessions closed; tmux sessions on the device stay."), out)
             val request = asker.asked.single()
             assertEquals(AssistantToolId.STOP_TUNNEL, request.tool)
             assertEquals(GrantTarget("p1", "c1"), request.target)
@@ -139,7 +161,7 @@ class AssistantTunnelToolsTest {
         val asker = Asker(ConfirmationDecision.DENY, mode = ConfirmationMode.OFF)
         val out = asker.kernel(StopTunnelTool(f.tunnels), args())
         assertTrue(asker.asked.isEmpty())
-        assertEquals("Tunnel pi ssh is off. Its tabs closed; tmux sessions on the device stay.", out.text)
+        assertEquals("Tunnel pi ssh is off. Its terminal and MQTT sessions closed; tmux sessions on the device stay.", out.text)
         assertEquals(1, f.down.targets.size)
     }
 
@@ -188,9 +210,11 @@ class AssistantTunnelToolsTest {
         assertTrue(f.down.targets.isEmpty())
     }
 
-    @Test fun `a tunnel that was not on is not stopped`() {
+    @Test fun `a tunnel that was not on is not stopped, and no card is shown for it`() {
         val f = TunnelFixture(); f.host.add(isOn = false)
-        val out = Asker().kernel(StopTunnelTool(f.tunnels), args())
+        val asker = Asker()
+        val out = asker.kernel(StopTunnelTool(f.tunnels), args())
+        assertTrue(asker.asked.isEmpty())
         assertEquals(ToolOutput("Tunnel pi ssh was not on. Nothing was stopped.", ToolOutcome.FAILED), out)
         assertTrue(f.down.targets.isEmpty())
     }
@@ -200,7 +224,8 @@ class AssistantTunnelToolsTest {
         val asker = Asker()
         val out = asker.kernel(StopTunnelTool(f.tunnels), args(connection = "other"))
         assertTrue(asker.asked.isEmpty())
-        assertEquals(ToolOutcome.FAILED, out.outcome)
+        // No card and no gate for an unknown tunnel: the reply says what to provide (not "not authorized").
+        assertEquals(ToolOutput("Provide profile_id and connection_id from profile_information.", ToolOutcome.FAILED), out)
         assertTrue(f.down.targets.isEmpty())
         assertEquals(ToolOutput("Provide profile_id and connection_id from profile_information.", ToolOutcome.FAILED),
             runBlocking { StopTunnelTool(f.tunnels).execute(buildJsonObject { put("profile_id", "p1") }) })
@@ -209,7 +234,7 @@ class AssistantTunnelToolsTest {
     @Test fun `a name with control characters reaches the model cleaned`() {
         val f = TunnelFixture(); f.host.add(name = "a\nb‮c", isOn = true)
         val out = Asker().kernel(StopTunnelTool(f.tunnels), args())
-        assertEquals("Tunnel a bc is off. Its tabs closed; tmux sessions on the device stay.", out.text)
+        assertEquals("Tunnel a bc is off. Its terminal and MQTT sessions closed; tmux sessions on the device stay.", out.text)
     }
 
     // ---- the switch ----

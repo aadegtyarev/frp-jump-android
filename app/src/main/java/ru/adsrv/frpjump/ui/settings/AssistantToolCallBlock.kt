@@ -66,7 +66,8 @@ private fun rememberDetail(information: List<ChatProfileInformation>, receipts: 
     val all = stringResource(R.string.chat_detail_all)
     val facts = remember(information) { ReceivedNames.of(information) }
     val tabs = remember(receipts) { tabLabels(receipts) }
-    return remember(resources, all, facts, tabs) {
+    val tunnelNames = remember(receipts) { tunnelNames(receipts) }
+    return remember(resources, all, facts, tabs, tunnelNames) {
         val words = ReceiptWords(all, { resources.getString(R.string.chat_detail_from, it) },
             toolTitle = { wire -> AssistantToolId.fromWire(wire)?.let { resources.getString(it.title()) } },
             profileName = facts.profiles::get, connectionName = { profile, connection -> facts.connections[profile to connection] },
@@ -74,10 +75,20 @@ private fun rememberDetail(information: List<ChatProfileInformation>, receipts: 
             tabPlain = { resources.getString(R.string.chat_detail_tab, it) },
             tabNamedAs = { name, profile, user, device, number -> resources.getString(R.string.chat_detail_tab_name_named, name, profile, user, device, number) },
             tabRenamed = { name, user, device, number -> resources.getString(R.string.chat_detail_tab_name, name, user, device, number) },
-            tunnelNamed = { profile, name -> resources.getString(R.string.chat_detail_tunnel, profile, name) })
+            quoted = { name -> resources.getString(R.string.chat_detail_name_quoted, name) }, tunnelName = tunnelNames::get)
         val detail: (ToolCall) -> String? = { call -> receiptDetail(call, words) }
         detail
     }
+}
+
+/** "profile · name" ahead of the result of a tunnel call: the profile's name and the tunnel's name where known, else none. */
+private fun tunnelLine(call: ToolCall, facts: ReceivedNames, names: Map<String, String>, resources: android.content.res.Resources): String? {
+    if (call.name != AssistantToolId.START_TUNNEL.wire && call.name != AssistantToolId.STOP_TUNNEL.wire) return null
+    val profileId = (call.arguments["profile_id"] as? JsonPrimitive)?.contentOrNull ?: return null
+    val connectionId = (call.arguments["connection_id"] as? JsonPrimitive)?.contentOrNull
+    val profile = facts.profiles[profileId]?.let { receiptText(it, RECEIPT_DETAIL_CHARS) } ?: return null
+    val name = connectionId?.let { facts.connections[profileId to it] } ?: names[call.id] ?: return null
+    return resources.getString(R.string.chat_detail_tunnel, profile, isolateName(receiptText(name, RECEIPT_DETAIL_CHARS)))
 }
 
 /** The names of profiles and connections this turn's received facts hold; ids the facts do not mention have no name here. */
@@ -145,6 +156,13 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
     val groups = groupReceipts(receipts)
     val detail = rememberDetail(information, receipts)
     val renames = remember(receipts) { tabRenames(receipts) }
+    // The expanded view of a tunnel call: the profile before the tunnel's name (names the received facts hold, else the reply's).
+    val resources = LocalContext.current.resources
+    val tunnelLines = remember(receipts, information, resources) {
+        val facts = ReceivedNames.of(information)
+        val names = tunnelNames(receipts)
+        receipts.mapNotNull { r -> tunnelLine(r.call, facts, names, resources)?.let { r.call.id to it } }.toMap()
+    }
     val titles = groups.map { receiptTitle(it.tool) }
     val summary = groups.mapIndexed { i, group -> if (group.items.size > 1) stringResource(R.string.chat_receipt_group, titles[i], group.items.size) else titles[i] }.joinToString(" · ")
     val spoken = stringResource(R.string.chat_calls_description, groups.mapIndexed { i, group ->
@@ -164,11 +182,11 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
                 val receipt = group.items.single()
                 Column(Modifier.testTag("chat_tool_receipt_$index").then(mergedUnlessFacts(receipt, information))) {
                     Text(detail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
-                    ChatReceiptResult(receipt, information, renames)
+                    ChatReceiptResult(receipt, information, renames, tunnelLines)
                 }
             } else if (groups.size == 1) {
                 // The summary line already named the only group: its calls show at once, without a second header to tap.
-                GroupItems(group, index, title, information, detail, renames)
+                GroupItems(group, index, title, information, detail, renames, tunnelLines)
             } else {
                 val holdsFacts = group.items.any { receipt -> information.any { it.result.callId == receipt.result?.callId } }
                 var open by remember(openFacts) { mutableStateOf(openFacts && holdsFacts) }
@@ -180,7 +198,7 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
                     verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.chat_receipt_group, title, count), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
                 }
-                if (open) GroupItems(group, index, title, information, detail, renames)
+                if (open) GroupItems(group, index, title, information, detail, renames, tunnelLines)
             }
         }
     }
@@ -188,12 +206,12 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
 
 /** A group's calls, each under its own label: what the model asked for, else the tool's title (numbered: never the wire name). */
 @Composable
-private fun GroupItems(group: ReceiptGroup, index: Int, title: String, information: List<ChatProfileInformation>, detail: (ToolCall) -> String?, renames: Map<String, TabRename>) {
+private fun GroupItems(group: ReceiptGroup, index: Int, title: String, information: List<ChatProfileInformation>, detail: (ToolCall) -> String?, renames: Map<String, TabRename>, tunnelLines: Map<String, String>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         group.items.forEachIndexed { n, receipt ->
             Column(Modifier.testTag("chat_tool_group_${index}_item_$n").then(mergedUnlessFacts(receipt, information))) {
                 Text(detail(receipt.call) ?: stringResource(R.string.chat_receipt_item, title, n + 1), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
-                ChatReceiptResult(receipt, information, renames)
+                ChatReceiptResult(receipt, information, renames, tunnelLines)
             }
         }
     }
@@ -208,13 +226,13 @@ private fun mergedUnlessFacts(receipt: ChatToolReceipt, information: List<ChatPr
 
 /** One call's result: the received facts for a profile-information call that produced them, else the call and its raw result. */
 @Composable
-private fun ChatReceiptResult(receipt: ChatToolReceipt, information: List<ChatProfileInformation>, renames: Map<String, TabRename>) {
+private fun ChatReceiptResult(receipt: ChatToolReceipt, information: List<ChatProfileInformation>, renames: Map<String, TabRename>, tunnelLines: Map<String, String>) {
     val facts = factsOf(receipt, information)
-    if (facts != null) ChatProfileInformationFacts(facts) else ChatToolReceiptBody(receipt, renames[receipt.call.id])
+    if (facts != null) ChatProfileInformationFacts(facts) else ChatToolReceiptBody(receipt, renames[receipt.call.id], tunnelLines[receipt.call.id])
 }
 
 @Composable
-private fun ChatToolReceiptBody(receipt: ChatToolReceipt, rename: TabRename? = null) {
+private fun ChatToolReceiptBody(receipt: ChatToolReceipt, rename: TabRename? = null, lead: String? = null) {
     val result = receipt.result
     val outcome = when (result?.outcome) {
         null, ToolOutcome.SUCCESS -> null
@@ -238,7 +256,7 @@ private fun ChatToolReceiptBody(receipt: ChatToolReceipt, rename: TabRename? = n
         SelectionContainer { Text(resources.getString(R.string.chat_detail_tab, id ?: 0), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted) }
         return
     }
-    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) }, renameLine = renameLine)
+    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) }, renameLine = renameLine ?: lead)
     if (body.isEmpty()) return
     SelectionContainer {
         Text(body, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted)

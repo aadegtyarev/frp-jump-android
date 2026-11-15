@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.agent.AgentLimits
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.agent.ToolOutput
 import ru.adsrv.frpjump.assistant.chat.NOT_AUTHORIZED
@@ -28,8 +29,12 @@ private fun shown(name: String) = receiptText(name, NAME_CHARS)
 internal const val PROVIDE_IDS = "Provide profile_id and connection_id from profile_information."
 
 /** `start_tunnel`: the owner's Start for one saved tunnel, through [AssistantTunnels]'s operation (the screens' own [ru.adsrv.frpjump.ops.tunnel.TunnelUp]). Runs without a question. */
-internal class StartTunnelTool(tunnels: AssistantTunnels) : OperationTool<SavedTunnelIds, TunnelStarted>(
-    AssistantToolId.START_TUNNEL, START_DESCRIPTION, objectSchema { string("profile_id", 256); string("connection_id", 256) }, tunnels.start,
+internal class StartTunnelTool(
+    tunnels: AssistantTunnels,
+    /** The core's limit for one tool call: the whole wait of a start ends inside it, with room left to say how it ended. */
+    toolTimeoutMs: Long = AgentLimits().toolTimeoutMs,
+) : OperationTool<SavedTunnelIds, TunnelStarted>(
+    AssistantToolId.START_TUNNEL, START_DESCRIPTION, objectSchema { string("profile_id", 256); string("connection_id", 256) }, tunnels.start(startWaitMs(toolTimeoutMs)),
 ) {
     override fun parse(args: StrictArgs) = args.run {
         exactKeys("profile_id", "connection_id")
@@ -39,14 +44,20 @@ internal class StartTunnelTool(tunnels: AssistantTunnels) : OperationTool<SavedT
     override fun render(input: SavedTunnelIds, output: TunnelStarted) =
         if (output.wasOn) "Tunnel ${shown(output.name)} was already on." else "Tunnel ${shown(output.name)} is on. The device takes connections."
     override val unexpected: OpFailure = TunnelToolFailure.Unexpected
-    override fun modelText(refusal: OpRefusal) = PROVIDE_IDS
+    override fun modelText(refusal: OpRefusal): String = when (val r = refusal as TunnelToolRefusal) {
+        is TunnelToolRefusal.Stopping -> "Tunnel ${shown(r.name)} is being stopped. Nothing was started."
+        else -> PROVIDE_IDS
+    }
     override fun modelText(failure: OpFailure): String = when (val f = failure as TunnelToolFailure) {
         is TunnelToolFailure.NoConnections -> "Tunnel ${shown(f.name)} is on, but the device does not take connections yet."
-        is TunnelToolFailure.DidNotComeUp -> "Tunnel ${shown(f.name)} did not come up. Nothing else was changed."
+        is TunnelToolFailure.DidNotStart -> "Tunnel ${shown(f.name)} did not start. Nothing else was changed."
         TunnelToolFailure.Unexpected -> "Could not start the tunnel."
     }
 
     companion object {
+        /** A quarter of the core's tool limit is left to word the answer; the rest is the whole wait of a start, the device's listening included. */
+        fun startWaitMs(toolTimeoutMs: Long) = toolTimeoutMs - toolTimeoutMs / 4
+
         const val START_DESCRIPTION = "Start one saved tunnel from profile_information (profile_id, connection_id), as the owner's Start button does, and wait until the device takes connections through it. Changes only this app, nothing on the device."
     }
 }
@@ -69,6 +80,9 @@ internal class StopTunnelTool(private val tunnels: AssistantTunnels) : AppTool<S
     }
     override val invalidArguments = ToolOutput(PROVIDE_IDS, ToolOutcome.FAILED)
 
+    /** Nothing to ask about a tunnel that is unknown or not on: the call then says so, with no card. */
+    override fun asksAbout(args: SavedTunnelIds): Boolean = tunnels.find(args)?.let(tunnels::isOn) == true
+
     /** Pure: reads saved state, records the tunnel's pin for [run], does no I/O. */
     override fun describeChange(args: SavedTunnelIds): ChangeRequest {
         val card = tunnels.describe(args)
@@ -78,14 +92,20 @@ internal class StopTunnelTool(private val tunnels: AssistantTunnels) : AppTool<S
     }
 
     override suspend fun run(args: SavedTunnelIds): ToolOutput {
-        // No description before (it is always made first): nothing was shown to the owner, so nothing is stopped.
-        val pin = pins.remove(args) ?: return ToolOutput(NOT_AUTHORIZED, ToolOutcome.FAILED)
+        val pin = pins.remove(args)
+        if (pin == null) {
+            // No card was shown: the tunnel was unknown or not on when the call came (nothing to ask), else nothing was described to the
+            // owner and nothing is stopped.
+            val tunnel = tunnels.find(args) ?: return ToolOutput(PROVIDE_IDS, ToolOutcome.FAILED)
+            return if (tunnels.isOn(tunnel)) ToolOutput(NOT_AUTHORIZED, ToolOutcome.FAILED)
+            else ToolOutput("Tunnel ${shown(tunnel.name)} was not on. Nothing was stopped.", ToolOutcome.FAILED)
+        }
         return when (val result = tunnels.stop(StopTunnelInput(args, pin.value))) {
-            is OpResult.Done -> ToolOutput("Tunnel ${shown(result.value.name)} is off. Its tabs closed; tmux sessions on the device stay.")
+            is OpResult.Done -> ToolOutput("Tunnel ${shown(result.value.name)} is off. Its terminal and MQTT sessions closed; tmux sessions on the device stay.")
             is OpResult.Refused -> when (val reason = result.reason as TunnelToolRefusal) {
                 is TunnelToolRefusal.NotOn -> ToolOutput("Tunnel ${shown(reason.name)} was not on. Nothing was stopped.", ToolOutcome.FAILED)
                 TunnelToolRefusal.Changed -> ToolOutput(NOT_AUTHORIZED, ToolOutcome.FAILED)
-                TunnelToolRefusal.Unknown -> ToolOutput(PROVIDE_IDS, ToolOutcome.FAILED)
+                TunnelToolRefusal.Unknown, is TunnelToolRefusal.Stopping -> ToolOutput(PROVIDE_IDS, ToolOutcome.FAILED)
             }
             is OpResult.Failed -> ToolOutput("Could not stop the tunnel.", ToolOutcome.FAILED)
         }
@@ -94,6 +114,6 @@ internal class StopTunnelTool(private val tunnels: AssistantTunnels) : AppTool<S
     override fun failure(error: Exception) = ToolOutput("Could not stop the tunnel.", ToolOutcome.FAILED)
 
     companion object {
-        const val STOP_DESCRIPTION = "Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and file tabs on it close; tmux sessions on the device stay. The owner may be asked before it runs."
+        const val STOP_DESCRIPTION = "Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and MQTT sessions on it close; tmux sessions on the device stay. The owner may be asked before it runs."
     }
 }

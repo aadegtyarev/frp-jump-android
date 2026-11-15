@@ -12,13 +12,14 @@ import ru.adsrv.frpjump.settings.AssistantTools
 internal object AssistantToolFactory {
     fun create(enabled: AssistantTools, runtime: AssistantChatRuntime, active: AgentProvider, profileInformation: ProfileInformation?,
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
-        declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null): List<AgentTool> {
+        declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
+        toolTimeoutMs: Long = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
             AssistantProfileInformationTool(profileInformation)) else emptyList()) +
-            (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels), StopTunnelTool(tunnels)) else emptyList()) +
+            (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, toolTimeoutMs), StopTunnelTool(tunnels)) else emptyList()) +
             (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs), AssistantTerminalReadTool(terminalTabs), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
             (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs)) else emptyList()) +
             (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList()) +

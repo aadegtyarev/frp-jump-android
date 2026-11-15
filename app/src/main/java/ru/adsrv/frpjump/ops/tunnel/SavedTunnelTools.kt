@@ -2,7 +2,9 @@ package ru.adsrv.frpjump.ops.tunnel
 
 import ru.adsrv.frpjump.ops.Effect
 import ru.adsrv.frpjump.ops.OpResult
+import ru.adsrv.frpjump.ops.RemoteOutcome
 import ru.adsrv.frpjump.ops.Operation
+import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.ops.TunnelFailure
 import ru.adsrv.frpjump.ops.TunnelToolFailure
 import ru.adsrv.frpjump.ops.TunnelToolRefusal
@@ -25,14 +27,16 @@ data class SavedTunnelIds(val profileId: String, val connectionId: String)
 interface SavedTunnelHost {
     /** The saved tunnel; null when the profile or the tunnel is unknown, gone or hidden (a pending Undo of the owner's). */
     fun find(ids: SavedTunnelIds): SavedTunnel?
-    /** Whether the tunnel is on as the owner sees it: up, not dark (its Undo pending) and not going down. */
+    /** Whether the tunnel is going down: the owner's Stop waits for Undo (it is dark), or it is being disconnected. Such a tunnel is not on. */
+    fun isStopping(tunnel: SavedTunnel): Boolean
+    /** Whether the tunnel is on as the owner sees it: up, and not [isStopping]. */
     fun isOn(tunnel: SavedTunnel): Boolean
     /**
      * Equal while the saved tunnel, its profile and, when it is on, that very instance of the tunnel are unchanged; null when the saved
      * tunnel is unknown. It differs once the tunnel is removed, edited, restarted or stopping.
      */
     fun pin(ids: SavedTunnelIds): Any?
-    /** How many terminal tabs shown go through the tunnel: what stopping it closes. */
+    /** How many sessions shown (terminal and MQTT) go through the tunnel: what stopping it closes. */
     fun tabs(tunnel: SavedTunnel): Int
 }
 
@@ -45,10 +49,13 @@ data class TunnelStopped(val name: String)
 /**
  * The owner's Start for a saved tunnel, for the assistant: [TunnelUp] (the screens' own operation: brings the tunnel up when it is down
  * and waits until the device takes connections on it) over the saved tunnel named by ids. Changes only this app, nothing on the device.
+ * The whole wait ends after [waitMs], which the caller keeps inside the assistant's own tool time limit; a tunnel that is on by then but
+ * not yet taking connections is told as such, any other as not started. A tunnel that is being stopped is not started (the owner's Undo stays).
  */
 class StartSavedTunnel(
     private val host: SavedTunnelHost,
     private val up: Operation<TunnelUpInput, Int>,
+    private val waitMs: Long,
 ) : Operation<SavedTunnelIds, TunnelStarted> {
     override val name = "start_tunnel"
     override val effect = Effect.CHANGE_LOCAL
@@ -56,12 +63,17 @@ class StartSavedTunnel(
 
     override suspend fun invoke(input: SavedTunnelIds): OpResult<TunnelStarted> {
         val tunnel = host.find(input) ?: return OpResult.Refused(TunnelToolRefusal.Unknown)
+        if (host.isStopping(tunnel)) return OpResult.Refused(TunnelToolRefusal.Stopping(tunnel.name))
         val wasOn = host.isOn(tunnel)
-        return when (val result = up(TunnelUpInput(tunnel.profileId, tunnel.device, tunnel.port, tunnel.kind))) {
+        val result = withTimeoutOrNull(waitMs) { up(TunnelUpInput(tunnel.profileId, tunnel.device, tunnel.port, tunnel.kind)) }
+            ?: return OpResult.Failed(
+                if (host.isOn(tunnel)) TunnelToolFailure.NoConnections(tunnel.name) else TunnelToolFailure.DidNotStart(tunnel.name), RemoteOutcome.UNKNOWN,
+            )
+        return when (result) {
             is OpResult.Done -> OpResult.Done(TunnelStarted(tunnel.name, wasOn))
             is OpResult.Refused -> OpResult.Refused(TunnelToolRefusal.Unknown)
             is OpResult.Failed -> OpResult.Failed(
-                if (result.reason is TunnelFailure.DeviceNotListening) TunnelToolFailure.NoConnections(tunnel.name) else TunnelToolFailure.DidNotComeUp(tunnel.name),
+                if (result.reason is TunnelFailure.DeviceNotListening) TunnelToolFailure.NoConnections(tunnel.name) else TunnelToolFailure.DidNotStart(tunnel.name),
                 result.outcome,
             )
         }
