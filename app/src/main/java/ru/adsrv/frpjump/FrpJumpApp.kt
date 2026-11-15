@@ -66,6 +66,7 @@ import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
 import ru.adsrv.frpjump.ssh.SshSessions
+import ru.adsrv.frpjump.ssh.TabNameStore
 import ru.adsrv.frpjump.ssh.TmuxNames
 import ru.adsrv.frpjump.ssh.installFullBouncyCastle
 import ru.adsrv.frpjump.store.AtomicTextFile
@@ -400,6 +401,7 @@ class FrpJumpApp : Application() {
         sshEnv = SshEnvironment(
             sshKeys, sshPasswords, keyComment = ::sshKeyComment,
             tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))),
+            tabNames = TabNameStore(AtomicTextFile(File(filesDir, "tab_names.json"))),
             historyRows = { settings.settings.value.terminalHistoryRows },
             visible = visible,
         )

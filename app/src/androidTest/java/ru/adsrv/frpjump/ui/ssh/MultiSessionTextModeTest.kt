@@ -10,6 +10,8 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
@@ -108,7 +110,10 @@ class MultiSessionTextModeTest {
 
     private fun select(device: String) {
         val label = tabLabel("u", device, 22, 1) + ", " + compose.activity.getString(R.string.terminal_state_connecting)
-        compose.onNodeWithContentDescription(label).performScrollTo().performClick().assertIsSelected()
+        val tab = compose.onNodeWithContentDescription(label).performScrollTo()
+        // A tap on the tab that is selected already opens its menu now: only another tab is tapped.
+        if (tab.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected) != true) tab.performClick()
+        tab.assertIsSelected()
     }
 
     @Test fun keyboardLongPressOpensEditorInEachSelectedSession() {

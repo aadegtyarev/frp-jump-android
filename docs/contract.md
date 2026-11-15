@@ -367,7 +367,14 @@ all profiles) and an optional imported one (tried first), host keys pinned per p
 only on "remember", several sessions at once. A row of snippets (saved
 commands, owner-defined) above the extra keys; the sessions as a row of tabs
 above the terminal, where "+" opens another session to the same device with
-the same login (long press: as another user).
+the same login (long press: as another user). The selected tab carries a small
+▾: a tap on it, or a long press on any tab, opens the tab's menu (Rename…,
+Close session; for an ended session Reconnect and Change login; with password
+login Use key login; for a live one Log in as another user). The same actions
+are the tab's TalkBack custom actions, and "+" has the custom action Log in as
+another user. Rename… sets an owner-chosen tab name (up to 24 characters; empty
+is the automatic label); see
+[tab names](ssh-persist-contract.md#tab-names) for the rules and what is kept.
 
 Automatic OSC 52 clipboard writes are accepted only from the selected SSH
 tab. Switching tabs revokes the previous tab's authority immediately; a
@@ -1086,6 +1093,7 @@ cancellation and current execution boundaries belong to the
 | Assistant provider metadata and root-bound sealed credential | app-private atomic document; no plaintext key |
 | Current assistant conversation, draft, tool receipts and opaque continuation | encrypted atomic document in app-private no-backup storage; explicit clear with Undo |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
+| SSH tab names the owner set, for tmux tabs (at most 200; profile id, device, port, user, tmux session name, name; not secret) | app-private no-backup storage; [forgotten](ssh-persist-contract.md#tab-names) with the session |
 
 Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and

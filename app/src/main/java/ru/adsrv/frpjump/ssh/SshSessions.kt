@@ -209,7 +209,7 @@ class SshSessions(
         val fresh = SshSession(
             nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
-            pickUp = if (pickUpStill) ::pickUp else null,
+            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value,
         )
         drafts.close(old.id)
         drafts.open(fresh.id)
@@ -276,10 +276,25 @@ class SshSessions(
      * nothing to pick up, a new session as today.
      */
     private fun pickUp(from: SshSession, found: List<String>): String? {
+        forgetGoneTabNames(from, found)
         val free = claims.claim(found, held = { _sessions.value.mapNotNull { it.tmux.assigned }.toSet() }, adopt = from.tmux::adopt)
         if (free.isEmpty()) return null
+        // The session is the tab's now: the name the owner gave it, if one was remembered.
+        env.tabNames.get(TabNameKey(from.profile, from.device, from.port, from.user, free.first()))?.let(from::restoreTabName)
         scope.launch(Dispatchers.Main) { openPickedUp(from, free.drop(1)) }
         return free.first()
+    }
+
+    /**
+     * A listing ([found], this install's sessions for [from]'s user) that succeeded: remembered tab names of that
+     * login's sessions it does not have are forgotten, except those of tabs open now (their session may have started
+     * after the listing was taken, so they are looked up when the work runs). Off the caller's thread.
+     */
+    private fun forgetGoneTabNames(from: SshSession, found: List<String>) {
+        scope.launch(Dispatchers.IO) {
+            val held = _sessions.value.mapNotNull { it.tmux.assigned }.toSet()
+            env.tabNames.afterListing(from.profile, from.device, from.port, from.user, found, keep = held)
+        }
     }
 
     /** The other picked-up sessions as tabs right after [from], in name order; then "Restored N sessions". Main thread. */
@@ -302,6 +317,7 @@ class SshSessions(
             val tab = SshSession(
                 nextId++, from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, env, scope, ClientForScreen(), number,
                 tmuxName = name, onReattached = ::sayReattached, quietAttach = true,
+                tabName = env.tabNames.get(TabNameKey(from.profile, from.device, from.port, from.user, name)),
             )
             drafts.open(tab.id)
             val anchor = after
@@ -336,7 +352,11 @@ class SshSessions(
     }
 
     /** This install's tmux sessions on [from]'s device for its user, by number; see [runOnDevice]. */
-    fun ownTmuxOn(from: SshSession): List<String> = ownTmuxSessions(runOnDevice(from, TMUX_LIST_COMMAND), env.tmuxNames.install)
+    fun ownTmuxOn(from: SshSession): List<String> =
+        ownTmuxSessions(runOnDevice(from, TMUX_LIST_COMMAND), env.tmuxNames.install).also { found ->
+            // The listing answered: remembered names of this login's sessions that are not in it are forgotten (not those of open tabs).
+            env.tabNames.afterListing(from.profile, from.device, from.port, from.user, found, keep = _sessions.value.mapNotNull { it.tmux.assigned }.toSet())
+        }
 
     /**
      * Ends tmux sessions [names] on [from]'s device for its user; see
@@ -345,6 +365,8 @@ class SshSessions(
      */
     fun endTmuxOn(from: SshSession, names: List<String>) {
         val left = stillRunning(runOnDevice(from, tmuxKillAllAndListCommand(names)), names)
+        // The ones that ended take their remembered names with them.
+        (names - left.toSet()).forEach { env.tabNames.forget(TabNameKey(from.profile, from.device, from.port, from.user, it)) }
         if (left.isNotEmpty()) throw IOException(Texts.get(R.string.terminal_close_all_still_running, left.joinToString(", ")))
     }
 
