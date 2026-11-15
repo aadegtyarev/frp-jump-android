@@ -57,6 +57,9 @@
         <receiver
             android:name=".assistant.AssistantStopReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".assistant.AssistantCancelWaitsReceiver"
+            android:exported="false" />
         <activity
             android:name=".assistant.AssistantOpenActivity"
             android:exported="false"

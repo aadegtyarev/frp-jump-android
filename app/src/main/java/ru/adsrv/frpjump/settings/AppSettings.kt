@@ -126,6 +126,10 @@ data class AppSettings(
     @SerialName("assistant_terminal_input") val assistantTerminalInput: Boolean = false,
     /** The switch of `start_tunnel` and `stop_tunnel`: the assistant starts and stops the owner's saved tunnels. */
     @SerialName("assistant_tunnels") val assistantTunnels: Boolean = false,
+    /** The switch of `wait_for`: the assistant waits in the background for an event and answers when it happens. */
+    @SerialName("assistant_waits") val assistantWaits: Boolean = false,
+    /** The assistant's limits (waits at once, longest wait, event replies in a row, wait after input). */
+    @SerialName("assistant_limits") val assistantLimits: AssistantLimits = AssistantLimits(),
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
     /** "Offer to turn tools on": the service tool `request_tool` may be offered to the model. On by default; off for models without tool calling. */
     @SerialName("assistant_offer_tools") val assistantOfferTools: Boolean = true,
@@ -167,6 +171,8 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
     val terminalInput: Boolean = false,
     /** One switch for `start_tunnel` and `stop_tunnel`. */
     val tunnels: Boolean = false,
+    /** The switch of `wait_for`. */
+    val waits: Boolean = false,
     /** "Offer to turn tools on": whether `request_tool` is offered while some tool is off. Captured at Send with the tool switches. */
     val offer: Boolean = true) {
     /** Whether the tool is in effect: its switch, and for `terminal_input` also the terminal tabs switch. Everything that asks "is this tool on" asks here. */
@@ -184,6 +190,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.TERMINAL_INPUT -> terminalInput
         AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> tunnels
         AssistantToolId.SSH_COMMAND -> sshCommand
+        AssistantToolId.WAIT_FOR -> waits
     }
     /** Whether the model may be offered a button to turn the tool on: `terminal_input` only while the terminal tabs are on (else it asks for those first). */
     fun offerable(id: AssistantToolId): Boolean = id != AssistantToolId.TERMINAL_INPUT || terminalTabs
@@ -197,16 +204,19 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.TERMINAL_INPUT -> copy(terminalInput = enabled)
         AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> copy(tunnels = enabled)
         AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
+        AssistantToolId.WAIT_FOR -> copy(waits = enabled)
     }
 }
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantOfferTools)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantWaits, assistantOfferTools)
 private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
-    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantOfferTools = tools.offer)
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantWaits = tools.waits, assistantOfferTools = tools.offer)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools(),
     /** Captured at Send admission like [tools]; text for the model only, never read for a permission or confirmation. */
-    val ownerInstructions: String = "")
+    val ownerInstructions: String = "",
+    /** The owner's limits, committed with the other assistant preferences; read live where a limit applies to something already running. */
+    val limits: AssistantLimits = AssistantLimits())
 
 /** The app's settings in one JSON file; unreadable or invalid content falls back to the defaults. */
 class SettingsStore(private val storage: TextStorage) {
@@ -216,7 +226,7 @@ class SettingsStore(private val storage: TextStorage) {
     private val notifications = Any()
     val settings: StateFlow<AppSettings> = _settings
     @Volatile var assistantAvailability = AssistantAvailability(_settings.value.assistantEnabled, tools = _settings.value.assistantTools(),
-        ownerInstructions = _settings.value.assistantOwnerInstructions)
+        ownerInstructions = _settings.value.assistantOwnerInstructions, limits = _settings.value.assistantLimits)
         private set
     private val _assistantDisables = MutableStateFlow(0L)
     val assistantDisables: StateFlow<Long> = _assistantDisables
@@ -237,6 +247,9 @@ class SettingsStore(private val storage: TextStorage) {
     /** Shared persisted tool operation used by Settings and the retained Chat owner. */
     fun setAssistantTool(id: AssistantToolId, enabled: Boolean) = update { it.withAssistantTools(it.assistantTools().with(id, enabled)) }
 
+    /** The assistant's limits; refused outside their ranges. */
+    fun setAssistantLimits(limits: AssistantLimits) = update { it.copy(assistantLimits = limits) }
+
     /** The "Offer to turn tools on" switch (same autosave path as the tool switches; applies from the next Send). */
     fun setAssistantOfferTools(on: Boolean) = update { it.copy(assistantOfferTools = on) }
 
@@ -247,6 +260,7 @@ class SettingsStore(private val storage: TextStorage) {
             require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
             require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
             require(validMqttCacheLimits(next.mqttCache)) { "invalid MQTT cache limits" }
+            require(validAssistantLimits(next.assistantLimits)) { "invalid assistant limits" }
             require(ChatTextSize.isStep(next.assistantChatTextSize)) { "invalid chat text size" }
             require(next.assistantOwnerInstructions == AssistantOwnerInstructions.normalize(next.assistantOwnerInstructions)) { "invalid assistant owner instructions" }
             if (next == committedSettings) return
@@ -255,7 +269,7 @@ class SettingsStore(private val storage: TextStorage) {
                 val previous = assistantAvailability
                 assistantAvailability = AssistantAvailability(next.assistantEnabled,
                     previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0,
-                    next.assistantTools(), next.assistantOwnerInstructions)
+                    next.assistantTools(), next.assistantOwnerInstructions, next.assistantLimits)
                 committedSettings = next
                 assistantConfirmations = next.assistantConfirmations
                 assistantAvailability.disableVersion
@@ -291,6 +305,7 @@ class SettingsStore(private val storage: TextStorage) {
             ("app_lock_after" to normalizeAppLockAfter(json["app_lock_after"])) +
             ("mqtt_ingress" to normalizeMqttIngress(json["mqtt_ingress"])) +
             ("mqtt_cache" to normalizeMqttCache(json["mqtt_cache"])) +
+            ("assistant_limits" to normalizeAssistantLimits(json["assistant_limits"])) +
             ("assistant_confirmations" to normalizeConfirmations(json["assistant_confirmations"])) +
             ("assistant_chat_text_size" to JsonPrimitive(ChatTextSize.normalize(json["assistant_chat_text_size"]))) +
             ("assistant_owner_instructions" to JsonPrimitive(
@@ -335,6 +350,20 @@ class SettingsStore(private val storage: TextStorage) {
         )
         if (!validMqttIngressLimits(limits)) limits = limits.copy(payloadBytes = defaults.payloadBytes, queueBytes = defaults.queueBytes)
         return WireJson.encodeToJsonElement(limits)
+    }
+
+    /** Each limit is read on its own: a missing, malformed or out-of-range one is its default and resets nothing else. */
+    private fun normalizeAssistantLimits(raw: JsonElement?): JsonElement {
+        val group = raw as? JsonObject
+        val defaults = AssistantLimits()
+        fun number(key: String, range: IntRange, fallback: Int): Int =
+            (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it in range } ?: fallback
+        return WireJson.encodeToJsonElement(AssistantLimits(
+            number("waits_at_once", AssistantLimits.WAITS_AT_ONCE_RANGE, defaults.waitsAtOnce),
+            number("wait_max_minutes", AssistantLimits.WAIT_MAX_MINUTES_RANGE, defaults.waitMaxMinutes),
+            number("event_replies", AssistantLimits.EVENT_REPLIES_RANGE, defaults.eventReplies),
+            number("after_input_seconds", AssistantLimits.AFTER_INPUT_SECONDS_RANGE, defaults.afterInputSeconds),
+        ))
     }
 
     private fun normalizeMqttCache(raw: JsonElement?): JsonElement {

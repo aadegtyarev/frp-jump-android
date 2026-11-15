@@ -38,6 +38,11 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
      * the model finds a tab (see [ru.adsrv.frpjump.settings.AssistantTools.get]).
      */
     TERMINAL_INPUT("terminal_input", "assistant_terminal_input", Effect.CHANGE_REMOTE),
+    /**
+     * Waits in the background for one event (a tab, a tunnel or the clock) and starts a new turn when it happens. Its own switch (default off);
+     * it changes only this app (the wait is visible in the chat and the owner can cancel it), so it runs without a question ([confirms] false).
+     */
+    WAIT_FOR("wait_for", "assistant_waits", Effect.CHANGE_LOCAL, confirms = false),
     /** Arbitrary command: may change the remote system. */
     SSH_COMMAND("ssh_command", "assistant_ssh_command", Effect.CHANGE_REMOTE);
 

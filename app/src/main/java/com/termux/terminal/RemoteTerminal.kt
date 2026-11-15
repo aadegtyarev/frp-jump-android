@@ -63,6 +63,15 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     var lastOutputNanos: Long = System.nanoTime()
         private set
 
+    /** Observers of every chunk the remote side sends (the assistant's text wait); each is called on the reading thread and must copy what it keeps. */
+    private val outputTaps = java.util.concurrent.CopyOnWriteArrayList<(ByteArray, Int) -> Unit>()
+
+    /** Calls [tap] with each new chunk of output until the returned handle is closed. Output from before is not replayed. */
+    fun addOutputTap(tap: (ByteArray, Int) -> Unit): AutoCloseable {
+        outputTaps += tap
+        return AutoCloseable { outputTaps -= tap }
+    }
+
     val columns: Int get() = session.mEmulator.mColumns
     val rows: Int get() = session.mEmulator.mRows
 
@@ -158,6 +167,7 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                     if (read < 0) break
                     if (read > 0) {
                         lastOutputNanos = System.nanoTime()
+                        for (tap in outputTaps) tap(buffer, read)
                         metrics.received(epoch, read)
                         show(buffer, read, epoch)
                     }

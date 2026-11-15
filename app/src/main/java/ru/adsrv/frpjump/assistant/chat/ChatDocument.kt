@@ -6,7 +6,8 @@ package ru.adsrv.frpjump.assistant.chat
 internal fun SavedChat.withLast(archive: Boolean, change: (SavedTurn) -> SavedTurn): SavedChat =
     copy(records = records.dropLast(1) + change(records.last())).bounded(archive)
 
-internal fun SavedChat.withTurn(text: String, archive: Boolean): SavedChat = copy(records = records + SavedTurn(text)).bounded(archive)
+internal fun SavedChat.withTurn(text: String, archive: Boolean, events: List<SavedEvent> = emptyList(), eventOnly: Boolean = false, notes: List<String> = emptyList()): SavedChat =
+    copy(records = records + SavedTurn(text, events = events, eventOnly = eventOnly, notes = notes)).bounded(archive)
 
 /** Without an archive only completed turns survive into the next request. */
 internal fun SavedChat.completedOnly(): SavedChat = copy(records = records.filter { it.status == SavedTurnState.COMPLETE })

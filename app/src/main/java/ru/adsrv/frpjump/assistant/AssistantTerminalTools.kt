@@ -112,8 +112,12 @@ internal class AssistantTerminalReadTool(private val tabs: AssistantTerminalTabs
  * confirmation like every one, and [describeChange] pins the call to the tab's connection of that moment, so that what the owner was
  * shown is what is typed into. Nothing it is given (text, keys) is ever logged or printed.
  */
-internal class AssistantTerminalInputTool(private val tabs: AssistantTerminalTabs) : AppTool<TypedInput>(
-    AssistantToolId.TERMINAL_INPUT, INPUT_DESCRIPTION,
+internal class AssistantTerminalInputTool(
+    private val tabs: AssistantTerminalTabs,
+    /** The owner's "wait after input" limit, in seconds: how long the tool waits for the screen to go quiet. */
+    private val afterInputSeconds: Int = ru.adsrv.frpjump.settings.AssistantLimits.DEFAULT_AFTER_INPUT_SECONDS,
+) : AppTool<TypedInput>(
+    AssistantToolId.TERMINAL_INPUT, inputDescription(afterInputSeconds),
     objectSchema {
         integer("tab_id", 1)
         string("text", TypedInput.MAX_TEXT, required = false, minLength = 1)
@@ -158,7 +162,7 @@ internal class AssistantTerminalInputTool(private val tabs: AssistantTerminalTab
         catch (_: TabReconnected) { return refused("Tab $id reconnected after the request. Nothing was typed. Read the tab again.") }
         catch (_: TypedUnknown) { return refused("Input to tab $id may be partly sent; the outcome is unknown. Read the tab before anything else.") }
         catch (_: Exception) { return refused("Could not read tab $id. Nothing was typed into it.") }
-        return ToolOutput(if (typed.settled) readText(typed.read) else readText(typed.read, SSH_RESULT_BUDGET - STILL_CHANGING.length - 1) + "\n" + STILL_CHANGING)
+        return ToolOutput(if (typed.settled) readText(typed.read) else readText(typed.read, SSH_RESULT_BUDGET - stillChanging(afterInputSeconds).length - 1) + "\n" + stillChanging(afterInputSeconds))
     }
 
     private fun refused(text: String) = ToolOutput(text, ToolOutcome.FAILED)
@@ -167,8 +171,8 @@ internal class AssistantTerminalInputTool(private val tabs: AssistantTerminalTab
 
     companion object {
         const val INVALID = "Provide tab_id from terminal_tabs and text and/or keys only. Text: up to 2,000 characters, no control characters except newline and tab. Keys: up to 32 from the list."
-        const val STILL_CHANGING = "screen still changing after 10 s"
-        const val INPUT_DESCRIPTION = "Type into one open terminal tab by tab_id from terminal_tabs, as if the owner typed it. `text` is typed first (a newline is sent as Enter), then `keys` in order: enter, tab, escape, backspace, up, down, left, right, home, end, page_up, page_down, ctrl_c, ctrl_d, ctrl_z, ctrl_l. For a key before text, make two calls. Up to 2,000 characters of text and 32 keys. Then waits until the screen is quiet (at most 10 seconds) and returns the visible screen as terminal_read does. Input cannot be undone and its effect is unknown until you see the screen: never repeat it blindly. Never type passwords or other secrets. The owner may be asked before it runs."
+        fun stillChanging(seconds: Int) = "screen still changing after $seconds s"
+        fun inputDescription(seconds: Int) = "Type into one open terminal tab by tab_id from terminal_tabs, as if the owner typed it. `text` is typed first (a newline is sent as Enter), then `keys` in order: enter, tab, escape, backspace, up, down, left, right, home, end, page_up, page_down, ctrl_c, ctrl_d, ctrl_z, ctrl_l. For a key before text, make two calls. Up to 2,000 characters of text and 32 keys. Then waits until the screen is quiet (at most $seconds seconds) and returns the visible screen as terminal_read does. Input cannot be undone and its effect is unknown until you see the screen: never repeat it blindly. Never type passwords or other secrets. The owner may be asked before it runs."
     }
 }
 

@@ -132,11 +132,14 @@ internal fun AssistantChatContent(
                 onClear?.let { clear ->
                     var menu by remember { mutableStateOf(false) }
                     Box {
-                        IconButton(onClick = { menu = true }, enabled = state.menuEnabled) {
+                        IconButton(onClick = { menu = true }, enabled = state.menuEnabled || state.waits.isNotEmpty()) {
                             Icon(Icons.Default.MoreVert, stringResource(R.string.chat_history_actions))
                         }
                         AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.chat_history_clear)) }, onClick = { menu = false; clear() })
+                            // Cancelling every wait is a different action from Stop (which stops only the reply): shown while any wait runs.
+                            if (state.waits.isNotEmpty()) DropdownMenuItem(text = { Text(stringResource(R.string.chat_waits_cancel_all, state.waits.size)) },
+                                modifier = Modifier.testTag("chat_waits_cancel_all"), onClick = { menu = false; conversation.cancelAllWaits() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.chat_history_clear)) }, enabled = state.menuEnabled, onClick = { menu = false; clear() })
                         }
                     }
                 }
@@ -168,7 +171,9 @@ internal fun AssistantChatContent(
             val history: @Composable (Modifier) -> Unit = { modifier -> ChatFeedScale { LazyColumn(modifier.fillMaxWidth().testTag("chat_history"), state = historyScroll, verticalArrangement = Arrangement.spacedBy(TURN_GAP)) {
                 itemsIndexed(state.turns) { index, turn ->
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
-                        ChatUserMessage(turn.user)
+                        // Events of waits are muted lines of their own; a turn they started has no message of the owner's.
+                        ChatEventLines(turn.events)
+                        if (!turn.eventOnly) ChatUserMessage(turn.user)
                         // The calls happened before the answer, so their block comes first.
                         ChatToolReceipts(turn.receipts, turn.information)
                         // The role is not drawn (Р61); the marker keeps it for TalkBack.
@@ -194,7 +199,8 @@ internal fun AssistantChatContent(
                 }
                 state.pendingText?.let { text -> item {
                     Column(verticalArrangement = Arrangement.spacedBy(PART_GAP)) {
-                        ChatUserMessage(text)
+                        ChatEventLines(state.pendingEvents)
+                        if (!state.pendingEventOnly) ChatUserMessage(text)
                         val progress = state.toolProgress
                         val waiting = state.confirmation != null
                         ChatToolReceipts(state.receipts, state.information, running = true, animate = !state.stopping && !waiting)
@@ -211,6 +217,13 @@ internal fun AssistantChatContent(
                         ChatToolDeclines(state.receipts)
                     }
                 } }
+                // The waits that run, and the line that says event replies stopped at the owner's limit.
+                if (state.waits.isNotEmpty() || state.eventCap != null) item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        state.eventCap?.let { ChatEventCap(it) }
+                        ChatWaitLines(state.waits, onCancel = conversation::cancelWait)
+                    }
+                }
                 if (state.pendingText == null && (state.currentSources.isNotEmpty() || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.receipts.isNotEmpty())) item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         ChatToolReceipts(state.receipts, state.information, openFacts = state.problem != null)

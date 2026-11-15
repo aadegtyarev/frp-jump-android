@@ -157,6 +157,15 @@ class AssistantChatScreenTest {
             })
     }
     private var tunnelsHost = SyntheticTunnels(2)
+    /** Wait sources in memory: tab 3 ("logs") exists; a wait for it ends when the test calls [fire]. Nothing real is watched. */
+    private class SyntheticWaits : ru.adsrv.frpjump.assistant.WaitSources {
+        private val results = java.util.concurrent.ConcurrentHashMap<ru.adsrv.frpjump.assistant.WaitSpec, kotlinx.coroutines.CompletableDeferred<ru.adsrv.frpjump.assistant.SourceResult>>()
+        override fun subject(spec: ru.adsrv.frpjump.assistant.WaitSpec) = if (spec.tabId == 3) "logs" else null
+        override suspend fun await(spec: ru.adsrv.frpjump.assistant.WaitSpec, quietSeconds: Int) = results.getOrPut(spec) { kotlinx.coroutines.CompletableDeferred() }.await()
+        fun fire(spec: ru.adsrv.frpjump.assistant.WaitSpec) { results.getOrPut(spec) { kotlinx.coroutines.CompletableDeferred() }.complete(ru.adsrv.frpjump.assistant.SourceResult.FIRED) }
+    }
+    private val waitSources = SyntheticWaits()
+    private fun tabWait(kind: ru.adsrv.frpjump.assistant.WaitKind) = ru.adsrv.frpjump.assistant.WaitSpec(kind, 10, tabId = 3)
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
@@ -258,6 +267,11 @@ class AssistantChatScreenTest {
                 }
                 "terminal-rename-unlisted" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("rename-1", "terminal_rename", buildJsonObject { put("tab_id", 2); put("name", "logs") }))) else { heldProviderReply.await(); AgentReply("Renamed the tab.") }
+                "waits-arm" -> if (request.turns.last().user.startsWith("Event:")) AgentReply("Connected.")
+                    else if (request.turns.last().exchanges.isEmpty() && request.turns.last().user.startsWith("Arm")) AgentReply(calls = listOf(
+                        ToolCall("wait-1", "wait_for", buildJsonObject { put("event", "tab_connected"); put("tab_id", 3); put("minutes", 10) }),
+                        ToolCall("wait-2", "wait_for", buildJsonObject { put("event", "tab_closed"); put("tab_id", 3); put("minutes", 10) })))
+                    else AgentReply("Waiting.")
                 "tunnel-stop" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("stop-1", "stop_tunnel", buildJsonObject { put("profile_id", "synthetic-profile"); put("connection_id", "c1") }))) else AgentReply("Stopped.")
                 "tunnel-start" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
@@ -282,7 +296,8 @@ class AssistantChatScreenTest {
                 else -> AgentReply("Complete answer $calls")
             }
         }
-    }, realtime = { SystemClock.elapsedRealtime() }, terminalTabs = terminalTabs, tunnels = tunnelsHost.assistant()).also { testOwner = it }
+    }, realtime = { SystemClock.elapsedRealtime() }, terminalTabs = terminalTabs, tunnels = tunnelsHost.assistant(),
+        waitSources = waitSources, waitSleep = { kotlinx.coroutines.CompletableDeferred<Unit>().await() }).also { testOwner = it }
     private fun vm() = AssistantChatViewModel(settings, store, owner())
     private fun summaryFacts(text: String) = listOf("target", "done", "unknown").joinToString("; ") { key ->
         "$key=" + (Regex("$key=([a-z-]+)").find(text)?.groupValues?.get(1) ?: error("Missing observed $key"))
@@ -726,6 +741,90 @@ class AssistantChatScreenTest {
         catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("no question appeared: " + diagnose("no-question"), e) }
         compose.waitForIdle()
         return tunnelsHost
+    }
+
+    private fun armWaits() {
+        settings.update { it.copy(assistantTerminalTabs = true, assistantWaits = true) }
+        install()
+        compose.runOnIdle { mode = "waits-arm" }
+        input().performTextInput("Arm the waits")
+        sendAndAwait()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.waits.size == 2 }
+        compose.waitForIdle()
+    }
+
+    /** A wait shows as a line with its time and Cancel; Cancel ends it, starts no turn, and the other stays. */
+    @Test fun aWaitShowsItsLineWithCancelAndCancelStartsNoTurn() {
+        armWaits()
+        val first = owner!!.state.value.waits.first { it.spec.kind == ru.adsrv.frpjump.assistant.WaitKind.TAB_CONNECTED }
+        button("chat_history").performScrollToNode(hasTestTag("chat_wait_${first.id}"))
+        compose.onNode(hasText(localizedFormat(ru.adsrv.frpjump.R.string.chat_wait_line, localizedFormat(ru.adsrv.frpjump.R.string.wait_tab_connected, ru.adsrv.frpjump.ssh.isolateName("logs")),
+            ru.adsrv.frpjump.assistant.AssistantWaitTools.clockText(first.untilMs)), substring = true) and hasAnyAncestor(hasTestTag("chat_wait_${first.id}"))).assertExists()
+        shot("wait-lines")
+        val before = requests.size
+        compose.onNodeWithTag("chat_wait_cancel_${first.id}").performScrollTo().performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.waits.size == 1 }
+        compose.waitForIdle()
+        compose.onNodeWithTag("chat_wait_${first.id}").assertDoesNotExist()
+        compose.runOnIdle { assertEquals("no turn starts on a cancel", before, requests.size) }
+    }
+
+    /** The chat's menu cancels every wait, with the number; the item is there only while some run. */
+    @Test fun theChatMenuCancelsAllWaitsWhileAnyRun() {
+        armWaits()
+        val more = androidx.compose.ui.test.hasContentDescription(localizedText(ru.adsrv.frpjump.R.string.chat_history_actions))
+        compose.onNode(more).performClick()
+        compose.onNodeWithTag("chat_waits_cancel_all").assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_waits_cancel_all, 2), substring = true)
+        shot("waits-menu")
+        compose.onNodeWithTag("chat_waits_cancel_all").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.waits.isEmpty() }
+        compose.waitForIdle()
+        compose.onNode(more).performClick()
+        compose.onNodeWithTag("chat_waits_cancel_all").assertDoesNotExist()
+    }
+
+    /** An event starts a turn by itself: its muted line, then the answer; no message of the owner's is drawn for it. */
+    @Test fun anEventShowsAsAMutedLineAndStartsAReplyByItself() {
+        armWaits()
+        val sources = waitSources
+        sources.fire(tabWait(ru.adsrv.frpjump.assistant.WaitKind.TAB_CONNECTED))
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.let { it.turns.size == 2 && !it.busy } }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("Event: tab 3 connected.", requests.last().turns.last().user) }
+        button("chat_history").performScrollToNode(hasTestTag("chat_events"))
+        compose.onNode(hasText(localizedFormat(ru.adsrv.frpjump.R.string.event_tab_connected, ru.adsrv.frpjump.ssh.isolateName("logs")), substring = true) and hasAnyAncestor(hasTestTag("chat_events"))).assertExists()
+        compose.onNodeWithText("Connected.").assertExists()
+        shot("event-line")
+    }
+
+    /** At the owner's limit of event replies in a row the chat says so, and no turn starts. */
+    @Test fun theEventReplyLimitShowsItsLine() {
+        settings.update { it.copy(assistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(eventReplies = 1)) }
+        armWaits()
+        waitSources.fire(tabWait(ru.adsrv.frpjump.assistant.WaitKind.TAB_CONNECTED))
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.let { it.turns.size == 2 && !it.busy } }
+        waitSources.fire(tabWait(ru.adsrv.frpjump.assistant.WaitKind.TAB_CLOSED))
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.eventCap != null }
+        compose.waitForIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_event_cap"))
+        compose.onNodeWithTag("chat_event_cap").assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_event_cap, 1))
+        compose.runOnIdle { assertEquals("no third turn", 2, owner!!.state.value.turns.size) }
+        shot("event-cap")
+    }
+
+    /** The Tools screen: "Event waits", off by default, with its hint; it turns on and is saved. */
+    @Test fun toolsScreenShowsTheEventWaitsSwitchWithItsHint() {
+        install()
+        button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_wait_for").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_waits)) and hasAnyAncestor(hasTestTag("tool_wait_for"))).assertExists()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_waits_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_wait_for"))).assertExists()
+        toolToggle("wait_for").assertIsOff()
+        shot("tools-waits-off")
+        toolToggle("wait_for").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.waits }
+        toolToggle("wait_for").assertIsOn()
+        shot("tools-waits-on")
     }
 
     /** The question before stopping a tunnel: its identity line, the tabs that close, the common answers (no session grant), and nothing stops until Allow. */

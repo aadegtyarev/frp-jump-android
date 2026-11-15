@@ -22,6 +22,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command
+    AssistantToolId.WAIT_FOR -> R.string.tool_waits
 }
 
 /** The only mapping from an assistant tool to its row icon; exhaustive, so a new tool must pick one. */
@@ -46,6 +47,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs_hint
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input_hint
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command_hint
+    AssistantToolId.WAIT_FOR -> R.string.tool_waits_hint
 }
 
 internal fun AssistantToolId.progress(): Int = when (this) {
@@ -60,6 +62,7 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_rename_progress
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input_progress
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command_progress
+    AssistantToolId.WAIT_FOR -> R.string.tool_wait_for_progress
 }
 
 /**
@@ -69,6 +72,7 @@ internal fun AssistantToolId.progress(): Int = when (this) {
 internal fun AssistantToolId.receiptTitle(): Int = when (this) {
     AssistantToolId.START_TUNNEL -> R.string.tool_start_tunnel_receipt
     AssistantToolId.STOP_TUNNEL -> R.string.tool_stop_tunnel_receipt
+    AssistantToolId.WAIT_FOR -> R.string.tool_wait_for_receipt
     AssistantToolId.TERMINAL_TABS -> R.string.tool_terminal_tabs_receipt
     AssistantToolId.TERMINAL_READ -> R.string.tool_terminal_read_receipt
     AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_rename_receipt

@@ -106,6 +106,23 @@
     }
   },
   {
+    "name": "wait_for",
+    "description": "Wait in the background for one event; you get a new turn when it happens or the time runs out. It returns at once: finish your answer after calling it. event: tab_connected, tab_closed, tab_text (with text), tab_quiet, tunnel_on, tunnel_off or time. Tab events take tab_id from terminal_tabs; tunnel events take profile_id and connection_id from profile_information. minutes: 1 to 30. The owner sees every wait and can cancel it.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event": { "type": "string", "enum": ["tab_connected", "tab_closed", "tab_text", "tab_quiet", "tunnel_on", "tunnel_off", "time"] },
+        "tab_id": { "type": "integer", "minimum": 1 },
+        "profile_id": { "type": "string", "maxLength": 256 },
+        "connection_id": { "type": "string", "maxLength": 256 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "minutes": { "type": "integer", "minimum": 1, "maximum": 30 }
+      },
+      "required": ["event", "minutes"]
+    }
+  },
+  {
     "name": "ssh_command",
     "description": "Run one noninteractive command through a saved SSH tunnel that is on and ready. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about 7,800 characters for stdout and stderr together (stderr keeps at least 1,500 when present); a cut stream ends with \"truncated: N of M characters\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).",
     "parameters": {

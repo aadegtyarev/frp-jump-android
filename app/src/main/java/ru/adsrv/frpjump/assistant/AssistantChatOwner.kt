@@ -21,7 +21,7 @@ import ru.adsrv.frpjump.settings.assistantTools
 import ru.adsrv.frpjump.undo.PendingUndo
 
 /** What the assistant is doing right now, for the indicator that is seen while the chat is not: nothing, working, or waiting for a card's answer. */
-enum class ChatActivity { IDLE, WORKING, WAITING }
+enum class ChatActivity { IDLE, WORKING, WAITING, LISTENING }
 
 /**
  * How the last attempt ended, for the notification: nothing (running, or stopped by the owner or a disable: no end to report), a reply,
@@ -61,12 +61,21 @@ class AssistantChatOwner(
     private val terminalTabs: AssistantTerminalTabs? = null,
     /** The owner's saved tunnels for `start_tunnel` and `stop_tunnel`; null in tests that do not use them. */
     private val tunnels: AssistantTunnels? = null,
+    /** How many background waits run now, for the notification "Assistant is waiting for events: N"; written for the live conversation only. */
+    private val waitCountOut: MutableStateFlow<Int> = MutableStateFlow(0),
+    /** What waits watch; the app's own (tabs and tunnels) unless a test passes its own. */
+    private val waitSources: WaitSources? = null,
+    private val waitSleep: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
 ) {
     private class Live(val conversation: AssistantConversation, val scope: CoroutineScope, val confirmations: ConfirmationSupport)
     private val lock = Any()
     private var live: Live? = null
     private var screens = 0
     val activity: StateFlow<ChatActivity> = activityOut
+    val waitCount: StateFlow<Int> = waitCountOut
+
+    /** Cancels every wait of the live conversation (the notification's action): the model is told on its next turn. */
+    fun cancelWaits() { synchronized(lock) { live?.conversation }?.cancelAllWaits() }
     /** How the last attempt ended (see [ChatEnd]); back to NONE when a screen attaches or a Send starts. */
     val lastEnd: StateFlow<ChatEnd> = endOut
     /** Screen attach/detach moments (real time), newest last: whether a screen was attached at a past moment (a card's expiry). */
@@ -103,7 +112,7 @@ class AssistantChatOwner(
 
     /** Ends everything now, attempt included (a test or a private owner going away). */
     fun shutdown() {
-        val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE; stoppingOut.value = false } } ?: return
+        val old = synchronized(lock) { screens = 0; live.also { live = null }.also { activityOut.value = ChatActivity.IDLE; stoppingOut.value = false; waitCountOut.value = 0 } } ?: return
         old.conversation.close(); old.scope.cancel()
     }
 
@@ -123,7 +132,7 @@ class AssistantChatOwner(
     private fun settled() {
         synchronized(lock) {
             val old = live ?: return
-            if (screens == 0 && old.conversation.closeIfIdle()) { live = null; old.scope.cancel(); activityOut.value = ChatActivity.IDLE; stoppingOut.value = false }
+            if (screens == 0 && old.conversation.closeIfIdle()) { live = null; old.scope.cancel(); activityOut.value = ChatActivity.IDLE; stoppingOut.value = false; waitCountOut.value = 0 }
         }
     }
 
@@ -133,7 +142,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, historyStore = historyStore,
+            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,
@@ -146,7 +155,7 @@ class AssistantChatOwner(
         child.launch { settingsStore.settings.map { it.assistantTools() }.distinctUntilChanged().collect { chat.toolsChanged(it) } }
         child.launch {
             var before = ChatActivity.IDLE
-            chat.state.map { if (!it.busy) ChatActivity.IDLE else if (it.confirmation != null && !it.stopping) ChatActivity.WAITING else ChatActivity.WORKING }
+            chat.state.map { if (!it.busy) (if (it.waits.isNotEmpty()) ChatActivity.LISTENING else ChatActivity.IDLE) else if (it.confirmation != null && !it.stopping) ChatActivity.WAITING else ChatActivity.WORKING }
                 .distinctUntilChanged().collect {
                     publish(chat, it)
                     // A new Send (any step from idle) clears the last end; the WAITING to WORKING step of an attempt that ends unanswered does not.
@@ -154,6 +163,7 @@ class AssistantChatOwner(
                     before = it
                 }
         }
+        child.launch { chat.state.map { it.waits.size }.distinctUntilChanged().collect { synchronized(lock) { if (live?.conversation === chat) waitCountOut.value = it } } }
         child.launch { chat.state.map { it.busy && it.stopping }.distinctUntilChanged().collect { synchronized(lock) { if (live?.conversation === chat) stoppingOut.value = it } } }
         // The server removed this phone's profile: the attempt stops even when no screen (so no AppNav) is there to do it.
         child.launch { removed.collect { gone -> if (gone) chat.stop() } }

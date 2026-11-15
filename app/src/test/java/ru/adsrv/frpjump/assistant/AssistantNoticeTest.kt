@@ -62,12 +62,12 @@ class AssistantNoticeTest {
         assertNull(t.update(ChatActivity.IDLE, false, ChatEnd.NONE, true))
     }
 
-    @Test fun `the five notices have five distinct fixed titles and the notifier adds no content`() {
-        assertEquals(5, AssistantNotice.entries.map { it.titleRes }.toSet().size)
+    @Test fun `the six notices have six distinct fixed titles and the notifier adds no content`() {
+        assertEquals(6, AssistantNotice.entries.map { it.titleRes }.toSet().size)
         val source = File("src/main/java/ru/adsrv/frpjump/assistant/AssistantNotifier.kt").readText()
         for (forbidden in listOf("setContentText", "setStyle", "setSubText", "setTicker", "BigText", "RemoteInput"))
             assertFalse("no $forbidden", source.contains(forbidden))
-        assertTrue(source.contains("setContentTitle(Texts.get(notice.titleRes))"))
+        assertTrue(source.contains("setContentTitle(Texts.get(notice.titleRes, count))"))
         assertTrue(source.contains("VISIBILITY_PUBLIC"))
     }
 
@@ -115,7 +115,9 @@ class AssistantNoticeTest {
     @Test fun `the channel has default importance and no sound, vibration or badge`() {
         val source = File("src/main/java/ru/adsrv/frpjump/assistant/AssistantNotifier.kt").readText()
         assertTrue(source.contains("NotificationManager.IMPORTANCE_DEFAULT"))
-        for (other in listOf("IMPORTANCE_LOW", "IMPORTANCE_HIGH", "IMPORTANCE_MIN", "IMPORTANCE_MAX")) assertFalse(other, source.contains(other))
+        // Waiting for events is the one quiet exception, on a channel of its own; nothing else changes the importance.
+        assertEquals(1, Regex("IMPORTANCE_LOW").findAll(source).count())
+        for (other in listOf("IMPORTANCE_HIGH", "IMPORTANCE_MIN", "IMPORTANCE_MAX")) assertFalse(other, source.contains(other))
         assertTrue(source.contains("setSound(null, null)")); assertTrue(source.contains("enableVibration(false)")); assertTrue(source.contains("setShowBadge(false)"))
         assertTrue(source.contains(".setSilent(true)")); assertTrue(source.contains(".setOnlyAlertOnce(true)"))
         assertTrue(source.contains("VISIBILITY_PUBLIC"))
@@ -124,5 +126,37 @@ class AssistantNoticeTest {
     @Test fun `FrpJumpApp derives shown from chatShown`() {
         val app = File("src/main/java/ru/adsrv/frpjump/FrpJumpApp.kt").readText()
         assertTrue(app.contains("ru.adsrv.frpjump.assistant.chatShown(resumed, locked)"))
+    }
+
+    @Test fun `waiting for events is a quiet notice of its own, off screen, and never an end`() {
+        assertEquals(AssistantNotice.LISTENING, notice(ChatActivity.LISTENING))
+        assertTrue(AssistantNotice.LISTENING.ongoing)
+        assertNull(notice(ChatActivity.LISTENING, shown = true)); assertNull(notice(ChatActivity.LISTENING, permission = false))
+        assertNull(assistantNotice(ChatActivity.LISTENING, false, ChatEnd.NONE, true, enabled = false))
+        // An attempt that ended off screen, then waits, then none left: the old end is not announced again.
+        val t = AssistantNoticeTracker()
+        assertEquals(AssistantNotice.WORKING, t.update(ChatActivity.WORKING, false, ChatEnd.NONE, true))
+        assertEquals(AssistantNotice.ANSWERED, t.update(ChatActivity.IDLE, false, ChatEnd.COMPLETED, true))
+        assertEquals(AssistantNotice.LISTENING, t.update(ChatActivity.LISTENING, false, ChatEnd.COMPLETED, true))
+        assertNull(t.update(ChatActivity.IDLE, false, ChatEnd.COMPLETED, true))
+    }
+
+    private class Recorder : AssistantNoticeSink {
+        val log = ArrayList<String>()
+        override fun post(notice: AssistantNotice) { log += "post ${notice.name}" }
+        override fun postWaiting(count: Int) { log += "waiting $count" }
+        override fun cancel() { log += "cancel" }
+    }
+
+    @Test fun `the waiting notice shows the number of waits, posts again when it changes, and goes at none`() {
+        val sink = Recorder(); val d = AssistantNoticeDriver(sink)
+        d.update(ChatActivity.LISTENING, false, ChatEnd.NONE, true, true, false, waits = 2)
+        d.update(ChatActivity.LISTENING, false, ChatEnd.NONE, true, true, false, waits = 2)
+        d.update(ChatActivity.LISTENING, false, ChatEnd.NONE, true, true, false, waits = 1)
+        // An event turn: the usual working notice, then back to waiting for the rest.
+        d.update(ChatActivity.WORKING, false, ChatEnd.NONE, true, true, false, waits = 1)
+        d.update(ChatActivity.LISTENING, false, ChatEnd.NONE, true, true, false, waits = 1)
+        d.update(ChatActivity.LISTENING, false, ChatEnd.NONE, true, true, false, waits = 0)
+        assertEquals(listOf("waiting 2", "waiting 1", "post WORKING", "waiting 1", "cancel"), sink.log)
     }
 }

@@ -67,6 +67,8 @@ internal interface TabHandle {
     val user: String
     val number: Int
     val state: SshState
+    /** Calls [tap] with each new chunk of the tab's output until the handle is closed; null when the tab cannot be watched (no text waits). */
+    fun watchOutput(tap: (ByteArray, Int) -> Unit): AutoCloseable? = null
     /** The tab's own name (owner- or assistant-set), null when it has none. */
     val customName: String? get() = null
     /** Sets the tab's name ([ru.adsrv.frpjump.ssh.checkTabName]'s valid one; null clears it): the same as the owner's Rename…. Main thread. */
@@ -107,6 +109,7 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val user get() = session.user
     override val number get() = session.number
     override val state get() = session.state.value
+    override fun watchOutput(tap: (ByteArray, Int) -> Unit): AutoCloseable? = session.terminal.addOutputTap(tap)
     override val customName get() = session.tabName.value?.text
     // Named by the assistant: the tab's chip shows it together with the automatic label until the owner saves it.
     override fun rename(name: String?) = session.rename(name, ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT)
@@ -170,6 +173,8 @@ class AssistantTerminalTabs internal constructor(
     private val copyProbeTimeoutMs: Long = COPY_PROBE_TIMEOUT_MS,
     private val quietMs: Long = QUIET_MS,
     private val maxWaitMs: Long = MAX_WAIT_MS,
+    /** The owner's "wait after input" setting, read at each wait when given (it replaces [maxWaitMs]). */
+    private val maxWait: (() -> Long)? = null,
     /** Milliseconds on a clock that only moves forward; the age of a program probe. */
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -203,6 +208,13 @@ class AssistantTerminalTabs internal constructor(
         tab.id, tab.profileId, profileName(tab.profileId) ?: tab.profileId, tab.device, tab.user, tab.number,
         connectionName(tab.profileId, tab.device, tab.port), tabState(tab.state), tab.tmuxName != null, tab.customName,
     )
+
+    /** The open (not hidden) tab [id] as the waits watch it; null once it is gone. Reads app state only. */
+    internal fun handle(id: Int): TabHandle? = visible().firstOrNull { it.id == id }
+
+    /** The tab in the owner's words: its own name, else its automatic label. */
+    internal fun words(tab: TabHandle): String =
+        tab.customName ?: ru.adsrv.frpjump.ui.ssh.tabLabel(tab.user, tab.device, tab.port, tab.number)
 
     /** The open tabs in the Sessions list's order. */
     internal fun list(): List<TerminalTab> = visible().map(::describe)
@@ -340,7 +352,7 @@ class AssistantTerminalTabs internal constructor(
             val now = System.nanoTime()
             if (tabState(handle.state) != TabState.CONNECTED) return true
             if (now - maxOf(wroteAt, handle.lastOutputNanos) >= quietMs * NANOS_PER_MS) return true
-            if (now - wroteAt >= maxWaitMs * NANOS_PER_MS) return false
+            if (now - wroteAt >= (maxWait?.invoke() ?: maxWaitMs) * NANOS_PER_MS) return false
             delay(POLL_MS)
         }
     }
@@ -352,7 +364,8 @@ class AssistantTerminalTabs internal constructor(
         const val TYPE = "terminal-input"
         const val COPY_PROBE_TIMEOUT_MS = 3_000L
         const val QUIET_MS = 700L
-        const val MAX_WAIT_MS = 10_000L
+        /** The fallback of the wait after input when no setting is given: the setting's own default. */
+        const val MAX_WAIT_MS = ru.adsrv.frpjump.settings.AssistantLimits.DEFAULT_AFTER_INPUT_SECONDS * 1000L
         /** How old a `terminal_tabs` probe may be for the typing card to show its program. */
         const val PROGRAM_FRESH_MS = 60_000L
         private const val POLL_MS = 25L

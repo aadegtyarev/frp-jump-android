@@ -15,11 +15,20 @@ internal class Admission(val owner: Pending, val saved: AssistantProviderSnapsho
     /** The wire names the owner declined to turn on in this conversation (read by `request_tool`). */
     val declinedTools: Set<String> = emptySet(),
     /** True when [text] is the app's fixed message and not the owner's draft: the draft is then left as it is. */
-    val fixedText: Boolean = false)
+    val fixedText: Boolean = false,
+    /** The owner's limits at admission (the wait tool's description and caps read them). */
+    val limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
+    /** What the model reads as this turn's text: [text], and after it, one line each, the events that came with the owner's message and the notes. */
+    val modelText: String = text)
+
+/** What a Send carries besides its text: [events] of waits, [notes] for the model only; with [eventOnly] the events are the turn. */
+internal class Delivery(val events: List<WaitEvent>, val notes: List<String> = emptyList(), val eventOnly: Boolean = false)
 
 /** Who may commit: authority refresh, stop, the ownership check and Send admission. Every method documents whether it needs the gate. */
 internal class RunOwnership(private val c: ChatCells, private val runtime: AssistantChatRuntime,
-    private val availability: () -> AssistantAvailability, private val snapshot: () -> AssistantProviderSnapshot) {
+    private val availability: () -> AssistantAvailability, private val snapshot: () -> AssistantProviderSnapshot,
+    /** Called (under the gate) when the assistant was switched off: what lives only while it is on (the waits) ends. */
+    private val onRevoked: () -> Unit = {}) {
     private val gate = runtime.gate
 
     /** Caller holds the gate. */
@@ -29,7 +38,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         if (now.disableVersion != c.authority.disableVersion || !now.enabled || saved.revision != c.revision || saved.problem != null) {
             c.provider = null
             c.clearConfirmation()
-            if (!now.enabled || now.disableVersion != c.authority.disableVersion) c.confirmations?.grants?.clear()
+            if (!now.enabled || now.disableVersion != c.authority.disableVersion) { c.confirmations?.grants?.clear(); onRevoked() }
             if (!c.archive) {
                 c.document = SavedChat(draft = c.document.draft).bind(saved.settings)
                 c.mutable.value = c.mutable.value.copy(turns = emptyList(), omitted = false, problem = null, currentSources = emptyList(), toolProgress = null,
@@ -82,10 +91,13 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
      * Caller holds the gate. Returns null when nothing starts (and has recorded the visible reason, if any). [fixed] is the app's own
      * message sent as the owner's new Send (the "Turn on" button): it replaces the draft as the text, and the draft is neither used nor cleared.
      */
-    fun admit(fixed: String? = null): Admission? {
+    fun admit(fixed: String? = null, delivery: Delivery? = null): Admission? {
         refreshLocked()
         if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing || c.mutable.value.historyProblem == ChatHistoryProblem.READ) return null
-        val saved = snapshot(); val settings = saved.settings; val text = fixed ?: c.document.draft
+        val saved = snapshot(); val settings = saved.settings
+        // Events of waits: they start a turn of their own ([Delivery.eventOnly], their messages are the text) or ride with the owner's message.
+        val eventsText = delivery?.events?.joinToString("\n") { it.message() }.orEmpty()
+        val text = if (delivery?.eventOnly == true) eventsText else fixed ?: c.document.draft
         if (!availability().enabled || settings == null || settings.model.isBlank() || saved.problem != null) {
             c.mutable.value = c.mutable.value.copy(problem = if (saved.problem == null) ChatProblem.SETUP else ChatProblem.READ); return null
         }
@@ -100,11 +112,12 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         val past = c.document.records.drop(c.document.contextStart)
         val owner = Pending(saved.revision, availability().disableVersion); val captured = availability(); val enabledTools = captured.tools; val retained = c.provider
         check(runtime.acquire(owner)); c.pending = owner
-        c.document = c.document.withTurn(text, c.archive); c.persist()
+        c.document = c.document.withTurn(text, c.archive, delivery?.events?.map(SavedEvent::of).orEmpty(), delivery?.eventOnly == true, delivery?.notes.orEmpty()); c.persist()
         c.mutable.value = c.mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
             currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList(),
             confirmationNotSaved = false)
         return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions),
-            c.document.declinedTools.toSet(), fixed != null)
+            c.document.declinedTools.toSet(), fixed != null || delivery?.eventOnly == true, captured.limits,
+            listOf(text).plus(if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()).plus(delivery?.notes.orEmpty()).joinToString("\n"))
     }
 }

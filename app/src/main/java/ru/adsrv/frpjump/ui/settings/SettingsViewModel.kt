@@ -106,6 +106,8 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     fun setTerminalHistoryRows(rows: Int) = save { it.copy(terminalHistoryRows = rows) }
 
+    fun setAssistantLimits(limits: ru.adsrv.frpjump.settings.AssistantLimits) = save { it.copy(assistantLimits = limits) }
+
     fun setAssistantChatTextSize(percent: Int) = save { it.copy(assistantChatTextSize = ru.adsrv.frpjump.settings.ChatTextSize.snap(percent.toDouble())) }
 
     internal val tools = AssistantToolsBinding(app.settings, viewModelScope)
