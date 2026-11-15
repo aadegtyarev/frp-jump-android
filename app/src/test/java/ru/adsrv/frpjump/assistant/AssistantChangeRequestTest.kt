@@ -40,6 +40,7 @@ class AssistantChangeRequestTest {
             AssistantToolId.PROFILE_INFORMATION to obj(),
             AssistantToolId.TERMINAL_TABS to obj(),
             AssistantToolId.TERMINAL_READ to obj("tab_id" to JsonPrimitive(1)),
+            AssistantToolId.TERMINAL_RENAME to obj("tab_id" to JsonPrimitive(1), "name" to JsonPrimitive("logs")),
             AssistantToolId.TERMINAL_INPUT to obj("tab_id" to JsonPrimitive(1), "text" to JsonPrimitive("ls\n")),
             AssistantToolId.SSH_COMMAND to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("uptime")),
         )

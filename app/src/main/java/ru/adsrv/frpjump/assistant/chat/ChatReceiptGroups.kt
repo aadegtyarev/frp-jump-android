@@ -7,6 +7,9 @@ import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.TerminalKey
+import ru.adsrv.frpjump.ssh.TAB_NAME_MAX
+import ru.adsrv.frpjump.ssh.TabNameCheck
+import ru.adsrv.frpjump.ssh.checkTabName
 
 /** Consecutive receipts of one tool, shown as one row with a counter. */
 internal data class ReceiptGroup(val tool: String, val items: List<ChatToolReceipt>)
@@ -47,10 +50,14 @@ internal class ReceiptWords(
     /** "profile · user@device #n" in the chat's language, and the plain "tab <id>" for a tab no result names. */
     val tabNamed: (String, String, String, Int) -> String = { profile, user, device, number -> "$profile · $user@$device #$number" },
     val tabPlain: (Int) -> String = { "tab $it" },
+    /** "name · profile · user@device #n": a tab that has a name, which is only ever shown with its user and device. */
+    val tabNamedAs: (String, String, String, String, Int) -> String = { name, profile, user, device, number -> "\"$name\" · $profile · $user@$device #$number" },
+    /** "name · user@device #n": the line of a rename call. */
+    val tabRenamed: (String, String, String, Int) -> String = { name, user, device, number -> "\"$name\" · $user@$device #$number" },
 )
 
 /** A tab as a `terminal_tabs` result names it: display text only. */
-internal data class TabLabel(val profile: String, val user: String, val device: String, val number: Int)
+internal data class TabLabel(val profile: String, val user: String, val device: String, val number: Int, val name: String? = null)
 
 /**
  * The tabs named by the successful `terminal_tabs` results among [receipts], by tab_id (the later result wins). Reads the result's own
@@ -70,7 +77,7 @@ internal fun tabLabels(receipts: List<ChatToolReceipt>): Map<Int, TabLabel> {
             val user = fields["user"] ?: continue
             val device = fields["device"] ?: continue
             val number = fields["tab"]?.toIntOrNull() ?: continue
-            labels[id] = TabLabel(profile, user, device, number)
+            labels[id] = TabLabel(profile, user, device, number, fields["name"]?.takeIf { it.isNotEmpty() })
         }
     }
     return labels
@@ -86,6 +93,7 @@ internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("a
     val a = call.arguments
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
     if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire) return terminalReadDetail(a, words)
+    if (call.name == AssistantToolId.TERMINAL_RENAME.wire) return terminalRenameDetail(a, words)
     val raw = when (call.name) {
         // The target's name only where the received facts name it (never its ids), then the command; the cut keeps the command's start.
         AssistantToolId.SSH_COMMAND.wire -> a.text("command")?.let { command ->
@@ -120,7 +128,50 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
     val id = a.number("tab_id")?.toIntOrNull()?.takeIf { it >= 1 } ?: return null
     val label = words.tabLabel(id) ?: return words.tabPlain(id)
     fun part(raw: String) = receiptText(raw, RECEIPT_PART_CHARS)
-    return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
+    // A name is shown with the tab's user and device, never alone: the name is the owner's or the model's text, not proof of what the tab is.
+    val name = label.name?.let { receiptText(it, TAB_NAME_MAX) }?.takeIf { it.isNotEmpty() }
+        ?: return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
+    return words.tabNamedAs(name, part(label.profile), part(label.user), part(label.device), label.number)
+}
+
+/**
+ * "name · user@device #n" for a rename call, the tab's user and device as this turn's `terminal_tabs` result names them; "profile · user@device #n"
+ * when the call brings the automatic name back; "tab <id>" alone when no result names the tab (the name is then not shown: it would stand alone).
+ */
+private fun terminalRenameDetail(a: JsonObject, words: ReceiptWords): String? {
+    val id = a.number("tab_id")?.toIntOrNull()?.takeIf { it >= 1 } ?: return null
+    val label = words.tabLabel(id) ?: return words.tabPlain(id)
+    fun part(raw: String) = receiptText(raw, RECEIPT_PART_CHARS)
+    val name = newTabName(a)?.let { receiptText(it, TAB_NAME_MAX) }?.takeIf { it.isNotEmpty() }
+        ?: return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
+    return words.tabRenamed(name, part(label.user), part(label.device), label.number)
+}
+
+/** The name a `terminal_rename` call asks for as the tool would take it (trimmed, valid), null for the automatic one or an invalid one. */
+private fun newTabName(a: JsonObject): String? = (a.text("name")?.let(::checkTabName) as? TabNameCheck.Valid)?.name
+
+/** One successful `terminal_rename`: the tab as this turn's tab list names it, its name before (null: automatic) and after. */
+internal class TabRename(val label: TabLabel, val before: String?, val after: String?)
+
+/**
+ * The successful `terminal_rename` calls among [receipts] (in order, by call id) whose tab a `terminal_tabs` result names: what the tab was
+ * called before (that result's name, or the name an earlier rename of this turn gave it) and after. A call whose tab no result names has none.
+ */
+internal fun tabRenames(receipts: List<ChatToolReceipt>): Map<String, TabRename> {
+    val labels = tabLabels(receipts)
+    val current = HashMap<Int, String?>()
+    val out = HashMap<String, TabRename>()
+    for (receipt in receipts) {
+        val call = receipt.call
+        if (call.name != AssistantToolId.TERMINAL_RENAME.wire || receipt.result?.outcome != ToolOutcome.SUCCESS) continue
+        val id = call.arguments.number("tab_id")?.toIntOrNull() ?: continue
+        val label = labels[id] ?: continue
+        val before = if (id in current) current[id] else label.name
+        val after = newTabName(call.arguments)
+        current[id] = after
+        out[call.id] = TabRename(label, before, after)
+    }
+    return out
 }
 
 /**
@@ -129,11 +180,13 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
  * ([keysLine] words it in the chat's language); then [outcome] when there is something to say (null for a success), then the result text.
  * No wire name and no raw arguments: the label says what was called.
  */
-internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String, keysLine: (List<String>) -> String = { "Keys: " + it.joinToString(", ") }): String {
+internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String, keysLine: (List<String>) -> String = { "Keys: " + it.joinToString(", ") },
+    /** For a successful `terminal_rename`: "before → after", worded by the caller; shown ahead of the result. */
+    renameLine: String? = null): String {
     val command = if (call.name == AssistantToolId.SSH_COMMAND.wire) call.arguments.text("command")?.let { "$ " + displayCommand(it) } else null
     val typed = if (call.name == AssistantToolId.TERMINAL_INPUT.wire) call.arguments.text("text")?.takeIf { it.isNotEmpty() }?.let { displayTyped(it).trimEnd('\n') } else null
     val keys = if (call.name == AssistantToolId.TERMINAL_INPUT.wire) typedKeys(call.arguments).takeIf { it.isNotEmpty() }?.let(keysLine) else null
-    return listOfNotNull(command, typed, keys, outcome, resultText.takeIf { it.isNotEmpty() }).joinToString("\n")
+    return listOfNotNull(command, typed, keys, renameLine, outcome, resultText.takeIf { it.isNotEmpty() }).joinToString("\n")
 }
 
 /** The names of the keys a `terminal_input` call asked for, in order; an item that is no known key is left out. Display only. */

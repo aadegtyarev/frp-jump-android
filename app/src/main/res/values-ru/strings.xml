@@ -1275,11 +1275,13 @@
     <string name="tool_profile_information_progress">Обновление сведений о профилях…</string>
 
     <string name="tool_terminal_tabs">Вкладки терминала</string>
-    <string name="tool_terminal_tabs_hint">Помощник видит открытые вкладки терминала и может читать их экран и историю. Содержимое уходит провайдеру модели, в нём могут быть секреты.</string>
+    <string name="tool_terminal_tabs_hint">Помощник видит открытые вкладки терминала, читает их экран и историю и может переименовывать вкладки. Содержимое уходит провайдеру модели, в нём могут быть секреты.</string>
     <string name="tool_terminal_tabs_progress">Список вкладок…</string>
     <string name="tool_terminal_read_progress">Чтение вкладки…</string>
     <string name="tool_terminal_tabs_receipt">Список вкладок</string>
     <string name="tool_terminal_read_receipt">Чтение вкладки</string>
+    <string name="tool_terminal_rename_progress">Переименование вкладки…</string>
+    <string name="tool_terminal_rename_receipt">Имя вкладки</string>
     <string name="tool_terminal_input">Ввод во вкладки</string>
     <string name="tool_terminal_input_hint">Помощник вводит текст и нажимает клавиши в открытых вкладках терминала, как вы с клавиатуры. Перед вводом спрашивает, если включено «Спрашивать перед изменяющими командами».</string>
     <string name="tool_needs_tabs">Работает вместе с «Вкладками терминала».</string>
@@ -1413,6 +1415,11 @@
     <string name="chat_detail_from">с %1$d-й записи</string>
     <string name="chat_detail_tab_named">%1$s · %2$s@%3$s №%4$d</string>
     <string name="chat_detail_tab">вкладка %1$d</string>
+    <string name="chat_detail_tab_name">«%1$s» · %2$s@%3$s №%4$d</string>
+    <string name="chat_detail_tab_name_named">«%1$s» · %2$s · %3$s@%4$s №%5$d</string>
+    <string name="chat_detail_tab_auto">%1$s@%2$s №%3$d</string>
+    <string name="chat_detail_name_quoted">«%1$s»</string>
+    <string name="chat_receipt_rename">%1$s → %2$s</string>
     <string name="chat_receipt_item">%1$s · %2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d вызов</item>

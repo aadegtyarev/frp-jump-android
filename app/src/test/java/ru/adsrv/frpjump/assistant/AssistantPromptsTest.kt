@@ -22,9 +22,9 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test.
-        assertEquals(12, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(13, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("b95ca09390464dd4770d5495606b33cf2419536df5f3a2a5f829e7aec3fe8e8f", sha256(asset("assistant/skill.md")))
+        assertEquals("3e1e012727c7e42f2caa5b68036191c245900ac86ba06fc251ada57b0ab0be60", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 

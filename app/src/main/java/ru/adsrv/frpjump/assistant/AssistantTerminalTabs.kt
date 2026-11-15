@@ -48,6 +48,8 @@ internal data class TerminalTab(
     val connection: String?, val state: TabState,
     /** The tab's tmux session is in use (the app started it on this connection). A tmux started by hand inside a tab is not known. */
     val tmux: Boolean,
+    /** The name the owner or the assistant gave the tab, null while it shows the automatic label. */
+    val name: String? = null,
 )
 
 /**
@@ -65,6 +67,10 @@ internal interface TabHandle {
     val user: String
     val number: Int
     val state: SshState
+    /** The tab's own name (owner- or assistant-set), null when it has none. */
+    val customName: String? get() = null
+    /** Sets the tab's name ([ru.adsrv.frpjump.ssh.checkTabName]'s valid one; null clears it): the same as the owner's Rename…. Main thread. */
+    fun rename(name: String?) = Unit
     /** The tab's tmux session name while tmux is in use on its connection, else null. */
     val tmuxName: String?
     /**
@@ -101,6 +107,8 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val user get() = session.user
     override val number get() = session.number
     override val state get() = session.state.value
+    override val customName get() = session.tabName.value
+    override fun rename(name: String?) = session.rename(name)
     override val tmuxName get() = session.tmux.assigned?.takeIf { session.tmux.inUse }
     override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? = session.openClient()?.let { execOutputTail(it, command, maxBytes, lease) }
     override fun bufferText(lines: Int): String = terminalBufferText(session.terminal.session.emulator, lines)
@@ -192,11 +200,23 @@ class AssistantTerminalTabs internal constructor(
 
     private fun describe(tab: TabHandle) = TerminalTab(
         tab.id, tab.profileId, profileName(tab.profileId) ?: tab.profileId, tab.device, tab.user, tab.number,
-        connectionName(tab.profileId, tab.device, tab.port), tabState(tab.state), tab.tmuxName != null,
+        connectionName(tab.profileId, tab.device, tab.port), tabState(tab.state), tab.tmuxName != null, tab.customName,
     )
 
     /** The open tabs in the Sessions list's order. */
     internal fun list(): List<TerminalTab> = visible().map(::describe)
+
+    /**
+     * Renames tab [id] as the owner's Rename… does (the same store, so a tmux tab's name is remembered the same way); [name] is already
+     * valid ([ru.adsrv.frpjump.ssh.checkTabName]), null for the automatic label. [TabNotOpen] when the tab is unknown, hidden or closed:
+     * nothing changes then. Only the tab's label changes; its connection is not touched.
+     */
+    internal suspend fun rename(id: Int, name: String?): TerminalTab {
+        val handle = visible().firstOrNull { it.id == id } ?: throw TabNotOpen()
+        if (tabState(handle.state) == TabState.CLOSED) throw TabNotOpen()
+        withContext(main) { handle.rename(name) }
+        return describe(handle)
+    }
 
     /**
      * The program in the foreground of each connected tmux tab ([TerminalTab.tmux]) by tab id: one probe per tab over the tab's existing

@@ -19,7 +19,9 @@ class ConfirmationTargetInfo(val profileName: String, val connection: Connection
  * the tab is not known. Not a data class: its toString never prints names, program or keys.
  */
 class TypingCard(val tabId: Int, val profile: String?, val user: String?, val device: String?, val number: Int?, val program: String?,
-    val keys: List<String>) {
+    val keys: List<String>,
+    /** The name the owner or the assistant gave the tab, shown with (never instead of) user and device; null when it has none. */
+    val name: String? = null) {
     override fun toString() = "TypingCard(tab=$tabId)"
 }
 

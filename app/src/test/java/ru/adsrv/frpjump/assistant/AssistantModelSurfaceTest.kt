@@ -56,10 +56,11 @@ class AssistantModelSurfaceTest {
         webTools().forEach { actual += specJson(it.spec) }
         actual += specJson(profileTool().spec)
         actual += specJson(AssistantTerminalTabsTool(noTabs()).spec); actual += specJson(AssistantTerminalReadTool(noTabs()).spec)
+        actual += specJson(AssistantTerminalRenameTool(noTabs()).spec)
         actual += specJson(AssistantTerminalInputTool(noTabs()).spec)
         SshFixture().use { f -> actual += specJson(f.tool.spec) }
         assertEquals(golden, JsonArray(actual))
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_input", "ssh_command"),
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"),
             actual.map { it.jsonObject.getValue("name").jsonPrimitive.content })
     }
 
@@ -69,7 +70,7 @@ class AssistantModelSurfaceTest {
             withTimeout(5000) { c.chat.state.first { !it.busy } }
             val request = c.requests.first()
             assertEquals(TestPrompts.real.system, request.instructions)
-            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_input", "ssh_command"), request.tools.map { it.name })
+            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"), request.tools.map { it.name })
             val golden = Json.parseToJsonElement(javaClass.getResource("/assistant/tool-specs.json")!!.readText()).jsonArray
             assertEquals(golden, JsonArray(request.tools.map(::specJson)))
         } }

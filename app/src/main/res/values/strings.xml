@@ -1227,11 +1227,13 @@
     <string name="tool_profile_information_progress">Refreshing profile information…</string>
 
     <string name="tool_terminal_tabs">Terminal tabs</string>
-    <string name="tool_terminal_tabs_hint">The assistant sees your open terminal tabs and can read their screen and history. The content goes to the model provider and may contain secrets.</string>
+    <string name="tool_terminal_tabs_hint">The assistant sees your open terminal tabs, reads their screen and history and can rename tabs. The content goes to the model provider and may contain secrets.</string>
     <string name="tool_terminal_tabs_progress">Terminal tabs…</string>
     <string name="tool_terminal_read_progress">Read tab…</string>
     <string name="tool_terminal_tabs_receipt">Terminal tabs</string>
     <string name="tool_terminal_read_receipt">Read tab</string>
+    <string name="tool_terminal_rename_progress">Renaming tab…</string>
+    <string name="tool_terminal_rename_receipt">Tab name</string>
     <string name="tool_terminal_input">Typing into tabs</string>
     <string name="tool_terminal_input_hint">The assistant types text and presses keys in your open terminal tabs, as you would. It asks first when “Ask before changing commands” is on.</string>
     <string name="tool_needs_tabs">Works together with Terminal tabs.</string>
@@ -1365,6 +1367,11 @@
     <string name="chat_detail_from">from record %1$d</string>
     <string name="chat_detail_tab_named">%1$s · %2$s@%3$s #%4$d</string>
     <string name="chat_detail_tab">tab %1$d</string>
+    <string name="chat_detail_tab_name">\"%1$s\" · %2$s@%3$s #%4$d</string>
+    <string name="chat_detail_tab_name_named">\"%1$s\" · %2$s · %3$s@%4$s #%5$d</string>
+    <string name="chat_detail_tab_auto">%1$s@%2$s #%3$d</string>
+    <string name="chat_detail_name_quoted">\"%1$s\"</string>
+    <string name="chat_receipt_rename">%1$s → %2$s</string>
     <string name="chat_receipt_item">%1$s · %2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d call</item>

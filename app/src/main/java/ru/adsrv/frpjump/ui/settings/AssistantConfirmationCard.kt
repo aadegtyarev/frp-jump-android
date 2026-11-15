@@ -62,7 +62,9 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val typing = confirmation.typing
     val target = if (typing != null) {
         if (typing.profile != null && typing.user != null && typing.device != null && typing.number != null)
-            stringResource(R.string.chat_detail_tab_named, typing.profile, typing.user, typing.device, typing.number)
+            // A name is shown with the tab's profile, user and device, never alone.
+            if (typing.name != null) stringResource(R.string.chat_detail_tab_name_named, typing.name, typing.profile, typing.user, typing.device, typing.number)
+            else stringResource(R.string.chat_detail_tab_named, typing.profile, typing.user, typing.device, typing.number)
         else stringResource(R.string.chat_detail_tab, typing.tabId)
     } else if (info == null) stringResource(R.string.confirm_unknown_target)
         else stringResource(R.string.confirm_target, info.profileName, info.connection.device, info.connection.label { kindWord(context, it) })

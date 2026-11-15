@@ -70,7 +70,9 @@ private fun rememberDetail(information: List<ChatProfileInformation>, receipts: 
             toolTitle = { wire -> AssistantToolId.fromWire(wire)?.let { resources.getString(it.title()) } },
             profileName = facts.profiles::get, connectionName = { profile, connection -> facts.connections[profile to connection] },
             tabLabel = tabs::get, tabNamed = { profile, user, device, number -> resources.getString(R.string.chat_detail_tab_named, profile, user, device, number) },
-            tabPlain = { resources.getString(R.string.chat_detail_tab, it) })
+            tabPlain = { resources.getString(R.string.chat_detail_tab, it) },
+            tabNamedAs = { name, profile, user, device, number -> resources.getString(R.string.chat_detail_tab_name_named, name, profile, user, device, number) },
+            tabRenamed = { name, user, device, number -> resources.getString(R.string.chat_detail_tab_name, name, user, device, number) })
         val detail: (ToolCall) -> String? = { call -> receiptDetail(call, words) }
         detail
     }
@@ -140,6 +142,7 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
     var expanded by remember(openFacts) { mutableStateOf(openFacts) }
     val groups = groupReceipts(receipts)
     val detail = rememberDetail(information, receipts)
+    val renames = remember(receipts) { tabRenames(receipts) }
     val titles = groups.map { receiptTitle(it.tool) }
     val summary = groups.mapIndexed { i, group -> if (group.items.size > 1) stringResource(R.string.chat_receipt_group, titles[i], group.items.size) else titles[i] }.joinToString(" · ")
     val spoken = stringResource(R.string.chat_calls_description, groups.mapIndexed { i, group ->
@@ -159,11 +162,11 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
                 val receipt = group.items.single()
                 Column(Modifier.testTag("chat_tool_receipt_$index").then(mergedUnlessFacts(receipt, information))) {
                     Text(detail(receipt.call)?.let { "$title: $it" } ?: title, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
-                    ChatReceiptResult(receipt, information)
+                    ChatReceiptResult(receipt, information, renames)
                 }
             } else if (groups.size == 1) {
                 // The summary line already named the only group: its calls show at once, without a second header to tap.
-                GroupItems(group, index, title, information, detail)
+                GroupItems(group, index, title, information, detail, renames)
             } else {
                 val holdsFacts = group.items.any { receipt -> information.any { it.result.callId == receipt.result?.callId } }
                 var open by remember(openFacts) { mutableStateOf(openFacts && holdsFacts) }
@@ -175,7 +178,7 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
                     verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.chat_receipt_group, title, count), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
                 }
-                if (open) GroupItems(group, index, title, information, detail)
+                if (open) GroupItems(group, index, title, information, detail, renames)
             }
         }
     }
@@ -183,12 +186,12 @@ private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<
 
 /** A group's calls, each under its own label: what the model asked for, else the tool's title (numbered: never the wire name). */
 @Composable
-private fun GroupItems(group: ReceiptGroup, index: Int, title: String, information: List<ChatProfileInformation>, detail: (ToolCall) -> String?) {
+private fun GroupItems(group: ReceiptGroup, index: Int, title: String, information: List<ChatProfileInformation>, detail: (ToolCall) -> String?, renames: Map<String, TabRename>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         group.items.forEachIndexed { n, receipt ->
             Column(Modifier.testTag("chat_tool_group_${index}_item_$n").then(mergedUnlessFacts(receipt, information))) {
                 Text(detail(receipt.call) ?: stringResource(R.string.chat_receipt_item, title, n + 1), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.faint)
-                ChatReceiptResult(receipt, information)
+                ChatReceiptResult(receipt, information, renames)
             }
         }
     }
@@ -203,13 +206,13 @@ private fun mergedUnlessFacts(receipt: ChatToolReceipt, information: List<ChatPr
 
 /** One call's result: the received facts for a profile-information call that produced them, else the call and its raw result. */
 @Composable
-private fun ChatReceiptResult(receipt: ChatToolReceipt, information: List<ChatProfileInformation>) {
+private fun ChatReceiptResult(receipt: ChatToolReceipt, information: List<ChatProfileInformation>, renames: Map<String, TabRename>) {
     val facts = factsOf(receipt, information)
-    if (facts != null) ChatProfileInformationFacts(facts) else ChatToolReceiptBody(receipt)
+    if (facts != null) ChatProfileInformationFacts(facts) else ChatToolReceiptBody(receipt, renames[receipt.call.id])
 }
 
 @Composable
-private fun ChatToolReceiptBody(receipt: ChatToolReceipt) {
+private fun ChatToolReceiptBody(receipt: ChatToolReceipt, rename: TabRename? = null) {
     val result = receipt.result
     val outcome = when (result?.outcome) {
         null, ToolOutcome.SUCCESS -> null
@@ -219,7 +222,14 @@ private fun ChatToolReceiptBody(receipt: ChatToolReceipt) {
         ToolOutcome.UNKNOWN_TOOL -> stringResource(R.string.chat_receipt_unknown_tool)
     }
     val resources = LocalContext.current.resources
-    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) })
+    // "before → after" of a rename, each as the name (quoted) or the automatic user@device #n: the tab's user and device are always in it.
+    val renameLine = rename?.let { r ->
+        val label = r.label
+        val auto = resources.getString(R.string.chat_detail_tab_auto, receiptText(label.user, RECEIPT_DETAIL_CHARS), receiptText(label.device, RECEIPT_DETAIL_CHARS), label.number)
+        fun shown(name: String?) = name?.let { resources.getString(R.string.chat_detail_name_quoted, receiptText(it, RECEIPT_DETAIL_CHARS)) } ?: auto
+        resources.getString(R.string.chat_receipt_rename, shown(r.before), shown(r.after))
+    }
+    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) }, renameLine = renameLine)
     if (body.isEmpty()) return
     SelectionContainer {
         Text(body, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted)

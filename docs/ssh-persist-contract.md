@@ -171,8 +171,9 @@ back to the automatic label.
   written go first.
 - **Data.** A name is owner-typed text, not a secret and not expected to hold
   one; it is stored unsealed with profile id, device host, port, user and
-  tmux session name. It is never sent anywhere, and no assistant tool,
-  receipt or model text sees it.
+  tmux session name. It is never sent anywhere by the app itself. The
+  assistant's [terminal tools](agent-contract.md#optional-terminal-tabs) show a name to the model in
+  `terminal_tabs` (when the Terminal tabs tool is on) and can set it with `terminal_rename` under the same rule and the same store.
 
 ### Closing
 
