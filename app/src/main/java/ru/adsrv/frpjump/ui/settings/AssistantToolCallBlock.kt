@@ -51,7 +51,7 @@ internal fun ChatToolReceipts(receipts: List<ChatToolReceipt>, information: List
 
 /** The title of a receipt group: a catalog tool's, the service tool's "Request to turn on a tool", else the cleaned wire name. */
 @Composable
-private fun receiptTitle(tool: String): String = AssistantToolId.fromWire(tool)?.let { stringResource(it.title()) }
+private fun receiptTitle(tool: String): String = AssistantToolId.fromWire(tool)?.let { stringResource(it.receiptTitle()) }
     ?: if (tool == AssistantRequestTool.WIRE) stringResource(R.string.tool_request_title) else receiptText(tool, RECEIPT_DETAIL_CHARS)
 
 /**
@@ -60,14 +60,17 @@ private fun receiptTitle(tool: String): String = AssistantToolId.fromWire(tool)?
  * the target's name where the facts give it, then the command; for a request to turn a tool on, that tool's title. UI text only.
  */
 @Composable
-private fun rememberDetail(information: List<ChatProfileInformation>): (ToolCall) -> String? {
+private fun rememberDetail(information: List<ChatProfileInformation>, receipts: List<ChatToolReceipt>): (ToolCall) -> String? {
     val resources = LocalContext.current.resources
     val all = stringResource(R.string.chat_detail_all)
     val facts = remember(information) { ReceivedNames.of(information) }
-    return remember(resources, all, facts) {
+    val tabs = remember(receipts) { tabLabels(receipts) }
+    return remember(resources, all, facts, tabs) {
         val words = ReceiptWords(all, { resources.getString(R.string.chat_detail_from, it) },
             toolTitle = { wire -> AssistantToolId.fromWire(wire)?.let { resources.getString(it.title()) } },
-            profileName = facts.profiles::get, connectionName = { profile, connection -> facts.connections[profile to connection] })
+            profileName = facts.profiles::get, connectionName = { profile, connection -> facts.connections[profile to connection] },
+            tabLabel = tabs::get, tabNamed = { profile, user, device, number -> resources.getString(R.string.chat_detail_tab_named, profile, user, device, number) },
+            tabPlain = { resources.getString(R.string.chat_detail_tab, it) })
         val detail: (ToolCall) -> String? = { call -> receiptDetail(call, words) }
         detail
     }
@@ -96,7 +99,7 @@ private class ReceivedNames(val profiles: Map<String, String>, val connections: 
 /** One line per call, told apart by its parameters; consecutive calls equal in tool and detail share one line ("×2"). The progress mark sits on the line that still has a running call. */
 @Composable
 private fun ChatRunningCalls(receipts: List<ChatToolReceipt>, information: List<ChatProfileInformation>, animate: Boolean) {
-    val detail = rememberDetail(information)
+    val detail = rememberDetail(information, receipts)
     Column(Modifier.fillMaxWidth().testTag("chat_tool_calls_running"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         groupReceipts(receipts, sameDetail = true).forEachIndexed { index, group ->
             val current = group.items.any { it.result == null }
@@ -136,7 +139,7 @@ private fun QuietDot() = Box(Modifier.size(10.dp), contentAlignment = Alignment.
 private fun ChatCallsSummary(receipts: List<ChatToolReceipt>, information: List<ChatProfileInformation>, openFacts: Boolean) {
     var expanded by remember(openFacts) { mutableStateOf(openFacts) }
     val groups = groupReceipts(receipts)
-    val detail = rememberDetail(information)
+    val detail = rememberDetail(information, receipts)
     val titles = groups.map { receiptTitle(it.tool) }
     val summary = groups.mapIndexed { i, group -> if (group.items.size > 1) stringResource(R.string.chat_receipt_group, titles[i], group.items.size) else titles[i] }.joinToString(" · ")
     val spoken = stringResource(R.string.chat_calls_description, groups.mapIndexed { i, group ->

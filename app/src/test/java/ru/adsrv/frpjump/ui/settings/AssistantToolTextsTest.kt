@@ -13,9 +13,16 @@ class AssistantToolTextsTest {
             AssistantToolId.READ_PAGE to Triple(R.string.tool_read, R.string.tool_read_hint, R.string.tool_read_progress),
             AssistantToolId.INSPECT_IMAGE to Triple(R.string.tool_image, R.string.tool_image_hint, R.string.tool_image_progress),
             AssistantToolId.PROFILE_INFORMATION to Triple(R.string.tool_profile_information, R.string.tool_profile_information_hint, R.string.tool_profile_information_progress),
+            // The two terminal tools share one switch (its title and hint); each has its own progress line.
+            AssistantToolId.TERMINAL_TABS to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_tabs_progress),
+            AssistantToolId.TERMINAL_READ to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_read_progress),
             AssistantToolId.SSH_COMMAND to Triple(R.string.tool_ssh_command, R.string.tool_ssh_command_hint, R.string.tool_ssh_command_progress),
         )
         assertEquals("Every tool must be pinned", AssistantToolId.entries.toSet(), expected.keys)
         for ((id, texts) in expected) assertEquals(id.name, texts, Triple(id.title(), id.hint(), id.progress()))
+        // Receipt rows and failures name the call, so the two terminal tools differ there; every other tool uses its title.
+        assertEquals(R.string.tool_terminal_tabs_receipt, AssistantToolId.TERMINAL_TABS.receiptTitle())
+        assertEquals(R.string.tool_terminal_read_receipt, AssistantToolId.TERMINAL_READ.receiptTitle())
+        for (id in AssistantToolId.entries - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ) assertEquals(id.name, id.title(), id.receiptTitle())
     }
 }

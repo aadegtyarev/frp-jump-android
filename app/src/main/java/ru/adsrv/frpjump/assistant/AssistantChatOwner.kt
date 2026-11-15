@@ -57,6 +57,8 @@ class AssistantChatOwner(
     private val stoppingOut: MutableStateFlow<Boolean> = MutableStateFlow(false),
     /** True while the current profile's server has removed this phone (the REMOVED screen): a running attempt is stopped, screen or not. */
     private val removed: Flow<Boolean> = emptyFlow(),
+    /** The owner's open terminal tabs for `terminal_tabs` and `terminal_read`; null in tests that do not use them. */
+    private val terminalTabs: AssistantTerminalTabs? = null,
 ) {
     private class Live(val conversation: AssistantConversation, val scope: CoroutineScope, val confirmations: ConfirmationSupport)
     private val lock = Any()
@@ -129,7 +131,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, sshCommands = sshCommands, historyStore = historyStore,
+            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,

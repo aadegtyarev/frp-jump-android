@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.assistant.chat
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import ru.adsrv.frpjump.agent.ToolCall
+import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 
@@ -38,7 +39,39 @@ private fun receiptKey(call: ToolCall): String = when (call.name) {
 internal class ReceiptWords(
     val all: String, val from: (Int) -> String, val toolTitle: (String) -> String? = { null },
     val profileName: (String) -> String? = { null }, val connectionName: (String, String) -> String? = { _, _ -> null },
+    /** What this turn's `terminal_tabs` results name a tab (by tab_id); null when none does. */
+    val tabLabel: (Int) -> TabLabel? = { null },
+    /** "profile · user@device #n" in the chat's language, and the plain "tab <id>" for a tab no result names. */
+    val tabNamed: (String, String, String, Int) -> String = { profile, user, device, number -> "$profile · $user@$device #$number" },
+    val tabPlain: (Int) -> String = { "tab $it" },
 )
+
+/** A tab as a `terminal_tabs` result names it: display text only. */
+internal data class TabLabel(val profile: String, val user: String, val device: String, val number: Int)
+
+/**
+ * The tabs named by the successful `terminal_tabs` results among [receipts], by tab_id (the later result wins). Reads the result's own
+ * line format (see `tabsText`); a line it does not understand names nothing.
+ */
+internal fun tabLabels(receipts: List<ChatToolReceipt>): Map<Int, TabLabel> {
+    val labels = HashMap<Int, TabLabel>()
+    for (receipt in receipts) {
+        val result = receipt.result?.takeIf { it.name == AssistantToolId.TERMINAL_TABS.wire && it.outcome == ToolOutcome.SUCCESS } ?: continue
+        for (line in result.text.lineSequence()) {
+            if (!line.startsWith("tab_id: ")) continue
+            // The first occurrence of a key wins: whatever follows the fixed fields can never overwrite them.
+            val fields = HashMap<String, String>()
+            for (part in line.split(" | ")) fields.putIfAbsent(part.substringBefore(": "), part.substringAfter(": ", ""))
+            val id = fields["tab_id"]?.toIntOrNull() ?: continue
+            val profile = fields["profile"]?.substringBeforeLast(" (profile_id: ") ?: continue
+            val user = fields["user"] ?: continue
+            val device = fields["device"] ?: continue
+            val number = fields["tab"]?.toIntOrNull() ?: continue
+            labels[id] = TabLabel(profile, user, device, number)
+        }
+    }
+    return labels
+}
 
 internal const val RECEIPT_DETAIL_CHARS = 40
 
@@ -49,6 +82,7 @@ internal const val RECEIPT_DETAIL_CHARS = 40
 internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("all", { "from record $it" })): String? {
     val a = call.arguments
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
+    if (call.name == AssistantToolId.TERMINAL_READ.wire) return terminalReadDetail(a, words)
     val raw = when (call.name) {
         // The target's name only where the received facts name it (never its ids), then the command; the cut keeps the command's start.
         AssistantToolId.SSH_COMMAND.wire -> a.text("command")?.let { command ->
@@ -73,6 +107,17 @@ private fun profileInformationDetail(a: JsonObject, words: ReceiptWords): String
     val profile = a.text("profile_id")?.takeIf { it.isNotBlank() }?.let { id -> (words.profileName(id) ?: id.trim().take(8)).let { receiptText(it, RECEIPT_PART_CHARS) } }
     val offset = a.number("offset")?.toIntOrNull()?.takeIf { it > 0 }
     return listOfNotNull(query?.let { "«$it»" }, profile).ifEmpty { listOf(words.all) }.plus(listOfNotNull(offset?.let { words.from(it + 1) })).joinToString(" · ")
+}
+
+/**
+ * "profile · user@device #n" when this turn's `terminal_tabs` result names the tab, else "tab <id>"; null when the call has no usable
+ * tab_id. Every part is cut on its own, so that the number is never the part lost.
+ */
+private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
+    val id = a.number("tab_id")?.toIntOrNull()?.takeIf { it >= 1 } ?: return null
+    val label = words.tabLabel(id) ?: return words.tabPlain(id)
+    fun part(raw: String) = receiptText(raw, RECEIPT_PART_CHARS)
+    return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
 }
 
 private const val RECEIPT_PART_CHARS = 24

@@ -356,7 +356,7 @@ private fun ChatToolRequest(id: AssistantToolId, readWeb: Boolean, failed: Boole
 }
 
 /** The title of a call's tool in the chat: a catalog tool's, the service tool's "Request to turn on a tool", else the generic one. */
-private fun toolTitle(name: String): Int = AssistantToolId.fromWire(name)?.title()
+private fun toolTitle(name: String): Int = AssistantToolId.fromWire(name)?.receiptTitle()
     ?: if (name == ru.adsrv.frpjump.assistant.AssistantRequestTool.WIRE) R.string.tool_request_title else R.string.tool_failure_unknown
 
 /** A declined call is not a failure: a quiet line per call, visible without opening the receipts. */

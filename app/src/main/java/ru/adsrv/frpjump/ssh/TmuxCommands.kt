@@ -115,6 +115,22 @@ fun tmuxTapStateCommand(name: String): String {
         shellQuote("#{alternate_on} #{pane_in_mode} #{window_panes} #{window_zoomed_flag} #{pane_current_command}")
 }
 
+/**
+ * What the assistant reads of session [name]'s active pane: its visible screen plus [lines] lines of history, wrapped lines joined
+ * (`-J`), no escape sequences (no `-e`). Read-only: it types nothing, leaves no copy mode and sets no option. [lines] is 0..1000.
+ */
+fun tmuxCapturePaneCommand(name: String, lines: Int): String {
+    require(isTmuxName(name)) { "not a tmux session name of the app" }
+    require(lines in 0..1000) { "history lines out of range" }
+    return "tmux capture-pane -p -J -S -$lines -t ${shellQuote("=$name:")}"
+}
+
+/** The program in the foreground of session [name]'s active pane, one line. Read-only. */
+fun tmuxPaneProgramCommand(name: String): String {
+    require(isTmuxName(name)) { "not a tmux session name of the app" }
+    return "tmux display-message -p -t ${shellQuote("=$name:")} ${shellQuote("#{pane_current_command}")}"
+}
+
 /** What tmux said about a tap ([parseTapToShell]). */
 enum class TapAnswer {
     /** A shell on its own screen: arrows move its cursor. */

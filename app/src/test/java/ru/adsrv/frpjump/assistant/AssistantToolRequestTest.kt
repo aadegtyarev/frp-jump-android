@@ -68,14 +68,14 @@ class AssistantToolRequestTest {
         Fx(script = asking()).use { f ->
             f.send()
             assertEquals(listOf("request_tool"), f.requests.last().tools.map { it.name })
-            val all = AssistantToolId.entries.map { it.wire }
+            val all = AssistantToolId.switches.map { it.wire }
             assertEquals(all, enum(f.requests.last().tools.single()))
             f.on(AssistantToolId.READ_PAGE, AssistantToolId.SSH_COMMAND)
             f.send()
             // ssh_command is on but has no SSH owner in this fixture, so it is not offered; it is on, so it is not in the enum.
             assertEquals(listOf("read_page", "request_tool"), f.requests.last().tools.map { it.name })
             assertEquals(all - "read_page" - "ssh_command", enum(f.requests.last().tools.last()))
-            f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION)
+            f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION, AssistantToolId.TERMINAL_TABS)
             f.send()
             assertEquals("every tool is on, so there is nothing to ask for", listOf("web_search", "read_page", "inspect_image"), f.requests.last().tools.map { it.name })
             f.settings.setAssistantTool(AssistantToolId.READ_PAGE, false)
@@ -102,7 +102,7 @@ class AssistantToolRequestTest {
     }
 
     @Test fun `the spec of request_tool matches its golden JSON`() {
-        val tool = AssistantRequestTool(AssistantToolId.entries, emptySet())
+        val tool = AssistantRequestTool(AssistantToolId.switches, emptySet())
         val golden = Json.parseToJsonElement(javaClass.getResource("/assistant/request-tool-spec.json")!!.readText())
         assertEquals(golden, buildJsonObject { put("name", tool.spec.name); put("description", tool.spec.description); put("parameters", tool.spec.parameters) })
     }

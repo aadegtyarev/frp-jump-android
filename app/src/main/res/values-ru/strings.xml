@@ -1268,6 +1268,12 @@
     <string name="tool_profile_information_hint">Устройства, подключения и туннели всех профилей</string>
     <string name="tool_profile_information_progress">Обновление сведений о профилях…</string>
 
+    <string name="tool_terminal_tabs">Вкладки терминала</string>
+    <string name="tool_terminal_tabs_hint">Помощник видит открытые вкладки терминала и может читать их экран и историю. Содержимое уходит провайдеру модели, в нём могут быть секреты.</string>
+    <string name="tool_terminal_tabs_progress">Список вкладок…</string>
+    <string name="tool_terminal_read_progress">Чтение вкладки…</string>
+    <string name="tool_terminal_tabs_receipt">Список вкладок</string>
+    <string name="tool_terminal_read_receipt">Чтение вкладки</string>
     <string name="tool_ssh_command">Команда SSH</string>
     <string name="tool_ssh_command_hint">ПОЛНЫЙ ДОСТУП ПО SSH: команды могут читать и изменять удалённую систему и файлы в пределах прав SSH-аккаунта. Команды и вывод могут содержать секреты и передаются настроенной модели. Токены оплачиваются.</string>
     <string name="tool_ssh_command_progress">Выполняется команда SSH…</string>
@@ -1383,6 +1389,8 @@
     <string name="chat_receipt_group">%1$s ×%2$d</string>
     <string name="chat_detail_all">все</string>
     <string name="chat_detail_from">с %1$d-й записи</string>
+    <string name="chat_detail_tab_named">%1$s · %2$s@%3$s №%4$d</string>
+    <string name="chat_detail_tab">вкладка %1$d</string>
     <string name="chat_receipt_item">%1$s · %2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d вызов</item>

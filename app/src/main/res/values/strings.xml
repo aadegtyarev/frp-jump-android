@@ -1220,6 +1220,12 @@
     <string name="tool_profile_information_hint">Devices, connections and tunnels across all profiles</string>
     <string name="tool_profile_information_progress">Refreshing profile information…</string>
 
+    <string name="tool_terminal_tabs">Terminal tabs</string>
+    <string name="tool_terminal_tabs_hint">The assistant sees your open terminal tabs and can read their screen and history. The content goes to the model provider and may contain secrets.</string>
+    <string name="tool_terminal_tabs_progress">Terminal tabs…</string>
+    <string name="tool_terminal_read_progress">Read tab…</string>
+    <string name="tool_terminal_tabs_receipt">Terminal tabs</string>
+    <string name="tool_terminal_read_receipt">Read tab</string>
     <string name="tool_ssh_command">SSH command</string>
     <string name="tool_ssh_command_hint">FULL SSH ACCESS: commands can read and change the remote system and files within the SSH account’s rights. Commands and output may contain secrets and are shared with your configured model. Ordinary token charges apply.</string>
     <string name="tool_ssh_command_progress">Running SSH command…</string>
@@ -1335,6 +1341,8 @@
     <string name="chat_receipt_group">%1$s ×%2$d</string>
     <string name="chat_detail_all">all</string>
     <string name="chat_detail_from">from record %1$d</string>
+    <string name="chat_detail_tab_named">%1$s · %2$s@%3$s #%4$d</string>
+    <string name="chat_detail_tab">tab %1$d</string>
     <string name="chat_receipt_item">%1$s · %2$d</string>
     <plurals name="chat_receipt_group_description">
         <item quantity="one">%1$s, %2$d call</item>

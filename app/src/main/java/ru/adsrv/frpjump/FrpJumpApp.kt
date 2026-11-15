@@ -90,6 +90,20 @@ class FrpJumpApp : Application() {
 
     val sshTargets by lazy { ru.adsrv.frpjump.ssh.SshTargets(profiles.state, pendingUndo.hidden, sshEnv) }
 
+    /** The owner's open terminal tabs for the assistant; the same hidden set as the Sessions list. */
+    val assistantTerminalTabs by lazy {
+        ru.adsrv.frpjump.assistant.AssistantTerminalTabs(
+            tabs = { ssh.sessions.value.map { ru.adsrv.frpjump.assistant.SessionTab(it) } },
+            hidden = { pendingUndo.hidden.value },
+            profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
+            connectionName = { profile, device, port ->
+                val hiddenNow = pendingUndo.hidden.value
+                profiles.state.value.runtimes[profile]?.connections?.connections?.value
+                    ?.firstOrNull { it.kind == ru.adsrv.frpjump.ports.PortKind.SSH && it.device == device && it.port == port &&
+                        ru.adsrv.frpjump.undo.PendingUndo.connectionKey(profile, it.id) !in hiddenNow }?.customName
+            })
+    }
+
     val assistantSshCommands by lazy { ru.adsrv.frpjump.assistant.AssistantSshCommands(sshTargets) }
 
     lateinit var profiles: Profiles
@@ -180,7 +194,8 @@ class FrpJumpApp : Application() {
         ru.adsrv.frpjump.assistant.AssistantChatOwner(appScope, settings, assistantProvider, assistant, profileInformation, assistantSshCommands,
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
-            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved)
+            realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
+            terminalTabs = assistantTerminalTabs)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
