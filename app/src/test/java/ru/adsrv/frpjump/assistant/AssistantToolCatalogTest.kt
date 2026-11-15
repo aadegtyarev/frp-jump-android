@@ -22,11 +22,14 @@ class AssistantToolCatalogTest {
         .filterKeys { it.startsWith("assistant_") && it !in nonToolKeys }
 
     @Test fun `catalog keeps the stable order wire names setting keys and effects`() {
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command"), AssistantToolId.entries.map { it.wire })
-        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_ssh_command"),
-            AssistantToolId.entries.map { it.settingKey })
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "ssh_command"), AssistantToolId.entries.map { it.wire })
+        // One switch, one entry: terminal_read follows terminal_tabs' switch and has none of its own.
+        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_terminal_tabs", "assistant_ssh_command"),
+            AssistantToolId.switches.map { it.settingKey })
+        assertEquals(listOf(AssistantToolId.TERMINAL_READ), AssistantToolId.entries.filter { !it.ownsSwitch })
+        assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_READ.settingKey)
         assertEquals(AssistantToolId.entries.size, AssistantToolId.entries.map { it.wire }.toSet().size)
-        assertEquals(AssistantToolId.entries.size, AssistantToolId.entries.map { it.settingKey }.toSet().size)
+        assertEquals(AssistantToolId.switches.size, AssistantToolId.switches.map { it.settingKey }.toSet().size)
         assertEquals(listOf(AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
         assertEquals(setOf(Effect.READ_REMOTE), AssistantToolId.entries.filter { it != AssistantToolId.SSH_COMMAND }.map { it.effect }.toSet())
         assertFalse(Effect.READ_LOCAL.changes); assertFalse(Effect.READ_REMOTE.changes)
@@ -42,20 +45,31 @@ class AssistantToolCatalogTest {
         val keys = withDefaults.encodeToJsonElement(AppSettings()).jsonObject.keys
         for (id in AssistantToolId.entries) assertTrue("${id.settingKey} missing from AppSettings", id.settingKey in keys)
         // Every other assistant_* field must be a catalog key or be listed in nonToolKeys.
-        assertEquals(AssistantToolId.entries.map { it.settingKey }.toSet(), enabledFields(AppSettings()).keys)
+        assertEquals(AssistantToolId.switches.map { it.settingKey }.toSet(), enabledFields(AppSettings()).keys)
     }
 
-    @Test fun `AssistantTools get and with address exactly one tool each`() {
-        for (id in AssistantToolId.entries) {
+    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true)
+
+    @Test fun `AssistantTools get and with address exactly one switch each`() {
+        for (id in AssistantToolId.switches) {
             val on = AssistantTools().with(id, true)
-            for (other in AssistantToolId.entries) assertEquals("$id/$other", other == id, on[other])
+            for (other in AssistantToolId.switches) assertEquals("$id/$other", other == id, on[other])
             assertEquals(AssistantTools(), on.with(id, false))
-            assertTrue(AssistantTools(true, true, true, true, true).with(id, false).let { !it[id] && AssistantToolId.entries.filter { o -> o != id }.all { o -> it[o] } })
+            assertTrue(allOn.with(id, false).let { !it[id] && AssistantToolId.switches.filter { o -> o != id }.all { o -> it[o] } })
         }
     }
 
+    @Test fun `terminal_read is on and off with the terminal_tabs switch`() {
+        val on = AssistantTools().with(AssistantToolId.TERMINAL_TABS, true)
+        assertTrue(on[AssistantToolId.TERMINAL_TABS]); assertTrue(on[AssistantToolId.TERMINAL_READ]); assertTrue(on.terminalTabs)
+        assertEquals(on, AssistantTools().with(AssistantToolId.TERMINAL_READ, true))
+        assertEquals(AssistantTools(), on.with(AssistantToolId.TERMINAL_READ, false))
+        assertFalse(AssistantTools().terminalTabs)
+        assertFalse(AppSettings().assistantTerminalTabs)
+    }
+
     @Test fun `setAssistantTool changes exactly the persisted field of that setting key`() {
-        for (id in AssistantToolId.entries) {
+        for (id in AssistantToolId.switches) {
             val file = MemoryStorage()
             val store = SettingsStore(file)
             store.setAssistantTool(id, true)
@@ -65,19 +79,22 @@ class AssistantToolCatalogTest {
             assertEquals(AssistantTools().with(id, true), store.assistantAvailability.tools)
             assertEquals(AssistantTools().with(id, true), SettingsStore(file).assistantAvailability.tools)
             val fields = enabledFields(store.settings.value)
-            for (other in AssistantToolId.entries) assertEquals("$id/$other", JsonPrimitive(other == id), fields[other.settingKey])
+            for (other in AssistantToolId.switches) assertEquals("$id/$other", JsonPrimitive(other == id), fields[other.settingKey])
             store.setAssistantTool(id, false)
             assertEquals(AssistantTools(), SettingsStore(file).assistantAvailability.tools)
         }
     }
 
     @Test fun `stored tool flags of every catalog key are read independently and malformed ones default off`() {
-        val all = AssistantToolId.entries.joinToString(",") { "\"${it.settingKey}\":true" }
-        assertEquals(AssistantTools(true, true, true, true, true), SettingsStore(MemoryStorage("{$all}")).assistantAvailability.tools)
-        for (bad in AssistantToolId.entries) {
-            val text = AssistantToolId.entries.joinToString(",") { if (it == bad) "\"${it.settingKey}\":\"yes\"" else "\"${it.settingKey}\":true" }
-            assertEquals(bad.name, AssistantTools(true, true, true, true, true).with(bad, false), SettingsStore(MemoryStorage("{$text}")).assistantAvailability.tools)
+        val all = AssistantToolId.switches.joinToString(",") { "\"${it.settingKey}\":true" }
+        assertEquals(allOn, SettingsStore(MemoryStorage("{$all}")).assistantAvailability.tools)
+        for (bad in AssistantToolId.switches) {
+            val text = AssistantToolId.switches.joinToString(",") { if (it == bad) "\"${it.settingKey}\":\"yes\"" else "\"${it.settingKey}\":true" }
+            assertEquals(bad.name, allOn.with(bad, false), SettingsStore(MemoryStorage("{$text}")).assistantAvailability.tools)
         }
+        // A missing or malformed terminal switch is off; nothing else is reset.
+        assertFalse(SettingsStore(MemoryStorage("{}")).assistantAvailability.tools.terminalTabs)
+        assertFalse(SettingsStore(MemoryStorage("{\"assistant_terminal_tabs\":1,\"assistant_search\":true}")).assistantAvailability.tools.terminalTabs)
     }
 
     // ---- Progress ----

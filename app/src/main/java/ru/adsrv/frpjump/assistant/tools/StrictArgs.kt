@@ -43,13 +43,15 @@ internal class StrictArgs(private val json: JsonObject) {
     /** Like [string], or null when the key is absent. */
     fun optionalString(key: String, max: Int = Int.MAX_VALUE, allowBlank: Boolean = false): String? =
         if (key in json) string(key, max, allowBlank) else null
-    /** A non-string JSON number that is an Int at least [min], or null when absent. */
-    fun optionalInt(key: String, min: Int = Int.MIN_VALUE): Int? {
+    /** A non-string JSON number that is an Int in [min]..[max], or null when absent. */
+    fun optionalInt(key: String, min: Int = Int.MIN_VALUE, max: Int = Int.MAX_VALUE): Int? {
         if (key !in json) return null
         val primitive = json[key] as? JsonPrimitive
         if (primitive == null || primitive.isString) throw InvalidArguments()
         val value = primitive.intOrNull ?: throw InvalidArguments()
-        if (value < min) throw InvalidArguments()
+        if (value < min || value > max) throw InvalidArguments()
         return value
     }
+    /** Like [optionalInt], but the key must be present. */
+    fun int(key: String, min: Int = Int.MIN_VALUE, max: Int = Int.MAX_VALUE): Int = optionalInt(key, min, max) ?: throw InvalidArguments()
 }

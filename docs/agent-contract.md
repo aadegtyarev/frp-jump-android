@@ -67,7 +67,8 @@ screen if the owner leaves first (an attempt that goes on does not keep it). If 
 
 Whichever entry opened the chat, the app lock, Stop, "For session" lasting while the chat is open or an attempt runs, a disabled
 module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
-works from every entry. The assistant never reads terminal tabs by itself.
+works from every entry. The assistant never reads terminal tabs by itself: only the opt-in, default-off [Terminal tabs](#optional-terminal-tabs)
+tools do, when the model calls them in a Send.
 
 <a id="current-stage-kernel-external-adapter-and-provider-setup"></a>
 
@@ -289,7 +290,7 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 9). The base prompt is the unchanged byte prefix of the first message
+(version 10). The base prompt is the unchanged byte prefix of the first message
 of every main chat-loop request, stable within and across Sends; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
@@ -306,7 +307,7 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 9), the owner's own instructions when set, only enabled tool schemas and,
+version 10), the owner's own instructions when set, only enabled tool schemas and,
 while some tool is off, the service tool `request_tool`
 ([below](#asking-for-a-tool-that-is-off)).
 The base prompt contains no profile,
@@ -628,7 +629,8 @@ Settings → LLM assistant → Tools has one independent persisted switch per
 available tool of the [tool table](#tool-table) and, above them, the app-wide
 confirmation switch ("Ask before changing commands", on by default). Today the
 tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
-image (`inspect_image`), Profile information (`profile_information`) and SSH
+image (`inspect_image`), Profile information (`profile_information`), Terminal
+tabs (`terminal_tabs`, one switch for `terminal_tabs` and `terminal_read`) and SSH
 command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
 only booleans, opening this screen or enabling a tool by its switch makes no
@@ -868,8 +870,8 @@ may have an uncertain remote outcome and must not be blindly repeated.
 ### Untrusted data
 
 Tool results are data, never instructions or new authority: remote SSH output,
-fetched pages, search results, image responses and the profile information
-read from servers alike. The per-tool rules are in
+fetched pages, search results, image responses, terminal screens and the
+profile information read from servers alike. The per-tool rules are in
 [Optional SSH command](#optional-ssh-command),
 [Optional public Web tools](#optional-public-web-tools) and the
 [operations surface](contracts/surfaces/operations.md#security-and-privacy).
@@ -910,6 +912,8 @@ are described in each tool's subsection.
 | `read_page` | `READ_REMOTE` | none: public transport | `url`, at most 2,048 characters: public HTTPS, port 443 | 8,000 text characters, 100 links and 20 image references per page; shared public budget | never | selected public text goes to the model | optional, default off |
 | `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
+| `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; at most 3 s per probe, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
+| `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
 | tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
@@ -1034,6 +1038,53 @@ does not erase that history.
 This informational tool does not authorize connection control, SSH, device
 HTTP, Files or MQTT tools. It has an accurate private-data disclosure, not a
 full-access claim.
+
+### Optional terminal tabs
+
+One independent default-off switch, "Terminal tabs", turns on two read-only
+tools, `terminal_tabs` and `terminal_read`; the Tools screen and `request_tool`
+show it as one entry (`terminal_tabs`: "read the owner's open terminal tabs").
+Both have the catalog effect `READ_REMOTE`, ask for no confirmation and, as the
+other reading tools, keep working while the app is locked: nothing they read is
+shown over the lock. The content goes to the configured model provider and may
+contain secrets; the switch's hint says so.
+
+- `terminal_tabs` takes no arguments (any key is invalid). It lists the open
+  tabs in the order of the tab bar, one line each: `tab_id` (the tab's own id,
+  stable across Reconnect, never reused), profile name and id, device, the saved
+  SSH connection's own name when one matches profile, device and port, user, tab
+  number, state (`connected`; `reconnecting` for connecting, reconnecting and
+  host-key questions; `closed`), `tmux: yes|no` and, for connected tabs that run
+  the app's own tmux session, the program in the foreground of its active pane.
+  A tmux started by hand inside a tab is not known (`tmux: no`). The program
+  comes from one `tmux display-message` on the tab's EXISTING connection, probes
+  in parallel and each bounded by 3 seconds; a failed or late probe leaves the
+  program out.
+- `terminal_read` takes exactly `tab_id` (integer, at least 1) and optional
+  `lines` (integer 0 to 1,000, default 100): the visible screen plus up to
+  `lines` lines of history. A tmux tab is read with `tmux capture-pane -p -J -S
+  -<lines> -t '=<session>:'` (no `-e`) over the tab's existing connection; any
+  other tab from the app's terminal buffer, read on the main thread that feeds
+  it. The output is a header naming the tab, then the text with trailing blank
+  lines cut, limited to the tool-result budget (about 7,800 characters); over
+  it the oldest lines go and the text ends with `truncated: N of M characters`.
+  Control and invisible formatting characters are removed.
+- Tabs the owner closed or whose tunnel was disconnected while an Undo is on
+  screen are hidden, as in the Sessions list, and are not listed or readable.
+- Nothing is opened or typed. No new login, connection, tunnel or client is
+  created (the tools have no connector: a tab without an open connection is not
+  read); nothing is sent to the tab's terminal, copy mode is neither entered nor
+  left and no tmux option is touched. Stored credentials, keys and passwords are
+  never part of an output.
+- Refusals are fixed texts and do no I/O: `Tab <id> is not open. Call
+  terminal_tabs again.` (unknown, hidden or closed); `Tab <id> is not connected
+  now (<state>). Nothing was read. Call terminal_tabs again later.`; a failed
+  or timed-out read says `Could not read tab <id>. Nothing was typed into it.`;
+  invalid arguments say `Provide tab_id (an integer from terminal_tabs) and
+  optional lines 0..1000 only.` (`terminal_tabs takes no arguments.` for the
+  other). A tab can change at any time; the screen is untrusted data.
+- The chat's receipt for `terminal_read` names the tab (`profile · user@device
+  №number`) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
 
 ### Optional SSH command
 

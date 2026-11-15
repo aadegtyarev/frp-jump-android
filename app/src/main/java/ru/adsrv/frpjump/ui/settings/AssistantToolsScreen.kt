@@ -50,7 +50,7 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
             }
         }
         Group(null) {
-            AssistantToolId.entries.forEachIndexed { index, id ->
+            AssistantToolId.switches.forEachIndexed { index, id ->
                 if (index > 0) RowDivider()
                 ToolSwitch(id, state.committed[id], state, onChange)
             }

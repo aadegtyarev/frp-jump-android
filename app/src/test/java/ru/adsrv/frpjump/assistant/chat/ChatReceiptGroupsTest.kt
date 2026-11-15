@@ -5,6 +5,8 @@ import kotlinx.serialization.json.put
 import org.junit.Assert.*
 import org.junit.Test
 import ru.adsrv.frpjump.agent.ToolCall
+import ru.adsrv.frpjump.agent.ToolOutcome
+import ru.adsrv.frpjump.agent.ToolResult
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 
@@ -79,13 +81,48 @@ class ChatReceiptGroupsTest {
             "inspect_image" to mapOf("url" to "https://example.org/cat.png", "question" to "what"),
             "profile_information" to emptyMap(), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
             AssistantRequestTool.WIRE to mapOf("name" to "web_search", "why" to "x"))
-        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE
+        // terminal_tabs takes no arguments, so there is nothing to tell its calls apart by; terminal_read has its own test below.
+        val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read"
         catalogue.forEach { wire ->
             val args = typical[wire] ?: error("no typical arguments for $wire: add them here and a detail in receiptDetail")
             val text = receiptDetail(call(wire, *args.map { it.key to it.value }.toTypedArray()).call, title)
             assertTrue("$wire has no detail", !text.isNullOrBlank())
             assertFalse("$wire detail shows the wire name: $text", text!!.contains(wire))
         }
+    }
+
+    private fun read(id: Int) = ToolCall("c", "terminal_read", buildJsonObject { put("tab_id", id) })
+    private fun tabsResult(text: String, outcome: ToolOutcome = ToolOutcome.SUCCESS) =
+        ChatToolReceipt(ToolCall("t", "terminal_tabs", buildJsonObject { }), ToolResult("t", "terminal_tabs", text, outcome))
+
+    @Test fun `terminal_read names the tab this turn's terminal_tabs result names, else its id`() {
+        val result = tabsResult("tab_id: 3 | profile: Дача (profile_id: p1) | device: щиток | connection: SSH | user: root | tab: 2 | state: connected | tmux: no\n" +
+            "tab_id: 4 | profile: Home | A (profile_id: p2) | device: pi | user: pi | tab: 1 | state: closed | tmux: yes | program: vim")
+        val labels = tabLabels(listOf(result))
+        assertEquals(setOf(3, 4), labels.keys)
+        assertEquals(TabLabel("Дача", "root", "щиток", 2), labels[3])
+        val ru = ReceiptWords("все", { "с $it" }, tabLabel = labels::get,
+            tabNamed = { p, u, d, n -> "$p · $u@$d №$n" }, tabPlain = { "вкладка $it" })
+        assertEquals("Дача · root@щиток №2", receiptDetail(read(3), ru))
+        assertEquals("вкладка 9", receiptDetail(read(9), ru))
+        // Without a terminal_tabs result in the turn, and with the default words.
+        assertEquals("tab 3", receiptDetail(read(3)))
+        assertEquals("tab 4", receiptDetail(read(4), ReceiptWords("all", { "from $it" }, tabLabel = tabLabels(listOf(tabsResult("x", ToolOutcome.FAILED)))::get)))
+        // No usable tab_id: no detail.
+        assertNull(receiptDetail(ToolCall("c", "terminal_read", buildJsonObject { })))
+        assertNull(receiptDetail(ToolCall("c", "terminal_read", buildJsonObject { put("tab_id", "3") })))
+        // A failed or foreign result names nothing; garbage lines are skipped.
+        assertTrue(tabLabels(listOf(tabsResult("No open terminal tabs."), tabsResult("tab_id: x | user: y"))).isEmpty())
+        // Each part is cut on its own, and the number is never the part lost.
+        val long = tabLabels(listOf(tabsResult("tab_id: 5 | profile: ${"P".repeat(60)} (profile_id: p) | device: ${"d".repeat(60)} | user: ${"u".repeat(60)} | tab: 7 | state: connected | tmux: no")))
+        val text = receiptDetail(read(5), ReceiptWords("all", { "from $it" }, tabLabel = long::get))!!
+        assertEquals("${"P".repeat(24)}… · ${"u".repeat(24)}…@${"d".repeat(24)}… #7", text)
+    }
+
+    @Test fun `terminal_read receipts of different tabs stay on their own running lines`() {
+        val reads = listOf(read(3), read(3), read(4)).map { ChatToolReceipt(it) }
+        assertEquals(listOf(2, 1), groupReceipts(reads, sameDetail = true).map { it.items.size })
+        assertEquals(listOf(3), groupReceipts(reads).map { it.items.size })
     }
 
     @Test fun `running grouping joins only calls equal in tool and detail`() {

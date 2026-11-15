@@ -40,7 +40,7 @@ class AssistantToolRequestPressTest {
         val request = AssistantToolRequest(store, binding, scope) { sent += it }
         init { main.drain() }
         fun press(id: AssistantToolId, message: String = "Turned on ${id.wire}") { request.turnOn(id, message); main.drain(); io.drain(); main.drain() }
-        fun on() = AssistantToolId.entries.filter { store.assistantAvailability.tools[it] }
+        fun on() = AssistantToolId.switches.filter { store.assistantAvailability.tools[it] }
         override fun close() { scope.cancel(); main.drain() }
     }
 
@@ -52,11 +52,11 @@ class AssistantToolRequestPressTest {
     }
 
     @Test fun `Turn on switches on exactly that tool, persisted, then sends the fixed message once`() {
-        for (id in AssistantToolId.entries) Fx().use { f ->
+        for (id in AssistantToolId.switches) Fx().use { f ->
             f.press(id, "Turned on ${id.wire}")
             assertEquals(listOf(id), f.on())
             assertEquals(listOf("Turned on ${id.wire}"), f.sent)
-            assertEquals("the same persisted switch as Tools", listOf(id), AssistantToolId.entries.filter { SettingsStore(f.file).assistantAvailability.tools[it] })
+            assertEquals("the same persisted switch as Tools", listOf(id), AssistantToolId.switches.filter { SettingsStore(f.file).assistantAvailability.tools[it] })
         }
     }
 

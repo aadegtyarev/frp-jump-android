@@ -20,7 +20,10 @@ import ru.adsrv.frpjump.assistant.tools.objectSchema
  * conversation. `why` is read for validity and never shown or stored anywhere else.
  */
 internal class AssistantRequestTool(private val off: List<AssistantToolId>, private val declined: Set<String>) : AgentTool {
-    init { require(off.isNotEmpty()) { "request_tool is offered only while some tool is off" } }
+    init {
+        require(off.isNotEmpty()) { "request_tool is offered only while some tool is off" }
+        require(off.all { it.ownsSwitch }) { "request_tool lists switches, one entry per switch" }
+    }
     private val asked = HashSet<String>()
 
     override val spec = ToolSpec(WIRE, description(off), objectSchema { enum("name", off.map { it.wire }); string("why", WHY_MAX) })
@@ -52,6 +55,8 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             AssistantToolId.READ_PAGE -> "read a public web page"
             AssistantToolId.INSPECT_IMAGE -> "ask the model about a public image"
             AssistantToolId.PROFILE_INFORMATION -> "find the app's profiles, devices and saved connections"
+            // One entry for both terminal tools; the wire name is terminal_tabs.
+            AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ -> "read the owner's open terminal tabs"
             AssistantToolId.SSH_COMMAND -> "run one command on a saved SSH connection"
         }
 

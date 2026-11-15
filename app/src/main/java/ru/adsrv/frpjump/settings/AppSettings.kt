@@ -120,6 +120,8 @@ data class AppSettings(
     @SerialName("assistant_read_page") val assistantReadPage: Boolean = false,
     @SerialName("assistant_profile_information") val assistantProfileInformation: Boolean = false,
     @SerialName("assistant_ssh_command") val assistantSshCommand: Boolean = false,
+    /** The switch of `terminal_tabs` and `terminal_read`: the assistant sees the owner's open terminal tabs. */
+    @SerialName("assistant_terminal_tabs") val assistantTerminalTabs: Boolean = false,
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
     /** "Offer to turn tools on": the service tool `request_tool` may be offered to the model. On by default; off for models without tool calling. */
     @SerialName("assistant_offer_tools") val assistantOfferTools: Boolean = true,
@@ -155,6 +157,8 @@ fun portRangeProblem(first: Int?, last: Int?): PortRangeProblem? = when {
 
 /** Independent opt-ins; there is no model capability registry or support probe. */
 data class AssistantTools(val search: Boolean = false, val readPage: Boolean = false, val inspectImage: Boolean = false, val profileInformation: Boolean = false, val sshCommand: Boolean = false,
+    /** One switch for `terminal_tabs` and `terminal_read`. */
+    val terminalTabs: Boolean = false,
     /** "Offer to turn tools on": whether `request_tool` is offered while some tool is off. Captured at Send with the tool switches. */
     val offer: Boolean = true) {
     operator fun get(id: AssistantToolId): Boolean = when (id) {
@@ -162,6 +166,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.READ_PAGE -> readPage
         AssistantToolId.INSPECT_IMAGE -> inspectImage
         AssistantToolId.PROFILE_INFORMATION -> profileInformation
+        AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ -> terminalTabs
         AssistantToolId.SSH_COMMAND -> sshCommand
     }
     fun with(id: AssistantToolId, enabled: Boolean): AssistantTools = when (id) {
@@ -169,12 +174,13 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.READ_PAGE -> copy(readPage = enabled)
         AssistantToolId.INSPECT_IMAGE -> copy(inspectImage = enabled)
         AssistantToolId.PROFILE_INFORMATION -> copy(profileInformation = enabled)
+        AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ -> copy(terminalTabs = enabled)
         AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
     }
 }
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantOfferTools)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantOfferTools)
 private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
-    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantOfferTools = tools.offer)
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantOfferTools = tools.offer)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools(),
@@ -257,7 +263,7 @@ class SettingsStore(private val storage: TextStorage) {
         val rawHistory = json["terminal_history_rows"] as? JsonPrimitive
         val history = rawHistory?.takeUnless { it.isString }?.intOrNull?.takeIf(::validTerminalHistoryRows)
             ?: DEFAULT_TERMINAL_HISTORY_ROWS
-        val toolFields = AssistantToolId.entries.map { it.settingKey }.associateWith { key ->
+        val toolFields = AssistantToolId.switches.map { it.settingKey }.associateWith { key ->
             JsonPrimitive((json[key] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)
         }
         val normalized = JsonObject(json + toolFields + ("terminal_history_rows" to JsonPrimitive(history)) +

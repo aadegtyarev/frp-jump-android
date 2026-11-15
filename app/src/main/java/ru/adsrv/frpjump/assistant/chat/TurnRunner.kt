@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
-    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?,
+    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */
@@ -63,7 +63,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
-            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools)
+            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
