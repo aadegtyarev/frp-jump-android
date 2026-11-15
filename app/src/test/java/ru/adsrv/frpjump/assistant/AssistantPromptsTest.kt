@@ -24,7 +24,7 @@ class AssistantPromptsTest {
         // Changing a prompt without a new version and a new hash here fails this test.
         assertEquals(15, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("7bc1a0e07637dd96bb26b9217e1f11dde733b6088038341f18016ecf8e942d6d", sha256(asset("assistant/skill.md")))
+        assertEquals("e7f60d5240b877b88f071560d3b198a6cd03306842d06f64a0b6ba5722a5b147", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 

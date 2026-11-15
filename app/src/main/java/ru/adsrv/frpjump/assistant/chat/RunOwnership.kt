@@ -27,8 +27,11 @@ internal class Delivery(val events: List<WaitEvent>, val notes: List<String> = e
 /** Who may commit: authority refresh, stop, the ownership check and Send admission. Every method documents whether it needs the gate. */
 internal class RunOwnership(private val c: ChatCells, private val runtime: AssistantChatRuntime,
     private val availability: () -> AssistantAvailability, private val snapshot: () -> AssistantProviderSnapshot,
-    /** Called (under the gate) when the assistant was switched off: what lives only while it is on (the waits) ends. */
-    private val onRevoked: () -> Unit = {}) {
+    /**
+     * Called (under the gate) when this conversation's authority was reset: the assistant was switched off ([disabled] true), or the provider changed or
+     * has a problem (the conversation starts again). What lives only with it (the waits) ends.
+     */
+    private val onRevoked: (disabled: Boolean) -> Unit = {}) {
     private val gate = runtime.gate
 
     /** Caller holds the gate. */
@@ -38,7 +41,8 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         if (now.disableVersion != c.authority.disableVersion || !now.enabled || saved.revision != c.revision || saved.problem != null) {
             c.provider = null
             c.clearConfirmation()
-            if (!now.enabled || now.disableVersion != c.authority.disableVersion) { c.confirmations?.grants?.clear(); onRevoked() }
+            if (!now.enabled || now.disableVersion != c.authority.disableVersion) c.confirmations?.grants?.clear()
+            onRevoked(!now.enabled)
             if (!c.archive) {
                 c.document = SavedChat(draft = c.document.draft).bind(saved.settings)
                 c.mutable.value = c.mutable.value.copy(turns = emptyList(), omitted = false, problem = null, currentSources = emptyList(), toolProgress = null,
@@ -114,10 +118,18 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         check(runtime.acquire(owner)); c.pending = owner
         c.document = c.document.withTurn(text, c.archive, delivery?.events?.map(SavedEvent::of).orEmpty(), delivery?.eventOnly == true, delivery?.notes.orEmpty()); c.persist()
         c.mutable.value = c.mutable.value.copy(busy = true, stopping = false, pendingText = text, problem = null, toolProgress = null,
+            // Events of a wait are never drawn as the owner's message: the running turn shows them as event lines at once.
+            pendingEvents = delivery?.events.orEmpty(), pendingEventOnly = delivery?.eventOnly == true,
             currentSources = emptyList(), toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList(),
             confirmationNotSaved = false)
         return Admission(owner, saved, settings, text, past, enabledTools, retained, AssistantOwnerInstructions.effective(captured.ownerInstructions),
             c.document.declinedTools.toSet(), fixed != null || delivery?.eventOnly == true, captured.limits,
-            listOf(text).plus(if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()).plus(delivery?.notes.orEmpty()).joinToString("\n"))
+            withApp(text, (if (delivery?.eventOnly == true) emptyList() else delivery?.events?.map { it.message() }.orEmpty()) + delivery?.notes.orEmpty()))
     }
 }
+
+/**
+ * [text], and after a blank line, one line each, what the app adds for the model: the events that came with the owner's message and the notes
+ * (the owner cancelled a wait). They are lines of their own and are never glued to the owner's words.
+ */
+internal fun withApp(text: String, lines: List<String>): String = if (lines.isEmpty()) text else text + "\n\n" + lines.joinToString("\n")

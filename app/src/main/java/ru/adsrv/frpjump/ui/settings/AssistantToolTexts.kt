@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.settings
 import androidx.compose.ui.graphics.vector.ImageVector
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.ui.ClockGlyph
 import ru.adsrv.frpjump.ui.CommandGlyph
 import ru.adsrv.frpjump.ui.DeviceGlyph
 import ru.adsrv.frpjump.ui.GlobeGlyph
@@ -35,6 +36,7 @@ internal fun AssistantToolId.glyph(): ImageVector = when (this) {
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> TerminalGlyph
     AssistantToolId.TERMINAL_INPUT -> KeyboardGlyph
     AssistantToolId.SSH_COMMAND -> CommandGlyph
+    AssistantToolId.WAIT_FOR -> ClockGlyph
 }
 
 /** The Tools-screen hint; for SSH it is the FULL SSH ACCESS warning. */

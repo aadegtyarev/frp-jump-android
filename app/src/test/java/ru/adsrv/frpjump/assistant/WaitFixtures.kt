@@ -40,7 +40,8 @@ internal class WaitFixture(var limits: AssistantLimits = AssistantLimits(), val 
     val delivered = java.util.concurrent.CopyOnWriteArrayList<List<WaitEvent>>()
     val sleepGate = CompletableDeferred<Unit>()
     var now = 1_000_000_000L
-    val waits = AssistantWaits(scope, sources, { limits }, wallClock = { now }, sleep = { sleepGate.await() }, deliver = { delivered += it })
-    fun timeUp() { sleepGate.complete(Unit) }
+    val waits = AssistantWaits(scope, sources, { limits }, wallClock = { now }, sleep = { sleepGate.await() }, deliver = { delivered += it }, tickMs = 1_000L)
+    /** The wall clock jumps past every wait's end and the sleeps return. */
+    fun timeUp() { now += 24L * 3_600_000L; sleepGate.complete(Unit) }
     fun close() { scope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
 }

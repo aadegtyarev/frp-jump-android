@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
-    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?, val waits: AssistantWaits?,
+    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?, val waits: WaitAdder?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */

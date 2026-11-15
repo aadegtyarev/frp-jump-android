@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter
  * number of waits at once and the longest wait are the owner's [limits], read when the tool is made, never written here.
  */
 internal class WaitForTool(
-    private val waits: AssistantWaits,
+    private val waits: WaitAdder,
     private val limits: AssistantLimits,
     private val kinds: List<WaitKind>,
     private val timeText: (Long) -> String = ::clockText,

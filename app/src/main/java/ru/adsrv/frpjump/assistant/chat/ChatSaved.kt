@@ -64,7 +64,7 @@ import ru.adsrv.frpjump.assistant.tools.*
         }
         // Events that came with the owner's message, and notes, follow it as their own lines (the turn started by events already has them in [user]).
         val extra = (if (eventOnly) emptyList() else events.mapNotNull { it.value()?.message() }) + notes
-        return AgentTurn(if (extra.isEmpty()) user else user + "\n" + extra.joinToString("\n"), blocks + if (status == SavedTurnState.COMPLETE) emptyList() else listOf(
+        return AgentTurn(withApp(user, extra), blocks + if (status == SavedTurnState.COMPLETE) emptyList() else listOf(
             AgentExchange(AgentReply("Previous attempt: $status${problem?.let { "; $it" }.orEmpty()}. Preserve received facts; do not blindly repeat actions with unknown outcomes."))))
     }
     /** Projection only; no private continuation is exposed and parsing stays on IO. */

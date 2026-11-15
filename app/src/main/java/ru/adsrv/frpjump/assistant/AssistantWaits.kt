@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ru.adsrv.frpjump.assistant.chat.receiptText
 import ru.adsrv.frpjump.settings.AssistantLimits
 import java.util.concurrent.atomic.AtomicLong
 
@@ -53,6 +54,11 @@ interface WaitSources {
     suspend fun await(spec: WaitSpec, quietSeconds: Int): SourceResult
 }
 
+/** What the `wait_for` tool needs: to add one wait. The conversation hands the tool a guarded one (see [AssistantConversation]); a test passes the registry. */
+fun interface WaitAdder {
+    fun add(spec: WaitSpec): AddWait
+}
+
 sealed interface AddWait {
     data class Added(val wait: ActiveWait) : AddWait
     /** [atOnce] waits already run, the most the owner allows. */
@@ -73,9 +79,11 @@ class AssistantWaits(
     /** Sleeps [ms] (the wait's time); tests pass their own. */
     private val sleep: suspend (Long) -> Unit = { delay(it) },
     private val deliver: (List<WaitEvent>) -> Unit,
-    /** Told after the set of waits changed. */
+    /** Told after the set of waits changed; never under a lock of the registry. The caller of [cancelAll] may hold its own, so this must not take any that precede it. */
     private val changed: () -> Unit = {},
-) {
+    /** How long a time wait sleeps at a time: the wall clock is looked at again after each, so a sleep the device did not count (deep sleep) ends late at most by this. */
+    private val tickMs: Long = TICK_MS,
+) : WaitAdder {
     private val ids = AtomicLong()
     private val jobs = HashMap<Long, Job>()
     private val _waits = MutableStateFlow<List<ActiveWait>>(emptyList())
@@ -84,10 +92,11 @@ class AssistantWaits(
     /** Whether any wait runs. */
     val active: Boolean get() = _waits.value.isNotEmpty()
 
-    fun add(spec: WaitSpec): AddWait {
+    override fun add(spec: WaitSpec): AddWait {
         val limit = limits()
         if (spec.minutes !in 1..limit.waitMaxMinutes) return AddWait.Invalid
-        val subject = if (spec.kind == WaitKind.TIME) null else sources.subject(spec) ?: return AddWait.Invalid
+        // The owner's word for the target, cleaned of control and invisible characters and cut, so that a name cannot add lines to a message.
+        val subject = if (spec.kind == WaitKind.TIME) null else sources.subject(spec)?.let { receiptText(it, SUBJECT_CHARS) } ?: return AddWait.Invalid
         val job: Job
         val wait: ActiveWait
         synchronized(jobs) {
@@ -107,7 +116,11 @@ class AssistantWaits(
         val result = CompletableDeferred<SourceResult?>()
         // A time wait has nothing to watch: only its timer ends it.
         val watcher = scope.launch { if (spec.kind != WaitKind.TIME) result.complete(sources.await(spec, quietSeconds)) }
-        val timer = scope.launch { sleep(spec.minutes * MS_PER_MINUTE); result.complete(null) }
+        // The time is the wall clock's: a sleep that did not count the time the device slept ends, and the check below lets it end late rather than never.
+        val timer = scope.launch {
+            while (wallClock() < wait.untilMs) sleep(minOf(tickMs, wait.untilMs - wallClock()))
+            result.complete(null)
+        }
         val outcome = try { result.await() } finally { watcher.cancel(); timer.cancel() }
         val event = when {
             outcome == SourceResult.FIRED -> WaitEvent(spec.kind, spec.tabId, wait.subject, spec.text, spec.minutes.takeIf { spec.kind == WaitKind.TIME })
@@ -153,7 +166,11 @@ class AssistantWaits(
         return ended
     }
 
-    private companion object { const val MS_PER_MINUTE = 60_000L }
+    private companion object {
+        const val MS_PER_MINUTE = 60_000L
+        const val TICK_MS = 30_000L
+        const val SUBJECT_CHARS = 64
+    }
 }
 
 /** What a wait waits for, in the model's English: "tab 3 to connect", "\"ready\" in tab 3", "tunnel pi ssh to turn on", "10 min". [subject] is a tunnel's name. */

@@ -1293,7 +1293,7 @@
     <string name="tool_ssh_command_hint">ПОЛНЫЙ ДОСТУП ПО SSH: команды могут читать и изменять удалённую систему и файлы в пределах прав SSH-аккаунта. Команды и вывод могут содержать секреты и передаются настроенной модели. Токены оплачиваются.</string>
     <string name="tool_ssh_command_progress">Выполняется команда SSH…</string>
     <string name="tool_waits">Ожидание событий</string>
-    <string name="tool_waits_hint">Помощник может ждать событие в фоне (вкладку, туннель или время) и ответить, когда оно случится. Вы видите каждое ожидание и можете его отменить. События вкладок работают вместе с «Вкладками терминала», события туннелей — со «Сведениями о профилях».</string>
+    <string name="tool_waits_hint">Помощник ждёт событий вкладок, туннелей и времени и сам продолжает работу, когда они случаются. Каждое ожидание видно в чате, его можно отменить.</string>
     <string name="tool_wait_for_progress">Ставлю ожидание…</string>
     <string name="tool_wait_for_receipt">Ожидание</string>
     <string name="assistant_limits_title">Пределы</string>
@@ -1302,6 +1302,8 @@
     <string name="limit_wait_max_minutes">Самое долгое ожидание, мин</string>
     <string name="limit_event_replies">Ответов по событиям подряд</string>
     <string name="limit_after_input_seconds">Ожидание после ввода, с</string>
+    <string name="limit_decrease">Меньше</string>
+    <string name="limit_increase">Больше</string>
     <string name="wait_tab_connected">вкладка «%1$s» подключится</string>
     <string name="wait_tab_closed">вкладка «%1$s» закроется</string>
     <string name="wait_tab_text">«%2$s» появится во вкладке «%1$s»</string>

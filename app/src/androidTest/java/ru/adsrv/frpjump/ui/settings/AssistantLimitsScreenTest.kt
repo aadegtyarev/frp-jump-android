@@ -1,16 +1,18 @@
 package ru.adsrv.frpjump.ui.settings
 
-import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -21,20 +23,16 @@ import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 import java.io.File
-import java.util.Locale
 
 /** Settings › Assistant › Limits: the four rows with their defaults, each a stepped slider over its range that reports the new value. */
 @RunWith(AndroidJUnit4::class)
 class AssistantLimitsScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun text(id: Int): String {
-        val lang = InstrumentationRegistry.getArguments().getString("chatLocale") ?: "en"
-        val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(lang)) }
-        return compose.activity.createConfigurationContext(config).getString(id)
-    }
+    /** The screen is composed in the activity's own locale, so the strings it shows are the activity's. */
+    private fun text(id: Int): String = compose.activity.getString(id)
 
-    @Test fun theFourLimitsShowTheirDefaultsAndEachSlidersChangeIsReported() {
+    @Test fun theFourLimitsShowTheirDefaultsAndEachStepperChangesItsValueWithinItsRange() {
         val limits = mutableStateOf(AssistantLimits())
         val changes = ArrayList<AssistantLimits>()
         compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { changes += it; limits.value = it }, onBack = {}) } }
@@ -42,22 +40,30 @@ class AssistantLimitsScreenTest {
         compose.onNodeWithTag("limit_wait_max_minutes_value").assertTextEquals("30")
         compose.onNodeWithTag("limit_event_replies_value").assertTextEquals("5")
         compose.onNodeWithTag("limit_after_input_seconds_value").assertTextEquals("10")
+        // TalkBack reads the label and the value; the buttons read Decrease and Increase.
+        compose.onNode(hasContentDescription(text(R.string.limit_waits_at_once) + ": 3")).assertExists()
+        compose.onNodeWithTag("limit_waits_at_once_plus").assertContentDescriptionEquals(text(R.string.limit_increase))
+        compose.onNodeWithTag("limit_waits_at_once_minus").assertContentDescriptionEquals(text(R.string.limit_decrease))
         capture("limits-defaults")
-        compose.onNodeWithTag("limit_waits_at_once_slider").performSemanticsAction(SemanticsActions.SetProgress) { it(7f) }
-        compose.onNodeWithTag("limit_after_input_seconds_slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(2f) }
-        compose.onNodeWithTag("limit_wait_max_minutes_slider").performScrollTo().performSemanticsAction(SemanticsActions.SetProgress) { it(500f) }
-        compose.runOnIdle {
-            assertEquals(7, limits.value.waitsAtOnce)
-            assertEquals(2, limits.value.afterInputSeconds)
-            // Past the range it stops at the end of it.
-            assertEquals(120, limits.value.waitMaxMinutes)
-            assertEquals(3, changes.size)
-        }
-        compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("7")
-        compose.onNodeWithTag("limit_event_replies_slider").performScrollTo().assertIsDisplayed()
-        capture("limits-changed")
-        // The labels are the approved words.
-        assertEquals(true, text(R.string.limit_waits_at_once).isNotBlank() && text(R.string.assistant_limits_title).isNotBlank())
+        compose.onNodeWithTag("limit_waits_at_once_plus").performClick()
+        compose.onNodeWithTag("limit_event_replies_minus").performScrollTo().performClick()
+        compose.onNodeWithTag("limit_after_input_seconds_minus").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf(4, 4, 9), listOf(limits.value.waitsAtOnce, limits.value.eventReplies, limits.value.afterInputSeconds)); assertEquals(3, changes.size) }
+        compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("4")
+        // A long press repeats until the end of the range, where the button is off.
+        compose.onNodeWithTag("limit_waits_at_once_plus").performTouchInput { down(center); advanceEventTime(2_500); up() }
+        compose.runOnIdle { assertEquals(AssistantLimits.WAITS_AT_ONCE_RANGE.last, limits.value.waitsAtOnce) }
+        compose.onNodeWithTag("limit_waits_at_once_plus").assertIsNotEnabled()
+        compose.onNodeWithTag("limit_waits_at_once_minus").assertIsEnabled()
+        compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("10")
+        capture("limits-at-max")
+        val before = changes.size
+        compose.onNodeWithTag("limit_waits_at_once_plus").performClick()
+        compose.runOnIdle { assertEquals("a button at its end does nothing", before, changes.size) }
+        // The wait after input stops where one tool call can hold it.
+        compose.onNodeWithTag("limit_after_input_seconds_plus").performScrollTo().performTouchInput { down(center); advanceEventTime(8_000); up() }
+        compose.runOnIdle { assertEquals(AssistantLimits.AFTER_INPUT_SECONDS_MAX, limits.value.afterInputSeconds) }
+        compose.onNodeWithTag("limit_after_input_seconds_plus").assertIsNotEnabled()
     }
 
     private fun capture(name: String) {

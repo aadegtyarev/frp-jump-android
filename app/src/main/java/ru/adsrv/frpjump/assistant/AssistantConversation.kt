@@ -63,11 +63,20 @@ class AssistantConversation(
     private var streak = 0
     /** The conversation's background waits; null without sources. In memory only: a new conversation, the assistant or the switch off end them. */
     private val waits: AssistantWaits? = waitSources?.let { sources ->
-        AssistantWaits(scope, sources, { availability().limits }, sleep = waitSleep, deliver = ::onWaitEvents, changed = { onSettled() })
+        // [changed] is told while the gate may be held (the owner lock is taken by [onSettled], and it is taken before the gate elsewhere): post it.
+        AssistantWaits(scope, sources, { availability().limits }, sleep = waitSleep, deliver = ::onWaitEvents, changed = { scope.launch { onSettled() } })
+    }
+
+    /**
+     * The tool's way to add a wait: only while the assistant is on, the switch is on and the conversation is open, checked under the same gate that
+     * ends every wait, so a turn that was running when the switch went off cannot add one (and a wait added just before is ended by the switch).
+     */
+    internal val waitAdder: WaitAdder? = waits?.let { w ->
+        WaitAdder { spec -> synchronized(gate) { val now = availability(); if (c.closed || !now.enabled || !now.tools.waits) AddWait.Invalid else w.add(spec) } }
     }
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
-    private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { endWaitsLocked() })
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waits, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
+    private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
@@ -128,7 +137,7 @@ class AssistantConversation(
         if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing) false else {
             // The saved chat (draft included) is written first, so Undo reads it all back; the document is the new empty conversation.
             c.persist(); c.clearing = true; c.clearFailed = false
-            endWaitsLocked()
+            endWaitsLocked(note = false)
             c.document = SavedChat().bind(snapshot().settings); c.provider = null
             c.mutable.value = ChatState(clearing = true); true
         }
@@ -146,7 +155,7 @@ class AssistantConversation(
             // The draft (typed while the clear waited, or kept through a Retry) goes into the new conversation.
             val draft = c.document.draft
             c.document = SavedChat().bind(snapshot().settings).copy(draft = draft); c.provider = null; confirmations?.grants?.clear()
-            endWaitsLocked()
+            endWaitsLocked(note = false)
             c.clearing = false; c.clearFailed = false
             // A running Send that is waiting for the owner is stopped (nothing runs) rather than left with its card wiped from the state.
             stopWaiting = if (c.confirmation != null) c.pending?.also(own::stopLocked)?.job else null
@@ -193,7 +202,7 @@ class AssistantConversation(
     /** Caller holds the gate. */
     private fun closeLocked(): Job? {
         if (c.closed) return null
-        endWaitsLocked()
+        endWaitsLocked(note = false)
         c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.confirmation = null
         confirmations?.grants?.clear(); c.mutable.value = ChatState(); return c.pending?.job
     }
@@ -224,7 +233,7 @@ class AssistantConversation(
     fun toolsChanged(enabled: ru.adsrv.frpjump.settings.AssistantTools) {
         confirmations?.grants?.let { grants -> for (id in AssistantToolId.entries) if (!enabled[id]) grants.clear(id) }
         // The wait switch off ends every wait and drops what was waiting to be delivered.
-        if (!enabled.waits) synchronized(gate) { endWaitsLocked() }
+        if (!enabled.waits) synchronized(gate) { endWaitsLocked(note = true) }
         // A tool that is on is no longer declined: turning it on (in Tools) ends that "No thanks" (Р56).
         val changed = synchronized(gate) {
             val on = c.document.declinedTools.filter { wire -> AssistantToolId.fromWire(wire)?.let { enabled[it] } == true }
@@ -297,7 +306,8 @@ class AssistantConversation(
      * starts again, and the cap line goes. Nothing is delivered while the switch is off.
      */
     private fun admitOwnerLocked(fixed: String?): Admission? {
-        if (!availability().tools.waits) { queued.clear(); notes.clear() }
+        // Nothing that fired is delivered while the switch is off; the notes about waits the owner or the switch ended still go.
+        if (!availability().tools.waits) queued.clear()
         val delivery = if (queued.isEmpty() && notes.isEmpty()) null else Delivery(queued.toList(), notes.toList())
         val admission = own.admit(fixed, delivery) ?: return null
         queued.clear(); notes.clear(); streak = 0
@@ -306,9 +316,11 @@ class AssistantConversation(
     }
 
     /** Caller holds the gate. Every wait ends, nothing fired is delivered and nothing is noted: a new conversation, the assistant or the switch off. */
-    private fun endWaitsLocked() {
-        waits?.cancelAll()
-        queued.clear(); notes.clear(); streak = 0
+    private fun endWaitsLocked(note: Boolean) {
+        val ended = waits?.cancelAll().orEmpty()
+        queued.clear(); streak = 0
+        // The switch or the assistant going off is told to the model on its next turn, once for each wait; a new conversation has nobody to tell.
+        if (note) { if (!c.closed) ended.forEach { notes += cancelNote(it) } } else notes.clear()
         if (!c.closed && c.mutable.value.eventCap != null) c.mutable.value = c.mutable.value.copy(eventCap = null)
     }
 

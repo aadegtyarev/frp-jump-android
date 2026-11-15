@@ -26,7 +26,12 @@ data class AssistantLimits(
         val WAITS_AT_ONCE_RANGE = 1..10
         val WAIT_MAX_MINUTES_RANGE = 1..120
         val EVENT_REPLIES_RANGE = 1..20
-        val AFTER_INPUT_SECONDS_RANGE = 2..60
+        /**
+         * Up to two thirds of the core's limit for one tool call ([ru.adsrv.frpjump.agent.AgentLimits.toolTimeoutMs]), in whole seconds: the wait after
+         * input is inside one call, which the core cuts at that limit, so it must end before it.
+         */
+        val AFTER_INPUT_SECONDS_MAX = (ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs * 2 / 3 / 1000).toInt()
+        val AFTER_INPUT_SECONDS_RANGE = 2..AFTER_INPUT_SECONDS_MAX
     }
 }
 

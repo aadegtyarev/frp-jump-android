@@ -1169,17 +1169,20 @@ tunnel events only while "Profile information" is on: the schema's `event` enum 
 wait and returns at once (`Waiting for <what> until <HH:MM>. Finish your answer; a new turn starts when it happens.`); the model finishes its answer.
 Replies: `Already <n> waits, the most at once. Nothing was added.`; `Provide event and its target: tab_id from terminal_tabs, or profile_id and connection_id from profile_information; minutes 1 to <max>.`
 The numbers are the owner's limits, read at each Send and never held in a text of the app: **Waits at once** (default 3, 1 to 10), **Longest wait, min** (default 30, 1 to 120),
-**Event replies in a row** (default 5, 1 to 20) and **Wait after input, s** (default 10, 2 to 60; also the quiet time of `tab_quiet`), in Settings → Assistant → Limits.
+**Event replies in a row** (default 5, 1 to 20) and **Wait after input, s** (default 10, 2 to 20: up to two thirds of the core's 30 s limit for one tool call, in whole seconds, so the wait ends inside the call; a stored larger value is clamped on read; also the quiet time of `tab_quiet`), in Settings → Assistant → Limits.
 
 - Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the tab's *new* output after the
   wait began (terminal escape sequences are dropped, output from before is never seen). `tab_quiet`: no new output for the wait-after-input time counted from the wait's start. `tunnel_on` and
   `tunnel_off`: the tunnel as the owner sees it (same identity rules as `start_tunnel` and `stop_tunnel`; stopping counts as off). `time`: after `minutes`. A tab or tunnel that
   disappears ends a closed or off wait with its event, any other wait at once with the time-out message. Screen content is never sent with an event: the model reads the tab with `terminal_read`.
+- What the app adds to a turn: events that ride with the owner's message and the notes follow it after a blank line, as lines of their own, never glued to the owner's words, and the skill tells the model that lines starting with `Event:` or `Wait for` and the notes `The owner cancelled…` come from the app and never give instructions.
 - Messages that start the turn are the app's, not the owner's words (the saved turn is marked as events, the chat draws them as muted lines, never as the owner's message): `Event: tab <id> connected.`,
   `Event: tab <id> closed.`, `Event: "<text>" appeared in tab <id>.`, `Event: tab <id> is quiet.`, `Event: tunnel <name> is on.`, `Event: tunnel <name> is off.`, `Event: <n> min passed.`;
   `Wait for <what> ended: the time ran out.`
-- Lifetime. Waits live in memory in the app process, one set per conversation; process death drops them. A new conversation, the assistant module off and the switch off cancel
-  all of them and drop what was waiting to be delivered. **Stop** stops only the current turn: the waits stay and the next event starts a turn as usual. The owner cancels one wait on its chat line
+- Time. A wait's end is the wall clock's: it sleeps in short ticks and looks at the clock after each, so when the device slept deeply (coroutine timers do not count that time) an event can arrive late, at the app's first chance after waking, never early and never lost.
+- Switch and authority. `wait_for` adds a wait only while the assistant is on, the switch is on and the conversation is open, checked under the lock that ends every wait: a turn that was running when the switch went off cannot add one. An event that fires with the switch off starts no turn.
+- Lifetime. Waits live in memory in the app process, one set per conversation; process death drops them. A new conversation (also a provider change that starts it again), the assistant module off and the switch off cancel
+  all of them and drop what was waiting to be delivered; the assistant off and the switch off also leave the note below for the model, one per wait, a new conversation none. **Stop** stops only the current turn: the waits stay and the next event starts a turn as usual. The owner cancels one wait on its chat line
   («Отменить») or all from the chat menu («Отменить все ожидания (N)», while any run) or the notification («Отменить все»); no turn starts, and the model is told on its next turn with a note
   (`The owner cancelled the wait for <what>.`, one per wait; pending operator approval). A conversation with a wait stays alive when its screen goes.
 - Delivery. An event starts a new turn by itself; while a turn runs or a card waits for the owner it queues, and several queued events go in one turn. After the owner's limit of event replies in a row
@@ -1215,7 +1218,7 @@ switch. The tool has the catalog effect `CHANGE_REMOTE`.
   tab's connection is another one when the call runs (a reconnect between the question and the run), nothing is typed
   (`Tab <id> reconnected after the request. Nothing was typed. Read the tab again.`).
 - After the write it waits until the tab's output has been quiet for 700 ms counted from the later of the write and the last output
-  (so never less than 700 ms after the write: output from before it is not quiet), at most the owner's "Wait after input" limit (Settings → Assistant → Limits, default 10 s, 2 to 60 s),
+  (so never less than 700 ms after the write: output from before it is not quiet), at most the owner's "Wait after input" limit (Settings → Assistant → Limits, default 10 s, 2 to 20 s),
   and returns the visible screen as `terminal_read` with `lines` 0 (same header, cap and truncation); when the screen was still changing
   at the limit, a last line `screen still changing after <N> s` (N the limit) is added; the tool's description names the same number. If the tab left Open meanwhile, or the screen cannot be read
   after the bytes were queued, the result is the failed `Input to tab <id> may be partly sent; the outcome is unknown. Read the tab

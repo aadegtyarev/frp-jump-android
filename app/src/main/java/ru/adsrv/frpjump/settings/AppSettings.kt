@@ -362,7 +362,9 @@ class SettingsStore(private val storage: TextStorage) {
             number("waits_at_once", AssistantLimits.WAITS_AT_ONCE_RANGE, defaults.waitsAtOnce),
             number("wait_max_minutes", AssistantLimits.WAIT_MAX_MINUTES_RANGE, defaults.waitMaxMinutes),
             number("event_replies", AssistantLimits.EVENT_REPLIES_RANGE, defaults.eventReplies),
-            number("after_input_seconds", AssistantLimits.AFTER_INPUT_SECONDS_RANGE, defaults.afterInputSeconds),
+            // Above what one tool call can hold it is clamped to the most (an older or edited file), not reset.
+            ((group?.get("after_input_seconds") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it >= AssistantLimits.AFTER_INPUT_SECONDS_RANGE.first }
+                ?.coerceAtMost(AssistantLimits.AFTER_INPUT_SECONDS_MAX)) ?: defaults.afterInputSeconds,
         ))
     }
 

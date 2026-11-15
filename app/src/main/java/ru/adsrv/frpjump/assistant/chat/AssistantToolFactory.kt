@@ -14,7 +14,7 @@ internal object AssistantToolFactory {
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
         declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
         toolTimeoutMs: Long = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs,
-        waits: AssistantWaits? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits()): List<AgentTool> {
+        waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits()): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }

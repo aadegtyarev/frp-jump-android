@@ -141,7 +141,7 @@ class AssistantWaitEventsTest {
         h.say("hi")
         eventually("owner turn") { h.chat.state.value.takeIf { it.turns.size == 4 && !it.busy } }
         val text = h.userTexts().last()
-        assertEquals(listOf("hi", "Event: tab 3 is quiet."), text.lines())
+        assertEquals(listOf("hi", "", "Event: tab 3 is quiet."), text.lines())
         assertNull(h.chat.state.value.eventCap)
         val owners = h.chat.state.value.turns.last()
         assertFalse(owners.eventOnly); assertEquals("hi", owners.user); assertEquals(1, owners.events.size)
@@ -200,7 +200,7 @@ class AssistantWaitEventsTest {
         assertEquals("no turn starts", listOf("arm", "arm"), h.userTexts())
         h.say("go")
         eventually("owner turn") { h.chat.state.value.takeIf { it.turns.size == 2 && !it.busy } }
-        assertEquals(listOf("go", "The owner cancelled the wait for tab 3 to connect.", "The owner cancelled the wait for tab 3 to close."), h.userTexts().last().lines())
+        assertEquals(listOf("go", "", "The owner cancelled the wait for tab 3 to connect.", "The owner cancelled the wait for tab 3 to close."), h.userTexts().last().lines())
         // Notes are for the model: the owner's bubble is still just their words.
         assertEquals("go", h.chat.state.value.turns.last().user)
     }
