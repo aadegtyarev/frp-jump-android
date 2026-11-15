@@ -38,17 +38,21 @@ class AssistantTerminalToolsTest {
     private class FakeTab(
         override val id: Int, override val profileId: String = "p1", override val device: String = "pi", override val port: Int = 22,
         override val user: String = "root", override val number: Int = 1, override var state: SshState = SshState.Open,
-        override val tmuxName: String? = null, var screen: String = "", var execAnswer: (String) -> String? = { "" }, var screenRows: Int = 24,
+        override val tmuxName: String? = null, screen: String = "", var execAnswer: ((String) -> String?)? = null,
     ) : TabHandle {
+        /** What is on the tab: read from the device's tmux over [exec] for a tmux tab, from the app's buffer for any other. */
+        val term = FakeTerminal(tmux = tmuxName != null).also { if (screen.isNotEmpty()) it.set(screen) }
         val commands = ArrayList<String>()
         var bufferReads = 0
         val ioCalls get() = commands.size + bufferReads
-        override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? { commands += command; return execAnswer(command) }
-        override fun bufferSource(): SourceText { bufferReads++; return SourceText(screen, screenRows) }
+        /** [execAnswer] answers every command when set; else the terminal answers the reads and any other command gets an empty answer. */
+        override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? {
+            commands += command
+            execAnswer?.let { return it(command) }
+            return term.exec(command) ?: ""
+        }
+        override fun bufferSource(mode: ReadMode): SourceText { bufferReads++; return term.source(mode) }
     }
-
-    /** What the device answers to [tmuxCapturePaneCommand]: the rows, then the screen's height. */
-    private fun capture(rows: String, height: Int = 24) = rows + "\n" + height + "\n"
 
     private fun tabs(vararg list: FakeTab, hidden: Set<String> = emptySet(), probeMs: Long = 2_000) = AssistantTerminalTabs(
         tabs = { list.toList() }, hidden = { hidden }, profileName = { if (it == "p1") "Home" else null },
@@ -253,15 +257,15 @@ class AssistantTerminalToolsTest {
 
     @Test fun `lines default minimum maximum and invalid arguments`() {
         // 30 rows of output; the screen is the last 5 of them.
-        val tab = FakeTab(1, tmuxName = tmuxA, execAnswer = { capture((1..30).joinToString("\n") { "row $it" }, 5) })
+        val tab = FakeTab(1, tmuxName = tmuxA).also { it.term.screenRows = 5; it.term.set((1..30).joinToString("\n") { "row $it" }) }
         val tool = AssistantTerminalReadTool(tabs(tab))
         fun shown(vararg args: Pair<String, Any>) = call(tool, "tab_id" to 1, *args).text.lines().drop(1).map { it.removePrefix("row ").toInt() }
         assertEquals("default 100 history rows: all 30", (1..30).toList(), shown())
         assertEquals("no history: the screen", (26..30).toList(), shown("lines" to 0))
         assertEquals((21..30).toList(), shown("lines" to 5))
         assertEquals((1..30).toList(), shown("lines" to 1000))
-        // The one command reads the whole history whatever `lines` is; the cut is made on the rows.
-        assertEquals(List(4) { "tmux capture-pane -p -J -S - -t '=$tmuxA:' ';' display-message -p -t '=$tmuxA:' '#{pane_height}'" }, tab.commands)
+        // One exec per read, asking tmux for that many rows of history.
+        assertEquals(listOf(100, 0, 5, 1000).map { ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmuxA, it) }, tab.commands)
         tab.commands.clear()
         val refusal = "Provide tab_id (an integer from terminal_tabs), optional lines 0..1000 and optional from (a cursor from an earlier read or input) only."
         for (args in listOf(
@@ -280,29 +284,28 @@ class AssistantTerminalToolsTest {
     // ---- terminal_read: reading ----
 
     @Test fun `a tmux tab is read with the exact quoted command over its existing client`() {
-        val tab = FakeTab(1, tmuxName = tmuxA, number = 3, execAnswer = { capture("line one\nline two\n\n") })
+        val tab = FakeTab(1, tmuxName = tmuxA, number = 3, screen = "line one\nline two\n\n")
         val out = call(AssistantTerminalReadTool(tabs(tab)), "tab_id" to 1, "lines" to 20)
-        assertEquals(listOf("tmux capture-pane -p -J -S - -t '=frpjump-0a1b2c-1:' ';' display-message -p -t '=frpjump-0a1b2c-1:' '#{pane_height}'"), tab.commands)
+        assertEquals(listOf(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmuxA, 20)), tab.commands)
         assertEquals(0, tab.bufferReads)
-        assertEquals("tab 1: Home · root@pi #3, tmux, cursor: ${cursorOf("line one\nline two")}\nline one\nline two", out.text)
+        assertEquals("tab 1: Home · root@pi #3, tmux, cursor: ${tab.term.cursor()}\nline one\nline two", out.text)
         assertEquals(ToolOutcome.SUCCESS, out.outcome)
     }
 
     @Test fun `a plain tab is read from the terminal buffer and never over a connection`() {
         val tab = FakeTab(2, number = 1, screen = "\$ ls\nfile\n\n", user = "pi")
         val out = call(AssistantTerminalReadTool(tabs(tab)), "tab_id" to 2, "lines" to 7)
-        assertEquals("tab 2: Home · pi@pi #1, app buffer, cursor: ${cursorOf("\$ ls\nfile")}\n\$ ls\nfile", out.text)
+        assertEquals("tab 2: Home · pi@pi #1, app buffer, cursor: ${tab.term.cursor()}\n\$ ls\nfile", out.text)
         assertEquals(1, tab.bufferReads)
         assertTrue(tab.commands.isEmpty())
     }
 
-    /** The cursor of the end of [text] as a tab shows it. */
-    private fun cursorOf(text: String) = TabText(SourceText(text, 24)).cursor
-
     @Test fun `a blank screen gives the header alone and control characters are dropped`() {
-        assertEquals("tab 2: Home · root@pi #1, app buffer, cursor: ${cursorOf("")}", call(AssistantTerminalReadTool(tabs(FakeTab(2, screen = "  \n\n"))), "tab_id" to 2).text)
-        val dirty = call(AssistantTerminalReadTool(tabs(FakeTab(2, screen = "ok\u001B[31mred\u0007‮ end\r\nnext"))), "tab_id" to 2).text
-        assertEquals("tab 2: Home · root@pi #1, app buffer, cursor: ${cursorOf("ok[31mred end\nnext")}\nok[31mred end\nnext", dirty)
+        val blank = FakeTab(2, screen = "  \n\n")
+        assertEquals("tab 2: Home · root@pi #1, app buffer, cursor: ${blank.term.cursor()}", call(AssistantTerminalReadTool(tabs(blank)), "tab_id" to 2).text)
+        val dirtyTab = FakeTab(2, screen = "ok\u001B[31mred\u0007‮ end\r\nnext")
+        val dirty = call(AssistantTerminalReadTool(tabs(dirtyTab)), "tab_id" to 2).text
+        assertEquals("tab 2: Home · root@pi #1, app buffer, cursor: ${dirtyTab.term.cursor()}\nok[31mred end\nnext", dirty)
     }
 
     @Test fun `the oldest lines go when the text is over the limit and the end says so`() {
@@ -379,7 +382,7 @@ class AssistantTerminalToolsTest {
             override val id = 1; override val profileId = "p1"; override val device = "pi"; override val port = 22; override val user = "root"
             override val number = 1; override val state: SshState = SshState.Open; override val tmuxName: String? = null
             override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? = error("no I/O")
-            override fun bufferSource(): SourceText = throw IllegalStateException("emulator gone")
+            override fun bufferSource(mode: ReadMode): SourceText = throw IllegalStateException("emulator gone")
         }
         val reader = AssistantTerminalTabs({ listOf(tab) }, { emptySet() }, { "Home" }, { _, _, _ -> null }, io = Dispatchers.IO, main = Dispatchers.Unconfined)
         assertEquals("Could not read tab 1. Nothing was typed into it.", call(AssistantTerminalReadTool(reader), "tab_id" to 1).text)

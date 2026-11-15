@@ -43,7 +43,7 @@ class AssistantTerminalRenameTest {
         var connectionUses = 0
         override fun rename(name: String?) { renames += name; customName = name }
         override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? { connectionUses++; return "" }
-        override fun bufferSource(): SourceText { connectionUses++; return SourceText("", 24) }
+        override fun bufferSource(mode: ReadMode): SourceText { connectionUses++; return FakeTerminal().source(mode) }
     }
 
     private fun tabs(vararg list: Tab, hidden: Set<String> = emptySet()) = AssistantTerminalTabs(

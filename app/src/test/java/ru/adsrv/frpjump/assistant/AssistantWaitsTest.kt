@@ -217,7 +217,7 @@ class AssistantWaitsTest {
             arrayOf("event" to "tunnel_on", "profile_id" to "p1", "minutes" to 1), arrayOf("event" to "time", "tab_id" to 3, "minutes" to 1),
             arrayOf("event" to "time"), arrayOf("event" to "time", "minutes" to 1, "extra" to "x"),
             // A cursor is for tab_text and tab_quiet and must be one; seconds are for tab_quiet, 1 to the longest wait.
-            arrayOf("event" to "tab_connected", "tab_id" to 3, "from" to "1.0123abcd", "minutes" to 1),
+            arrayOf("event" to "tab_connected", "tab_id" to 3, "from" to "1.0.0123abcd", "minutes" to 1),
             arrayOf("event" to "tab_quiet", "tab_id" to 3, "from" to "nope", "minutes" to 1),
             arrayOf("event" to "tab_text", "tab_id" to 3, "text" to "x", "from" to "", "minutes" to 1),
             arrayOf("event" to "tab_quiet", "tab_id" to 3, "seconds" to 0, "minutes" to 1), arrayOf("event" to "tab_quiet", "tab_id" to 3, "seconds" to 1201, "minutes" to 1),
@@ -243,10 +243,10 @@ class AssistantWaitsTest {
         assertEquals(10, last().seconds); assertEquals(null, last().from)
         call(t, "event" to "tab_quiet", "tab_id" to 3, "seconds" to 1200, "minutes" to 5)
         assertEquals(1200, last().seconds)
-        call(t, "event" to "tab_quiet", "tab_id" to 3, "seconds" to 3, "from" to "12.0badf00d", "minutes" to 5)
-        assertEquals(3, last().seconds); assertEquals("12.0badf00d", last().from)
-        call(t, "event" to "tab_text", "tab_id" to 3, "text" to "ok", "from" to "0.811c9dc5", "minutes" to 5)
-        assertEquals("0.811c9dc5", last().from); assertEquals(null, last().seconds)
+        call(t, "event" to "tab_quiet", "tab_id" to 3, "seconds" to 3, "from" to "12.5.0badf00d", "minutes" to 5)
+        assertEquals(3, last().seconds); assertEquals("12.5.0badf00d", last().from)
+        call(t, "event" to "tab_text", "tab_id" to 3, "text" to "ok", "from" to "0.0.811c9dc5", "minutes" to 5)
+        assertEquals("0.0.811c9dc5", last().from); assertEquals(null, last().seconds)
         assertEquals(10, WaitForTool.DEFAULT_QUIET_SECONDS)
     }
 }

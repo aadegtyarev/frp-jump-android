@@ -98,6 +98,8 @@ class AssistantChatScreenTest {
     private val requests = mutableListOf<AgentRequest>()
     /** Positive waits only: a loaded emulator can be slow, and a longer wait never turns a failure into a pass. */
     private val WAIT_MS = 15_000L
+    /** What the 40-turn summary request holds besides the system prompt: measured once, with a 4,964-byte prompt at a budget of 12,400 tokens. */
+    private val SUMMARY_REQUEST_REST = 4_956
     private var owner: AssistantConversation? = null
     private var ownerSupport: ru.adsrv.frpjump.assistant.chat.ConfirmationSupport? = null
     private val module = AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled })
@@ -167,11 +169,23 @@ class AssistantChatScreenTest {
     private val waitSources = SyntheticWaits()
     private fun tabWait(kind: ru.adsrv.frpjump.assistant.WaitKind) = ru.adsrv.frpjump.assistant.WaitSpec(kind, 10, tabId = 3)
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
+        companion object {
+            /** What a terminal showing only [screen] (no history, the cursor on its last row) holds. */
+            fun sourceOf(screen: String, first: Int): ru.adsrv.frpjump.assistant.SourceText {
+                val rows = screen.split("\n")
+                return ru.adsrv.frpjump.assistant.SourceText(screen, first, rows.size - 1, rows.subList(maxOf(0, rows.size - 1 - 3), rows.size - 1), 0, true)
+            }
+        }
+
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
-        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? =
-            if ("pane_in_mode" in command) "0\n" else if ("capture-pane" in command) "\n24\n" else "htop\n"
-        override fun bufferSource() = ru.adsrv.frpjump.assistant.SourceText(screen, 24)
+        /** The device's answer to a tmux read (the rows, the rows above the cursor, the numbers) or, for anything else, the foreground program. */
+        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? {
+            if ("capture-pane" !in command) return "htop\n"
+            val rows = screen.split("\n")
+            return rows.joinToString("") { it + "\n" } + rows.subList(maxOf(0, rows.size - 1 - 3), rows.size - 1).joinToString("") { it + "\n" } + "0 2000 ${rows.size - 1} 24 0\n"
+        }
+        override fun bufferSource(mode: ru.adsrv.frpjump.assistant.ReadMode) = sourceOf(screen, if (mode is ru.adsrv.frpjump.assistant.ReadMode.From) 0 else -1)
         /** The tab's own name, as the owner's Rename… or the assistant's terminal_rename sets it. */
         override var customName: String? = null
         override fun rename(name: String?) { customName = name }
@@ -303,6 +317,15 @@ class AssistantChatScreenTest {
     private fun summaryFacts(text: String) = listOf("target", "done", "unknown").joinToString("; ") { key ->
         "$key=" + (Regex("$key=([a-z-]+)").find(text)?.groupValues?.get(1) ?: error("Missing observed $key"))
     }
+    /**
+     * The context budget at which the automatic summary starts for this test's 40 turns and then stays quiet: the request is the system prompt (one
+     * token per byte, see Utf8TokenEstimate) and [SUMMARY_REQUEST_REST] tokens of the rest (tools, framing, the turns kept), and the summary starts at
+     * the owner's default percent of the budget. Follows the shipped prompt, so that a longer prompt does not move the test.
+     */
+    private fun summaryContextTokens(percent: Int): Int {
+        val system = prompts.value.system.toByteArray(Charsets.UTF_8).size
+        return (((system + SUMMARY_REQUEST_REST) * 100 + percent - 1) / percent)
+    }
     @Test fun automaticSummaryPreservesReadableHistoryAndSelectedTarget() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val id = java.util.UUID.randomUUID().toString()
@@ -311,8 +334,7 @@ class AssistantChatScreenTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         historyCleanup = { scope.cancel(); file.delete(); box.destroy() }
         val snapshot = store.currentSnapshot
-        // Tuned to the size of the system prompt (1 token per byte, the summary starts at 80 %): 142 bytes more in skill.md move it by 178.
-        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=12_578,outputTokens=512),snapshot.revision))
+        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=summaryContextTokens(snapshot.settings!!.summaryPercent),outputTokens=512),snapshot.revision))
         history = AssistantChatHistory(ru.adsrv.frpjump.store.AtomicTextFile(file),box,scope)
         val records = (0 until 40).map { i ->
             val user = if (i==0) "target=work-root done=diagnostic unknown=upgrade" else "Progress $i"
@@ -657,7 +679,7 @@ class AssistantChatScreenTest {
             assertTrue(results[0].text, results[0].text.contains("tab_id: 1 | profile: Synthetic profile (profile_id: synthetic-profile) | device: synthetic-device | tunnel: Synthetic shell | user: pi | tab: 1 | state: connected | tmux: no"))
             assertTrue(results[0].text, results[0].text.contains("tab_id: 2 |") && results[0].text.endsWith("| tmux: yes | program: htop"))
             val screen = "pi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$"
-            assertEquals("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer, cursor: ${ru.adsrv.frpjump.assistant.TabText(ru.adsrv.frpjump.assistant.SourceText(screen, 24)).cursor}\n$screen", results[1].text)
+            assertEquals("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer, cursor: ${ru.adsrv.frpjump.assistant.TabText(SyntheticTab.sourceOf(screen, -1)).cursor}\n$screen", results[1].text)
         }
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").assertIsDisplayed()
@@ -1015,7 +1037,7 @@ class AssistantChatScreenTest {
             val result = requests.last().turns.last().exchanges.single().results.single()
             assertEquals(ToolOutcome.SUCCESS, result.outcome)
             // At once, with the cursor taken before typing: no screen in the result.
-            assertTrue(result.text, Regex("Typed into tab 2\\. cursor: \\d+\\.[0-9a-f]{8}").matches(result.text))
+            assertTrue(result.text, Regex("Typed into tab 2\\. cursor: \\d+\\.\\d+\\.[0-9a-f]{8}").matches(result.text))
         }
         // The receipt: titled for typing, naming the tab; expanded it shows the text with its Enter mark and the keys (the owner's call shows the input only: no screen after it).
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))

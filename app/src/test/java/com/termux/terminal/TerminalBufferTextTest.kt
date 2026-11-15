@@ -2,6 +2,7 @@ package com.termux.terminal
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import ru.adsrv.frpjump.assistant.ReadMode
 import ru.adsrv.frpjump.assistant.TabText
 import ru.adsrv.frpjump.assistant.terminalBufferSource
 
@@ -44,5 +45,5 @@ class TerminalBufferTextTest {
         assertEquals("vim screen", screen(e, 1000).trim())
     }
 
-    private fun screen(e: TerminalEmulator, history: Int) = TabText(terminalBufferSource(e)).screen(history)
+    private fun screen(e: TerminalEmulator, history: Int) = TabText(terminalBufferSource(e, ReadMode.Screen(history))).screen()
 }

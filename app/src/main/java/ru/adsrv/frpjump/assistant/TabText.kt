@@ -1,79 +1,110 @@
 package ru.adsrv.frpjump.assistant
 
-/**
- * What a tab's ONE output source holds now: [text], the rows oldest first with the visible screen last (a tmux tab's own history and
- * screen from the device, any other tab's terminal buffer from the app), and the number of rows of that screen. Nothing else keeps a tab's
- * output: no second buffer, no log.
- */
-internal class SourceText(val text: String, val screenRows: Int)
+/** What a read of a tab asks of its output source. */
+internal sealed interface ReadMode {
+    /** The visible screen with up to [lines] rows of history, wrapped lines joined: what `terminal_read` shows without `from`. */
+    data class Screen(val lines: Int) : ReadMode
+    /** The physical rows from [cursor] on (a few more above it, to check it), or the whole kept history when the cursor cannot be placed by position. */
+    data class From(val cursor: TabCursor) : ReadMode
+}
 
 /**
- * A position in a tab's output, as the model sees it: opaque text, `<rows>.<anchor>`. [position] is how many rows (up to the last one with text)
- * the source held, [anchor] a checksum of the rows just before the last one; [TabText.since] finds the position again by it when the oldest rows
- * were dropped meanwhile (history limit). The model only hands it back.
+ * What a tab's ONE output source holds (a tmux tab's own history and screen from the device, any other tab's terminal buffer from the app;
+ * nothing else keeps a tab's output: no second buffer, no log). Rows are numbered from the oldest kept row, as the physical rows of the terminal
+ * (a wrapped line is several rows).
+ * - [text]: the rows read, oldest first, separated by line breaks, down to the bottom of the screen. For [ReadMode.Screen] wrapped lines are joined and
+ *   [firstRow] is -1; for [ReadMode.From] they are physical rows and [firstRow] is the number of the first of them.
+ * - [cursorRow]: the row the terminal's cursor is on (history rows + the cursor's row on the screen); [above]: up to three physical rows just above it.
+ * - [historyRows]: rows of history kept now. [noDrop]: the source cannot have dropped rows (the app's buffer below its capacity; tmux's history
+ *   below 90 % of its limit: tmux drops a tenth at once when it is full).
  */
-internal class TabCursor(val position: Int, val anchor: Int) {
-    override fun toString() = "$position.${"%08x".format(anchor)}"
-    override fun equals(other: Any?) = other is TabCursor && other.position == position && other.anchor == anchor
-    override fun hashCode() = 31 * position + anchor
+internal class SourceText(
+    val text: String, val firstRow: Int, val cursorRow: Int, val above: List<String>, val historyRows: Int, val noDrop: Boolean,
+)
+
+/**
+ * A position in a tab's output, as the model sees it: opaque text, `<row>.<history>.<8 hex>`. [position] is the row the terminal's cursor was on,
+ * [history] how many rows of history were kept then, [sum] a checksum of the (up to) three rows just above that row. Only [TabText] knows what they mean.
+ */
+internal class TabCursor(val position: Int, val history: Int, val sum: Int) {
+    override fun toString() = "$position.$history.${"%08x".format(sum)}"
+    override fun equals(other: Any?) = other is TabCursor && other.position == position && other.history == history && other.sum == sum
+    override fun hashCode() = (31 * position + history) * 31 + sum
 
     companion object {
         /** The longest cursor text. */
         const val MAX_CHARS = 32
-        private val FORMAT = Regex("(\\d{1,9})\\.([0-9a-f]{8})")
+        private val FORMAT = Regex("(\\d{1,9})\\.(\\d{1,9})\\.([0-9a-f]{8})")
 
         /** The cursor [raw] spells, or null when it is not one this app made. */
         fun parse(raw: String): TabCursor? {
             val m = FORMAT.matchEntire(raw) ?: return null
-            return TabCursor(m.groupValues[1].toInt(), m.groupValues[2].toLong(16).toInt())
+            return TabCursor(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toLong(16).toInt())
         }
     }
 }
 
 /**
- * One reading of a tab's source (see [SourceText]) and everything the tools do with it: the visible screen with some history, the cursor of its
- * end, and the rows after an earlier cursor. `terminal_read`, `terminal_input` and `wait_for` all go through here, so a read and an event see the
- * same text.
+ * One reading of a tab's source (see [SourceText]) and everything the tools do with it. `terminal_read`, `terminal_input` and `wait_for` all go
+ * through here, so a read and an event see the same text.
  *
- * Rows are the source's rows with wrapped ones joined, cleaned for the model ([cleanRows]). A cursor counts rows up to the last one with text:
- * blank rows of the screen below it are not yet anything. The LAST counted row may still be written to (a prompt that is typed on), so it is not
- * part of the cursor's anchor and an update of it does not count as output after the cursor.
+ * A cursor stands on the row the terminal's cursor is on: that row is the one still being written (a prompt that is typed on, a progress bar), so
+ * it is part of what comes AFTER the cursor, and the checksum is of the rows above it. Reading from a cursor places it again:
+ * - exactly, by its row number, when the source cannot have dropped rows since ([SourceText.noDrop] and no fewer rows of history than at the
+ *   cursor), after checking the checksum there;
+ * - otherwise by the checksum alone, and only when exactly ONE position holds it: no match, several matches (repeated rows, a full-history loop),
+ *   or rows that were not read, mean the rows are no longer told apart and nothing is guessed ([since] is null).
  */
-internal class TabText(source: SourceText) {
-    private val rows: List<String> = cleanRows(source.text.removeSuffix("\n"))
-    private val screenRows = source.screenRows
-    private val end = rows.indexOfLast { it.isNotEmpty() } + 1
+internal class TabText(private val source: SourceText) {
+    private val rows: List<String> = if (source.text.isEmpty()) emptyList() else cleanRows(source.text)
+    private val first = source.firstRow
 
     /** The cursor of the end of the output now. */
-    val cursor: TabCursor get() = TabCursor(end, anchorAt(end))
+    val cursor: TabCursor get() = TabCursor(source.cursorRow, source.historyRows, checksum(cleanAbove()))
 
-    /** The visible screen with up to [history] rows before it, trailing blank rows cut. */
-    fun screen(history: Int): String = join(maxOf(0, rows.size - screenRows - history), end)
+    /** What a read without `from` shows: the rows read, trailing blank rows cut. */
+    fun screen(): String = rows.dropLastWhile { it.isEmpty() }.joinToString("\n")
 
-    /** Every row the source holds. */
-    fun all(): String = join(0, end)
-
-    /**
-     * The rows printed after [cursor]; null when they cannot be told: the rows before the cursor are gone, which is when its anchor is found at no
-     * position at or before the cursor's own (the oldest rows were dropped, so the same rows now sit higher up), or nowhere.
-     */
-    fun since(cursor: TabCursor): String? {
-        for (q in minOf(cursor.position, rows.size) downTo 0) if (anchorAt(q) == cursor.anchor) return join(q, end)
-        return null
+    /** The rows from [from] on, trailing blank rows cut; null when [from] cannot be placed (see the class text). */
+    fun since(from: TabCursor): String? {
+        if (first < 0) return null
+        val at = when {
+            source.noDrop && source.historyRows >= from.history -> from.position.takeIf { sumAt(it) == from.sum }
+            else -> {
+                var found = -1
+                for (q in 0..minOf(from.position, first + rows.size)) {
+                    if (sumAt(q) != from.sum) continue
+                    if (found >= 0) return null
+                    found = q
+                }
+                found.takeIf { it >= 0 }
+            }
+        } ?: return null
+        if (at - first > rows.size) return null
+        return rows.subList(maxOf(0, at - first), rows.size).dropLastWhile { it.isEmpty() }.joinToString("\n")
     }
 
-    private fun join(from: Int, to: Int) = if (from >= to) "" else rows.subList(from, to).joinToString("\n")
+    private fun cleanAbove(): List<String> = if (source.above.isEmpty()) emptyList() else cleanRows(source.above.joinToString("\n"))
 
-    /** FNV-1a over the [ANCHOR_ROWS] rows before row `position - 1` (that one may still change). */
-    private fun anchorAt(position: Int): Int {
-        val to = maxOf(0, position - 1)
-        var hash = -0x7ee3623b // 2166136261
-        for (i in maxOf(0, to - ANCHOR_ROWS) until to) {
-            for (c in rows[i]) hash = (hash xor c.code) * 16777619
-            hash = (hash xor '\n'.code) * 16777619
+    /** The checksum of the rows above row [q], or null when they were not read. */
+    private fun sumAt(q: Int): Int? {
+        val from = maxOf(0, q - ANCHOR_ROWS)
+        if (from < first || q - first > rows.size) return null
+        return checksum(rows.subList(from - first, q - first))
+    }
+
+    private companion object {
+        const val ANCHOR_ROWS = 3
+
+        /** FNV-1a over the number of rows and the rows. */
+        fun checksum(rows: List<String>): Int {
+            var hash = -0x7ee3623b // 2166136261
+            hash = (hash xor rows.size) * 16777619
+            for (row in rows) {
+                for (c in row) hash = (hash xor c.code) * 16777619
+                hash = (hash xor '\n'.code) * 16777619
+            }
+            return hash
         }
-        return hash
     }
-
-    private companion object { const val ANCHOR_ROWS = 3 }
 }

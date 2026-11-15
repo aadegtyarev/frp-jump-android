@@ -61,10 +61,11 @@ class AssistantTerminalInputTest {
         val commands = ArrayList<String>()
         val typed = ArrayList<ByteArray>()
         var bufferReads = 0
-        var screen = "\$ ready"
+        /** What is on the tab: the tmux read commands are answered from it, and the app's buffer of a tab without tmux is read from it. */
+        val term = FakeTerminal(tmux = tmuxName != null).also { it.set("\$ ready") }
         var modes = KeyModes(cursorApplication = false, keypadApplication = false)
         var outcome = TypeOutcome.QUEUED
-        var exec: (String) -> String? = { if ("pane_in_mode" in it) "0\n" else "pane\n24\n" }
+        var exec: (String) -> String? = { term.exec(it) ?: "pane\n" }
         var afterType: () -> Unit = {}
         var bufferFails = false
         @Volatile override var lastOutputNanos = System.nanoTime() - 10_000_000_000L
@@ -72,7 +73,7 @@ class AssistantTerminalInputTest {
         fun reconnect() { pin = Pin() }
 
         override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? { commands += command; return exec.invoke(command) }
-        override fun bufferSource(): SourceText { bufferReads++; if (bufferFails) throw IllegalStateException("emulator gone"); return SourceText(screen, 24) }
+        override fun bufferSource(mode: ReadMode): SourceText { bufferReads++; if (bufferFails) throw IllegalStateException("emulator gone"); return term.source(mode) }
         override fun capturePin(): InputPin? = pin
         override fun pinCurrent(pin: InputPin) = pin === this.pin
         override fun keyModes() = modes
@@ -86,10 +87,10 @@ class AssistantTerminalInputTest {
 
     private var now = 0L
 
-    private fun tabs(vararg list: TypeTab, hidden: Set<String> = emptySet(), saved: Boolean = true, copyProbeMs: Long = 2_000) = AssistantTerminalTabs(
+    private fun tabs(vararg list: TypeTab, hidden: Set<String> = emptySet(), saved: Boolean = true, cursorReadMs: Long = 2_000) = AssistantTerminalTabs(
         tabs = { list.toList() }, hidden = { hidden }, profileName = { if (it == "p1") "Home" else null },
         connectionName = { _, _, _ -> null }, connectionId = { p, _, _ -> if (saved && p == "p1") "c1" else null },
-        io = Dispatchers.IO, main = Dispatchers.Unconfined, copyProbeTimeoutMs = copyProbeMs, readTimeoutMs = 2_000,
+        io = Dispatchers.IO, main = Dispatchers.Unconfined, cursorReadTimeoutMs = cursorReadMs, readTimeoutMs = 2_000,
         clockMs = { now },
     )
 
@@ -231,37 +232,40 @@ class AssistantTerminalInputTest {
 
     // ---- tmux copy mode ----
 
-    @Test fun `a tmux tab is asked whether its pane is in copy mode with the exact quoted command and types after a 0`() {
+    @Test fun `a tmux tab's cursor read also asks whether its pane is in copy mode, in one exec, and types after a 0`() {
         val tab = TypeTab(1, tmuxName = tmux)
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
-        // The copy mode question, then the cursor of the tmux history, both before anything is typed.
-        assertEquals(listOf("tmux display-message -p -t '=$tmux:' '#{pane_in_mode}'",
-            "tmux capture-pane -p -J -S - -t '=$tmux:' ';' display-message -p -t '=$tmux:' '#{pane_height}'"), tab.commands)
+        // One exec before anything is typed: the capture for the cursor, and last of all the question about copy mode.
+        assertEquals(listOf(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmux, 0)), tab.commands)
         assertEquals("ls\r", tab.allTyped())
         assertEquals(ToolOutcome.SUCCESS, out.outcome)
-        assertEquals("Typed into tab 1. cursor: ${TabText(SourceText("pane", 24)).cursor}", out.text)
+        assertEquals("Typed into tab 1. cursor: ${tab.term.cursor()}", out.text)
     }
 
     @Test fun `a pane in copy mode is refused and nothing is typed`() {
-        val tab = TypeTab(1, tmuxName = tmux).also { it.exec = { "1\n" } }
+        val tab = TypeTab(1, tmuxName = tmux).also { it.term.inCopyMode = true }
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
         assertEquals("Tab 1 is in tmux copy mode: the owner may be scrolling. Nothing was typed.", out.text)
         assertEquals(ToolOutcome.FAILED, out.outcome)
         assertTrue(tab.typed.isEmpty())
-        // Never leaves or enters copy mode itself: the only command is the question.
-        assertEquals(listOf("tmux display-message -p -t '=$tmux:' '#{pane_in_mode}'"), tab.commands)
+        // Never leaves or enters copy mode itself: the only command is the read.
+        assertEquals(listOf(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmux, 0)), tab.commands)
     }
 
-    @Test fun `a failed late or unreadable copy mode question types nothing`() {
-        val answers = listOf<(String) -> String?>({ throw java.io.IOException("secret detail") }, { null }, { "maybe" }, { "" }, { Thread.sleep(5_000); "0" })
+    @Test fun `a failed late or unreadable cursor read types nothing, and a slow capture has its own limit`() {
+        val answers = listOf<(String) -> String?>({ throw java.io.IOException("secret detail") }, { null }, { "maybe" }, { "" }, { "1 2 3\n" }, { Thread.sleep(5_000); "0 2000 0 24 0\n" })
         for ((index, answer) in answers.withIndex()) {
             val tab = TypeTab(1, tmuxName = tmux).also { it.exec = answer }
-            val out = send(AssistantTerminalInputTool(tabs(tab, copyProbeMs = 150)), typing(1, "ls", "enter"))
+            val out = send(AssistantTerminalInputTool(tabs(tab, cursorReadMs = 150)), typing(1, "ls", "enter"))
             assertEquals("case $index", "Could not read tab 1. Nothing was typed into it.", out.text)
             assertEquals(ToolOutcome.FAILED, out.outcome)
             assertTrue("case $index", tab.typed.isEmpty())
             assertFalse("no exception text reaches the model", out.text.contains("secret"))
         }
+        // A capture slower than the cursor read's own limit types nothing.
+        val slowish = TypeTab(1, tmuxName = tmux).also { t -> t.exec = { Thread.sleep(300); t.term.exec(it) } }
+        assertEquals("Could not read tab 1. Nothing was typed into it.", send(AssistantTerminalInputTool(tabs(slowish, cursorReadMs = 150)), typing(1, "ls")).text)
+        assertEquals("", slowish.allTyped())
     }
 
     @Test fun `a tab without tmux is not asked anything`() {
@@ -279,7 +283,7 @@ class AssistantTerminalInputTest {
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "echo hi\n", "ctrl_c", "up"))
         assertEquals(1, tab.typed.size)
         assertEquals("echo hi\r\u0003\u001b[A", tab.allTyped())
-        assertEquals("Typed into tab 1. cursor: ${TabText(SourceText("\$ ready", 24)).cursor}", out.text)
+        assertEquals("Typed into tab 1. cursor: ${FakeTerminal().set("\$ ready").cursor()}", out.text)
         // The tab handle has no way to log in, connect or open anything but its own exec; this fake records every call it gets.
         assertEquals(1, tab.bufferReads); assertTrue(tab.commands.isEmpty())
     }
@@ -298,9 +302,9 @@ class AssistantTerminalInputTest {
         assertTrue(tab.typed.isEmpty()); assertTrue("no probe either", tab.commands.isEmpty())
     }
 
-    @Test fun `a reconnect during the copy mode question types nothing`() {
+    @Test fun `a reconnect during the cursor read types nothing`() {
         val tab = TypeTab(1, tmuxName = tmux)
-        tab.exec = { if ("pane_in_mode" in it) { tab.reconnect(); "0\n" } else "pane\n24\n" }
+        tab.exec = { tab.reconnect(); tab.term.exec(it) }
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
         assertEquals("Tab 1 reconnected after the request. Nothing was typed. Read the tab again.", out.text)
         assertTrue(tab.typed.isEmpty())
@@ -332,7 +336,7 @@ class AssistantTerminalInputTest {
         val started = System.nanoTime()
         val out = send(AssistantTerminalInputTool(tabs(quiet)), typing(1, "ls", "enter"))
         assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", (System.nanoTime() - started) < 1_000_000_000L)
-        assertEquals("Typed into tab 1. cursor: ${TabText(SourceText("\$ ready", 24)).cursor}", out.text)
+        assertEquals("Typed into tab 1. cursor: ${FakeTerminal().set("\$ ready").cursor()}", out.text)
         assertEquals(ToolOutcome.SUCCESS, out.outcome)
 
         // A tab that prints all the time is no different: no quiet wait, no "still changing" note.
@@ -351,18 +355,15 @@ class AssistantTerminalInputTest {
     @Test fun `the cursor is taken before typing, so a read from it shows what the input caused`() {
         for (tmuxName in listOf(null, tmux)) {
             val tab = TypeTab(1, tmuxName = tmuxName)
-            var rows = "\$ ready"
-            tab.screen = rows
-            tab.exec = { if ("pane_in_mode" in it) "0\n" else rows + "\n24\n" }
-            // The echo and the output arrive with the typing.
-            tab.afterType = { rows = "\$ ls\nfile\n\$ ready"; tab.screen = rows }
+            tab.term.set("old line\n\$ ready")
+            // The echo and the output arrive with the typing: the prompt row (the cursor's row) becomes the echo.
+            tab.afterType = { tab.term.set("old line\n\$ ls\nfile\n\$ ready") }
             val owner = tabs(tab)
             val typed = send(AssistantTerminalInputTool(owner), typing(1, "ls\n")).text
             val cursor = typed.substringAfter("cursor: ")
-            assertEquals("the cursor is the one of the output as it was before the input", TabText(SourceText("\$ ready", 24)).cursor.toString(), cursor)
+            assertEquals("the cursor is the one of the output as it was before the input", FakeTerminal().set("old line\n\$ ready").cursor().toString(), cursor)
             val read = runBlocking { AssistantTerminalReadTool(owner).execute(buildJsonObject { put("tab_id", 1); put("from", cursor) }) }.text
-            // The prompt line itself may change (the echo of the command), so what follows it is what the input printed.
-            assertEquals("$tmuxName", "file\n\$ ready", read.lines().drop(1).joinToString("\n"))
+            assertEquals("$tmuxName", "\$ ls\nfile\n\$ ready", read.lines().drop(1).joinToString("\n"))
         }
     }
 
@@ -381,7 +382,7 @@ class AssistantTerminalInputTest {
     private val pinHolder = Pin()
 
     @Test fun `the approved bounds`() {
-        assertEquals(3_000L, AssistantTerminalTabs.COPY_PROBE_TIMEOUT_MS)
+        assertEquals(3_000L, AssistantTerminalTabs.CURSOR_READ_TIMEOUT_MS)
         assertEquals(60_000L, AssistantTerminalTabs.PROGRAM_FRESH_MS)
     }
 
@@ -409,7 +410,7 @@ class AssistantTerminalInputTest {
         val out = send(AssistantTerminalInputTool(tabs(plain)), typing(1, "ls", "enter"))
         assertEquals("Could not read tab 1. Nothing was typed into it.", out.text); assertEquals(ToolOutcome.FAILED, out.outcome)
         assertEquals("nothing went out", "", plain.allTyped())
-        val tmuxTab = TypeTab(1, tmuxName = tmux).also { t -> t.exec = { if ("pane_in_mode" in it) "0\n" else throw java.io.IOException("gone") } }
+        val tmuxTab = TypeTab(1, tmuxName = tmux).also { t -> t.exec = { throw java.io.IOException("gone") } }
         assertEquals("Could not read tab 1. Nothing was typed into it.", send(AssistantTerminalInputTool(tabs(tmuxTab)), typing(1, "ls", "enter")).text)
         assertEquals("", tmuxTab.allTyped())
     }

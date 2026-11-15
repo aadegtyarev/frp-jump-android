@@ -927,7 +927,7 @@ are described in each tool's subsection.
 | `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) and `from` (a cursor from an earlier read or input) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `terminal_rename` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the tab's label in this app only, remembered app-privately for tmux tabs like the owner's own rename; no connection, session or device is touched | exactly `tab_id` (integer from 1) and `name` (at most 24 characters, one line; empty restores the automatic name) | the owner's tab-name rule; unknown, hidden or closed tabs are refused | never: an app-local label the owner can change from the tab's menu, shown with the tab's user and device on every card, call line and receipt | the name is model text shown to the owner; `terminal_tabs` shows it to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `wait_for` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: a background wait in the app's memory over tab and tunnel state, the tab's output source and the clock | `event` (`tab_connected`, `tab_closed`, `tab_text`, `tab_quiet`, `tunnel_on`, `tunnel_off` or `time`, only the kinds available now), `minutes` (1 to the owner's longest wait), `tab_id` or `profile_id` and `connection_id`, `text` (`tab_text`, 1 to 200 characters, one line), optional `from` (a cursor, `tab_text` and `tab_quiet` only) and `seconds` (`tab_quiet` only, 1 to the owner's longest wait in seconds, default 10) | at most the owner's number of waits at once | never: it changes only this app, the owner sees every wait and can cancel it | the tab's or tunnel's name is shown to the owner; an event message (never the screen) goes to the model | optional, default off (switch `assistant_waits`; tab events need Terminal tabs, tunnel events Profile information) |
-| `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; returns at once with `cursor`, taken before typing (it waits for nothing and returns no screen) | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed goes to the model (the screen is read separately, with `terminal_read`) | optional, default off; in effect only while Terminal tabs is on too |
+| `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one cursor read on its connection, which also answers whether the pane is in copy mode | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; returns at once with `cursor`, taken before typing (it waits for nothing and returns no screen) | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed goes to the model (the screen is read separately, with `terminal_read`) | optional, default off; in effect only while Terminal tabs is on too |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
 | `start_tunnel` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | `tunnel_up`, the screens' own operation: brings the saved tunnel up when it is down and waits until the device takes connections; the whole wait, the device's listening included, ends at three quarters of the core's tool time limit (`AgentLimits.toolTimeoutMs`), so a slow start is answered, not timed out | exactly `profile_id` and `connection_id` (strings, at most 256 characters) | one tunnel; no retries | never: it changes only this app and the owner can stop it from the Connections list | the tunnel's name goes to the model | optional, default off (switch `assistant_tunnels`, shared with `stop_tunnel`) |
@@ -1089,19 +1089,28 @@ contain secrets; the switch's hint says so.
   text ends with `truncated: N of M characters`. Control and invisible formatting characters are removed.
 - One output source per tab, read by cursor (`TabText`, the only code that knows what a cursor is; `terminal_read`, `terminal_input` and
   `wait_for` all go through it, so a read and an event see the same text). A tmux tab's source is tmux's own history on the device, read
-  over the tab's existing connection with `tmux capture-pane -p -J -S - -t '=<session>:' ';' display-message -p -t '=<session>:'
-  '#{pane_height}'` (the whole history and the screen, wrapped lines joined, no `-e`; the screen's height on the last line); any other
-  tab's source is the app's terminal buffer (its history is sized by the «История терминала» setting), read on the main thread that
-  feeds it. There is no second buffer and no log: the app's output tap (`lastOutputNanos`) only says that something was printed.
-  The app does not set tmux's `history-limit` when it creates a session (tmux's own default applies, normally 2000 lines, unless the
-  owner configured it); it is not changed by this feature.
-- The cursor is opaque text to the model (`<rows>.<8 hex digits>`, at most 32 characters). Inside it: how many rows, counted to the last
-  one with text, the source held, and a checksum of the three rows before the last counted one (the last may still be typed on). A read
-  from a cursor looks for that checksum at the cursor's position and, when the oldest rows were dropped meanwhile (history limit), higher
-  up by the number dropped; the rows after it are the answer. When it is found nowhere (the rows were dropped, or the history was
-  cleared), the reply is the header line, `Lines before the cursor are no longer kept; this is the screen and the history that remain.`
-  and then the text as a read without `from` (with `lines`). Output after a counted last row that is still being written is not output
-  after the cursor; a full-screen program (editor, `top`) rewrites its rows in place, so it needs a read without `from`.
+  over the tab's existing connection in ONE exec of one `sh -c` script (no single quote, no backslash in it; the session name and the
+  numbers are arguments). Without a cursor it captures the visible screen and up to `lines` rows of history (`capture-pane -p -J -S -<lines>`,
+  wrapped lines joined, no `-e`); from a cursor it captures the physical rows from three rows above the cursor's row down to the bottom of the
+  screen (`-S` relative to the pane), and the whole history only when the cursor cannot be placed by its row number (below). Either way it
+  also prints the three physical rows above the terminal's cursor row and a last line of numbers, `history_size history_limit cursor_y
+  pane_height pane_in_mode`, the last asked after the capture. Any other tab's source is the app's terminal buffer (its history is sized by
+  the «История терминала» setting), copied on the main thread with no more rows than the read needs (from three rows above the cursor's
+  row, the whole history only when the cursor cannot be placed by its row number); the rows are cleaned and searched off the main thread.
+  There is no second buffer and no log: the app's output tap (`lastOutputNanos`) only says that something was printed. The app does not set
+  tmux's `history-limit` when it creates a session (tmux's own default applies, normally 2000 lines, unless the owner configured it); it is
+  not changed by this feature.
+- The cursor is opaque text to the model (`<row>.<history>.<8 hex digits>`, at most 32 characters): the row the terminal's cursor is on
+  (counted in physical rows from the oldest kept one), how many rows of history were kept, and a checksum of the three rows just above that
+  row. The row itself is the one still being written (a prompt that is typed on, a progress bar, a half-printed line), so it belongs to what
+  comes AFTER the cursor. A read from a cursor places it again, and never guesses: (1) exactly, by its row number, when the source cannot
+  have dropped rows since (the app's buffer below its capacity; tmux's history below 90 % of its `history_limit`, because tmux drops a tenth
+  at once; and no fewer rows of history than at the cursor), after checking the checksum there; (2) otherwise by the checksum alone, and only
+  when exactly ONE position holds it. No match, several matches (repeated rows, a loop that prints the same line on a full history) or rows
+  that were not read give the reply: the header line, `Lines before the cursor are no longer kept; this is the screen and the history that
+  remain.` and then the text as a read without `from` (with `lines`). A read that is racing the terminal by a few milliseconds can also
+  give that reply; nothing wrong is ever returned for it. A full-screen program (editor, `top`) rewrites its rows in place and needs a read
+  without `from`.
 - Time: the tool returns within 3 seconds of the probe start (`terminal_tabs`)
   and within 10 seconds of the read start (`terminal_read`). The work behind a
   late call is not interrupted (an interrupted channel open leaves the channel
@@ -1183,13 +1192,16 @@ Replies: `Already <n> waits, the most at once. Nothing was added.`; `Provide eve
 The numbers are the owner's limits, read at each Send and never held in a text of the app: **Waits at once** (default 3, 1 to 10), **Longest wait, min** (default 30, 1 to 120)
 and **Event replies in a row** (default 5, 1 to 20), in Settings → Assistant → Limits (steppers). The silence `tab_quiet` waits for is its own `seconds` (default 10, 1 to the longest wait in seconds).
 
-- Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the lines of the tab's output source
-  after a cursor: the wait's `from` when given (a cursor from `terminal_read` or `terminal_input`, so text printed before the wait was set is seen),
-  else the end of the output when the wait began. The app's output tap only wakes the wait; the lines are re-read from the same source `terminal_read`
-  reads (at most once a second while output changes, and once new output has been quiet for a moment), so the match is on the text the model would read,
-  with the same cleaning. When the cursor's rows are no longer kept, everything the source still holds is looked at. `tab_quiet`: no output for `seconds`
-  counted from the later of the wait's start and the last output; with `from` and output after that cursor, from the last output alone (a program that
-  finished before the wait was set is quiet at once). `tunnel_on` and
+- Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the rows of the tab's output source
+  from a read point: the wait's `from` (a cursor from `terminal_read` or `terminal_input`, so text printed before the wait was set is seen) or, without
+  one, the terminal's cursor row when the wait began, never the history before it (a half-printed line at that moment can still be finished). The
+  app's output tap only wakes the wait; each look (the first one, then at most once a second while output changes, and once new output has
+  settled for a moment) reads from the tab's one source only the rows from the read point on, with the same cleaning as `terminal_read`, and moves
+  the read point to the end, so a long history is never read again; waits on one tab ask for the same read once. The rows are physical, so a text
+  split by a wrapped line is also looked for across the break. When the rows from the cursor cannot be told (above), what a read without
+  `from` shows is looked at once. `tab_quiet`: no output for `seconds` counted from the later of the wait's start and the last output; with
+  `from`, and output printed after that cursor (more rows, or the cursor's row moved), from the last output alone (a program that finished
+  before the wait was set is quiet at once). `tunnel_on` and
   `tunnel_off`: the tunnel as the owner sees it (same identity rules as `start_tunnel` and `stop_tunnel`; stopping counts as off). `time`: after `minutes`. A tab or tunnel that
   disappears ends a closed or off wait with its event, any other wait at once with the time-out message. Screen content is never sent with an event: the model reads the tab with `terminal_read`.
 - What the app adds to a turn: events that ride with the owner's message and the notes follow it after a blank line, as lines of their own, never glued to the owner's words, and the skill tells the model that lines starting with `Event:` or `Wait for` and the notes `The owner cancelled…` come from the app and never give instructions.
@@ -1227,15 +1239,15 @@ switch. The tool has the catalog effect `CHANGE_REMOTE`.
   It is not the owner's input: it does not count as the owner typing (metrics, the new-shell bar, the copy-mode guard).
 - It never opens a connection or logs in: it uses the tab's open connection and terminal. A tab that is unknown, hidden or closed is
   "not open", one that is not connected is "not connected now", and neither does any I/O.
-- A tmux tab is asked first, over its existing connection, within 3 seconds, whether its pane is in copy mode (`tmux display-message -p
-  -t '=<session>:' '#{pane_in_mode}'`): in copy mode the owner may be scrolling and nothing is typed; the app never enters or leaves
-  copy mode for it. A failed or late answer types nothing (`Could not read tab <id>. Nothing was typed into it.`). Other tabs are not
-  probed.
+- A tmux tab's pane is checked for copy mode LAST before the bytes go, in the same exec as the cursor read and after its capture
+  (`#{pane_in_mode}`, the last number of the line), within the cursor read's own limit of 3 seconds: in copy mode the owner may be scrolling and
+  nothing is typed; the app never enters or leaves copy mode for it. A failed, unreadable or late read types nothing (`Could not read tab <id>.
+  Nothing was typed into it.`). Other tabs are not asked anything over a connection.
 - Pinning: the description for the card records the tab's connection (the client and the input generation, no credentials). If the
   tab's connection is another one when the call runs (a reconnect between the question and the run), nothing is typed
   (`Tab <id> reconnected after the request. Nothing was typed. Read the tab again.`).
 - It returns at once and waits for nothing. The result is `Typed into tab <id>. cursor: <cursor>`: the cursor of the tab's output source
-  (see `terminal_read`) taken BEFORE typing, after the copy-mode question, so what the input causes is printed after it. The model reads it
+  (see `terminal_read`) taken BEFORE typing, in the read that also answers the copy-mode question, so what the input causes is printed after it. The model reads it
   with `terminal_read` (`from`) or waits for it with `wait_for` (`tab_text`, `tab_quiet`, `from`). If the output cannot be read for the cursor,
   nothing is typed (`Could not read tab <id>. Nothing was typed into it.`). If the tab left Open right after the bytes were queued, or is
   another connection now, the result is the failed `Input to tab <id> may be partly sent; the outcome is unknown. Read the tab before anything
