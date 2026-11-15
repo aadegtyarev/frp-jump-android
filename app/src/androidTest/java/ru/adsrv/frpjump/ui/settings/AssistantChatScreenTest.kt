@@ -134,7 +134,7 @@ class AssistantChatScreenTest {
                 clientFactory = { error("No actual SSH") }),
         ))
     /** Two synthetic tabs for the terminal tools: a plain one (read from the app's buffer) and a tmux one (probed over its own client). */
-    private var terminalTabs: AssistantTerminalTabs? = null
+    private var terminalTabs: AssistantTerminalTabs? = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null })
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
@@ -393,10 +393,11 @@ class AssistantChatScreenTest {
         val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
         return compose.activity.createConfigurationContext(config).getString(id)
     }
-    /** The service tool `request_tool` follows the enabled tools while at least one of the five is off. */
-    private fun withRequestTool(enabled: List<String>) = if (enabled.size < 5) enabled + "request_tool" else enabled
+    /** The service tool `request_tool` follows the enabled tools while at least one of the six switches is off; the terminal switch brings two tools. */
+    private fun withRequestTool(enabled: List<String>) =
+        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read") else listOf(it) } + (if (enabled.size < 6) listOf("request_tool") else emptyList())
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
-        when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
+        when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "terminal_tabs" -> it.terminalTabs; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
     }
     private fun awaitToolSaved(id: String, enabled: Boolean) {
         fun snapshot(): String {
@@ -776,7 +777,7 @@ class AssistantChatScreenTest {
         compose.activityRule.scenario.onActivity { install(it) }
         compose.onNodeWithTag("assistant_tools_entry").performClick()
         val retained = settingsBinding
-        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) {
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "ssh_command")) {
             toolToggle(id).assertIsOff().performClick(); awaitToolSaved(id, true)
             toolToggle(id).assertIsOn().assertIsEnabled()
             compose.runOnIdle { assertEquals(0, calls); settingsFile.failWrites = true }
@@ -791,7 +792,7 @@ class AssistantChatScreenTest {
         }
         compose.activityRule.scenario.recreate()
         compose.activityRule.scenario.onActivity { install(it) }
-        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")) toolToggle(id).assertIsOn().assertIsEnabled()
+        for (id in listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "ssh_command")) toolToggle(id).assertIsOn().assertIsEnabled()
         compose.runOnIdle { assertSame(retained, settingsBinding); assertEquals(0, calls) }
     }
 
@@ -1140,7 +1141,7 @@ class AssistantChatScreenTest {
         install(); input().performTextInput("Completed first")
         sendAndAwait()
         val retained = owner!!
-        val ids = listOf("web_search", "read_page", "inspect_image", "profile_information", "ssh_command")
+        val ids = listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "ssh_command")
         for ((index, id) in ids.withIndex()) {
             val completeCount = retained.state.value.turns.size
             compose.runOnIdle { heldProviderReply = CompletableDeferred(); mode = "held-answer" }
