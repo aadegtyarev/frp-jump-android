@@ -643,7 +643,13 @@
     <string name="terminal_not_open">The session is not open.</string>
     <string name="terminal_new_session">New session</string>
     <string name="terminal_new_session_as">Log in as another user</string>
-    <string name="terminal_tab_menu">Close or reconnect</string>
+    <string name="terminal_tab_menu">Session actions</string>
+    <string name="terminal_tab_rename">Rename…</string>
+    <string name="terminal_tab_name_title">Tab name</string>
+    <string name="terminal_tab_name_field">Name</string>
+    <string name="terminal_tab_name_automatic">Empty: automatic, %1$s</string>
+    <string name="terminal_tab_name_too_long">At most 24 characters.</string>
+    <string name="terminal_tab_name_bad_character">No line breaks, invisible characters or |.</string>
     <string name="terminal_session_gone">The session is gone</string>
     <string name="snippet_run">Run</string>
     <string name="snippet_type">Type</string>

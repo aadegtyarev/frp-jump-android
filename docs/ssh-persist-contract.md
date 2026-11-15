@@ -135,8 +135,44 @@ order. Skip names already held or claimed by another tab. Reserve
 the counter beyond recovered names. With none, open one new tab. Otherwise
 attach one tab per available session, first selected, and show “Restored N
 sessions”. A failed listing while transport remains up is treated as no
-sessions found; a transport loss fails the attempt. Tabs themselves are not
-persisted, and remote sessions belong to the SSH user, not all users on a device.
+sessions found (and forgets no [tab name](#tab-names)); a transport loss fails
+the attempt. Tabs themselves are not persisted, and remote sessions belong to the SSH user, not all users on a device.
+
+### Tab names
+
+The owner can name a tab (tab menu → **Rename…**). The chip then shows the
+name instead of the automatic `user · device` label, and the tab's menu shows
+the automatic label as a muted header, so user and device stay visible; the
+accessibility name is “<name>, <automatic label>”. Empty after trimming goes
+back to the automatic label.
+
+- **Rules** (one function, `checkTabName`): trimmed; at most 24 code points;
+  one line; no control, format/invisible (bidi controls, zero-width) or
+  line-separator characters, no unpaired surrogate and no `|`. An invalid name
+  cannot be saved; the dialog says why under the field.
+- **Lifetime.** The name belongs to the tab: it stays through automatic
+  reconnect, **Reconnect** and **Change login** (the same tab place) and is
+  gone when the tab is closed for good.
+- **Remembered for tmux tabs.** While a tab runs tmux, its name is also kept
+  app-privately in `tab_names.json` (next to `tmux_names.json`, the same
+  no-backup rule: the app disables Android backup), keyed by profile id,
+  device host, port, SSH user and the tab's tmux session name. When the app
+  attaches that session again (“Restored N sessions” after an app restart or
+  a tunnel reconnect, [above](#pick-up-after-a-kill)) the tab gets its name
+  back, unless the owner has already named the tab. Tabs in plain shells keep
+  the name in memory only.
+- **Forgotten** when the app ends that tmux session (a committed Close whose
+  kill command succeeded, or Close all), when the owner clears the name, and
+  when a session listing for that profile, device, port and user succeeds and
+  does not have the session (the pick-up listing and the Close-all listing;
+  sessions of tabs open now are exempt). A failed listing forgets nothing; a
+  Close with the connection down leaves the remote session, so its name stays
+  until a listing shows it gone. At most 200 names are kept; the oldest
+  written go first.
+- **Data.** A name is owner-typed text, not a secret and not expected to hold
+  one; it is stored unsealed with profile id, device host, port, user and
+  tmux session name. It is never sent anywhere, and no assistant tool,
+  receipt or model text sees it.
 
 ### Closing
 
@@ -363,6 +399,8 @@ that join timeout as a proven end-to-end maximum or remove the protection;
 - Local tabs/emulator text and per-tab text drafts are process-memory state,
   not a stored tab list. Install id and counter are app-private persisted
   naming data. Saved login choices and host pins follow the shared app rules.
+- Owner-set tab names ([below](#tab-names)) are the one tab property that is
+  also persisted app-privately, and only for tabs that run tmux.
 - Preserve selected-tab-only automatic OSC 52 writes, exact terminal identity
   checks on late callbacks, explicit selection Copy (including ended terminals),
   the common 64 × 1024 UTF-16-code-unit cap and copied-text notice. Leaving the

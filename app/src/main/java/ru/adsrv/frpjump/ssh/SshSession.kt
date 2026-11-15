@@ -76,6 +76,8 @@ class SshEnvironment(
     /** Read only when a new terminal is constructed, never on automatic reconnect. */
     val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
     val visible: StateFlow<Boolean> = MutableStateFlow(false),
+    /** Owner-set tab names of tmux tabs, remembered app-privately. */
+    val tabNames: TabNameStore = TabNameStore(MemoryTextStorage()),
     /** Optional transport construction seam; production keeps the standard SSHJ configuration. */
     internal val clientFactory: (() -> SSHClient)? = null,
 )
@@ -114,6 +116,8 @@ class SshSession(
     pickUp: ((SshSession, List<String>) -> String?)? = null,
     /** Picked up after a kill: the first attach says nothing ("Restored N sessions" does). */
     quietAttach: Boolean = false,
+    /** The owner-set name of the tab it replaces (Reconnect), or one remembered for the picked-up session; null: none. */
+    tabName: String? = null,
 ) {
     val terminal = RemoteTerminal(terminalClient, historyRows = env.historyRows())
 
@@ -141,6 +145,37 @@ class SshSession(
     val state: StateFlow<SshState> = _state
 
     val title get() = "$user@$device"
+
+    private val _tabName = MutableStateFlow(tabName)
+
+    /** The owner-set name of the tab, null while it shows the automatic label. */
+    val tabName: StateFlow<String?> = _tabName
+
+    /**
+     * The owner's new name for the tab ([checkTabName]'s valid one; null clears it). A tab running tmux has it
+     * remembered too, see [TabNameStore]. Main thread.
+     */
+    fun rename(name: String?) {
+        _tabName.value = name
+        val key = tabNameKey() ?: return
+        if (name == null) env.tabNames.forget(key) else if (tmux.inUse) env.tabNames.put(key, name)
+    }
+
+    /** A name remembered for the tmux session this tab took up ([TabNameStore]): used unless the owner named the tab meanwhile. */
+    fun restoreTabName(name: String) {
+        _tabName.compareAndSet(null, name)
+    }
+
+    /** The key of this tab's remembered name: its login and tmux session, once it has one. */
+    fun tabNameKey(): TabNameKey? = tmux.assigned?.let { TabNameKey(profile, device, port, user, it) }
+
+    /** Attached to tmux: the owner's name, if any, is remembered for this session. */
+    private fun rememberTabName() {
+        val name = _tabName.value ?: return
+        if (!tmux.inUse) return
+        val key = tabNameKey() ?: return
+        runCatching { env.tabNames.put(key, name) }
+    }
 
     /**
      * Back after a drop with a fresh shell (no tmux yet: what ran before
@@ -429,7 +464,12 @@ class SshSession(
             ssh.startSession().use { s ->
                 val command = s.exec(tmuxKillCommand(name))
                 command.join(TMUX_EXEC_TIMEOUT_S, TimeUnit.SECONDS)
-                if (command.exitStatus != 0) Log.w(TAG, "tmux kill-session ended with ${command.exitStatus}")
+                if (command.exitStatus != 0) {
+                    Log.w(TAG, "tmux kill-session ended with ${command.exitStatus}")
+                } else {
+                    // Ended: its remembered tab name goes with it.
+                    env.tabNames.forget(TabNameKey(profile, device, port, user, name))
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "tmux kill-session failed: ${e.javaClass.simpleName}")
@@ -460,15 +500,16 @@ class SshSession(
     /**
      * This install's tmux sessions on the device, by number ([ownTmuxSessions]).
      * As with the probe, a listing that fails on a connection still up
-     * counts as none: the tab opens as without a pick-up.
+     * is null: the tab opens as without a pick-up, and no remembered tab
+     * name is forgotten for it.
      */
-    private fun listOwnTmux(ssh: SSHClient): List<String> =
+    private fun listOwnTmux(ssh: SSHClient): List<String>? =
         try {
             ownTmuxSessions(execOutput(ssh, TMUX_LIST_COMMAND), env.tmuxNames.install)
         } catch (e: IOException) {
             if (!ssh.isConnected) throw e
             Log.w(TAG, "tmux list-sessions failed: ${e.javaClass.simpleName}")
-            emptyList()
+            null
         }
 
     /**
@@ -570,6 +611,7 @@ class SshSession(
                 _state.value = SshState.Open
                 observeResponse(ssh)
             }
+            if (attached) rememberTabName()
         } catch (e: CancellationException) {
             throw e
         } catch (e: UserAuthException) {

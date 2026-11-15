@@ -675,7 +675,13 @@
     <string name="terminal_not_open">Сессия не открыта.</string>
     <string name="terminal_new_session">Новая сессия</string>
     <string name="terminal_new_session_as">Войти другим пользователем</string>
-    <string name="terminal_tab_menu">Закрыть или переподключить</string>
+    <string name="terminal_tab_menu">Действия сессии</string>
+    <string name="terminal_tab_rename">Переименовать…</string>
+    <string name="terminal_tab_name_title">Имя вкладки</string>
+    <string name="terminal_tab_name_field">Имя</string>
+    <string name="terminal_tab_name_automatic">Пусто — автоматическое: %1$s</string>
+    <string name="terminal_tab_name_too_long">Не больше 24 символов.</string>
+    <string name="terminal_tab_name_bad_character">Без переводов строки, невидимых символов и |.</string>
     <string name="terminal_session_gone">Сессии уже нет</string>
     <string name="snippet_run">Выполнить</string>
     <string name="snippet_type">Ввести</string>

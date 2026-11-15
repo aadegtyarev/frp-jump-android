@@ -289,6 +289,12 @@ fun TerminalScreen(
             loginReplaces = false
             loginLikeId = selected.id
         },
+        // From a tab's menu: the login dialog for that tab's device and port, as "+" long press does for the selected one.
+        logInAs = { id ->
+            loginReplaces = false
+            loginLikeId = id
+        },
+        rename = { id, name -> list.firstOrNull { it.id == id }?.rename(name) },
         keyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget)?.let(keyLogin::start) },
         offersKeyLogin = { id -> list.firstOrNull { it.id == id }?.let(keyLoginTarget) != null },
     )
