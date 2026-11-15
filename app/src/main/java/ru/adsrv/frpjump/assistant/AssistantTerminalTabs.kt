@@ -21,8 +21,8 @@ import ru.adsrv.frpjump.ssh.ExecLease
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.execOutputTail
-import ru.adsrv.frpjump.ssh.tmuxReadFromCommand
 import ru.adsrv.frpjump.ssh.tmuxReadScreenCommand
+import ru.adsrv.frpjump.ssh.tmuxReadWindowCommand
 import ru.adsrv.frpjump.ssh.tmuxPaneProgramCommand
 import ru.adsrv.frpjump.tunnel.SessionKind
 import ru.adsrv.frpjump.tunnel.TunnelRef
@@ -160,8 +160,6 @@ private const val ANCHOR_ROWS = 3
  */
 internal class TabRead(val tab: TerminalTab, val text: String, val cursor: TabCursor, val cursorGone: Boolean = false)
 
-/** The terminal changed under two reads in a row: its rows and numbers do not belong together. */
-internal class TabUnsettled : Exception()
 internal class TabNotOpen : Exception()
 internal class TabNotConnected(val state: TabState) : Exception()
 /** The tab's tmux pane is in copy mode: the owner may be scrolling. Nothing was typed. */
@@ -323,42 +321,59 @@ class AssistantTerminalTabs internal constructor(
         admitSideEffect(DISPATCH)
         val command = when (mode) {
             is ReadMode.Screen -> tmuxReadScreenCommand(name, mode.lines)
-            is ReadMode.From -> tmuxReadFromCommand(name, mode.cursor.position, mode.cursor.history, mode.full)
+            // The window is relative to the bottom of the pane, so it needs no question first: one trim of the history above the screen, as tall as the
+            // screen was last seen (a guess before the first read: a wrong guess only makes the window too small, and the whole history is the fallback).
+            is ReadMode.From -> tmuxReadWindowCommand(name, if (mode.full) null else geometry[handle.id].let { (it?.first ?: DEFAULT_LIMIT) / 10 + (it?.second ?: DEFAULT_HEIGHT) + ANCHOR_ROWS })
         }
-        // Output that came between the first numbers and the captures shifts the rows: the numbers are asked again at the end and must not have
-        // changed. One more try; then the read is unsettled and no numbers are ever used.
-        repeat(2) {
-            val output = bounded(timeoutMs) { lease -> handle.exec(command, READ_MAX_BYTES, lease) } ?: throw java.io.IOException("tab read failed")
-            withContext(compute) { tmuxSource(output, mode) }?.let { return it }
-        }
-        throw TabUnsettled()
+        val output = bounded(timeoutMs) { lease -> handle.exec(command, READ_MAX_BYTES, lease) } ?: throw java.io.IOException("tab read failed")
+        val read = withContext(compute) { tmuxSource(output, mode) }
+        geometry[handle.id] = read.limit to read.height
+        return read.text to read.inCopyMode
     }
 
+    /** The history limit and the screen height each tmux tab had when last read (tab id -> limit, height): what the next window is sized by. */
+    private val geometry = java.util.concurrent.ConcurrentHashMap<Int, Pair<Int, Int>>()
+
+    private class TmuxRead(val text: TabText, val inCopyMode: Boolean, val limit: Int, val height: Int)
+
     /**
-     * What [tmuxReadScreenCommand] and [tmuxReadFromCommand] print: the rows, the rows above the cursor, a line of numbers (`history_size history_limit
-     * cursor_y pane_height`) and a last line of the same numbers and `pane_in_mode`. Read from the end, because only the newest bytes are kept. Null
-     * when the two lines of numbers differ.
+     * What [tmuxReadScreenCommand] and [tmuxReadWindowCommand] print, read from the end (only the newest bytes are kept): a last line of numbers
+     * (`history_size history_limit cursor_y pane_height pane_in_mode`), taken by the same tmux invocation as the rows, so they belong together; for a read
+     * without a cursor before it the physical rows from three rows above the screen (the rows above the cursor are cut out of them) and before those the
+     * rows to show; for a read to place a cursor the rows alone, which are the physical rows to the bottom of the screen.
      */
-    private fun tmuxSource(output: String, mode: ReadMode): Pair<TabText, Boolean>? {
+    private fun tmuxSource(output: String, mode: ReadMode): TmuxRead {
         val lines = output.removeSuffix("\n").split('\n')
-        fun numbers(line: String) = line.trim().split(' ').map { it.toIntOrNull() ?: throw java.io.IOException("tab read unreadable") }
-        if (lines.size < 2) throw java.io.IOException("tab read unreadable")
-        val n = numbers(lines[lines.size - 2])
-        val end = numbers(lines.last())
-        if (n.size != 4 || end.size != 5 || n.any { it < 0 } || n[3] == 0) throw java.io.IOException("tab read unreadable")
-        if (n != end.subList(0, 4)) return null
-        val (history, limit, cursorY, height) = n
-        val inMode = end[4]
+        val n = lines.last().trim().split(' ').map { it.toIntOrNull() ?: throw java.io.IOException("tab read unreadable") }
+        if (n.size != 5 || n.any { it < 0 } || n[3] == 0) throw java.io.IOException("tab read unreadable")
+        val (history, limit, cursorY, height, inMode) = n
         val cursorRow = history + cursorY
-        val aboveCount = minOf(ANCHOR_ROWS, cursorRow)
-        if (lines.size < 2 + aboveCount) throw java.io.IOException("tab read unreadable")
-        val above = lines.subList(lines.size - 2 - aboveCount, lines.size - 2)
-        var rows = lines.subList(0, lines.size - 2 - aboveCount)
-        // Only the newest bytes are kept: when the cut fell in a row, that row is partial and goes.
-        if (output.length >= READ_MAX_BYTES / 4 && output.toByteArray(Charsets.UTF_8).size >= READ_MAX_BYTES - CUT_MARGIN) rows = rows.drop(1)
-        val first = if (mode is ReadMode.From) history + height - rows.size else -1
-        val source = SourceText(rows.joinToString("\n"), first, cursorRow, above, history, noDrop = history.toLong() * 10 < limit.toLong() * 9)
-        return TabText(source) to (inMode == 1)
+        var body = lines.subList(0, lines.size - 1)
+        val above: List<String>
+        val text: List<String>
+        val first: Int
+        if (mode is ReadMode.Screen) {
+            // The physical block: rows from three above the screen (fewer when the history is shorter) down to its bottom.
+            val start = history - minOf(ANCHOR_ROWS, history)
+            val block = minOf(ANCHOR_ROWS, history) + height
+            if (body.size < block) throw java.io.IOException("tab read unreadable")
+            val physical = body.subList(body.size - block, body.size)
+            above = physical.subList(maxOf(0, cursorRow - ANCHOR_ROWS) - start, cursorRow - start)
+            text = body.subList(0, body.size - block)
+            first = -1
+        } else {
+            // Only the newest bytes are kept: when the cut fell in a row, that row is partial and goes.
+            if (output.length >= READ_MAX_BYTES / 4 && output.toByteArray(Charsets.UTF_8).size >= READ_MAX_BYTES - CUT_MARGIN) body = body.drop(1)
+            first = history + height - body.size
+            if (first < 0) throw java.io.IOException("tab read unreadable")
+            val from = maxOf(0, cursorRow - ANCHOR_ROWS) - first
+            above = if (from < 0) emptyList() else body.subList(from, cursorRow - first)
+            text = body
+        }
+        val noDrop = history.toLong() * 10 < limit.toLong() * 9
+        val trim = if (mode is ReadMode.From && !mode.full) limit / 10 else -1
+        val source = SourceText(text.joinToString("\n"), first, cursorRow, above, history, noDrop, trim)
+        return TmuxRead(TabText(source), inMode == 1, limit, height)
     }
 
     /** Runs [block] off the main thread: rows are cleaned and searched where the app's UI is not. */
@@ -370,10 +385,10 @@ class AssistantTerminalTabs internal constructor(
      */
     internal suspend fun read(id: Int, lines: Int, from: TabCursor? = null): TabRead {
         if (from != null) {
-            val found = try { rowsSince(id, from) } catch (_: TabUnsettled) { null }
+            val found = rowsSince(id, from)
             if (found != null) return TabRead(found.tab, found.rows, found.cursor)
         }
-        // Without a cursor, or when it cannot be placed (or the terminal never settled for the read from it): the screen and its history, and a fresh cursor.
+        // Without a cursor, or when it cannot be placed: the screen and its history, and a fresh cursor.
         val (tab, text) = look(id, ReadMode.Screen(lines))
         return TabRead(tab, text.screen(), text.cursor, cursorGone = from != null)
     }
@@ -383,13 +398,14 @@ class AssistantTerminalTabs internal constructor(
 
     /**
      * The rows from [from] on: read as little as places it (from three rows above it; when rows may have been dropped, from one trim of the history
-     * higher), then, only when that did not, the whole history; null when it is placed by neither. [TabUnsettled] when the terminal changed during both tries.
+     * higher), then, only when that did not, the whole history; null when it is placed by neither.
      */
     internal suspend fun rowsSince(id: Int, from: TabCursor): Since? {
         for (full in listOf(false, true)) {
             val (tab, text) = look(id, ReadMode.From(from, full))
             offMain { text.since(from) }?.let { return Since(tab, it, text.cursor) }
-            if (full || text.placedByRow(from)) return null
+            // Rows that were read and do not match its checksum where its row number says they should are a real change: more rows would not help.
+            if (full || (text.placedByRow(from) && text.covers(from))) return null
         }
         return null
     }
@@ -447,6 +463,9 @@ class AssistantTerminalTabs internal constructor(
         private const val READ_MAX_BYTES = 1 shl 20
         /** Room for a character that the byte limit cut in two. */
         private const val CUT_MARGIN = 8
+        /** What a window is sized by before the first read of a tab says what its history limit and screen are. */
+        private const val DEFAULT_LIMIT = 2000
+        private const val DEFAULT_HEIGHT = 50
         const val PROGRAM_CHARS = 64
 
         /** A program name from tmux's answer: its first line, printable characters only, no record separator, at most [PROGRAM_CHARS]; null when nothing is left. */

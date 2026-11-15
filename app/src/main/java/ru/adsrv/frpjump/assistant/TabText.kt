@@ -23,6 +23,8 @@ internal sealed interface ReadMode {
  */
 internal class SourceText(
     val text: String, val firstRow: Int, val cursorRow: Int, val above: List<String>, val historyRows: Int, val noDrop: Boolean,
+    /** For a window read of tmux's history: the rows one trim of it drops (a tenth of its limit); -1 for any other read. */
+    val trim: Int = -1,
 )
 
 /**
@@ -58,7 +60,9 @@ internal fun trimRows(limit: Int) = limit / 10
  * it is part of what comes AFTER the cursor, and the checksum is of the rows above it. Reading from a cursor places it again:
  * - exactly, by its row number, when the source cannot have dropped rows since ([SourceText.noDrop] and no fewer rows of history than at the
  *   cursor), after checking the checksum there;
- * - otherwise by the checksum alone, and only when exactly ONE position holds it: no match, several matches (repeated rows, a full-history loop),
+ * - otherwise, in a window read of tmux's history ([SourceText.trim]), only at the cursor's own row or one trim above it (tmux drops a tenth of its
+ *   history at once), and only when that is the ONE position of the window that holds the checksum; a match anywhere else, or besides it, is not trusted;
+ * - otherwise (the whole history, or the app's buffer) by the checksum alone, and only when exactly ONE position holds it: no match, several matches (repeated rows, a full-history loop),
  *   or rows that were not read, mean the rows are no longer told apart and nothing is guessed ([since] is null).
  */
 internal class TabText(private val source: SourceText) {
@@ -76,6 +80,7 @@ internal class TabText(private val source: SourceText) {
         if (first < 0) return null
         val at = when {
             placedByRow(from) -> from.position.takeIf { sumAt(it) == from.sum }
+            source.trim >= 0 -> (maxOf(0, first)..first + rows.size).filter { sumAt(it) == from.sum }.singleOrNull()?.takeIf { it == from.position || it == from.position - source.trim }
             else -> {
                 var found = -1
                 for (q in 0..minOf(from.position, first + rows.size)) {
@@ -89,6 +94,9 @@ internal class TabText(private val source: SourceText) {
         if (at - first > rows.size) return null
         return rows.subList(maxOf(0, at - first), rows.size).dropLastWhile { it.isEmpty() }.joinToString("\n")
     }
+
+    /** Whether the rows read reach back to the three rows above [from]: a read that does not cannot place it, and a wider read may. */
+    fun covers(from: TabCursor) = first == 0 || (first in 0..maxOf(0, from.position - ANCHOR_ROWS))
 
     /** Whether [since] placed [from] by its row number: a read that could not do so (null) cannot be helped by reading more rows. */
     fun placedByRow(from: TabCursor) = source.noDrop && source.historyRows >= from.history

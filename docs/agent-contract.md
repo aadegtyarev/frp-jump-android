@@ -1089,32 +1089,28 @@ contain secrets; the switch's hint says so.
   text ends with `truncated: N of M characters`. Control and invisible formatting characters are removed.
 - One output source per tab, read by cursor (`TabText`, the only code that knows what a cursor is; `terminal_read`, `terminal_input` and
   `wait_for` all go through it, so a read and an event see the same text). A tmux tab's source is tmux's own history on the device, read
-  over the tab's existing connection in ONE exec of one `sh -c` script (no single quote, no backslash in it; the session name and the
-  numbers are arguments). Without a cursor it captures the visible screen and up to `lines` rows of history (`capture-pane -p -J -S -<lines>`,
-  wrapped lines joined, no `-e`); from a cursor it captures the physical rows from three rows above the cursor's row down to the bottom of the
-  screen (`-S` relative to the pane); when rows may have been dropped since (cursor not placed by its row number, below) from one trim of the
-  history (a tenth of `history_limit`) higher, and the whole history only as the last fallback, when that window did not place the cursor. Either
-  way it also prints the three physical rows above the terminal's cursor row (none for an empty history) and two lines of numbers,
-  `history_size history_limit cursor_y pane_height` as asked BEFORE the captures and the same four and `pane_in_mode` asked AFTER them. The two
-  must be equal: output that came in between shifts the rows, so the whole exec is run once more, and when they still differ the read is
-  unsettled and no number of it is used (from a cursor: the "no longer kept" reply with a fresh cursor; a wait: no look this time; a typing:
-  nothing typed, `Could not read tab <id>. Nothing was typed into it.`). Any other tab's source is the app's terminal buffer (its history is sized by
-  the «История терминала» setting), copied on the main thread with no more rows than the read needs (from three rows above the cursor's
-  row; when rows may have dropped, one trim, a tenth of its capacity, higher; the whole transcript only as the last fallback); the rows are
-  cleaned and searched off the main thread.
-  There is no second buffer and no log: the app's output tap (`lastOutputNanos`) only says that something was printed. The app does not set
-  tmux's `history-limit` when it creates a session (tmux's own default applies, normally 2000 lines, unless the owner configured it); it is
-  not changed by this feature.
+  over the tab's existing connection in ONE tmux invocation per read: its commands are chained with `;`, which tmux runs as one list without
+  serving the pane's output in between, so the rows and the numbers belong together (also on a tab that prints all the time). Without a cursor:
+  `capture-pane -p -J -S -<lines>` (the screen and up to `lines` rows of history, wrapped lines joined, no `-e`), `capture-pane -p -S -3` (the
+  physical rows from three above the screen, of which the rows above the terminal's cursor are cut out) and a last line `history_size
+  history_limit cursor_y pane_height pane_in_mode`. To place a cursor: `capture-pane -p -S -<W>` (physical rows; a window relative to the
+  bottom: one trim of the history, a tenth of `history_limit`, plus the screen's height and three, as last seen, so no question comes first)
+  and the same last line; when the window does not place the cursor (it is older than the window, or the match inside is not trusted, below)
+  the whole history, `capture-pane -p -S -`, again one invocation, and then the reply if that does not either. Any other tab's source is the app's
+  terminal buffer (its history is sized by the «История терминала» setting), copied on the main thread with no more rows than the read needs (from
+  three rows above the cursor's row; when rows may have dropped, one trim, a tenth of its capacity, higher; the whole transcript only as the last
+  fallback); the rows are cleaned and searched off the main thread. There is no second buffer and no log: the app's output tap
+  (`lastOutputNanos`) only says that something was printed. The app does not set tmux's `history-limit` when it creates a session (tmux's own
+  default applies, normally 2000 lines, unless the owner configured it); it is not changed by this feature.
 - The cursor is opaque text to the model (`<row>.<history>.<8 hex digits>`, at most 32 characters): the row the terminal's cursor is on
   (counted in physical rows from the oldest kept one), how many rows of history were kept, and a checksum of the three rows just above that
   row. The row itself is the one still being written (a prompt that is typed on, a progress bar, a half-printed line), so it belongs to what
   comes AFTER the cursor. A read from a cursor places it again, and never guesses: (1) exactly, by its row number, when the source cannot
   have dropped rows since (the app's buffer below its capacity; tmux's history below 90 % of its `history_limit`, because tmux drops a tenth
-  at once; and no fewer rows of history than at the cursor), after checking the checksum there; (2) otherwise by the checksum alone, and only
-  when exactly ONE position holds it. No match, several matches (repeated rows, a loop that prints the same line on a full history) or rows
+  at once; and no fewer rows of history than at the cursor), after checking the checksum there; (2) otherwise, in a window of tmux's history, only at the cursor's own row or one trim above it and only when that is the one position of the
+  window holding the checksum, else (and for the whole history and the app's buffer) by the checksum alone, and only when exactly ONE position holds it. No match, several matches (repeated rows, a loop that prints the same line on a full history) or rows
   that were not read give the reply: the header line, `Lines before the cursor are no longer kept; this is the screen and the history that
-  remain.` and then the text as a read without `from` (with `lines`). A read that is racing the terminal by a few milliseconds can also
-  give that reply; nothing wrong is ever returned for it. A full-screen program (editor, `top`) rewrites its rows in place and needs a read
+  remain.` and then the text as a read without `from` (with `lines`). A full-screen program (editor, `top`) rewrites its rows in place and needs a read
   without `from`.
 - Time: the tool returns within 3 seconds of the probe start (`terminal_tabs`)
   and within 10 seconds of the read start (`terminal_read`). The work behind a
@@ -1243,10 +1239,11 @@ switch. The tool has the catalog effect `CHANGE_REMOTE`.
   It is not the owner's input: it does not count as the owner typing (metrics, the new-shell bar, the copy-mode guard).
 - It never opens a connection or logs in: it uses the tab's open connection and terminal. A tab that is unknown, hidden or closed is
   "not open", one that is not connected is "not connected now", and neither does any I/O.
-- A tmux tab's pane is checked for copy mode LAST before the bytes go, in the same exec as the cursor read and after its capture
-  (`#{pane_in_mode}`, the last number of the line), within the cursor read's own limit of 3 seconds: in copy mode the owner may be scrolling and
-  nothing is typed; the app never enters or leaves copy mode for it. A failed, unreadable or late read types nothing (`Could not read tab <id>.
-  Nothing was typed into it.`). Other tabs are not asked anything over a connection.
+- A tmux tab's pane is checked for copy mode LAST before the bytes go: the answer (`#{pane_in_mode}`, the last number of the line) comes from the
+  same single tmux invocation as the cursor read, after its capture, within the cursor read's own limit of 3 seconds. In copy mode the owner may be
+  scrolling and nothing is typed; the app never enters or leaves copy mode for it. A failed or late invocation types nothing (`Could not read tab
+  <id>. Nothing was typed into it.`). Typing depends on the pin and that answer only: the rows are not compared with anything, so a tab that
+  prints all the time can always be typed into (Ctrl+C for a runaway program). Other tabs are not asked anything over a connection.
 - Pinning: the description for the card records the tab's connection (the client and the input generation, no credentials). If the
   tab's connection is another one when the call runs (a reconnect between the question and the run), nothing is typed
   (`Tab <id> reconnected after the request. Nothing was typed. Read the tab again.`).

@@ -59,30 +59,24 @@ internal class FakeTerminal(var screenRows: Int = 24, var historyLimit: Int = 20
 
     // ---- the device's tmux ----
 
-    /** Called after the captures and before the last numbers of a tmux read: output that comes in between (the numbers then differ). */
-    var gap: ((String) -> Unit)? = null
+    private fun numbers() = "$history $historyLimit $cursorY $screenRows ${if (inCopyMode) 1 else 0}"
 
-    /** The commands the tmux reads sent, with the rows above the cursor taken (a read of an empty history takes none). */
-    var aboveCaptures = 0
-
-    private fun numbers() = "$history $historyLimit $cursorY $screenRows"
-
-    /** What the device answers to the tmux read commands; null for any other command. */
+    /** What the device answers to the tmux read commands (one invocation, so rows and numbers belong together); null for any other command. */
     fun exec(command: String): String? {
-        val m = ARGS.find(command) ?: return null
+        if (!command.contains("capture-pane")) return null
         val rows = all()
-        val start = numbers()
         val out = StringBuilder()
-        val first = if (m.groupValues[2].isEmpty()) history - minOf(m.groupValues[1].toInt(), history)
-            else firstRow(TabCursor(m.groupValues[1].toInt(), m.groupValues[2].toInt(), 0), m.groupValues[3] == "1",
-                history.toLong() * 10 < historyLimit.toLong() * 9 && history >= m.groupValues[2].toInt())
-        for (row in rows.subList(minOf(first, rows.size), rows.size)) out.append(row).append('\n')
-        if (history + cursorY > 0) { aboveCaptures++; for (row in above()) out.append(row).append('\n') }
-        gap?.invoke(command)
-        return out.append(start).append('\n').append("${numbers()} ${if (inCopyMode) 1 else 0}\n").toString()
-    }
-
-    private companion object {
-        val ARGS = Regex(" sh '=[^']*' (\\d+)(?: (\\d+) ([01]))?$")
+        fun rowsFrom(first: Int) { for (row in rows.subList(minOf(maxOf(0, first), rows.size), rows.size)) out.append(row).append('\n') }
+        if (" -J " in command) {
+            // The screen: the rows to show (wrapped lines joined), then the physical rows from three above the screen.
+            val lines = Regex("-J -S -(\\d+) ").find(command)!!.groupValues[1].toInt()
+            rowsFrom(history - minOf(lines, history))
+            rowsFrom(history - minOf(3, history))
+        } else if (Regex("-S - -t").containsMatchIn(command)) {
+            rowsFrom(0)
+        } else {
+            rowsFrom(history - Regex("-S -(\\d+) -t").find(command)!!.groupValues[1].toInt())
+        }
+        return out.append(numbers()).append('\n').toString()
     }
 }

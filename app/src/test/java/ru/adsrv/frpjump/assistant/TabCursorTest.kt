@@ -161,98 +161,66 @@ class TabCursorTest {
 
     // ---- what a read costs ----
 
-    @Test fun `a read from a cursor over a long history fetches the rows from the cursor on, not the history`() {
+    @Test fun `a read from a cursor over a long history fetches a window at the bottom, not the history`() {
         val tab = Tab(1, tmuxName).also { it.term.set(rows(1..1500)) }
         val o = owner(tab)
         val from = cursorOf(read(o).text)
         tab.term.print("row 1501", "row 1502")
         val before = tab.commands.size
         assertEquals(rows(1500..1502), body(read(o, "from" to from).text))
-        val command = tab.commands[before]
-        assertEquals(ru.adsrv.frpjump.ssh.tmuxReadFromCommand(tmuxName, TabCursor.parse(from)!!.position, TabCursor.parse(from)!!.history), command)
-        // What the device sent: a few rows, the rows above the cursor and the numbers.
-        assertTrue(tab.term.exec(command)!!.lines().size < 16)
+        // One tmux invocation: a tenth of the limit and the screen above the screen, and three rows; sized by what the first read saw.
+        assertEquals(ru.adsrv.frpjump.ssh.tmuxReadWindowCommand(tmuxName, 200 + 24 + 3), tab.commands[before])
+        assertEquals(1, tab.commands.size - before)
+        assertTrue(tab.term.exec(tab.commands[before])!!.lines().size < 300)
         // A read without a cursor asks for the history it was asked for, no more.
         val count = tab.commands.size
         read(o, "lines" to 7)
         assertEquals(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmuxName, 7), tab.commands[count])
     }
 
-    // ---- a terminal that changes under a read (tmux): the numbers are asked again at the end ----
-
-    @Test fun `output between the first numbers and the end of a read is retried once, and never used when it goes on`() {
-        val tab = Tab(1, tmuxName).also { it.term.set(rows(1..40)) }
-        val o = owner(tab)
-        val from = cursorOf(read(o).text)
-        tab.term.print("row 41")
-        // One burst of output while the exec runs: the numbers at its end differ from the first, so the whole exec is run again.
-        var bursts = 1
-        tab.term.gap = { if (it.endsWith(" 0") && bursts > 0) { bursts--; tab.term.print("row 42") } }
-        val before = tab.commands.size
-        val out = read(o, "from" to from)
-        assertEquals(2, tab.commands.size - before)
-        assertEquals(rows(40..42), body(out.text))
-        assertEquals(tab.term.cursor().toString(), cursorOf(out.text))
-        // Output that never stops: the read is unsettled. From a cursor that is "no longer kept" with a fresh cursor (a read without a cursor settles
-        // when the output does); never rows from numbers that do not belong together.
-        tab.term.gap = { if (it.endsWith(" 0")) tab.term.print("busy") }
-        val busy = read(o, "from" to from)
-        assertEquals(gone, busy.text.lines()[1])
-        tab.term.gap = { tab.term.print("busy") }
-        val none = read(o, "from" to from)
-        assertEquals("Could not read tab 1. Nothing was typed into it.", none.text)
-        assertEquals(ToolOutcome.FAILED, none.outcome)
-    }
-
-    @Test fun `a wait treats an unsettled read as no look and tries again`() {
-        val tab = Tab(1, tmuxName).also { it.term.set("\$ ") }
-        val o = owner(tab)
-        val from = cursorOf(read(o).text)
-        tab.print("build done")
-        var busy = true
-        tab.term.gap = { if (busy) tab.term.print("noise") }
-        val s = waitSources(o)
-        val result = runBlocking {
-            val waiting = async(Dispatchers.Default) { withTimeoutOrNull(3_000) { s.await(spec(WaitKind.TAB_TEXT, "build done", from)) } }
-            delay(150)
-            assertFalse("nothing was matched on numbers that do not belong together", waiting.isCompleted)
-            busy = false
-            tab.lastOutputNanos++
-            waiting.await()
-        }
-        assertEquals(SourceResult.FIRED, result)
-    }
-
-    @Test fun `no rows above the cursor are asked for when the cursor is on the first row of an empty history`() {
-        val tab = Tab(1, tmuxName)
-        val o = owner(tab)
-        read(o)
-        assertEquals(0, tab.term.aboveCaptures)
-        tab.term.set("a\nb")
-        read(o)
-        assertEquals(1, tab.term.aboveCaptures)
-    }
-
     // ---- what a read of a history that may have dropped rows costs ----
 
-    @Test fun `when rows may have dropped only one trim above the cursor is read, the whole history only as the last fallback`() {
-        val tab = Tab(1, tmuxName, limit = 2000).also { it.term.set(rows(1..1900)) }
+    @Test fun `in a window of tmux's history a match is trusted only at the cursor's row or one trim above it`() {
+        val tab = Tab(1, tmuxName, limit = 2000)
+        val o = owner(tab)
+        tab.term.print(*(1..2010).map { "row $it" }.toTypedArray())
+        val from = cursorOf(read(o).text)
+        // History at 1986 of 2000: not exact. A few rows more and no trim: the cursor's own row, one read.
+        tab.term.print("row 2011", "row 2012")
+        var count = tab.commands.size
+        assertEquals(rows(2010..2012), body(read(o, "from" to from).text))
+        assertEquals(1, tab.commands.size - count)
+        // 20 rows more: tmux trims 200 at once; the cursor's rows sit one trim higher, still inside the window: one read.
+        tab.term.print(*(2013..2030).map { "row $it" }.toTypedArray())
+        count = tab.commands.size
+        assertEquals(rows(2010..2030), body(read(o, "from" to from).text))
+        assertEquals("one read, trusted at one trim above", 1, tab.commands.size - count)
+        // Rows dropped by something that is not one trim (100 of them): the match inside the window is NOT trusted; the whole history is read
+        // and the unique match found there.
+        val other = Tab(1, tmuxName, limit = 2000)
+        val o2 = owner(other)
+        other.term.print(*(1..2010).map { "row $it" }.toTypedArray())
+        val c2 = cursorOf(read(o2).text)
+        other.term.print("row 2011")
+        repeat(100) { other.term.lines.removeAt(0) }
+        count = other.commands.size
+        assertEquals(rows(2010..2011), body(read(o2, "from" to c2).text))
+        assertEquals(2, other.commands.size - count)
+        assertTrue(other.commands.last().contains("-S - -t"))
+    }
+
+    @Test fun `a cursor older than the window goes to the whole history, which is also one invocation`() {
+        val tab = Tab(1, tmuxName, limit = 2000).also { it.term.print(*(1..1900).map { "row $it" }.toTypedArray()) }
         val o = owner(tab)
         val from = cursorOf(read(o).text)
-        val position = TabCursor.parse(from)!!.position
         tab.term.print(*(1901..2200).map { "row $it" }.toTypedArray())
-        val before = tab.commands.size
-        assertEquals(rows(1900..2200), body(read(o, "from" to from).text))
-        assertEquals("one read, from a tenth of the limit above the cursor", 1, tab.commands.size - before)
-        val window = tab.term.exec(tab.commands.last())!!.lines().size
-        assertTrue("window $window rows of ${tab.term.lines.size}", window < 400)
-        assertTrue(position - 3 - 200 > 0)
-        // Dropped further than one trim: the window does not hold it, the whole history is read once, and nothing is guessed.
-        tab.term.print(*(2201..4600).map { "row $it" }.toTypedArray())
-        val c = tab.commands.size
+        val count = tab.commands.size
         val out = read(o, "from" to from)
-        assertEquals(gone, out.text.lines()[1])
-        assertTrue(tab.commands[c].endsWith(" 0") && tab.commands[c + 1].endsWith(" 1"))
+        assertEquals(rows(1900..2200), body(out.text))
+        assertEquals(listOf(ru.adsrv.frpjump.ssh.tmuxReadWindowCommand(tmuxName, 227), ru.adsrv.frpjump.ssh.tmuxReadWindowCommand(tmuxName, null)), tab.commands.drop(count))
+        // Dropped for good: the window does not place it, the whole history does not either: said, and the screen and history shown.
+        tab.term.print(*(2201..4600).map { "row $it" }.toTypedArray())
+        assertEquals(gone, read(o, "from" to from, "lines" to 2).text.lines()[1])
     }
 
     @Test fun `waits with different read points share one read from the oldest of them`() {
@@ -272,7 +240,6 @@ class TabCursorTest {
         }
         val reads = tab.commands.drop(before)
         assertEquals("one read for both: $reads", 1, reads.size)
-        assertEquals(TabCursor.parse(old)!!.position, Regex(" sh '[^']*' (\\d+) (\\d+) [01]$").find(reads.single())!!.groupValues[1].toInt())
     }
 
     // ---- a real terminal buffer: its history limit is the «История терминала» setting ----
@@ -422,11 +389,10 @@ class TabCursorTest {
             a.await() to b.await()
         }
         assertEquals(null to null, result)
-        val reads = tab.commands.drop(1).map { Regex(" sh '[^']*' (\\d+) (\\d+) [01]$").find(it)!!.groupValues[1].toInt() }
-        // The two waits asked for the same read of the same tab once; the next read starts from where the last one ended, never from the wait's cursor again.
-        assertEquals(reads.sorted(), reads)
-        assertTrue(reads.toString(), reads.first() >= TabCursor.parse(from)!!.position && reads.last() > reads.first())
-        assertEquals("one read per look, shared by both waits", reads.distinct(), reads)
+        // One read per output for both waits (the first look, and the look after the new rows); each look reads a window at the bottom, never the history.
+        val reads = tab.commands.drop(1)
+        assertEquals(reads.toString(), 2, reads.size)
+        assertTrue(reads.toString(), reads.all { it == ru.adsrv.frpjump.ssh.tmuxReadWindowCommand(tmuxName, 200 + 24 + 3) })
     }
 
     @Test fun `a wait on a tab that is gone ends`() {

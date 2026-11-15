@@ -116,40 +116,33 @@ fun tmuxTapStateCommand(name: String): String {
 }
 
 /**
- * What the assistant reads of session [name]'s active pane without a cursor: the visible screen and up to [lines] rows of history (0..1000),
- * wrapped lines joined (`-J`), no escape sequences (no `-e`); then the up to three physical rows above the terminal's cursor row (none when it is on
- * the first row of an empty history); then two lines of numbers: `history_size history_limit cursor_y pane_height` as they were BEFORE the
- * captures, and the same four and `pane_in_mode` AFTER them, so that output in between shows (the reader compares the two) and the answer about
- * copy mode is as near to a keystroke as it can be. Read-only: it types nothing, leaves no copy mode and sets no option. One `sh -c` of one exec; the
- * script has no single quote and no backslash, so every login shell passes it alone.
+ * What the assistant reads of session [name]'s active pane without a cursor, in ONE tmux invocation (its commands are chained with `;`, so tmux runs
+ * them as one list without serving the pane's output in between: the rows and the numbers belong together). In this order: the visible screen and up to
+ * [lines] rows of history (0..1000), wrapped lines joined (`-J`), no escape sequences (no `-e`); the physical rows from three rows above the screen to
+ * its bottom (the rows above the terminal's cursor are cut out of them); and one line `history_size history_limit cursor_y pane_height pane_in_mode`.
+ * Read-only: it types nothing, leaves no copy mode and sets no option.
  */
 fun tmuxReadScreenCommand(name: String, lines: Int): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     require(lines in 0..1000) { "history lines out of range" }
-    return "sh -c ${shellQuote(READ_SCREEN_SCRIPT)} sh ${shellQuote("=$name:")} $lines"
+    val target = shellQuote("=$name:")
+    return "tmux capture-pane -p -J -S -$lines -t $target ';' capture-pane -p -S -3 -t $target ';' display-message -p -t $target ${shellQuote(NUMBERS)}"
 }
 
 /**
- * What the assistant reads of session [name]'s active pane from a cursor at row [position] with [history] rows of history then: the physical rows
- * (no `-J`) from three rows above [position] down to the bottom of the screen, when tmux's history cannot have dropped rows since (below 90 % of its
- * limit, and not smaller than [history]); when rows may have dropped, from one trim of the history (a tenth of its limit) higher; with [full], the
- * whole history. Then the same rows above the cursor and the same two lines of numbers as [tmuxReadScreenCommand]. Read-only.
+ * What the assistant reads of session [name]'s active pane to place a cursor, in ONE tmux invocation like [tmuxReadScreenCommand]: the physical rows (no
+ * `-J`) from [rows] rows above the top of the screen to its bottom, or the whole history when [rows] is null (the fallback); then the same line of
+ * numbers. The window is relative to the bottom, so no first question is needed to know where to start. Read-only.
  */
-fun tmuxReadFromCommand(name: String, position: Int, history: Int, full: Boolean = false): String {
+fun tmuxReadWindowCommand(name: String, rows: Int?): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
-    require(position >= 0 && history >= 0) { "cursor out of range" }
-    return "sh -c ${shellQuote(READ_FROM_SCRIPT)} sh ${shellQuote("=$name:")} $position $history ${if (full) 1 else 0}"
+    require(rows == null || rows in 3..1_000_000) { "window out of range" }
+    val target = shellQuote("=$name:")
+    return "tmux capture-pane -p -S ${if (rows == null) "-" else "-$rows"} -t $target ';' display-message -p -t $target ${shellQuote(NUMBERS)}"
 }
 
-private const val NUMBERS = "#{history_size} #{history_limit} #{cursor_y} #{pane_height}"
-private const val ABOVE = "if [ \$((H+CY)) -gt 0 ]; then tmux capture-pane -p -S \$((CY-3)) -E \$((CY-1)) -t \"\$T\" || exit 1; fi; "
-private const val LAST = "echo \"\$M\"; tmux display-message -p -t \"\$T\" \"$NUMBERS #{pane_in_mode}\""
-private const val NUMBERS_OF = "M=\$(tmux display-message -p -t \"\$T\" \"$NUMBERS\") || exit 1; set -- \$M; H=\$1; L=\$2; CY=\$3; "
-private const val READ_SCREEN_SCRIPT = "T=\$1; N=\$2; " + NUMBERS_OF +
-    "tmux capture-pane -p -J -S -\$N -t \"\$T\" || exit 1; " + ABOVE + LAST
-private const val READ_FROM_SCRIPT = "T=\$1; P=\$2; H0=\$3; F=\$4; " + NUMBERS_OF + "S=-; " +
-    "if [ \"\$F\" != 1 ]; then A=\$((P-3)); if [ \$((H*10)) -ge \$((L*9)) ] || [ \"\$H\" -lt \"\$H0\" ]; then A=\$((A-L/10)); fi; [ \$A -lt 0 ] && A=0; S=\$((A-H)); fi; " +
-    "tmux capture-pane -p -S \$S -t \"\$T\" || exit 1; " + ABOVE + LAST
+/** The line of numbers a tmux read ends with: `history_size history_limit cursor_y pane_height pane_in_mode`. */
+private const val NUMBERS = "#{history_size} #{history_limit} #{cursor_y} #{pane_height} #{pane_in_mode}"
 
 /** The program in the foreground of session [name]'s active pane, one line. Read-only. */
 fun tmuxPaneProgramCommand(name: String): String {

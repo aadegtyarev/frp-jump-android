@@ -18,22 +18,20 @@ class TmuxCommandsTest {
 
     @Test
     fun `the read-only commands of the assistant`() {
-        // One sh -c script each, with the name, and the numbers, as arguments: no single quote and no backslash in it, so any login shell passes it alone.
-        val screen = "T=\$1; N=\$2; M=\$(tmux display-message -p -t \"\$T\" \"#{history_size} #{history_limit} #{cursor_y} #{pane_height}\") || exit 1; set -- \$M; H=\$1; L=\$2; CY=\$3; tmux capture-pane -p -J -S -\$N -t \"\$T\" || exit 1; if [ \$((H+CY)) -gt 0 ]; then tmux capture-pane -p -S \$((CY-3)) -E \$((CY-1)) -t \"\$T\" || exit 1; fi; echo \"\$M\"; tmux display-message -p -t \"\$T\" \"#{history_size} #{history_limit} #{cursor_y} #{pane_height} #{pane_in_mode}\""
-        assertEquals("sh -c '$screen' sh '=frpjump-0a1b2c-7:' 100", tmuxReadScreenCommand(name, 100))
-        assertEquals("sh -c '$screen' sh '=frpjump-0a1b2c-7:' 0", tmuxReadScreenCommand(name, 0))
-        assertEquals("sh -c '$screen' sh '=frpjump-0a1b2c-7:' 1000", tmuxReadScreenCommand(name, 1000))
-        val from = "T=\$1; P=\$2; H0=\$3; F=\$4; M=\$(tmux display-message -p -t \"\$T\" \"#{history_size} #{history_limit} #{cursor_y} #{pane_height}\") || exit 1; set -- \$M; H=\$1; L=\$2; CY=\$3; S=-; if [ \"\$F\" != 1 ]; then A=\$((P-3)); if [ \$((H*10)) -ge \$((L*9)) ] || [ \"\$H\" -lt \"\$H0\" ]; then A=\$((A-L/10)); fi; [ \$A -lt 0 ] && A=0; S=\$((A-H)); fi; tmux capture-pane -p -S \$S -t \"\$T\" || exit 1; if [ \$((H+CY)) -gt 0 ]; then tmux capture-pane -p -S \$((CY-3)) -E \$((CY-1)) -t \"\$T\" || exit 1; fi; echo \"\$M\"; tmux display-message -p -t \"\$T\" \"#{history_size} #{history_limit} #{cursor_y} #{pane_height} #{pane_in_mode}\""
-        assertEquals("sh -c '$from' sh '=frpjump-0a1b2c-7:' 1500 1476 0", tmuxReadFromCommand(name, 1500, 1476))
-        assertEquals("sh -c '$from' sh '=frpjump-0a1b2c-7:' 1500 1476 1", tmuxReadFromCommand(name, 1500, 1476, full = true))
-        for (script in listOf(screen, from)) { assertFalse("'" in script); assertFalse('\\' in script); assertFalse(" -e " in script) }
+        // ONE tmux invocation each (its commands chained with ';' are run by tmux as one list, so the rows and the numbers belong together).
+        val numbers = "'#{history_size} #{history_limit} #{cursor_y} #{pane_height} #{pane_in_mode}'"
+        assertEquals("tmux capture-pane -p -J -S -100 -t '=frpjump-0a1b2c-7:' ';' capture-pane -p -S -3 -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers",
+            tmuxReadScreenCommand(name, 100))
+        assertTrue(" -S -0 " in tmuxReadScreenCommand(name, 0)); assertTrue(" -S -1000 " in tmuxReadScreenCommand(name, 1000))
+        assertEquals("tmux capture-pane -p -S -227 -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers", tmuxReadWindowCommand(name, 227))
+        assertEquals("tmux capture-pane -p -S - -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers", tmuxReadWindowCommand(name, null))
+        for (command in listOf(tmuxReadScreenCommand(name, 5), tmuxReadWindowCommand(name, 9), tmuxReadWindowCommand(name, null))) assertFalse(" -e " in command)
         assertEquals("tmux display-message -p -t '=frpjump-0a1b2c-7:' '#{pane_current_command}'", tmuxPaneProgramCommand(name))
         for (bad in listOf(-1, 1001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(name, bad) }
-        assertThrows(IllegalArgumentException::class.java) { tmuxReadFromCommand(name, -1, 0) }
-        assertThrows(IllegalArgumentException::class.java) { tmuxReadFromCommand(name, 0, -1) }
+        for (bad in listOf(-1, 0, 2, 1_000_001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadWindowCommand(name, bad) }
         for (bad in listOf("x; rm -rf /", "frpjump-0a1b2c-0", "")) {
             assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(bad, 5) }
-            assertThrows(IllegalArgumentException::class.java) { tmuxReadFromCommand(bad, 1, 1) }
+            assertThrows(IllegalArgumentException::class.java) { tmuxReadWindowCommand(bad, 9) }
             assertThrows(IllegalArgumentException::class.java) { tmuxPaneProgramCommand(bad) }
         }
     }
