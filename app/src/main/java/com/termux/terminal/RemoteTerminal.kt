@@ -56,8 +56,8 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     }
 
     /**
-     * [System.nanoTime] of the latest chunk of output from the remote side (a connection opening counts too): what the assistant's quiet
-     * wait watches. One volatile write per chunk; local notes are not output.
+     * [System.nanoTime] of the latest chunk the remote side sent (set per chunk read in [pump]; a connection opening and local notes do
+     * not count): what the assistant's quiet wait watches. One volatile write per chunk.
      */
     @Volatile
     var lastOutputNanos: Long = System.nanoTime()
@@ -256,6 +256,7 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     /**
      * Queues [bytes] as typed input, all in ONE handover-protected transaction like [paste]: on the connection [target] was taken on, never
      * on another one after a reconnect. Not a paste (no bracketed paste, nothing is rewritten) and nothing but the bytes: no Enter is added.
+     * Like [paste] it holds the handover while the queue may wait for room, so a reconnect waits for it.
      */
     fun type(bytes: ByteArray, target: InputTarget): TypeOutcome = synchronized(inputHandover) {
         if (target.owner !== inputHandover || !session.isRunning || output !== target.stream || inputGeneration != target.generation) return TypeOutcome.REJECTED

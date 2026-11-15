@@ -160,7 +160,6 @@ class AssistantTerminalTabs internal constructor(
     private val connectionId: (String, String, Int) -> String? = { _, _, _ -> null },
     private val copyProbeTimeoutMs: Long = COPY_PROBE_TIMEOUT_MS,
     private val quietMs: Long = QUIET_MS,
-    private val minAfterWriteMs: Long = MIN_AFTER_WRITE_MS,
     private val maxWaitMs: Long = MAX_WAIT_MS,
     /** Milliseconds on a clock that only moves forward; the age of a program probe. */
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -266,14 +265,16 @@ class AssistantTerminalTabs internal constructor(
      * history. Checks before anything is typed (each throws and types nothing): [TabNotOpen], [TabNotConnected], [TabReconnected] (no pin,
      * or the connection is no longer the pinned one), [TabInCopyMode] (a tmux tab's pane is in copy mode), and any other exception when
      * the copy-mode question could not be answered. The bytes then go in one transaction; from there on a failure is [TypedUnknown].
-     * Then it waits until the tab's output has been quiet for [quietMs] (never less than [minAfterWriteMs] after the write), at most
-     * [maxWaitMs]; [TabTyped.settled] is false when it ran out of time.
+     * Then it waits until the tab's output has been quiet for [quietMs] counted from the later of the write and the last output (so never
+     * less than [quietMs] after the write: output from before it is not "quiet"), at most [maxWaitMs]; [TabTyped.settled] is false when it
+     * ran out of time.
      */
     internal suspend fun type(input: TypedInput, pin: InputPin?): TabTyped {
         val handle = visible().firstOrNull { it.id == input.tabId } ?: throw TabNotOpen()
-        when (tabState(handle.state)) {
+        val state = tabState(handle.state)
+        when (state) {
             TabState.CLOSED -> throw TabNotOpen()
-            TabState.RECONNECTING -> throw TabNotConnected(tabState(handle.state))
+            TabState.RECONNECTING -> throw TabNotConnected(state)
             TabState.CONNECTED -> Unit
         }
         if (pin == null || !handle.pinCurrent(pin)) throw TabReconnected()
@@ -292,7 +293,10 @@ class AssistantTerminalTabs internal constructor(
         val bytes = input.bytes(modes) ?: throw IllegalStateException("a key has no bytes")
         admitSideEffect(TYPE)
         // Once started it is finished: a Stop in the middle must not leave half of the text queued without the caller knowing.
-        val outcome = withContext(NonCancellable + io) { handle.type(bytes, pin) }
+        // An exception from the write itself says nothing about how much went out: it is "may be partly sent", never "nothing was typed".
+        val outcome = try { withContext(NonCancellable + io) { handle.type(bytes, pin) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { throw TypedUnknown() }
         when (outcome) {
             RemoteTerminal.TypeOutcome.REJECTED -> throw TabReconnected()
             RemoteTerminal.TypeOutcome.PARTIAL -> throw TypedUnknown()
@@ -308,12 +312,12 @@ class AssistantTerminalTabs internal constructor(
         catch (_: Exception) { throw TypedUnknown() }
     }
 
-    /** True once the tab's output was quiet for [quietMs] and [minAfterWriteMs] have passed since [wroteAt]; false at [maxWaitMs]. Ends early when the tab leaves Open. */
+    /** True once [quietMs] have passed since the later of [wroteAt] and the tab's last output; false at [maxWaitMs]. Ends early when the tab leaves Open. */
     private suspend fun waitQuiet(handle: TabHandle, wroteAt: Long): Boolean {
         while (true) {
             val now = System.nanoTime()
             if (tabState(handle.state) != TabState.CONNECTED) return true
-            if (now - wroteAt >= minAfterWriteMs * NANOS_PER_MS && now - handle.lastOutputNanos >= quietMs * NANOS_PER_MS) return true
+            if (now - maxOf(wroteAt, handle.lastOutputNanos) >= quietMs * NANOS_PER_MS) return true
             if (now - wroteAt >= maxWaitMs * NANOS_PER_MS) return false
             delay(POLL_MS)
         }
@@ -326,7 +330,6 @@ class AssistantTerminalTabs internal constructor(
         const val TYPE = "terminal-input"
         const val COPY_PROBE_TIMEOUT_MS = 3_000L
         const val QUIET_MS = 700L
-        const val MIN_AFTER_WRITE_MS = 300L
         const val MAX_WAIT_MS = 10_000L
         /** How old a `terminal_tabs` probe may be for the typing card to show its program. */
         const val PROGRAM_FRESH_MS = 60_000L

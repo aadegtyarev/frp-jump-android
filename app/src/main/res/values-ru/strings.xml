@@ -1339,7 +1339,7 @@
     <string name="confirm_waiting">Ждём вашего ответа…</string>
     <string name="confirm_command">Команда</string>
     <string name="confirm_input_title">Ввести в эту вкладку?</string>
-    <string name="confirm_input_warning">Вводится так, как будто вы сделали это сами. Экран после ввода передаётся модели.</string>
+    <string name="confirm_input_warning">Как ввод с вашей клавиатуры, отменить нельзя. Экран после ввода передаётся модели.</string>
     <string name="confirm_input_session_hint">Любой ввод во вкладки этого соединения, пока вы не выйдете из чата и помощник не закончит.</string>
     <string name="confirm_tab">Вкладка</string>
     <string name="confirm_program">Программа</string>

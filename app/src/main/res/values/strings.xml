@@ -1291,7 +1291,7 @@
     <string name="confirm_waiting">Waiting for your answer…</string>
     <string name="confirm_command">Command</string>
     <string name="confirm_input_title">Type into this tab?</string>
-    <string name="confirm_input_warning">Typed as if you did it yourself. The screen afterwards goes to your model.</string>
+    <string name="confirm_input_warning">Like typing on your keyboard; it cannot be undone. The screen afterwards goes to your model.</string>
     <string name="confirm_input_session_hint">Any typing into tabs of this connection until you leave Chat and the assistant finishes.</string>
     <string name="confirm_tab">Tab</string>
     <string name="confirm_program">Program</string>

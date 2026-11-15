@@ -681,11 +681,14 @@ class AssistantChatScreenTest {
         compose.onNode(switch).assertIsOn()
         assertTrue(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
         shot("tools-terminal-input-on")
-        // Turning the tabs off again keeps the owner's choice but greys the switch and takes the tool out of effect.
+        // Turning the tabs off turns typing off with them: it is greyed and off, and the tabs coming back on do not bring it back.
         toolToggle("terminal_tabs").performClick(); awaitTabsSwitch(false)
-        compose.onNode(switch).performScrollTo().assertIsOn().assertIsNotEnabled()
+        compose.onNode(switch).performScrollTo().assertIsOff().assertIsNotEnabled()
         assertFalse(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
-        assertTrue(settings.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_INPUT))
+        assertFalse(settings.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_INPUT))
+        toolToggle("terminal_tabs").performClick(); awaitTabsSwitch(true)
+        compose.onNode(switch).performScrollTo().assertIsOff().assertIsEnabled()
+        assertFalse(settings.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_INPUT))
     }
 
     private fun awaitTabsSwitch(on: Boolean) {
@@ -698,7 +701,7 @@ class AssistantChatScreenTest {
         val plain = SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ")
         val tmuxTab = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")
         terminalTabs = AssistantTerminalTabs(tabs = { listOf(plain, tmuxTab) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" },
-            quietMs = 50, minAfterWriteMs = 20)
+            quietMs = 50)
         settings.update { it.copy(assistantTerminalTabs = true, assistantTerminalInput = true) }
         // The program of the tab as `terminal_tabs` last saw it, so that the card has its line.
         runBlocking { terminalTabs!!.programs() }

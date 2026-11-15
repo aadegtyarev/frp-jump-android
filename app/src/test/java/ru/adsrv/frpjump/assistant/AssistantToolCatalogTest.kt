@@ -56,8 +56,28 @@ class AssistantToolCatalogTest {
             val on = AssistantTools().with(id, true)
             for (other in AssistantToolId.switches) assertEquals("$id/$other", other == id, on.switch(other))
             assertEquals(AssistantTools(), on.with(id, false))
-            assertTrue(allOn.with(id, false).let { !it.switch(id) && AssistantToolId.switches.filter { o -> o != id }.all { o -> it.switch(o) } })
+            // Turning the tabs off also turns typing off (see the test below); every other switch changes alone.
+            val off = allOn.with(id, false)
+            val together = if (id == AssistantToolId.TERMINAL_TABS) setOf(id, AssistantToolId.TERMINAL_INPUT) else setOf(id)
+            assertTrue(AssistantToolId.switches.all { o -> off.switch(o) == (o !in together) })
         }
+    }
+
+    @Test fun `turning the terminal tabs off turns typing off too and turning them on never brings it back`() {
+        val both = AssistantTools(terminalTabs = true, terminalInput = true)
+        val off = both.with(AssistantToolId.TERMINAL_TABS, false)
+        assertFalse(off.terminalTabs); assertFalse("the raw typing switch is off, not just ineffective", off.terminalInput)
+        val again = off.with(AssistantToolId.TERMINAL_TABS, true)
+        assertTrue(again.terminalTabs); assertFalse(again.terminalInput); assertFalse(again[AssistantToolId.TERMINAL_INPUT])
+        assertEquals(both.with(AssistantToolId.TERMINAL_READ, false), off)
+        // Through the store, the persisted values.
+        val file = MemoryStorage(); val store = SettingsStore(file)
+        store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true); store.setAssistantTool(AssistantToolId.TERMINAL_INPUT, true)
+        store.setAssistantTool(AssistantToolId.TERMINAL_TABS, false)
+        assertFalse(store.settings.value.assistantTerminalTabs); assertFalse(store.settings.value.assistantTerminalInput)
+        store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true)
+        assertTrue(store.settings.value.assistantTerminalTabs); assertFalse(store.settings.value.assistantTerminalInput)
+        assertFalse(SettingsStore(file).assistantAvailability.tools.terminalInput)
     }
 
     @Test fun `terminal_input is in effect only with both its switch and the terminal tabs on`() {
@@ -107,7 +127,9 @@ class AssistantToolCatalogTest {
         assertEquals(allOn, SettingsStore(MemoryStorage("{$all}")).assistantAvailability.tools)
         for (bad in AssistantToolId.switches) {
             val text = AssistantToolId.switches.joinToString(",") { if (it == bad) "\"${it.settingKey}\":\"yes\"" else "\"${it.settingKey}\":true" }
-            assertEquals(bad.name, allOn.with(bad, false), SettingsStore(MemoryStorage("{$text}")).assistantAvailability.tools)
+            // A stored value is read as stored (a malformed tabs flag does not rewrite the typing flag); only the setter ties them.
+            val expected = if (bad == AssistantToolId.TERMINAL_TABS) allOn.copy(terminalTabs = false) else allOn.with(bad, false)
+            assertEquals(bad.name, expected, SettingsStore(MemoryStorage("{$text}")).assistantAvailability.tools)
         }
         // A missing or malformed terminal switch is off; nothing else is reset.
         assertFalse(SettingsStore(MemoryStorage("{}")).assistantAvailability.tools.terminalTabs)

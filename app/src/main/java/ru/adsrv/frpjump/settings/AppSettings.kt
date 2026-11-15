@@ -187,7 +187,8 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.READ_PAGE -> copy(readPage = enabled)
         AssistantToolId.INSPECT_IMAGE -> copy(inspectImage = enabled)
         AssistantToolId.PROFILE_INFORMATION -> copy(profileInformation = enabled)
-        AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ -> copy(terminalTabs = enabled)
+        // Turning the tabs off turns typing off with them, so that turning the tabs on again never brings typing back by itself.
+        AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ -> if (enabled) copy(terminalTabs = true) else copy(terminalTabs = false, terminalInput = false)
         AssistantToolId.TERMINAL_INPUT -> copy(terminalInput = enabled)
         AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
     }

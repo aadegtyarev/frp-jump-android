@@ -90,7 +90,7 @@ class AssistantTerminalInputTest {
         tabs = { list.toList() }, hidden = { hidden }, profileName = { if (it == "p1") "Home" else null },
         connectionName = { _, _, _ -> null }, connectionId = { p, _, _ -> if (saved && p == "p1") "c1" else null },
         io = Dispatchers.IO, main = Dispatchers.Unconfined, copyProbeTimeoutMs = copyProbeMs, readTimeoutMs = 2_000,
-        quietMs = 40, minAfterWriteMs = 20, maxWaitMs = maxWaitMs, clockMs = { now },
+        quietMs = 40, maxWaitMs = maxWaitMs, clockMs = { now },
     )
 
     private fun args(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
@@ -352,8 +352,46 @@ class AssistantTerminalInputTest {
         assertTrue("took $tookMs ms", tookMs in 40..3_000)
     }
 
+    @Test fun `output from before the write never counts as quiet and an echo after a pause is waited for`() {
+        // Idle before the write; the echo comes 150 ms after it, with quiet = 40 ms the wait would be over at 40 ms if the idle time before counted.
+        val tab = TypeTab(1)
+        val owner = AssistantTerminalTabs(tabs = { listOf(tab) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null },
+            io = Dispatchers.IO, main = Dispatchers.Unconfined, quietMs = 300, maxWaitMs = 5_000)
+        tab.afterType = {
+            Thread { Thread.sleep(150); tab.screen = "\$ ls\nfile"; tab.lastOutputNanos = System.nanoTime() }.apply { isDaemon = true }.start()
+        }
+        val tool = AssistantTerminalInputTool(owner)
+        val arguments = typing(1, "ls\n")
+        val started = System.nanoTime()
+        val out = send(tool, arguments)
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+        assertEquals("the echo is in the result", "tab 1: Home · root@pi #1, app buffer\n\$ ls\nfile", out.text)
+        assertTrue("waited the quiet period after the echo: $tookMs ms", tookMs >= 150 + 300 - 20)
+        // With no output at all the wait is the quiet period after the write, not less.
+        val idle = TypeTab(1)
+        val idleOwner = AssistantTerminalTabs(tabs = { listOf(idle) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null },
+            io = Dispatchers.IO, main = Dispatchers.Unconfined, quietMs = 200, maxWaitMs = 5_000)
+        val t0 = System.nanoTime()
+        send(AssistantTerminalInputTool(idleOwner), typing(1, "ls"))
+        assertTrue("at least the quiet period after the write", (System.nanoTime() - t0) / 1_000_000 >= 190)
+    }
+
+    @Test fun `an exception from the write itself is a partly sent failure`() {
+        val tab = object : TabHandle by TypeTab(1) {
+            override fun capturePin(): InputPin? = pinHolder
+            override fun pinCurrent(pin: InputPin) = pin === pinHolder
+            override fun type(bytes: ByteArray, pin: InputPin): TypeOutcome = throw IllegalStateException("boom")
+        }
+        val owner = AssistantTerminalTabs(tabs = { listOf(tab) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null },
+            io = Dispatchers.IO, main = Dispatchers.Unconfined, quietMs = 40, maxWaitMs = 400)
+        val failed = send(AssistantTerminalInputTool(owner), typing(1, "ls"))
+        assertEquals(partly, failed.text); assertEquals(ToolOutcome.FAILED, failed.outcome)
+    }
+
+    private val pinHolder = Pin()
+
     @Test fun `the approved bounds`() {
-        assertEquals(700L, AssistantTerminalTabs.QUIET_MS); assertEquals(300L, AssistantTerminalTabs.MIN_AFTER_WRITE_MS)
+        assertEquals(700L, AssistantTerminalTabs.QUIET_MS)
         assertEquals(10_000L, AssistantTerminalTabs.MAX_WAIT_MS); assertEquals(3_000L, AssistantTerminalTabs.COPY_PROBE_TIMEOUT_MS)
         assertEquals(60_000L, AssistantTerminalTabs.PROGRAM_FRESH_MS)
         assertEquals("screen still changing after 10 s", AssistantTerminalInputTool.STILL_CHANGING)
