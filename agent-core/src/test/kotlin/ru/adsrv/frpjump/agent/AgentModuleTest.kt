@@ -216,6 +216,9 @@ class AgentModuleTest {
     @Test fun `incomplete or mismatched protocol blocks and invalid limits are rejected`() {
         assertThrows(IllegalArgumentException::class.java) { AgentExchange(AgentReply(calls = listOf(call()))) }
         assertThrows(IllegalArgumentException::class.java) { AgentLimits(maxSteps = 0) }
-        assertThrows(IllegalArgumentException::class.java) { AgentLimits(outputReserveTokens = 16_384) }
+        assertThrows(IllegalArgumentException::class.java) { AgentLimits(contextTokens = 16_384, outputReserveTokens = 16_384) } // reserve must stay below an explicit window
+        assertEquals(262_144, AgentLimits().contextTokens)
+        assertEquals(2_048, AgentLimits().outputReserveTokens)
+        assertThrows(IllegalArgumentException::class.java) { AgentLimits(outputReserveTokens = 262_144) }
     }
 }

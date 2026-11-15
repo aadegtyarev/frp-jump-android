@@ -174,7 +174,7 @@ left out, never half of a tool-call/result pair. Current user/instructions and
 the latest complete exchange are not silently discarded. If those cannot fit,
 the run returns context-full without another model call.
 
-Defaults: a 16,384-token estimated total budget with 2,048 tokens reserved for
+Defaults: a 262,144-token (256K) estimated total budget with 2,048 tokens reserved for
 output. The default counter uses UTF-8 byte lengths plus framing allowances:
 **it is an estimate, not a provider tokenizer or a guarantee that every API
 accepts the request**. A provider-specific counter can replace it. Window
@@ -370,9 +370,9 @@ makes no request.
 - Budget: the text, its separator and its header count toward the estimated
   request size, with a fixed framing allowance, in the sliding window and in
   the summary trigger. 2,000 Cyrillic characters estimate to about 4,000 tokens,
-  about 28% of the default 14,336-token input budget (the 16,384-token window
-  minus the 2,048-token output reserve), so summaries and omissions start
-  earlier. Without text nothing is added.
+  about 1.5% of the default 260,096-token input budget (the 262,144-token
+  window minus the 2,048-token output reserve), so summaries and omissions
+  start earlier. Without text nothing is added.
 - Capture: the text is captured at Send admission together with the tool set and
   sent unchanged in every request of that Send; a change during a run affects
   only the next Send.

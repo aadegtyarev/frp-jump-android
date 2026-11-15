@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import ru.adsrv.frpjump.agent.AgentLimits
 import ru.adsrv.frpjump.agent.openai.OpenAiAgentProvider
 import ru.adsrv.frpjump.agent.openai.OpenAiConfig
@@ -14,12 +17,16 @@ import ru.adsrv.frpjump.agent.openai.validOpenAiApiKey
 import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
 
+/** Default window for new settings. Stored settings without the field keep [LEGACY_CONTEXT_TOKENS]. */
+const val DEFAULT_CONTEXT_TOKENS = 262_144
+internal const val LEGACY_CONTEXT_TOKENS = 16_384
+
 @Serializable
 data class AssistantProviderSettings(
     val baseUrl: String = "https://api.openai.com/v1/",
     val model: String = "",
     val effort: String? = null,
-    val contextTokens: Int = 16_384,
+    val contextTokens: Int = DEFAULT_CONTEXT_TOKENS,
     val outputTokens: Int = 2_048,
     val completionTokenField: Boolean = false,
     val summaryPercent: Int = 80,
@@ -123,11 +130,18 @@ class AssistantProviderStore(private val file: TextStorage, private val box: Sec
         val text = try { file.read() } catch (_: Exception) { throw ProviderSetupException(ProviderSetupProblem.READ_FAILED) } ?: return null
         return try {
             require(text.length <= 65_536)
-            json.decodeFromString<Stored>(text).also {
+            json.decodeFromString<Stored>(withLegacyWindow(text)).also {
                 require(it.version == 1 && it.revision.length == 36 && it.sealedKey.isNotBlank() && it.sealedKey.length <= 32_768)
                 require(it.settings == it.settings.normalized())
             }
         } catch (_: Exception) { throw ProviderSetupException(ProviderSetupProblem.READ_FAILED) }
+    }
+    /** Settings stored before the default changed (field absent) keep the old 16,384 window, never the new default. */
+    private fun withLegacyWindow(text: String): String {
+        val root = json.parseToJsonElement(text).jsonObject
+        val settings = root["settings"]?.jsonObject ?: return text
+        if ("contextTokens" in settings) return text
+        return JsonObject(root + ("settings" to JsonObject(settings + ("contextTokens" to JsonPrimitive(LEGACY_CONTEXT_TOKENS))))).toString()
     }
     private fun normalize(settings: AssistantProviderSettings): AssistantProviderSettings = try { settings.normalized() }
         catch (_: Exception) { throw ProviderSetupException(ProviderSetupProblem.INVALID_SETTINGS) }

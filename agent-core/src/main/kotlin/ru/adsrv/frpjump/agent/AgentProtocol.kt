@@ -78,7 +78,7 @@ object Utf8TokenEstimate : TokenCounter {
 }
 
 data class AgentLimits(
-    val contextTokens: Int = 16_384,
+    val contextTokens: Int = 262_144,
     val outputReserveTokens: Int = 2_048,
     val maxSteps: Int = 12,
     val maxCallsPerStep: Int = 4,
