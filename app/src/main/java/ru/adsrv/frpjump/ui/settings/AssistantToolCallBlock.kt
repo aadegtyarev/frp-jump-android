@@ -210,9 +210,17 @@ private fun ChatReceiptResult(receipt: ChatToolReceipt, information: List<ChatPr
 
 @Composable
 private fun ChatToolReceiptBody(receipt: ChatToolReceipt) {
-    val outcome = receipt.result?.outcome
+    val result = receipt.result
+    val outcome = when (result?.outcome) {
+        null, ToolOutcome.SUCCESS -> null
+        ToolOutcome.DECLINED -> stringResource(if (result.isNoAnswer()) R.string.chat_receipt_no_answer else R.string.chat_receipt_declined)
+        ToolOutcome.FAILED -> stringResource(R.string.chat_receipt_failed)
+        ToolOutcome.TIMEOUT -> stringResource(R.string.chat_receipt_timeout)
+        ToolOutcome.UNKNOWN_TOOL -> stringResource(R.string.chat_receipt_unknown_tool)
+    }
+    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty())
+    if (body.isEmpty()) return
     SelectionContainer {
-        Text("${receipt.call.name}\n${receipt.call.arguments}\n${if (outcome == ToolOutcome.DECLINED) stringResource(if (receipt.result.isNoAnswer()) R.string.chat_receipt_no_answer else R.string.chat_receipt_declined) else outcome ?: "?"}\n${receipt.result?.text.orEmpty()}",
-            style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted)
+        Text(body, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted)
     }
 }

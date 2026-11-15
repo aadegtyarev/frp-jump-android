@@ -591,8 +591,34 @@ class AssistantChatScreenTest {
         shot("terminal-calls-collapsed")
         compose.onNodeWithTag("chat_tool_receipts").performClick()
         compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
+        // The expanded body is the result alone: no wire name, no raw arguments, no outcome word for a success.
+        for (index in 0..1) {
+            val body = compose.onNodeWithTag("chat_tool_receipt_$index").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+            assertFalse(body, body.contains("terminal_tabs") || body.contains("terminal_read") || body.contains("tab_id\"") || body.contains("SUCCESS") || body == "{}")
+        }
+        compose.onNode(hasAnyAncestor(hasTestTag("chat_tool_receipt_1")) and hasText("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer", substring = true)).assertExists()
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
         shot("terminal-calls-expanded")
+    }
+
+    /** An expanded ssh_command call: the full command as `$ command`, a word for the failed outcome, the result; never the wire name or JSON. */
+    @Test fun expandedSshCallShowsTheFullCommandAndAnOutcomeWordOnly() {
+        settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)
+        settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
+        sshCommandText = "printf 'synthetic-long-command-' && echo \"a long synthetic command that the label above cuts short\""
+        install()
+        compose.runOnIdle { mode = "tool-ssh" }
+        input().performTextInput("Run synthetic command")
+        sendAndAwait()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        val bodyOf = hasAnyAncestor(hasTestTag("chat_tool_receipt_0"))
+        compose.onNode(bodyOf and hasText("$ $sshCommandText", substring = true)).assertExists()
+        compose.onNode(bodyOf and hasText(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_failed), substring = true)).assertExists()
+        compose.onNode(bodyOf and hasText("SSH target unavailable", substring = true)).assertExists()
+        for (raw in listOf("ssh_command", "profile_id", "connection_id", "FAILED")) compose.onNode(bodyOf and hasText(raw, substring = true)).assertDoesNotExist()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
+        shot("ssh-receipt-expanded")
     }
 
     @Test fun toolsScreenShowsOneTerminalTabsSwitchWithItsHintThatAutosaves() {
