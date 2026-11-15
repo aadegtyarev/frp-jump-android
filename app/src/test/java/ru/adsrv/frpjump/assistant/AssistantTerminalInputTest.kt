@@ -61,10 +61,11 @@ class AssistantTerminalInputTest {
         val commands = ArrayList<String>()
         val typed = ArrayList<ByteArray>()
         var bufferReads = 0
-        var screen = "\$ ready"
+        /** What is on the tab: the tmux read commands are answered from it, and the app's buffer of a tab without tmux is read from it. */
+        val term = FakeTerminal(tmux = tmuxName != null).also { it.set("\$ ready") }
         var modes = KeyModes(cursorApplication = false, keypadApplication = false)
         var outcome = TypeOutcome.QUEUED
-        var exec: (String) -> String? = { if ("pane_in_mode" in it) "0\n" else "pane\n" }
+        var exec: (String) -> String? = { term.exec(it) ?: "pane\n" }
         var afterType: () -> Unit = {}
         var bufferFails = false
         @Volatile override var lastOutputNanos = System.nanoTime() - 10_000_000_000L
@@ -72,7 +73,7 @@ class AssistantTerminalInputTest {
         fun reconnect() { pin = Pin() }
 
         override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? { commands += command; return exec.invoke(command) }
-        override fun bufferText(lines: Int): String { bufferReads++; if (bufferFails) throw IllegalStateException("emulator gone"); return screen }
+        override fun bufferSource(mode: ReadMode): SourceText { bufferReads++; if (bufferFails) throw IllegalStateException("emulator gone"); return term.source(mode) }
         override fun capturePin(): InputPin? = pin
         override fun pinCurrent(pin: InputPin) = pin === this.pin
         override fun keyModes() = modes
@@ -86,11 +87,11 @@ class AssistantTerminalInputTest {
 
     private var now = 0L
 
-    private fun tabs(vararg list: TypeTab, hidden: Set<String> = emptySet(), saved: Boolean = true, maxWaitMs: Long = 400, copyProbeMs: Long = 2_000) = AssistantTerminalTabs(
+    private fun tabs(vararg list: TypeTab, hidden: Set<String> = emptySet(), saved: Boolean = true, cursorReadMs: Long = 2_000) = AssistantTerminalTabs(
         tabs = { list.toList() }, hidden = { hidden }, profileName = { if (it == "p1") "Home" else null },
         connectionName = { _, _, _ -> null }, connectionId = { p, _, _ -> if (saved && p == "p1") "c1" else null },
-        io = Dispatchers.IO, main = Dispatchers.Unconfined, copyProbeTimeoutMs = copyProbeMs, readTimeoutMs = 2_000,
-        quietMs = 40, maxWaitMs = maxWaitMs, clockMs = { now },
+        io = Dispatchers.IO, main = Dispatchers.Unconfined, cursorReadTimeoutMs = cursorReadMs, readTimeoutMs = 2_000,
+        clockMs = { now },
     )
 
     private fun args(vararg pairs: Pair<String, JsonElement>) = JsonObject(mapOf(*pairs))
@@ -113,7 +114,7 @@ class AssistantTerminalInputTest {
     @Test fun `the model texts are the approved ones`() {
         val tool = AssistantTerminalInputTool(tabs())
         assertEquals("terminal_input", tool.spec.name)
-        assertEquals("Type into one open terminal tab by tab_id from terminal_tabs, as if the owner typed it. `text` is typed first (a newline is sent as Enter), then `keys` in order: enter, tab, escape, backspace, up, down, left, right, home, end, page_up, page_down, ctrl_c, ctrl_d, ctrl_z, ctrl_l. For a key before text, make two calls. Up to 2,000 characters of text and 32 keys. Then waits until the screen is quiet (at most 10 seconds) and returns the visible screen as terminal_read does. Input cannot be undone and its effect is unknown until you see the screen: never repeat it blindly. Never type passwords or other secrets. The owner may be asked before it runs.",
+        assertEquals("Type into one open terminal tab by tab_id from terminal_tabs, as if the owner typed it. `text` is typed first (a newline is sent as Enter), then `keys` in order: enter, tab, escape, backspace, up, down, left, right, home, end, page_up, page_down, ctrl_c, ctrl_d, ctrl_z, ctrl_l. For a key before text, make two calls. Up to 2,000 characters of text and 32 keys. Returns at once with `cursor`: what the input causes is printed after it. Read from it with terminal_read, or wait for it with wait_for. Input cannot be undone and its effect is unknown until you see the screen: never repeat it blindly. Never type passwords or other secrets. The owner may be asked before it runs.",
             tool.spec.description)
         assertFalse("one line", '\n' in tool.spec.description)
         val schema = tool.spec.parameters
@@ -231,35 +232,40 @@ class AssistantTerminalInputTest {
 
     // ---- tmux copy mode ----
 
-    @Test fun `a tmux tab is asked whether its pane is in copy mode with the exact quoted command and types after a 0`() {
+    @Test fun `a tmux tab's cursor read also asks whether its pane is in copy mode, in one exec, and types after a 0`() {
         val tab = TypeTab(1, tmuxName = tmux)
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
-        assertEquals(listOf("tmux display-message -p -t '=$tmux:' '#{pane_in_mode}'", "tmux capture-pane -p -J -S -0 -t '=$tmux:'"), tab.commands)
+        // One exec before anything is typed: the capture for the cursor, and last of all the question about copy mode.
+        assertEquals(listOf(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmux, 0)), tab.commands)
         assertEquals("ls\r", tab.allTyped())
         assertEquals(ToolOutcome.SUCCESS, out.outcome)
-        assertEquals("tab 1: Home · root@pi #1, tmux\npane", out.text)
+        assertEquals("Typed into tab 1. cursor: ${tab.term.cursor()}", out.text)
     }
 
     @Test fun `a pane in copy mode is refused and nothing is typed`() {
-        val tab = TypeTab(1, tmuxName = tmux).also { it.exec = { "1\n" } }
+        val tab = TypeTab(1, tmuxName = tmux).also { it.term.inCopyMode = true }
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
         assertEquals("Tab 1 is in tmux copy mode: the owner may be scrolling. Nothing was typed.", out.text)
         assertEquals(ToolOutcome.FAILED, out.outcome)
         assertTrue(tab.typed.isEmpty())
-        // Never leaves or enters copy mode itself: the only command is the question.
-        assertEquals(listOf("tmux display-message -p -t '=$tmux:' '#{pane_in_mode}'"), tab.commands)
+        // Never leaves or enters copy mode itself: the only command is the read.
+        assertEquals(listOf(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmux, 0)), tab.commands)
     }
 
-    @Test fun `a failed late or unreadable copy mode question types nothing`() {
-        val answers = listOf<(String) -> String?>({ throw java.io.IOException("secret detail") }, { null }, { "maybe" }, { "" }, { Thread.sleep(5_000); "0" })
+    @Test fun `a failed late or unreadable cursor read types nothing, and a slow capture has its own limit`() {
+        val answers = listOf<(String) -> String?>({ throw java.io.IOException("secret detail") }, { null }, { "maybe" }, { "" }, { "1 2 3\n" }, { Thread.sleep(5_000); "0 2000 0 24 0\n" })
         for ((index, answer) in answers.withIndex()) {
             val tab = TypeTab(1, tmuxName = tmux).also { it.exec = answer }
-            val out = send(AssistantTerminalInputTool(tabs(tab, copyProbeMs = 150)), typing(1, "ls", "enter"))
+            val out = send(AssistantTerminalInputTool(tabs(tab, cursorReadMs = 150)), typing(1, "ls", "enter"))
             assertEquals("case $index", "Could not read tab 1. Nothing was typed into it.", out.text)
             assertEquals(ToolOutcome.FAILED, out.outcome)
             assertTrue("case $index", tab.typed.isEmpty())
             assertFalse("no exception text reaches the model", out.text.contains("secret"))
         }
+        // A capture slower than the cursor read's own limit types nothing.
+        val slowish = TypeTab(1, tmuxName = tmux).also { t -> t.exec = { Thread.sleep(300); t.term.exec(it) } }
+        assertEquals("Could not read tab 1. Nothing was typed into it.", send(AssistantTerminalInputTool(tabs(slowish, cursorReadMs = 150)), typing(1, "ls")).text)
+        assertEquals("", slowish.allTyped())
     }
 
     @Test fun `a tab without tmux is not asked anything`() {
@@ -277,7 +283,7 @@ class AssistantTerminalInputTest {
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "echo hi\n", "ctrl_c", "up"))
         assertEquals(1, tab.typed.size)
         assertEquals("echo hi\r\u0003\u001b[A", tab.allTyped())
-        assertEquals("tab 1: Home · root@pi #1, app buffer\n\$ ready", out.text)
+        assertEquals("Typed into tab 1. cursor: ${FakeTerminal().set("\$ ready").cursor()}", out.text)
         // The tab handle has no way to log in, connect or open anything but its own exec; this fake records every call it gets.
         assertEquals(1, tab.bufferReads); assertTrue(tab.commands.isEmpty())
     }
@@ -296,9 +302,9 @@ class AssistantTerminalInputTest {
         assertTrue(tab.typed.isEmpty()); assertTrue("no probe either", tab.commands.isEmpty())
     }
 
-    @Test fun `a reconnect during the copy mode question types nothing`() {
+    @Test fun `a reconnect during the cursor read types nothing`() {
         val tab = TypeTab(1, tmuxName = tmux)
-        tab.exec = { tab.reconnect(); "0\n" }
+        tab.exec = { tab.reconnect(); tab.term.exec(it) }
         val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
         assertEquals("Tab 1 reconnected after the request. Nothing was typed. Read the tab again.", out.text)
         assertTrue(tab.typed.isEmpty())
@@ -323,57 +329,42 @@ class AssistantTerminalInputTest {
         assertEquals(1, tab.typed.size)
     }
 
-    // ---- quiet wait ----
+    // ---- the result: a cursor, at once ----
 
-    @Test fun `a quiet screen is returned at once and a changing one carries the note`() {
+    @Test fun `input returns at once with a cursor and never waits for output`() {
         val quiet = TypeTab(1)
         val started = System.nanoTime()
-        val out = send(AssistantTerminalInputTool(tabs(quiet, maxWaitMs = 5_000)), typing(1, "ls", "enter"))
-        assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", (System.nanoTime() - started) < 2_000_000_000L)
-        assertEquals("tab 1: Home · root@pi #1, app buffer\n\$ ready", out.text)
+        val out = send(AssistantTerminalInputTool(tabs(quiet)), typing(1, "ls", "enter"))
+        assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", (System.nanoTime() - started) < 1_000_000_000L)
+        assertEquals("Typed into tab 1. cursor: ${FakeTerminal().set("\$ ready").cursor()}", out.text)
+        assertEquals(ToolOutcome.SUCCESS, out.outcome)
 
+        // A tab that prints all the time is no different: no quiet wait, no "still changing" note.
         val busy = TypeTab(1)
         val stop = java.util.concurrent.atomic.AtomicBoolean(false)
         val ticker = Thread { while (!stop.get()) { busy.lastOutputNanos = System.nanoTime(); Thread.sleep(5) } }.apply { isDaemon = true; start() }
         try {
-            val changing = send(AssistantTerminalInputTool(tabs(busy, maxWaitMs = 300)), typing(1, "tail -f log\n"))
-            assertEquals("tab 1: Home · root@pi #1, app buffer\n\$ ready\nscreen still changing after 10 s", changing.text)
+            val t0 = System.nanoTime()
+            val changing = send(AssistantTerminalInputTool(tabs(busy)), typing(1, "tail -f log\n"))
+            assertTrue("took ${(System.nanoTime() - t0) / 1_000_000} ms", (System.nanoTime() - t0) < 1_000_000_000L)
+            assertTrue(changing.text, changing.text.startsWith("Typed into tab 1. cursor: ") && "\n" !in changing.text)
             assertEquals(ToolOutcome.SUCCESS, changing.outcome)
         } finally { stop.set(true) }
     }
 
-    @Test fun `output right after the write postpones the answer until it is quiet`() {
-        val tab = TypeTab(1)
-        tab.afterType = { tab.lastOutputNanos = System.nanoTime() }
-        val started = System.nanoTime()
-        send(AssistantTerminalInputTool(tabs(tab, maxWaitMs = 5_000)), typing(1, "ls"))
-        // At least the quiet period after the last output, at most a generous bound.
-        val tookMs = (System.nanoTime() - started) / 1_000_000
-        assertTrue("took $tookMs ms", tookMs in 40..3_000)
-    }
-
-    @Test fun `output from before the write never counts as quiet and an echo after a pause is waited for`() {
-        // Idle before the write; the echo comes 150 ms after it, with quiet = 40 ms the wait would be over at 40 ms if the idle time before counted.
-        val tab = TypeTab(1)
-        val owner = AssistantTerminalTabs(tabs = { listOf(tab) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null },
-            io = Dispatchers.IO, main = Dispatchers.Unconfined, quietMs = 300, maxWaitMs = 5_000)
-        tab.afterType = {
-            Thread { Thread.sleep(150); tab.screen = "\$ ls\nfile"; tab.lastOutputNanos = System.nanoTime() }.apply { isDaemon = true }.start()
+    @Test fun `the cursor is taken before typing, so a read from it shows what the input caused`() {
+        for (tmuxName in listOf(null, tmux)) {
+            val tab = TypeTab(1, tmuxName = tmuxName)
+            tab.term.set("old line\n\$ ready")
+            // The echo and the output arrive with the typing: the prompt row (the cursor's row) becomes the echo.
+            tab.afterType = { tab.term.set("old line\n\$ ls\nfile\n\$ ready") }
+            val owner = tabs(tab)
+            val typed = send(AssistantTerminalInputTool(owner), typing(1, "ls\n")).text
+            val cursor = typed.substringAfter("cursor: ")
+            assertEquals("the cursor is the one of the output as it was before the input", FakeTerminal().set("old line\n\$ ready").cursor().toString(), cursor)
+            val read = runBlocking { AssistantTerminalReadTool(owner).execute(buildJsonObject { put("tab_id", 1); put("from", cursor) }) }.text
+            assertEquals("$tmuxName", "\$ ls\nfile\n\$ ready", read.lines().drop(1).joinToString("\n"))
         }
-        val tool = AssistantTerminalInputTool(owner)
-        val arguments = typing(1, "ls\n")
-        val started = System.nanoTime()
-        val out = send(tool, arguments)
-        val tookMs = (System.nanoTime() - started) / 1_000_000
-        assertEquals("the echo is in the result", "tab 1: Home · root@pi #1, app buffer\n\$ ls\nfile", out.text)
-        assertTrue("waited the quiet period after the echo: $tookMs ms", tookMs >= 150 + 300 - 20)
-        // With no output at all the wait is the quiet period after the write, not less.
-        val idle = TypeTab(1)
-        val idleOwner = AssistantTerminalTabs(tabs = { listOf(idle) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null },
-            io = Dispatchers.IO, main = Dispatchers.Unconfined, quietMs = 200, maxWaitMs = 5_000)
-        val t0 = System.nanoTime()
-        send(AssistantTerminalInputTool(idleOwner), typing(1, "ls"))
-        assertTrue("at least the quiet period after the write", (System.nanoTime() - t0) / 1_000_000 >= 190)
     }
 
     @Test fun `an exception from the write itself is a partly sent failure`() {
@@ -383,7 +374,7 @@ class AssistantTerminalInputTest {
             override fun type(bytes: ByteArray, pin: InputPin): TypeOutcome = throw IllegalStateException("boom")
         }
         val owner = AssistantTerminalTabs(tabs = { listOf(tab) }, hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null },
-            io = Dispatchers.IO, main = Dispatchers.Unconfined, quietMs = 40, maxWaitMs = 400)
+            io = Dispatchers.IO, main = Dispatchers.Unconfined)
         val failed = send(AssistantTerminalInputTool(owner), typing(1, "ls"))
         assertEquals(partly, failed.text); assertEquals(ToolOutcome.FAILED, failed.outcome)
     }
@@ -391,10 +382,8 @@ class AssistantTerminalInputTest {
     private val pinHolder = Pin()
 
     @Test fun `the approved bounds`() {
-        assertEquals(700L, AssistantTerminalTabs.QUIET_MS)
-        assertEquals(10_000L, AssistantTerminalTabs.MAX_WAIT_MS); assertEquals(3_000L, AssistantTerminalTabs.COPY_PROBE_TIMEOUT_MS)
+        assertEquals(3_000L, AssistantTerminalTabs.CURSOR_READ_TIMEOUT_MS)
         assertEquals(60_000L, AssistantTerminalTabs.PROGRAM_FRESH_MS)
-        assertEquals("screen still changing after 10 s", AssistantTerminalInputTool.STILL_CHANGING)
     }
 
     // ---- what happens after the bytes are queued ----
@@ -407,7 +396,7 @@ class AssistantTerminalInputTest {
         assertEquals(partly, out.text); assertEquals(ToolOutcome.FAILED, out.outcome)
     }
 
-    @Test fun `a tab that leaves Open during the wait, or becomes another connection, is a partly sent failure`() {
+    @Test fun `a tab that leaves Open right after the write, or becomes another connection, is a partly sent failure`() {
         val left = TypeTab(1).also { t -> t.afterType = { t.state = SshState.Reconnecting(1, true) } }
         assertEquals(partly, send(AssistantTerminalInputTool(tabs(left)), typing(1, "ls", "enter")).text)
         val other = TypeTab(1).also { t -> t.afterType = { t.reconnect() } }
@@ -416,13 +405,14 @@ class AssistantTerminalInputTest {
         assertEquals(partly, send(AssistantTerminalInputTool(tabs(closed)), typing(1, "ls", "enter")).text)
     }
 
-    @Test fun `a screen that cannot be read after the bytes were queued is a partly sent failure`() {
+    @Test fun `a tab whose output cannot be read for the cursor is not typed into`() {
         val plain = TypeTab(1).also { it.bufferFails = true }
         val out = send(AssistantTerminalInputTool(tabs(plain)), typing(1, "ls", "enter"))
-        assertEquals(partly, out.text); assertEquals(ToolOutcome.FAILED, out.outcome)
-        assertEquals("the bytes did go out", "ls\r", plain.allTyped())
-        val tmuxTab = TypeTab(1, tmuxName = tmux).also { t -> t.exec = { if ("pane_in_mode" in it) "0\n" else throw java.io.IOException("gone") } }
-        assertEquals(partly, send(AssistantTerminalInputTool(tabs(tmuxTab)), typing(1, "ls", "enter")).text)
+        assertEquals("Could not read tab 1. Nothing was typed into it.", out.text); assertEquals(ToolOutcome.FAILED, out.outcome)
+        assertEquals("nothing went out", "", plain.allTyped())
+        val tmuxTab = TypeTab(1, tmuxName = tmux).also { t -> t.exec = { throw java.io.IOException("gone") } }
+        assertEquals("Could not read tab 1. Nothing was typed into it.", send(AssistantTerminalInputTool(tabs(tmuxTab)), typing(1, "ls", "enter")).text)
+        assertEquals("", tmuxTab.allTyped())
     }
 
     @Test fun `the admission is asked before the write and a refusal types nothing`() {

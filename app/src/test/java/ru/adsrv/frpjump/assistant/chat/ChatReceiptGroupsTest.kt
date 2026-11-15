@@ -181,8 +181,10 @@ class ChatReceiptGroupsTest {
         assertEquals(listOf(2, 1, 1, 1), groupReceipts(calls, sameDetail = true).map { it.items.size })
     }
 
-    @Test fun `the terminal_input body shows the typed text with visible escapes, then the keys, then the outcome and the result`() {
-        assertEquals("ls -l${ENTER_GLYPH}\ntab 3: x", receiptBody(input(3, "ls -l\n"), null, "tab 3: x"))
+    @Test fun `the terminal_input body shows the typed text with visible escapes, then the keys, then the outcome and the text of a failure`() {
+        // A successful input shows the input only, not the cursor it gave the model; a refusal or failure shows its text.
+        assertEquals("ls -l${ENTER_GLYPH}", receiptBody(input(3, "ls -l\n"), null, "Typed into tab 3. cursor: 3.0badf00d"))
+        assertEquals("ls -l${ENTER_GLYPH}\nFailed\nTab 3 is not open. Nothing was typed.", receiptBody(input(3, "ls -l\n"), "Failed", "Tab 3 is not open. Nothing was typed."))
         assertEquals("echo a${ENTER_GLYPH}\necho b\nKeys: Enter, Ctrl+C\nFailed\nTab 3 is not open.",
             receiptBody(input(3, "echo a\r\necho b", "enter", "ctrl_c"), "Failed", "Tab 3 is not open."))
         // Hidden characters are escapes, never invisible; keys alone give only the keys line.

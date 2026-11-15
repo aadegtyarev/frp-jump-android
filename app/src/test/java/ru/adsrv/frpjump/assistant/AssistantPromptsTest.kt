@@ -22,14 +22,14 @@ class AssistantPromptsTest {
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test.
-        assertEquals(15, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(16, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
-        assertEquals("e7f60d5240b877b88f071560d3b198a6cd03306842d06f64a0b6ba5722a5b147", sha256(asset("assistant/skill.md")))
+        assertEquals("5a8f174a35acc48dd532da49eca3e6e01cb211f40e1477c675b3406cd606916a", sha256(asset("assistant/skill.md")))
         assertEquals("b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38", sha256(asset("assistant/summary.md")))
     }
 
     @Test fun `the skill tells the model how to use terminal_input`() {
-        val line = "- terminal_input (if provided) types into an open tab, the way the owner would. Use it for what needs that tab: an interactive program, a prompt waiting for an answer, the session the user points to; run separate commands with ssh_command. Read the tab before typing and check the screen it returns. If the screen asks for a password, stop and tell the user."
+        val line = "- terminal_input (if provided) types into an open tab, the way the owner would. Use it for what needs that tab: an interactive program, a prompt waiting for an answer, the session the user points to; run separate commands with ssh_command. Read the tab before typing. Input returns a cursor at once: read from it to see the result; for a program that runs long, wait with wait_for (tab_text or tab_quiet) and read again from the same cursor. If the screen asks for a password, stop and tell the user."
         val lines = TestPrompts.real.system.lines()
         // Right after the terminal_tabs / terminal_read item, in the Tools section.
         val tabs = lines.indexOfFirst { it.startsWith("- terminal_tabs and terminal_read (if provided)") }

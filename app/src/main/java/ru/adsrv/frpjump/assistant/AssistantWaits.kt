@@ -24,9 +24,13 @@ enum class WaitKind(val wire: String) {
     companion object { fun fromWire(name: String) = entries.firstOrNull { it.wire == name } }
 }
 
-/** One wait as asked for: [tabId] for the tab events, [profileId] and [connectionId] for the tunnel events, [text] for `tab_text`. */
+/**
+ * One wait as asked for: [tabId] for the tab events, [profileId] and [connectionId] for the tunnel events, [text] for `tab_text`. [from] is a cursor
+ * (as `terminal_read` gives it) that `tab_text` and `tab_quiet` count output after, [seconds] the silence `tab_quiet` waits for.
+ */
 data class WaitSpec(
     val kind: WaitKind, val minutes: Int, val tabId: Int? = null, val profileId: String? = null, val connectionId: String? = null, val text: String? = null,
+    val from: String? = null, val seconds: Int? = null,
 )
 
 /** A wait that runs: [subject] is the target in the owner's words (a tab's name or automatic label, a tunnel's name); [untilMs] wall-clock time it ends at the latest. */

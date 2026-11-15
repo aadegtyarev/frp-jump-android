@@ -211,7 +211,7 @@ internal fun tabRenames(receipts: List<ChatToolReceipt>): Map<String, TabRename>
 /**
  * The body of one expanded call, display only: for `ssh_command` the full command as `$ <command>` (hidden characters shown as visible
  * escapes; the label above cuts it); for `terminal_input` the typed text the same way (every Enter marked) and a line with the keys
- * ([keysLine] words it in the chat's language); then [outcome] when there is something to say (null for a success), then the result text.
+ * ([keysLine] words it in the chat's language); then [outcome] when there is something to say (null for a success), then the result text (not a successful input's: it only gives the model a cursor).
  * No wire name and no raw arguments: the label says what was called.
  */
 internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String, keysLine: (List<String>) -> String = { "Keys: " + it.joinToString(", ") },
@@ -220,7 +220,9 @@ internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String, k
     val command = if (call.name == AssistantToolId.SSH_COMMAND.wire) call.arguments.text("command")?.let { "$ " + displayCommand(it) } else null
     val typed = if (call.name == AssistantToolId.TERMINAL_INPUT.wire) call.arguments.text("text")?.takeIf { it.isNotEmpty() }?.let { displayTyped(it).trimEnd('\n') } else null
     val keys = if (call.name == AssistantToolId.TERMINAL_INPUT.wire) typedKeys(call.arguments).takeIf { it.isNotEmpty() }?.let(keysLine) else null
-    return listOfNotNull(command, typed, keys, renameLine, outcome, resultText.takeIf { it.isNotEmpty() }).joinToString("\n")
+    // What a successful input returned is the model's cursor, nothing for the owner: the call shows the input only. A refusal or failure shows its text.
+    val inputDone = call.name == AssistantToolId.TERMINAL_INPUT.wire && outcome == null
+    return listOfNotNull(command, typed, keys, renameLine, outcome, resultText.takeIf { it.isNotEmpty() && !inputDone }).joinToString("\n")
 }
 
 /** The names of the keys a `terminal_input` call asked for, in order; an item that is no known key is left out. Display only. */

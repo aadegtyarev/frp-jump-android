@@ -18,14 +18,20 @@ class TmuxCommandsTest {
 
     @Test
     fun `the read-only commands of the assistant`() {
-        assertEquals("tmux capture-pane -p -J -S -100 -t '=frpjump-0a1b2c-7:'", tmuxCapturePaneCommand(name, 100))
-        assertEquals("tmux capture-pane -p -J -S -0 -t '=frpjump-0a1b2c-7:'", tmuxCapturePaneCommand(name, 0))
-        assertEquals("tmux capture-pane -p -J -S -1000 -t '=frpjump-0a1b2c-7:'", tmuxCapturePaneCommand(name, 1000))
+        // ONE tmux invocation each (its commands chained with ';' are run by tmux as one list, so the rows and the numbers belong together).
+        val numbers = "'#{history_size} #{history_limit} #{cursor_y} #{pane_height} #{pane_in_mode}'"
+        assertEquals("tmux capture-pane -p -J -S -100 -t '=frpjump-0a1b2c-7:' ';' capture-pane -p -S -3 -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers",
+            tmuxReadScreenCommand(name, 100))
+        assertTrue(" -S -0 " in tmuxReadScreenCommand(name, 0)); assertTrue(" -S -1000 " in tmuxReadScreenCommand(name, 1000))
+        assertEquals("tmux capture-pane -p -S -227 -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers", tmuxReadWindowCommand(name, 227))
+        assertEquals("tmux capture-pane -p -S - -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers", tmuxReadWindowCommand(name, null))
+        for (command in listOf(tmuxReadScreenCommand(name, 5), tmuxReadWindowCommand(name, 9), tmuxReadWindowCommand(name, null))) assertFalse(" -e " in command)
         assertEquals("tmux display-message -p -t '=frpjump-0a1b2c-7:' '#{pane_current_command}'", tmuxPaneProgramCommand(name))
-        assertFalse(" -e" in tmuxCapturePaneCommand(name, 5))
-        for (bad in listOf(-1, 1001)) assertThrows(IllegalArgumentException::class.java) { tmuxCapturePaneCommand(name, bad) }
+        for (bad in listOf(-1, 1001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(name, bad) }
+        for (bad in listOf(-1, 0, 2, 1_000_001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadWindowCommand(name, bad) }
         for (bad in listOf("x; rm -rf /", "frpjump-0a1b2c-0", "")) {
-            assertThrows(IllegalArgumentException::class.java) { tmuxCapturePaneCommand(bad, 5) }
+            assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(bad, 5) }
+            assertThrows(IllegalArgumentException::class.java) { tmuxReadWindowCommand(bad, 9) }
             assertThrows(IllegalArgumentException::class.java) { tmuxPaneProgramCommand(bad) }
         }
     }
