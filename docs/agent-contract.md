@@ -290,7 +290,7 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 10). The base prompt is the unchanged byte prefix of the first message
+(version 11). The base prompt is the unchanged byte prefix of the first message
 of every main chat-loop request, stable within and across Sends; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
@@ -307,7 +307,7 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 10), the owner's own instructions when set, only enabled tool schemas and,
+version 11), the owner's own instructions when set, only enabled tool schemas and,
 while some tool is off, the service tool `request_tool`
 ([below](#asking-for-a-tool-that-is-off)).
 The base prompt contains no profile,
