@@ -70,11 +70,11 @@ class GrantStore {
 }
 
 /**
- * Pure decision: must this call ask the owner? Only tools whose catalog effect changes something can ask; the policy (read live at
+ * Pure decision: must this call ask the owner? Only tools whose catalog effect changes something and that [AssistantToolId.confirms] can ask; the policy (read live at
  * each call) and a session grant can waive the question. Unknown and read tools never ask.
  */
 fun mustAsk(tool: AssistantToolId?, key: GrantKey?, policy: ConfirmationPolicy, grants: GrantStore, scopes: List<ConfirmationScope> = emptyList(), stamp: Any? = null): Boolean =
-    tool != null && tool.effect.changes && policy.resolve(scopes) == ConfirmationMode.ASK && (key == null || !grants.has(key, stamp))
+    tool != null && tool.effect.changes && tool.confirms && policy.resolve(scopes) == ConfirmationMode.ASK && (key == null || !grants.has(key, stamp))
 
 /** Fixed texts the model receives; the owner's text is never forwarded. */
 object ConfirmationTexts {

@@ -259,6 +259,29 @@ class TabMenuAndNamesTest {
         tab("A", named = "via ime").assertExists()
     }
 
+    @Test fun aNameTheAssistantSetShowsAfterTheAutomaticLabelUntilTheOwnerSavesIt() {
+        start()
+        compose.runOnUiThread { sessions!!.find(1)!!.rename("logs", ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT) }
+        compose.waitForIdle()
+        // The chip says who and where first; TalkBack says the assistant set the name.
+        compose.onNodeWithContentDescription(
+            text(R.string.terminal_tab_named_by_assistant, automatic("A"), ru.adsrv.frpjump.ssh.isolateName("logs")) + ", " + text(R.string.terminal_state_connecting),
+        ).assertIsSelected()
+        capture("chip-assistant-name")
+        // The owner saves the dialog, the text unchanged: the name is theirs now and shows alone.
+        compose.onNodeWithContentDescription(
+            text(R.string.terminal_tab_named_by_assistant, automatic("A"), ru.adsrv.frpjump.ssh.isolateName("logs")) + ", " + text(R.string.terminal_state_connecting),
+        ).performClick()
+        menuItem(R.string.terminal_tab_rename).performClick()
+        compose.waitForIdle()
+        dialogField().assertTextContains("logs")
+        dialogSave().assertIsEnabled().performClick()
+        compose.waitForIdle()
+        tab("A", named = "logs").assertIsSelected()
+        compose.runOnIdle { assertEquals(ru.adsrv.frpjump.ssh.NameSetter.OWNER, sessions!!.find(1)!!.tabName.value?.setBy) }
+        capture("chip-owner-name")
+    }
+
     @Test fun aLongNameIsOneLineWithAnEllipsisAndTheMenuHeaderKeepsUserAndDevice() {
         start()
         rename("A", "W".repeat(24))

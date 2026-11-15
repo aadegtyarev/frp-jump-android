@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
+import ru.adsrv.frpjump.ssh.NameSetter
+import ru.adsrv.frpjump.ssh.isolateName
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.TAB_NAME_MAX
@@ -149,7 +151,7 @@ fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<Stri
     if (renaming != null) {
         val current by renaming.tabName.collectAsStateWithLifecycle()
         TabNameDialog(
-            current = current,
+            current = current?.text,
             automatic = tabLabel(renaming.user, renaming.device, renaming.port, renaming.number),
             onSave = { name ->
                 renamingId = null
@@ -216,7 +218,9 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
     val colors = AppTheme.colors
     val state by s.state.collectAsStateWithLifecycle()
     val custom by s.tabName.collectAsStateWithLifecycle()
-    val label = custom ?: automatic
+    val label = chipLabel(automatic, custom)
+    val byAssistant = custom?.setBy == NameSetter.ASSISTANT
+    val byAssistantText = custom?.let { stringResource(R.string.terminal_tab_named_by_assistant, automatic, isolateName(it.text)) }
     val connecting = state == SshState.Connecting || state is SshState.Reconnecting
     val ended = state is SshState.Ended
     var menu by remember { mutableStateOf(false) }
@@ -266,7 +270,11 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
                 )
                 .semantics {
                     selected = on
-                    contentDescription = (if (custom != null) "$label, $automatic" else label) + ", $stateWord"
+                    contentDescription = when {
+                        custom == null -> label
+                        byAssistant -> byAssistantText.orEmpty()
+                        else -> "$label, $automatic"
+                    } + ", $stateWord"
                     customActions = offered.map { a -> CustomAccessibilityAction(a.label) { a.run(); true } }
                 }
                 .padding(horizontal = 10.dp),

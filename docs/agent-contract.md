@@ -631,7 +631,7 @@ available tool of the [tool table](#tool-table) and, above them, the app-wide
 confirmation switch ("Ask before changing commands", on by default). Today the
 tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
 image (`inspect_image`), Profile information (`profile_information`), Terminal
-tabs (`terminal_tabs`, one switch for `terminal_tabs` and `terminal_read`), Typing
+tabs (`terminal_tabs`, one switch for `terminal_tabs`, `terminal_read` and `terminal_rename`), Typing
 into tabs (`terminal_input`) and SSH command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
 only booleans, opening this screen or enabling a tool by its switch makes no
@@ -919,6 +919,7 @@ are described in each tool's subsection.
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; the call returns within 3 s of the probe start, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
 | `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
+| `terminal_rename` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the tab's label in this app only, remembered app-privately for tmux tabs like the owner's own rename; no connection, session or device is touched | exactly `tab_id` (integer from 1) and `name` (at most 24 characters, one line; empty restores the automatic name) | the owner's tab-name rule; unknown, hidden or closed tabs are refused | never: an app-local label the owner can change from the tab's menu, shown with the tab's user and device on every card, call line and receipt | the name is model text shown to the owner; `terminal_tabs` shows it to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; waits until the tab's output was quiet for 0.7 s counted from the write at the earliest (at most 10 s) and returns the screen as `terminal_read` with no history, about 7,800 characters | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed and the screen after it, which may contain secrets, go to the model | optional, default off; in effect only while Terminal tabs is on too |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
@@ -1048,11 +1049,12 @@ full-access claim.
 ### Optional terminal tabs
 
 One independent default-off switch, "Terminal tabs", turns on two read-only
-tools, `terminal_tabs` and `terminal_read`; the Tools screen and `request_tool`
-show it as one entry (`terminal_tabs`: "read the owner's open terminal tabs").
-Both have the catalog effect `READ_REMOTE`, ask for no confirmation and, as the
+tools, `terminal_tabs` and `terminal_read`, and `terminal_rename` (below); the Tools screen and `request_tool`
+show it as one entry (`terminal_tabs`: "read and rename the owner's open terminal tabs").
+The two reading tools have the catalog effect `READ_REMOTE`, ask for no confirmation and, as the
 other reading tools, keep working while the app is locked: nothing they read is
-shown over the lock. The content goes to the configured model provider and may
+shown over the lock. `terminal_rename` has the catalog effect `CHANGE_LOCAL` and the catalog flag `confirms = false` (the only changing
+tool that does not ask): it is an app-local label. The content goes to the configured model provider and may
 contain secrets; the switch's hint says so.
 
 - `terminal_tabs` takes no arguments (any key is invalid). It lists the open
@@ -1060,7 +1062,8 @@ contain secrets; the switch's hint says so.
   it stays through the automatic reconnect inside one session and is never
   reused, but Reconnect and Change login make a new session, so a new `tab_id`
   in the same place; call `terminal_tabs` again), profile name and id, device, the saved
-  SSH connection's own name when one matches profile, device and port, user, tab
+  SSH connection's own name when one matches profile, device and port, the tab's name (`name`, only when the owner or the assistant set one;
+  the same cleaned, `|`-free text as the owner's [tab name](ssh-persist-contract.md#tab-names)), user, tab
   number, state (`connected`; `reconnecting` for connecting, reconnecting and
   host-key questions; `closed`), `tmux: yes|no` and, for connected tabs that run
   the app's own tmux session, the program in the foreground of its active pane
@@ -1102,6 +1105,26 @@ contain secrets; the switch's hint says so.
   other). A tab can change at any time; the screen is untrusted data.
 - The chat's receipt for `terminal_read` names the tab (`profile · user@device
   №number` in Russian, `profile · user@device #number` in English) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
+  When that result gives the tab a name, the line is `"name" · profile · user@device #number`: a name is owner or model text and is
+  shown only together with the tab's user and device, on call lines, in the typing card and in receipts, never alone.
+- `terminal_rename` takes exactly `tab_id` (integer, at least 1) and `name`, and renames one open tab as the owner's **Rename…**
+  does: the same rule (`checkTabName`: trimmed, at most 24 code points, one line, no control, invisible or bidi characters, no `|`;
+  the 24 is the owner's own limit, one value) and the same store path, so a tmux tab renamed by the assistant is remembered like
+  an owner-named one ([tab names](ssh-persist-contract.md#tab-names)). An empty name brings back the automatic label. It changes
+  only the tab's label in this app: it opens no channel, types nothing and touches no session, connection or device. Its catalog
+  effect is `CHANGE_LOCAL` with the flag `confirms = false`, so it asks for no confirmation (the confirmation policy and the change check
+  key on `effect.changes && confirms`; a changing tool that is not an `AppTool` is still refused): the basis is that the change is an
+  app-local label the owner can undo from the tab's menu, and the tab's chip, every card, call line and receipt show the name together with
+  the tab's user and device. A name the assistant set is shown on the chip as `<automatic label> · <name>` until the owner saves the name
+  in the Rename… dialog (even unchanged), which makes it the owner's and shows it alone; the store keeps who set it, so a restored name
+  keeps it. Names cannot hold `"`, `«`, `»`, `·` or `|`, nor invisible fillers (they must show as they are, with a visible character), so a
+  name cannot imitate the marks around it; wherever a name is shown it follows the identity (`profile · user@device №n · «name»`), is
+  bidi-isolated and is plain text. A tab that is
+  unknown, hidden or `closed` is not renamed. Replies (fixed texts): `Tab <id> is now named "<name>".`; `Tab <id> has its
+  automatic name again.`; `Tab <id> is closed. Nothing was renamed.`; invalid arguments or an invalid name say `Provide tab_id from
+  terminal_tabs and name: up to 24 characters, one line, no control characters.` and change nothing. The chat shows a call line
+  `Tab name · "name" · user@device #number` (the name with the tab's user and device from the same turn's `terminal_tabs`
+  result, else `tab <id>` alone) and, expanded, `before → after` (each the name or the automatic `user@device #number`) and the reply.
 
 #### Optional typing into a tab (`terminal_input`)
 

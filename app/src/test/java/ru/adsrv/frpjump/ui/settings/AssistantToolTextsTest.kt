@@ -16,6 +16,7 @@ class AssistantToolTextsTest {
             // The two terminal tools share one switch (its title and hint); each has its own progress line.
             AssistantToolId.TERMINAL_TABS to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_tabs_progress),
             AssistantToolId.TERMINAL_READ to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_read_progress),
+            AssistantToolId.TERMINAL_RENAME to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_rename_progress),
             AssistantToolId.TERMINAL_INPUT to Triple(R.string.tool_terminal_input, R.string.tool_terminal_input_hint, R.string.tool_terminal_input_progress),
             AssistantToolId.SSH_COMMAND to Triple(R.string.tool_ssh_command, R.string.tool_ssh_command_hint, R.string.tool_ssh_command_progress),
         )
@@ -24,7 +25,8 @@ class AssistantToolTextsTest {
         // Receipt rows and failures name the call, so the two terminal tools differ there; every other tool uses its title.
         assertEquals(R.string.tool_terminal_tabs_receipt, AssistantToolId.TERMINAL_TABS.receiptTitle())
         assertEquals(R.string.tool_terminal_read_receipt, AssistantToolId.TERMINAL_READ.receiptTitle())
+        assertEquals(R.string.tool_terminal_rename_receipt, AssistantToolId.TERMINAL_RENAME.receiptTitle())
         assertEquals(R.string.tool_terminal_input_receipt, AssistantToolId.TERMINAL_INPUT.receiptTitle())
-        for (id in AssistantToolId.entries - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_INPUT) assertEquals(id.name, id.title(), id.receiptTitle())
+        for (id in AssistantToolId.entries - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT) assertEquals(id.name, id.title(), id.receiptTitle())
     }
 }

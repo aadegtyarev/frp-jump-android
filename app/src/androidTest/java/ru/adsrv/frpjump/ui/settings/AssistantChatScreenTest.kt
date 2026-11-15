@@ -140,6 +140,9 @@ class AssistantChatScreenTest {
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
         override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? = if ("pane_in_mode" in command) "0\n" else "htop\n"
         override fun bufferText(lines: Int) = screen
+        /** The tab's own name, as the owner's Rename… or the assistant's terminal_rename sets it. */
+        override var customName: String? = null
+        override fun rename(name: String?) { customName = name }
         /** What the assistant typed into this tab, as text (the bytes are the tests' own business: see AssistantTerminalInputTest). */
         val typed = java.util.concurrent.CopyOnWriteArrayList<String>()
         private val pin = object : InputPin {}
@@ -226,6 +229,13 @@ class AssistantChatScreenTest {
                     1 -> AgentReply(calls = listOf(ToolCall("tabs-2", "terminal_read", buildJsonObject { put("tab_id", 1); put("lines", 50) })))
                     else -> { heldProviderReply.await(); AgentReply("The first tab shows a synthetic prompt and two files.") }
                 }
+                "terminal-rename" -> when (request.turns.last().exchanges.size) {
+                    0 -> AgentReply(calls = listOf(ToolCall("tabs-1", "terminal_tabs", buildJsonObject { })))
+                    1 -> AgentReply(calls = listOf(ToolCall("rename-1", "terminal_rename", buildJsonObject { put("tab_id", 2); put("name", "logs") })))
+                    else -> { heldProviderReply.await(); AgentReply("Renamed the tab.") }
+                }
+                "terminal-rename-unlisted" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("rename-1", "terminal_rename", buildJsonObject { put("tab_id", 2); put("name", "logs") }))) else { heldProviderReply.await(); AgentReply("Renamed the tab.") }
                 "terminal-input" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("input-$calls", "terminal_input", buildJsonObject {
                         put("tab_id", 2); put("text", typedText)
@@ -414,7 +424,7 @@ class AssistantChatScreenTest {
     }
     /** The service tool `request_tool` follows the enabled tools while at least one of the seven switches is off (these tests never turn on typing into tabs); the terminal switch brings two tools. */
     private fun withRequestTool(enabled: List<String>) =
-        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read") else listOf(it) } + (if (enabled.size < 6 || "terminal_input" !in enabled) listOf("request_tool") else emptyList())
+        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read", "terminal_rename") else listOf(it) } + (if (enabled.size < 6 || "terminal_input" !in enabled) listOf("request_tool") else emptyList())
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
         when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "terminal_tabs" -> it.terminalTabs; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
     }
@@ -620,6 +630,65 @@ class AssistantChatScreenTest {
         shot("terminal-calls-expanded")
     }
 
+    /** terminal_rename: its call line is the name with the tab's user and device; expanded, "before → after" and the approved reply. */
+    @Test fun terminalRenameShowsItsCallLineAndBeforeAfterAndRenamesOnlyTheLabel() {
+        val renamed = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "").also { it.customName = "old" }
+        val other = SyntheticTab(1, 1, null, "")
+        terminalTabs = AssistantTerminalTabs(tabs = { listOf(other, renamed) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" })
+        mode = "terminal-rename"; settings.update { it.copy(assistantTerminalTabs = true) }
+        install()
+        input().performTextInput("Call the second tab logs")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 2 && r.all { it.result != null } } }
+        compose.waitForIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_1"))
+        // The name is never alone: the tab's user and device are on the line.
+        compose.onNodeWithTag("chat_tool_call_1").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_rename_receipt), substring = true)
+            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name, ru.adsrv.frpjump.ssh.isolateName("logs"), "pi", "synthetic-device", 2), substring = true)
+        compose.runOnIdle { assertEquals("logs", renamed.customName); assertNull(other.customName) }
+        shot("terminal-rename-running")
+        compose.runOnIdle { heldProviderReply.complete(Unit) }
+        awaitIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        val before = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("old"))
+        val after = localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("logs"))
+        // Identity first (profile, user@device, number), then before -> after.
+        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains(
+            localizedFormat(ru.adsrv.frpjump.R.string.chat_receipt_rename, "Synthetic profile", "pi", "synthetic-device", 2, before, after), substring = true)
+            .assertTextContains("Tab 2 is now named \"logs\".", substring = true)
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
+        shot("terminal-rename-expanded")
+    }
+
+    /** A rename with no `terminal_tabs` result in the turn: the call line and the expanded receipt show the tab's id only, never the name alone. */
+    @Test fun aRenameOfAnUnlistedTabNeverShowsTheNameAlone() {
+        val renamed = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")
+        terminalTabs = AssistantTerminalTabs(tabs = { listOf(SyntheticTab(1, 1, null, ""), renamed) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> null })
+        mode = "terminal-rename-unlisted"; settings.update { it.copy(assistantTerminalTabs = true) }
+        install()
+        input().performTextInput("Call the second tab logs")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 1 && r.all { it.result != null } } }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals("logs", renamed.customName) }
+        compose.runOnIdle { heldProviderReply.complete(Unit) }
+        awaitIdle()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        val text = compose.onNodeWithTag("chat_tool_receipt_0").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+        assertTrue(text, text.contains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab, 2)))
+        assertFalse("the name stands alone in: $text", text.contains("logs"))
+    }
+
+    /** The question before typing into a tab that has a name: the name, with the tab's profile, user and device. */
+    @Test fun theTypingCardShowsATabNameWithItsUserAndDevice() {
+        startTypingConfirmation("logs")
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true)
+            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName("logs"), "Synthetic profile", "pi", "synthetic-device", 2), substring = true)
+        shot("card-terminal-input-named")
+    }
+
     /** An expanded ssh_command call: the full command as `$ command`, a word for the failed outcome, the result; never the wire name or JSON. */
     @Test fun expandedSshCallShowsTheFullCommandAndAnOutcomeWordOnly() {
         settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)
@@ -697,9 +766,9 @@ class AssistantChatScreenTest {
         compose.waitForIdle()
     }
 
-    private fun startTypingConfirmation(): SyntheticTab {
+    private fun startTypingConfirmation(tabName: String? = null): SyntheticTab {
         val plain = SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ")
-        val tmuxTab = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "")
+        val tmuxTab = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "").also { it.customName = tabName }
         terminalTabs = AssistantTerminalTabs(tabs = { listOf(plain, tmuxTab) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" },
             quietMs = 50)
         settings.update { it.copy(assistantTerminalTabs = true, assistantTerminalInput = true) }

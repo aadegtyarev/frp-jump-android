@@ -140,7 +140,10 @@ the attempt. Tabs themselves are not persisted, and remote sessions belong to th
 
 ### Tab names
 
-The owner can name a tab (tab menu → **Rename…**). The chip then shows the
+The owner can name a tab (tab menu → **Rename…**); the assistant can too ([`terminal_rename`](agent-contract.md#optional-terminal-tabs)), under
+the same rule and through the same store. The store keeps who set a name (owner or assistant; an entry without it is the owner's). A name the
+assistant set is shown on the chip as `<automatic label> · <name>` until the owner saves it in the dialog (even unchanged), which makes it the
+owner's; an owner's name is shown alone. The chip then shows the
 name instead of the automatic `user · device` label, and the tab's menu shows
 the automatic label as a muted header, so user and device stay visible; the
 accessibility name is “<name>, <automatic label>”. Empty after trimming goes
@@ -148,7 +151,10 @@ back to the automatic label.
 
 - **Rules** (one function, `checkTabName`): trimmed; at most 24 code points;
   one line; no control, format/invisible (bidi controls, zero-width) or
-  line-separator characters, no unpaired surrogate and no `|`. An invalid name
+  line-separator characters, no unpaired surrogate, none of `"` `«` `»` `·` `|`,
+  and shown as it is by the chat's display cleaning (no invisible fillers such as
+  U+3164 or U+2800, no private-use or unassigned code point, no run of spaces) with
+  at least one visible character. An invalid name
   cannot be saved; the dialog says why under the field.
 - **Lifetime.** The name belongs to the tab: it stays through automatic
   reconnect, **Reconnect** and **Change login** (the same tab place) and is
@@ -165,14 +171,17 @@ back to the automatic label.
   kill command succeeded, or Close all), when the owner clears the name, and
   when a session listing for that profile, device, port and user succeeds and
   does not have the session (the pick-up listing and the Close-all listing;
-  sessions of tabs open now are exempt). A failed listing forgets nothing; a
+  sessions of tabs open now are exempt). A listing counts as successful only when `tmux list-sessions` exited 0, or
+  said there is no server (“no server running”, “error connecting to”); any other
+  outcome forgets nothing, also for the listing after the Close-all kill. A
   Close with the connection down leaves the remote session, so its name stays
   until a listing shows it gone. At most 200 names are kept; the oldest
   written go first.
 - **Data.** A name is owner-typed text, not a secret and not expected to hold
   one; it is stored unsealed with profile id, device host, port, user and
-  tmux session name. It is never sent anywhere, and no assistant tool,
-  receipt or model text sees it.
+  tmux session name. It is never sent anywhere by the app itself. The
+  assistant's [terminal tools](agent-contract.md#optional-terminal-tabs) show a name to the model in
+  `terminal_tabs` (when the Terminal tabs tool is on) and can set it with `terminal_rename` under the same rule and the same store.
 
 ### Closing
 

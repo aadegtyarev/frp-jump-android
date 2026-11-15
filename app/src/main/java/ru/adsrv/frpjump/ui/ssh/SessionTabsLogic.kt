@@ -2,7 +2,10 @@ package ru.adsrv.frpjump.ui.ssh
 
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.NameSetter
 import ru.adsrv.frpjump.ssh.SshLogin
+import ru.adsrv.frpjump.ssh.TabName
+import ru.adsrv.frpjump.ssh.isolateName
 
 /**
  * A session tab's label: "user · device" (":port" when not 22), and
@@ -13,6 +16,17 @@ import ru.adsrv.frpjump.ssh.SshLogin
 fun tabLabel(user: String, device: String, port: Int, number: Int): String {
     val base = "$user · $device" + if (port != 22) ":$port" else ""
     return if (number > 1) "$base · $number" else base
+}
+
+/**
+ * What a tab's chip shows: the automatic [automatic] label; the owner's name alone; or, while the assistant set the name
+ * and the owner has not saved it, the automatic label and the name, so that a name the owner did not choose never stands in
+ * for who and where the tab is. The name is bidi-isolated. One line; the chip cuts its end.
+ */
+fun chipLabel(automatic: String, name: TabName?): String = when {
+    name == null -> automatic
+    name.setBy == NameSetter.OWNER -> name.text
+    else -> "$automatic \u00B7 " + isolateName(name.text)
 }
 
 /**

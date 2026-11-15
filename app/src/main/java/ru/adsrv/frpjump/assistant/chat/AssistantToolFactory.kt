@@ -18,7 +18,7 @@ internal object AssistantToolFactory {
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
             AssistantProfileInformationTool(profileInformation)) else emptyList()) +
-            (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs), AssistantTerminalReadTool(terminalTabs)) else emptyList()) +
+            (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs), AssistantTerminalReadTool(terminalTabs), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
             (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs)) else emptyList()) +
             (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList()) +
             (if (off.isNotEmpty() && enabled.offer) listOf(AssistantRequestTool(off, declined)) else emptyList())

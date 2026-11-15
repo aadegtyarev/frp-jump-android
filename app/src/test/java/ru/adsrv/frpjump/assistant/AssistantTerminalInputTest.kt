@@ -588,12 +588,12 @@ class AssistantTerminalInputTest {
         fun ids(tools: AssistantTools, owner: AssistantTerminalTabs? = tabs(TypeTab(1))) = names(tools, owner).map { it.spec.name }.filter { it != "request_tool" }
         assertEquals(emptyList<String>(), ids(AssistantTools()))
         assertEquals("the typing switch alone is not enough", emptyList<String>(), ids(AssistantTools(terminalInput = true)))
-        assertEquals(listOf("terminal_tabs", "terminal_read"), ids(AssistantTools(terminalTabs = true)))
-        assertEquals(listOf("terminal_tabs", "terminal_read", "terminal_input"), ids(AssistantTools(terminalTabs = true, terminalInput = true)))
-        assertEquals(listOf("terminal_tabs", "terminal_read"), ids(AssistantTools(terminalTabs = true, terminalInput = false)))
+        assertEquals(listOf("terminal_tabs", "terminal_read", "terminal_rename"), ids(AssistantTools(terminalTabs = true)))
+        assertEquals(listOf("terminal_tabs", "terminal_read", "terminal_rename", "terminal_input"), ids(AssistantTools(terminalTabs = true, terminalInput = true)))
+        assertEquals(listOf("terminal_tabs", "terminal_read", "terminal_rename"), ids(AssistantTools(terminalTabs = true, terminalInput = false)))
         // Order: before ssh_command.
         val all = AssistantTools(search = true, readPage = true, inspectImage = true, terminalTabs = true, terminalInput = true, sshCommand = true)
-        assertEquals(listOf("terminal_tabs", "terminal_read", "terminal_input"), ids(all).filter { it.startsWith("terminal_") })
+        assertEquals(listOf("terminal_tabs", "terminal_read", "terminal_rename", "terminal_input"), ids(all).filter { it.startsWith("terminal_") })
         assertTrue("no owner of the tabs, no tool", ids(AssistantTools(terminalTabs = true, terminalInput = true), null).none { it.startsWith("terminal_") })
     }
 

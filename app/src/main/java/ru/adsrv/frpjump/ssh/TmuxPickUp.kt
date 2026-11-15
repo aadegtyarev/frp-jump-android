@@ -131,16 +131,37 @@ private const val EXEC_TIMEOUT_S = 10L
 /** A list of a few hundred names fits; anything past this is not read. */
 private const val LIST_MAX_BYTES = 64 * 1024
 
+/** What an exec gave: standard output and error (both bounded) and the exit status, null when the remote side sent none. */
+class ExecResult(val stdout: String, val stderr: String, val exitStatus: Int?)
+
 /**
  * Runs [command] on an exec channel of [ssh] and returns its standard
  * output (bounded); throws [IOException] when it did not finish in time.
  * Blocking: an IO thread.
  */
-fun execOutput(ssh: SSHClient, command: String): String =
+fun execOutput(ssh: SSHClient, command: String): String = execResult(ssh, command).stdout
+
+/** [execOutput] with the error output and the exit status as well. */
+fun execResult(ssh: SSHClient, command: String): ExecResult =
     ssh.startSession().use { s ->
         val exec = s.exec(command)
         // As the probe: the output waits in the channel's window until read; no answer is no answer.
         exec.join(EXEC_TIMEOUT_S, TimeUnit.SECONDS)
         if (exec.isOpen) throw IOException("exec did not finish")
-        readUpTo(exec.inputStream, LIST_MAX_BYTES)
+        val out = readUpTo(exec.inputStream, LIST_MAX_BYTES)
+        val err = runCatching { readUpTo(exec.errorStream, ERR_MAX_BYTES) }.getOrDefault("")
+        ExecResult(out, err, exec.exitStatus)
     }
+
+/**
+ * The sessions a `tmux list-sessions` ([TMUX_LIST_COMMAND], or a chain ending with it) really listed: its output when it exited 0, none
+ * when tmux said there is no server to ask ("no server running", "error connecting to": nothing runs), and null for any other outcome (no
+ * exit status, tmux missing, a failure of the command): the listing says nothing then, and nothing may be concluded or forgotten from it.
+ */
+fun tmuxListing(result: ExecResult): String? = when {
+    result.exitStatus == 0 -> result.stdout
+    result.exitStatus != null && ("no server running" in result.stderr || "error connecting to" in result.stderr) -> ""
+    else -> null
+}
+
+private const val ERR_MAX_BYTES = 4 * 1024

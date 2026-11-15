@@ -11,6 +11,9 @@ import ru.adsrv.frpjump.assistant.tools.StrictArgs
 import ru.adsrv.frpjump.assistant.tools.InvalidArguments
 import ru.adsrv.frpjump.assistant.tools.objectSchema
 import ru.adsrv.frpjump.ops.ssh.SSH_RESULT_BUDGET
+import ru.adsrv.frpjump.ssh.TAB_NAME_MAX
+import ru.adsrv.frpjump.ssh.TabNameCheck
+import ru.adsrv.frpjump.ssh.checkTabName
 
 /** Characters of a name (profile, device, user, connection) in a tab line. */
 private const val NAME_CHARS = 64
@@ -33,7 +36,42 @@ internal class AssistantTerminalTabsTool(private val tabs: AssistantTerminalTabs
     override fun failure(error: Exception) = ToolOutput("Could not list terminal tabs.", ToolOutcome.FAILED)
 
     companion object {
-        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, profile, device, connection, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
+        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, connection, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
+    }
+}
+
+/**
+ * `terminal_rename`: renames one open tab, as the owner's Rename… does (the same rule [checkTabName] and the same path, [AssistantTerminalTabs.rename]).
+ * Changes only the tab's label in this app: no connection, session or device is touched, so it asks for no confirmation.
+ */
+internal class AssistantTerminalRenameTool(private val tabs: AssistantTerminalTabs) : AppTool<AssistantTerminalRenameTool.Input>(
+    AssistantToolId.TERMINAL_RENAME, RENAME_DESCRIPTION, objectSchema { integer("tab_id", 1); string("name", TAB_NAME_MAX) },
+) {
+    /** [name] is valid already (trimmed, [TAB_NAME_MAX] code points at most, one line); null brings back the automatic label. */
+    class Input(val tabId: Int, val name: String?)
+
+    override fun parse(args: StrictArgs) = args.run {
+        onlyKeys("tab_id", "name")
+        val id = int("tab_id", min = 1)
+        val valid = checkTabName(string("name", max = RAW_MAX, allowBlank = true)) as? TabNameCheck.Valid ?: throw InvalidArguments()
+        Input(id, valid.name)
+    }
+    override val invalidArguments = ToolOutput(INVALID, ToolOutcome.FAILED)
+
+    override suspend fun run(args: Input): ToolOutput {
+        val tab = try { tabs.rename(args.tabId, args.name) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: TabNotOpen) { return ToolOutput("Tab ${args.tabId} is closed. Nothing was renamed.", ToolOutcome.FAILED) }
+        return ToolOutput(if (tab.name != null) "Tab ${tab.id} is now named \"${tab.name}\"." else "Tab ${tab.id} has its automatic name again.")
+    }
+
+    override fun failure(error: Exception) = ToolOutput("Tab could not be renamed.", ToolOutcome.FAILED)
+
+    companion object {
+        /** What a call may hand over before [checkTabName] looks at it; a longer text is refused by the rule or here. */
+        private const val RAW_MAX = 256
+        const val INVALID = "Provide tab_id from terminal_tabs and name: up to $TAB_NAME_MAX characters, one line, no control characters."
+        const val RENAME_DESCRIPTION = "Rename one open terminal tab by tab_id from terminal_tabs, as the owner can from the tab's menu. `name`: up to $TAB_NAME_MAX characters on one line; an empty name brings back the automatic one. Changes only the tab's label in this app, nothing on the device."
     }
 }
 
@@ -104,7 +142,8 @@ internal class AssistantTerminalInputTool(private val tabs: AssistantTerminalTab
         if (pin != null) pins[args.tabId] = pin else pins.remove(args.tabId)
         val tab = view?.tab
         fun part(raw: String?) = raw?.let { receiptText(it, NAME_CHARS) }
-        val card = TypingCard(args.tabId, part(tab?.profile), part(tab?.user), part(tab?.device), tab?.number, view?.program, TerminalKey.labels(args.keys))
+        val card = TypingCard(args.tabId, part(tab?.profile), part(tab?.user), part(tab?.device), tab?.number, view?.program, TerminalKey.labels(args.keys),
+            name = tab?.name?.let { receiptText(it, TAB_NAME_MAX) })
         return ChangeRequest(id, view?.target, args.text.orEmpty(), typing = card)
     }
 
@@ -141,7 +180,10 @@ internal fun tabsText(list: List<TerminalTab>, programs: Map<Int, String>, budge
     if (list.isEmpty()) return "No open terminal tabs."
     val lines = list.map { tab ->
         buildString {
-            append("tab_id: ${tab.id} | profile: ${name(tab.profile)} (profile_id: ${name(tab.profileId)}) | device: ${name(tab.device)}")
+            append("tab_id: ${tab.id}")
+            // Only when set. A name cannot hold the record's separator, and the first occurrence of a key wins on the reading side.
+            tab.name?.let { append(" | name: ${name(it, TAB_NAME_MAX)}") }
+            append(" | profile: ${name(tab.profile)} (profile_id: ${name(tab.profileId)}) | device: ${name(tab.device)}")
             tab.connection?.let { append(" | connection: ${name(it)}") }
             append(" | user: ${name(tab.user)} | tab: ${tab.number} | state: ${tab.state.wire} | tmux: ${if (tab.tmux) "yes" else "no"}")
             programs[tab.id]?.let { append(" | program: ${name(it)}") }

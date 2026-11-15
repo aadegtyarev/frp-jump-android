@@ -1093,7 +1093,7 @@ cancellation and current execution boundaries belong to the
 | Assistant provider metadata and root-bound sealed credential | app-private atomic document; no plaintext key |
 | Current assistant conversation, draft, tool receipts and opaque continuation | encrypted atomic document in app-private no-backup storage; explicit clear with Undo |
 | Profiles, cached device lists, connections, local port map, host keys, snippets, active tunnels to restore, "keep through the server" choices, settings | app-private storage |
-| SSH tab names the owner set, for tmux tabs (at most 200; profile id, device, port, user, tmux session name, name; not secret) | app-private no-backup storage; [forgotten](ssh-persist-contract.md#tab-names) with the session |
+| SSH tab names set by the owner or by the assistant (and which of the two), for tmux tabs (at most 200; profile id, device, port, user, tmux session name, name, who set it; not secret) | app-private no-backup storage; [forgotten](ssh-persist-contract.md#tab-names) with the session |
 
 Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and

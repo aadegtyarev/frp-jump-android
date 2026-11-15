@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.api.WireJson
+import ru.adsrv.frpjump.assistant.chat.receiptText
 import ru.adsrv.frpjump.store.TextStorage
 
 /** The most code points a tab name has. */
@@ -14,7 +15,10 @@ enum class TabNameProblem {
     /** More than [TAB_NAME_MAX] code points after trimming. */
     TOO_LONG,
 
-    /** A control, format/invisible or line-separating character, an unpaired surrogate, or `|`. */
+    /**
+     * A control, format/invisible or line-separating character, an unpaired surrogate, a character that the chat would not show as it is
+     * (invisible fillers, private-use or unassigned, a run of spaces), nothing visible at all, or one of `"` `«` `»` `·` `|`.
+     */
     BAD_CHARACTER,
 }
 
@@ -28,27 +32,54 @@ sealed interface TabNameCheck {
 }
 
 /**
- * The one rule for an owner-set tab name: trimmed; at most [TAB_NAME_MAX]
+ * The one rule for a tab name, the owner's and the assistant's: trimmed; at most [TAB_NAME_MAX]
  * code points; one line, with no control, format (bidi controls, zero-width
  * and other invisible ones) or separator-of-lines characters, no unpaired
- * surrogate, and no `|`. Empty after trimming is [TabNameCheck.Valid] with
- * a null name: the automatic label again.
+ * surrogate, none of `"` `«` `»` `·` `|` (the marks the app puts around and
+ * between the parts of a tab's description, so a name cannot imitate them);
+ * and shown as it is by [receiptText] (which drops invisible fillers such as
+ * U+3164, U+115F, U+FFA0, U+2800, U+034F and variation selectors, private-use and
+ * unassigned code points, and collapses runs of spaces), with at least one visible
+ * character. Empty after trimming is [TabNameCheck.Valid] with a null name: the
+ * automatic label again.
  */
 fun checkTabName(input: String): TabNameCheck {
     val text = input.trim { it.isWhitespace() || Character.isSpaceChar(it) }
     val points = text.codePoints().toArray()
     if (points.any { !tabNameCharacter(it) }) return TabNameCheck.Invalid(TabNameProblem.BAD_CHARACTER, points.size)
+    if (text.isNotEmpty() && (receiptText(text, Int.MAX_VALUE) != text || points.none(::visible))) {
+        return TabNameCheck.Invalid(TabNameProblem.BAD_CHARACTER, points.size)
+    }
     if (points.size > TAB_NAME_MAX) return TabNameCheck.Invalid(TabNameProblem.TOO_LONG, points.size)
     return TabNameCheck.Valid(text.ifEmpty { null })
 }
 
 private fun tabNameCharacter(cp: Int): Boolean {
-    if (cp == '|'.code) return false
+    if (cp == '|'.code || cp == '"'.code || cp == 0xAB || cp == 0xBB || cp == 0xB7) return false
     return when (Character.getType(cp).toByte()) {
         Character.CONTROL, Character.FORMAT, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR, Character.SURROGATE -> false
         else -> true
     }
 }
+
+/** A letter, number, punctuation or symbol: what a person can see (a mark alone is not a character). */
+private fun visible(cp: Int): Boolean = when (Character.getType(cp).toByte()) {
+    Character.UPPERCASE_LETTER, Character.LOWERCASE_LETTER, Character.TITLECASE_LETTER, Character.MODIFIER_LETTER, Character.OTHER_LETTER,
+    Character.DECIMAL_DIGIT_NUMBER, Character.LETTER_NUMBER, Character.OTHER_NUMBER,
+    Character.CONNECTOR_PUNCTUATION, Character.DASH_PUNCTUATION, Character.START_PUNCTUATION, Character.END_PUNCTUATION,
+    Character.INITIAL_QUOTE_PUNCTUATION, Character.FINAL_QUOTE_PUNCTUATION, Character.OTHER_PUNCTUATION,
+    Character.MATH_SYMBOL, Character.CURRENCY_SYMBOL, Character.MODIFIER_SYMBOL, Character.OTHER_SYMBOL -> true
+    else -> false
+}
+
+/** [text] as an isolated run (FSI ... PDI): whatever it holds cannot reorder the text around it. Wherever a name is shown. */
+fun isolateName(text: String): String = "\u2068$text\u2069"
+
+/** Who gave a tab its name. A name the assistant gave is shown with the automatic label until the owner saves it. */
+enum class NameSetter { OWNER, ASSISTANT }
+
+/** A tab's name and who set it. */
+data class TabName(val text: String, val setBy: NameSetter = NameSetter.OWNER)
 
 /** A remembered name's tab: where it logs in and the tab's tmux session (`frpjump-<install>-<n>`). */
 data class TabNameKey(val profile: String, val device: String, val port: Int, val user: String, val session: String)
@@ -65,7 +96,13 @@ data class TabNameKey(val profile: String, val device: String, val port: Int, va
  */
 class TabNameStore(private val storage: TextStorage, private val max: Int = MAX_REMEMBERED) {
     @Serializable
-    private data class Entry(val profile: String, val device: String, val port: Int, val user: String, val session: String, val name: String)
+    private data class Entry(
+        val profile: String, val device: String, val port: Int, val user: String, val session: String, val name: String,
+        /** `owner` or `assistant`; an entry without it (written before the field existed) is the owner's. */
+        val by: String = "owner",
+    ) {
+        fun setter() = if (by == "assistant") NameSetter.ASSISTANT else NameSetter.OWNER
+    }
 
     @Serializable
     private data class Stored(val names: List<Entry> = emptyList())
@@ -73,18 +110,19 @@ class TabNameStore(private val storage: TextStorage, private val max: Int = MAX_
     /** Oldest written first. */
     private var entries: MutableList<Entry>? = null
 
-    /** The remembered name of [key], or null. */
+    /** The remembered name of [key] and who set it, or null. May read the file: not for the main thread. */
     @Synchronized
-    fun get(key: TabNameKey): String? = load().firstOrNull { it.matches(key) }?.name
+    fun get(key: TabNameKey): TabName? = load().firstOrNull { it.matches(key) }?.let { TabName(it.name, it.setter()) }
 
-    /** Remembers [name] (valid, see [checkTabName]) for [key]; the newest write. Nothing is written when it is the same. */
+    /** Remembers [name] (valid, see [checkTabName]) set [by] for [key]; the newest write. Nothing is written when it is the same. */
     @Synchronized
-    fun put(key: TabNameKey, name: String) {
+    fun put(key: TabNameKey, name: String, by: NameSetter = NameSetter.OWNER) {
         val list = load()
         val at = list.indexOfFirst { it.matches(key) }
-        if (at == list.lastIndex && at >= 0 && list[at].name == name) return
+        val tag = if (by == NameSetter.ASSISTANT) "assistant" else "owner"
+        if (at == list.lastIndex && at >= 0 && list[at].name == name && list[at].by == tag) return
         if (at >= 0) list.removeAt(at)
-        list += Entry(key.profile, key.device, key.port, key.user, key.session, name)
+        list += Entry(key.profile, key.device, key.port, key.user, key.session, name, tag)
         while (list.size > max) list.removeAt(0)
         save()
     }

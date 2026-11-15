@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.adsrv.frpjump.ssh.NameSetter
+import ru.adsrv.frpjump.ssh.TabName
 import ru.adsrv.frpjump.ssh.SshAuth
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.SshLogin
@@ -69,5 +71,16 @@ class SessionTabsLogicTest {
     @Test
     fun `closing the last tab leaves none`() {
         assertNull(selectionAfterClose(listOf(1), selectedId = 1, closedId = 1))
+    }
+
+    @Test
+    fun `the chip shows the owner's name alone and an assistant's name after the automatic label`() {
+        val auto = "pi \u00B7 wb7 \u00B7 2"
+        assertEquals(auto, chipLabel(auto, null))
+        assertEquals("logs", chipLabel(auto, TabName("logs", NameSetter.OWNER)))
+        // The assistant's: who and where first, the name last and isolated.
+        assertEquals("$auto \u00B7 \u2068logs\u2069", chipLabel(auto, TabName("logs", NameSetter.ASSISTANT)))
+        // The owner saving the dialog (the same text) makes it theirs: the name alone.
+        assertEquals("logs", chipLabel(auto, TabName("logs", NameSetter.ASSISTANT).copy(setBy = NameSetter.OWNER)))
     }
 }

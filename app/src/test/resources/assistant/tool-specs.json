@@ -44,7 +44,7 @@
   },
   {
     "name": "terminal_tabs",
-    "description": "List the owner's open terminal tabs in this app: tab_id, profile, device, connection, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model.",
+    "description": "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, connection, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model.",
     "parameters": {
       "type": "object",
       "additionalProperties": false,
@@ -59,6 +59,16 @@
       "additionalProperties": false,
       "properties": { "tab_id": { "type": "integer", "minimum": 1 }, "lines": { "type": "integer", "minimum": 0, "maximum": 1000 } },
       "required": ["tab_id"]
+    }
+  },
+  {
+    "name": "terminal_rename",
+    "description": "Rename one open terminal tab by tab_id from terminal_tabs, as the owner can from the tab's menu. `name`: up to 24 characters on one line; an empty name brings back the automatic one. Changes only the tab's label in this app, nothing on the device.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "tab_id": { "type": "integer", "minimum": 1 }, "name": { "type": "string", "maxLength": 24 } },
+      "required": ["tab_id", "name"]
     }
   },
   {
