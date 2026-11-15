@@ -16,13 +16,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.settings.AssistantOwnerInstructions
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PencilGlyph
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.FormScreen
 
 /** The row in Settings › LLM assistant; its hint says only whether instructions are set, never the text. */
 @Composable
 internal fun AssistantOwnerInstructionsEntry(saved: String, onClick: () -> Unit) {
-    SettingRow(tile = { GlyphTile("✎") }, label = stringResource(R.string.assistant_owner_title),
+    SettingRow(tile = { IconTile(PencilGlyph) }, label = stringResource(R.string.assistant_owner_title),
         hint = stringResource(if (saved.isBlank()) R.string.assistant_owner_not_set else R.string.assistant_owner_set),
         modifier = Modifier.testTag("assistant_owner_entry"), onClick = onClick) { Chevron() }
 }

@@ -88,6 +88,14 @@ import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.settings.TERMINAL_HISTORY_CHOICES
 import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.PortGlyph
+import ru.adsrv.frpjump.ui.HistoryGlyph
+import ru.adsrv.frpjump.ui.TerminalGlyph
+import ru.adsrv.frpjump.ui.KeyboardGlyph
+import ru.adsrv.frpjump.ui.ServerGlyph
+import ru.adsrv.frpjump.ui.ChatGlyph
+import ru.adsrv.frpjump.ui.InfoGlyph
+import ru.adsrv.frpjump.ui.WarnGlyph
 import ru.adsrv.frpjump.ui.FileGlyph
 import ru.adsrv.frpjump.ui.PluginGlyph
 import ru.adsrv.frpjump.ui.plugins.PluginsScreen
@@ -254,21 +262,21 @@ fun SettingsScreen(
             )
             RowDivider()
             SettingRow(
-                tile = { GlyphTile("#") },
+                tile = { IconTile(PortGlyph) },
                 label = stringResource(R.string.local_ports),
                 onClick = { open = Open.PORTS },
             ) { ValueChevron("${settings.localPortFirst}–${settings.localPortLast}") }
         }
         Group(stringResource(R.string.settings_terminal)) {
             SettingRow(
-                tile = { GlyphTile("≡") },
+                tile = { IconTile(HistoryGlyph) },
                 label = stringResource(R.string.terminal_history_rows),
                 hint = stringResource(R.string.terminal_history_hint),
                 onClick = { open = Open.HISTORY },
             ) { ValueChevron(settings.terminalHistoryRows.toString()) }
             RowDivider()
             SwitchRow(
-                tile = { GlyphTile(">_") },
+                tile = { IconTile(TerminalGlyph) },
                 label = stringResource(R.string.setting_terminal_direct_input),
                 hint = stringResource(R.string.setting_terminal_direct_input_hint),
                 checked = settings.terminalDirectInput,
@@ -276,7 +284,7 @@ fun SettingsScreen(
             )
             RowDivider()
             SettingRow(
-                tile = { GlyphTile("⌨") },
+                tile = { IconTile(KeyboardGlyph) },
                 label = stringResource(R.string.terminal_text_input),
                 hint = stringResource(R.string.terminal_text_input_hint),
                 onClick = null,
@@ -291,7 +299,7 @@ fun SettingsScreen(
             RowDivider()
             AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
             RowDivider()
-            SettingRow(tile = { GlyphTile("API") }, label = stringResource(R.string.assistant_provider_title),
+            SettingRow(tile = { IconTile(ServerGlyph) }, label = stringResource(R.string.assistant_provider_title),
                 hint = if (assistantProvider.problem != null) stringResource(R.string.assistant_provider_read_failed)
                     else assistantProvider.settings?.model?.takeIf { it.isNotBlank() } ?: stringResource(R.string.assistant_provider_not_selected),
                 onClick = { providerSetup = true }) { Chevron() }
@@ -496,7 +504,7 @@ fun SettingsScreen(
 /** Shared entry used by Settings and the isolated navigation component check. */
 @Composable
 internal fun AssistantChatEntry(onChat: () -> Unit) {
-    SettingRow(tile = { GlyphTile("LLM") }, label = stringResource(R.string.chat_title),
+    SettingRow(tile = { IconTile(ChatGlyph) }, label = stringResource(R.string.chat_title),
         modifier = Modifier.testTag("assistant_chat_entry"), onClick = onChat) { Chevron() }
 }
 
@@ -517,7 +525,7 @@ private fun VersionRow(update: UpdateState, onCheck: () -> Unit, onUpdate: () ->
         else -> stringResource(R.string.update_check_hint)
     }
     SettingRow(
-        tile = { GlyphTile("i") },
+        tile = { IconTile(InfoGlyph) },
         label = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME, BuildConfig.FRPC_VERSION),
         hint = hint,
         hintColor = if (available == null && update.checkError != null) colors.error else colors.muted,
@@ -561,14 +569,14 @@ internal fun RowDivider() = HorizontalDivider(color = AppTheme.colors.divider)
 
 /** A 34 dp tile with an icon. */
 @Composable
-internal fun IconTile(icon: ImageVector) {
+internal fun IconTile(icon: ImageVector, background: Color = AppTheme.colors.tile, ink: Color = AppTheme.colors.ink) {
     Box(
         Modifier
             .size(34.dp)
-            .background(AppTheme.colors.tile, RoundedCornerShape(10.dp)),
+            .background(background, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = AppTheme.colors.ink, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -706,7 +714,7 @@ private fun BatteryRow() {
     val context = LocalContext.current
     val colors = AppTheme.colors
     SettingRow(
-        tile = { GlyphTile("!", colors.warningContainer, colors.onWarningContainer) },
+        tile = { IconTile(WarnGlyph, colors.warningContainer, colors.onWarningContainer) },
         label = stringResource(R.string.battery),
         hint = stringResource(R.string.battery_hint),
         onClick = { askBatteryExemption(context) },
