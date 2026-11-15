@@ -6,12 +6,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import ru.adsrv.frpjump.agent.admitSideEffect
 import ru.adsrv.frpjump.assistant.chat.receiptText
 import ru.adsrv.frpjump.sessions.sessionHidden
+import ru.adsrv.frpjump.ssh.ExecLease
 import ru.adsrv.frpjump.ssh.SshSession
 import ru.adsrv.frpjump.ssh.SshState
 import ru.adsrv.frpjump.ssh.execOutputTail
@@ -55,9 +57,10 @@ internal interface TabHandle {
     val tmuxName: String?
     /**
      * Runs [command] on the tab's EXISTING connection and returns the last [maxBytes] bytes of its output; null when the tab has no open
-     * connection. Never opens one. Blocking and interruptible; throws when the command fails.
+     * connection. Never opens one. Blocking and never interrupted (see [ru.adsrv.frpjump.ssh.execOutputTail]): the caller that stops
+     * waiting calls [lease]'s abandon, which closes the channel. Throws when the command fails.
      */
-    fun exec(command: String, maxBytes: Int): String?
+    fun exec(command: String, maxBytes: Int, lease: ExecLease): String?
     /** The terminal buffer's text: the last [lines] history rows and the visible screen. Called on the main thread. */
     fun bufferText(lines: Int): String
 }
@@ -72,7 +75,7 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val number get() = session.number
     override val state get() = session.state.value
     override val tmuxName get() = session.tmux.assigned?.takeIf { session.tmux.inUse }
-    override fun exec(command: String, maxBytes: Int): String? = session.openClient()?.let { execOutputTail(it, command, maxBytes) }
+    override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? = session.openClient()?.let { execOutputTail(it, command, maxBytes, lease) }
     override fun bufferText(lines: Int): String = terminalBufferText(session.terminal.session.emulator, lines)
 }
 
@@ -109,6 +112,24 @@ class AssistantTerminalTabs internal constructor(
     private val probeTimeoutMs: Long = PROBE_TIMEOUT_MS,
     private val readTimeoutMs: Long = READ_TIMEOUT_MS,
 ) {
+    /** The workers' own scope: a worker is never cancelled with its caller, because a channel is never opened or read half way. */
+    private val workers = CoroutineScope(io + SupervisorJob())
+
+    /**
+     * [work] on a worker thread, awaited for at most [timeoutMs]; null on timeout. When the caller stops waiting (timeout, Stop, an error)
+     * the lease is abandoned: the worker's channel is closed in the background, now or when it arrives. The worker itself is not
+     * interrupted and may linger until its connection call returns or the connection ends; it holds no result anyone waits for.
+     */
+    private suspend fun <T> bounded(timeoutMs: Long, work: (ExecLease) -> T): T? {
+        val lease = ExecLease()
+        val job = workers.async { work(lease) }
+        try {
+            return withTimeoutOrNull(timeoutMs) { job.await() }
+        } finally {
+            if (!job.isCompleted) lease.abandon()
+        }
+    }
+
     private fun visible(): List<TabHandle> {
         val h = hidden()
         return tabs().filterNot { sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profileId, it.device, it.port)) }
@@ -135,7 +156,7 @@ class AssistantTerminalTabs internal constructor(
                 async {
                     val name = tab.tmuxName ?: return@async null
                     val answer = try {
-                        withTimeoutOrNull(probeTimeoutMs) { runInterruptible(io) { tab.exec(tmuxPaneProgramCommand(name), PROBE_MAX_BYTES) } }
+                        bounded(probeTimeoutMs) { lease -> tab.exec(tmuxPaneProgramCommand(name), PROBE_MAX_BYTES, lease) }
                     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { null }
                     program(answer.orEmpty())?.let { tab.id to it }
                 }
@@ -159,9 +180,8 @@ class AssistantTerminalTabs internal constructor(
         val name = handle.tmuxName
         if (name == null) return TabRead(tab, withContext(main) { handle.bufferText(lines) })
         admitSideEffect(DISPATCH)
-        val text = withTimeoutOrNull(readTimeoutMs) {
-            runInterruptible(io) { handle.exec(tmuxCapturePaneCommand(name, lines), READ_MAX_BYTES) }
-        } ?: throw java.io.IOException("tab read failed")
+        val text = bounded(readTimeoutMs) { lease -> handle.exec(tmuxCapturePaneCommand(name, lines), READ_MAX_BYTES, lease) }
+            ?: throw java.io.IOException("tab read failed")
         return TabRead(tab, text)
     }
 
@@ -174,7 +194,8 @@ class AssistantTerminalTabs internal constructor(
         private const val READ_MAX_BYTES = 1 shl 20
         const val PROGRAM_CHARS = 64
 
-        /** A program name from tmux's answer: its first line, printable characters only, at most [PROGRAM_CHARS]; null when nothing is left. */
-        fun program(raw: String): String? = receiptText(raw.lineSequence().firstOrNull().orEmpty(), PROGRAM_CHARS).takeIf { it.isNotEmpty() }
+        /** A program name from tmux's answer: its first line, printable characters only, no record separator, at most [PROGRAM_CHARS]; null when nothing is left. */
+        fun program(raw: String): String? =
+            receiptText(raw.lineSequence().firstOrNull().orEmpty(), PROGRAM_CHARS).replace('|', '¦').takeIf { it.isNotEmpty() }
     }
 }

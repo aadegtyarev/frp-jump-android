@@ -912,8 +912,8 @@ are described in each tool's subsection.
 | `read_page` | `READ_REMOTE` | none: public transport | `url`, at most 2,048 characters: public HTTPS, port 443 | 8,000 text characters, 100 links and 20 image references per page; shared public budget | never | selected public text goes to the model | optional, default off |
 | `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
-| `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; at most 3 s per probe, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
-| `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
+| `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; the call returns within 3 s of the probe start, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
+| `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
 | tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
@@ -1050,16 +1050,19 @@ shown over the lock. The content goes to the configured model provider and may
 contain secrets; the switch's hint says so.
 
 - `terminal_tabs` takes no arguments (any key is invalid). It lists the open
-  tabs in the order of the tab bar, one line each: `tab_id` (the tab's own id,
-  stable across Reconnect, never reused), profile name and id, device, the saved
+  tabs in the order of the tab bar, one line each: `tab_id` (the tab's own id:
+  it stays through the automatic reconnect inside one session and is never
+  reused, but Reconnect and Change login make a new session, so a new `tab_id`
+  in the same place; call `terminal_tabs` again), profile name and id, device, the saved
   SSH connection's own name when one matches profile, device and port, user, tab
   number, state (`connected`; `reconnecting` for connecting, reconnecting and
   host-key questions; `closed`), `tmux: yes|no` and, for connected tabs that run
-  the app's own tmux session, the program in the foreground of its active pane.
+  the app's own tmux session, the program in the foreground of its active pane
+  (one cleaned line of at most 64 characters, no `|`, control or invisible
+  characters, so that a remote program name cannot add fields to the record).
   A tmux started by hand inside a tab is not known (`tmux: no`). The program
   comes from one `tmux display-message` on the tab's EXISTING connection, probes
-  in parallel and each bounded by 3 seconds; a failed or late probe leaves the
-  program out.
+  in parallel; a failed or late probe leaves the program out.
 - `terminal_read` takes exactly `tab_id` (integer, at least 1) and optional
   `lines` (integer 0 to 1,000, default 100): the visible screen plus up to
   `lines` lines of history. A tmux tab is read with `tmux capture-pane -p -J -S
@@ -1069,6 +1072,14 @@ contain secrets; the switch's hint says so.
   lines cut, limited to the tool-result budget (about 7,800 characters); over
   it the oldest lines go and the text ends with `truncated: N of M characters`.
   Control and invisible formatting characters are removed.
+- Time: the tool returns within 3 seconds of the probe start (`terminal_tabs`)
+  and within 10 seconds of the read start (`terminal_read`). The work behind a
+  late call is not interrupted (an interrupted channel open leaves the channel
+  open on the connection): the caller gives up, and the channel of that call is
+  closed in the background, at once if it exists and as soon as it arrives
+  otherwise. The closing never delays the answer. A late worker may linger until
+  the connection answers or ends; it holds no result and no channel. Reading the
+  app's terminal buffer is a short main-thread read with no timeout.
 - Tabs the owner closed or whose tunnel was disconnected while an Undo is on
   screen are hidden, as in the Sessions list, and are not listed or readable.
 - Nothing is opened or typed. No new login, connection, tunnel or client is
@@ -1084,7 +1095,7 @@ contain secrets; the switch's hint says so.
   optional lines 0..1000 only.` (`terminal_tabs takes no arguments.` for the
   other). A tab can change at any time; the screen is untrusted data.
 - The chat's receipt for `terminal_read` names the tab (`profile · user@device
-  №number`) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
+  №number` in Russian, `profile · user@device #number` in English) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
 
 ### Optional SSH command
 

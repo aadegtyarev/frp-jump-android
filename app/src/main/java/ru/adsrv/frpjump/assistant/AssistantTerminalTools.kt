@@ -77,7 +77,7 @@ internal fun tabsText(list: List<TerminalTab>, programs: Map<Int, String>, budge
             append("tab_id: ${tab.id} | profile: ${name(tab.profile)} (profile_id: ${name(tab.profileId)}) | device: ${name(tab.device)}")
             tab.connection?.let { append(" | connection: ${name(it)}") }
             append(" | user: ${name(tab.user)} | tab: ${tab.number} | state: ${tab.state.wire} | tmux: ${if (tab.tmux) "yes" else "no"}")
-            programs[tab.id]?.let { append(" | program: $it") }
+            programs[tab.id]?.let { append(" | program: ${name(it)}") }
         }
     }
     if (lines.sumOf { it.length + 1 } <= budget) return lines.joinToString("\n")

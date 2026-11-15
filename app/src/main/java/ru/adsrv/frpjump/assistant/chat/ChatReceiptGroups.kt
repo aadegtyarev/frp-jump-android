@@ -58,7 +58,10 @@ internal fun tabLabels(receipts: List<ChatToolReceipt>): Map<Int, TabLabel> {
     for (receipt in receipts) {
         val result = receipt.result?.takeIf { it.name == AssistantToolId.TERMINAL_TABS.wire && it.outcome == ToolOutcome.SUCCESS } ?: continue
         for (line in result.text.lineSequence()) {
-            val fields = line.split(" | ").associate { part -> part.substringBefore(": ") to part.substringAfter(": ", "") }
+            if (!line.startsWith("tab_id: ")) continue
+            // The first occurrence of a key wins: whatever follows the fixed fields can never overwrite them.
+            val fields = HashMap<String, String>()
+            for (part in line.split(" | ")) fields.putIfAbsent(part.substringBefore(": "), part.substringAfter(": ", ""))
             val id = fields["tab_id"]?.toIntOrNull() ?: continue
             val profile = fields["profile"]?.substringBeforeLast(" (profile_id: ") ?: continue
             val user = fields["user"] ?: continue

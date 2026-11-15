@@ -138,7 +138,7 @@ class AssistantChatScreenTest {
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
-        override fun exec(command: String, maxBytes: Int): String? = "htop\n"
+        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? = "htop\n"
         override fun bufferText(lines: Int) = screen
     }
     private var sshCommands = sshOver(kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.profiles.ProfilesState(loaded = true)), kotlinx.coroutines.flow.MutableStateFlow(emptySet()))
