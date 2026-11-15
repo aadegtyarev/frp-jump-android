@@ -53,6 +53,10 @@ internal class ReceiptWords(
     val tabPlain: (Int) -> String = { "tab $it" },
     /** "profile · user@device #n · name": a tab that has a name, which is only ever shown after its identity, bidi-isolated and in quotes. */
     val tabNamedAs: (String, String, String, String, Int) -> String = { name, profile, user, device, number -> "$profile · $user@$device #$number · \"$name\"" },
+    /** [name] between its marks, in the chat's language. */
+    val quoted: (String) -> String = { name -> "\"$name\"" },
+    /** The tunnel's name in the reply of the call with this id, when it has one. */
+    val tunnelName: (String) -> String? = { null },
     /** "user@device #n · name": the line of a rename call. */
     val tabRenamed: (String, String, String, Int) -> String = { name, user, device, number -> "$user@$device #$number · \"$name\"" },
 )
@@ -95,6 +99,7 @@ internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("a
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
     if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire) return terminalReadDetail(a, words)
     if (call.name == AssistantToolId.TERMINAL_RENAME.wire) return terminalRenameDetail(a, words)
+    if (call.name == AssistantToolId.START_TUNNEL.wire || call.name == AssistantToolId.STOP_TUNNEL.wire) return tunnelDetail(call, a, words)
     val raw = when (call.name) {
         // The target's name only where the received facts name it (never its ids), then the command; the cut keeps the command's start.
         AssistantToolId.SSH_COMMAND.wire -> a.text("command")?.let { command ->
@@ -134,6 +139,34 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
         ?: return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
     return words.tabNamedAs(isolateName(name), part(label.profile), part(label.user), part(label.device), label.number)
 }
+
+/**
+ * The tunnel's name between its marks, for the call line of `start_tunnel` and `stop_tunnel`: from the received `profile_information` facts
+ * when they name the tunnel, else from this call's own result ([tunnelNames]); none before either is known (the line is then the title alone).
+ * Tunnel names are the owner's own text: plain text, bidi-isolated, shown whole (up to [RECEIPT_DETAIL_CHARS]) with no profile in front.
+ */
+private fun tunnelDetail(call: ToolCall, a: JsonObject, words: ReceiptWords): String? {
+    val profileId = a.text("profile_id")?.takeIf { it.isNotBlank() } ?: return null
+    val name = a.text("connection_id")?.let { words.connectionName(profileId, it) } ?: words.tunnelName(call.id)
+    return name?.let { receiptText(it, RECEIPT_DETAIL_CHARS) }?.takeIf { it.isNotEmpty() }?.let { words.quoted(isolateName(it)) }
+}
+
+/**
+ * The tunnel's name in each finished `start_tunnel` / `stop_tunnel` call's reply (`Tunnel <name> is on. …`), by call id: where the facts of
+ * `profile_information` did not name it. Display only; the replies are the app's own fixed texts.
+ */
+internal fun tunnelNames(receipts: List<ChatToolReceipt>): Map<String, String> {
+    val out = HashMap<String, String>()
+    for (receipt in receipts) {
+        val call = receipt.call
+        if (call.name != AssistantToolId.START_TUNNEL.wire && call.name != AssistantToolId.STOP_TUNNEL.wire) continue
+        val text = receipt.result?.text ?: continue
+        TUNNEL_REPLY.find(text)?.groupValues?.get(1)?.let { out[call.id] = it }
+    }
+    return out
+}
+
+private val TUNNEL_REPLY = Regex("^Tunnel (.+?) (?:is on[.,]|was already on\\.|is off\\.|was not on\\.|is being stopped\\.|did not start\\.)")
 
 /**
  * "user@device #n · name" for a rename call, the tab's user and device as this turn's `terminal_tabs` result names them; "profile · user@device #n"

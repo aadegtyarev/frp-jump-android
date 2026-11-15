@@ -1244,6 +1244,16 @@
     <string name="tool_ssh_command">SSH command</string>
     <string name="tool_ssh_command_hint">FULL SSH ACCESS: commands can read and change the remote system and files within the SSH account’s rights. Commands and output may contain secrets and are shared with your configured model. Ordinary token charges apply.</string>
     <string name="tool_ssh_command_progress">Running SSH command…</string>
+    <string name="tool_tunnels">Tunnels</string>
+    <string name="tool_tunnels_hint">The assistant starts and stops your tunnels. Before stopping one it asks if “Ask before changing commands” is on: stopping closes that tunnel\'s tabs.</string>
+    <string name="tool_start_tunnel_progress">Starting tunnel…</string>
+    <string name="tool_stop_tunnel_progress">Stopping tunnel…</string>
+    <string name="tool_start_tunnel_receipt">Start tunnel</string>
+    <string name="tool_stop_tunnel_receipt">Stop tunnel</string>
+    <string name="confirm_stop_title">Stop tunnel?</string>
+    <string name="confirm_stop_target">%1$s · \"%2$s\" · %3$s:%4$d</string>
+    <string name="confirm_stop_tabs">%1$d tabs of this tunnel will close. tmux sessions on the device stay.</string>
+    <string name="chat_detail_tunnel">%1$s · \"%2$s\"</string>
     <string name="profile_information_query">Selection: %1$s</string>
     <string name="profile_information_count">Records on this page: %1$d · total: %2$s</string>
     <string name="profile_information_partial">Some sources are unavailable, unknown or stale. These results may be incomplete.</string>

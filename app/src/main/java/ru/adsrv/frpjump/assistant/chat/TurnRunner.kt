@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
-    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?,
+    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */
@@ -63,11 +63,13 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
-            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs)
+            val limits = env.limits(a.settings)
+            val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
+                limits.toolTimeoutMs)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
-                env.limits(a.settings), ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
+                limits, ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
                 authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)
             val problem = finishProblem(summaryProblem, result.finish, transportTimeout, invalidReply)
@@ -91,7 +93,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         val slot = ConfirmationSlot(id, answer, started)
         own.guarded(owner, "confirmation") {
             confirmation = slot
-            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info, request.typing))
+            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info, request.typing, request.stop))
         } ?: throw CancellationException("Send no longer owned")
         try {
             // The coroutine timer does not count device sleep, so the wait also looks at the real clock every few seconds.

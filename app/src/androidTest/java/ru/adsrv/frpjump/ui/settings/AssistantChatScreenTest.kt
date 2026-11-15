@@ -135,6 +135,28 @@ class AssistantChatScreenTest {
         ))
     /** Two synthetic tabs for the terminal tools: a plain one (read from the app's buffer) and a tmux one (probed over its own client). */
     private var terminalTabs: AssistantTerminalTabs? = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null })
+    /** The owner's saved tunnels for the tunnel tools: one saved SSH tunnel, on, with [tabs] open terminal tabs; start and stop are recorded, nothing real runs. */
+    private class SyntheticTunnels(var tabs: Int, var on: Boolean = true) : ru.adsrv.frpjump.ops.tunnel.SavedTunnelHost {
+        val ids = ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds("synthetic-profile", "c1")
+        private val saved = ru.adsrv.frpjump.ops.tunnel.SavedTunnel("synthetic-profile", "Synthetic profile", "c1", "pi ssh", "synthetic-device", 22, ru.adsrv.frpjump.ports.PortKind.SSH)
+        val started = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val stopped = java.util.concurrent.CopyOnWriteArrayList<ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget>()
+        override fun find(ids: ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds) = saved.takeIf { ids == this.ids }
+        override fun isStopping(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = false
+        override fun isOn(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = on
+        override fun pin(ids: ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds): Any? = find(ids)?.let { listOf(it, on) }
+        override fun tabs(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = tabs
+        fun assistant() = AssistantTunnels(this,
+            up = object : ru.adsrv.frpjump.ops.Operation<ru.adsrv.frpjump.ops.tunnel.TunnelUpInput, Int> {
+                override val name = "tunnel_up"; override val effect = ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL
+                override suspend fun invoke(input: ru.adsrv.frpjump.ops.tunnel.TunnelUpInput): ru.adsrv.frpjump.ops.OpResult<Int> { started += input.device; on = true; return ru.adsrv.frpjump.ops.OpResult.Done(40001) }
+            },
+            down = object : ru.adsrv.frpjump.ops.Operation<ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget, Unit> {
+                override val name = "tunnel_down"; override val effect = ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL
+                override suspend fun invoke(input: ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget): ru.adsrv.frpjump.ops.OpResult<Unit> { stopped += input; on = false; return ru.adsrv.frpjump.ops.OpResult.Done(Unit) }
+            })
+    }
+    private var tunnelsHost = SyntheticTunnels(2)
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
@@ -236,6 +258,10 @@ class AssistantChatScreenTest {
                 }
                 "terminal-rename-unlisted" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("rename-1", "terminal_rename", buildJsonObject { put("tab_id", 2); put("name", "logs") }))) else { heldProviderReply.await(); AgentReply("Renamed the tab.") }
+                "tunnel-stop" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("stop-1", "stop_tunnel", buildJsonObject { put("profile_id", "synthetic-profile"); put("connection_id", "c1") }))) else AgentReply("Stopped.")
+                "tunnel-start" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
+                    ToolCall("start-1", "start_tunnel", buildJsonObject { put("profile_id", "synthetic-profile"); put("connection_id", "c1") }))) else { heldProviderReply.await(); AgentReply("Started.") }
                 "terminal-input" -> if (request.turns.last().exchanges.isEmpty()) AgentReply(calls = listOf(
                     ToolCall("input-$calls", "terminal_input", buildJsonObject {
                         put("tab_id", 2); put("text", typedText)
@@ -256,7 +282,7 @@ class AssistantChatScreenTest {
                 else -> AgentReply("Complete answer $calls")
             }
         }
-    }, realtime = { SystemClock.elapsedRealtime() }, terminalTabs = terminalTabs).also { testOwner = it }
+    }, realtime = { SystemClock.elapsedRealtime() }, terminalTabs = terminalTabs, tunnels = tunnelsHost.assistant()).also { testOwner = it }
     private fun vm() = AssistantChatViewModel(settings, store, owner())
     private fun summaryFacts(text: String) = listOf("target", "done", "unknown").joinToString("; ") { key ->
         "$key=" + (Regex("$key=([a-z-]+)").find(text)?.groupValues?.get(1) ?: error("Missing observed $key"))
@@ -269,7 +295,7 @@ class AssistantChatScreenTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         historyCleanup = { scope.cancel(); file.delete(); box.destroy() }
         val snapshot = store.currentSnapshot
-        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=12_000,outputTokens=512),snapshot.revision))
+        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=12_400,outputTokens=512),snapshot.revision))
         history = AssistantChatHistory(ru.adsrv.frpjump.store.AtomicTextFile(file),box,scope)
         val records = (0 until 40).map { i ->
             val user = if (i==0) "target=work-root done=diagnostic unknown=upgrade" else "Progress $i"
@@ -422,9 +448,9 @@ class AssistantChatScreenTest {
         val config = Configuration(compose.activity.resources.configuration).apply { setLocale(Locale.forLanguageTag(args.getString("chatLocale") ?: "en")) }
         return compose.activity.createConfigurationContext(config).getString(id, *format)
     }
-    /** The service tool `request_tool` follows the enabled tools while at least one of the seven switches is off (these tests never turn on typing into tabs); the terminal switch brings two tools. */
+    /** The service tool `request_tool` follows the enabled tools while at least one switch is off (these tests never turn on typing into tabs or the tunnels); the terminal switch brings two tools. */
     private fun withRequestTool(enabled: List<String>) =
-        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read", "terminal_rename") else listOf(it) } + (if (enabled.size < 6 || "terminal_input" !in enabled) listOf("request_tool") else emptyList())
+        enabled.flatMap { if (it == "terminal_tabs") listOf("terminal_tabs", "terminal_read", "terminal_rename") else listOf(it) } + listOf("request_tool")
     private fun committedTool(id: String): Boolean = settings.assistantAvailability.tools.let {
         when (id) { "web_search" -> it.search; "read_page" -> it.readPage; "inspect_image" -> it.inspectImage; "profile_information" -> it.profileInformation; "terminal_tabs" -> it.terminalTabs; "ssh_command" -> it.sshCommand; else -> error("Unknown test tool") }
     }
@@ -611,7 +637,7 @@ class AssistantChatScreenTest {
         awaitIdle()
         compose.runOnIdle {
             val results = owner!!.state.value.receipts.ifEmpty { owner!!.state.value.turns.last().receipts }.map { it.result!! }
-            assertTrue(results[0].text, results[0].text.contains("tab_id: 1 | profile: Synthetic profile (profile_id: synthetic-profile) | device: synthetic-device | connection: Synthetic shell | user: pi | tab: 1 | state: connected | tmux: no"))
+            assertTrue(results[0].text, results[0].text.contains("tab_id: 1 | profile: Synthetic profile (profile_id: synthetic-profile) | device: synthetic-device | tunnel: Synthetic shell | user: pi | tab: 1 | state: connected | tmux: no"))
             assertTrue(results[0].text, results[0].text.contains("tab_id: 2 |") && results[0].text.endsWith("| tmux: yes | program: htop"))
             assertEquals("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer\npi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$", results[1].text)
         }
@@ -687,6 +713,84 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true)
             .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName("logs"), "Synthetic profile", "pi", "synthetic-device", 2), substring = true)
         shot("card-terminal-input-named")
+    }
+
+    private fun startStopConfirmation(tabs: Int): SyntheticTunnels {
+        tunnelsHost = SyntheticTunnels(tabs)
+        settings.update { it.copy(assistantTunnels = true) }
+        install()
+        compose.runOnIdle { mode = "tunnel-stop" }
+        input().performTextInput("Stop the pi ssh tunnel")
+        button("chat_send").performClick()
+        try { compose.waitUntil(WAIT_MS) { owner?.state?.value?.confirmation != null } }
+        catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("no question appeared: " + diagnose("no-question"), e) }
+        compose.waitForIdle()
+        return tunnelsHost
+    }
+
+    /** The question before stopping a tunnel: its identity line, the tabs that close, the common answers (no session grant), and nothing stops until Allow. */
+    @Test fun stoppingATunnelAsksWithItsIdentityAndTabsThenStopsOnAllow() {
+        val host = startStopConfirmation(2)
+        shown("chat_confirm_card")
+        compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.confirm_stop_title)).assertExists()
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextContains(
+            localizedFormat(ru.adsrv.frpjump.R.string.confirm_stop_target, "Synthetic profile", ru.adsrv.frpjump.ssh.isolateName("pi ssh"), "synthetic-device", 22), substring = true)
+        compose.onNodeWithTag("chat_confirm_stop_tabs", useUnmergedTree = true).assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.confirm_stop_tabs, 2), substring = true)
+        compose.onNodeWithTag("chat_confirm_command_box").assertDoesNotExist()
+        compose.onNodeWithTag("chat_confirm_session").assertDoesNotExist()
+        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) shown(tag).assertHasClickAction()
+        compose.runOnIdle { assertTrue("nothing stops while the question is open", host.stopped.isEmpty()) }
+        shot("card-stop-tunnel")
+        shown("chat_confirm_allow").performClick()
+        awaitIdle()
+        compose.runOnIdle { assertEquals(listOf<ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget>(ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget.OneNow(ru.adsrv.frpjump.tunnel.TunnelRef("synthetic-profile", "synthetic-device", 22))), host.stopped.toList()) }
+    }
+
+    /** With no tab open the card has no tabs line, and Decline stops nothing. */
+    @Test fun theStopCardHasNoTabsLineForNoTabsAndDeclineStopsNothing() {
+        val host = startStopConfirmation(0)
+        shown("chat_confirm_card")
+        compose.onNodeWithTag("chat_confirm_stop_tabs", useUnmergedTree = true).assertDoesNotExist()
+        shot("card-stop-tunnel-no-tabs")
+        shown("chat_confirm_decline").performClick()
+        awaitIdle()
+        compose.runOnIdle { assertTrue(host.stopped.isEmpty()) }
+    }
+
+    /** start_tunnel runs without a question; its call line names the tunnel's profile first. */
+    @Test fun startingATunnelAsksNothingAndShowsItsCallLine() {
+        tunnelsHost = SyntheticTunnels(0, on = false)
+        settings.update { it.copy(assistantTunnels = true) }
+        install()
+        compose.runOnIdle { mode = "tunnel-start" }
+        input().performTextInput("Start the pi ssh tunnel")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == 1 && r.all { it.result != null } } }
+        compose.waitForIdle()
+        compose.runOnIdle { assertNull("no question for a start", owner!!.state.value.confirmation); assertEquals(listOf("synthetic-device"), tunnelsHost.started.toList()) }
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_call_0"))
+        // The tunnel's name is on the line, whole (from the reply: no facts were received in this turn), with no profile id in front of it.
+        compose.onNodeWithTag("chat_tool_call_0").assertTextContains(localizedText(ru.adsrv.frpjump.R.string.tool_start_tunnel_receipt), substring = true)
+            .assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_detail_name_quoted, ru.adsrv.frpjump.ssh.isolateName("pi ssh")), substring = true)
+        shot("tunnel-start-line")
+        compose.runOnIdle { heldProviderReply.complete(Unit) }
+        awaitIdle()
+    }
+
+    /** The Tools screen: the "Tunnels" switch, off by default, with its hint; it turns on and is saved. */
+    @Test fun toolsScreenShowsTheTunnelsSwitchOffWithItsHintAndSavesIt() {
+        install()
+        button("chat_tools").performClick()
+        compose.onNodeWithTag("tool_start_tunnel").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_tunnels)) and hasAnyAncestor(hasTestTag("tool_start_tunnel"))).assertExists()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_tunnels_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_start_tunnel"))).assertExists()
+        toolToggle("start_tunnel").assertIsOff()
+        assertFalse(settings.assistantAvailability.tools.tunnels)
+        shot("tools-tunnels-off")
+        toolToggle("start_tunnel").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.tunnels }
+        toolToggle("start_tunnel").assertIsOn()
+        shot("tools-tunnels-on")
     }
 
     /** An expanded ssh_command call: the full command as `$ command`, a word for the failed outcome, the result; never the wire name or JSON. */

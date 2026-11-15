@@ -43,6 +43,12 @@ internal abstract class AppTool<A : Any>(
     protected open fun describeChange(args: A): ChangeRequest? = null
 
     /**
+     * Whether this call, of a changing tool that confirms, has anything to ask about: false when it can change nothing (a stop of a tunnel
+     * that is unknown or not on). Then it asks no question and runs, to say so.
+     */
+    protected open fun asksAbout(args: A): Boolean = true
+
+    /**
      * Pure, three-state. [ChangeCheck.Invalid]: the arguments do not parse (the tool then fails on its own and runs nothing).
      * [ChangeCheck.ReadOnly]: a read tool. [ChangeCheck.Change]: a changing tool; when it gives no description (or fails to), the request
      * is an undescribed one, so a changing call with valid arguments can never look read-only.
@@ -50,7 +56,7 @@ internal abstract class AppTool<A : Any>(
     fun changeCheck(arguments: JsonObject): ChangeCheck {
         val parsed = try { parse(StrictArgs(arguments)) } catch (_: InvalidArguments) { return ChangeCheck.Invalid }
         // A changing tool that is catalogued as not confirming (the tab rename) never asks.
-        if (!((effect.changes || id.effect.changes) && id.confirms)) return ChangeCheck.ReadOnly
+        if (!((effect.changes || id.effect.changes) && id.confirms && asksAbout(parsed))) return ChangeCheck.ReadOnly
         val described = try { describeChange(parsed) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
         return ChangeCheck.Change(described ?: ChangeRequest(id, null, "", described = false))
     }
@@ -67,9 +73,10 @@ internal abstract class AppTool<A : Any>(
 /**
  * Not a data class: its toString must never print the command. [target] is the structured grant target; null when unknown or undescribed.
  * [typing] is what the card shows besides the text of a call that types into a terminal tab ([command] is then that text); null for others.
+ * [stop] is what the card of a stop of a saved tunnel shows (there is no command text); null for others.
  */
 internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String, val described: Boolean = true,
-    val typing: TypingCard? = null)
+    val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null)
 
 internal sealed interface ChangeCheck {
     data object Invalid : ChangeCheck

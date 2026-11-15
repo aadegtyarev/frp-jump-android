@@ -59,6 +59,8 @@ class AssistantChatOwner(
     private val removed: Flow<Boolean> = emptyFlow(),
     /** The owner's open terminal tabs for `terminal_tabs` and `terminal_read`; null in tests that do not use them. */
     private val terminalTabs: AssistantTerminalTabs? = null,
+    /** The owner's saved tunnels for `start_tunnel` and `stop_tunnel`; null in tests that do not use them. */
+    private val tunnels: AssistantTunnels? = null,
 ) {
     private class Live(val conversation: AssistantConversation, val scope: CoroutineScope, val confirmations: ConfirmationSupport)
     private val lock = Any()
@@ -131,7 +133,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, historyStore = historyStore,
+            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,

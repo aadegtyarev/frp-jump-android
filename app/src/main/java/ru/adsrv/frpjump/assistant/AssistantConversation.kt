@@ -24,6 +24,7 @@ class AssistantConversation(
     private val profileInformation: ru.adsrv.frpjump.profiles.ProfileInformation? = null,
     private val sshCommands: AssistantSshCommands? = null,
     private val terminalTabs: AssistantTerminalTabs? = null,
+    private val tunnels: AssistantTunnels? = null,
     private val historyStore: AssistantChatHistory? = null,
     private val awaitHistoryClear: suspend () -> Unit = {},
     /** Does a pending Clear now (its Undo notice goes) and returns when that is done or was taken back; a Send calls it before it starts. */
@@ -54,7 +55,7 @@ class AssistantConversation(
     private val gate = runtime.gate
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
     val state: StateFlow<ChatState> = c.mutable
 
     init {

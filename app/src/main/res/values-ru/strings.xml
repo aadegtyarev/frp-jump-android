@@ -1292,6 +1292,16 @@
     <string name="tool_ssh_command">Команда SSH</string>
     <string name="tool_ssh_command_hint">ПОЛНЫЙ ДОСТУП ПО SSH: команды могут читать и изменять удалённую систему и файлы в пределах прав SSH-аккаунта. Команды и вывод могут содержать секреты и передаются настроенной модели. Токены оплачиваются.</string>
     <string name="tool_ssh_command_progress">Выполняется команда SSH…</string>
+    <string name="tool_tunnels">Туннели</string>
+    <string name="tool_tunnels_hint">Помощник включает и выключает ваши туннели. Перед выключением спрашивает, если включено «Спрашивать перед изменяющими командами»: выключение закрывает вкладки этого туннеля.</string>
+    <string name="tool_start_tunnel_progress">Включаю туннель…</string>
+    <string name="tool_stop_tunnel_progress">Выключаю туннель…</string>
+    <string name="tool_start_tunnel_receipt">Включить туннель</string>
+    <string name="tool_stop_tunnel_receipt">Выключить туннель</string>
+    <string name="confirm_stop_title">Выключить туннель?</string>
+    <string name="confirm_stop_target">%1$s · «%2$s» · %3$s:%4$d</string>
+    <string name="confirm_stop_tabs">Закроются вкладки этого туннеля: %1$d. Сессии tmux на устройстве останутся.</string>
+    <string name="chat_detail_tunnel">%1$s · «%2$s»</string>
     <string name="profile_information_query">Выборка: %1$s</string>
     <string name="profile_information_count">Записей на странице: %1$d · всего: %2$s</string>
     <string name="profile_information_partial">Часть источников недоступна, неизвестна или устарела. Результаты могут быть неполными.</string>

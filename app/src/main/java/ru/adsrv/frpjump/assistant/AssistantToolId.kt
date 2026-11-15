@@ -13,6 +13,16 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     READ_PAGE("read_page", "assistant_read_page", Effect.READ_REMOTE),
     INSPECT_IMAGE("inspect_image", "assistant_inspect_image", Effect.READ_REMOTE),
     PROFILE_INFORMATION("profile_information", "assistant_profile_information", Effect.READ_REMOTE),
+    /**
+     * Starts one saved tunnel as the owner's Start button does and waits until the device takes connections. The switch of the two tunnel tools
+     * (`assistant_tunnels`, default off). It changes only this app and runs without a question ([confirms] false, as [TERMINAL_RENAME]).
+     */
+    START_TUNNEL("start_tunnel", "assistant_tunnels", Effect.CHANGE_LOCAL, confirms = false),
+    /**
+     * Stops one saved tunnel as the owner's Stop button does (its terminal tabs close; tmux sessions on the device stay), at once and without
+     * the owner's 5 s Undo: the confirmation card is the check. No switch of its own: on and off with [START_TUNNEL]. Asks as every changing tool does.
+     */
+    STOP_TUNNEL("stop_tunnel", "assistant_tunnels", Effect.CHANGE_LOCAL, ownsSwitch = false),
     /** The switch of the two terminal tools: it lists the owner's open tabs. */
     TERMINAL_TABS("terminal_tabs", "assistant_terminal_tabs", Effect.READ_REMOTE),
     /** Reads one tab. No switch of its own: it is on and off with [TERMINAL_TABS] (same setting key), and the Tools screen and `request_tool` show one entry. */

@@ -39,7 +39,8 @@ interface TunnelUpHost {
 
 /**
  * The local port of the tunnel to a device port, brought up when it is down and waited for until the device takes connections on it.
- * Used by the screens (Connections, device card, "Use key login"); the assistant does not get it: it does not manage tunnels.
+ * Used by the screens (Connections, device card, "Use key login") and by the assistant's `start_tunnel` (through `StartSavedTunnel`, which
+ * also ends the whole wait inside the assistant's tool time limit).
  */
 class TunnelUp(
     private val host: TunnelUpHost,
