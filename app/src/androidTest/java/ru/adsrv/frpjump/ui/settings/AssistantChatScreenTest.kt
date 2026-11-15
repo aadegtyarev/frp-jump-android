@@ -1214,6 +1214,10 @@ class AssistantChatScreenTest {
     }
 
     @Test fun oldAndCurrentExchangeOmissionsUseTruthfulLocalizedContextLabel() {
+        // The fixed part of a request (system prompt, tool schemas) is about 5-6k estimated tokens and grows with the prompt, while one 9,000-char
+        // exchange or turn is about 9k. An 18k window with a 512 reserve leaves several k of margin on both sides: one exchange (or the newest
+        // turn) always fits so the turn completes, two never do so the older ones are omitted. Do not tighten it back toward the default window.
+        store.currentSnapshot.let { snapshot -> store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens = 18_000, outputTokens = 512), snapshot.revision)) }
         mode = "current-omission"; install()
         input().performTextInput("Current exchanges"); sendAndAwait()
         compose.runOnIdle { assertEquals(1, owner!!.state.value.turns.size); assertTrue(owner!!.state.value.omitted) }
