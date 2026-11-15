@@ -295,10 +295,15 @@ compatibility with every provider-specific thinking parameter.
 
 ## Instructions
 
-The application skill is the base system prompt,
-[`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 12). The base prompt is the unchanged byte prefix of the first message
-of every main chat-loop request, stable within and across Sends; without owner
+The application skill is the base system prompt. It is composed, by ONE function (`AssistantPrompts.system`, which every reader
+uses): the core, [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md) (the role, the rules every
+request needs, the safety and reporting rules, the app-origin line), plus the note of each tool switch that is on in the request,
+[`assets/assistant/tools/<switch>.md`](../app/src/main/assets/assistant/tools/) (the setting key without `assistant_`), in the
+catalog's switch order at the core's `<tool-notes>` line (version 17). A tool's guidance lives in its own note, so a request with
+the tool off does not carry it; the rules that must hold whatever is on (for tunnels, never to create, reconfigure or delete them)
+are in the core. The core is at most 6,144 bytes and the prompt with every switch on at most 8,192 (build-time checks, not runtime
+limits). The composed prompt is a function of the tool switches alone: it is the unchanged byte prefix of the first message
+of every main chat-loop request of a Send, stable within it; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
 ([below](#owners-own-instructions)). It is guidance for
@@ -311,15 +316,15 @@ summary request framing text ("Earlier conversation summary", "Previous
 summary / Observed conversation"), the fixed owner-instructions header
 (`## Owner's additional instructions`), tool descriptions and schemas, and fixed
 tool-result texts. No automatic app context is attached. A changed prompt asset
-gets a new version and a new pinned hash.
+gets a new version and a new pinned hash (one per asset).
 
-Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 12), the owner's own instructions when set, only enabled tool schemas and,
+Requests contain explicit chat text/history, the base prompt (the core `skill.md` with the notes of the switches that are on,
+version 17), the owner's own instructions when set, only enabled tool schemas and,
 while some tool is off, the service tool `request_tool`
 ([below](#asking-for-a-tool-that-is-off)).
 The base prompt contains no profile,
-connection, enabled-tool list, date, version or language data; the same bytes
-open every main chat-loop request (summary requests open with `summary.md`).
+connection, date, version or language data (its tool notes are those of the switches that are on, which the request's tool list shows too); the same bytes
+open every main chat-loop request of a Send (summary requests open with `summary.md`).
 Tool schemas follow catalog order with stable JSON; summary, history and
 the current request follow the system message. No provider-specific cache
 parameter is sent. A prompt asset that is missing, malformed (not strict UTF-8, or

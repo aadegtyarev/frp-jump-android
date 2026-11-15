@@ -68,7 +68,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
                 limits.toolTimeoutMs, env.waits, a.limits)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
-            val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.modelText, past.map { it.second },
+            val result = env.module.run(toolProvider(active, past), tools, prompts.system(a.tools), a.modelText, past.map { it.second },
                 limits, ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
                 authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)

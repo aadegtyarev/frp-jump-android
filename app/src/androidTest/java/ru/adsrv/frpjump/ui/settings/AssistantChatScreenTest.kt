@@ -323,7 +323,7 @@ class AssistantChatScreenTest {
      * the owner's default percent of the budget. Follows the shipped prompt, so that a longer prompt does not move the test.
      */
     private fun summaryContextTokens(percent: Int): Int {
-        val system = prompts.value.system.toByteArray(Charsets.UTF_8).size
+        val system = prompts.value.system(settings.assistantAvailability.tools).toByteArray(Charsets.UTF_8).size
         return (((system + SUMMARY_REQUEST_REST) * 100 + percent - 1) / percent)
     }
     @Test fun automaticSummaryPreservesReadableHistoryAndSelectedTarget() {

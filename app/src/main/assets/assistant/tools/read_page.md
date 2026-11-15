@@ -1,0 +1,1 @@
+- read_page does not run JavaScript.

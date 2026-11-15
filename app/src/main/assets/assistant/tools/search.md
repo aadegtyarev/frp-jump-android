@@ -1,0 +1,1 @@
+- web_search is unofficial and best effort: read pages before relying on snippets.
