@@ -258,7 +258,10 @@ class AssistantSummaryTest {
             val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
             try {
                 val box=Box();val provider=AssistantProviderStore(Memory(),box)
-                provider.save(AssistantProviderDraft(AssistantProviderSettings(baseUrl="http://127.0.0.1:${server.localPort}/v1/",model="chat-model",contextTokens=12_000,outputTokens=512,summaryModel=override),null,"synthetic-key"))
+                // Summaries fire at 80% of the window (12.8k here). The 40-turn history is about 18.8k and must summarize on the first send; after
+                // that the follow-up is about 6.3k and must not summarize again. About 6k of margin on both sides, so a prompt that grows by a
+                // few k does not move either request across the threshold. A 12k window left 0.6k for the follow-up and broke with prompt v11.
+                provider.save(AssistantProviderDraft(AssistantProviderSettings(baseUrl="http://127.0.0.1:${server.localPort}/v1/",model="chat-model",contextTokens=16_000,outputTokens=512,summaryModel=override),null,"synthetic-key"))
                 val file=Memory();val history=AssistantChatHistory(file,box,scope)
                 val original=records();history.save(SavedChat(records=original).bind(provider.currentSnapshot.settings));history.load()
                 fun chat(store:AssistantChatHistory)=AssistantConversation(scope,{AssistantAvailability(true)},{provider.currentSnapshot},
