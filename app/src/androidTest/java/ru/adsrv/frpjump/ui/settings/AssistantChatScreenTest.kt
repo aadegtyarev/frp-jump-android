@@ -596,7 +596,7 @@ class AssistantChatScreenTest {
             val body = compose.onNodeWithTag("chat_tool_receipt_$index").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
             assertFalse(body, body.contains("terminal_tabs") || body.contains("terminal_read") || body.contains("tab_id\"") || body.contains("SUCCESS") || body == "{}")
         }
-        compose.onNode(hasAnyAncestor(hasTestTag("chat_tool_receipt_1")) and hasText("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer", substring = true)).assertExists()
+        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer", substring = true)
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
         shot("terminal-calls-expanded")
     }
@@ -612,11 +612,13 @@ class AssistantChatScreenTest {
         sendAndAwait()
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").performClick()
-        val bodyOf = hasAnyAncestor(hasTestTag("chat_tool_receipt_0"))
-        compose.onNode(bodyOf and hasText("$ $sshCommandText", substring = true)).assertExists()
-        compose.onNode(bodyOf and hasText(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_failed), substring = true)).assertExists()
-        compose.onNode(bodyOf and hasText("SSH target unavailable", substring = true)).assertExists()
-        for (raw in listOf("ssh_command", "profile_id", "connection_id", "FAILED")) compose.onNode(bodyOf and hasText(raw, substring = true)).assertDoesNotExist()
+        // The receipt is one merged item: its text is the label, then the body.
+        val receipt = compose.onNodeWithTag("chat_tool_receipt_0")
+        receipt.assertTextContains("$ $sshCommandText", substring = true)
+        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_failed), substring = true)
+        receipt.assertTextContains("SSH target unavailable", substring = true)
+        val text = receipt.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+        for (raw in listOf("ssh_command", "profile_id", "connection_id", "FAILED")) assertFalse("$raw in: $text", text.contains(raw))
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
         shot("ssh-receipt-expanded")
     }
