@@ -1,0 +1,1 @@
+- profile_information finds the app's profiles, devices and saved tunnels. Use its exact profile and connection IDs. For an imprecise request return all suitable matches and keep profiles, devices and tunnels distinct. Ask only when the next action needs a choice.

@@ -1,0 +1,1 @@
+- wait_for waits in the background for a tab, tunnel or time event; after calling it, finish your answer. An event starts a new turn: check the state again before acting on it. Do not wait for what you can check now.

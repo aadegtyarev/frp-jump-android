@@ -72,7 +72,7 @@ class AssistantModelSurfaceTest {
             c.chat.edit("synthetic"); c.chat.send()
             withTimeout(5000) { c.chat.state.first { !it.busy } }
             val request = c.requests.first()
-            assertEquals(TestPrompts.real.system, request.instructions)
+            assertEquals(TestPrompts.real.system(TestPrompts.allTools), request.instructions)
             assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "wait_for", "ssh_command"), request.tools.map { it.name })
             val golden = Json.parseToJsonElement(javaClass.getResource("/assistant/tool-specs.json")!!.readText()).jsonArray
             assertEquals(golden, JsonArray(request.tools.map(::specJson)))

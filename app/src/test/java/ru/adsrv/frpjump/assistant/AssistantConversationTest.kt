@@ -28,7 +28,7 @@ class AssistantConversationTest {
         override fun destroy() = Unit
     }
     private fun windowLimits() = AgentLimits(contextTokens = Utf8TokenEstimate.count(
-        AgentRequest(TestPrompts.real.system, listOf(requestToolSpec), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
+        AgentRequest(TestPrompts.real.system(ru.adsrv.frpjump.settings.AssistantTools()), listOf(requestToolSpec), emptyList(), 100)).toInt() + 450, outputReserveTokens = 100)
     private class Fixture(
         val provider: AgentProvider = AgentProvider { AgentReply("answer") },
         val io: CoroutineDispatcher = Dispatchers.Unconfined,
@@ -65,7 +65,7 @@ class AssistantConversationTest {
             assertEquals(1, f.preparations); assertEquals(2, requests.size)
             assertSame(opaque, requests[1].turns[0].exchanges.single().reply.continuation)
             assertEquals(listOf("one", "two"), requests[1].turns.map { it.user })
-            assertTrue(requests.all { it.tools.map { tool -> tool.name } == listOf("request_tool") && it.instructions == TestPrompts.real.system })
+            assertTrue(requests.all { it.tools.map { tool -> tool.name } == listOf("request_tool") && it.instructions == TestPrompts.real.system(ru.adsrv.frpjump.settings.AssistantTools()) })
             assertEquals(listOf(ChatTurn("one", "complete"), ChatTurn("two", "complete")), f.chat.state.value.turns)
             assertFalse(f.chat.state.value.toString().contains("opaque"))
             assertFalse(f.file.text!!.contains("one")); assertFalse(f.settingsFile.text!!.contains("one"))

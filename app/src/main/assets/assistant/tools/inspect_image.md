@@ -1,0 +1,1 @@
+- inspect_image gives an unverified model answer.

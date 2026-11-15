@@ -46,7 +46,7 @@ class AssistantChatHistoryTest {
         var calls = 0
         val restored = chat(scope, AssistantChatHistory(file, Box(), scope, Dispatchers.Unconfined), AgentProvider { request ->
             calls++
-            assertEquals(TestPrompts.real.system, request.instructions)
+            assertEquals(TestPrompts.real.system(ru.adsrv.frpjump.settings.AssistantTools()), request.instructions)
             assertEquals("Continue", request.turns.last().user)
             val facts = Json.parseToJsonElement(request.turns.first().exchanges.first().results.single().text).jsonObject
             AgentReply("${facts.getValue("profile_id").jsonPrimitive.content}/${facts.getValue("connection_id").jsonPrimitive.content}: ${facts.getValue("os").jsonPrimitive.content}")
