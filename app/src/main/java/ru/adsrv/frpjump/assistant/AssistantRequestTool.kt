@@ -58,6 +58,7 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             // One entry for both terminal tools; the wire name is terminal_tabs.
             AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> "read and rename the owner's open terminal tabs"
             AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> "start and stop the owner's saved tunnels"
+            AssistantToolId.WAIT_FOR -> "wait in the background for tab, tunnel and time events"
             AssistantToolId.TERMINAL_INPUT -> "type into the owner's open terminal tabs"
             AssistantToolId.SSH_COMMAND -> "run one command through a saved SSH tunnel"
         }

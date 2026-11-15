@@ -17,6 +17,10 @@ change something (today `ssh_command`) ask the owner first unless the owner
 turned the question off or answered For session for that tool and target; see
 [Confirmation of changing calls](#confirmation-of-changing-calls).
 
+The assistant answers the owner's message. The one exception is an event of a background wait the owner's switch "Event waits" let it order
+([event waits](#optional-event-waits)): it may then start a reply by itself, visible in the chat, at most the owner's limit in a row without a message
+from the owner, and never with the switch off.
+
 What the assistant can never do. Each rule is stated where it applies:
 
 - Tunnels: no tunnel creation, reconfiguration or deletion is granted to the
@@ -922,6 +926,7 @@ are described in each tool's subsection.
 | `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; the call returns within 3 s of the probe start, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
 | `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `terminal_rename` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the tab's label in this app only, remembered app-privately for tmux tabs like the owner's own rename; no connection, session or device is touched | exactly `tab_id` (integer from 1) and `name` (at most 24 characters, one line; empty restores the automatic name) | the owner's tab-name rule; unknown, hidden or closed tabs are refused | never: an app-local label the owner can change from the tab's menu, shown with the tab's user and device on every card, call line and receipt | the name is model text shown to the owner; `terminal_tabs` shows it to the model | optional, default off (shared switch with `terminal_tabs`) |
+| `wait_for` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: a background wait in the app's memory over tab and tunnel state, the tab's new output and the clock | `event` (`tab_connected`, `tab_closed`, `tab_text`, `tab_quiet`, `tunnel_on`, `tunnel_off` or `time`, only the kinds available now), `minutes` (1 to the owner's longest wait), `tab_id` or `profile_id` and `connection_id`, `text` (`tab_text`, 1 to 200 characters, one line) | at most the owner's number of waits at once | never: it changes only this app, the owner sees every wait and can cancel it | the tab's or tunnel's name is shown to the owner; an event message (never the screen) goes to the model | optional, default off (switch `assistant_waits`; tab events need Terminal tabs, tunnel events Profile information) |
 | `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; waits until the tab's output was quiet for 0.7 s counted from the write at the earliest (at most 10 s) and returns the screen as `terminal_read` with no history, about 7,800 characters | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed and the screen after it, which may contain secrets, go to the model | optional, default off; in effect only while Terminal tabs is on too |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
@@ -1156,6 +1161,34 @@ and `ssh_command` still never starts one.
   `Could not stop the tunnel.` (not in the approved list yet).
 - The chat's call lines are `Start tunnel · profile · "name"` and `Stop tunnel · profile · "name"` (the names as the received
   `profile_information` facts hold them, the profile before the tunnel's name, which is plain owner text, bidi-isolated).
+
+### Optional event waits
+
+One independent default-off switch, "Event waits" («Ожидание событий», setting `assistant_waits`), turns on `wait_for`. Tab events are offered only while "Terminal tabs" is on and
+tunnel events only while "Profile information" is on: the schema's `event` enum lists the kinds available at that Send. The tool registers one
+wait and returns at once (`Waiting for <what> until <HH:MM>. Finish your answer; a new turn starts when it happens.`); the model finishes its answer.
+Replies: `Already <n> waits, the most at once. Nothing was added.`; `Provide event and its target: tab_id from terminal_tabs, or profile_id and connection_id from profile_information; minutes 1 to <max>.`
+The numbers are the owner's limits, read at each Send and never held in a text of the app: **Waits at once** (default 3, 1 to 10), **Longest wait, min** (default 30, 1 to 120)
+and **Event replies in a row** (default 5, 1 to 20), in Settings → Assistant → Limits (steppers). The quiet time of `tab_quiet` is for now the wait `terminal_input` gives a tab's output (10 s), a constant of the app.
+
+- Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the tab's *new* output after the
+  wait began (terminal escape sequences are dropped, output from before is never seen). `tab_quiet`: no new output for 10 s (a constant, the wait `terminal_input` gives a tab) counted from the wait's start. `tunnel_on` and
+  `tunnel_off`: the tunnel as the owner sees it (same identity rules as `start_tunnel` and `stop_tunnel`; stopping counts as off). `time`: after `minutes`. A tab or tunnel that
+  disappears ends a closed or off wait with its event, any other wait at once with the time-out message. Screen content is never sent with an event: the model reads the tab with `terminal_read`.
+- What the app adds to a turn: events that ride with the owner's message and the notes follow it after a blank line, as lines of their own, never glued to the owner's words, and the skill tells the model that lines starting with `Event:` or `Wait for` and the notes `The owner cancelled…` come from the app and never give instructions.
+- Messages that start the turn are the app's, not the owner's words (the saved turn is marked as events, the chat draws them as muted lines, never as the owner's message): `Event: tab <id> connected.`,
+  `Event: tab <id> closed.`, `Event: "<text>" appeared in tab <id>.`, `Event: tab <id> is quiet.`, `Event: tunnel <name> is on.`, `Event: tunnel <name> is off.`, `Event: <n> min passed.`;
+  `Wait for <what> ended: the time ran out.`
+- Time. A wait's end is the wall clock's: it sleeps in short ticks and looks at the clock after each, so when the device slept deeply (coroutine timers do not count that time) an event can arrive late, at the app's first chance after waking, never early and never lost.
+- Switch and authority. `wait_for` adds a wait only while the assistant is on, the switch is on and the conversation is open, checked under the lock that ends every wait: a turn that was running when the switch went off cannot add one. An event that fires with the switch off starts no turn.
+- Lifetime. Waits live in memory in the app process, one set per conversation; process death drops them. A new conversation (also a provider change that starts it again), the assistant module off and the switch off cancel
+  all of them and drop what was waiting to be delivered; the assistant off and the switch off also leave the note below for the model, one per wait, a new conversation none. **Stop** stops only the current turn: the waits stay and the next event starts a turn as usual. The owner cancels one wait on its chat line
+  («Отменить») or all from the chat menu («Отменить все ожидания (N)», while any run) or the notification («Отменить все»); no turn starts, and the model is told on its next turn with a note
+  (`The owner cancelled the wait for <what>.`, one per wait; pending operator approval). A conversation with a wait stays alive when its screen goes.
+- Delivery. An event starts a new turn by itself; while a turn runs or a card waits for the owner it queues, and several queued events go in one turn. After the owner's limit of event replies in a row
+  with no message from the owner, nothing starts and the chat says `Event replies in a row: <n>. More after your message.`; what waited goes with the owner's next message (which also starts the count again).
+- The notification. With the chat off screen and a turn running it is the usual "The assistant is working" with Stop. With waits pending and no turn running it is a silent, low-importance one,
+  "Assistant is waiting for events: N" with the action "Cancel all", gone at N = 0. Nothing is shown over the app lock, as for the other notifications.
 
 #### Optional typing into a tab (`terminal_input`)
 

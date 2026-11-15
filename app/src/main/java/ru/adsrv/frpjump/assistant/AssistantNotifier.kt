@@ -32,36 +32,45 @@ import ru.adsrv.frpjump.locale.Texts
 class AssistantNotifier(private val context: Context) : AssistantNoticeSink {
     private val manager get() = context.getSystemService(NotificationManager::class.java)
 
-    fun start(scope: CoroutineScope, activity: Flow<ChatActivity>, end: Flow<ChatEnd>, shown: Flow<Boolean>, enabled: Flow<Boolean>, stopping: Flow<Boolean>) {
+    fun start(scope: CoroutineScope, activity: Flow<ChatActivity>, end: Flow<ChatEnd>, shown: Flow<Boolean>, enabled: Flow<Boolean>, stopping: Flow<Boolean>, waits: Flow<Int> = kotlinx.coroutines.flow.flowOf(0)) {
         val driver = AssistantNoticeDriver(this)
         driver.start()
         scope.launch {
-            combine(activity, end, shown, enabled, stopping) { a, e, s, on, st -> arrayOf<Any>(a, e, s, on, st) }
+            combine(listOf<Flow<Any>>(activity, end, shown, enabled, stopping, waits)) { it }
                 .collect { v ->
-                    driver.update(v[0] as ChatActivity, v[2] as Boolean, v[1] as ChatEnd, permitted(), v[3] as Boolean, v[4] as Boolean)
+                    driver.update(v[0] as ChatActivity, v[2] as Boolean, v[1] as ChatEnd, permitted(), v[3] as Boolean, v[4] as Boolean, v[5] as Int)
                 }
         }
     }
 
     override fun cancel() { manager?.cancel(NOTIFICATION_ID) }
 
-    override fun post(notice: AssistantNotice) {
+    override fun post(notice: AssistantNotice) = post(notice, 0)
+
+    override fun postWaiting(count: Int) = post(AssistantNotice.LISTENING, count)
+
+    private fun post(notice: AssistantNotice, count: Int) {
         val manager = manager ?: return
+        val waiting = notice == AssistantNotice.LISTENING
+        // Waiting for events is quiet: its own channel of low importance. Working and the ends keep the default one (the lock screen shows them).
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, Texts.get(R.string.assistant_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
+            if (waiting) NotificationChannel(CHANNEL_WAITING, Texts.get(R.string.assistant_channel_waiting), NotificationManager.IMPORTANCE_LOW).apply {
+                setShowBadge(false); setSound(null, null); enableVibration(false)
+            } else NotificationChannel(CHANNEL, Texts.get(R.string.assistant_channel), NotificationManager.IMPORTANCE_DEFAULT).apply {
                 setShowBadge(false); setSound(null, null); enableVibration(false)
             },
         )
-        val builder = NotificationCompat.Builder(context, CHANNEL)
+        val builder = NotificationCompat.Builder(context, if (waiting) CHANNEL_WAITING else CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_jump)
-            .setContentTitle(Texts.get(notice.titleRes))
+            .setContentTitle(Texts.get(notice.titleRes, count))
             .setContentIntent(openIntent(context))
             .setOngoing(notice.ongoing)
             .setAutoCancel(!notice.ongoing)
             .setOnlyAlertOnce(true)
             .setSilent(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        if (notice.ongoing) builder.addAction(0, Texts.get(R.string.assistant_notice_stop), stopIntent(context))
+            .setVisibility(if (waiting) NotificationCompat.VISIBILITY_PRIVATE else NotificationCompat.VISIBILITY_PUBLIC)
+        if (waiting) builder.addAction(0, Texts.get(R.string.assistant_notice_cancel_waits), cancelWaitsIntent(context))
+        else if (notice.ongoing) builder.addAction(0, Texts.get(R.string.assistant_notice_stop), stopIntent(context))
         // Permission lost since the check: the system drops it, nothing more to do.
         runCatching { manager.notify(NOTIFICATION_ID, builder.build()) }
     }
@@ -72,10 +81,15 @@ class AssistantNotifier(private val context: Context) : AssistantNoticeSink {
 
     companion object {
         const val CHANNEL = "assistant"
+        const val CHANNEL_WAITING = "assistant_waiting"
         const val NOTIFICATION_ID = 4
 
         private fun stopIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
             context, 0, Intent(context, AssistantStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        private fun cancelWaitsIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+            context, 1, Intent(context, AssistantCancelWaitsReceiver::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
 
         private fun openIntent(context: Context): PendingIntent = PendingIntent.getActivity(
@@ -91,6 +105,16 @@ class AssistantStopReceiver : BroadcastReceiver() {
         app.stopAssistantAttempt()
         // No attempt runs (the process died with the notification up, or it just ended): nothing else will remove it.
         if (app.assistantActivity.value == ChatActivity.IDLE) context.getSystemService(NotificationManager::class.java)?.cancel(AssistantNotifier.NOTIFICATION_ID)
+    }
+}
+
+/** The waiting notification's "Cancel all": every wait ends, no turn starts. Not exported; idempotent. */
+class AssistantCancelWaitsReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val app = context.applicationContext as FrpJumpApp
+        app.cancelAssistantWaits()
+        // No conversation lives (the process restarted with the notification up): nothing else will remove it.
+        if (app.assistantWaitCount.value == 0) context.getSystemService(NotificationManager::class.java)?.cancel(AssistantNotifier.NOTIFICATION_ID)
     }
 }
 

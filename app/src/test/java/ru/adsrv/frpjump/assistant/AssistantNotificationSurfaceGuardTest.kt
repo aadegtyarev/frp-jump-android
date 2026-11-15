@@ -33,7 +33,9 @@ class AssistantNotificationSurfaceGuardTest {
     @Test fun `the PendingIntents are immutable and explicit, a broadcast for Stop and an activity for the tap`() {
         assertTrue(notifier.contains("PendingIntent.getBroadcast(") && notifier.contains("Intent(context, AssistantStopReceiver::class.java)"))
         assertTrue(notifier.contains("PendingIntent.getActivity(") && notifier.contains("Intent(context, AssistantOpenActivity::class.java)"))
-        assertEquals(2, Regex("FLAG_IMMUTABLE").findAll(notifier).count())
+        assertEquals(3, Regex("FLAG_IMMUTABLE").findAll(notifier).count())
+        // The waiting notification's own action: a broadcast to its own explicit receiver.
+        assertTrue(notifier.contains("Intent(context, AssistantCancelWaitsReceiver::class.java)"))
         assertFalse(notifier.contains("FLAG_MUTABLE")); assertFalse(notifier.contains("getService("))
     }
 

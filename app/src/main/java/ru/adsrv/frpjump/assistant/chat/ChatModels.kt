@@ -5,7 +5,9 @@ import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.AssistantRequestTool
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.ChatHistoryProblem
+import ru.adsrv.frpjump.assistant.ActiveWait
 import ru.adsrv.frpjump.assistant.ChatSource
+import ru.adsrv.frpjump.assistant.WaitEvent
 
 /** Display-only projections; opaque provider continuation never enters these values. */
 data class ChatToolFailure(val result: ToolResult, val query: String? = null)
@@ -24,7 +26,9 @@ data class ChatTurn(val user: String, val answer: String, val sources: List<Chat
      */
     val askedTools: List<String> = emptyList(),
     /** The attempt searched or read pages from the internet, so what it asked for may have been suggested by foreign text. */
-    val readWeb: Boolean = false)
+    val readWeb: Boolean = false,
+    /** Events of waits delivered in this turn; with [eventOnly] they started it (the chat draws them as muted lines, not as the owner's message). */
+    val events: List<WaitEvent> = emptyList(), val eventOnly: Boolean = false)
 sealed interface ChatToolProgress {
     /** A call of a known tool is running. */
     data class Tool(val id: AssistantToolId) : ChatToolProgress
@@ -59,6 +63,12 @@ data class ChatState(
     val confirmationNotSaved: Boolean = false,
     /** Wire names of the tools the owner declined to turn on in this conversation (saved with the history). */
     val declinedTools: Set<String> = emptySet(),
+    /** The background waits that run now (the chat shows each as a line with Cancel). */
+    val waits: List<ActiveWait> = emptyList(),
+    /** The number of event replies in a row that was reached: no more start by themselves until the owner writes. Null below the cap. */
+    val eventCap: Int? = null,
+    /** The events of the running turn (those that started it, or came with the owner's message); [pendingEventOnly]: the turn is theirs alone. */
+    val pendingEvents: List<WaitEvent> = emptyList(), val pendingEventOnly: Boolean = false,
 )
 
 /** A question to the owner is on screen: the message field is hidden and the card takes the room. Ends with an answer, Stop or a timeout. */

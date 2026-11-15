@@ -60,7 +60,8 @@ fun BottomNav(selected: Tab, onAssistant: (() -> Unit)? = null, assistantActivit
     val colors = AppTheme.colors
     val entries = Tab.entries.map { NavEntry(it.label, it.icon, it == selected, "nav_" + it.name.lowercase()) { onSelect(it) } } +
         listOfNotNull(onAssistant?.let { NavEntry(R.string.tab_assistant, ChatGlyph, false, "nav_assistant", isTab = false, state = when (assistantActivity) {
-            ChatActivity.IDLE -> null
+            // Waiting for events is not a state of the chat's work: the item stays plain (the waits show in the chat).
+            ChatActivity.IDLE, ChatActivity.LISTENING -> null
             ChatActivity.WORKING -> R.string.assistant_state_working
             ChatActivity.WAITING -> R.string.assistant_state_waiting
         }, onClick = it) })

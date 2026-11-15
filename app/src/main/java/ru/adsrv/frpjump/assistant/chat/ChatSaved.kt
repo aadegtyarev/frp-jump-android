@@ -35,10 +35,26 @@ import ru.adsrv.frpjump.assistant.tools.*
     @Transient val chars = reply.chars + results.sumOf { it.chars }
 }
 @Serializable internal data class SavedSource(val title: String, val url: String)
+/** One event of a wait that started or joined a turn, kept with the turn (the chat shows it as a line, the model reads [message]). */
+@Serializable internal data class SavedEvent(val kind: String, val tab: Int? = null, val subject: String? = null, val text: String? = null,
+    val minutes: Int? = null, val timedOut: Boolean = false) {
+    fun value(): WaitEvent? = WaitKind.fromWire(kind)?.let { WaitEvent(it, tab, subject, text, minutes, timedOut) }
+    companion object {
+        fun of(e: WaitEvent) = SavedEvent(e.kind.wire, e.tabId, e.subject, e.text, e.minutes, e.timedOut)
+    }
+}
 @Serializable internal enum class SavedTurnState { RUNNING, COMPLETE, FAILED, INTERRUPTED }
 @Serializable internal data class SavedTurn(val user: String, val exchanges: List<SavedExchange> = emptyList(),
-    val sources: List<SavedSource> = emptyList(), val status: SavedTurnState = SavedTurnState.RUNNING, val problem: String? = null, val problemStatus: Int? = null) {
-    @Transient val chars = user.length.toLong() + exchanges.sumOf { it.chars } + sources.sumOf { it.title.length.toLong() + it.url.length }
+    val sources: List<SavedSource> = emptyList(), val status: SavedTurnState = SavedTurnState.RUNNING, val problem: String? = null, val problemStatus: Int? = null,
+    /**
+     * Events of waits delivered in this turn: with [eventOnly] the turn was started by them ([user] is then their messages, app-generated, never the
+     * owner's words); else they came with the owner's message and the model reads them after it. Not written while empty.
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val events: List<SavedEvent> = emptyList(),
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val eventOnly: Boolean = false,
+    /** Notes for the model only (the owner cancelled a wait): read after the turn's text, not shown. Not written while empty. */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val notes: List<String> = emptyList()) {
+    @Transient val chars = user.length.toLong() + events.sumOf { 64L + (it.subject?.length ?: 0) + (it.text?.length ?: 0) } + notes.sumOf { it.length.toLong() } + exchanges.sumOf { it.chars } + sources.sumOf { it.title.length.toLong() + it.url.length }
     fun model(provider: AgentProvider): AgentTurn {
         val blocks = exchanges.map { exchange ->
             if (exchange.reply.calls.size == exchange.results.size) AgentExchange(exchange.reply.value(provider), exchange.results.map { it.value() })
@@ -46,7 +62,9 @@ import ru.adsrv.frpjump.assistant.tools.*
                 exchange.reply.calls.joinToString("\n") { "${it.name} ${it.arguments}" } + "\n" +
                 exchange.results.joinToString("\n") { "${it.name}: ${it.outcome}: ${it.text}" }))
         }
-        return AgentTurn(user, blocks + if (status == SavedTurnState.COMPLETE) emptyList() else listOf(
+        // Events that came with the owner's message, and notes, follow it as their own lines (the turn started by events already has them in [user]).
+        val extra = (if (eventOnly) emptyList() else events.mapNotNull { it.value()?.message() }) + notes
+        return AgentTurn(withApp(user, extra), blocks + if (status == SavedTurnState.COMPLETE) emptyList() else listOf(
             AgentExchange(AgentReply("Previous attempt: $status${problem?.let { "; $it" }.orEmpty()}. Preserve received facts; do not blindly repeat actions with unknown outcomes."))))
     }
     /** Projection only; no private continuation is exposed and parsing stays on IO. */
@@ -73,7 +91,8 @@ import ru.adsrv.frpjump.assistant.tools.*
             interrupted = status != SavedTurnState.COMPLETE, receipts = receipts,
             unanswered = status == SavedTurnState.INTERRUPTED && exchanges.lastOrNull()?.results?.lastOrNull()
                 ?.let { it.outcome == ToolOutcome.DECLINED.name && it.text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER } == true,
-            askedTools = asked, readWeb = receipts.any { it.call.name in webTools })
+            askedTools = asked, readWeb = receipts.any { it.call.name in webTools },
+            events = events.mapNotNull { it.value() }, eventOnly = eventOnly)
     }
     companion object {
         fun of(turn: AgentTurn, provider: AgentProvider? = null) = SavedTurn(turn.user, turn.exchanges.map {

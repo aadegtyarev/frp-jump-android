@@ -600,12 +600,12 @@ class AssistantTerminalInputTest {
     @Test fun `request_tool lists terminal_input only while the tabs are on`() {
         // Tabs off: the model may ask for terminal_tabs, not for terminal_input.
         val tabsOff = names(AssistantTools(terminalInput = true))
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "terminal_tabs", "ssh_command"), offered(tabsOff))
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "terminal_tabs", "wait_for", "ssh_command"), offered(tabsOff))
         assertFalse("terminal_input" in tabsOff.last().spec.description)
         // Tabs on, typing off: it may ask for terminal_input, with the approved line.
         val inputOff = names(AssistantTools(terminalTabs = true))
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "terminal_input", "ssh_command"), offered(inputOff))
-        assertTrue("terminal_input - type into the owner's open terminal tabs; ssh_command" in inputOff.last().spec.description)
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "terminal_input", "wait_for", "ssh_command"), offered(inputOff))
+        assertTrue("terminal_input - type into the owner's open terminal tabs; wait_for" in inputOff.last().spec.description)
         // Both on: nothing about it.
         assertFalse("terminal_input" in offered(names(AssistantTools(terminalTabs = true, terminalInput = true))))
     }

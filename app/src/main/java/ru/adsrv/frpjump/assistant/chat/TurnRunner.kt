@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
-    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?,
+    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?, val waits: WaitAdder?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */
@@ -65,10 +65,10 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                limits.toolTimeoutMs)
+                limits.toolTimeoutMs, env.waits, a.limits)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
-            val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.text, past.map { it.second },
+            val result = env.module.run(toolProvider(active, past), tools, prompts.system, a.modelText, past.map { it.second },
                 limits, ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
                 authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)

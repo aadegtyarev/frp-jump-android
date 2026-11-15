@@ -25,6 +25,10 @@ class AssistantConversation(
     private val sshCommands: AssistantSshCommands? = null,
     private val terminalTabs: AssistantTerminalTabs? = null,
     private val tunnels: AssistantTunnels? = null,
+    /** What background waits watch (tabs, tunnels, the clock); null: no waits in this conversation. */
+    private val waitSources: WaitSources? = null,
+    /** The waits' pause between looks and their clock are the registry's own; tests pass the registry's sleep here. */
+    private val waitSleep: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val historyStore: AssistantChatHistory? = null,
     private val awaitHistoryClear: suspend () -> Unit = {},
     /** Does a pending Clear now (its Undo notice goes) and returns when that is done or was taken back; a Send calls it before it starts. */
@@ -53,12 +57,30 @@ class AssistantConversation(
     private val onEnded: (Boolean) -> Unit = {},
 ) {
     private val gate = runtime.gate
+    /** Events that fired and wait for a turn (under the gate), notes for the model's next turn, and the event replies in a row since the owner last wrote. */
+    private val queued = ArrayList<WaitEvent>()
+    private val notes = ArrayList<String>()
+    private var streak = 0
+    /** The conversation's background waits; null without sources. In memory only: a new conversation, the assistant or the switch off end them. */
+    private val waits: AssistantWaits? = waitSources?.let { sources ->
+        // [changed] is told while the gate may be held (the owner lock is taken by [onSettled], and it is taken before the gate elsewhere): post it.
+        AssistantWaits(scope, sources, { availability().limits }, sleep = waitSleep, deliver = ::onWaitEvents, changed = { scope.launch { onSettled() } })
+    }
+
+    /**
+     * The tool's way to add a wait: only while the assistant is on, the switch is on and the conversation is open, checked under the same gate that
+     * ends every wait, so a turn that was running when the switch went off cannot add one (and a wait added just before is ended by the switch).
+     */
+    internal val waitAdder: WaitAdder? = waits?.let { w ->
+        WaitAdder { spec -> synchronized(gate) { val now = availability(); if (c.closed || !now.enabled || !now.tools.waits) AddWait.Invalid else w.add(spec) } }
+    }
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
-    private val own = RunOwnership(c, runtime, availability, snapshot)
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
+    private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
     val state: StateFlow<ChatState> = c.mutable
 
     init {
+        waits?.let { w -> scope.launch { w.waits.collect { list -> synchronized(gate) { if (!c.closed) c.mutable.value = c.mutable.value.copy(waits = list) } } } }
         if (historyStore != null) {
             reloadHistory()
             scope.launch { historyStore.problem.collect { problem -> synchronized(gate) {
@@ -100,7 +122,7 @@ class AssistantConversation(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { synchronized(gate) { if (!c.closed) c.mutable.value = c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = ChatHistoryProblem.READ) } }
-            finally { synchronized(gate) { c.loading = false; c.clearing = false }; onSettled() }
+            finally { synchronized(gate) { c.loading = false; c.clearing = false }; onSettled(); drainEvents() }
         }
     }
     fun retryHistory() {
@@ -115,6 +137,7 @@ class AssistantConversation(
         if (c.closed || c.pending != null || runtime.occupied() || c.mutable.value.loading || c.clearing) false else {
             // The saved chat (draft included) is written first, so Undo reads it all back; the document is the new empty conversation.
             c.persist(); c.clearing = true; c.clearFailed = false
+            endWaitsLocked(note = false)
             c.document = SavedChat().bind(snapshot().settings); c.provider = null
             c.mutable.value = ChatState(clearing = true); true
         }
@@ -132,6 +155,7 @@ class AssistantConversation(
             // The draft (typed while the clear waited, or kept through a Retry) goes into the new conversation.
             val draft = c.document.draft
             c.document = SavedChat().bind(snapshot().settings).copy(draft = draft); c.provider = null; confirmations?.grants?.clear()
+            endWaitsLocked(note = false)
             c.clearing = false; c.clearFailed = false
             // A running Send that is waiting for the owner is stopped (nothing runs) rather than left with its card wiped from the state.
             stopWaiting = if (c.confirmation != null) c.pending?.also(own::stopLocked)?.job else null
@@ -171,10 +195,14 @@ class AssistantConversation(
      * waits for its Undo or is being done, and no Send waits for that clear: the typed draft and the waiting message are not lost.
      * True when it is closed (also when it already was); false while an attempt still owns it.
      */
-    fun closeIfIdle(): Boolean = synchronized(gate) { if (!c.closed && (c.pending != null || c.clearing || c.settlingText != null)) false else { closeLocked(); true } }
+    fun closeIfIdle(): Boolean = synchronized(gate) {
+        // A wait keeps the conversation alive: its event will start a turn here.
+        if (!c.closed && (c.pending != null || c.clearing || c.settlingText != null || waits?.active == true || queued.isNotEmpty())) false else { closeLocked(); true }
+    }
     /** Caller holds the gate. */
     private fun closeLocked(): Job? {
         if (c.closed) return null
+        endWaitsLocked(note = false)
         c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.confirmation = null
         confirmations?.grants?.clear(); c.mutable.value = ChatState(); return c.pending?.job
     }
@@ -204,6 +232,8 @@ class AssistantConversation(
     /** A tool that is switched off loses its session grants (the Tools screen can be opened without leaving Chat). */
     fun toolsChanged(enabled: ru.adsrv.frpjump.settings.AssistantTools) {
         confirmations?.grants?.let { grants -> for (id in AssistantToolId.entries) if (!enabled[id]) grants.clear(id) }
+        // The wait switch off ends every wait and drops what was waiting to be delivered.
+        if (!enabled.waits) synchronized(gate) { endWaitsLocked(note = true) }
         // A tool that is on is no longer declined: turning it on (in Tools) ends that "No thanks" (Р56).
         val changed = synchronized(gate) {
             val on = c.document.declinedTools.filter { wire -> AssistantToolId.fromWire(wire)?.let { enabled[it] } == true }
@@ -252,7 +282,7 @@ class AssistantConversation(
                 val ok = !c.closed && !c.clearing && !c.clearFailed && c.settlingText != null
                 c.settlingText = null
                 if (!c.closed) c.mutable.value = c.mutable.value.copy(sending = false, pendingText = null, draft = c.document.draft)
-                if (ok) start = own.admit()?.let(::launch)
+                if (ok) start = admitOwnerLocked(null)?.let(::launch)
             }
             runtime.notifyBusy(); start?.start(); repaint(); onSettled()
         }
@@ -267,7 +297,71 @@ class AssistantConversation(
     }
     private fun admitAndStart(fixed: String? = null) {
         var start: Job? = null
-        synchronized(gate) { start = own.admit(fixed)?.let(::launch) }
+        synchronized(gate) { start = admitOwnerLocked(fixed)?.let(::launch) }
+        runtime.notifyBusy(); start?.start()
+    }
+
+    /**
+     * Caller holds the gate. The owner's own Send: events that fired and notes for the model ride with it, the count of event replies in a row
+     * starts again, and the cap line goes. Nothing is delivered while the switch is off.
+     */
+    private fun admitOwnerLocked(fixed: String?): Admission? {
+        // Nothing that fired is delivered while the switch is off; the notes about waits the owner or the switch ended still go.
+        if (!availability().tools.waits) queued.clear()
+        val delivery = if (queued.isEmpty() && notes.isEmpty()) null else Delivery(queued.toList(), notes.toList())
+        val admission = own.admit(fixed, delivery) ?: return null
+        queued.clear(); notes.clear(); streak = 0
+        if (c.mutable.value.eventCap != null) c.mutable.value = c.mutable.value.copy(eventCap = null)
+        return admission
+    }
+
+    /** Caller holds the gate. Every wait ends, nothing fired is delivered and nothing is noted: a new conversation, the assistant or the switch off. */
+    private fun endWaitsLocked(note: Boolean) {
+        val ended = waits?.cancelAll().orEmpty()
+        queued.clear(); streak = 0
+        // The switch or the assistant going off is told to the model on its next turn, once for each wait; a new conversation has nobody to tell.
+        if (note) { if (!c.closed) ended.forEach { notes += cancelNote(it) } } else notes.clear()
+        if (!c.closed && c.mutable.value.eventCap != null) c.mutable.value = c.mutable.value.copy(eventCap = null)
+    }
+
+    /** The owner cancelled one wait («Отменить»): no turn starts; the model is told on its next turn. */
+    fun cancelWait(id: Long) {
+        val wait = waits?.cancel(id) ?: return
+        synchronized(gate) { if (!c.closed) notes += cancelNote(wait) }
+    }
+
+    /** The owner cancelled every wait (the chat menu, the notification): one note for each. */
+    fun cancelAllWaits() {
+        val ended = waits?.cancelAll().orEmpty()
+        synchronized(gate) { if (!c.closed) ended.forEach { notes += cancelNote(it) } }
+    }
+
+    private fun cancelNote(wait: ActiveWait) =
+        "The owner cancelled the wait for ${waitWhat(wait.spec.kind, wait.spec.tabId, wait.subject?.let { ru.adsrv.frpjump.assistant.chat.receiptText(it, 64) }, wait.spec.text, wait.spec.minutes)}."
+
+    /** A wait ended by itself (from any thread): its event waits for a turn. */
+    private fun onWaitEvents(events: List<WaitEvent>) {
+        synchronized(gate) { if (!c.closed) queued += events }
+        drainEvents()
+    }
+
+    /**
+     * Starts a turn for the events that wait, when nothing stops it: no turn runs and no card waits (they queue until it ends), the switch is on,
+     * and fewer than the owner's limit of event replies in a row were given since the owner last wrote; at the limit nothing starts and the chat says so.
+     * Several queued events go in one turn.
+     */
+    private fun drainEvents() {
+        var start: Job? = null
+        synchronized(gate) {
+            if (c.closed || queued.isEmpty()) return
+            val now = availability()
+            if (!now.enabled || !now.tools.waits) { queued.clear(); return }
+            if (c.pending != null || runtime.occupied() || c.clearing || c.loading || c.settlingText != null || c.mutable.value.loading) return
+            if (streak >= now.limits.eventReplies) { if (c.mutable.value.eventCap != streak) c.mutable.value = c.mutable.value.copy(eventCap = streak); return }
+            val admission = own.admit(delivery = Delivery(queued.toList(), notes.toList(), eventOnly = true)) ?: return
+            queued.clear(); notes.clear(); streak++
+            start = launch(admission)
+        }
         runtime.notifyBusy(); start?.start()
     }
     /** Under the gate: the lazy job and its completion hook exist before the owner is visible to anyone else. */
@@ -277,7 +371,7 @@ class AssistantConversation(
         owner.job.invokeOnCompletion {
             // The end is told before the owner is released (so before the activity goes idle), and never for an attempt the owner stopped.
             synchronized(gate) { owner.replied.takeIf { !owner.stopped } }?.let(onEnded)
-            own.completed(owner); runtime.notifyBusy(); onSettled(); repaint()
+            own.completed(owner); runtime.notifyBusy(); onSettled(); repaint(); drainEvents()
         }
         return owner.job
     }

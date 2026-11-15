@@ -19,6 +19,7 @@ class AssistantToolTextsTest {
             AssistantToolId.TERMINAL_TABS to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_tabs_progress),
             AssistantToolId.TERMINAL_READ to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_read_progress),
             AssistantToolId.TERMINAL_RENAME to Triple(R.string.tool_terminal_tabs, R.string.tool_terminal_tabs_hint, R.string.tool_terminal_rename_progress),
+            AssistantToolId.WAIT_FOR to Triple(R.string.tool_waits, R.string.tool_waits_hint, R.string.tool_wait_for_progress),
             AssistantToolId.TERMINAL_INPUT to Triple(R.string.tool_terminal_input, R.string.tool_terminal_input_hint, R.string.tool_terminal_input_progress),
             AssistantToolId.SSH_COMMAND to Triple(R.string.tool_ssh_command, R.string.tool_ssh_command_hint, R.string.tool_ssh_command_progress),
         )
@@ -30,7 +31,8 @@ class AssistantToolTextsTest {
         assertEquals(R.string.tool_terminal_tabs_receipt, AssistantToolId.TERMINAL_TABS.receiptTitle())
         assertEquals(R.string.tool_terminal_read_receipt, AssistantToolId.TERMINAL_READ.receiptTitle())
         assertEquals(R.string.tool_terminal_rename_receipt, AssistantToolId.TERMINAL_RENAME.receiptTitle())
+        assertEquals(R.string.tool_wait_for_receipt, AssistantToolId.WAIT_FOR.receiptTitle())
         assertEquals(R.string.tool_terminal_input_receipt, AssistantToolId.TERMINAL_INPUT.receiptTitle())
-        for (id in AssistantToolId.entries - AssistantToolId.START_TUNNEL - AssistantToolId.STOP_TUNNEL - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT) assertEquals(id.name, id.title(), id.receiptTitle())
+        for (id in AssistantToolId.entries - AssistantToolId.START_TUNNEL - AssistantToolId.STOP_TUNNEL - AssistantToolId.WAIT_FOR - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT) assertEquals(id.name, id.title(), id.receiptTitle())
     }
 }

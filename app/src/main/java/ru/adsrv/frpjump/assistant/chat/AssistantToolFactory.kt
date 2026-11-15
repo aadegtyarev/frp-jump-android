@@ -13,7 +13,8 @@ internal object AssistantToolFactory {
     fun create(enabled: AssistantTools, runtime: AssistantChatRuntime, active: AgentProvider, profileInformation: ProfileInformation?,
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
         declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
-        toolTimeoutMs: Long = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs): List<AgentTool> {
+        toolTimeoutMs: Long = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs,
+        waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits()): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
@@ -22,7 +23,12 @@ internal object AssistantToolFactory {
             (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, toolTimeoutMs), StopTunnelTool(tunnels)) else emptyList()) +
             (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs), AssistantTerminalReadTool(terminalTabs), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
             (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs)) else emptyList()) +
+            (if (enabled[AssistantToolId.WAIT_FOR] && waits != null) listOf(WaitForTool(waits, limits, waitKinds(enabled, terminalTabs != null, tunnels != null))) else emptyList()) +
             (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList()) +
             (if (off.isNotEmpty() && enabled.offer) listOf(AssistantRequestTool(off, declined)) else emptyList())
     }
+
+    /** The events a wait may be for now: time always; tab events while the terminal tabs are on, tunnel events while the profile information is on. */
+    internal fun waitKinds(enabled: AssistantTools, tabs: Boolean, tunnels: Boolean): List<WaitKind> =
+        WaitKind.entries.filter { kind -> if (kind.isTab) tabs && enabled.terminalTabs else if (kind.isTunnel) tunnels && enabled.profileInformation else true }
 }

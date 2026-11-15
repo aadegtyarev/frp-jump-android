@@ -214,6 +214,8 @@ class FrpJumpApp : Application() {
     val assistantPrompts: Lazy<ru.adsrv.frpjump.assistant.AssistantPrompts> = lazy { ru.adsrv.frpjump.assistant.AssistantPrompts.load(assets::open) }
     /** Whether an attempt runs or waits for an answer, for the bottom navigation's dot; exists from the start, the owner below does not. */
     val assistantActivity = kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.assistant.ChatActivity.IDLE)
+    /** How many background waits the assistant has now, for its notification; exists from the start, like [assistantActivity]. */
+    val assistantWaitCount = kotlinx.coroutines.flow.MutableStateFlow(0)
     /** How the last assistant attempt ended, for the notification; exists from the start, like [assistantActivity]. */
     val assistantEnd = kotlinx.coroutines.flow.MutableStateFlow(ru.adsrv.frpjump.assistant.ChatEnd.NONE)
     /** Tests only: an owner standing in for the app's (the notification's Stop reaches it through [stopAssistantAttempt]). */
@@ -226,7 +228,7 @@ class FrpJumpApp : Application() {
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
-            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels)
+            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, waitCountOut = assistantWaitCount)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -236,6 +238,8 @@ class FrpJumpApp : Application() {
     /** The app-lived owner of the chat conversation, built on the first chat opening (never at app start). */
     val assistantChatOwner: ru.adsrv.frpjump.assistant.AssistantChatOwner get() = chatOwnerOverride ?: chatOwner.value
     /** Stops a running assistant attempt without building the owner when no chat was ever opened (the server removed this phone's profile). */
+    /** The notification's "Cancel all": every wait of the live conversation ends, without building the owner when none lives. */
+    fun cancelAssistantWaits() { (chatOwnerOverride ?: if (chatOwner.isInitialized()) chatOwner.value else null)?.cancelWaits() }
     fun stopAssistantAttempt() { (chatOwnerOverride ?: if (chatOwner.isInitialized()) chatOwner.value else null)?.stop() }
     val assistantHistory by lazy {
         ru.adsrv.frpjump.assistant.AssistantChatHistory(AtomicTextFile(File(noBackupFilesDir, "assistant_chat.json")),
@@ -457,7 +461,7 @@ class FrpJumpApp : Application() {
         // The assistant's notification while the chat is off screen: it is shown when its route is resumed and the app is not locked.
         ru.adsrv.frpjump.assistant.AssistantNotifier(this).start(
             appScope, assistantActivity, assistantEnd, combine(assistantChatResumed, lock.locked) { resumed, locked -> ru.adsrv.frpjump.assistant.chatShown(resumed, locked) }.distinctUntilChanged(),
-            settings.settings.map { it.assistantEnabled }.distinctUntilChanged(), assistantStopping)
+            settings.settings.map { it.assistantEnabled }.distinctUntilChanged(), assistantStopping, assistantWaitCount)
         // Undo's time counts from when its notice is on screen (a host draws it), not from the tap.
         appScope.launch {
             combine(notices.queue, notices.hosts) { queue, hosts -> queue.shown?.takeIf { it.key == UNDO_NOTICE && hosts.isNotEmpty() }?.id }

@@ -149,11 +149,16 @@ fun SettingsScreen(
     var toolsSetup by rememberSaveable { mutableStateOf(false) }
     var providerSetup by rememberSaveable { mutableStateOf(false) }
     var ownerSetup by rememberSaveable { mutableStateOf(false) }
+    var limitsSetup by rememberSaveable { mutableStateOf(false) }
     var open by rememberSaveable { mutableStateOf<Open?>(null) }
     // Above the licenses' early return, so the settings come back scrolled where they were.
     val scroll = rememberScrollState()
     if (toolsSetup) {
         AssistantToolsRoute(vm.tools, onBack = { toolsSetup = false })
+        return
+    }
+    if (limitsSetup) {
+        AssistantLimitsScreen(settings.assistantLimits, onChange = vm::setAssistantLimits, onBack = { limitsSetup = false })
         return
     }
     if (ownerSetup) {
@@ -296,6 +301,8 @@ fun SettingsScreen(
             AssistantToolsEntry { toolsSetup = true }
             RowDivider()
             AssistantOwnerInstructionsEntry(settings.assistantOwnerInstructions) { ownerSetup = true }
+            RowDivider()
+            AssistantLimitsEntry { limitsSetup = true }
             RowDivider()
             AssistantModuleSetting(settings.assistantEnabled, vm::setAssistantEnabled)
             RowDivider()
