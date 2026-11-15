@@ -63,6 +63,38 @@ class AssistantProviderStoreTest {
         assertEquals(1, box.seals); assertEquals(0, box.opens)
     }
 
+    @Test fun `new settings get the 256K default window`() {
+        assertEquals(262_144, AssistantProviderSettings().contextTokens)
+        assertEquals(262_144, ru.adsrv.frpjump.agent.AgentLimits().contextTokens)
+        assertEquals(2_048, AssistantProviderSettings().outputTokens)
+        val file = File(); val store = AssistantProviderStore(file, Box())
+        assertNull(store.state.value.settings)
+        save(store, AssistantProviderSettings(baseUrl = "https://example.invalid/v1", model = "m"))
+        assertEquals(262_144, store.state.value.settings!!.contextTokens)
+        assertEquals(262_144, AssistantProviderStore(file, Box()).state.value.settings!!.contextTokens)
+    }
+
+    @Test fun `stored settings without the window field keep the old 16384 window`() {
+        val file = File(); val box = Box(); val store = AssistantProviderStore(file, box)
+        save(store, settings.copy(contextTokens = 16_384))
+        val full = file.text!!
+        assertTrue(full.contains("\"contextTokens\":16384"))
+        file.text = full.replace("\"contextTokens\":16384,", "")
+        assertFalse(file.text!!.contains("contextTokens"))
+        val state = AssistantProviderStore(file, box).state.value
+        assertNull(state.problem)
+        assertEquals(16_384, state.settings!!.contextTokens)
+        assertEquals(settings.model, state.settings!!.model)
+    }
+
+    @Test fun `stored settings keep an explicit window whatever the default is`() {
+        val file = File(); val box = Box(); val store = AssistantProviderStore(file, box)
+        save(store, settings.copy(contextTokens = 12_345))
+        assertEquals(12_345, AssistantProviderStore(file, box).state.value.settings!!.contextTokens)
+        file.text = file.text!!.replace("\"contextTokens\":12345", "\"contextTokens\":16384")
+        assertEquals(16_384, AssistantProviderStore(file, box).state.value.settings!!.contextTokens)
+    }
+
     @Test fun `saved key is opened only by explicit current-root provider preparation`() {
         val file = File(); val box = Box(); val store = AssistantProviderStore(file, box)
         save(store)
