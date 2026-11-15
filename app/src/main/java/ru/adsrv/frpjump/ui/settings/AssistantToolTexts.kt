@@ -9,6 +9,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information
+    AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command
@@ -20,6 +21,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read_hint
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_hint
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_hint
+    AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels_hint
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs_hint
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input_hint
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command_hint
@@ -30,6 +32,8 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.READ_PAGE -> R.string.tool_read_progress
     AssistantToolId.INSPECT_IMAGE -> R.string.tool_image_progress
     AssistantToolId.PROFILE_INFORMATION -> R.string.tool_profile_information_progress
+    AssistantToolId.START_TUNNEL -> R.string.tool_start_tunnel_progress
+    AssistantToolId.STOP_TUNNEL -> R.string.tool_stop_tunnel_progress
     AssistantToolId.TERMINAL_TABS -> R.string.tool_terminal_tabs_progress
     AssistantToolId.TERMINAL_READ -> R.string.tool_terminal_read_progress
     AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_rename_progress
@@ -42,6 +46,8 @@ internal fun AssistantToolId.progress(): Int = when (this) {
  * tools: the first two share one switch but are different calls, and typing has a title of its own for the call.
  */
 internal fun AssistantToolId.receiptTitle(): Int = when (this) {
+    AssistantToolId.START_TUNNEL -> R.string.tool_start_tunnel_receipt
+    AssistantToolId.STOP_TUNNEL -> R.string.tool_stop_tunnel_receipt
     AssistantToolId.TERMINAL_TABS -> R.string.tool_terminal_tabs_receipt
     AssistantToolId.TERMINAL_READ -> R.string.tool_terminal_read_receipt
     AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_rename_receipt

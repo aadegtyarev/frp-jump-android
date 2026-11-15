@@ -31,7 +31,7 @@
   },
   {
     "name": "profile_information",
-    "description": "Find app-known devices and saved connections across all profiles, refreshing device lists once per invocation. Optional query matches part of a device name/label, connection name or profile name (case/NFC insensitive); profile_id selects an exact profile. Empty arguments browse. Results are whole records: follow next_offset with the same query/profile_id when needed. Give a concise answer with all suitable variants, distinguished by profile/device/connection, not the whole catalogue or only the first match. Several matches are not a failure; ask for a choice only if needed for a subsequent action. Use exact profile.id and connection.id for saved targets. Disclose incomplete/stale sources; zero known matches is not absence from unknown sources. App state is not service readiness. Private information goes to the configured model.",
+    "description": "Find app-known devices and saved tunnels across all profiles, refreshing device lists once per invocation. Optional query matches part of a device name/label, tunnel name or profile name (case/NFC insensitive); profile_id selects an exact profile. Empty arguments browse. Results are whole records: follow next_offset with the same query/profile_id when needed. Give a concise answer with all suitable variants, distinguished by profile/device/tunnel, not the whole catalogue or only the first match. Several matches are not a failure; ask for a choice only if needed for a subsequent action. Use exact profile.id and connection.id for saved targets. Disclose incomplete/stale sources; zero known matches is not absence from unknown sources. App state is not service readiness. Private information goes to the configured model.",
     "parameters": {
       "type": "object",
       "additionalProperties": false,
@@ -43,8 +43,28 @@
     }
   },
   {
+    "name": "start_tunnel",
+    "description": "Start one saved tunnel from profile_information (profile_id, connection_id), as the owner's Start button does, and wait until the device takes connections through it. Changes only this app, nothing on the device.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "profile_id": { "type": "string", "maxLength": 256 }, "connection_id": { "type": "string", "maxLength": 256 } },
+      "required": ["profile_id", "connection_id"]
+    }
+  },
+  {
+    "name": "stop_tunnel",
+    "description": "Stop one saved tunnel (profile_id, connection_id), as the owner's Stop button does. The owner's terminal and file tabs on it close; tmux sessions on the device stay. The owner may be asked before it runs.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "profile_id": { "type": "string", "maxLength": 256 }, "connection_id": { "type": "string", "maxLength": 256 } },
+      "required": ["profile_id", "connection_id"]
+    }
+  },
+  {
     "name": "terminal_tabs",
-    "description": "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, connection, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model.",
+    "description": "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model.",
     "parameters": {
       "type": "object",
       "additionalProperties": false,
@@ -87,7 +107,7 @@
   },
   {
     "name": "ssh_command",
-    "description": "Run one noninteractive command on a saved SSH connection over a ready tunnel. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about 7,800 characters for stdout and stderr together (stderr keeps at least 1,500 when present); a cut stream ends with \"truncated: N of M characters\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).",
+    "description": "Run one noninteractive command through a saved SSH tunnel that is on and ready. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about 7,800 characters for stdout and stderr together (stderr keeps at least 1,500 when present); a cut stream ends with \"truncated: N of M characters\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).",
     "parameters": {
       "type": "object",
       "additionalProperties": false,

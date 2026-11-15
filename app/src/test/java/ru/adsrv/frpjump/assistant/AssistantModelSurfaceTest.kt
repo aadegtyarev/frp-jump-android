@@ -55,12 +55,13 @@ class AssistantModelSurfaceTest {
         val actual = ArrayList<JsonElement>()
         webTools().forEach { actual += specJson(it.spec) }
         actual += specJson(profileTool().spec)
+        actual += specJson(StartTunnelTool(TunnelFixture().tunnels).spec); actual += specJson(StopTunnelTool(TunnelFixture().tunnels).spec)
         actual += specJson(AssistantTerminalTabsTool(noTabs()).spec); actual += specJson(AssistantTerminalReadTool(noTabs()).spec)
         actual += specJson(AssistantTerminalRenameTool(noTabs()).spec)
         actual += specJson(AssistantTerminalInputTool(noTabs()).spec)
         SshFixture().use { f -> actual += specJson(f.tool.spec) }
         assertEquals(golden, JsonArray(actual))
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"),
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"),
             actual.map { it.jsonObject.getValue("name").jsonPrimitive.content })
     }
 
@@ -70,7 +71,7 @@ class AssistantModelSurfaceTest {
             withTimeout(5000) { c.chat.state.first { !it.busy } }
             val request = c.requests.first()
             assertEquals(TestPrompts.real.system, request.instructions)
-            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"), request.tools.map { it.name })
+            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"), request.tools.map { it.name })
             val golden = Json.parseToJsonElement(javaClass.getResource("/assistant/tool-specs.json")!!.readText()).jsonArray
             assertEquals(golden, JsonArray(request.tools.map(::specJson)))
         } }
@@ -249,9 +250,9 @@ class AssistantModelSurfaceTest {
     // ---- SSH tool ----
 
     private val sshInvalid = ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
-    private val sshUnavailable = ToolOutput("SSH target unavailable. Use an existing ready saved SSH connection; no tunnel was started.", ToolOutcome.FAILED)
-    private val sshSetup = ToolOutput("SSH login or host trust needs setup. Open this connection in the ordinary SSH UI first. No command was executed.", ToolOutcome.FAILED)
-    private val sshNoCommand = ToolOutput("SSH unavailable. Check the connection in the ordinary SSH UI. No command was executed.", ToolOutcome.FAILED)
+    private val sshUnavailable = ToolOutput("SSH target unavailable. Use a saved SSH tunnel that is on and ready; no tunnel was started.", ToolOutcome.FAILED)
+    private val sshSetup = ToolOutput("SSH login or host trust needs setup. Open this tunnel in the ordinary SSH UI first. No command was executed.", ToolOutcome.FAILED)
+    private val sshNoCommand = ToolOutput("SSH unavailable. Check the tunnel in the ordinary SSH UI. No command was executed.", ToolOutcome.FAILED)
     private val sshUnknown = ToolOutput("SSH command failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED)
     private val sshToolFailed = ToolOutput("SSH failed; remote outcome unknown. Do not automatically repeat it.", ToolOutcome.FAILED)
 
@@ -301,6 +302,8 @@ class AssistantModelSurfaceTest {
         for ((index, change) in changes.withIndex()) SshFixture().use { f -> f.ready(); change(f)
             if (index == changes.lastIndex) withTimeout(5000) { f.manager.state.first { s -> s.tunnels.single().state.status == TunnelStatus.FAILED } }
             assertEquals("case $index", sshUnavailable, f.tool.execute(f.args)); assertEquals(0, f.factories.get())
+            // ssh_command never starts a tunnel, whatever is wrong with its target.
+            assertEquals("case $index", 0, f.connects.get())
         }
         SshFixture().use { f -> f.ready()
             assertEquals(sshUnavailable, f.tool.execute(JsonObject(f.args + ("connection_id" to str("missing")))))
@@ -348,18 +351,18 @@ class AssistantModelSurfaceTest {
         val hide = { f: SshFixture -> f.profiles.hidden.value = setOf(PendingUndo.connectionKey("home", "ssh")) }
         // Before exec: no command executed.
         SshFixture().use { f -> f.ready(); f.client.beforeAuth = { hide(f) }
-            assertEquals(ToolOutput("SSH target unavailable. No command was executed. Check the connection in the app.", ToolOutcome.FAILED), f.tool.execute(f.args))
+            assertEquals(ToolOutput("SSH target unavailable. No command was executed. Check the tunnel in the app.", ToolOutcome.FAILED), f.tool.execute(f.args))
             assertTrue(f.client.commands.isEmpty())
         }
         SshFixture().use { f -> f.ready(); f.beforeFactory = { hide(f); throw IOException("private-late-construction-failure") }
-            assertEquals(ToolOutput("SSH target unavailable. No command was executed. Check the connection in the app.", ToolOutcome.FAILED), f.tool.execute(f.args))
+            assertEquals(ToolOutput("SSH target unavailable. No command was executed. Check the tunnel in the app.", ToolOutcome.FAILED), f.tool.execute(f.args))
         }
         // After exec, with and without a received exit; stdout/stderr are withheld.
         for ((code, signal, expected) in listOf(
             Triple(0, null, "SSH target became unavailable. Remote exit received; output withheld.\nexit_status: 0\nexit_signal: unknown"),
             Triple(7, null, "SSH target became unavailable. Remote exit received; output withheld.\nexit_status: 7\nexit_signal: unknown"),
             Triple(null, Signal.TERM, "SSH target became unavailable. Remote exit received; output withheld.\nexit_status: unknown\nexit_signal: TERM"),
-            Triple(null, null, "SSH target became unavailable; remote outcome unknown. Check the connection in the app; do not automatically repeat the command."),
+            Triple(null, null, "SSH target became unavailable; remote outcome unknown. Check the tunnel in the app; do not automatically repeat the command."),
         )) SshFixture().use { f -> f.ready()
             f.client.code = code; f.client.signal = signal
             f.client.beforeDisconnect = { hide(f) }
@@ -486,6 +489,8 @@ class AssistantModelSurfaceTest {
         val profiles = SyntheticProfileInformation()
         val client = SshClient()
         val factories = AtomicInteger()
+        /** Every ask of the server to start a tunnel: ssh_command must never make one. */
+        val connects = AtomicInteger()
         var beforeFactory: (() -> Unit)? = null
         val box = FakeKeystore().box("synthetic-ssh")
         val passwords = SshPasswords(MemoryStorage(), box)
@@ -507,7 +512,7 @@ class AssistantModelSurfaceTest {
         val manager = TunnelManager("home", runtime.store::state, object : AgentApi {
             override suspend fun heartbeat(c: ru.adsrv.frpjump.store.Credentials) = Unit
             override suspend fun desiredState(c: ru.adsrv.frpjump.store.Credentials) = DesiredStateResponse("id", "relay", 7000, grants)
-            override suspend fun connect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse = error("No tunnel start")
+            override suspend fun connect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int, protocol: String): ConnectResponse { connects.incrementAndGet(); error("No tunnel start") }
             override suspend fun disconnect(c: ru.adsrv.frpjump.store.Credentials, deviceName: String, targetPort: Int): Boolean = error("No tunnel control")
         }, runtime.session, LocalPortStore(MemoryStorage()), runner, { true })
         val service = AssistantSshCommands(SshTargets(profiles.state, profiles.hidden, env))
@@ -529,7 +534,7 @@ class AssistantModelSurfaceTest {
     private class ChatFixture(val f: SshFixture) : AutoCloseable {
         val settings = SettingsStore(MemoryStorage()).apply {
             update { it.copy(assistantEnabled = true, assistantSearch = true, assistantReadPage = true, assistantInspectImage = true,
-                assistantProfileInformation = true, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true) }
+                assistantProfileInformation = true, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true, assistantTunnels = true) }
         }
         val store = AssistantProviderStore(MemoryStorage(), FakeKeystore().box("synthetic-model"), settings.assistantChat).apply {
             save(AssistantProviderDraft(AssistantProviderSettings(model = "synthetic"), null, "synthetic-key"))
@@ -540,7 +545,7 @@ class AssistantModelSurfaceTest {
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
             store::requireRevision, module, Dispatchers.IO, { AgentLimits() }, settings.assistantChat,
-            profileInformation = f.profiles.information, sshCommands = f.service, terminalTabs = noTabs(), prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+            profileInformation = f.profiles.information, sshCommands = f.service, terminalTabs = noTabs(), tunnels = TunnelFixture().tunnels, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         override fun close() { chat.close(); scope.cancel() }
     }
 }

@@ -111,6 +111,32 @@ class FrpJumpApp : Application() {
 
     val assistantSshCommands by lazy { ru.adsrv.frpjump.assistant.AssistantSshCommands(sshTargets) }
 
+    /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */
+    val assistantTunnels by lazy {
+        val up = ru.adsrv.frpjump.ops.tunnel.TunnelUp(object : ru.adsrv.frpjump.ops.tunnel.TunnelUpHost {
+            override fun tunnels(profile: String) = profiles.runtime(profile)?.tunnels?.let { manager ->
+                object : ru.adsrv.frpjump.ops.tunnel.TunnelUpTunnels {
+                    override val state get() = manager.state
+                    override fun connectAsync(device: String, port: Int, kind: ru.adsrv.frpjump.ports.PortKind) { manager.connectAsync(device, port, kind) }
+                    override suspend fun awaitDevice(device: String, port: Int, fresh: Boolean) = manager.awaitDevice(device, port, fresh)
+                }
+            }
+            override fun revive(tunnel: ru.adsrv.frpjump.tunnel.TunnelRef) = disconnects.revive(tunnel)
+            override suspend fun awaitDisconnected(tunnel: ru.adsrv.frpjump.tunnel.TunnelRef) = disconnects.awaitDisconnected(tunnel)
+        })
+        val down = ru.adsrv.frpjump.ops.tunnel.TunnelDown(disconnects, object : ru.adsrv.frpjump.ops.tunnel.TunnelDownHost {
+            override fun profiles() = this@FrpJumpApp.profiles.state.value.runtimes.keys
+            override fun up(profile: String) = this@FrpJumpApp.profiles.runtime(profile)?.tunnels?.state?.value?.tunnels.orEmpty().map { ru.adsrv.frpjump.tunnel.TunnelRef(profile, it.device, it.port) }
+            // Only OneNow is asked of this host (the assistant's stop of one tunnel): nothing is restoring or told in bulk.
+            override fun restoring() = emptySet<String>()
+            override fun tellAsync(profile: String) = Unit
+            override suspend fun tellAll() = Unit
+        })
+        val saved = ru.adsrv.frpjump.assistant.AppSavedTunnels(profiles.state, pendingUndo.hidden, disconnects, { sessions.now() },
+            label = { c -> c.label { kind -> ru.adsrv.frpjump.ui.connections.kindWord(this, kind) } })
+        ru.adsrv.frpjump.assistant.AssistantTunnels(saved, up, down)
+    }
+
     lateinit var profiles: Profiles
         private set
     lateinit var sshKeys: SshKeyStore
@@ -200,7 +226,7 @@ class FrpJumpApp : Application() {
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
-            terminalTabs = assistantTerminalTabs)
+            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

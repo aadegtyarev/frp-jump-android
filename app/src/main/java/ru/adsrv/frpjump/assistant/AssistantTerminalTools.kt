@@ -36,7 +36,7 @@ internal class AssistantTerminalTabsTool(private val tabs: AssistantTerminalTabs
     override fun failure(error: Exception) = ToolOutput("Could not list terminal tabs.", ToolOutcome.FAILED)
 
     companion object {
-        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, connection, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
+        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
     }
 }
 
@@ -184,7 +184,7 @@ internal fun tabsText(list: List<TerminalTab>, programs: Map<Int, String>, budge
             // Only when set. A name cannot hold the record's separator, and the first occurrence of a key wins on the reading side.
             tab.name?.let { append(" | name: ${name(it, TAB_NAME_MAX)}") }
             append(" | profile: ${name(tab.profile)} (profile_id: ${name(tab.profileId)}) | device: ${name(tab.device)}")
-            tab.connection?.let { append(" | connection: ${name(it)}") }
+            tab.connection?.let { append(" | tunnel: ${name(it)}") }
             append(" | user: ${name(tab.user)} | tab: ${tab.number} | state: ${tab.state.wire} | tmux: ${if (tab.tmux) "yes" else "no"}")
             programs[tab.id]?.let { append(" | program: ${name(it)}") }
         }

@@ -22,20 +22,23 @@ class AssistantToolCatalogTest {
         .filterKeys { it.startsWith("assistant_") && it !in nonToolKeys }
 
     @Test fun `catalog keeps the stable order wire names setting keys and effects`() {
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"), AssistantToolId.entries.map { it.wire })
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "ssh_command"), AssistantToolId.entries.map { it.wire })
         // One switch, one entry: terminal_read follows terminal_tabs' switch and has none of its own.
-        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_terminal_tabs", "assistant_terminal_input", "assistant_ssh_command"),
+        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_tunnels", "assistant_terminal_tabs", "assistant_terminal_input", "assistant_ssh_command"),
             AssistantToolId.switches.map { it.settingKey })
-        assertEquals(listOf(AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME), AssistantToolId.entries.filter { !it.ownsSwitch })
+        assertEquals(listOf(AssistantToolId.STOP_TUNNEL, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME), AssistantToolId.entries.filter { !it.ownsSwitch })
+        assertEquals(AssistantToolId.START_TUNNEL.settingKey, AssistantToolId.STOP_TUNNEL.settingKey)
         assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_RENAME.settingKey)
         // An app-local label change: a changing tool, but a local one, and the only one that does not confirm.
         assertEquals(ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL, AssistantToolId.TERMINAL_RENAME.effect)
-        assertEquals(listOf(AssistantToolId.TERMINAL_RENAME), AssistantToolId.entries.filter { it.effect.changes && !it.confirms })
-        assertTrue(AssistantToolId.entries.filter { it != AssistantToolId.TERMINAL_RENAME }.all { it.confirms })
+        assertEquals(listOf(AssistantToolId.START_TUNNEL, AssistantToolId.TERMINAL_RENAME), AssistantToolId.entries.filter { it.effect.changes && !it.confirms })
+        assertTrue(AssistantToolId.entries.filter { it != AssistantToolId.TERMINAL_RENAME && it != AssistantToolId.START_TUNNEL }.all { it.confirms })
+        // Stopping a tunnel asks like every changing command.
+        assertTrue(AssistantToolId.STOP_TUNNEL.effect.changes && AssistantToolId.STOP_TUNNEL.confirms)
         assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_READ.settingKey)
         assertEquals(AssistantToolId.entries.size, AssistantToolId.entries.map { it.wire }.toSet().size)
         assertEquals(AssistantToolId.switches.size, AssistantToolId.switches.map { it.settingKey }.toSet().size)
-        assertEquals(listOf(AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_INPUT, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
+        assertEquals(listOf(AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_INPUT, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
         assertEquals(Effect.CHANGE_REMOTE, AssistantToolId.TERMINAL_INPUT.effect)
         assertEquals(setOf(Effect.READ_REMOTE), AssistantToolId.entries.filter { !it.effect.changes }.map { it.effect }.toSet())
         assertFalse(Effect.READ_LOCAL.changes); assertFalse(Effect.READ_REMOTE.changes)
@@ -54,7 +57,7 @@ class AssistantToolCatalogTest {
         assertEquals(AssistantToolId.switches.map { it.settingKey }.toSet(), enabledFields(AppSettings()).keys)
     }
 
-    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true, terminalInput = true)
+    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true, terminalInput = true, tunnels = true)
 
     @Test fun `AssistantTools switch and with address exactly one switch each`() {
         for (id in AssistantToolId.switches) {

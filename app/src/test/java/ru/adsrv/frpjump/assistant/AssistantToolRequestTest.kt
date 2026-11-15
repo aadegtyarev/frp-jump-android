@@ -76,7 +76,7 @@ class AssistantToolRequestTest {
             // ssh_command is on but has no SSH owner in this fixture, so it is not offered; it is on, so it is not in the enum.
             assertEquals(listOf("read_page", "request_tool"), f.requests.last().tools.map { it.name })
             assertEquals(all - "read_page" - "ssh_command", enum(f.requests.last().tools.last()))
-            f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION, AssistantToolId.TERMINAL_TABS)
+            f.on(AssistantToolId.WEB_SEARCH, AssistantToolId.INSPECT_IMAGE, AssistantToolId.PROFILE_INFORMATION, AssistantToolId.TERMINAL_TABS, AssistantToolId.START_TUNNEL)
             f.send()
             // The tabs are on now, so typing into them may be asked for; every other tool is on.
             assertEquals(listOf("web_search", "read_page", "inspect_image", "request_tool"), f.requests.last().tools.map { it.name })
@@ -98,7 +98,7 @@ class AssistantToolRequestTest {
         val description = tool.spec.description
         assertEquals("Ask the owner to turn on one tool that is currently off, when the task cannot be done without it. Give the reason in one short sentence. " +
             "The tool stays off in this request: finish your answer and say what you would do with it. The owner may turn it on and continue. " +
-            "Tools you can ask for: web_search - search the public web; ssh_command - run one command on a saved SSH connection.", description)
+            "Tools you can ask for: web_search - search the public web; ssh_command - run one command through a saved SSH tunnel.", description)
         for (word in listOf("query", "profile_id", "connection_id", "command\"", "additionalProperties", "required")) assertFalse(word, description.contains(word))
         assertEquals(setOf("name", "why"), tool.spec.parameters.getValue("properties").jsonObject.keys)
         assertEquals(listOf("web_search", "ssh_command"), enum(tool.spec))

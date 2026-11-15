@@ -7,7 +7,7 @@ two adapters over the same operation: neither speaks for the operation, and the 
 surface covers the `ops/` package (the operation interface, results and typed reasons), the adapters that use it, and the invariants an
 adapter must keep. It does not describe what each product surface does; see the related contracts.
 
-Consumers: the assistant tools `ssh_command` and `profile_information` (through `OperationTool`) and the Connections actions (through
+Consumers: the assistant tools `ssh_command`, `profile_information` and `start_tunnel` (through `OperationTool`), and `stop_tunnel` and the Connections actions (through
 `ui/OpTexts.kt`; `ConnectionActions` is their thin adapter and keeps the navigation glue: opening SSH, MQTT and Files, login at once). The MQTT publish sheet uses `mqtt_publish` and maps its result back with `ui/mqtt/MqttPublishAnswers.kt`; the Wiren Board devices tab uses `wb_write` and reads its answers from its own write book, not from that mapping. Maintainers add an operation by implementing `Operation` and one adapter per caller.
 
 ## Interface
@@ -70,8 +70,7 @@ Returns the local port of the tunnel to a device port, bringing it up when it is
 revived and stays up, otherwise a disconnect being done is awaited; when the tunnel is down and no connect is in flight it is asked to
 connect for the connection's kind; it is waited for up to 45 s; then the device is waited for (as a fresh tunnel when it was brought up
 here). It does not come up: `DidNotComeUp` with the tunnel manager's last typed error for it, when there is one. The device does not open the
-port: `DeviceNotListening` with `DevicePortNotOpen(port)`, the port that is not open. The assistant does not get this operation:
-tunnels are not managed by the model. If that policy is ever lifted, a tunnel tool needs its own design: `GrantTarget` names a saved connection (profile and connection ID) and cannot express a device port, so the confirmation target and grant key would have to be decided first.
+port: `DeviceNotListening` with `DevicePortNotOpen(port)`, the port that is not open. The assistant's `start_tunnel` uses it (through `StartSavedTunnel`, which resolves the saved tunnel by `GrantTarget`'s profile and connection ID and calls this operation unchanged), without a question, as it changes only this app.
 
 ### `tunnel_connect`
 
@@ -91,7 +90,7 @@ result. A device or profile target whose profile does not exist is refused. An u
 and the profiles still being restored after a restart (nothing of them on screen to wait for) have their servers told at once, not
 waited for; with nothing shown up, every server is told now (restoring profiles included) and the result comes after each was asked
 (the "Disconnect all" spinner follows that). The screens start these operations, and `tunnel_connect`, undispatched in the app scope, so
-leaving the screen cancels neither the awaited connect nor the "all" path. The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant does not get it.
+leaving the screen cancels neither the awaited connect nor the "all" path. The notification's "Disconnect all" does not use Undo and does not use this operation. The assistant's `stop_tunnel` uses `TunnelDownTarget.OneNow` (through `StopSavedTunnel`): one tunnel disconnected at once, with no Undo, after the owner answered its card; every other target stays the screens'.
 
 ### `mqtt_publish` and `wb_write`
 
@@ -133,7 +132,7 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
 
 ## Security and privacy
 
-- The operation layer adds no authority: the assistant still has only the tools in the catalog; none of them starts, changes or stops a tunnel or writes to MQTT (`tunnel_connect`, `tunnel_down`, `direct_*`, `mqtt_publish`, `wb_write` are UI only).
+- The operation layer adds no authority: the assistant still has only the tools in the catalog; only `start_tunnel` (`tunnel_up`) and `stop_tunnel` (`tunnel_down`, one tunnel) start or stop a saved tunnel, behind their own default-off switch; none writes to MQTT (`tunnel_connect`, the other `tunnel_down` targets, `direct_*`, `mqtt_publish`, `wb_write` are UI only).
 - A command and its output are never part of a string form: `SshExecInput` and `SshExecOutput` are plain classes whose `toString` leaves them out (tested).
 - Untrusted data (command output, device names, server messages) is data in every adapter, never an instruction.
 

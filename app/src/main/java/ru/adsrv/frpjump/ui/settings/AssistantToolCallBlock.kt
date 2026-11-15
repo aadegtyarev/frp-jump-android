@@ -73,7 +73,8 @@ private fun rememberDetail(information: List<ChatProfileInformation>, receipts: 
             tabLabel = tabs::get, tabNamed = { profile, user, device, number -> resources.getString(R.string.chat_detail_tab_named, profile, user, device, number) },
             tabPlain = { resources.getString(R.string.chat_detail_tab, it) },
             tabNamedAs = { name, profile, user, device, number -> resources.getString(R.string.chat_detail_tab_name_named, name, profile, user, device, number) },
-            tabRenamed = { name, user, device, number -> resources.getString(R.string.chat_detail_tab_name, name, user, device, number) })
+            tabRenamed = { name, user, device, number -> resources.getString(R.string.chat_detail_tab_name, name, user, device, number) },
+            tunnelNamed = { profile, name -> resources.getString(R.string.chat_detail_tunnel, profile, name) })
         val detail: (ToolCall) -> String? = { call -> receiptDetail(call, words) }
         detail
     }

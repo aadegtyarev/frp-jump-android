@@ -48,6 +48,26 @@ sealed interface TunnelRefusal : OpRefusal {
     data object ProfileGone : TunnelRefusal
 }
 
+/** Why the assistant's tunnel tools did nothing. */
+sealed interface TunnelToolRefusal : OpRefusal {
+    /** No such saved tunnel: the profile or the tunnel is unknown, gone or hidden. */
+    data object Unknown : TunnelToolRefusal
+    /** Stop: the tunnel [name] was not on; nothing was stopped. */
+    data class NotOn(val name: String) : TunnelToolRefusal
+    /** Stop: the tunnel is not the one the owner was asked about (removed, edited, restarted or already stopping); nothing was stopped. */
+    data object Changed : TunnelToolRefusal
+}
+
+/** What went wrong after the assistant's tunnel tools began. */
+sealed interface TunnelToolFailure : OpFailure {
+    /** The tunnel [name] is on but the device does not take connections on it yet. */
+    data class NoConnections(val name: String) : TunnelToolFailure
+    /** The tunnel [name] did not come up in time. */
+    data class DidNotComeUp(val name: String) : TunnelToolFailure
+    /** An unexpected exception. */
+    data object Unexpected : TunnelToolFailure
+}
+
 sealed interface DirectRefusal : OpRefusal {
     /** The phone is on no network the choice can be tied to; nothing changed. */
     data object NoNetwork : DirectRefusal

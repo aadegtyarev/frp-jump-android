@@ -25,6 +25,11 @@ class TunnelDisconnects(
         pendingUndo.enqueue(key(t), commit = { if (isUp(t)) disconnectNow(t) }, kind = UndoKind.DISCONNECTED)
     }
 
+    /** [tunnel] disconnected now, with no Undo (the assistant's Stop, answered on its card); returns once done. One already down is left. */
+    suspend fun disconnectAtOnce(tunnel: TunnelRef) {
+        if (isUp(tunnel)) disconnectNow(tunnel)
+    }
+
     /** Whether [tunnel]'s disconnect is being done now: Undo is gone, it is going down. */
     fun disconnecting(tunnel: TunnelRef): Boolean = pendingUndo.committing(key(tunnel))
 

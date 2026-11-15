@@ -67,9 +67,10 @@ internal abstract class AppTool<A : Any>(
 /**
  * Not a data class: its toString must never print the command. [target] is the structured grant target; null when unknown or undescribed.
  * [typing] is what the card shows besides the text of a call that types into a terminal tab ([command] is then that text); null for others.
+ * [stop] is what the card of a stop of a saved tunnel shows (there is no command text); null for others.
  */
 internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String, val described: Boolean = true,
-    val typing: TypingCard? = null)
+    val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null)
 
 internal sealed interface ChangeCheck {
     data object Invalid : ChangeCheck

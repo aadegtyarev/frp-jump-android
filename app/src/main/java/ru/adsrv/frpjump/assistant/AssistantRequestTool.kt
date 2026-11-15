@@ -54,11 +54,12 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             AssistantToolId.WEB_SEARCH -> "search the public web"
             AssistantToolId.READ_PAGE -> "read a public web page"
             AssistantToolId.INSPECT_IMAGE -> "ask the model about a public image"
-            AssistantToolId.PROFILE_INFORMATION -> "find the app's profiles, devices and saved connections"
+            AssistantToolId.PROFILE_INFORMATION -> "find the app's profiles, devices and saved tunnels"
             // One entry for both terminal tools; the wire name is terminal_tabs.
             AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> "read and rename the owner's open terminal tabs"
+            AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> "start and stop the owner's saved tunnels"
             AssistantToolId.TERMINAL_INPUT -> "type into the owner's open terminal tabs"
-            AssistantToolId.SSH_COMMAND -> "run one command on a saved SSH connection"
+            AssistantToolId.SSH_COMMAND -> "run one command through a saved SSH tunnel"
         }
 
         fun description(off: List<AssistantToolId>) =

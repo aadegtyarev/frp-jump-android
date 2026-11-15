@@ -60,7 +60,11 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val context = LocalContext.current
     val info = confirmation.info
     val typing = confirmation.typing
-    val target = if (typing != null) {
+    val stop = confirmation.stop
+    val target = if (stop != null) {
+        // Identity first (profile, device and port), the tunnel's name between its marks, bidi-isolated.
+        stringResource(R.string.confirm_stop_target, stop.profile, ru.adsrv.frpjump.ssh.isolateName(stop.name), stop.device, stop.port)
+    } else if (typing != null) {
         if (typing.profile != null && typing.user != null && typing.device != null && typing.number != null)
             // A name is shown after the tab's profile, user and device (identity first), bidi-isolated, never alone.
             if (typing.name != null) stringResource(R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName(typing.name), typing.profile, typing.user, typing.device, typing.number)
@@ -89,7 +93,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val commandScroll = rememberScrollState()
     val commandLabel = stringResource(if (typing != null) R.string.confirm_text else R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
-    val canSession = info != null && confirmation.target != null
+    // No "For session" for a stop: its hint speaks of commands on a tunnel.
+    val canSession = info != null && confirmation.target != null && stop == null
     // The command is always left to right: a line that starts with a right-to-left letter must not reverse the order of its commands.
     val ltr = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Ltr)
     // The command box shows four lines (three in the two-pane layout) at the user's font size, then scrolls.
@@ -103,7 +108,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 
     @Composable fun Header() {
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(stringResource(if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
             Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("chat_confirm_tool"))
@@ -134,9 +139,15 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         }
     }
     // Keys-only typing has no text: no empty box.
-    val showCommand = typing == null || confirmation.command.isNotEmpty()
-    @Composable fun Warning() = Text(stringResource(if (typing != null) R.string.confirm_input_warning else R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.testTag("chat_confirm_warning"))
+    val showCommand = stop == null && (typing == null || confirmation.command.isNotEmpty())
+    // A stop says how many tabs close, only when some do.
+    @Composable fun Warning() {
+        if (stop != null) {
+            if (stop.tabs > 0) Text(stringResource(R.string.confirm_stop_tabs, stop.tabs), style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.testTag("chat_confirm_stop_tabs"))
+        } else Text(stringResource(if (typing != null) R.string.confirm_input_warning else R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("chat_confirm_warning"))
+    }
     @Composable fun Answers() {
         Column(Modifier.onSizeChanged { answersPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

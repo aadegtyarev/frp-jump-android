@@ -7,7 +7,7 @@ provider setup and a locally saved chat with optional public-read,
 profile-information and SSH-command tools. The owner uses Settings to opt in,
 configure one provider and open Chat (also from the bottom navigation and the
 terminal menu, see [Entry points](#entry-points)); maintainers can supply provider/tool
-implementations to the kernel. Tunnel-control tools remain unavailable. Every
+implementations to the kernel. The only tunnel-control tools are `start_tunnel` and `stop_tunnel` (default-off switch "Tunnels"). Every
 tool is one row of the [tool table](#tool-table) and follows the common
 [tool policy](#tool-policy); a tool's own subsection describes only what is
 specific to it. `ssh_command` and `profile_information` are assistant adapters
@@ -19,9 +19,11 @@ turned the question off or answered For session for that tool and target; see
 
 What the assistant can never do. Each rule is stated where it applies:
 
-- Tunnels: no tunnel creation, start, reconfiguration or deletion is granted to
-  the agent. No tool starts or controls a tunnel ([tool policy](#tool-policy),
-  [tool table](#tool-table)).
+- Tunnels: no tunnel creation, reconfiguration or deletion is granted to the
+  agent. Only `start_tunnel` and `stop_tunnel`, behind their own default-off
+  switch, start and stop a saved tunnel ([tool policy](#tool-policy),
+  [tool table](#tool-table), [tunnel tools](#optional-tunnel-tools)); `ssh_command`
+  never starts one.
 - Credentials: no current tool takes or returns app-stored credentials, and
   `ssh_command` accepts no credentials from the model; the rules are in
   [SSH command](#optional-ssh-command) and
@@ -99,8 +101,8 @@ confirmation, and makes no request.
 
 Settings → LLM assistant → Assistant provider configures one external
 OpenAI-compatible provider. Chat is available next to provider setup. SSH
-commands require their own default-off tool switch; tunnel control is **not
-available**. Enabling the module, opening settings or saving a provider
+commands require their own default-off tool switch; so does starting and stopping a saved
+tunnel (creating, reconfiguring and deleting tunnels is **not available**). Enabling the module, opening settings or saving a provider
 performs no network request. Fetch models is an explicit user action and is
 available during setup even while the agent module is off. A saved provider is
 configuration, not evidence of a successful API call. See
@@ -615,7 +617,7 @@ The kernel does not itself grant target access. Any connection-tool adapter
 must bind to its admitted connection identity and must never resolve a
 replacement client after a disconnect. The SSH adapter owns one ordinary
 client; the information tool reads shared application state. Neither starts or
-controls tunnels.
+controls tunnels (only the tunnel tools do).
 
 ### Adding a tool
 
@@ -923,7 +925,9 @@ are described in each tool's subsection.
 | `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; waits until the tab's output was quiet for 0.7 s counted from the write at the earliest (at most 10 s) and returns the screen as `terminal_read` with no history, about 7,800 characters | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed and the screen after it, which may contain secrets, go to the model | optional, default off; in effect only while Terminal tabs is on too |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
-| tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
+| `start_tunnel` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | `tunnel_up`, the screens' own operation: brings the saved tunnel up when it is down and waits until the device takes connections (up to 45 s) | exactly `profile_id` and `connection_id` (strings, at most 256 characters) | one tunnel; no retries | never: it changes only this app and the owner can stop it from the Connections list | the tunnel's name goes to the model | optional, default off (switch `assistant_tunnels`, shared with `stop_tunnel`) |
+| `stop_tunnel` | `CHANGE_LOCAL` | `tunnel_down` for one tunnel at once, with no Undo (the card is the check): its terminal tabs close, tmux sessions on the device stay | exactly `profile_id` and `connection_id` | one tunnel; acts only on the tunnel that was described | as every changing tool: asks when "Ask before changing commands" is on, then runs at once | the tunnel's name goes to the model | optional, default off (shared switch) |
+| tunnel creation, reconfiguration, deletion | n/a | none | n/a | n/a | n/a | n/a | not available |
 
 Every tool also has the kernel limits ([Limits](#limits)) and the Send's 120
 seconds of active time. The public tools share one per-Send budget: 12 public
@@ -1125,6 +1129,33 @@ contain secrets; the switch's hint says so.
   terminal_tabs and name: up to 24 characters, one line, no control characters.` and change nothing. The chat shows a call line
   `Tab name · "name" · user@device #number` (the name with the tab's user and device from the same turn's `terminal_tabs`
   result, else `tab <id>` alone) and, expanded, `before → after` (each the name or the automatic `user@device #number`) and the reply.
+
+### Optional tunnel tools
+
+One independent default-off switch, "Tunnels" («Туннели», setting `assistant_tunnels`), turns on `start_tunnel` and `stop_tunnel`; the Tools
+screen and `request_tool` show it as one entry (`start_tunnel`: "start and stop the owner's saved tunnels"). A saved tunnel is a saved
+connection of a profile, named by `profile_information`'s `profile.id` and `connection.id`; the tools never create, reconfigure or delete one,
+and `ssh_command` still never starts one.
+
+- `start_tunnel` takes exactly `profile_id` and `connection_id`. It runs the screens' own `tunnel_up` operation, as the owner's Start does, and
+  waits until the device takes connections through it. It runs without a question (catalog effect `CHANGE_LOCAL`, flag `confirms = false`): it
+  changes only this app and the owner can stop the tunnel. Replies (fixed texts, `<name>` the tunnel's name as the owner sees it, cleaned):
+  `Tunnel <name> is on. The device takes connections.`; `Tunnel <name> was already on.`; `Tunnel <name> is on, but the device does not take
+  connections yet.`; an unknown, removed or hidden profile or tunnel and bad arguments: `Provide profile_id and connection_id from
+  profile_information.`; a tunnel that did not come up in time: `Tunnel <name> did not come up. Nothing else was changed.`; any other failure: `Could not start the
+  tunnel.` (these two are not in the approved list yet).
+- `stop_tunnel` takes exactly `profile_id` and `connection_id`. It goes through the common confirmation: the card's title is "Stop tunnel?"
+  («Выключить туннель?»), its identity line `profile · "tunnel name" · device:port` (the name between its marks, bidi-isolated), then, only
+  when tabs of the tunnel are open, `N tabs of this tunnel will close. tmux sessions on the device stay.` Allow, Always and Decline are the
+  common answers; there is no session grant for a stop. After Allow it runs `tunnel_down` for that one tunnel at once with no 5 s Undo, as the
+  card is the check; the owner's own Stop keeps its Undo. Its terminal tabs close with it; tmux sessions on the device stay
+  ([SSH persistence](ssh-persist-contract.md)). The call is pinned to the tunnel that was described (the saved tunnel, its profile and enrollment,
+  and the running tunnel instance): when it was removed, edited, restarted or is already stopping, nothing is stopped (`Tool was not authorized;
+  nothing was executed.`, or the "Provide…" reply when it is gone). Replies: `Tunnel <name> is off. Its tabs closed; tmux sessions on the
+  device stay.`; `Tunnel <name> was not on. Nothing was stopped.`; declined and unanswered questions use the common texts; any other failure:
+  `Could not stop the tunnel.` (not in the approved list yet).
+- The chat's call lines are `Start tunnel · profile · "name"` and `Stop tunnel · profile · "name"` (the names as the received
+  `profile_information` facts hold them, the profile before the tunnel's name, which is plain owner text, bidi-isolated).
 
 #### Optional typing into a tab (`terminal_input`)
 
@@ -1389,9 +1420,9 @@ reader selector or private/tunnel/file authority for these public Web tools.
 
 The app surface includes provider setup, chat, optional public-read tools and
 the profile-information and SSH-command tools above, and bounded automatic
-working summaries. Tunnel-control, dedicated Files/MQTT/TCP tools, evaluators, permission modes and
+working summaries. Dedicated Files/MQTT/TCP tools, evaluators, permission modes and
 subagents remain outside this surface. No permissions evaluator or confirmation
-modes beyond the single app-wide switch are shipped. Tunnel control and new
+modes beyond the single app-wide switch are shipped. Tunnel creation and new
 connection tools are covered by the [boundary](#boundary-and-availability) and
 [Adding a tool](#adding-a-tool).
 

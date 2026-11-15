@@ -124,6 +124,8 @@ data class AppSettings(
     @SerialName("assistant_terminal_tabs") val assistantTerminalTabs: Boolean = false,
     /** The switch of `terminal_input`: the assistant types into an open terminal tab. Works only with [assistantTerminalTabs] on. */
     @SerialName("assistant_terminal_input") val assistantTerminalInput: Boolean = false,
+    /** The switch of `start_tunnel` and `stop_tunnel`: the assistant starts and stops the owner's saved tunnels. */
+    @SerialName("assistant_tunnels") val assistantTunnels: Boolean = false,
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
     /** "Offer to turn tools on": the service tool `request_tool` may be offered to the model. On by default; off for models without tool calling. */
     @SerialName("assistant_offer_tools") val assistantOfferTools: Boolean = true,
@@ -163,6 +165,8 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
     val terminalTabs: Boolean = false,
     /** The switch of `terminal_input`; it takes effect only while [terminalTabs] is on (see [get]). */
     val terminalInput: Boolean = false,
+    /** One switch for `start_tunnel` and `stop_tunnel`. */
+    val tunnels: Boolean = false,
     /** "Offer to turn tools on": whether `request_tool` is offered while some tool is off. Captured at Send with the tool switches. */
     val offer: Boolean = true) {
     /** Whether the tool is in effect: its switch, and for `terminal_input` also the terminal tabs switch. Everything that asks "is this tool on" asks here. */
@@ -178,6 +182,7 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.PROFILE_INFORMATION -> profileInformation
         AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> terminalTabs
         AssistantToolId.TERMINAL_INPUT -> terminalInput
+        AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> tunnels
         AssistantToolId.SSH_COMMAND -> sshCommand
     }
     /** Whether the model may be offered a button to turn the tool on: `terminal_input` only while the terminal tabs are on (else it asks for those first). */
@@ -190,12 +195,13 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         // Turning the tabs off turns typing off with them, so that turning the tabs on again never brings typing back by itself.
         AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> if (enabled) copy(terminalTabs = true) else copy(terminalTabs = false, terminalInput = false)
         AssistantToolId.TERMINAL_INPUT -> copy(terminalInput = enabled)
+        AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> copy(tunnels = enabled)
         AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
     }
 }
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantOfferTools)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantOfferTools)
 private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
-    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantOfferTools = tools.offer)
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantOfferTools = tools.offer)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools(),

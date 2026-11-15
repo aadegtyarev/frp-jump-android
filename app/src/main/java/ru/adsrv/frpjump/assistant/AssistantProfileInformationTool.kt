@@ -43,10 +43,10 @@ internal class AssistantProfileInformationTool(
     }
 
     private companion object {
-        const val DESCRIPTION = "Find app-known devices and saved connections across all profiles, refreshing device lists once per invocation. " +
-            "Optional query matches part of a device name/label, connection name or profile name (case/NFC insensitive); profile_id selects an exact profile. " +
+        const val DESCRIPTION = "Find app-known devices and saved tunnels across all profiles, refreshing device lists once per invocation. " +
+            "Optional query matches part of a device name/label, tunnel name or profile name (case/NFC insensitive); profile_id selects an exact profile. " +
             "Empty arguments browse. Results are whole records: follow next_offset with the same query/profile_id when needed. " +
-            "Give a concise answer with all suitable variants, distinguished by profile/device/connection, not the whole catalogue or only the first match. " +
+            "Give a concise answer with all suitable variants, distinguished by profile/device/tunnel, not the whole catalogue or only the first match. " +
             "Several matches are not a failure; ask for a choice only if needed for a subsequent action. Use exact profile.id and connection.id for saved targets. " +
             "Disclose incomplete/stale sources; zero known matches is not absence from unknown sources. App state is not service readiness. " +
             "Private information goes to the configured model."

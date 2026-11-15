@@ -53,6 +53,8 @@ internal class ReceiptWords(
     val tabPlain: (Int) -> String = { "tab $it" },
     /** "profile · user@device #n · name": a tab that has a name, which is only ever shown after its identity, bidi-isolated and in quotes. */
     val tabNamedAs: (String, String, String, String, Int) -> String = { name, profile, user, device, number -> "$profile · $user@$device #$number · \"$name\"" },
+    /** "profile · name": the line of a tunnel call, the name bidi-isolated and between its marks. */
+    val tunnelNamed: (String, String) -> String = { profile, name -> "$profile · \"$name\"" },
     /** "user@device #n · name": the line of a rename call. */
     val tabRenamed: (String, String, String, Int) -> String = { name, user, device, number -> "$user@$device #$number · \"$name\"" },
 )
@@ -95,6 +97,7 @@ internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("a
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
     if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire) return terminalReadDetail(a, words)
     if (call.name == AssistantToolId.TERMINAL_RENAME.wire) return terminalRenameDetail(a, words)
+    if (call.name == AssistantToolId.START_TUNNEL.wire || call.name == AssistantToolId.STOP_TUNNEL.wire) return tunnelDetail(a, words)
     val raw = when (call.name) {
         // The target's name only where the received facts name it (never its ids), then the command; the cut keeps the command's start.
         AssistantToolId.SSH_COMMAND.wire -> a.text("command")?.let { command ->
@@ -133,6 +136,19 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
     val name = label.name?.let { receiptText(it, TAB_NAME_MAX) }?.takeIf { it.isNotEmpty() }
         ?: return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
     return words.tabNamedAs(isolateName(name), part(label.profile), part(label.user), part(label.device), label.number)
+}
+
+/**
+ * "profile · name" of a tunnel call: the profile's name (else the first characters of its id) and the tunnel's name, each as the received
+ * `profile_information` facts hold them; the profile alone when they do not name the tunnel. The identity comes before the name, which is
+ * owner text, shown in plain text between its marks and bidi-isolated.
+ */
+private fun tunnelDetail(a: JsonObject, words: ReceiptWords): String? {
+    val profileId = a.text("profile_id")?.takeIf { it.isNotBlank() } ?: return null
+    val profile = receiptText(words.profileName(profileId) ?: profileId.trim().take(8), RECEIPT_PART_CHARS)
+    val name = a.text("connection_id")?.let { words.connectionName(profileId, it) }?.let { receiptText(it, RECEIPT_PART_CHARS) }?.takeIf { it.isNotEmpty() }
+        ?: return profile
+    return words.tunnelNamed(profile, isolateName(name))
 }
 
 /**

@@ -135,10 +135,10 @@ class OperationToolTest {
 
     @Test fun `each ssh refusal has its own fixed text and a failed outcome`() {
         val texts = mapOf(
-            SshRefusal.TargetUnavailable to "SSH target unavailable. Use an existing ready saved SSH connection; no tunnel was started.",
-            SshRefusal.NeedsSetup to "SSH login or host trust needs setup. Open this connection in the ordinary SSH UI first. No command was executed.",
-            SshRefusal.TargetLostBeforeExec to "SSH target unavailable. No command was executed. Check the connection in the app.",
-            SshRefusal.ConnectFailed to "SSH unavailable. Check the connection in the ordinary SSH UI. No command was executed.",
+            SshRefusal.TargetUnavailable to "SSH target unavailable. Use a saved SSH tunnel that is on and ready; no tunnel was started.",
+            SshRefusal.NeedsSetup to "SSH login or host trust needs setup. Open this tunnel in the ordinary SSH UI first. No command was executed.",
+            SshRefusal.TargetLostBeforeExec to "SSH target unavailable. No command was executed. Check the tunnel in the app.",
+            SshRefusal.ConnectFailed to "SSH unavailable. Check the tunnel in the ordinary SSH UI. No command was executed.",
         )
         for ((refusal, text) in texts) assertEquals("$refusal", ToolOutput(text, ToolOutcome.FAILED), run(OpResult.Refused(refusal)))
         assertEquals(4, texts.values.toSet().size)
@@ -150,7 +150,7 @@ class OperationToolTest {
             run(OpResult.Failed(SshFailure.TargetLost(exit), RemoteOutcome.KNOWN)))
         assertEquals(ToolOutput("SSH target became unavailable. Remote exit received; output withheld.\nexit_status: unknown\nexit_signal: HUP", ToolOutcome.FAILED),
             run(OpResult.Failed(SshFailure.TargetLost(signal), RemoteOutcome.KNOWN)))
-        assertEquals(ToolOutput("SSH target became unavailable; remote outcome unknown. Check the connection in the app; do not automatically repeat the command.", ToolOutcome.FAILED),
+        assertEquals(ToolOutput("SSH target became unavailable; remote outcome unknown. Check the tunnel in the app; do not automatically repeat the command.", ToolOutcome.FAILED),
             run(OpResult.Failed(SshFailure.TargetLost(null), RemoteOutcome.UNKNOWN)))
         assertEquals(ToolOutput("SSH command failed. Remote exit received; output withheld.\nexit_status: 3\nexit_signal: unknown", ToolOutcome.FAILED),
             run(OpResult.Failed(SshFailure.CommandFailed(exit), RemoteOutcome.KNOWN)))

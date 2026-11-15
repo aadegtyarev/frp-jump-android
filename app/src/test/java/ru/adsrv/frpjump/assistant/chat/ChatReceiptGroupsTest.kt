@@ -79,7 +79,7 @@ class ChatReceiptGroupsTest {
         val typical = mapOf(
             "web_search" to mapOf("query" to "kernel news"), "read_page" to mapOf("url" to "https://example.org/a"),
             "inspect_image" to mapOf("url" to "https://example.org/cat.png", "question" to "what"),
-            "profile_information" to emptyMap(), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
+            "profile_information" to emptyMap(), "start_tunnel" to mapOf("profile_id" to "p", "connection_id" to "c"), "stop_tunnel" to mapOf("profile_id" to "p", "connection_id" to "c"), "ssh_command" to mapOf("profile_id" to "p", "connection_id" to "c", "command" to "uptime"),
             AssistantRequestTool.WIRE to mapOf("name" to "web_search", "why" to "x"))
         // terminal_tabs takes no arguments, so there is nothing to tell its calls apart by; terminal_read has its own test below.
         val catalogue = AssistantToolId.entries.map { it.wire } + AssistantRequestTool.WIRE - "terminal_tabs" - "terminal_read" - "terminal_rename" - "terminal_input"
@@ -96,7 +96,7 @@ class ChatReceiptGroupsTest {
         ChatToolReceipt(ToolCall("t", "terminal_tabs", buildJsonObject { }), ToolResult("t", "terminal_tabs", text, outcome))
 
     @Test fun `terminal_read names the tab this turn's terminal_tabs result names, else its id`() {
-        val result = tabsResult("tab_id: 3 | profile: Дача (profile_id: p1) | device: щиток | connection: SSH | user: root | tab: 2 | state: connected | tmux: no\n" +
+        val result = tabsResult("tab_id: 3 | profile: Дача (profile_id: p1) | device: щиток | tunnel: SSH | user: root | tab: 2 | state: connected | tmux: no\n" +
             "tab_id: 4 | profile: Home | A (profile_id: p2) | device: pi | user: pi | tab: 1 | state: closed | tmux: yes | program: vim")
         val labels = tabLabels(listOf(result))
         assertEquals(setOf(3, 4), labels.keys)
