@@ -85,7 +85,7 @@ This reference does not certify runtime conformance to those requirements.
 | Connect/transport failure during a reconnect, including transport loss during authentication | Another failed try, not a login refusal |
 | Device refuses login | Stop retrying; explain refusal and offer Change login |
 | Unknown or changed host key | Stop retrying; require the owner's host-key decision |
-| Owner commits tunnel Disconnect, Disconnect all or Forget | Close tabs, stop retries; keep remote tmux sessions |
+| Owner commits tunnel Stop, Stop all or Forget | Close tabs, stop retries; keep remote tmux sessions |
 
 - Try immediately, then pause 2, 4, 8, 15 s, then 30 s between failures.
   The default network returning/changing triggers an immediate try and resets

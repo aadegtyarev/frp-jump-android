@@ -16,10 +16,10 @@ tunnels. It only consumes ports; it never exposes anything of the phone.
 
 This contract owns enrollment, profiles, device discovery/display, saved
 connections, shared local ports, tunnel lifecycle, app settings, updates and
-universal UI rules. Users consume these through Devices, Connections, Sessions,
-Settings and the foreground notification. The bottom navigation lists Devices, Connections and Sessions; while the
+universal UI rules. Users consume these through Devices, Tunnels, Sessions,
+Settings and the foreground notification. The bottom navigation lists Devices, Tunnels and Sessions; while the
 [assistant](#optional-llm-assistant) is on it adds a fourth item, "Assistant" / «Помощник». Settings is not a section of it: a gear
-(⚙, "Settings" / «Настройки») at the right end of the Devices, Connections and Sessions headers opens it over the section (scenario 9).
+(⚙, "Settings" / «Настройки») at the right end of the Devices, Tunnels and Sessions headers opens it over the section (scenario 9).
 Profile runtimes own each profile's
 server/session work; the application owns shared ports, sessions, settings and
 pending Undo actions. Screens are not the lifetime owners of running tunnels.
@@ -72,7 +72,7 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   undone, so Undo cannot apply; the owner can turn the question off app-wide).
 - Consistency: controls that do the same action look the same everywhere —
   same glyph, same kind of control, same placement relative to what they act
-  on (Disconnect is the same button on a connection row, a device card and
+  on (Stop is the same button on a connection row, a device card and
   the Devices top bar). Similar actions look alike, with only the difference
   that matters (a folder and a file tile share shape and size and differ by
   glyph and tint). A new control starts from an existing one, not from a
@@ -83,7 +83,7 @@ accessibility, truthful waiting/error feedback or required safety warnings.
 - Keep screens light. Each screen shows the main action and the state; a
   clear icon replaces a caption where the meaning is obvious. Rare actions
   (rename, delete, copy address, open in another app, forget profile) live in
-  a "⋮" menu or a long press, not as extra buttons. Disconnect is not rare:
+  a "⋮" menu or a long press, not as extra buttons. Stop is not rare:
   it sits on the row of an active connection, next to its main action.
 - Light and dark themes, each designed on its own rather than inverted: dark
   is a warm graphite, not black, with a toned-down accent and its own status
@@ -137,13 +137,13 @@ profile without re-enrollment.
 - The device list shows one profile at a time; a switcher at the top changes it. The Devices header, left to right: the switcher,
   the tunnel chip (only while this profile has tunnels up), the search magnifier (while there is a list to search) and the gear. The
   icon buttons sit next to each other, each with its own 44 dp field; the 8 dp gap is only between the switcher and the rest. The
-  chip is the Connections section's link glyph and the number of this profile's tunnels up (tunnels whose disconnect waits for Undo
-  are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural forms kept), as a button that opens Connections. There
-  is no power button in this header: one profile's tunnels go down from a device row (swipe), the device card or Connections'
-  "Disconnect all". The switcher is never narrower than 126 dp at 100% font and 66 dp at 200% at 360 dp with one tunnel up.
+  chip is the Tunnels section's link glyph and the number of this profile's tunnels up (tunnels whose disconnect waits for Undo
+  are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural forms kept), as a button that opens Tunnels. There
+  is no power button in this header: one profile's tunnels go down from a device row (swipe), the device card or Tunnels'
+  "Stop all". The switcher is never narrower than 126 dp at 100% font and 66 dp at 200% at 360 dp with one tunnel up.
 - The visible profile polls every 2 s while the app is open. Other profiles
   poll only while they have tunnels up, at the background interval.
-- "Connections" and the notification show tunnels of all profiles, each
+- "Tunnels" and the notification show tunnels of all profiles, each
   marked with its profile colour.
 - Loading prepares every runtime before publishing the batch. Polling,
   startup cache/features work and runtime collectors start only after the
@@ -188,14 +188,14 @@ profile without re-enrollment.
   this profile, with Undo; the device card's bar has the same button. The row
   slides back on scroll, refresh, Back or a finger landing elsewhere on the
   screen; a tap on a row still opens the card. TalkBack offers it as the row's action
-  "Disconnect tunnels of <device>"; rows without tunnels do not swipe.
+  "Stop tunnels of <device>"; rows without tunnels do not swipe.
 
 ### 4. Device card and named connections
 
 - A connection is: device, port on the device, kind (web / SSH / TCP / MQTT), name,
   plus for web the HTTPS flag (not asked on 80, always HTTP, and 443, always
   HTTPS) and for SSH the user.
-- "New connection": pick kind, type a port or tap a preset (web: 80, 443,
+- "New tunnel": pick kind, type a port or tap a preset (web: 80, 443,
   8080, 1880, 3000; SSH: 22, 2222; TCP: 502, 5432; MQTT: 1883), give a name, and
   optionally "connect now".
 - Several connections to the same device and port are allowed under different
@@ -228,7 +228,7 @@ profile without re-enrollment.
 - The card's header shows the device's icon on a tile, then the whole name and
   under it the whole label (wrapped, never cut). The top bar's "⋮" holds
   «Подпись…» and «Значок…» (scenario 11).
-- Rename, change and delete a connection from the card or the Connections tab.
+- Rename, change and delete a connection from the card or the Tunnels tab.
 - Web → in-app WebView; HTTPS with a self-signed certificate is remembered on
   first visit. A device answering an HTTPS connection in plain HTTP is
   told as such, with "Open over HTTP". If saving Trust in the certificate fails,
@@ -267,7 +267,7 @@ profile without re-enrollment.
   after the first refusal: "The device did not open port N: its agent did
   not answer. Check that frp-jump-client runs on the device." It
   recovers by itself once the device takes connections (checked every 10 s).
-- A tap anywhere on a connection's card (device card and Connections tab)
+- A tap anywhere on a connection's card (device card and Tunnels tab)
   does its main action, which the visible button names: connected, it
   opens (Terminal, Explore, Open) or, for TCP and a tunnel no connection
   names, copies the address; not connected, it connects, then does the
@@ -275,16 +275,16 @@ profile without re-enrollment.
   once opens the login dialog first. Taps while it is coming up open it
   once. Leaving the screen before it is up cancels the open (the tunnel
   stays). On a device offline now, a connection that is down has no tap
-  action and its Connect is off (scenario 5); "⋮" and a long press work. The disconnect button, "⋮" and the other buttons keep their own
+  action and its Start is off (scenario 5); "⋮" and a long press work. The Stop button, "⋮" and the other buttons keep their own
   actions, and so does the state when it offers a choice ("Through the
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
-  when connected and "Connect and open" when not.
+  when connected and "Start and open" when not.
 - Bringing a connection's tunnel up for these actions (and for "Use key login" and "Change login") is the `tunnel_up` operation of the
   [operations surface](contracts/surfaces/operations.md): same order, same 45 s wait for the tunnel, same notices as before it was
   an operation. The assistant does not use it.
 
-### 5. Connections tab
+### 5. Tunnels tab
 
 Quick access to the saved connections of every device, active ones first.
 
@@ -305,12 +305,12 @@ Quick access to the saved connections of every device, active ones first.
 - Each connection is the same card as on the device card: kind tile, its own
   name only when it has one other than the kind (a default "SSH" is not
   repeated), port (and the SSH user and login method), state, the main
-  button ("Connect" / "Terminal" / "Explore" / "Open" / "Copy"),
-  Disconnect while up, and "⋮". A tap on the card does its main action
+  button ("Start" / "Terminal" / "Explore" / "Open" / "Copy"),
+  Stop while up, and "⋮". A tap on the card does its main action
   (scenario 4).
 - On a device offline as of a fresh answer of the server, a connection that
-  is down is dimmed: its Connect and the tap on its card are off, and its
-  state says "Device offline" instead of "Not connected". Its "⋮" and a long
+  is down is dimmed: its Start and the tap on its card are off, and its
+  state says "Device offline" instead of "Off". Its "⋮" and a long
   press still work. An active one stays as it is, so it can be disconnected.
   An old list (the server not answering, or not checked yet since the start)
   blocks nothing: the device may be back. The device card does the same.
@@ -325,14 +325,14 @@ Quick access to the saved connections of every device, active ones first.
   it matches the device name or its label (all its connections) or a
   connection's name, compared as in Devices search; nothing found says so.
 - While any tunnel is up (or being restored), the title has a power button,
-  "Disconnect all": it disconnects every profile's tunnels, with Undo. The
+  "Stop all": it disconnects every profile's tunnels, with Undo. The
   header's icons (that button, the magnifier, the gear) are at the right end of
   the title's row; when the title and the icons do not fit one row (200% font
   in portrait at 360 dp, for example) the icons take a row of their own and
   the title is below them, whole, never cut or broken inside a word. The
   Sessions header is its title and the gear.
-- Nothing saved: "No saved connections yet. Open a device on Devices and tap
-  “Connection”."
+- Nothing saved: "No saved tunnels yet. Open a device on Devices and tap
+  “Tunnel”."
 
 ### 6. Direct or through the server
 
@@ -557,7 +557,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 ### 8. Background, kill and reboot
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a
-  notification ("N tunnels in M profiles", "Open", "Disconnect all").
+  notification ("N tunnels in M profiles", "Open", "Stop all").
 - Launcher badge: the notification carries the number of tunnels up in all
   profiles (`setNumber`), and its channel allows badges; the owner's app and
   channel badge settings still apply. Launchers that show numbers (for example
@@ -576,7 +576,7 @@ Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 - Background poll interval: off / 30 s / 1 min / 5 min / 15 min.
 - If Android kills the process, or the phone reboots, while tunnels were up:
   the service starts again by itself and brings back the same connections on
-  the same local ports. "Disconnect all" or disconnecting the last tunnel
+  the same local ports. "Stop all" or disconnecting the last tunnel
   clears this.
 - The app points to the battery-optimisation exemption when the system may
   stop the service.
@@ -588,7 +588,7 @@ Settings are grouped by purpose: profile (name and colour, forget profile); tunn
 security (SSH keys: the phone's and an imported one, unlock with fingerprint, lock after); app (language, theme,
 version and update, MQTT plugins (scenario 12), components and licenses).
 
-- Settings is a screen of the back stack, not a section of the bottom navigation: the gear in the Devices, Connections and
+- Settings is a screen of the back stack, not a section of the bottom navigation: the gear in the Devices, Tunnels and
   Sessions headers opens it, its top bar has a back arrow ("Back" / «Назад») and the title, and there is no bottom navigation over it.
   Back (the arrow or the system Back) returns to the section it was opened from, as it was. There is only one Settings in the
   back stack: opening it while it is there returns to it and closes the screens above it. Screens opened from Settings (profile,
@@ -760,7 +760,7 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   `POST /api/agent/devices/{name}/display`, carrying only the fields the
   owner changed, so an edit made meanwhile on another phone to the other
   field survives. Progress shows on the button. On success the sheet
-  closes, and the card, the row and the Connections header show the new
+  closes, and the card, the row and the Tunnels header show the new
   values at once, taken from the server's answer rather than guessed. On
   failure the sheet stays open with the typed text kept, and the button
   offers to try again. The reason appears where it belongs:
@@ -796,11 +796,11 @@ frp-jump `docs/device-labels-icons_plan.md`). The device name stays as it is.
   items are not shown and rows show no label. The owner is not told, since
   nothing can be done about it from the phone.
 - **Offline display.** Labels and icons are kept in the cached device list,
-  so offline the list, the card and the Connections tab show them as last
+  so offline the list, the card and the Tunnels tab show them as last
   known.
 - **Plain text.** A label is plain text everywhere: no links, no markup. It
   is never cut: it wraps in the list row (scenario 3), on the card and in
-  the Connections header.
+  the Tunnels header.
 
 ### 12. MQTT plugins in Settings
 
@@ -827,7 +827,7 @@ Settings → Plugins opens app-level switches and exceptions. In order:
   The switch has its own pressed feedback and at least a 48 dp touch target;
   tapping the rest opens that plugin's screen. Switching visibly updates it
   immediately. Each plugin screen has an app-level On switch and, when
-  present, “Connections set on their own”.
+  present, “Tunnels set on their own”.
 - Each exception names the device and connection in full, wrapped, with the
   device tile, profile colour/name when there is more than one profile, and
   “On here” / “Off here”. “As in Settings” removes the exception immediately,
@@ -1025,7 +1025,7 @@ observed and uncertain outcomes, and remaining steps. Failure retains history
 and the last useful summary with recovery feedback; Stop suppresses late results
 under the existing actual-exit ownership. See [summary behavior and limits](agent-contract.md#automatic-working-summaries).
 The information tool reads the same derived application API as Devices and
-Connections, including devices without saved connections and distinct profiles.
+Tunnels, including devices without saved connections and distinct profiles.
 Optional text/profile selection searches that complete available source before
 bounded whole-record paging. One or several suitable results are legitimate;
 profiles/connection identities remain distinct and larger sets expose continuation.
@@ -1124,28 +1124,28 @@ These are review scenarios, not a record of tests run or releases published:
 
 - An upgrade from the single-profile app preserves enrollment, ports and the
   shared SSH key; no re-enrollment is required. Two profiles can keep tunnels
-  open concurrently, identified in Connections and the notification.
+  open concurrently, identified in Tunnels and the notification.
 - On an offline start, cached lists remain visible with checking/stale state
-  and truthful feedback. A stale list does not block Connect; a fresh Offline
+  and truthful feedback. A stale list does not block Start; a fresh Offline
   answer disables only down connections. Refresh clears a recovered error.
 - Enrollment storage success followed by activation failure keeps a durable
   pending identity and manual retry without another enrollment request.
   Failed batch preparation cannot leave candidate runtimes alive.
-- Connections open through their whole-card primary action without stealing
+- Tunnels open through their whole-card primary action without stealing
   child controls. Repeated taps during startup open once; leaving cancels
   the pending open, not the tunnel. Saved pins are restored for all profiles
   before any Auto allocation; storage failure is not reported as lost identity.
 - Failed direct access falls back to relay with Retry direct / Keep through
   the server on the card. An SSH session left idle for 10 minutes on a direct tunnel
   stays alive. Kill/reboot restores intended
-  tunnels on the same local ports; Disconnect clears that intent.
+  tunnels on the same local ports; Stop clears that intent.
 - QR enrollment works from a light or inverted terminal image and the gallery;
   invalid QR feedback keeps scanning. Russian/English and theme preferences
   apply without losing access to common actions or accessible labels.
 - Updates are offered with notes, downloaded on request and installed only
   through the owner's system-installer action after all integrity, identity,
   version and signing checks pass. A failed check explains the refusal.
-- Labels/icons update from the server answer across list, card and Connections;
+- Labels/icons update from the server answer across list, card and Tunnels;
   search finds labels with NFC/case normalization. Another client sees saved
   values on refresh. Unknown icons remain compatible. An old server hides
   editing; offline failures keep the draft, never queue uncertain writes.

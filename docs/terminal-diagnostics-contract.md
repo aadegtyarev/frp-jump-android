@@ -118,7 +118,7 @@ continue counting terminal traffic while observation is paused.
 
 Keep windows bounded. Timing statistics use one-second buckets over approximately
 two minutes. Old last values retain their age, even after their recent window
-empties, and must not be presented as current. Disconnect removes current rates;
+empties, and must not be presented as current. Stop removes current rates;
 a replacement connection starts new counters/windows and rejects old observations.
 Removed sessions disappear from reports rather than leaving retained detail rows.
 

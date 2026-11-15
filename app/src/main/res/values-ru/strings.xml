@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Russian. Terms used the same way everywhere: подключение (a saved connection),
-     туннель, профиль, устройство, напрямую, через сервер. SSH, HTTPS, TCP, frpc,
+<!-- Russian. Terms used the same way everywhere: туннель (a saved entry and its live link),
+     профиль, устройство, напрямую, через сервер. SSH, HTTPS, TCP, frpc,
      P2P and command lines stay as they are. -->
 <resources>
     <!-- Common -->
@@ -90,9 +90,9 @@
 
     <!-- Forget profile -->
     <string name="forget_title">Забыть «%s»?</string>
-    <string name="forget_text">Его туннели отключатся, а этот телефон («%1$s») будет удалён с %2$s. Ключи доступа и сохранённые списки будут стёрты с телефона.</string>
+    <string name="forget_text">Его туннели выключатся, а этот телефон («%1$s») будет удалён с %2$s. Ключи доступа и сохранённые списки будут стёрты с телефона.</string>
     <string name="forget_text_removed">Этот телефон уже удалён с %s. Ключи доступа и сохранённые списки будут стёрты с телефона.</string>
-    <string name="forget_text_local">Его туннели отключатся, а его данные на телефоне будут стёрты.</string>
+    <string name="forget_text_local">Его туннели выключатся, а его данные на телефоне будут стёрты.</string>
     <string name="forget">Забыть</string>
     <string name="profile_forgotten">Профиль «%s» забыт.</string>
     <string name="forget_server_not_told">Сервер не получил запрос (%1$s). Удалите «%2$s» с компьютера: frp-jump-client devices delete %3$s</string>
@@ -135,7 +135,7 @@
     <!-- Device list -->
     <string name="device_online">Онлайн</string>
     <string name="device_tunnels_open">Открыты туннели: %s</string>
-    <string name="tunnels_show">Показать подключения</string>
+    <string name="tunnels_show">Показать туннели</string>
     <string name="device_was_online">Был в сети</string>
     <string name="device_last_seen">Был в сети %s</string>
     <string name="device_disabled">Отключено</string>
@@ -184,7 +184,7 @@
 
     <!-- Settings: profile group -->
     <string name="settings_profile_group">Профиль «%s»</string>
-    <string name="forget_profile_hint">Отключит туннели и удалит телефон с сервера</string>
+    <string name="forget_profile_hint">Выключит туннели и удалит телефон с сервера</string>
 
     <!-- Tunnels notification -->
     <string name="notification_channel">Туннели</string>
@@ -194,7 +194,7 @@
         <item quantity="many">%2$s в %1$d профилях</item>
         <item quantity="other">%2$s в %1$d профилях</item>
     </plurals>
-    <string name="disconnect_all">Отключить всё</string>
+    <string name="disconnect_all">Выключить всё</string>
     <plurals name="tunnels_restoring">
         <item quantity="one">Восстанавливаю %d туннель…</item>
         <item quantity="few">Восстанавливаю %d туннеля…</item>
@@ -242,19 +242,20 @@
 
     <!-- Bottom navigation -->
     <string name="tab_devices">Устройства</string>
-    <string name="tab_connections">Подключения</string>
+    <string name="tab_connections">Туннели</string>
     <string name="tab_sessions">Сессии</string>
     <string name="tab_settings">Настройки</string>
 
     <!-- Connection kinds and states -->
     <string name="kind_web">Веб</string>
     <string name="state_not_connected">Не подключено</string>
+    <string name="state_off">Выключен</string>
     <string name="state_device_offline">Устройство не в сети</string>
-    <string name="connections_search">Поиск подключений</string>
-    <string name="connections_search_hint">Устройство или подключение</string>
-    <string name="connections_no_match">Нет подключений по запросу «%s».</string>
-    <string name="state_connecting">Подключение…</string>
-    <string name="state_disconnecting">Отключение…</string>
+    <string name="connections_search">Поиск туннелей</string>
+    <string name="connections_search_hint">Устройство или туннель</string>
+    <string name="connections_no_match">Нет туннелей по запросу «%s».</string>
+    <string name="state_connecting">Включаю…</string>
+    <string name="state_disconnecting">Выключаю…</string>
     <string name="state_trying_direct">Пробую напрямую…</string>
     <string name="state_waiting_device">Ждём устройство…</string>
     <string name="state_direct">Напрямую</string>
@@ -269,12 +270,12 @@
     <string name="connection_details_ssh_password">Порт %1$d · %2$s · пароль</string>
     <string name="connection_unsaved">Порт %d</string>
     <string name="connection_actions">Действия с «%s»</string>
-    <string name="connect">Подключить</string>
-    <string name="connect_and_open">Подключить и открыть</string>
-    <string name="disconnect_named">Отключить «%s»</string>
-    <string name="disconnect">Отключить</string>
-    <string name="disconnect_all_tunnels">Отключить все туннели</string>
-    <string name="disconnect_device_tunnels">Отключить туннели «%s»</string>
+    <string name="connect">Включить</string>
+    <string name="connect_and_open">Включить и открыть</string>
+    <string name="disconnect_named">Выключить «%s»</string>
+    <string name="disconnect">Выключить</string>
+    <string name="disconnect_all_tunnels">Выключить все туннели</string>
+    <string name="disconnect_device_tunnels">Выключить туннели «%s»</string>
     <plurals name="notification_sessions">
         <item quantity="one">%d сессия</item>
         <item quantity="few">%d сессии</item>
@@ -294,7 +295,7 @@
     <string name="notice_dismiss">Скрыть</string>
     <!-- Undo instead of confirm: the notice shared by deletes, disconnects and closes in a row -->
     <string name="undo_deleted">Удалено: %d</string>
-    <string name="undo_disconnected">Отключено: %d</string>
+    <string name="undo_disconnected">Выключено: %d</string>
     <string name="undo_closed">Закрыто: %d</string>
     <string name="undo">Отменить</string>
     <string name="ssh_password_saved_spoken">%s, сохранён</string>
@@ -316,20 +317,20 @@
     <string name="change">Изменить</string>
     <string name="delete">Удалить</string>
     <string name="delete_failed">Не удалось удалить (%s). Попробуйте ещё раз.</string>
-    <string name="tunnel_not_listed">Сервер ещё не показал подключение; оно появится при следующей проверке.</string>
+    <string name="tunnel_not_listed">Сервер ещё не показал туннель; он появится при следующей проверке.</string>
 
     <!-- Device card -->
     <string name="device_profile_chip">Профиль «%s»</string>
     <string name="device_offline">Не в сети</string>
-    <string name="connections_header">Подключения</string>
+    <string name="connections_header">Туннели</string>
     <string name="connections_active_of">%1$d из %2$d активны</string>
-    <string name="device_no_connections">Подключений пока нет. Добавьте веб-страницу, SSH или любой TCP-порт этого устройства.</string>
-    <string name="new_connection_button">Подключение</string>
+    <string name="device_no_connections">Туннелей пока нет. Добавьте веб-страницу, SSH или любой TCP-порт этого устройства.</string>
+    <string name="new_connection_button">Туннель</string>
     <string name="mismatch_banner">%s Открытые туннели остаются как есть.</string>
 
     <!-- New / change connection sheet -->
-    <string name="new_connection">Новое подключение</string>
-    <string name="change_connection">Изменить подключение</string>
+    <string name="new_connection">Новый туннель</string>
+    <string name="change_connection">Изменить туннель</string>
     <string name="connection_to">к %s</string>
     <string name="connection_kind">Тип</string>
     <string name="port_on_device">Порт на устройстве</string>
@@ -337,18 +338,18 @@
     <string name="port_out_of_range">Порт — это число от 1 до 65535.</string>
     <string name="connection_name">Имя</string>
     <string name="connection_name_hint">Например: %s</string>
-    <string name="connection_name_taken">У другого подключения к этому порту уже есть такое имя.</string>
+    <string name="connection_name_taken">У другого туннеля к этому порту уже есть такое имя.</string>
     <string name="https_hint">Самоподписанный сертификат запомню, когда подтвердите его при первом входе</string>
     <string name="ssh_user">Пользователь</string>
     <string name="ssh_user_missing">Укажите пользователя.</string>
-    <string name="connect_now">Подключить сразу</string>
+    <string name="connect_now">Сразу включить</string>
     <string name="save_failed">Не удалось сохранить (%s). Попробуйте ещё раз.</string>
 
     <!-- Connections tab -->
-    <string name="connections_empty">Сохранённых подключений пока нет. Откройте устройство на вкладке «Устройства» и нажмите «Подключение».</string>
+    <string name="connections_empty">Сохранённых туннелей пока нет. Откройте устройство на вкладке «Устройства» и нажмите «Туннель».</string>
 
     <!-- Sessions tab -->
-    <string name="sessions_empty">Открытых сессий нет. Нажмите «Терминал» или «MQTT» у подключения.</string>
+    <string name="sessions_empty">Открытых сессий нет. Нажмите «Терминал» или «MQTT» у туннеля.</string>
     <string name="terminal_state_connecting">Подключение…</string>
     <string name="terminal_state_open">Открыт</string>
     <string name="terminal_state_asks">Ждёт вас</string>
@@ -368,7 +369,7 @@
     <string name="web_not_tls">Устройство на этом порту отвечает по HTTP, а не по HTTPS.</string>
     <string name="web_open_http">Открыть по HTTP</string>
     <string name="web_http_on_443">Открыто по HTTP только сейчас: порт 443 всегда открывается по HTTPS. Для HTTP укажите порт, на котором устройство его отдаёт.</string>
-    <string name="web_not_tls_unsaved">Открыто по HTTP, но у подключения осталось HTTPS — измените его через «Изменить» в меню подключения.</string>
+    <string name="web_not_tls_unsaved">Открыто по HTTP, но у туннеля осталось HTTPS — измените его через «Изменить» в меню туннеля.</string>
     <string name="host_key_save_failed">Не удалось сохранить ключ хоста (%s). Ключ не стал доверенным. Попробуйте ещё раз.</string>
     <string name="host_key_forget_failed">Не удалось забыть старый ключ хоста (%s). Он по-прежнему доверенный.</string>
     <string name="cert_refused">Не открыто: вы не доверились сертификату.</string>
@@ -377,21 +378,21 @@
     <string name="write_failed_no_access">нет доступа</string>
     <string name="write_failed_other">ошибка записи</string>
     <string name="cert_try_again">Попробовать снова</string>
-    <string name="download_https">Файлы HTTPS-подключения здесь не скачать: системный загрузчик не доверяет сертификату, подтверждённому в приложении.</string>
-    <string name="protocol_clash_ssh">Этот порт уже занят SSH-подключением; SSH и другие типы не могут делить порт.</string>
-    <string name="protocol_clash_other">Этот порт уже занят веб- или TCP-подключением; SSH не может его делить.</string>
-    <string name="kind_locked">Чтобы сменить тип или порт, отключите подключение.</string>
+    <string name="download_https">Файлы HTTPS-туннеля здесь не скачать: системный загрузчик не доверяет сертификату, подтверждённому в приложении.</string>
+    <string name="protocol_clash_ssh">Этот порт уже занят SSH-туннелем; SSH и другие типы не могут делить порт.</string>
+    <string name="protocol_clash_other">Этот порт уже занят веб- или TCP-туннелем; SSH не может его делить.</string>
+    <string name="kind_locked">Чтобы сменить тип или порт, выключите туннель.</string>
     <string name="local_port">Локальный порт</string>
     <string name="local_port_auto">Авто</string>
-    <string name="local_port_note">«Авто» берёт порт из диапазона в Настройки › Локальные порты. Число (1024–65535) закрепляется только за этим подключением и никогда не меняется.</string>
-    <string name="local_port_locked">Чтобы сменить локальный порт, отключите подключение.</string>
+    <string name="local_port_note">«Авто» берёт порт из диапазона в Настройки › Локальные порты. Число (1024–65535) закрепляется только за этим туннелем и никогда не меняется.</string>
+    <string name="local_port_locked">Чтобы сменить локальный порт, выключите туннель.</string>
     <string name="local_port_out_of_range">Локальный порт — число от %d до 65535.</string>
-    <string name="local_port_pinned_elsewhere">Уже закреплён за подключением к %s.</string>
-    <string name="local_port_other_pin">Другое подключение к этому порту закрепило %s; у них один туннель, поэтому укажите тот же порт или «Авто».</string>
-    <string name="local_port_in_use">Сейчас его занимает туннель к %s. Отключите его или выберите другой порт.</string>
-    <string name="local_port_tunnel_up">Туннель этого подключения сейчас работает на порту %s; закрепление другого порта перенесло бы его. Сначала отключите его или оставьте «Авто».</string>
+    <string name="local_port_pinned_elsewhere">Уже закреплён за туннелем к %s.</string>
+    <string name="local_port_other_pin">Другой туннель к этому порту закрепил %s; они делят один порт на телефоне, поэтому укажите тот же порт или «Авто».</string>
+    <string name="local_port_in_use">Сейчас его занимает туннель к %s. Выключите его или выберите другой порт.</string>
+    <string name="local_port_tunnel_up">Этот туннель сейчас работает на порту %s; закрепление другого порта перенесло бы его. Сначала выключите его или оставьте «Авто».</string>
     <string name="local_port_pinned_mark">Закреплённый локальный порт</string>
-    <string name="local_port_taken_pinned">Порт %1$d занят другим приложением. Туннель остаётся на нём и пробует снова каждые %2$d с. Чтобы взять другой порт, отключите подключение и смените его локальный порт.</string>
+    <string name="local_port_taken_pinned">Порт %1$d занят другим приложением. Туннель остаётся на нём и пробует снова каждые %2$d с. Чтобы взять другой порт, выключите туннель и смените его локальный порт.</string>
 
     <!-- Failures in plain words -->
     <string name="error_not_https">Это не https://-адрес сервера: %s</string>
@@ -588,8 +589,8 @@
         <item quantity="many">%d мин</item>
         <item quantity="other">%d мин</item>
     </plurals>
-    <string name="background_poll_off_hint">Выключено: когда приложение закрыто, открытые туннели работают, но ничего не проверяется; туннели, закрытые или отключённые в другом месте, будут замечены при открытии приложения.</string>
-    <string name="background_poll_on_hint">Когда приложение закрыто, раз в %s, пока открыты туннели (видно уведомление «Туннели»): телефон остаётся онлайн для сервера, а туннели, закрытые или отключённые в другом месте, закрываются.</string>
+    <string name="background_poll_off_hint">Выключено: когда приложение закрыто, открытые туннели работают, но ничего не проверяется; туннели, закрытые или выключенные в другом месте, будут замечены при открытии приложения.</string>
+    <string name="background_poll_on_hint">Когда приложение закрыто, раз в %s, пока открыты туннели (видно уведомление «Туннели»): телефон остаётся онлайн для сервера, а туннели, закрытые или выключенные в другом месте, закрываются.</string>
     <string name="background_poll_open_hint">Пока приложение открыто, проверка идёт каждые 2 с. Без туннелей в фоне ничего не работает.</string>
     <string name="ssh_keys">SSH-ключи</string>
     <string name="ssh_keys_hint">Добавьте строку ключа в ~/.ssh/authorized_keys на устройстве или выберите «Вход по ключу» в меню SSH-вкладки.</string>
@@ -746,11 +747,11 @@
     <string name="files_path">Путь</string>
     <string name="files_go">Перейти</string>
     <string name="files_connecting">Подключение…</string>
-    <string name="files_tunnel_connecting">Подключение туннеля…</string>
+    <string name="files_tunnel_connecting">Включаю туннель…</string>
     <string name="files_no_connection">Нет связи</string>
     <string name="files_offline_cached">Нет связи. Список на %s; скачивание и загрузка — после подключения.</string>
     <string name="files_offline_none">Нет связи, а эта папка раньше не открывалась.</string>
-    <string name="files_tunnel_down">Туннель не подключён.</string>
+    <string name="files_tunnel_down">Туннель не работает.</string>
     <string name="files_empty">Папка пуста.</string>
     <string name="files_hidden_only">Здесь только скрытые файлы; ⋮ › Показывать скрытые файлы.</string>
     <string name="files_list_failed">Не открыть %1$s: %2$s</string>
@@ -765,7 +766,7 @@
     <string name="files_no_app">На телефоне нет приложения, которое открывает %s.</string>
     <string name="files_needs_connection">Нет связи с устройством. Потяните вниз, чтобы повторить.</string>
     <string name="files_folder_not_kept">Телефон не дал приложению постоянный доступ к этой папке; выберите другую.</string>
-    <string name="files_gone">Этот экран файлов уже закрыт. Откройте «Файлы» снова из подключения.</string>
+    <string name="files_gone">Этот экран файлов уже закрыт. Откройте «Файлы» снова из туннеля.</string>
     <string name="files_link_badge">Ссылка</string>
     <string name="files_kind_folder">Папка</string>
     <string name="files_kind_file">Файл</string>
@@ -1102,27 +1103,27 @@
     <string name="plugin_wirenboard_hint">Вкладка «WB»: устройства, значения с единицами, переключатели</string>
     <string name="plugins_row_hint">Для MQTT · включено: %1$d из %2$d</string>
     <string name="plugins_row_hint_exceptions">· есть исключения</string>
-    <string name="plugins_subtitle">Для MQTT-подключений</string>
-    <string name="plugins_footer">Отдельное подключение можно настроить иначе: «⋮» → «Плагины…» в его обзоре</string>
+    <string name="plugins_subtitle">Для MQTT-туннелей</string>
+    <string name="plugins_footer">Отдельный туннель можно настроить иначе: «⋮» → «Плагины…» в его обзоре</string>
     <plurals name="plugin_exceptions_off">
-        <item quantity="one">Выключен для %d подключения</item>
-        <item quantity="few">Выключен для %d подключений</item>
-        <item quantity="many">Выключен для %d подключений</item>
-        <item quantity="other">Выключен для %d подключения</item>
+        <item quantity="one">Выключен для %d туннеля</item>
+        <item quantity="few">Выключен для %d туннелей</item>
+        <item quantity="many">Выключен для %d туннелей</item>
+        <item quantity="other">Выключен для %d туннеля</item>
     </plurals>
     <plurals name="plugin_exceptions_on">
-        <item quantity="one">Включён для %d подключения</item>
-        <item quantity="few">Включён для %d подключений</item>
-        <item quantity="many">Включён для %d подключений</item>
-        <item quantity="other">Включён для %d подключения</item>
+        <item quantity="one">Включён для %d туннеля</item>
+        <item quantity="few">Включён для %d туннелей</item>
+        <item quantity="many">Включён для %d туннелей</item>
+        <item quantity="other">Включён для %d туннеля</item>
     </plurals>
     <string name="plugin_on">Включён</string>
-    <string name="plugin_on_hint">Для всех MQTT-подключений, кроме исключений ниже</string>
-    <string name="plugin_exceptions_group">Свои настройки подключений</string>
+    <string name="plugin_on_hint">Для всех MQTT-туннелей, кроме исключений ниже</string>
+    <string name="plugin_exceptions_group">Свои настройки туннелей</string>
     <string name="plugin_off_here">Выключен здесь</string>
     <string name="plugin_on_here">Включён здесь</string>
     <string name="plugin_source_app">Как в настройках</string>
-    <string name="plugin_source_own">Только для этого подключения</string>
+    <string name="plugin_source_own">Только для этого туннеля</string>
     <string name="plugin_follow_app">Как в настройках</string>
     <string name="plugins_unreadable">Настройки плагинов не прочитались — действуют исходные</string>
     <string name="plugin_settings_action">Настройки %1$s</string>
@@ -1211,14 +1212,14 @@
     <string name="terminal_paste_enter_warning">После вставки будет отправлен Enter, в том числе при склеивании строк.</string>
     <string name="terminal_paste_run_enter">Вставить + Enter</string>
     <string name="terminal_paste_join_enter">Склеить строки + Enter</string>
-    <string name="connection_saved_title">Подключение сохранено</string>
+    <string name="connection_saved_title">Туннель сохранён</string>
     <string name="wb_control_not_writable">Контрол доступен только для чтения, исчез или его метаданные изменились. Перед отправкой откройте контрол заново.</string>
-    <string name="connection_saved_port_repair">Подключение сохранено. Резерв локального порта будет восстановлен перед следующим распределением портов туннелей; заново добавлять подключение не нужно.</string>
-    <string name="connection_saved_inactive">%1$s сохранено, но не удалось запустить (%2$s). Повторите запуск — заново добавлять подключение не нужно.</string>
+    <string name="connection_saved_port_repair">Туннель сохранён. Резерв локального порта будет восстановлен перед следующим распределением портов туннелей; заново добавлять туннель не нужно.</string>
+    <string name="connection_saved_inactive">%1$s сохранено, но не удалось запустить (%2$s). Повторите запуск — заново добавлять туннель не нужно.</string>
     <string name="connection_saved_waiting">%1$s сохранено, но не запущено. Запустите его кнопкой ниже — новый QR-код или код добавления не нужен.</string>
     <string name="connection_retry_start">Повторить запуск</string>
     <string name="connection_pending">Сохранено · нажмите для запуска</string>
-    <string name="connection_no_longer_saved">Сохранённое подключение удалено или изменилось. Выберите его заново.</string>
+    <string name="connection_no_longer_saved">Сохранённый туннель удалён или изменился. Выберите его заново.</string>
     <string name="mqtt_login_not_saved">Не удалось сохранить данные входа. После повторного открытия сессии их может потребоваться ввести снова.</string>
     <string name="mqtt_login_not_removed">Не удалось удалить сохранённые данные входа. Прежние данные могут оставаться на телефоне.</string>
     <string name="chat_title">Чат</string>
@@ -1253,7 +1254,7 @@
     <string name="chat_text_size_preview_user">› проверь обновление</string>
     <string name="chat_text_size_preview_answer">Обновления есть: 23 пакета apt.</string>
     <string name="assistant_tools">Инструменты</string>
-    <string name="assistant_tools_notice">При использовании включённых инструментов выбранные публичные тексты и изображения, а также частные сведения о профилях, устройствах и подключениях передаются настроенной модели. Веб-запросы идут в DuckDuckGo. Токены модели, включая анализ изображений, оплачиваются. Изменения — для следующего запроса; текущий может завершиться с прежними инструментами. История сохраняется. Открытие и изменение инструментов не запускает запросы.</string>
+    <string name="assistant_tools_notice">При использовании включённых инструментов выбранные публичные тексты и изображения, а также частные сведения о профилях, устройствах и туннелях передаются настроенной модели. Веб-запросы идут в DuckDuckGo. Токены модели, включая анализ изображений, оплачиваются. Изменения — для следующего запроса; текущий может завершиться с прежними инструментами. История сохраняется. Открытие и изменение инструментов не запускает запросы.</string>
     <string name="tool_search">Поиск в интернете</string>
     <string name="tool_search_hint">Бесплатный неофициальный поиск DuckDuckGo; возможны блокировки.</string>
     <string name="tool_read">Прочитать страницу</string>
@@ -1272,7 +1273,7 @@
     <string name="tool_failure_query">Поисковый запрос: %1$s</string>
     <string name="chat_sources">Полученные источники · загрузка не доказывает утверждение</string>
     <string name="tool_profile_information">Сведения о профилях</string>
-    <string name="tool_profile_information_hint">Устройства, подключения и туннели всех профилей</string>
+    <string name="tool_profile_information_hint">Устройства и туннели всех профилей</string>
     <string name="tool_profile_information_progress">Обновление сведений о профилях…</string>
 
     <string name="tool_terminal_tabs">Вкладки терминала</string>
@@ -1302,7 +1303,7 @@
     <string name="profile_information_online">Устройство сообщало, что в сети</string>
     <string name="profile_information_offline">Устройство сообщало, что не в сети</string>
     <string name="profile_information_disabled">Устройство отключено</string>
-    <string name="profile_information_operation_failed">Ошибка операции подключения</string>
+    <string name="profile_information_operation_failed">Ошибка операции с туннелем</string>
     <string name="profile_information_shortened">Некоторые необычно длинные поля сокращены.</string>
     <string name="profile_information_more">Есть ещё записи · смещение для продолжения: %1$s</string>
     <string name="chat_history_actions">Действия с чатом</string>
@@ -1334,22 +1335,22 @@
     <!-- Подтверждение изменяющих вызовов ассистента -->
     <string name="confirm_title">Выполнить команду?</string>
     <string name="confirm_target">%1$s · %2$s · %3$s</string>
-    <string name="confirm_unknown_target">Неизвестное соединение</string>
+    <string name="confirm_unknown_target">Неизвестный туннель</string>
     <string name="confirm_warning">Полный доступ в пределах SSH-аккаунта. Команда и её вывод передаются модели.</string>
     <string name="confirm_allow">Разрешить</string>
     <string name="confirm_session">Для сессии</string>
     <string name="confirm_always">Всегда</string>
     <string name="confirm_decline">Отклонить</string>
-    <string name="confirm_session_hint">Любые команды на этом соединении, пока вы не выйдете из чата и помощник не закончит.</string>
+    <string name="confirm_session_hint">Любые команды в этом туннеле, пока вы не выйдете из чата и помощник не закончит.</string>
     <string name="always_dialog_title">Выключить подтверждения?</string>
-    <string name="always_dialog_text">Изменяющие команды будут выполняться без вопроса во всём приложении, для всех инструментов и соединений. Включить снова: %1$s › %2$s › %3$s.</string>
+    <string name="always_dialog_text">Изменяющие команды будут выполняться без вопроса во всём приложении, для всех инструментов и туннелей. Включить снова: %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Выключить</string>
     <string name="always_dialog_cancel">Отмена</string>
     <string name="confirm_waiting">Ждём вашего ответа…</string>
     <string name="confirm_command">Команда</string>
     <string name="confirm_input_title">Ввести в эту вкладку?</string>
     <string name="confirm_input_warning">Как ввод с вашей клавиатуры, отменить нельзя. Экран после ввода передаётся модели.</string>
-    <string name="confirm_input_session_hint">Любой ввод во вкладки этого соединения, пока вы не выйдете из чата и помощник не закончит.</string>
+    <string name="confirm_input_session_hint">Любой ввод во вкладки этого туннеля, пока вы не выйдете из чата и помощник не закончит.</string>
     <string name="confirm_tab">Вкладка</string>
     <string name="confirm_program">Программа</string>
     <string name="confirm_text">Текст</string>

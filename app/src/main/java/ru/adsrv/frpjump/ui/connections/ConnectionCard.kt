@@ -150,7 +150,7 @@ fun ConnectionCard(
                         )
                         // Why Connect is off, where it is.
                         unreachable -> Text(stringResource(R.string.state_device_offline), fontSize = 13.sp, color = colors.muted)
-                        else -> Text(stringResource(R.string.state_not_connected), fontSize = 13.sp, color = colors.muted)
+                        else -> Text(stringResource(R.string.state_off), fontSize = 13.sp, color = colors.muted)
                     }
                 }
                 if (up) {

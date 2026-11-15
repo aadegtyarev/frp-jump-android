@@ -83,9 +83,9 @@
 
     <!-- Forget profile -->
     <string name="forget_title">Forget “%s”?</string>
-    <string name="forget_text">Its tunnels disconnect and this phone (“%1$s”) is removed from %2$s. Its credentials and saved lists are wiped from this phone.</string>
+    <string name="forget_text">Its tunnels stop and this phone (“%1$s”) is removed from %2$s. Its credentials and saved lists are wiped from this phone.</string>
     <string name="forget_text_removed">This phone was already removed from %s. Its credentials and saved lists are wiped from this phone.</string>
-    <string name="forget_text_local">Its tunnels disconnect and its data on this phone is wiped.</string>
+    <string name="forget_text_local">Its tunnels stop and its data on this phone is wiped.</string>
     <string name="forget">Forget</string>
     <string name="profile_forgotten">Profile “%s” forgotten.</string>
     <string name="forget_server_not_told">The server was not told (%1$s). Remove “%2$s” from a laptop: frp-jump-client devices delete %3$s</string>
@@ -130,7 +130,7 @@
     <!-- Device list -->
     <string name="device_online">Online</string>
     <string name="device_tunnels_open">Tunnels open: %s</string>
-    <string name="tunnels_show">Show connections</string>
+    <string name="tunnels_show">Show tunnels</string>
     <string name="device_was_online">Was online</string>
     <string name="device_last_seen">Last seen %s</string>
     <string name="device_disabled">Disabled</string>
@@ -182,7 +182,7 @@
 
     <!-- Settings: profile group -->
     <string name="settings_profile_group">Profile “%s”</string>
-    <string name="forget_profile_hint">Disconnects its tunnels and removes the phone from the server</string>
+    <string name="forget_profile_hint">Stops its tunnels and removes the phone from the server</string>
 
     <!-- Tunnels notification -->
     <string name="notification_channel">Tunnels</string>
@@ -190,7 +190,7 @@
         <item quantity="one">%2$s in %1$d profile</item>
         <item quantity="other">%2$s in %1$d profiles</item>
     </plurals>
-    <string name="disconnect_all">Disconnect all</string>
+    <string name="disconnect_all">Stop all</string>
     <plurals name="tunnels_restoring">
         <item quantity="one">Restoring %d tunnel…</item>
         <item quantity="other">Restoring %d tunnels…</item>
@@ -231,7 +231,7 @@
     <string name="keep_no_network">No network right now: the choice is kept per network. Try again once connected.</string>
     <!-- Bottom navigation -->
     <string name="tab_devices">Devices</string>
-    <string name="tab_connections">Connections</string>
+    <string name="tab_connections">Tunnels</string>
     <string name="tab_sessions">Sessions</string>
     <string name="tab_settings">Settings</string>
 
@@ -243,12 +243,13 @@
     <string name="kind_ssh_tile" translatable="false">SSH</string>
     <string name="kind_tcp_tile" translatable="false">TCP</string>
     <string name="state_not_connected">Not connected</string>
+    <string name="state_off">Off</string>
     <string name="state_device_offline">Device offline</string>
-    <string name="connections_search">Search connections</string>
-    <string name="connections_search_hint">Device or connection</string>
-    <string name="connections_no_match">No connections match “%s”.</string>
-    <string name="state_connecting">Connecting…</string>
-    <string name="state_disconnecting">Disconnecting…</string>
+    <string name="connections_search">Search tunnels</string>
+    <string name="connections_search_hint">Device or tunnel</string>
+    <string name="connections_no_match">No tunnels match “%s”.</string>
+    <string name="state_connecting">Starting…</string>
+    <string name="state_disconnecting">Stopping…</string>
     <string name="state_trying_direct">Trying direct…</string>
     <string name="state_waiting_device">Waiting for the device…</string>
     <string name="state_direct">Direct</string>
@@ -263,12 +264,12 @@
     <string name="connection_details_ssh_password">Port %1$d · %2$s · password</string>
     <string name="connection_unsaved">Port %d</string>
     <string name="connection_actions">Actions with “%s”</string>
-    <string name="connect">Connect</string>
-    <string name="connect_and_open">Connect and open</string>
-    <string name="disconnect_named">Disconnect “%s”</string>
-    <string name="disconnect">Disconnect</string>
-    <string name="disconnect_all_tunnels">Disconnect all tunnels</string>
-    <string name="disconnect_device_tunnels">Disconnect tunnels of “%s”</string>
+    <string name="connect">Start</string>
+    <string name="connect_and_open">Start and open</string>
+    <string name="disconnect_named">Stop “%s”</string>
+    <string name="disconnect">Stop</string>
+    <string name="disconnect_all_tunnels">Stop all tunnels</string>
+    <string name="disconnect_device_tunnels">Stop tunnels of “%s”</string>
     <plurals name="notification_sessions">
         <item quantity="one">%d session</item>
         <item quantity="other">%d sessions</item>
@@ -284,7 +285,7 @@
     <string name="notice_dismiss">Hide</string>
     <!-- Undo instead of confirm: the notice shared by deletes, disconnects and closes in a row -->
     <string name="undo_deleted">Deleted: %d</string>
-    <string name="undo_disconnected">Disconnected: %d</string>
+    <string name="undo_disconnected">Stopped: %d</string>
     <string name="undo_closed">Closed: %d</string>
     <string name="undo">Undo</string>
     <string name="ssh_password_saved_spoken">%s, saved</string>
@@ -304,20 +305,20 @@
     <string name="change">Change</string>
     <string name="delete">Delete</string>
     <string name="delete_failed">Could not delete (%s). Try again.</string>
-    <string name="tunnel_not_listed">The server has not listed the connection yet; it will appear on a later poll.</string>
+    <string name="tunnel_not_listed">The server has not listed the tunnel yet; it will appear on a later poll.</string>
 
     <!-- Device card -->
     <string name="device_profile_chip">Profile “%s”</string>
     <string name="device_offline">Offline</string>
-    <string name="connections_header">Connections</string>
+    <string name="connections_header">Tunnels</string>
     <string name="connections_active_of">%1$d of %2$d active</string>
-    <string name="device_no_connections">No connections yet. Add a web page, SSH or any TCP port of this device.</string>
-    <string name="new_connection_button">Connection</string>
+    <string name="device_no_connections">No tunnels yet. Add a web page, SSH or any TCP port of this device.</string>
+    <string name="new_connection_button">Tunnel</string>
     <string name="mismatch_banner">%s Running tunnels are left as they are.</string>
 
     <!-- New / change connection sheet -->
-    <string name="new_connection">New connection</string>
-    <string name="change_connection">Change connection</string>
+    <string name="new_connection">New tunnel</string>
+    <string name="change_connection">Change tunnel</string>
     <string name="connection_to">to %s</string>
     <string name="connection_kind">Kind</string>
     <string name="port_on_device">Port on the device</string>
@@ -326,19 +327,19 @@
     <string name="preset_named" translatable="false">%1$s · %2$d</string>
     <string name="connection_name">Name</string>
     <string name="connection_name_hint">For example: %s</string>
-    <string name="connection_name_taken">Another connection to this port already has this name.</string>
+    <string name="connection_name_taken">Another tunnel to this port already has this name.</string>
     <string name="https" translatable="false">HTTPS</string>
     <string name="https_hint">A self-signed certificate is remembered after you confirm it on the first visit</string>
     <string name="ssh_user">User</string>
     <string name="ssh_user_missing">Enter a user.</string>
-    <string name="connect_now">Connect now</string>
+    <string name="connect_now">Start now</string>
     <string name="save_failed">Could not save (%s). Try again.</string>
 
     <!-- Connections tab -->
-    <string name="connections_empty">No saved connections yet. Open a device on Devices and tap “Connection”.</string>
+    <string name="connections_empty">No saved tunnels yet. Open a device on Devices and tap “Tunnel”.</string>
 
     <!-- Sessions tab -->
-    <string name="sessions_empty">No open sessions. Tap “Terminal” or “MQTT” on a connection.</string>
+    <string name="sessions_empty">No open sessions. Tap “Terminal” or “MQTT” on a tunnel.</string>
     <string name="terminal_state_connecting">Connecting…</string>
     <string name="terminal_state_open">Open</string>
     <string name="terminal_state_asks">Waiting for you</string>
@@ -358,7 +359,7 @@
     <string name="web_not_tls">The device answers this port over HTTP, not HTTPS.</string>
     <string name="web_open_http">Open over HTTP</string>
     <string name="web_http_on_443">Opened over HTTP for now: port 443 always opens over HTTPS. For HTTP, use the port the device serves it on.</string>
-    <string name="web_not_tls_unsaved">Opened over HTTP; the connection still says HTTPS, change it with Edit in the connection’s menu.</string>
+    <string name="web_not_tls_unsaved">Opened over HTTP; the tunnel still says HTTPS, change it with Edit in the tunnel’s menu.</string>
     <string name="host_key_save_failed">Could not save the host key (%s). It is not trusted. Try again.</string>
     <string name="host_key_forget_failed">Could not forget the old host key (%s). It is still the trusted one.</string>
     <string name="cert_refused">Not opened: the certificate was not trusted.</string>
@@ -367,21 +368,21 @@
     <string name="write_failed_no_access">no access</string>
     <string name="write_failed_other">write error</string>
     <string name="cert_try_again">Try again</string>
-    <string name="download_https">Files of an HTTPS connection cannot be downloaded here: the system downloader does not trust the certificate you confirmed in the app.</string>
-    <string name="protocol_clash_ssh">Another connection uses this port for SSH; SSH and other kinds cannot share a port.</string>
-    <string name="protocol_clash_other">Another connection uses this port as Web or TCP; SSH cannot share it.</string>
-    <string name="kind_locked">Disconnect to change the kind or the port.</string>
+    <string name="download_https">Files of an HTTPS tunnel cannot be downloaded here: the system downloader does not trust the certificate you confirmed in the app.</string>
+    <string name="protocol_clash_ssh">Another tunnel uses this port for SSH; SSH and other kinds cannot share a port.</string>
+    <string name="protocol_clash_other">Another tunnel uses this port as Web or TCP; SSH cannot share it.</string>
+    <string name="kind_locked">Stop the tunnel to change the kind or the port.</string>
     <string name="local_port">Local port</string>
     <string name="local_port_auto">Auto</string>
-    <string name="local_port_note">Auto picks one from Settings › Local ports. A number (1024–65535) is kept for this connection only and never moves.</string>
-    <string name="local_port_locked">Disconnect to change the local port.</string>
+    <string name="local_port_note">Auto picks one from Settings › Local ports. A number (1024–65535) is kept for this tunnel only and never moves.</string>
+    <string name="local_port_locked">Stop the tunnel to change the local port.</string>
     <string name="local_port_out_of_range">A local port is a number from %d to 65535.</string>
-    <string name="local_port_pinned_elsewhere">Already pinned by the connection to %s.</string>
-    <string name="local_port_other_pin">Another connection to this port pins %s; they share one tunnel, so use the same one or Auto.</string>
-    <string name="local_port_in_use">The tunnel to %s uses it now. Disconnect it or choose another port.</string>
-    <string name="local_port_tunnel_up">This connection’s tunnel is up on port %s now; pinning another would move it. Disconnect first, or leave Auto.</string>
+    <string name="local_port_pinned_elsewhere">Already pinned by the tunnel to %s.</string>
+    <string name="local_port_other_pin">Another tunnel to this port pins %s; they share one local port, so use the same one or Auto.</string>
+    <string name="local_port_in_use">The tunnel to %s uses it now. Stop it or choose another port.</string>
+    <string name="local_port_tunnel_up">This tunnel is up on port %s now; pinning another would move it. Stop it first, or leave Auto.</string>
     <string name="local_port_pinned_mark">Pinned local port</string>
-    <string name="local_port_taken_pinned">Port %1$d is taken by another app. The tunnel stays on it and tries again every %2$d s. To use another port, disconnect and change the connection’s local port.</string>
+    <string name="local_port_taken_pinned">Port %1$d is taken by another app. The tunnel stays on it and tries again every %2$d s. To use another port, stop the tunnel and change its local port.</string>
 
     <!-- Failures in plain words -->
     <string name="error_not_https">Not an https:// server URL: %s</string>
@@ -559,7 +560,7 @@
         <item quantity="other">%d min</item>
     </plurals>
     <string name="background_poll_off_hint">Off: with the app closed, open tunnels keep running but nothing is checked; tunnels closed or devices disabled elsewhere are noticed when you open the app.</string>
-    <string name="background_poll_on_hint">With the app closed, every %s while tunnels are up (the “Tunnels” notification is shown): keeps this phone online for the server and closes tunnels that were disconnected or disabled elsewhere.</string>
+    <string name="background_poll_on_hint">With the app closed, every %s while tunnels are up (the “Tunnels” notification is shown): keeps this phone online for the server and closes tunnels that were stopped or disabled elsewhere.</string>
     <string name="background_poll_open_hint">While the app is open it checks every 2 s. Without tunnels nothing runs in the background.</string>
     <string name="ssh_keys">SSH keys</string>
     <string name="ssh_keys_hint">Add a key’s line to ~/.ssh/authorized_keys on the device, or choose “Use key login” in an SSH tab’s menu.</string>
@@ -714,11 +715,11 @@
     <string name="files_path">Path</string>
     <string name="files_go">Go</string>
     <string name="files_connecting">Connecting…</string>
-    <string name="files_tunnel_connecting">Connecting the tunnel…</string>
+    <string name="files_tunnel_connecting">Starting the tunnel…</string>
     <string name="files_no_connection">No connection</string>
     <string name="files_offline_cached">No connection. The list as of %s; downloads and uploads wait for the connection.</string>
     <string name="files_offline_none">No connection, and this folder was not opened before.</string>
-    <string name="files_tunnel_down">The tunnel is not connected.</string>
+    <string name="files_tunnel_down">The tunnel is not running.</string>
     <string name="files_empty">The folder is empty.</string>
     <string name="files_hidden_only">Only hidden files here; ⋮ › Show hidden files.</string>
     <string name="files_list_failed">Cannot open %1$s: %2$s</string>
@@ -733,7 +734,7 @@
     <string name="files_no_app">No app on this phone opens %s.</string>
     <string name="files_needs_connection">No connection to the device. Pull down to retry.</string>
     <string name="files_folder_not_kept">The phone did not let the app keep access to that folder; choose another one.</string>
-    <string name="files_gone">This file screen is no longer open. Open Files again from the connection.</string>
+    <string name="files_gone">This file screen is no longer open. Open Files again from the tunnel.</string>
     <string name="files_link_badge">Link</string>
     <string name="files_kind_folder">Folder</string>
     <string name="files_kind_file">File</string>
@@ -1058,23 +1059,23 @@
     <string name="wb_tab_devices" translatable="false">WB</string>
     <string name="plugins_row_hint">For MQTT · on: %1$d of %2$d</string>
     <string name="plugins_row_hint_exceptions">· with exceptions</string>
-    <string name="plugins_subtitle">For MQTT connections</string>
-    <string name="plugins_footer">One connection can differ: \"⋮\" → \"Plugins…\" in its explorer</string>
+    <string name="plugins_subtitle">For MQTT tunnels</string>
+    <string name="plugins_footer">One tunnel can differ: \"⋮\" → \"Plugins…\" in its explorer</string>
     <plurals name="plugin_exceptions_off">
-        <item quantity="one">Off for %d connection</item>
-        <item quantity="other">Off for %d connections</item>
+        <item quantity="one">Off for %d tunnel</item>
+        <item quantity="other">Off for %d tunnels</item>
     </plurals>
     <plurals name="plugin_exceptions_on">
-        <item quantity="one">On for %d connection</item>
-        <item quantity="other">On for %d connections</item>
+        <item quantity="one">On for %d tunnel</item>
+        <item quantity="other">On for %d tunnels</item>
     </plurals>
     <string name="plugin_on">On</string>
-    <string name="plugin_on_hint">For every MQTT connection except those below</string>
-    <string name="plugin_exceptions_group">Connections set on their own</string>
+    <string name="plugin_on_hint">For every MQTT tunnel except those below</string>
+    <string name="plugin_exceptions_group">Tunnels set on their own</string>
     <string name="plugin_off_here">Off here</string>
     <string name="plugin_on_here">On here</string>
     <string name="plugin_source_app">As in Settings</string>
-    <string name="plugin_source_own">Only for this connection</string>
+    <string name="plugin_source_own">Only for this tunnel</string>
     <string name="plugin_follow_app">As in Settings</string>
     <string name="plugins_unreadable">Plugin settings could not be read; the defaults apply</string>
     <string name="plugin_settings_action">%1$s settings</string>
@@ -1163,14 +1164,14 @@
     <string name="terminal_paste_enter_warning">This action also sends Enter after pasting, including when line breaks are removed.</string>
     <string name="terminal_paste_run_enter">Paste + Enter</string>
     <string name="terminal_paste_join_enter">Remove line breaks + Enter</string>
-    <string name="connection_saved_title">Connection saved</string>
+    <string name="connection_saved_title">Tunnel saved</string>
     <string name="wb_control_not_writable">Control is read-only, unavailable, or its metadata changed. Reopen the control before sending.</string>
-    <string name="connection_saved_port_repair">Connection saved. Its local-port reservation will be restored before the next tunnel allocation; there is no need to add the connection again.</string>
+    <string name="connection_saved_port_repair">Tunnel saved. Its local-port reservation will be restored before the next tunnel allocation; there is no need to add the tunnel again.</string>
     <string name="connection_saved_inactive">%1$s is saved, but could not start (%2$s). Retry starting it; do not add it again.</string>
     <string name="connection_saved_waiting">%1$s is saved but not started. Start it below; another QR code or enrollment token is not needed.</string>
     <string name="connection_retry_start">Retry start</string>
     <string name="connection_pending">Saved · tap to start</string>
-    <string name="connection_no_longer_saved">This saved connection was removed or changed. Choose it again.</string>
+    <string name="connection_no_longer_saved">This saved tunnel was removed or changed. Choose it again.</string>
     <string name="mqtt_login_not_saved">Could not save the login. You may need to enter it again after reopening this session.</string>
     <string name="mqtt_login_not_removed">Could not remove the saved login. The previous login may still be stored on this phone.</string>
     <string name="chat_title">Chat</string>
@@ -1205,7 +1206,7 @@
     <string name="chat_text_size_preview_user">› check for updates</string>
     <string name="chat_text_size_preview_answer">Updates are available: 23 apt packages.</string>
     <string name="assistant_tools">Tools</string>
-    <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and connection information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
+    <string name="assistant_tools_notice">Enabled tools send selected public text/images and private profile, device and tunnel information to your configured model when used. Web queries go to DuckDuckGo. Model token charges, including image analysis, apply. Changes apply to the next send; the current send may finish with its original tools. History is kept. Opening or changing tools makes no requests.</string>
     <string name="tool_search">Web search</string>
     <string name="tool_search_hint">Free, unofficial DuckDuckGo search; may be blocked.</string>
     <string name="tool_read">Read page</string>
@@ -1224,7 +1225,7 @@
     <string name="tool_failure_query">Search query: %1$s</string>
     <string name="chat_sources">Fetched sources · retrieval is not proof of a claim</string>
     <string name="tool_profile_information">Profile information</string>
-    <string name="tool_profile_information_hint">Devices, connections and tunnels across all profiles</string>
+    <string name="tool_profile_information_hint">Devices and tunnels across all profiles</string>
     <string name="tool_profile_information_progress">Refreshing profile information…</string>
 
     <string name="tool_terminal_tabs">Terminal tabs</string>
@@ -1254,7 +1255,7 @@
     <string name="profile_information_online">Device reported online</string>
     <string name="profile_information_offline">Device reported offline</string>
     <string name="profile_information_disabled">Device disabled</string>
-    <string name="profile_information_operation_failed">Connection operation failed</string>
+    <string name="profile_information_operation_failed">Tunnel operation failed</string>
     <string name="profile_information_shortened">Some unusually long fields were shortened.</string>
     <string name="profile_information_more">More records are available · continuation offset: %1$s</string>
     <string name="chat_history_actions">Chat actions</string>
@@ -1286,22 +1287,22 @@
     <!-- Confirmation of changing assistant calls -->
     <string name="confirm_title">Run this command?</string>
     <string name="confirm_target">%1$s · %2$s · %3$s</string>
-    <string name="confirm_unknown_target">Unknown connection</string>
+    <string name="confirm_unknown_target">Unknown tunnel</string>
     <string name="confirm_warning">Full access within the SSH account. The command and its output go to your model.</string>
     <string name="confirm_allow">Allow</string>
     <string name="confirm_session">For session</string>
     <string name="confirm_always">Always</string>
     <string name="confirm_decline">Decline</string>
-    <string name="confirm_session_hint">Any command on this connection until you leave Chat and the assistant finishes.</string>
+    <string name="confirm_session_hint">Any command on this tunnel until you leave Chat and the assistant finishes.</string>
     <string name="always_dialog_title">Turn off confirmations?</string>
-    <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and connections. Turn them back on in %1$s › %2$s › %3$s.</string>
+    <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and tunnels. Turn them back on in %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Turn off</string>
     <string name="always_dialog_cancel">Cancel</string>
     <string name="confirm_waiting">Waiting for your answer…</string>
     <string name="confirm_command">Command</string>
     <string name="confirm_input_title">Type into this tab?</string>
     <string name="confirm_input_warning">Like typing on your keyboard; it cannot be undone. The screen afterwards goes to your model.</string>
-    <string name="confirm_input_session_hint">Any typing into tabs of this connection until you leave Chat and the assistant finishes.</string>
+    <string name="confirm_input_session_hint">Any typing into tabs of this tunnel until you leave Chat and the assistant finishes.</string>
     <string name="confirm_tab">Tab</string>
     <string name="confirm_program">Program</string>
     <string name="confirm_text">Text</string>
