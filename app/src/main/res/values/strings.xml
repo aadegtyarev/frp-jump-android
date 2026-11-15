@@ -1286,6 +1286,9 @@
     <string name="confirm_waiting">Waiting for your answer…</string>
     <string name="confirm_command">Command</string>
     <string name="confirm_not_saved">Could not save the setting. This call was allowed once.</string>
+    <string name="chat_receipt_failed">Failed</string>
+    <string name="chat_receipt_timeout">Timed out</string>
+    <string name="chat_receipt_unknown_tool">Tool not available</string>
     <string name="chat_receipt_declined">Declined</string>
     <string name="tool_failure_declined">%1$s: declined</string>
     <string name="chat_tools_confirmations_on">Tools. Confirmations on</string>

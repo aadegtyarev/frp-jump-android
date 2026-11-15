@@ -125,6 +125,23 @@ class ChatReceiptGroupsTest {
         assertEquals(listOf(3), groupReceipts(reads).map { it.items.size })
     }
 
+    @Test fun `the expanded body is the result alone, with the full command for ssh and a word for a non-success`() {
+        val ssh = ToolCall("c", "ssh_command", buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("command", "uptime && echo ‮x\nsecond " + "y".repeat(80)) })
+        val shown = receiptBody(ssh, null, "up 3 days")
+        assertTrue(shown, shown.startsWith("$ uptime && echo "))
+        assertTrue(shown.endsWith("\nup 3 days"))
+        assertFalse(shown, shown.contains("ssh_command") || shown.contains("profile_id") || shown.contains('\u202E'))
+        assertTrue("the whole command, not the label's cut", shown.contains("y".repeat(80)))
+        assertEquals("$ uptime\nFailed\nboom", receiptBody(ToolCall("c", "ssh_command", buildJsonObject { put("command", "uptime") }), "Failed", "boom"))
+        // Other tools: no wire name, no arguments, no outcome for a success.
+        assertEquals("tab 1: x", receiptBody(read(1), null, "tab 1: x"))
+        assertEquals("Failed\nCould not read tab 1.", receiptBody(read(1), "Failed", "Could not read tab 1."))
+        assertEquals("", receiptBody(ToolCall("c", "terminal_tabs", buildJsonObject { }), null, ""))
+        assertEquals("a result", receiptBody(call("web_search", "query" to "q").call, null, "a result"))
+        // An ssh call without a command (an older saved call) shows no command line.
+        assertEquals("r", receiptBody(call("ssh_command").call, null, "r"))
+    }
+
     @Test fun `running grouping joins only calls equal in tool and detail`() {
         val pages = listOf(info("offset" to 0), info("offset" to 13), info("offset" to 13), info("query" to "x")).map { ChatToolReceipt(it) }
         assertEquals(listOf(1, 2, 1), groupReceipts(pages, sameDetail = true).map { it.items.size })

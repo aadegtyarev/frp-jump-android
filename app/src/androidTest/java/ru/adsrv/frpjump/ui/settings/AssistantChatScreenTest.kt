@@ -591,8 +591,36 @@ class AssistantChatScreenTest {
         shot("terminal-calls-collapsed")
         compose.onNodeWithTag("chat_tool_receipts").performClick()
         compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
+        // The expanded body is the result alone: no wire name, no raw arguments, no outcome word for a success.
+        for (index in 0..1) {
+            val body = compose.onNodeWithTag("chat_tool_receipt_$index").fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+            assertFalse(body, body.contains("terminal_tabs") || body.contains("terminal_read") || body.contains("tab_id\"") || body.contains("SUCCESS") || body == "{}")
+        }
+        compose.onNodeWithTag("chat_tool_receipt_1").assertTextContains("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer", substring = true)
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_1"))
         shot("terminal-calls-expanded")
+    }
+
+    /** An expanded ssh_command call: the full command as `$ command`, a word for the failed outcome, the result; never the wire name or JSON. */
+    @Test fun expandedSshCallShowsTheFullCommandAndAnOutcomeWordOnly() {
+        settings.setAssistantConfirmations(ru.adsrv.frpjump.settings.ConfirmationMode.OFF)
+        settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
+        sshCommandText = "printf 'synthetic-long-command-' && echo \"a long synthetic command that the label above cuts short\""
+        install()
+        compose.runOnIdle { mode = "tool-ssh" }
+        input().performTextInput("Run synthetic command")
+        sendAndAwait()
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
+        compose.onNodeWithTag("chat_tool_receipts").performClick()
+        // The receipt is one merged item: its text is the label, then the body.
+        val receipt = compose.onNodeWithTag("chat_tool_receipt_0")
+        receipt.assertTextContains("$ $sshCommandText", substring = true)
+        receipt.assertTextContains(localizedText(ru.adsrv.frpjump.R.string.chat_receipt_failed), substring = true)
+        receipt.assertTextContains("SSH target unavailable", substring = true)
+        val text = receipt.fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text).orEmpty().joinToString("\n") { it.text }
+        for (raw in listOf("ssh_command", "profile_id", "connection_id", "FAILED")) assertFalse("$raw in: $text", text.contains(raw))
+        button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipt_0"))
+        shot("ssh-receipt-expanded")
     }
 
     @Test fun toolsScreenShowsOneTerminalTabsSwitchWithItsHintThatAutosaves() {

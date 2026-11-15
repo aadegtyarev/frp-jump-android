@@ -1334,6 +1334,9 @@
     <string name="confirm_waiting">Ждём вашего ответа…</string>
     <string name="confirm_command">Команда</string>
     <string name="confirm_not_saved">Не удалось сохранить настройку. Этот вызов разрешён один раз.</string>
+    <string name="chat_receipt_failed">Не удалось</string>
+    <string name="chat_receipt_timeout">Время вышло</string>
+    <string name="chat_receipt_unknown_tool">Инструмент недоступен</string>
     <string name="chat_receipt_declined">Отклонено</string>
     <string name="tool_failure_declined">%1$s: отклонено</string>
     <string name="chat_tools_confirmations_on">Инструменты. Подтверждения включены</string>

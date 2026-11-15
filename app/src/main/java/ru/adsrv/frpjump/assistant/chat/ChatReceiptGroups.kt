@@ -120,6 +120,16 @@ private fun terminalReadDetail(a: JsonObject, words: ReceiptWords): String? {
     return words.tabNamed(part(label.profile), part(label.user), part(label.device), label.number)
 }
 
+/**
+ * The body of one expanded call, display only: for `ssh_command` the full command as `$ <command>` (hidden characters shown as visible
+ * escapes; the label above cuts it), then [outcome] when there is something to say (null for a success), then the result text. No wire
+ * name and no raw arguments: the label says what was called.
+ */
+internal fun receiptBody(call: ToolCall, outcome: String?, resultText: String): String {
+    val command = if (call.name == AssistantToolId.SSH_COMMAND.wire) call.arguments.text("command")?.let { "$ " + displayCommand(it) } else null
+    return listOfNotNull(command, outcome, resultText.takeIf { it.isNotEmpty() }).joinToString("\n")
+}
+
 private const val RECEIPT_PART_CHARS = 24
 
 private fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
