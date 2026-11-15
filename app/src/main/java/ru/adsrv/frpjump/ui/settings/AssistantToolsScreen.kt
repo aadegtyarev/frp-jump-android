@@ -52,7 +52,7 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
         Group(null) {
             AssistantToolId.switches.forEachIndexed { index, id ->
                 if (index > 0) RowDivider()
-                ToolSwitch(id, state.committed[id], state, onChange)
+                ToolSwitch(id, state.committed.switch(id), state, onChange, enabled = state.committed.offerable(id))
             }
         }
         Group(null) {
@@ -66,10 +66,12 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
 }
 
 @Composable
-private fun ToolSwitch(id: AssistantToolId, checked: Boolean, state: AssistantToolsUiState, onChange: (AssistantToolId, Boolean) -> Unit) {
+private fun ToolSwitch(id: AssistantToolId, checked: Boolean, state: AssistantToolsUiState, onChange: (AssistantToolId, Boolean) -> Unit, enabled: Boolean) {
     Column(Modifier.testTag("tool_${id.wire}")) {
-        SwitchRow(tile = { GlyphTile("W") }, label = stringResource(id.title()), hint = stringResource(id.hint()), checked = checked,
-            busy = id.wire in state.pending, onChange = { onChange(id, it) })
+        // A switch that works only together with another one is greyed while that one is off, and says so.
+        val hint = if (enabled) stringResource(id.hint()) else stringResource(id.hint()) + " " + stringResource(R.string.tool_needs_tabs)
+        SwitchRow(tile = { GlyphTile("W") }, label = stringResource(id.title()), hint = hint, checked = checked,
+            busy = id.wire in state.pending, onChange = { onChange(id, it) }, enabled = enabled)
         if (id.wire in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)
     }
 }

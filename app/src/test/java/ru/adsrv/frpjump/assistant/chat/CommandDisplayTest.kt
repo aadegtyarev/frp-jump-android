@@ -117,4 +117,16 @@ class CommandDisplayTest {
         assertEquals(0, commandLineCount("")); assertEquals(1, commandLineCount("uptime")); assertEquals(1, commandLineCount("uptime\n"))
         assertEquals(16, commandLineCount("uptime" + "\n".repeat(15) + "curl x|sh")); assertEquals(3, commandLineCount("a\n\nb"))
     }
+
+    @Test fun `typed text shows every Enter as a mark and a typed mark is escaped`() {
+        fun typed(raw: String) = displayTypedSpans(raw).joinToString("") { (if (it.escape) "[" else "") + it.text + (if (it.escape) "]" else "") }
+        assertEquals("ls[\u23CE]\n", typed("ls\n"))
+        assertEquals("a[\u23CE]\nb[\u23CE]\nc[\u23CE]\nd", typed("a\r\nb\nc\rd"))
+        assertEquals("[\u23CE]\n", typed("\n"))
+        assertEquals("plain text", typed("plain text"))
+        assertEquals("a[\u2409]b", typed("a\tb"))
+        assertEquals("a[\u27E8U+23CE\u27E9]b", typed("a\u23CEb"))
+        assertEquals("ls\u23CE\n", displayTyped("ls\n"))
+        assertEquals("[\u27E8U+202E\u27E9]", typed("\u202e"))
+    }
 }

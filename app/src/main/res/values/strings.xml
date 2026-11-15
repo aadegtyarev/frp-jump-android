@@ -1226,6 +1226,11 @@
     <string name="tool_terminal_read_progress">Read tab…</string>
     <string name="tool_terminal_tabs_receipt">Terminal tabs</string>
     <string name="tool_terminal_read_receipt">Read tab</string>
+    <string name="tool_terminal_input">Typing into tabs</string>
+    <string name="tool_terminal_input_hint">The assistant types text and presses keys in your open terminal tabs, as you would. It asks first when “Ask before changing commands” is on.</string>
+    <string name="tool_needs_tabs">Works together with Terminal tabs.</string>
+    <string name="tool_terminal_input_progress">Type into tab…</string>
+    <string name="tool_terminal_input_receipt">Type into tab</string>
     <string name="tool_ssh_command">SSH command</string>
     <string name="tool_ssh_command_hint">FULL SSH ACCESS: commands can read and change the remote system and files within the SSH account’s rights. Commands and output may contain secrets and are shared with your configured model. Ordinary token charges apply.</string>
     <string name="tool_ssh_command_progress">Running SSH command…</string>
@@ -1285,6 +1290,14 @@
     <string name="always_dialog_cancel">Cancel</string>
     <string name="confirm_waiting">Waiting for your answer…</string>
     <string name="confirm_command">Command</string>
+    <string name="confirm_input_title">Type into this tab?</string>
+    <string name="confirm_input_warning">Like typing on your keyboard; it cannot be undone. The screen afterwards goes to your model.</string>
+    <string name="confirm_input_session_hint">Any typing into tabs of this connection until you leave Chat and the assistant finishes.</string>
+    <string name="confirm_tab">Tab</string>
+    <string name="confirm_program">Program</string>
+    <string name="confirm_text">Text</string>
+    <string name="confirm_keys">Keys</string>
+    <string name="chat_receipt_keys">Keys: %1$s</string>
     <string name="confirm_not_saved">Could not save the setting. This call was allowed once.</string>
     <string name="chat_receipt_failed">Failed</string>
     <string name="chat_receipt_timeout">Timed out</string>

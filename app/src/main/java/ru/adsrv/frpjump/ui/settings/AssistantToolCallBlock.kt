@@ -218,7 +218,8 @@ private fun ChatToolReceiptBody(receipt: ChatToolReceipt) {
         ToolOutcome.TIMEOUT -> stringResource(R.string.chat_receipt_timeout)
         ToolOutcome.UNKNOWN_TOOL -> stringResource(R.string.chat_receipt_unknown_tool)
     }
-    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty())
+    val resources = LocalContext.current.resources
+    val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) })
     if (body.isEmpty()) return
     SelectionContainer {
         Text(body, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted)

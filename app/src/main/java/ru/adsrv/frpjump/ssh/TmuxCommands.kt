@@ -131,6 +131,15 @@ fun tmuxPaneProgramCommand(name: String): String {
     return "tmux display-message -p -t ${shellQuote("=$name:")} ${shellQuote("#{pane_current_command}")}"
 }
 
+/**
+ * `1` while session [name]'s active pane is in a mode (copy mode: the owner may be scrolling), else `0`. Read-only: it neither enters nor
+ * leaves a mode. The assistant looks before it types.
+ */
+fun tmuxPaneInModeCommand(name: String): String {
+    require(isTmuxName(name)) { "not a tmux session name of the app" }
+    return "tmux display-message -p -t ${shellQuote("=$name:")} ${shellQuote("#{pane_in_mode}")}"
+}
+
 /** What tmux said about a tap ([parseTapToShell]). */
 enum class TapAnswer {
     /** A shell on its own screen: arrows move its cursor. */

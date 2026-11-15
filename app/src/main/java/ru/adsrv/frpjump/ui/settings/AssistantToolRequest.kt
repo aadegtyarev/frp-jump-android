@@ -21,7 +21,7 @@ internal class AssistantToolRequest(
     private var running = false
 
     fun turnOn(id: AssistantToolId, message: String) {
-        if (running || store.assistantAvailability.tools[id]) return
+        if (running || !store.assistantAvailability.tools.offerable(id) || store.assistantAvailability.tools[id]) return
         running = true
         scope.launch {
             try {
@@ -40,5 +40,5 @@ internal class AssistantToolRequest(
 internal fun requestedTools(state: ChatState, enabled: Boolean, tools: AssistantTools): List<AssistantToolId> {
     if (!enabled || !tools.offer || state.busy || state.pendingText != null || state.loading || state.clearing) return emptyList()
     val turn = state.turns.lastOrNull() ?: return emptyList()
-    return turn.askedTools.mapNotNull(AssistantToolId::fromWire).filter { !tools[it] && it.wire !in state.declinedTools }
+    return turn.askedTools.mapNotNull(AssistantToolId::fromWire).filter { !tools[it] && tools.offerable(it) && it.wire !in state.declinedTools }
 }

@@ -55,6 +55,14 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         session.mShellPid = Int.MAX_VALUE
     }
 
+    /**
+     * [System.nanoTime] of the latest chunk the remote side sent (set per chunk read in [pump]; a connection opening and local notes do
+     * not count): what the assistant's quiet wait watches. One volatile write per chunk.
+     */
+    @Volatile
+    var lastOutputNanos: Long = System.nanoTime()
+        private set
+
     val columns: Int get() = session.mEmulator.mColumns
     val rows: Int get() = session.mEmulator.mRows
 
@@ -149,6 +157,7 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                     val read = input.read(buffer)
                     if (read < 0) break
                     if (read > 0) {
+                        lastOutputNanos = System.nanoTime()
                         metrics.received(epoch, read)
                         show(buffer, read, epoch)
                     }
@@ -232,6 +241,33 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         session.mEmulator.paste(text)
         if (enter) session.write("\r")
         true
+    }
+
+    /** What [type] did with its bytes. */
+    enum class TypeOutcome {
+        /** The connection is not the one [InputTarget] was taken on (or none is open): nothing was queued. */
+        REJECTED,
+        /** All the bytes are queued for the connection, in one piece. */
+        QUEUED,
+        /** The queue closed while the bytes went in: some of them may have been queued. */
+        PARTIAL,
+    }
+
+    /**
+     * Queues [bytes] as typed input, all in ONE handover-protected transaction like [paste]: on the connection [target] was taken on, never
+     * on another one after a reconnect. Not a paste (no bracketed paste, nothing is rewritten) and nothing but the bytes: no Enter is added.
+     * Like [paste] it holds the handover while the queue may wait for room, so a reconnect waits for it.
+     */
+    fun type(bytes: ByteArray, target: InputTarget): TypeOutcome = synchronized(inputHandover) {
+        if (target.owner !== inputHandover || !session.isRunning || output !== target.stream || inputGeneration != target.generation) return TypeOutcome.REJECTED
+        if (bytes.isEmpty()) return TypeOutcome.QUEUED
+        // The queue may wait for room while the writer drains it; the handover stays held, as in paste.
+        if (session.mTerminalToProcessIOQueue.write(bytes, 0, bytes.size)) TypeOutcome.QUEUED else TypeOutcome.PARTIAL
+    }
+
+    /** Whether [target] is still the connection input goes to now. */
+    fun isCurrent(target: InputTarget): Boolean = synchronized(inputHandover) {
+        target.owner === inputHandover && session.isRunning && output === target.stream && inputGeneration == target.generation
     }
 
     /** Whether the remote side turned bracketed paste on (see [bracketedPasteOn]). */

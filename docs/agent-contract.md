@@ -68,7 +68,8 @@ screen if the owner leaves first (an attempt that goes on does not keep it). If 
 Whichever entry opened the chat, the app lock, Stop, "For session" lasting while the chat is open or an attempt runs, a disabled
 module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
 works from every entry. The assistant never reads terminal tabs by itself: only the opt-in, default-off [Terminal tabs](#optional-terminal-tabs)
-tools do, when the model calls them in a Send.
+tools do, when the model calls them in a Send. It never types into terminal tabs by itself either: only the opt-in, default-off
+`terminal_input` does, when the model calls it in a Send, under the common [confirmation for changing tools](#confirmation-of-changing-calls).
 
 <a id="current-stage-kernel-external-adapter-and-provider-setup"></a>
 
@@ -290,7 +291,7 @@ compatibility with every provider-specific thinking parameter.
 
 The application skill is the base system prompt,
 [`app/src/main/assets/assistant/skill.md`](../app/src/main/assets/assistant/skill.md)
-(version 11). The base prompt is the unchanged byte prefix of the first message
+(version 12). The base prompt is the unchanged byte prefix of the first message
 of every main chat-loop request, stable within and across Sends; without owner
 instructions the first message equals it exactly. The owner's own instructions
 never edit it; they are appended after it in that same message
@@ -307,7 +308,7 @@ tool-result texts. No automatic app context is attached. A changed prompt asset
 gets a new version and a new pinned hash.
 
 Requests contain explicit chat text/history, the base prompt (`skill.md`,
-version 11), the owner's own instructions when set, only enabled tool schemas and,
+version 12), the owner's own instructions when set, only enabled tool schemas and,
 while some tool is off, the service tool `request_tool`
 ([below](#asking-for-a-tool-that-is-off)).
 The base prompt contains no profile,
@@ -630,8 +631,8 @@ available tool of the [tool table](#tool-table) and, above them, the app-wide
 confirmation switch ("Ask before changing commands", on by default). Today the
 tool switches are Web search (`web_search`), Read page (`read_page`), Inspect
 image (`inspect_image`), Profile information (`profile_information`), Terminal
-tabs (`terminal_tabs`, one switch for `terminal_tabs` and `terminal_read`) and SSH
-command (`ssh_command`). They default off on new installs/upgrades; malformed new
+tabs (`terminal_tabs`, one switch for `terminal_tabs` and `terminal_read`), Typing
+into tabs (`terminal_input`) and SSH command (`ssh_command`). They default off on new installs/upgrades; malformed new
 values default independently without resetting unrelated preferences. Saving
 only booleans, opening this screen or enabling a tool by its switch makes no
 request (the chat's "Turn on" button, below, then sends the owner's fixed
@@ -776,8 +777,9 @@ the app-wide switch (Settings → LLM assistant → Tools → "Ask before changi
 commands") is off or a For session grant covers that call's tool and target.
 The effect is the tool's catalog effect; for a tool built on an operation the
 operation's effect and target are used, and a test pins its effect equal to the
-catalog's. Today the only changing tool is `ssh_command`, whose target is a
-saved connection. Calls whose effect only reads never ask. The default is on.
+catalog's. Today the changing tools are `ssh_command`, whose target is a
+saved connection, and `terminal_input`, whose target is the saved SSH connection that matches the tab's profile, device and port (none when
+no saved connection matches: the card then has no For session answer). Calls whose effect only reads never ask. The default is on.
 
 The question is a card above the message field (the history takes the room the
 card and Stop leave; with the keyboard up at large font the history stays at
@@ -796,8 +798,11 @@ disguising characters, including the whole default-ignorable set and long
 combining-mark runs, are shown as highlighted escapes, and a note says when it
 has right-to-left letters or Arabic digits; in the rendered text a left-to-right
 mark follows each of them, so the order shown is the order that runs) and the
-full-access warning. A string argument with an unpaired surrogate is invalid for
-every tool (no card, nothing runs).
+full-access warning. For `terminal_input` the card names the tab (`profile · user@device №number`, or `tab <id>` when it is not known),
+the program in the tab's foreground when a `terminal_tabs` probe of that tab is at most 60 seconds old (else no program line), the text
+(the same scrolling box and escapes; every line break is shown as a highlighted ⏎ mark, because it is typed as Enter) and the keys by
+name, with its own title, warning and For session hint. Nothing is cut: the whole text is in the scrolling box. A string argument with an
+unpaired surrogate is invalid for every tool (no card, nothing runs).
 
 Answers: **Allow** (this call), **For session**, **Always**, **Decline**. For
 session covers the tool and the exact target (today a saved connection) until
@@ -914,6 +919,7 @@ are described in each tool's subsection.
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; the call returns within 3 s of the probe start, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
 | `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
+| `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; waits until the tab's output was quiet for 0.7 s counted from the write at the earliest (at most 10 s) and returns the screen as `terminal_read` with no history, about 7,800 characters | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed and the screen after it, which may contain secrets, go to the model | optional, default off; in effect only while Terminal tabs is on too |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
 | tunnel control | n/a | none: `tunnel_up` is UI only | n/a | n/a | n/a | n/a | not available |
@@ -1096,6 +1102,50 @@ contain secrets; the switch's hint says so.
   other). A tab can change at any time; the screen is untrusted data.
 - The chat's receipt for `terminal_read` names the tab (`profile · user@device
   №number` in Russian, `profile · user@device #number` in English) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
+
+#### Optional typing into a tab (`terminal_input`)
+
+A second independent default-off switch, "Typing into tabs" («Ввод во вкладки»), turns on `terminal_input`. It is in effect only while
+"Terminal tabs" is on too: with the tabs off the switch is off and greyed and says "Works together with Terminal tabs.", the
+tool is not offered, and a session grant for it is dropped. Turning Terminal tabs off also turns Typing into tabs off; turning the tabs
+on never turns typing on (the owner does that, or the chat's "Turn on" for `terminal_input`). `request_tool` lists `terminal_input` ("type into the owner's open terminal
+tabs") only while the tabs are on (otherwise the model asks for `terminal_tabs` first); the owner's "Turn on" for it turns on only this
+switch. The tool has the catalog effect `CHANGE_REMOTE`.
+
+- It takes `tab_id` (integer, at least 1) and optional `text` (1 to 2,000 characters) and `keys` (1 to 32 names from the fixed list in
+  the table), at least one of `text` and `keys`; any other key or value is invalid. `text` may hold printable characters, newline and
+  tab only: any other C0 control, DEL and every C1 control (U+0080..U+009F) make the call invalid (keys are the way to press them).
+  Invalid arguments ask nothing and type nothing.
+- It types as the owner would, not as a paste: no bracketed paste, so a newline acts as Enter. `\r\n`, `\n` and `\r` are each one CR, a tab is
+  0x09, the text is UTF-8. Keys follow the text in order: Enter CR, Tab 0x09, Esc 0x1b, Backspace 0x7f, Ctrl+C 0x03, Ctrl+D 0x04,
+  Ctrl+Z 0x1a, Ctrl+L 0x0c; the cursor, Home, End and page keys are what the tab's emulator sends in its current mode. Everything goes
+  to the connection in one handover-protected transaction, like the owner's paste, and never to another connection after a reconnect.
+  It is not the owner's input: it does not count as the owner typing (metrics, the new-shell bar, the copy-mode guard).
+- It never opens a connection or logs in: it uses the tab's open connection and terminal. A tab that is unknown, hidden or closed is
+  "not open", one that is not connected is "not connected now", and neither does any I/O.
+- A tmux tab is asked first, over its existing connection, within 3 seconds, whether its pane is in copy mode (`tmux display-message -p
+  -t '=<session>:' '#{pane_in_mode}'`): in copy mode the owner may be scrolling and nothing is typed; the app never enters or leaves
+  copy mode for it. A failed or late answer types nothing (`Could not read tab <id>. Nothing was typed into it.`). Other tabs are not
+  probed.
+- Pinning: the description for the card records the tab's connection (the client and the input generation, no credentials). If the
+  tab's connection is another one when the call runs (a reconnect between the question and the run), nothing is typed
+  (`Tab <id> reconnected after the request. Nothing was typed. Read the tab again.`).
+- After the write it waits until the tab's output has been quiet for 700 ms counted from the later of the write and the last output
+  (so never less than 700 ms after the write: output from before it is not quiet), at most 10 s,
+  and returns the visible screen as `terminal_read` with `lines` 0 (same header, cap and truncation); when the screen was still changing
+  at the limit, a last line `screen still changing after 10 s` is added. If the tab left Open meanwhile, or the screen cannot be read
+  after the bytes were queued, the result is the failed `Input to tab <id> may be partly sent; the outcome is unknown. Read the tab
+  before anything else.`
+- Refusals are fixed texts and type nothing: `Tab <id> is not open. Nothing was typed. Call terminal_tabs again.`; `Tab <id> is not
+  connected now (<state>). Nothing was typed.`; `Tab <id> is in tmux copy mode: the owner may be scrolling. Nothing was typed.`;
+  invalid arguments say `Provide tab_id from terminal_tabs and text and/or keys only. Text: up to 2,000 characters, no control
+  characters except newline and tab. Keys: up to 32 from the list.`
+- Confirmation is the common one (see [Confirmation of changing calls](#confirmation-of-changing-calls)): the card shows the tab, the
+  program, the text and the keys; the description is pure and does no I/O; an answer of Decline or none types nothing. There is no
+  lock gate in the tool: while the app is locked the card waits behind the lock like every card, and the five minutes run on.
+- The text and keys never go to a log or to a `toString`. The chat's receipt is titled "Type into tab" («Ввод во вкладку»), names the
+  tab as the one of `terminal_read` does, and its expanded body shows the typed text with visible escapes, a `Keys: Enter, Ctrl+C` line
+  («Клавиши: …»), then the outcome and the result.
 
 ### Optional SSH command
 

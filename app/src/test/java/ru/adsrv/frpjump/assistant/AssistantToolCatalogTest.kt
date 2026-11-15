@@ -22,16 +22,17 @@ class AssistantToolCatalogTest {
         .filterKeys { it.startsWith("assistant_") && it !in nonToolKeys }
 
     @Test fun `catalog keeps the stable order wire names setting keys and effects`() {
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "ssh_command"), AssistantToolId.entries.map { it.wire })
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "terminal_tabs", "terminal_read", "terminal_input", "ssh_command"), AssistantToolId.entries.map { it.wire })
         // One switch, one entry: terminal_read follows terminal_tabs' switch and has none of its own.
-        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_terminal_tabs", "assistant_ssh_command"),
+        assertEquals(listOf("assistant_search", "assistant_read_page", "assistant_inspect_image", "assistant_profile_information", "assistant_terminal_tabs", "assistant_terminal_input", "assistant_ssh_command"),
             AssistantToolId.switches.map { it.settingKey })
         assertEquals(listOf(AssistantToolId.TERMINAL_READ), AssistantToolId.entries.filter { !it.ownsSwitch })
         assertEquals(AssistantToolId.TERMINAL_TABS.settingKey, AssistantToolId.TERMINAL_READ.settingKey)
         assertEquals(AssistantToolId.entries.size, AssistantToolId.entries.map { it.wire }.toSet().size)
         assertEquals(AssistantToolId.switches.size, AssistantToolId.switches.map { it.settingKey }.toSet().size)
-        assertEquals(listOf(AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
-        assertEquals(setOf(Effect.READ_REMOTE), AssistantToolId.entries.filter { it != AssistantToolId.SSH_COMMAND }.map { it.effect }.toSet())
+        assertEquals(listOf(AssistantToolId.TERMINAL_INPUT, AssistantToolId.SSH_COMMAND), AssistantToolId.entries.filter { it.effect.changes })
+        assertEquals(Effect.CHANGE_REMOTE, AssistantToolId.TERMINAL_INPUT.effect)
+        assertEquals(setOf(Effect.READ_REMOTE), AssistantToolId.entries.filter { !it.effect.changes }.map { it.effect }.toSet())
         assertFalse(Effect.READ_LOCAL.changes); assertFalse(Effect.READ_REMOTE.changes)
         assertTrue(Effect.CHANGE_LOCAL.changes); assertTrue(Effect.CHANGE_REMOTE.changes)
     }
@@ -48,15 +49,51 @@ class AssistantToolCatalogTest {
         assertEquals(AssistantToolId.switches.map { it.settingKey }.toSet(), enabledFields(AppSettings()).keys)
     }
 
-    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true)
+    private val allOn = AssistantTools(search = true, readPage = true, inspectImage = true, profileInformation = true, sshCommand = true, terminalTabs = true, terminalInput = true)
 
-    @Test fun `AssistantTools get and with address exactly one switch each`() {
+    @Test fun `AssistantTools switch and with address exactly one switch each`() {
         for (id in AssistantToolId.switches) {
             val on = AssistantTools().with(id, true)
-            for (other in AssistantToolId.switches) assertEquals("$id/$other", other == id, on[other])
+            for (other in AssistantToolId.switches) assertEquals("$id/$other", other == id, on.switch(other))
             assertEquals(AssistantTools(), on.with(id, false))
-            assertTrue(allOn.with(id, false).let { !it[id] && AssistantToolId.switches.filter { o -> o != id }.all { o -> it[o] } })
+            // Turning the tabs off also turns typing off (see the test below); every other switch changes alone.
+            val off = allOn.with(id, false)
+            val together = if (id == AssistantToolId.TERMINAL_TABS) setOf(id, AssistantToolId.TERMINAL_INPUT) else setOf(id)
+            assertTrue(AssistantToolId.switches.all { o -> off.switch(o) == (o !in together) })
         }
+    }
+
+    @Test fun `turning the terminal tabs off turns typing off too and turning them on never brings it back`() {
+        val both = AssistantTools(terminalTabs = true, terminalInput = true)
+        val off = both.with(AssistantToolId.TERMINAL_TABS, false)
+        assertFalse(off.terminalTabs); assertFalse("the raw typing switch is off, not just ineffective", off.terminalInput)
+        val again = off.with(AssistantToolId.TERMINAL_TABS, true)
+        assertTrue(again.terminalTabs); assertFalse(again.terminalInput); assertFalse(again[AssistantToolId.TERMINAL_INPUT])
+        assertEquals(both.with(AssistantToolId.TERMINAL_READ, false), off)
+        // Through the store, the persisted values.
+        val file = MemoryStorage(); val store = SettingsStore(file)
+        store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true); store.setAssistantTool(AssistantToolId.TERMINAL_INPUT, true)
+        store.setAssistantTool(AssistantToolId.TERMINAL_TABS, false)
+        assertFalse(store.settings.value.assistantTerminalTabs); assertFalse(store.settings.value.assistantTerminalInput)
+        store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true)
+        assertTrue(store.settings.value.assistantTerminalTabs); assertFalse(store.settings.value.assistantTerminalInput)
+        assertFalse(SettingsStore(file).assistantAvailability.tools.terminalInput)
+    }
+
+    @Test fun `terminal_input is in effect only with both its switch and the terminal tabs on`() {
+        val input = AssistantToolId.TERMINAL_INPUT
+        assertFalse(AssistantTools()[input])
+        assertFalse(AssistantTools(terminalInput = true)[input])
+        assertTrue(AssistantTools(terminalInput = true).switch(input))
+        assertFalse(AssistantTools(terminalTabs = true)[input])
+        assertTrue(AssistantTools(terminalTabs = true, terminalInput = true)[input])
+        // Turning one on turns on only that one.
+        assertEquals(AssistantTools(terminalTabs = true, terminalInput = true), AssistantTools(terminalTabs = true).with(input, true))
+        assertEquals(AssistantTools(terminalInput = true), AssistantTools().with(input, true))
+        // Offered to the model only while the tabs are on; the other tools always.
+        assertFalse(AssistantTools().offerable(input)); assertTrue(AssistantTools(terminalTabs = true).offerable(input))
+        for (id in AssistantToolId.entries - input) assertTrue("$id", AssistantTools().offerable(id))
+        assertFalse(AppSettings().assistantTerminalInput)
     }
 
     @Test fun `terminal_read is on and off with the terminal_tabs switch`() {
@@ -90,11 +127,16 @@ class AssistantToolCatalogTest {
         assertEquals(allOn, SettingsStore(MemoryStorage("{$all}")).assistantAvailability.tools)
         for (bad in AssistantToolId.switches) {
             val text = AssistantToolId.switches.joinToString(",") { if (it == bad) "\"${it.settingKey}\":\"yes\"" else "\"${it.settingKey}\":true" }
-            assertEquals(bad.name, allOn.with(bad, false), SettingsStore(MemoryStorage("{$text}")).assistantAvailability.tools)
+            // A stored value is read as stored (a malformed tabs flag does not rewrite the typing flag); only the setter ties them.
+            val expected = if (bad == AssistantToolId.TERMINAL_TABS) allOn.copy(terminalTabs = false) else allOn.with(bad, false)
+            assertEquals(bad.name, expected, SettingsStore(MemoryStorage("{$text}")).assistantAvailability.tools)
         }
         // A missing or malformed terminal switch is off; nothing else is reset.
         assertFalse(SettingsStore(MemoryStorage("{}")).assistantAvailability.tools.terminalTabs)
         assertFalse(SettingsStore(MemoryStorage("{\"assistant_terminal_tabs\":1,\"assistant_search\":true}")).assistantAvailability.tools.terminalTabs)
+        assertFalse(SettingsStore(MemoryStorage("{}")).assistantAvailability.tools.terminalInput)
+        assertFalse(SettingsStore(MemoryStorage("{\"assistant_terminal_input\":\"true\",\"assistant_terminal_tabs\":true}")).assistantAvailability.tools.terminalInput)
+        assertTrue(SettingsStore(MemoryStorage("{\"assistant_terminal_input\":true,\"assistant_terminal_tabs\":true}")).assistantAvailability.tools[AssistantToolId.TERMINAL_INPUT])
     }
 
     // ---- Progress ----

@@ -187,6 +187,18 @@ class SshSession(
     }
 
     /**
+     * The assistant's typing into this tab ([capturePasteTarget] is the destination): [bytes] queued in one transaction on exactly that
+     * connection. Not the owner's input: no [typed], so no metrics, no "new shell" bar change and no copy-mode guard.
+     */
+    fun typeBytes(bytes: ByteArray, destination: PasteTarget): RemoteTerminal.TypeOutcome {
+        if (openClient() !== destination.client) return RemoteTerminal.TypeOutcome.REJECTED
+        return terminal.type(bytes, destination.input)
+    }
+
+    /** Whether [destination] is still this tab's connection and input generation. */
+    fun isCurrent(destination: PasteTarget): Boolean = openClient() === destination.client && terminal.isCurrent(destination.input)
+
+    /**
      * The destination of an image the owner is inserting: this tab as it is now (see [capturePasteTarget]), with a new SFTP
      * channel on its open connection (no new login) and the tab's own paste. Null while the tab is not open. Main thread.
      */

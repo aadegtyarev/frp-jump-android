@@ -6,6 +6,7 @@ import ru.adsrv.frpjump.agent.AgentTool
 import ru.adsrv.frpjump.agent.ToolOutput
 import ru.adsrv.frpjump.agent.ToolSpec
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.assistant.chat.TypingCard
 import ru.adsrv.frpjump.ops.Effect
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.agent.admitSideEffect
@@ -62,8 +63,12 @@ internal abstract class AppTool<A : Any>(
     }
 }
 
-/** Not a data class: its toString must never print the command. [target] is the structured grant target; null when unknown or undescribed. */
-internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String, val described: Boolean = true)
+/**
+ * Not a data class: its toString must never print the command. [target] is the structured grant target; null when unknown or undescribed.
+ * [typing] is what the card shows besides the text of a call that types into a terminal tab ([command] is then that text); null for others.
+ */
+internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String, val described: Boolean = true,
+    val typing: TypingCard? = null)
 
 internal sealed interface ChangeCheck {
     data object Invalid : ChangeCheck

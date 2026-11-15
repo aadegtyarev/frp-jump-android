@@ -37,6 +37,8 @@ import ru.adsrv.frpjump.assistant.chat.commandLineCount
 import ru.adsrv.frpjump.assistant.chat.containsStrongRtl
 import ru.adsrv.frpjump.assistant.chat.displayCommand
 import ru.adsrv.frpjump.assistant.chat.displayCommandSpans
+import ru.adsrv.frpjump.assistant.chat.displayTyped
+import ru.adsrv.frpjump.assistant.chat.displayTypedSpans
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.connections.kindWord
 
@@ -47,30 +49,43 @@ import ru.adsrv.frpjump.ui.connections.kindWord
  * character as a highlighted visible escape ([displayCommandSpans]), always laid out left to right, with a note when it has right-to-left
  * letters. In the compact landscape layout ([wide]) the answers sit beside the section. "For session" is offered only when the target is
  * known by name; "Always" asks for a second confirmation first (it turns the question off for the whole app).
+ *
+ * A call that types into a terminal tab ([PendingConfirmation.typing]) has the same card with the tab in the place of the connection (and
+ * the program in its foreground, when known), the text typed (every Enter shown as a mark, the whole text in the same scrolling box) and
+ * the keys pressed after it.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (ConfirmationDecision) -> Unit, wide: Boolean = false, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val info = confirmation.info
-    val target = if (info == null) stringResource(R.string.confirm_unknown_target)
+    val typing = confirmation.typing
+    val target = if (typing != null) {
+        if (typing.profile != null && typing.user != null && typing.device != null && typing.number != null)
+            stringResource(R.string.chat_detail_tab_named, typing.profile, typing.user, typing.device, typing.number)
+        else stringResource(R.string.chat_detail_tab, typing.tabId)
+    } else if (info == null) stringResource(R.string.confirm_unknown_target)
         else stringResource(R.string.confirm_target, info.profileName, info.connection.device, info.connection.label { kindWord(context, it) })
-    val tool = stringResource(confirmation.tool.title())
+    val tool = stringResource(if (typing != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
-    val sessionHint = stringResource(R.string.confirm_session_hint)
+    val sessionHint = stringResource(if (typing != null) R.string.confirm_input_session_hint else R.string.confirm_session_hint)
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
-        buildAnnotatedString { for (span in displayCommandSpans(confirmation.command, forRender = true)) if (span.escape) withStyle(escapeStyle) { append(span.text) } else append(span.text) }
+        val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)
+        buildAnnotatedString { for (span in spans) if (span.escape) withStyle(escapeStyle) { append(span.text) } else append(span.text) }
     }
-    val describedCommand = remember(confirmation.id) { displayCommand(confirmation.command) }
-    val lines = remember(confirmation.id) { commandLineCount(confirmation.command) }
+    val describedCommand = remember(confirmation.id) { if (typing != null) displayTyped(confirmation.command) else displayCommand(confirmation.command) }
+    val lines = remember(confirmation.id) {
+        // Typed text: any kind of line break is one Enter, and a final one is shown by its own mark, not counted as a line.
+        commandLineCount(if (typing != null) confirmation.command.replace("\r\n", "\n").replace('\r', '\n') else confirmation.command)
+    }
     val rtl = remember(confirmation.id) { containsStrongRtl(confirmation.command) }
     val sectionScroll = rememberScrollState()
     val commandScroll = rememberScrollState()
-    val commandLabel = stringResource(R.string.confirm_command)
+    val commandLabel = stringResource(if (typing != null) R.string.confirm_text else R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
     val canSession = info != null && confirmation.target != null
     // The command is always left to right: a line that starts with a right-to-left letter must not reverse the order of its commands.
@@ -86,10 +101,15 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 
     @Composable fun Header() {
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(stringResource(if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
             Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("chat_confirm_tool"))
+            if (typing != null) {
+                // The tab and the program as lines of their own, each with its label; the whole value stays readable (the section scrolls).
+                FieldLine(stringResource(R.string.confirm_tab), target, "chat_confirm_target")
+                typing.program?.let { FieldLine(stringResource(R.string.confirm_program), it, "chat_confirm_program") }
+            } else
             // Two lines at most, ellipsis after that; TalkBack reads the whole name.
             Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
         }
@@ -102,6 +122,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 if (more) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_more"))
                 if (rtl) Text(stringResource(R.string.confirm_rtl_note), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_rtl"))
             }
+            if (typing != null) Text(commandLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("chat_confirm_text_label"))
             Box(Modifier.heightIn(max = lineHeight * (if (wide) 3 else 4)).verticalScroll(commandScroll).testTag("chat_confirm_command_box")) {
                 SelectionContainer {
                     Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
@@ -110,7 +131,9 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             }
         }
     }
-    @Composable fun Warning() = Text(stringResource(R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
+    // Keys-only typing has no text: no empty box.
+    val showCommand = typing == null || confirmation.command.isNotEmpty()
+    @Composable fun Warning() = Text(stringResource(if (typing != null) R.string.confirm_input_warning else R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.testTag("chat_confirm_warning"))
     @Composable fun Answers() {
         Column(Modifier.onSizeChanged { answersPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -129,7 +152,9 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     @Composable fun Section(modifier: Modifier, withAnswers: Boolean = false) {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Column(Modifier.weight(1f, fill = false).verticalScroll(sectionScroll).testTag("chat_confirm_section"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Header(); CommandBlock(); Warning(); if (withAnswers) Answers()
+                Header(); if (showCommand) CommandBlock()
+                typing?.keys?.takeIf { it.isNotEmpty() }?.let { FieldLine(stringResource(R.string.confirm_keys), it.joinToString(", "), "chat_confirm_keys") }
+                Warning(); if (withAnswers) Answers()
             }
             if (sectionScroll.canScrollBackward) Text(stringResource(R.string.confirm_more_above), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_above"))
             if (sectionScroll.canScrollForward) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_more"))
@@ -162,6 +187,13 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             Text(stringResource(R.string.always_dialog_confirm), color = AppTheme.colors.error) } },
         dismissButton = { TextButton(onClick = { askAlways = false }, modifier = Modifier.testTag("chat_always_cancel")) { Text(stringResource(R.string.always_dialog_cancel)) } },
     )
+}
+
+/** "Label: value", the label bold; the value wraps in full (the card's section scrolls), and TalkBack reads both. */
+@Composable
+private fun FieldLine(label: String, value: String, tag: String) {
+    Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$label: ") }; append(value) },
+        modifier = Modifier.semantics { contentDescription = "$label: $value" }.testTag(tag))
 }
 
 @Composable

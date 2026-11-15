@@ -57,6 +57,7 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             AssistantToolId.PROFILE_INFORMATION -> "find the app's profiles, devices and saved connections"
             // One entry for both terminal tools; the wire name is terminal_tabs.
             AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ -> "read the owner's open terminal tabs"
+            AssistantToolId.TERMINAL_INPUT -> "type into the owner's open terminal tabs"
             AssistantToolId.SSH_COMMAND -> "run one command on a saved SSH connection"
         }
 

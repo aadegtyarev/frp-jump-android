@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant.tools
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
@@ -43,6 +44,17 @@ internal class StrictArgs(private val json: JsonObject) {
     /** Like [string], or null when the key is absent. */
     fun optionalString(key: String, max: Int = Int.MAX_VALUE, allowBlank: Boolean = false): String? =
         if (key in json) string(key, max, allowBlank) else null
+    /** A JSON array of [min]..[max] strings, or null when the key is absent. Each item is a string as [string] reads it (not blank, no lone surrogate). */
+    fun optionalStrings(key: String, min: Int, max: Int): List<String>? {
+        if (key !in json) return null
+        val array = json[key] as? JsonArray ?: throw InvalidArguments()
+        if (array.size < min || array.size > max) throw InvalidArguments()
+        return array.map { item ->
+            val primitive = item as? JsonPrimitive
+            if (primitive == null || !primitive.isString || primitive.content.isBlank()) throw InvalidArguments()
+            primitive.content
+        }
+    }
     /** A non-string JSON number that is an Int in [min]..[max], or null when absent. */
     fun optionalInt(key: String, min: Int = Int.MIN_VALUE, max: Int = Int.MAX_VALUE): Int? {
         if (key !in json) return null
