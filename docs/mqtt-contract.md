@@ -69,7 +69,7 @@ The same thing is called the same way on every screen:
   Sessions tab (✕ on its row) or the explorer's "⋮", with Undo (UI rules):
   the session ends when Undo is gone.
 - Counts of sessions include both kinds: the notification ("N sessions"),
-  the "keeps running" notice and Disconnect's "N sessions will close"
+  the "keeps running" notice and Stop's "N sessions will close"
   warning.
 
 ## Connecting

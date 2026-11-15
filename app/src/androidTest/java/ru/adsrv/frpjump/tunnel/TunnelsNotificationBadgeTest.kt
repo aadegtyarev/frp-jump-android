@@ -31,7 +31,7 @@ class TunnelsNotificationBadgeTest {
     private fun pending() = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
 
     private fun built(summary: TunnelSummary, text: String? = "text") =
-        tunnelsNotification(context, summary, "title", text, pending(), pending(), "Disconnect all")
+        tunnelsNotification(context, summary, "title", text, pending(), pending(), "Stop all")
 
     @Test
     fun builtNotificationNumberIsTheTunnelCountAndNothingElseChanged() {
@@ -44,7 +44,7 @@ class TunnelsNotificationBadgeTest {
         assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
         assertTrue(notification.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
         assertEquals(1, notification.actions.size)
-        assertEquals("Disconnect all", notification.actions[0].title.toString())
+        assertEquals("Stop all", notification.actions[0].title.toString())
         assertEquals("title", notification.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
         assertEquals("text", notification.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
         assertNotNull(notification.contentIntent)

@@ -40,13 +40,13 @@ and safety warnings; visual minimalism must not remove them.
 One chat screen, one conversation, reached three ways; the entry changes nothing about what the chat does.
 
 - Settings → LLM assistant → Chat.
-- The bottom navigation's item after the sections (Devices, Connections, Sessions), "Assistant" / «Помощник» (a neutral chat-bubble icon). It is shown only while the module is on,
+- The bottom navigation's item after the sections (Devices, Tunnels, Sessions), "Assistant" / «Помощник» (a neutral chat-bubble icon). It is shown only while the module is on,
   appears and disappears with the setting without a restart, and opens the chat over the current section; Back returns to that
   section. All the labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
   down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,
   not as an unselected tab. While an attempt runs (a confirmation wait included) the item shows a small dot that takes no room, and
   TalkBack announces its state: "Working" / «Работает», or "Waiting for your answer" / «Ждёт ответа» while a card waits; the dot is gone
-  when the attempt ends. The chat has no bottom bar; the dot is shown on the bottom bar of the section screens (Devices, Connections,
+  when the attempt ends. The chat has no bottom bar; the dot is shown on the bottom bar of the section screens (Devices, Tunnels,
   Sessions) while an attempt runs, with or without the notification permission.
 - Terminal ⋮ → "Ask the assistant" / «Спросить помощника», offered only while the module is on. The text selected in the shown tab
   with the app's own selection (a selection made inside tmux copy mode lives on the server; the app does not see it and does not
@@ -943,7 +943,7 @@ nonnegative integer `offset`. Empty arguments browse the first page. Only an
 actual enabled invocation transfers information; opening Chat/Tools, enabling
 or saving does not invoke it or automatically attach an inventory to a prompt.
 Each invocation performs one ordinary all-profile device-list pull, the same
-operation as Connections refresh, then reads the application's known state.
+operation as Tunnels refresh, then reads the application's known state.
 Normal authenticated server requests, feature checks and cache writes still
 apply. Each information-owned request's start check is serialized with the
 existing Chat authority guard. A start whose check passed before a commit may
@@ -954,7 +954,7 @@ requests use the same call path without the start check; a cancelled caller wait
 for the actual exit of its HTTP call. It starts no extra tunnel poll, probe,
 connection or control operation.
 
-Devices, Connections and the tool consume the same derived application API over
+Devices, Tunnels and the tool consume the same derived application API over
 existing profile/device/connection/tunnel/Undo owners. Complete device lists are
 separate from connection rows, including devices without saved connections.
 Profile IDs distinguish repeated device names. UI selection, grouping/order,
@@ -962,7 +962,7 @@ authentication decoration, actions, visibility and polling lifetimes stay with
 the existing screens/runtime; the API introduces no inventory cache or mirror.
 
 Selection searches the complete available source before paging. It reuses the
-Devices/Connections NFC/Locale.ROOT substring comparison over device names/labels,
+Devices/Tunnels NFC/Locale.ROOT substring comparison over device names/labels,
 connection names and profile names; exact profile/connection IDs also match.
 A matching profile includes its records, a matching device includes its connection
 variants. Several suitable results are legitimate: active tool guidance requests
@@ -1199,8 +1199,8 @@ stale-publication suppression remain unchanged. This is not an atomic inventory/
 or a claim that grant IDs/local ports are unique across lifetimes.
 
 The assistant's target readiness, target loss and login without a dialog follow
-one rule; the Connections tab's "connect without the dialog" uses the same login
-rule, and the Terminal, Connections and Files login dialogs derive credentials
+one rule; the Tunnels tab's "connect without the dialog" uses the same login
+rule, and the Terminal, Tunnels and Files login dialogs derive credentials
 from the chosen method the same way.
 The existing connector enforces stored login/refusal and pinned host-key policy.
 The saved connection’s user and the port’s stored auth method apply. Remembered
