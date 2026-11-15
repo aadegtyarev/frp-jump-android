@@ -14,7 +14,8 @@ internal object AssistantToolFactory {
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
         declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
         toolTimeoutMs: Long = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs,
-        waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits()): List<AgentTool> {
+        waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
+        sessions: AssistantSessions? = null): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
@@ -23,6 +24,7 @@ internal object AssistantToolFactory {
             (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, toolTimeoutMs), StopTunnelTool(tunnels)) else emptyList()) +
             (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs), AssistantTerminalReadTool(terminalTabs), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
             (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs)) else emptyList()) +
+            (if (enabled[AssistantToolId.TERMINAL_OPEN] && sessions != null && terminalTabs != null) listOf(TerminalOpenTool(sessions, limits.sessionsAtOnce), TerminalShowTool(sessions), TerminalCloseTool(sessions)) else emptyList()) +
             (if (enabled[AssistantToolId.WAIT_FOR] && waits != null) listOf(WaitForTool(waits, limits, waitKinds(enabled, terminalTabs != null, tunnels != null))) else emptyList()) +
             (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList()) +
             (if (off.isNotEmpty() && enabled.offer) listOf(AssistantRequestTool(off, declined)) else emptyList())

@@ -96,6 +96,12 @@ class TmuxCommandsTest {
             listOf("-u", "new-session", "-A", "-D", "-s", name, ";", "set-option", "-t", "=$name:", "status", "off", ";", "set-option", "-t", "=$name:", "mouse", "on"),
             argsVia(tmuxAttachCommand(name)),
         )
+        // The assistant's session says so in the same invocation: one more set-option, a user option.
+        assertEquals(
+            listOf("-u", "new-session", "-A", "-D", "-s", name, ";", "set-option", "-t", "=$name:", "status", "off", ";", "set-option", "-t", "=$name:", "mouse", "on",
+                ";", "set-option", "-t", "=$name:", "@frpjump_by", "assistant"),
+            argsVia(tmuxAttachCommand(name, SessionOpener.ASSISTANT)),
+        )
         assertEquals(listOf("kill-session", "-t", "=$name"), argsVia(tmuxKillCommand(name)))
         assertEquals(listOf("if-shell", "-F", "-t", "=$name:", "#{pane_in_mode}", "send-keys -t =$name: -X cancel"), argsVia(tmuxLeaveModeCommand(name)))
     }

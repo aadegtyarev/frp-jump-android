@@ -72,7 +72,7 @@ internal fun AssistantToolsScreen(state: AssistantToolsUiState, onChange: (Assis
 private fun ToolSwitch(id: AssistantToolId, checked: Boolean, state: AssistantToolsUiState, onChange: (AssistantToolId, Boolean) -> Unit, enabled: Boolean) {
     Column(Modifier.testTag("tool_${id.wire}")) {
         // A switch that works only together with another one is greyed while that one is off, and says so.
-        val hint = if (enabled) stringResource(id.hint()) else stringResource(id.hint()) + " " + stringResource(R.string.tool_needs_tabs)
+        val hint = if (enabled) stringResource(id.hint()) else stringResource(id.hint()) + " " + stringResource(if (id == AssistantToolId.TERMINAL_OPEN) R.string.tool_needs_tabs_input else R.string.tool_needs_tabs)
         SwitchRow(tile = { IconTile(id.glyph()) }, label = stringResource(id.title()), hint = hint, checked = checked,
             busy = id.wire in state.pending, onChange = { onChange(id, it) }, enabled = enabled)
         if (id.wire in state.failed) Text(stringResource(R.string.assistant_tool_save_failed), color = AppTheme.colors.error)

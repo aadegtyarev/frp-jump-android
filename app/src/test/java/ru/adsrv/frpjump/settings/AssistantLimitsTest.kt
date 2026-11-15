@@ -60,4 +60,15 @@ class AssistantLimitsTest {
         // Not an object at all.
         assertEquals(AssistantLimits(), SettingsStore(MemoryStorage("""{"assistant_limits":7}""")).settings.value.assistantLimits)
     }
+
+    @Test fun `the assistant's sessions at once default to 3, within 1 to 10, each read on its own`() {
+        assertEquals(3, AssistantLimits().sessionsAtOnce); assertEquals(1..10, AssistantLimits.SESSIONS_AT_ONCE_RANGE)
+        assertTrue(validAssistantLimits(AssistantLimits(sessionsAtOnce = 1))); assertTrue(validAssistantLimits(AssistantLimits(sessionsAtOnce = 10)))
+        assertFalse(validAssistantLimits(AssistantLimits(sessionsAtOnce = 0))); assertFalse(validAssistantLimits(AssistantLimits(sessionsAtOnce = 11)))
+        // Files written before the limit existed read as the default, and a bad value resets only itself.
+        assertEquals(3, SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4}}""")).settings.value.assistantLimits.sessionsAtOnce)
+        val bad = SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4,"sessions_at_once":99}}""")).settings.value.assistantLimits
+        assertEquals(AssistantLimits(waitsAtOnce = 4), bad)
+        assertEquals(7, SettingsStore(MemoryStorage("""{"assistant_limits":{"sessions_at_once":7}}""")).settings.value.assistantLimits.sessionsAtOnce)
+    }
 }

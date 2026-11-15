@@ -81,27 +81,35 @@ enum class NameSetter { OWNER, ASSISTANT }
 /** A tab's name and who set it. */
 data class TabName(val text: String, val setBy: NameSetter = NameSetter.OWNER)
 
-/** A remembered name's tab: where it logs in and the tab's tmux session (`frpjump-<install>-<n>`). */
-data class TabNameKey(val profile: String, val device: String, val port: Int, val user: String, val session: String)
+/** A session the app remembers: where it logs in and its tmux session (`frpjump-<install>-<n>`). */
+data class SessionKey(val profile: String, val device: String, val port: Int, val user: String, val session: String)
+
+/** What is remembered of a session besides where it is: the name it was given, if any, and who opened it. */
+data class SessionRecord(val name: TabName?, val openedBy: SessionOpener)
 
 /**
- * Owner-set tab names remembered app-privately, for tabs that run tmux, so
- * that a tab attached again to its session (after the app was killed, or
- * its tunnel came back) has its name back. Keyed by [TabNameKey]. At most
- * [max] are kept: the oldest written go first. A name goes when the app
- * ends its tmux session, when the owner clears it, and when a successful
- * session listing for the same profile, device, port and user does not
- * have the session ([afterListing]); a failed listing forgets nothing.
- * Thread-safe. The names are owner text, not secrets.
+ * The sessions the app remembers app-privately, for sessions that run tmux, so that after the app was killed or a tunnel came back a
+ * session has its name back and the assistant's own sessions can still be listed: ONE store of [SessionRecord]s keyed by [SessionKey]
+ * (the tab names of the first version are records of the owner's sessions; a file written then reads as it is). At most [max] are kept:
+ * the oldest written go first. A record goes when the app ends its tmux session, when the owner clears the name of a session of his own,
+ * and when a successful session listing for the same profile, device, port and user does not have the session ([afterListing]); a failed
+ * listing forgets nothing. The record of an assistant session stays when its name is cleared (it is how the session is found again).
+ * Thread-safe. Names are owner or model text, not secrets; kept out of backups with the rest of the app's private files.
  */
-class TabNameStore(private val storage: TextStorage, private val max: Int = MAX_REMEMBERED) {
+class SessionRecordStore(private val storage: TextStorage, private val max: Int = MAX_REMEMBERED) {
     @Serializable
     private data class Entry(
-        val profile: String, val device: String, val port: Int, val user: String, val session: String, val name: String,
+        val profile: String, val device: String, val port: Int, val user: String, val session: String,
+        /** Empty: no name (only an assistant session's record has none). */
+        val name: String = "",
         /** `owner` or `assistant`; an entry without it (written before the field existed) is the owner's. */
         val by: String = "owner",
+        /** `owner` or `assistant`: who opened the session; an entry without it is the owner's. */
+        val opened: String = "owner",
     ) {
         fun setter() = if (by == "assistant") NameSetter.ASSISTANT else NameSetter.OWNER
+        fun opener() = SessionOpener.fromWire(opened)
+        fun record() = SessionRecord(name.takeIf { it.isNotEmpty() }?.let { TabName(it, setter()) }, opener())
     }
 
     @Serializable
@@ -110,35 +118,58 @@ class TabNameStore(private val storage: TextStorage, private val max: Int = MAX_
     /** Oldest written first. */
     private var entries: MutableList<Entry>? = null
 
-    /** The remembered name of [key] and who set it, or null. May read the file: not for the main thread. */
+    /** The record of [key], or null. May read the file: not for the main thread. */
     @Synchronized
-    fun get(key: TabNameKey): TabName? = load().firstOrNull { it.matches(key) }?.let { TabName(it.name, it.setter()) }
+    fun record(key: SessionKey): SessionRecord? = load().firstOrNull { it.matches(key) }?.record()
 
-    /** Remembers [name] (valid, see [checkTabName]) set [by] for [key]; the newest write. Nothing is written when it is the same. */
+    /** The remembered name of [key] and who set it, or null. May read the file: not for the main thread. */
+    fun get(key: SessionKey): TabName? = record(key)?.name
+
+    /** Every session the assistant opened that is remembered, oldest first. May read the file: not for the main thread. */
     @Synchronized
-    fun put(key: TabNameKey, name: String, by: NameSetter = NameSetter.OWNER) {
+    fun assistantSessions(): List<Pair<SessionKey, SessionRecord>> =
+        load().filter { it.opener() == SessionOpener.ASSISTANT }.map { SessionKey(it.profile, it.device, it.port, it.user, it.session) to it.record() }
+
+    /**
+     * Remembers [name] (valid, see [checkTabName]; null for none) set [by] for [key], opened by [openedBy] when the session is new here (a
+     * known session keeps who opened it); the newest write. Nothing is written when it is the same.
+     */
+    @Synchronized
+    fun put(key: SessionKey, name: String?, by: NameSetter = NameSetter.OWNER, openedBy: SessionOpener? = null) {
         val list = load()
         val at = list.indexOfFirst { it.matches(key) }
+        val opened = (openedBy ?: if (at >= 0) list[at].opener() else SessionOpener.OWNER).wire
         val tag = if (by == NameSetter.ASSISTANT) "assistant" else "owner"
-        if (at == list.lastIndex && at >= 0 && list[at].name == name && list[at].by == tag) return
+        val text = name.orEmpty()
+        // A session of the owner's without a name is not a record.
+        if (text.isEmpty() && opened == SessionOpener.OWNER.wire) { forget(key); return }
+        if (at == list.lastIndex && at >= 0 && list[at].name == text && list[at].by == tag && list[at].opened == opened) return
         if (at >= 0) list.removeAt(at)
-        list += Entry(key.profile, key.device, key.port, key.user, key.session, name, tag)
+        list += Entry(key.profile, key.device, key.port, key.user, key.session, text, if (text.isEmpty()) "owner" else tag, opened)
         while (list.size > max) list.removeAt(0)
         save()
     }
 
-    /** Forgets [key]'s name. */
+    /** The owner or the assistant cleared the name of [key]: an owner's session has no record then, an assistant's keeps one without a name. */
     @Synchronized
-    fun forget(key: TabNameKey) {
+    fun clearName(key: SessionKey) {
+        val at = load().indexOfFirst { it.matches(key) }
+        if (at < 0) return
+        if (entries!![at].opener() == SessionOpener.ASSISTANT) put(key, null) else forget(key)
+    }
+
+    /** Forgets [key]. */
+    @Synchronized
+    fun forget(key: SessionKey) {
         val list = load()
         if (list.removeAll { it.matches(key) }) save()
     }
 
     /**
-     * A listing of this install's sessions for [user] on [device]:[port] of
+     * A listing of this install's sessions (every one, whoever opened it) for [user] on [device]:[port] of
      * [profile]: [listed], or null when it failed (nothing is forgotten).
-     * Names of sessions it does not have are forgotten, except those in
-     * [keep] (sessions of tabs open now: they may have started after the
+     * Records of sessions it does not have are forgotten, except those in
+     * [keep] (sessions open now: they may have started after the
      * listing was taken).
      */
     @Synchronized
@@ -152,14 +183,21 @@ class TabNameStore(private val storage: TextStorage, private val max: Int = MAX_
         }
     }
 
-    private fun Entry.matches(k: TabNameKey) =
+    /** The profile was removed ("Forget profile"): its records go. */
+    @Synchronized
+    fun forgetProfile(profile: String) {
+        val list = load()
+        if (list.removeAll { it.profile == profile }) save()
+    }
+
+    private fun Entry.matches(k: SessionKey) =
         profile == k.profile && device == k.device && port == k.port && user == k.user && session == k.session
 
     private fun load(): MutableList<Entry> {
         entries?.let { return it }
         val read = runCatching { storage.read()?.let { WireJson.decodeFromString<Stored>(it).names } }.getOrNull().orEmpty()
-            // A foreign or edited file: only well-formed names, once each, and not more than the cap.
-            .filter { isTmuxName(it.session) && checkTabName(it.name).let { c -> c is TabNameCheck.Valid && c.name == it.name } }
+            // A foreign or edited file: only well-formed records, once each, and not more than the cap.
+            .filter { isTmuxName(it.session) && (it.name.isEmpty() && it.opener() == SessionOpener.ASSISTANT || checkTabName(it.name).let { c -> c is TabNameCheck.Valid && c.name == it.name && it.name.isNotEmpty() }) }
             .reversed().distinctBy { listOf(it.profile, it.device, it.port, it.user, it.session) }.reversed()
             .takeLast(max)
         return read.toMutableList().also { entries = it }
@@ -170,14 +208,14 @@ class TabNameStore(private val storage: TextStorage, private val max: Int = MAX_
             storage.write(WireJson.encodeToString(Stored(entries.orEmpty())))
         } catch (e: Exception) {
             // Kept in memory for this run.
-            Log.w(TAG, "tab names not saved: ${e.javaClass.simpleName}")
+            Log.w(TAG, "session records not saved: ${e.javaClass.simpleName}")
         }
     }
 
     companion object {
-        private const val TAG = "TabNames"
+        private const val TAG = "SessionRecords"
 
-        /** The most names remembered. */
+        /** The most records remembered. */
         const val MAX_REMEMBERED = 200
     }
 }

@@ -957,6 +957,42 @@ class AssistantChatScreenTest {
         shot("tools-terminal-tabs-on")
     }
 
+    @Test fun toolsScreenShowsOwnSessionsDisabledUntilTabsAndTypingAreOnAndTurnsThemOffWithEither() {
+        install()
+        button("chat_tools").performClick()
+        val switch = hasAnyAncestor(hasTestTag("tool_terminal_open")) and isToggleable()
+        compose.onNodeWithTag("tool_terminal_open").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_sessions)) and hasAnyAncestor(hasTestTag("tool_terminal_open"))).assertExists()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_sessions_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_open"))).assertExists()
+        // Off by default, greyed, and the hint says it works with the tabs and typing.
+        compose.onNode(switch).assertIsOff().assertIsNotEnabled()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_needs_tabs_input), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_open"))).assertExists()
+        shot("tools-sessions-disabled")
+        // The tabs alone are not enough: typing too.
+        toolToggle("terminal_tabs").performClick(); awaitTabsSwitch(true)
+        compose.onNode(switch).performScrollTo().assertIsNotEnabled()
+        toolToggle("terminal_input").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.terminalInput }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { "terminal_input" !in it.pending } == true }
+        compose.onNode(switch).performScrollTo().assertIsOff().assertIsEnabled()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_needs_tabs_input), substring = true) and hasAnyAncestor(hasTestTag("tool_terminal_open"))).assertDoesNotExist()
+        compose.onNode(switch).performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.sessions }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { "terminal_open" !in it.pending } == true }
+        compose.onNode(switch).assertIsOn()
+        assertTrue(settings.assistantAvailability.tools[AssistantToolId.TERMINAL_OPEN])
+        shot("tools-sessions-on")
+        // Typing off turns them off with it, and typing coming back does not bring them back.
+        toolToggle("terminal_input").performClick()
+        compose.waitUntil(WAIT_MS) { !settings.assistantAvailability.tools.terminalInput }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { "terminal_input" !in it.pending } == true }
+        compose.onNode(switch).performScrollTo().assertIsOff().assertIsNotEnabled()
+        assertFalse(settings.assistantAvailability.tools.sessions)
+        toolToggle("terminal_input").performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.terminalInput }
+        assertFalse(settings.assistantAvailability.tools.switch(AssistantToolId.TERMINAL_OPEN))
+    }
+
     @Test fun toolsScreenShowsTypingIntoTabsDisabledWhileTabsAreOffAndWorkingWhenTheyAreOn() {
         install()
         button("chat_tools").performClick()

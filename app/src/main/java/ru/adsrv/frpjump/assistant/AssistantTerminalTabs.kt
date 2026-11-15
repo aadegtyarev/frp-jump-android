@@ -33,6 +33,8 @@ internal enum class TabState(val wire: String) {
     /** Connecting, reconnecting, or waiting for the owner's host-key answer. */
     RECONNECTING("reconnecting"),
     CLOSED("closed"),
+    /** An assistant session remembered from before a restart that is not attached yet: its first use attaches it over its tunnel. */
+    DETACHED("detached"),
 }
 
 internal fun tabState(state: SshState): TabState = when (state) {
@@ -49,6 +51,9 @@ internal data class TerminalTab(
     val tmux: Boolean,
     /** The name the owner or the assistant gave the tab, null while it shows the automatic label. */
     val name: String? = null,
+    /** Who opened it: the assistant's own sessions are listed as such, with whether the owner has them as a tab. */
+    val openedBy: ru.adsrv.frpjump.ssh.SessionOpener = ru.adsrv.frpjump.ssh.SessionOpener.OWNER,
+    val shown: Boolean = true,
 )
 
 /**
@@ -66,6 +71,12 @@ internal interface TabHandle {
     val user: String
     val number: Int
     val state: SshState
+    /** Who opened the session (see [SshSession.openedBy]); the owner's tabs say OWNER. */
+    val openedBy: ru.adsrv.frpjump.ssh.SessionOpener get() = ru.adsrv.frpjump.ssh.SessionOpener.OWNER
+    /** Whether the owner has the session as a tab. */
+    val shown: Boolean get() = true
+    /** A session remembered from before a restart, not attached yet: no connection, no buffer until [AssistantTerminalTabs] attaches it. */
+    val detached: Boolean get() = false
     /** The tab's own name (owner- or assistant-set), null when it has none. */
     val customName: String? get() = null
     /** Sets the tab's name ([ru.adsrv.frpjump.ssh.checkTabName]'s valid one; null clears it): the same as the owner's Rename…. Main thread. */
@@ -106,6 +117,8 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val user get() = session.user
     override val number get() = session.number
     override val state get() = session.state.value
+    override val openedBy get() = session.openedBy
+    override val shown get() = session.shown.value
     override val customName get() = session.tabName.value?.text
     // Named by the assistant: the tab's chip shows it together with the automatic label until the owner saves it.
     override fun rename(name: String?) = session.rename(name, ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT)
@@ -194,6 +207,8 @@ class AssistantTerminalTabs internal constructor(
     private val cursorReadTimeoutMs: Long = CURSOR_READ_TIMEOUT_MS,
     /** Where rows are cleaned and searched: never the main thread. */
     private val compute: CoroutineDispatcher = Dispatchers.Default,
+    /** Attaches the remembered assistant session [id] over its tunnel (it then is a live tab with that id); false when it cannot be. */
+    private val attach: suspend (Int) -> Boolean = { false },
     /** Milliseconds on a clock that only moves forward; the age of a program probe. */
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -225,8 +240,11 @@ class AssistantTerminalTabs internal constructor(
 
     private fun describe(tab: TabHandle) = TerminalTab(
         tab.id, tab.profileId, profileName(tab.profileId) ?: tab.profileId, tab.device, tab.user, tab.number,
-        connectionName(tab.profileId, tab.device, tab.port), tabState(tab.state), tab.tmuxName != null, tab.customName,
+        connectionName(tab.profileId, tab.device, tab.port), stateOf(tab), tab.tmuxName != null, tab.customName, tab.openedBy, tab.shown,
     )
+
+    /** The tab's state as the model is told: [TabState.DETACHED] while a remembered assistant session is not attached. */
+    private fun stateOf(tab: TabHandle) = if (tab.detached) TabState.DETACHED else tabState(tab.state)
 
     /** The open (not hidden) tab [id] as the waits watch it; null once it is gone. Reads app state only. */
     internal fun handle(id: Int): TabHandle? = visible().firstOrNull { it.id == id }
@@ -298,11 +316,11 @@ class AssistantTerminalTabs internal constructor(
      * connection, any other tab from its terminal buffer. Any other exception is a failed read.
      */
     internal suspend fun look(id: Int, mode: ReadMode): Pair<TerminalTab, TabText> {
-        val handle = visible().firstOrNull { it.id == id } ?: throw TabNotOpen()
+        val handle = attached(visible().firstOrNull { it.id == id } ?: throw TabNotOpen())
         val tab = describe(handle)
         when (tab.state) {
             TabState.CLOSED -> throw TabNotOpen()
-            TabState.RECONNECTING -> throw TabNotConnected(tab.state)
+            TabState.RECONNECTING, TabState.DETACHED -> throw TabNotConnected(tab.state)
             TabState.CONNECTED -> Unit
         }
         return tab to source(handle, mode, readTimeoutMs).first
@@ -376,6 +394,16 @@ class AssistantTerminalTabs internal constructor(
         return TmuxRead(TabText(source), inMode == 1, limit, height)
     }
 
+    /**
+     * [handle] itself, or, for a remembered assistant session that is not attached yet ([TabHandle.detached]), the session it became by being attached
+     * over its tunnel (the first read, typing or wait does it): [TabNotConnected] when it cannot be.
+     */
+    private suspend fun attached(handle: TabHandle): TabHandle {
+        if (!handle.detached) return handle
+        if (!attach(handle.id)) throw TabNotConnected(TabState.DETACHED)
+        return visible().firstOrNull { it.id == handle.id } ?: throw TabNotOpen()
+    }
+
     /** Runs [block] off the main thread: rows are cleaned and searched where the app's UI is not. */
     internal suspend fun <T> offMain(block: () -> T): T = withContext(compute) { block() }
 
@@ -417,12 +445,15 @@ class AssistantTerminalTabs internal constructor(
      * the copy-mode question could not be answered. The cursor is read next (any exception there types nothing). The bytes then go in one
      * transaction; from there on a failure, or a tab that is no longer that connection, is [TypedUnknown].
      */
-    internal suspend fun type(input: TypedInput, pin: InputPin?): TabCursor {
-        val handle = visible().firstOrNull { it.id == input.tabId } ?: throw TabNotOpen()
+    internal suspend fun type(input: TypedInput, requestedPin: InputPin?): TabCursor {
+        val found = visible().firstOrNull { it.id == input.tabId } ?: throw TabNotOpen()
+        val handle = attached(found)
+        // A remembered session had no connection when the owner was asked: the one it has by being attached now is the one typed into.
+        val pin = if (found.detached) requestedPin ?: handle.capturePin() else requestedPin
         val state = tabState(handle.state)
         when (state) {
             TabState.CLOSED -> throw TabNotOpen()
-            TabState.RECONNECTING -> throw TabNotConnected(state)
+            TabState.RECONNECTING, TabState.DETACHED -> throw TabNotConnected(state)
             TabState.CONNECTED -> Unit
         }
         if (pin == null || !handle.pinCurrent(pin)) throw TabReconnected()

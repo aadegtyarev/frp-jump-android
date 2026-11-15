@@ -68,8 +68,28 @@ class SshSessions(
     /** [ru.adsrv.frpjump.undo.PendingUndo.hidden]: a tab closed, or its tunnel disconnected, with Undo on screen does not reconnect. */
     hidden: Flow<Set<String>> = flowOf(emptySet()),
 ) {
+    /** Every session, the assistant's own included. */
+    private val _all = MutableStateFlow<List<SshSession>>(emptyList())
+
+    /** The sessions the owner has as tabs, as they change: the owner's own and the assistant's that the owner opened ([SshSession.shown]). */
     private val _sessions = MutableStateFlow<List<SshSession>>(emptyList())
     val sessions: StateFlow<List<SshSession>> = _sessions
+
+    /** Every session including the assistant's own that the owner has not opened; as it changes, and [allNow]. */
+    val all: StateFlow<List<SshSession>> = _all
+
+    /** [all] as it is now. */
+    fun allNow(): List<SshSession> = _all.value
+
+    /** Applies [change] to the list of every session, and publishes the owner's tabs from it. Main thread. */
+    private fun update(change: (List<SshSession>) -> List<SshSession>) {
+        _all.update(change)
+        publish()
+    }
+
+    private fun publish() {
+        _sessions.value = _all.value.filter { it.shown.value }
+    }
     private val _diagnostics = MutableStateFlow<Map<TunnelRef, List<TerminalSessionReport>>>(emptyMap())
     val diagnostics: StateFlow<Map<TunnelRef, List<TerminalSessionReport>>> = _diagnostics
     private var nextId = 1
@@ -109,7 +129,7 @@ class SshSessions(
 
     /** Record actual tab selection immediately, before another terminal input callback can run. */
     fun selectClipboardSource(id: Int?) {
-        clipboardSourceId = id?.takeIf { picked -> _sessions.value.any { it.id == picked } }
+        clipboardSourceId = id?.takeIf { picked -> _all.value.any { it.id == picked } }
     }
 
     init {
@@ -119,7 +139,7 @@ class SshSessions(
             var previous = emptyList<SshSession>()
             var samples = emptyMap<Int, Pair<Long, TerminalMetricsSnapshot>>()
             try {
-                combine(_sessions, env.visible, hidden) { list, shown, h ->
+                combine(_all, env.visible, hidden) { list, shown, h ->
                     list.filterNot { sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) } to shown
                 }.collectLatest { (list, shown) ->
                     previous.filterNot { it in list }.forEach { it.terminal.metrics.setObserving(false) }
@@ -157,7 +177,7 @@ class SshSessions(
         }
         scope.launch(Dispatchers.Main) {
             tunnelsUp.distinctUntilChanged().collect { up ->
-                _sessions.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }
+                _all.value.filter { profilePortKey(it.profile, it.device, it.port) !in up }
                     .forEach {
                         close(it.id, Texts.get(R.string.ssh_tunnel_closed))
                         closedByTunnel += it.id
@@ -165,29 +185,39 @@ class SshSessions(
             }
         }
         scope.launch {
-            network.distinctUntilChanged().filterNotNull().collect { _ -> _sessions.value.forEach { it.networkReturned() } }
+            network.distinctUntilChanged().filterNotNull().collect { _ -> _all.value.forEach { it.networkReturned() } }
         }
         // A session that comes or goes while one is pending is held or let go as well.
         scope.launch(Dispatchers.Main) {
-            combine(_sessions, hidden) { list, h -> list.map { it to sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) } }
+            combine(_all, hidden) { list, h -> list.map { it to sessionHidden(h, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) } }
                 .collect { pairs -> pairs.forEach { (session, held) -> session.hold(held) } }
         }
     }
 
-    /** Opens a new session to [device]:[port] of [profile] and starts connecting. Main thread. */
-    fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth): SshSession {
+    /** An id for a session that does not exist yet (a remembered assistant session listed before it is attached); never given twice. Main thread. */
+    fun reserveId(): Int = nextId++
+
+    /** The owner opens the assistant's session [id] as a tab; it stays marked as the assistant's. Main thread. */
+    fun show(id: Int): SshSession? = find(id)?.also { it.show(); publish() }
+
+    /**
+     * Opens a new session to [device]:[port] of [profile] and starts connecting. [openedBy] the assistant: a session of its own with no
+     * tab until [show], that never picks up the owner's sessions; [id] one [reserveId] gave. Main thread.
+     */
+    fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth,
+        openedBy: SessionOpener = SessionOpener.OWNER, id: Int? = null, tmuxName: String? = null): SshSession {
         // A new password typed: the refusal of the old one says nothing about it.
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(profile, device, port, user)
         val target = SshTarget(user, device, port)
-        val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
+        val number = nextSessionNumber(_all.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
         // The first tab of this connection in the app: its device may still run tabs of a killed process.
-        val first = hasNoTab(profile, device, port)
+        val first = openedBy == SessionOpener.OWNER && hasNoTab(profile, device, port)
         val session = SshSession(
-            nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number,
-            onReattached = ::sayReattached, pickUp = if (first) ::pickUp else null,
+            id ?: nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number,
+            tmuxName = tmuxName, onReattached = ::sayReattached, pickUp = if (first) ::pickUp else null, openedBy = openedBy,
         )
         drafts.open(session.id)
-        _sessions.update { it + session }
+        update { it + session }
         session.connect()
         return session
     }
@@ -197,23 +227,25 @@ class SshSessions(
      * or as [user] with [auth] ("Change login"). Main thread.
      */
     fun reconnect(id: Int, user: String? = null, auth: SshAuth? = null): SshSession? {
-        val old = _sessions.value.firstOrNull { it.id == id } ?: return null
+        val old = _all.value.firstOrNull { it.id == id } ?: return null
         old.close()
         val login = user ?: old.user
-        val others = _sessions.value.filter { it.id != id }.map { SshTarget(it.user, it.device, it.port) to it.number }
+        val others = _all.value.filter { it.id != id }.map { SshTarget(it.user, it.device, it.port) to it.number }
         val number = replacementNumber(others, SshTarget(old.user, old.device, old.port), old.number, SshTarget(login, old.device, old.port))
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(old.profile, old.device, old.port, login)
         // The same tab, so the same tmux session: it is attached to again when it still runs.
         // A first tab that never got as far as the pick-up (refused login, host key) still does it.
-        val pickUpStill = old.tmux.assigned == null && _sessions.value.none { it.id != id && it.profile == old.profile && it.device == old.device && it.port == old.port }
+        val pickUpStill = old.openedBy == SessionOpener.OWNER && old.tmux.assigned == null &&
+            _all.value.none { it.id != id && it.openedBy == SessionOpener.OWNER && it.profile == old.profile && it.device == old.device && it.port == old.port }
         val fresh = SshSession(
             nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
-            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value,
+            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value, openedBy = old.openedBy,
         )
+        if (old.openedBy == SessionOpener.ASSISTANT && old.shown.value) fresh.show()
         drafts.close(old.id)
         drafts.open(fresh.id)
-        _sessions.update { list -> list.map { if (it.id == id) fresh else it } }
+        update { list -> list.map { if (it.id == id) fresh else it } }
         // After the tries of a drop ran out, the same login tries again the same way.
         fresh.connect(retrying = old.gaveUp && user == null && auth == null)
         return fresh
@@ -234,7 +266,7 @@ class SshSessions(
 
     /** An open, logged-in connection of a session as [user] to [device]:[port] of [profile]; any thread. */
     fun liveClient(profile: String, device: String, port: Int, user: String): SSHClient? =
-        _sessions.value.asReversed()
+        _all.value.asReversed()
             .filter { it.profile == profile && it.device == device && it.port == port && it.user == user }
             .firstNotNullOfOrNull { it.openClient() }
 
@@ -244,24 +276,29 @@ class SshSessions(
      * closing, Forget profile and the like keep it.
      */
     fun close(id: Int, reason: String = Texts.get(R.string.ssh_closed), endTmux: Boolean = false) {
-        val session = _sessions.value.firstOrNull { it.id == id } ?: return
+        val session = _all.value.firstOrNull { it.id == id } ?: return
         session.close(reason, endTmux)
         drafts.close(id)
-        _sessions.update { list -> list.filter { it.id != id } }
+        update { list -> list.filter { it.id != id } }
     }
 
-    fun closeAll() = _sessions.value.forEach { close(it.id) }
+    fun closeAll() = _all.value.forEach { close(it.id) }
 
     /** Closes the sessions of [profile] ("Forget profile"). */
-    fun closeProfile(profile: String) = _sessions.value.filter { it.profile == profile }.forEach { close(it.id) }
+    fun closeProfile(profile: String) {
+        _all.value.filter { it.profile == profile }.forEach { close(it.id) }
+        // The profile is gone: what is remembered of its sessions (names, the assistant's own) goes with it.
+        scope.launch(Dispatchers.IO) { env.tabNames.forgetProfile(profile) }
+    }
 
     /** Whether session [id] went because its tunnel was closed: the terminal screen says so when it was the one shown. Main thread. */
     fun closedByTunnel(id: Int): Boolean = id in closedByTunnel
 
-    fun find(id: Int): SshSession? = _sessions.value.firstOrNull { it.id == id }
+    fun find(id: Int): SshSession? = _all.value.firstOrNull { it.id == id }
 
+    /** No tab of the owner's own to this connection: the assistant's sessions are not tabs, and never the first tab that picks up. */
     private fun hasNoTab(profile: String, device: String, port: Int) =
-        _sessions.value.none { it.profile == profile && it.device == device && it.port == port }
+        _all.value.none { it.openedBy == SessionOpener.OWNER && it.profile == profile && it.device == device && it.port == port }
 
     /** Names [pickUp] handed out whose tabs do not exist yet. */
     private val claims = PickUpClaims(env.tmuxNames)
@@ -275,14 +312,16 @@ class SshSessions(
      * held ones, never duplicated. Returns the name [from] took, or null:
      * nothing to pick up, a new session as today.
      */
-    private fun pickUp(from: SshSession, found: List<String>): String? {
-        forgetGoneTabNames(from, found)
-        val free = claims.claim(found, held = { _sessions.value.mapNotNull { it.tmux.assigned }.toSet() }, adopt = from.tmux::adopt)
+    private fun pickUp(from: SshSession, listing: OwnSessions): String? {
+        // Every session of the install is in the listing, the assistant's too: a record is forgotten only when its session is gone; only the owner's become tabs.
+        forgetGoneTabNames(from, listing.all)
+        val found = listing.owner
+        val free = claims.claim(found, held = { _all.value.mapNotNull { it.tmux.assigned }.toSet() }, adopt = from.tmux::adopt)
         if (free.isEmpty()) return null
         // The session is the tab's now: the name the owner gave it, if one was remembered.
-        env.tabNames.get(TabNameKey(from.profile, from.device, from.port, from.user, free.first()))?.let(from::restoreTabName)
+        env.tabNames.get(SessionKey(from.profile, from.device, from.port, from.user, free.first()))?.let(from::restoreTabName)
         // The remembered names of the others are read here, on the caller's (IO) thread, so that the main thread never loads the file.
-        val named = free.drop(1).associateWith { env.tabNames.get(TabNameKey(from.profile, from.device, from.port, from.user, it)) }
+        val named = free.drop(1).associateWith { env.tabNames.get(SessionKey(from.profile, from.device, from.port, from.user, it)) }
         scope.launch(Dispatchers.Main) { openPickedUp(from, free.drop(1), named) }
         return free.first()
     }
@@ -294,7 +333,7 @@ class SshSessions(
      */
     private fun forgetGoneTabNames(from: SshSession, found: List<String>) {
         scope.launch(Dispatchers.IO) {
-            val held = _sessions.value.mapNotNull { it.tmux.assigned }.toSet()
+            val held = _all.value.mapNotNull { it.tmux.assigned }.toSet()
             env.tabNames.afterListing(from.profile, from.device, from.port, from.user, found, keep = held)
         }
     }
@@ -315,7 +354,7 @@ class SshSessions(
         var after = from.id
         for (name in names) {
             val target = SshTarget(from.user, from.device, from.port)
-            val number = nextSessionNumber(_sessions.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
+            val number = nextSessionNumber(_all.value.map { SshTarget(it.user, it.device, it.port) to it.number }, target)
             val tab = SshSession(
                 nextId++, from.profile, from.hostKeys, from.device, from.port, from.localPort, from.user, from.auth, env, scope, ClientForScreen(), number,
                 tmuxName = name, onReattached = ::sayReattached, quietAttach = true,
@@ -323,7 +362,7 @@ class SshSessions(
             )
             drafts.open(tab.id)
             val anchor = after
-            _sessions.update { list ->
+            update { list ->
                 val at = list.indexOfFirst { it.id == anchor }
                 if (at < 0) list + tab else list.subList(0, at + 1) + tab + list.subList(at + 1, list.size)
             }
@@ -362,8 +401,8 @@ class SshSessions(
         val found = ownTmuxSessions(result.stdout, env.tmuxNames.install)
         // Only a listing that really answered ([tmuxListing]) forgets remembered names of this login's sessions that are not in it
         // (never those of open tabs); a failed command with empty output says nothing.
-        val listed = tmuxListing(result)?.let { ownTmuxSessions(it, env.tmuxNames.install) }
-        env.tabNames.afterListing(from.profile, from.device, from.port, from.user, listed, keep = _sessions.value.mapNotNull { it.tmux.assigned }.toSet())
+        val listed = tmuxListing(result)?.let { ownTmuxListing(it, env.tmuxNames.install).all }
+        env.tabNames.afterListing(from.profile, from.device, from.port, from.user, listed, keep = _all.value.mapNotNull { it.tmux.assigned }.toSet())
         return found
     }
 
@@ -377,7 +416,7 @@ class SshSessions(
         val left = stillRunning(result.stdout, names)
         // The ones that ended take their remembered names with them, when the listing after the kills really answered
         // ([tmuxListing]): an empty output of a failed command does not show that they ended.
-        if (tmuxListing(result) != null) (names - left.toSet()).forEach { env.tabNames.forget(TabNameKey(from.profile, from.device, from.port, from.user, it)) }
+        if (tmuxListing(result) != null) (names - left.toSet()).forEach { env.tabNames.forget(SessionKey(from.profile, from.device, from.port, from.user, it)) }
         if (left.isNotEmpty()) throw IOException(Texts.get(R.string.terminal_close_all_still_running, left.joinToString(", ")))
     }
 
@@ -397,7 +436,7 @@ class SshSessions(
         override fun onSessionFinished(finishedSession: TerminalSession) = Unit
 
         override fun onRemoteCopy(session: TerminalSession, text: String?) {
-            val selected = _sessions.value.firstOrNull { it.id == clipboardSourceId }?.terminal?.session
+            val selected = _all.value.firstOrNull { it.id == clipboardSourceId }?.terminal?.session
             if (selected !== session) return
             onCopyTextToClipboard(session, text)
         }
@@ -418,7 +457,7 @@ class SshSessions(
 
         override fun onPasteTextFromClipboard(session: TerminalSession?) {
             val manager = context.getSystemService(ClipboardManager::class.java)
-            val target = _sessions.value.firstOrNull { it.terminal.session === session } ?: return
+            val target = _all.value.firstOrNull { it.terminal.session === session } ?: return
             // A picture's content URI is not text to paste: the screen offers to send the picture instead. Decided from the
             // description alone, so the clip's content is not read until the owner confirms.
             if (try { clipKind(manager.primaryClipDescription) } catch (e: RuntimeException) { ClipKind.NONE } == ClipKind.IMAGE) {

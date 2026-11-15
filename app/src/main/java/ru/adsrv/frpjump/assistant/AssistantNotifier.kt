@@ -75,6 +75,25 @@ class AssistantNotifier(private val context: Context) : AssistantNoticeSink {
         runCatching { manager.notify(NOTIFICATION_ID, builder.build()) }
     }
 
+    /** "The assistant needs your input": a low-importance notification (no sound) with Open, which opens the assistant's session as a tab. Nothing is shown over the app lock (the launch shows the lock first). */
+    fun postOwnerAsk(ask: OwnerAsk) {
+        if (!permitted()) return
+        val manager = manager ?: return
+        manager.createNotificationChannel(NotificationChannel(CHANNEL_INPUT, Texts.get(R.string.assistant_channel_input), NotificationManager.IMPORTANCE_LOW).apply {
+            setShowBadge(false); setSound(null, null); enableVibration(false)
+        })
+        val open = PendingIntent.getActivity(context, 2 + ask.id, Intent(context, AssistantShowActivity::class.java).putExtra(EXTRA_SESSION, ask.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val builder = NotificationCompat.Builder(context, CHANNEL_INPUT)
+            .setSmallIcon(R.drawable.ic_stat_jump)
+            .setContentTitle(Texts.get(R.string.assistant_ask_notice))
+            .setContentIntent(open)
+            .addAction(0, Texts.get(R.string.assistant_ask_open), open)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        runCatching { manager.notify(NOTIFICATION_ASK_BASE + ask.id, builder.build()) }
+    }
+
     private fun permitted(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -83,6 +102,10 @@ class AssistantNotifier(private val context: Context) : AssistantNoticeSink {
         const val CHANNEL = "assistant"
         const val CHANNEL_WAITING = "assistant_waiting"
         const val NOTIFICATION_ID = 4
+        const val CHANNEL_INPUT = "assistant_input"
+        /** One notification per session asked about: the id of the notification is this plus the session's tab id. */
+        const val NOTIFICATION_ASK_BASE = 1000
+        const val EXTRA_SESSION = "session"
 
         private fun stopIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
             context, 0, Intent(context, AssistantStopReceiver::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -127,6 +150,23 @@ class AssistantOpenActivity : Activity() {
         super.onCreate(savedInstanceState)
         (application as FrpJumpApp).openAssistantRequest.value = true
         // The launcher intent: the app's existing task comes to the front without a second MainActivity (a single-top flag never matches from here).
+        startActivity(
+            Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
+        )
+        finish()
+    }
+}
+
+/**
+ * The "needs your input" notification's Open: no UI. It sets the in-process request "open the assistant's session as a tab" and brings up
+ * [MainActivity] with the launcher intent (no extras); the app lock shows first, as for any launch.
+ */
+class AssistantShowActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val id = intent.getIntExtra(AssistantNotifier.EXTRA_SESSION, -1)
+        if (id >= 0) (application as FrpJumpApp).showSessionRequest.value = id
         startActivity(
             Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),

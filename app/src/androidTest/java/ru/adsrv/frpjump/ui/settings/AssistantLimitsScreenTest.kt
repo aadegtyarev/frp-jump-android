@@ -25,7 +25,7 @@ import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 import java.io.File
 
-/** Settings › Assistant › Limits: the four rows with their defaults, each a stepped slider over its range that reports the new value. */
+/** Settings › Assistant › Limits: the four rows (waits at once, longest wait, event replies, assistant sessions) with their defaults, each a stepped slider over its range that reports the new value. */
 @RunWith(AndroidJUnit4::class)
 class AssistantLimitsScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -40,6 +40,8 @@ class AssistantLimitsScreenTest {
         compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("3")
         compose.onNodeWithTag("limit_wait_max_minutes_value").assertTextEquals("30")
         compose.onNodeWithTag("limit_event_replies_value").assertTextEquals("5")
+        compose.onNodeWithTag("limit_sessions_at_once_value").performScrollTo().assertTextEquals("3")
+        compose.onNode(hasContentDescription(text(R.string.limit_sessions_at_once) + ": 3")).assertExists()
         // TalkBack reads the label and the value; the buttons read Decrease and Increase.
         compose.onNode(hasContentDescription(text(R.string.limit_waits_at_once) + ": 3")).assertExists()
         compose.onNodeWithTag("limit_waits_at_once_plus").assertContentDescriptionEquals(text(R.string.limit_increase))
@@ -50,6 +52,10 @@ class AssistantLimitsScreenTest {
         compose.onNodeWithTag("limit_wait_max_minutes_plus").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf(4, 4, 31), listOf(limits.value.waitsAtOnce, limits.value.eventReplies, limits.value.waitMaxMinutes)); assertEquals(3, changes.size) }
         compose.onNodeWithTag("limit_waits_at_once_value").assertTextEquals("4")
+        compose.onNodeWithTag("limit_sessions_at_once_plus").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(4, limits.value.sessionsAtOnce) }
+        compose.onNodeWithTag("limit_sessions_at_once_minus").performClick(); compose.onNodeWithTag("limit_sessions_at_once_minus").performClick()
+        compose.runOnIdle { assertEquals(2, limits.value.sessionsAtOnce) }
         // A long press repeats until the end of the range, where the button is off.
         compose.onNodeWithTag("limit_waits_at_once_plus").performTouchInput { down(center); advanceEventTime(2_500); up() }
         compose.runOnIdle { assertEquals(AssistantLimits.WAITS_AT_ONCE_RANGE.last, limits.value.waitsAtOnce) }

@@ -54,7 +54,8 @@ class AssistantToolRequestPressTest {
     @Test fun `Turn on switches on exactly that tool, persisted, then sends the fixed message once`() {
         for (id in AssistantToolId.switches) Fx().use { f ->
             // Typing into tabs is offered only while the tabs are on; the press then turns on that one switch, not the tabs.
-            if (id == AssistantToolId.TERMINAL_INPUT) f.store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true)
+            if (id == AssistantToolId.TERMINAL_INPUT || id == AssistantToolId.TERMINAL_OPEN) f.store.setAssistantTool(AssistantToolId.TERMINAL_TABS, true)
+            if (id == AssistantToolId.TERMINAL_OPEN) f.store.setAssistantTool(AssistantToolId.TERMINAL_INPUT, true)
             val before = f.on()
             f.press(id, "Turned on ${id.wire}")
             assertEquals(before + id, f.on())

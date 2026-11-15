@@ -97,7 +97,9 @@ internal const val RECEIPT_DETAIL_CHARS = 40
 internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("all", { "from record $it" })): String? {
     val a = call.arguments
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
-    if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire) return terminalReadDetail(a, words)
+    if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire ||
+        call.name == AssistantToolId.TERMINAL_SHOW.wire || call.name == AssistantToolId.TERMINAL_CLOSE.wire) return terminalReadDetail(a, words)
+    if (call.name == AssistantToolId.TERMINAL_OPEN.wire) return tunnelDetail(call, a, words)
     if (call.name == AssistantToolId.TERMINAL_RENAME.wire) return terminalRenameDetail(a, words)
     if (call.name == AssistantToolId.START_TUNNEL.wire || call.name == AssistantToolId.STOP_TUNNEL.wire) return tunnelDetail(call, a, words)
     val raw = when (call.name) {

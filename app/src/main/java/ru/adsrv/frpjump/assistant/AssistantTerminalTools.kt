@@ -36,7 +36,7 @@ internal class AssistantTerminalTabsTool(private val tabs: AssistantTerminalTabs
     override fun failure(error: Exception) = ToolOutput("Could not list terminal tabs.", ToolOutcome.FAILED)
 
     companion object {
-        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
+        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, who opened it, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
     }
 }
 
@@ -192,6 +192,8 @@ internal fun tabsText(list: List<TerminalTab>, programs: Map<Int, String>, budge
             append(" | profile: ${name(tab.profile)} (profile_id: ${name(tab.profileId)}) | device: ${name(tab.device)}")
             tab.connection?.let { append(" | tunnel: ${name(it)}") }
             append(" | user: ${name(tab.user)} | tab: ${tab.number} | state: ${tab.state.wire} | tmux: ${if (tab.tmux) "yes" else "no"}")
+            // The assistant's own sessions say so, and whether the owner has them as a tab.
+            if (tab.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT) append(" | opened by: you | shown: ${if (tab.shown) "yes" else "no"}")
             programs[tab.id]?.let { append(" | program: ${name(it)}") }
         }
     }

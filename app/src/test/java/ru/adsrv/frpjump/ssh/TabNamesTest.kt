@@ -94,17 +94,17 @@ class TabNameRulesTest {
     }
 }
 
-class TabNameStoreTest {
+class SessionRecordStoreTest {
     private fun key(n: Int, user: String = "root", device: String = "dev", port: Int = 22, profile: String = "p1") =
-        TabNameKey(profile, device, port, user, "frpjump-0a1b2c-$n")
+        SessionKey(profile, device, port, user, "frpjump-0a1b2c-$n")
 
     @Test
     fun `a name is remembered and restored for the same login and session, also after a restart`() {
         val file = MemoryStorage()
-        val store = TabNameStore(file)
+        val store = SessionRecordStore(file)
         store.put(key(1), "build box")
         assertEquals("build box", store.get(key(1))?.text)
-        assertEquals("build box", TabNameStore(file).get(key(1))?.text)
+        assertEquals("build box", SessionRecordStore(file).get(key(1))?.text)
         // Another session, user, device, port or profile has its own.
         assertNull(store.get(key(2)))
         assertNull(store.get(key(1, user = "pi")))
@@ -116,23 +116,23 @@ class TabNameStoreTest {
     @Test
     fun `who set a name is remembered, an old entry without it is the owner's`() {
         val file = MemoryStorage()
-        val store = TabNameStore(file)
+        val store = SessionRecordStore(file)
         store.put(key(1), "by me")
         store.put(key(2), "by it", NameSetter.ASSISTANT)
-        assertEquals(TabName("by me", NameSetter.OWNER), TabNameStore(file).get(key(1)))
-        assertEquals(TabName("by it", NameSetter.ASSISTANT), TabNameStore(file).get(key(2)))
+        assertEquals(TabName("by me", NameSetter.OWNER), SessionRecordStore(file).get(key(1)))
+        assertEquals(TabName("by it", NameSetter.ASSISTANT), SessionRecordStore(file).get(key(2)))
         // The owner saving the same text makes it theirs: a write, though the name is the same.
         store.put(key(2), "by it")
-        assertEquals(TabName("by it", NameSetter.OWNER), TabNameStore(file).get(key(2)))
+        assertEquals(TabName("by it", NameSetter.OWNER), SessionRecordStore(file).get(key(2)))
         val old = """{"names":[{"profile":"p1","device":"dev","port":22,"user":"root","session":"frpjump-0a1b2c-1","name":"old"}]}"""
-        assertEquals(TabName("old", NameSetter.OWNER), TabNameStore(MemoryStorage(old)).get(key(1)))
-        assertEquals(TabName("old", NameSetter.OWNER), TabNameStore(MemoryStorage(old.replace("\"name\":\"old\"", "\"name\":\"old\",\"by\":\"???\""))).get(key(1)))
+        assertEquals(TabName("old", NameSetter.OWNER), SessionRecordStore(MemoryStorage(old)).get(key(1)))
+        assertEquals(TabName("old", NameSetter.OWNER), SessionRecordStore(MemoryStorage(old.replace("\"name\":\"old\"", "\"name\":\"old\",\"by\":\"???\""))).get(key(1)))
     }
 
     @Test
     fun `a new name replaces the old one and an unchanged one writes nothing`() {
         val file = CountingStorage()
-        val store = TabNameStore(file)
+        val store = SessionRecordStore(file)
         store.put(key(1), "a")
         store.put(key(1), "a")
         assertEquals(1, file.writes)
@@ -144,20 +144,20 @@ class TabNameStoreTest {
     @Test
     fun `forget removes the name when the app ends the session`() {
         val file = MemoryStorage()
-        val store = TabNameStore(file)
+        val store = SessionRecordStore(file)
         store.put(key(1), "a")
         store.put(key(2), "b")
         store.forget(key(1))
         assertNull(store.get(key(1)))
-        assertEquals("b", TabNameStore(file).get(key(2))?.text)
-        assertNull(TabNameStore(file).get(key(1)))
+        assertEquals("b", SessionRecordStore(file).get(key(2))?.text)
+        assertNull(SessionRecordStore(file).get(key(1)))
         // Forgetting what is not there changes nothing.
         store.forget(key(9))
     }
 
     @Test
     fun `a successful listing forgets the names of sessions it does not have, for that login only`() {
-        val store = TabNameStore(MemoryStorage())
+        val store = SessionRecordStore(MemoryStorage())
         store.put(key(1), "kept")
         store.put(key(2), "gone")
         store.put(key(3, user = "pi"), "other user")
@@ -174,21 +174,21 @@ class TabNameStoreTest {
     @Test
     fun `an empty successful listing forgets them all, a failed one nothing`() {
         val file = MemoryStorage()
-        val store = TabNameStore(file)
+        val store = SessionRecordStore(file)
         store.put(key(1), "a")
         store.put(key(2), "b")
         // Failed: null.
         store.afterListing("p1", "dev", 22, "root", null)
         assertEquals("a", store.get(key(1))?.text)
-        assertEquals("b", TabNameStore(file).get(key(2))?.text)
+        assertEquals("b", SessionRecordStore(file).get(key(2))?.text)
         store.afterListing("p1", "dev", 22, "root", emptyList())
         assertNull(store.get(key(1)))
-        assertNull(TabNameStore(file).get(key(2)))
+        assertNull(SessionRecordStore(file).get(key(2)))
     }
 
     @Test
     fun `a session of a tab open now is kept even when the listing lacks it`() {
-        val store = TabNameStore(MemoryStorage())
+        val store = SessionRecordStore(MemoryStorage())
         store.put(key(1), "a")
         store.put(key(2), "b")
         store.afterListing("p1", "dev", 22, "root", emptyList(), keep = setOf("frpjump-0a1b2c-2"))
@@ -199,12 +199,12 @@ class TabNameStoreTest {
     @Test
     fun `no more than 200 are kept and the oldest written go first`() {
         val file = MemoryStorage()
-        val store = TabNameStore(file)
+        val store = SessionRecordStore(file)
         for (n in 1..205) store.put(key(n), "n$n")
         for (n in 1..5) assertNull("n$n", store.get(key(n)))
         for (n in 6..205) assertEquals("n$n", store.get(key(n))?.text)
-        assertNull(TabNameStore(file).get(key(5)))
-        assertEquals("n6", TabNameStore(file).get(key(6))?.text)
+        assertNull(SessionRecordStore(file).get(key(5)))
+        assertEquals("n6", SessionRecordStore(file).get(key(6))?.text)
         // Writing an old one again makes it the newest: the next write drops another.
         store.put(key(6), "again")
         store.put(key(300), "new")
@@ -220,11 +220,11 @@ class TabNameStoreTest {
             {"profile":"p1","device":"dev","port":22,"user":"root","session":"not-a-session","name":"no"},
             {"profile":"p1","device":"dev","port":22,"user":"root","session":"frpjump-0a1b2c-3","name":"a|b"},
             {"profile":"p1","device":"dev","port":22,"user":"root","session":"frpjump-0a1b2c-4","name":"${"x".repeat(25)}"}]}"""
-        val store = TabNameStore(MemoryStorage(bad))
+        val store = SessionRecordStore(MemoryStorage(bad))
         assertEquals("ok", store.get(key(1))?.text)
         assertNull(store.get(key(3)))
         assertNull(store.get(key(4)))
-        assertNull(TabNameStore(MemoryStorage("{")).get(key(1)))
+        assertNull(SessionRecordStore(MemoryStorage("{")).get(key(1)))
     }
 
     @Test
@@ -234,7 +234,7 @@ class TabNameStoreTest {
             override fun write(text: String) = throw java.io.IOException("disk")
             override fun delete() = Unit
         }
-        val store = TabNameStore(failing)
+        val store = SessionRecordStore(failing)
         store.put(key(1), "a")
         assertTrue(store.get(key(1))?.text == "a")
     }

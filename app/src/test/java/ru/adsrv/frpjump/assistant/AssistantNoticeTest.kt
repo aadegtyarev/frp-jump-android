@@ -115,8 +115,8 @@ class AssistantNoticeTest {
     @Test fun `the channel has default importance and no sound, vibration or badge`() {
         val source = File("src/main/java/ru/adsrv/frpjump/assistant/AssistantNotifier.kt").readText()
         assertTrue(source.contains("NotificationManager.IMPORTANCE_DEFAULT"))
-        // Waiting for events is the one quiet exception, on a channel of its own; nothing else changes the importance.
-        assertEquals(1, Regex("IMPORTANCE_LOW").findAll(source).count())
+        // Waiting for events and "needs your input" are the quiet exceptions, each on a channel of its own; nothing else changes the importance.
+        assertEquals(2, Regex("IMPORTANCE_LOW").findAll(source).count())
         for (other in listOf("IMPORTANCE_HIGH", "IMPORTANCE_MIN", "IMPORTANCE_MAX")) assertFalse(other, source.contains(other))
         assertTrue(source.contains("setSound(null, null)")); assertTrue(source.contains("enableVibration(false)")); assertTrue(source.contains("setShowBadge(false)"))
         assertTrue(source.contains(".setSilent(true)")); assertTrue(source.contains(".setOnlyAlertOnce(true)"))

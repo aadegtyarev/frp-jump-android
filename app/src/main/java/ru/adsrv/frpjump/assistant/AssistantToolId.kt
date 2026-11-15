@@ -39,6 +39,16 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
      */
     TERMINAL_INPUT("terminal_input", "assistant_terminal_input", Effect.CHANGE_REMOTE),
     /**
+     * Opens a terminal session for the assistant itself: a tmux session on a saved SSH tunnel's device, with no tab. The switch of the three session tools
+     * (`assistant_sessions`, default off), in effect only while the terminal tabs and typing are on too. It logs in with the tunnel's saved login and changes
+     * nothing on the device but that tmux session, and the owner sees it in the chat and in Sessions: it runs without a question ([confirms] false).
+     */
+    TERMINAL_OPEN("terminal_open", "assistant_sessions", Effect.CHANGE_REMOTE, confirms = false),
+    /** Asks the owner to act in one of the assistant's sessions (a card, a notification): it only asks, so no question ([confirms] false). No switch of its own. */
+    TERMINAL_SHOW("terminal_show", "assistant_sessions", Effect.CHANGE_LOCAL, ownsSwitch = false, confirms = false),
+    /** Ends one session the assistant opened, with anything running in it. Asks as every changing tool does. No switch of its own. */
+    TERMINAL_CLOSE("terminal_close", "assistant_sessions", Effect.CHANGE_REMOTE, ownsSwitch = false),
+    /**
      * Waits in the background for one event (a tab, a tunnel or the clock) and starts a new turn when it happens. Its own switch (default off);
      * it changes only this app (the wait is visible in the chat and the owner can cancel it), so it runs without a question ([confirms] false).
      */

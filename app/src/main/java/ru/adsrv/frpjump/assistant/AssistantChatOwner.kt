@@ -61,6 +61,8 @@ class AssistantChatOwner(
     private val terminalTabs: AssistantTerminalTabs? = null,
     /** The owner's saved tunnels for `start_tunnel` and `stop_tunnel`; null in tests that do not use them. */
     private val tunnels: AssistantTunnels? = null,
+    /** The assistant's own terminal sessions; null in tests that do not use them. */
+    private val sessions: AssistantSessions? = null,
     /** How many background waits run now, for the notification "Assistant is waiting for events: N"; written for the live conversation only. */
     private val waitCountOut: MutableStateFlow<Int> = MutableStateFlow(0),
     /** What waits watch; the app's own (tabs and tunnels) unless a test passes its own. */
@@ -73,6 +75,15 @@ class AssistantChatOwner(
     private var screens = 0
     val activity: StateFlow<ChatActivity> = activityOut
     val waitCount: StateFlow<Int> = waitCountOut
+
+    /** What the assistant has asked the owner to act on in its sessions (`terminal_show`) and he has not answered; the chat shows a card for each. */
+    val ownerAsks: StateFlow<List<OwnerAsk>> = sessions?.asks ?: MutableStateFlow(emptyList())
+
+    /** The owner opens the assistant's session [id] as a tab, from a card: its tab id, or null when it cannot be opened. */
+    suspend fun openAsk(id: Int): Int? = sessions?.show(id)?.id
+
+    /** The owner dismissed the card of session [id]. */
+    fun dismissAsk(id: Int) { sessions?.dismissAsk(id) }
 
     /** Cancels every wait of the live conversation (the notification's action): the model is told on its next turn. */
     fun cancelWaits() { synchronized(lock) { live?.conversation }?.cancelAllWaits() }
@@ -142,7 +153,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
+            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,

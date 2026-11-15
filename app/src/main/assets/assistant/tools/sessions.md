@@ -1,0 +1,1 @@
+- terminal_open opens a session of your own for long or interactive work (an upgrade, a build, a program that asks questions): type with terminal_input, read by cursor, wait with wait_for. When it asks for a password or a choice only the owner should make, call terminal_show and wait. Close it with terminal_close when the work is done; leave it open if the owner may want to look.

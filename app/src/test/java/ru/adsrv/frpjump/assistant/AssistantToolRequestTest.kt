@@ -69,7 +69,7 @@ class AssistantToolRequestTest {
             f.send()
             assertEquals(listOf("request_tool"), f.requests.last().tools.map { it.name })
             // Typing into tabs is not offered while the tabs are off: the model asks for terminal_tabs first.
-            val all = AssistantToolId.switches.map { it.wire } - "terminal_input"
+            val all = AssistantToolId.switches.map { it.wire } - "terminal_input" - "terminal_open"
             assertEquals(all, enum(f.requests.last().tools.single()))
             f.on(AssistantToolId.READ_PAGE, AssistantToolId.SSH_COMMAND)
             f.send()
@@ -82,6 +82,11 @@ class AssistantToolRequestTest {
             assertEquals(listOf("web_search", "read_page", "inspect_image", "request_tool"), f.requests.last().tools.map { it.name })
             assertEquals(listOf("terminal_input"), enum(f.requests.last().tools.last()))
             f.on(AssistantToolId.TERMINAL_INPUT)
+            f.send()
+            // The tabs and typing are on, so the assistant's own sessions may be asked for.
+            assertEquals(listOf("web_search", "read_page", "inspect_image", "request_tool"), f.requests.last().tools.map { it.name })
+            assertEquals(listOf("terminal_open"), enum(f.requests.last().tools.last()))
+            f.on(AssistantToolId.TERMINAL_OPEN)
             f.send()
             assertEquals("every tool is on, so there is nothing to ask for", listOf("web_search", "read_page", "inspect_image"), f.requests.last().tools.map { it.name })
             f.settings.setAssistantTool(AssistantToolId.READ_PAGE, false)
@@ -114,12 +119,15 @@ class AssistantToolRequestTest {
     }
 
     @Test fun `a call of a tool that is off by name still gets the unknown-tool result and reaches no network`() = runBlocking {
-        val calls = AssistantToolId.entries.map { ToolCall("c-${it.wire}", it.wire, args("query" to "x", "url" to "https://public.org/", "question" to "q")) }
-        Fx(script = asking(*calls.toTypedArray())).use { f ->
-            f.send()
-            assertEquals(AssistantToolId.entries.map { ToolOutcome.UNKNOWN_TOOL }, f.results().map { it.outcome })
-            assertEquals(AssistantToolId.entries.map { "Unknown tool" }, f.results().map { it.text })
-            assertEquals(0, f.network.get())
+        // A Send takes at most 12 steps: the catalog is called in two parts.
+        for (part in AssistantToolId.entries.chunked(8)) {
+            val calls = part.map { ToolCall("c-${it.wire}", it.wire, args("query" to "x", "url" to "https://public.org/", "question" to "q")) }
+            Fx(script = asking(*calls.toTypedArray())).use { f ->
+                f.send()
+                assertEquals(part.map { ToolOutcome.UNKNOWN_TOOL }, f.results().map { it.outcome })
+                assertEquals(part.map { "Unknown tool" }, f.results().map { it.text })
+                assertEquals(0, f.network.get())
+            }
         }
     }
 

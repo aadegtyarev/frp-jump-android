@@ -134,6 +134,15 @@ fun AppNav() {
         if (route in setOf(Routes.ENROLL, Routes.REMOVED, Routes.STORAGE) || !app.settings.assistantAvailability.enabled) return@LaunchedEffect
         nav.openAssistant()
     }
+    // "The assistant needs your input": its notification's Open (set in-process by its trampoline) opens that session as a tab, once.
+    val showSession by app.showSessionRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(showSession) {
+        val id = showSession ?: return@LaunchedEffect
+        val route = nav.currentBackStackEntryFlow.map { it.destination.route }.first { it != Routes.LOADING }
+        app.showSessionRequest.value = null
+        if (route in setOf(Routes.ENROLL, Routes.REMOVED, Routes.STORAGE)) return@LaunchedEffect
+        app.assistantSessions.show(id)?.let { nav.navigate(Routes.terminal(it.id)) }
+    }
     NavHost(navController = nav, startDestination = Routes.LOADING) {
         composable(Routes.LOADING) {
             // Profiles load (and v1 data is upgraded) off the main thread; then go where they say.
@@ -299,6 +308,7 @@ fun AppNav() {
                     onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
                     onSettings = { nav.openSettings() },
+                    assistant = app.assistantSessions,
                 )
             }
         }
@@ -432,7 +442,7 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
         ru.adsrv.frpjump.ui.settings.AssistantChatScreen(vm, onBack = { nav.popBackStack() }, onSetup = {
             if (!app.settings.assistantAvailability.enabled) { nav.popBackStack(); nav.openSettings() }
             else nav.navigate(Routes.PROVIDER)
-        })
+        }, onOpenTerminal = { nav.navigate(Routes.terminal(it)) })
     }
     composable(Routes.PROVIDER) { entry ->
         // Shares Settings' model while Settings is on the back stack; the chat can be opened from anywhere else, then it has its own.

@@ -77,7 +77,7 @@ class SshEnvironment(
     val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
     val visible: StateFlow<Boolean> = MutableStateFlow(false),
     /** Owner-set tab names of tmux tabs, remembered app-privately. */
-    val tabNames: TabNameStore = TabNameStore(MemoryTextStorage()),
+    val tabNames: SessionRecordStore = SessionRecordStore(MemoryTextStorage()),
     /** Optional transport construction seam; production keeps the standard SSHJ configuration. */
     internal val clientFactory: (() -> SSHClient)? = null,
 )
@@ -113,12 +113,22 @@ class SshSession(
      * lists the device's sessions of this install and hands them here
      * (see [SshSessions]); what this returns, if anything, is the tab's own.
      */
-    pickUp: ((SshSession, List<String>) -> String?)? = null,
+    pickUp: ((SshSession, OwnSessions) -> String?)? = null,
     /** Picked up after a kill: the first attach says nothing ("Restored N sessions" does). */
     quietAttach: Boolean = false,
     /** The owner-set name of the tab it replaces (Reconnect), or one remembered for the picked-up session; null: none. */
     tabName: TabName? = null,
+    /** Who opened the session: the assistant's own sessions have no tab until the owner opens one ([show]), and say so in tmux. */
+    val openedBy: SessionOpener = SessionOpener.OWNER,
 ) {
+    private val _shown = MutableStateFlow(openedBy == SessionOpener.OWNER)
+
+    /** Whether the owner has it as a tab: always for the owner's own sessions, for the assistant's after the owner opened it. */
+    val shown: StateFlow<Boolean> = _shown
+
+    /** The owner opens an assistant session as a tab (it stays marked as the assistant's). Any thread. */
+    fun show() { _shown.value = true }
+
     val terminal = RemoteTerminal(terminalClient, historyRows = env.historyRows())
 
     /** The tab's tmux session; see [TabTmux]. */
@@ -157,20 +167,20 @@ class SshSession(
     /**
      * A new name for the tab ([checkTabName]'s valid one; null clears it), set [by] the owner (the dialog: always, also when the
      * text is unchanged) or the assistant. The state changes at once; a tab running tmux has the name remembered too
-     * ([TabNameStore]), written off the calling thread. Any thread.
+     * ([SessionRecordStore]), written off the calling thread. Any thread.
      */
     fun rename(name: String?, by: NameSetter = NameSetter.OWNER) {
         _tabName.value = name?.let { TabName(it, by) }
         writeTabName(forgetWhenNone = true)
     }
 
-    /** A name remembered for the tmux session this tab took up ([TabNameStore]): used unless the tab was named meanwhile. */
+    /** A name remembered for the tmux session this tab took up ([SessionRecordStore]): used unless the tab was named meanwhile. */
     fun restoreTabName(name: TabName) {
         _tabName.compareAndSet(null, name)
     }
 
     /** The key of this tab's remembered name: its login and tmux session, once it has one. */
-    fun tabNameKey(): TabNameKey? = tmux.assigned?.let { TabNameKey(profile, device, port, user, it) }
+    fun tabNameKey(): SessionKey? = tmux.assigned?.let { SessionKey(profile, device, port, user, it) }
 
     /** Attached to tmux (on the connection's IO thread): the name, if any, is remembered for this session. */
     private fun rememberTabName() = applyTabName(forgetWhenNone = false)
@@ -189,8 +199,11 @@ class SshSession(
             val key = tabNameKey() ?: return
             val name = _tabName.value
             runCatching {
-                if (name == null) { if (forgetWhenNone) env.tabNames.forget(key) }
-                else if (tmux.inUse) env.tabNames.put(key, name.text, name.setBy)
+                if (name == null) {
+                    if (forgetWhenNone) env.tabNames.clearName(key)
+                    // An assistant session is remembered even without a name: it is how it is found again after a restart.
+                    else if (openedBy == SessionOpener.ASSISTANT && tmux.inUse) env.tabNames.put(key, null, openedBy = openedBy)
+                } else if (tmux.inUse) env.tabNames.put(key, name.text, name.setBy, openedBy)
             }
         }
     }
@@ -486,7 +499,7 @@ class SshSession(
                     Log.w(TAG, "tmux kill-session ended with ${command.exitStatus}")
                 } else {
                     // Ended: its remembered tab name goes with it.
-                    env.tabNames.forget(TabNameKey(profile, device, port, user, name))
+                    env.tabNames.forget(SessionKey(profile, device, port, user, name))
                 }
             }
         } catch (e: Exception) {
@@ -516,15 +529,15 @@ class SshSession(
         }
 
     /**
-     * This install's tmux sessions on the device, by number ([ownTmuxSessions]).
+     * This install's tmux sessions on the device, by number ([ownTmuxListing]).
      * As with the probe, a listing that fails on a connection still up
      * is null: the tab opens as without a pick-up, and no remembered tab
      * name is forgotten for it. So is one that did not exit 0 for any reason
      * but a missing tmux server ([tmuxListing]).
      */
-    private fun listOwnTmux(ssh: SSHClient): List<String>? =
+    private fun listOwnTmux(ssh: SSHClient): OwnSessions? =
         try {
-            tmuxListing(execResult(ssh, TMUX_LIST_COMMAND))?.let { ownTmuxSessions(it, env.tmuxNames.install) }
+            tmuxListing(execResult(ssh, TMUX_LIST_COMMAND))?.let { ownTmuxListing(it, env.tmuxNames.install) }
         } catch (e: IOException) {
             if (!ssh.isConnected) throw e
             Log.w(TAG, "tmux list-sessions failed: ${e.javaClass.simpleName}")
@@ -600,7 +613,7 @@ class SshSession(
             val rows = terminal.rows
             channel.allocatePTY(TERM, columns, rows, 0, 0, emptyMap())
             windowChange.sent(columns, rows)
-            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name))
+            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name, openedBy))
             val resumeKind = synchronized(lifecycle) {
                 if (!current(attempt)) return
                 resumed(dropped, probe)

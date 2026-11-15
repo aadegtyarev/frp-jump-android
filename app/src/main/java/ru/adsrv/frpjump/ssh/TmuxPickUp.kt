@@ -13,25 +13,35 @@ import java.util.concurrent.TimeUnit
  */
 
 /**
- * The SSH user's tmux sessions, one name per line. No tmux or no server
- * prints nothing on stdout (the error goes to stderr): nothing to pick up.
+ * The SSH user's tmux sessions, one line each: the name, then who opened it ([OPENED_BY_OPTION], empty for the owner's own). No tmux or no
+ * server prints nothing on stdout (the error goes to stderr): nothing to pick up.
  */
-const val TMUX_LIST_COMMAND = "tmux list-sessions -F '#{session_name}'"
+const val TMUX_LIST_COMMAND = "tmux list-sessions -F '#{session_name} #{$OPENED_BY_OPTION}'"
+
+/** This install's sessions in a listing: the owner's tabs' ([owner]) and every one of them ([all], also the assistant's), by their number. */
+class OwnSessions(val owner: List<String>, val all: List<String>) {
+    /** The assistant's sessions among [all]. */
+    val assistant: List<String> get() = all - owner.toSet()
+}
 
 /**
- * This install's session names in the output of [TMUX_LIST_COMMAND],
- * each once, by their number (`-2` before `-10`); every other line
- * (another install's, the owner's own, a login script's chatter) is left out.
+ * This install's session names in the output of [TMUX_LIST_COMMAND], each once, by their number (`-2` before `-10`), split by who opened
+ * them; every other line (another install's, the owner's own, a login script's chatter) is left out. A line that is only a name (an
+ * older listing) is the owner's.
  */
-fun ownTmuxSessions(output: String, install: String): List<String> {
+fun ownTmuxListing(output: String, install: String): OwnSessions {
     val prefix = "frpjump-$install-"
-    return output.lineSequence()
-        .map { it.trim() }
-        .filter { isTmuxName(it) && it.startsWith(prefix) }
-        .distinct()
-        .sortedBy { tmuxNumber(it) }
-        .toList()
+    val lines = output.lineSequence().map { it.trim().split(' ', limit = 2) }
+        .filter { isTmuxName(it[0]) && it[0].startsWith(prefix) }
+        .distinctBy { it[0] }.sortedBy { tmuxNumber(it[0]) }.toList()
+    return OwnSessions(
+        owner = lines.filter { SessionOpener.fromWire(it.getOrNull(1)?.trim()) == SessionOpener.OWNER }.map { it[0] },
+        all = lines.map { it[0] },
+    )
 }
+
+/** The owner's tabs' sessions of this install in [output]; see [ownTmuxListing]. */
+fun ownTmuxSessions(output: String, install: String): List<String> = ownTmuxListing(output, install).owner
 
 /** The `<n>` of an app's session name; [isTmuxName] holds. */
 fun tmuxNumber(name: String): Long = name.substringAfterLast('-').toLongOrNull() ?: 0L
@@ -56,7 +66,7 @@ fun tmuxKillAllAndListCommand(names: List<String>): String = tmuxKillAllCommand(
 
 /** Of [names] to end, those the output of [tmuxKillAllAndListCommand] still lists. */
 fun stillRunning(output: String, names: List<String>): List<String> {
-    val listed = output.lineSequence().map { it.trim() }.toSet()
+    val listed = output.lineSequence().map { it.trim().substringBefore(' ') }.toSet()
     return names.filter { it in listed }
 }
 

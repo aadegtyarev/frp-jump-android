@@ -323,6 +323,15 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
                     modifier = Modifier.widthIn(max = 240.dp).padding(horizontal = 12.dp, vertical = 6.dp).testTag("tab_menu_header"),
                 )
             }
+            // An assistant session the owner opened stays marked as the assistant's.
+            if (s.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT) {
+                Text(
+                    stringResource(R.string.terminal_session_by_assistant),
+                    fontSize = 12.sp,
+                    color = AppTheme.colors.muted,
+                    modifier = Modifier.widthIn(max = 240.dp).padding(horizontal = 12.dp, vertical = 6.dp).testTag("tab_menu_assistant"),
+                )
+            }
             offered.forEach { a ->
                 DropdownMenuItem(text = { Text(a.label) }, onClick = {
                     menu = false

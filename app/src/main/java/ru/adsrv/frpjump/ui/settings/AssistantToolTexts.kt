@@ -22,6 +22,7 @@ internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input
+    AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> R.string.tool_sessions
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command
     AssistantToolId.WAIT_FOR -> R.string.tool_waits
 }
@@ -35,6 +36,7 @@ internal fun AssistantToolId.glyph(): ImageVector = when (this) {
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> LinkGlyph
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> TerminalGlyph
     AssistantToolId.TERMINAL_INPUT -> KeyboardGlyph
+    AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> TerminalGlyph
     AssistantToolId.SSH_COMMAND -> CommandGlyph
     AssistantToolId.WAIT_FOR -> ClockGlyph
 }
@@ -48,6 +50,7 @@ internal fun AssistantToolId.hint(): Int = when (this) {
     AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> R.string.tool_tunnels_hint
     AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_tabs_hint
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input_hint
+    AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> R.string.tool_sessions_hint
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command_hint
     AssistantToolId.WAIT_FOR -> R.string.tool_waits_hint
 }
@@ -63,6 +66,9 @@ internal fun AssistantToolId.progress(): Int = when (this) {
     AssistantToolId.TERMINAL_READ -> R.string.tool_terminal_read_progress
     AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_rename_progress
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input_progress
+    AssistantToolId.TERMINAL_OPEN -> R.string.tool_terminal_open_progress
+    AssistantToolId.TERMINAL_SHOW -> R.string.tool_terminal_show_progress
+    AssistantToolId.TERMINAL_CLOSE -> R.string.tool_terminal_close_progress
     AssistantToolId.SSH_COMMAND -> R.string.tool_ssh_command_progress
     AssistantToolId.WAIT_FOR -> R.string.tool_wait_for_progress
 }
@@ -79,5 +85,8 @@ internal fun AssistantToolId.receiptTitle(): Int = when (this) {
     AssistantToolId.TERMINAL_READ -> R.string.tool_terminal_read_receipt
     AssistantToolId.TERMINAL_RENAME -> R.string.tool_terminal_rename_receipt
     AssistantToolId.TERMINAL_INPUT -> R.string.tool_terminal_input_receipt
+    AssistantToolId.TERMINAL_OPEN -> R.string.tool_terminal_open_receipt
+    AssistantToolId.TERMINAL_SHOW -> R.string.tool_terminal_show_receipt
+    AssistantToolId.TERMINAL_CLOSE -> R.string.tool_terminal_close_receipt
     else -> title()
 }

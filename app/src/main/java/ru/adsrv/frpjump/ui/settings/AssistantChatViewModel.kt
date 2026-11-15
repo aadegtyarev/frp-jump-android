@@ -28,6 +28,10 @@ class AssistantChatViewModel(
     fun screenGone() = lease.gone()
     /** The entry is shown again (restored): take the conversation again. */
     fun screenBack() { shown.value = lease.back() }
+    /** The assistant's asks for the owner's input in its own sessions, and the owner opening one as a tab (its tab id to show). */
+    val ownerAsks get() = owner.ownerAsks
+    fun openAsk(ask: OwnerAsk, onOpened: (Int) -> Unit) { viewModelScope.launch { owner.openAsk(ask.id)?.let(onOpened) } }
+    fun dismissAsk(ask: OwnerAsk) = owner.dismissAsk(ask.id)
     /** The live conversation's confirmation support: a chat built here asks before a changing call. */
     internal val confirmations get() = owner.confirmations
     /** A terminal quote this chat has taken and not yet put in the draft. Memory only: it goes with the model, never saved or restored. */

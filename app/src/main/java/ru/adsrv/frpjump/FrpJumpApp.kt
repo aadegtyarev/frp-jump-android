@@ -66,7 +66,7 @@ import ru.adsrv.frpjump.ssh.SshEnvironment
 import ru.adsrv.frpjump.ssh.SshKeyStore
 import ru.adsrv.frpjump.ssh.SshPasswords
 import ru.adsrv.frpjump.ssh.SshSessions
-import ru.adsrv.frpjump.ssh.TabNameStore
+import ru.adsrv.frpjump.ssh.SessionRecordStore
 import ru.adsrv.frpjump.ssh.TmuxNames
 import ru.adsrv.frpjump.ssh.installFullBouncyCastle
 import ru.adsrv.frpjump.store.AtomicTextFile
@@ -94,11 +94,23 @@ class FrpJumpApp : Application() {
     /** The owner's open terminal tabs for the assistant; the same hidden set as the Sessions list. */
     val assistantTerminalTabs by lazy {
         ru.adsrv.frpjump.assistant.AssistantTerminalTabs(
-            tabs = { ssh.sessions.value.map { ru.adsrv.frpjump.assistant.SessionTab(it) } },
+            // Every session: the owner's tabs, the assistant's own (shown or not) and the ones it remembers from before a restart (detached).
+            tabs = { ssh.allNow().map { ru.adsrv.frpjump.assistant.SessionTab(it) } + assistantSessions.detachedHandles() },
             hidden = { pendingUndo.hidden.value },
+            attach = assistantSessions::attach,
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
             connectionName = { profile, device, port -> savedSshConnection(profile, device, port)?.customName },
             connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id })
+    }
+
+    /**
+     * The assistant's own terminal sessions: the same sessions as the owner's tabs, opened by the assistant and not shown as a tab until the owner opens one;
+     * remembered in the session records so that a restart lists them again. A session that needs the owner (a password) is asked for through [OwnerAsk]s.
+     */
+    val assistantSessions by lazy {
+        ru.adsrv.frpjump.assistant.AssistantSessions(ru.adsrv.frpjump.assistant.SshSessionHost(ssh), ru.adsrv.frpjump.assistant.SshSessionTargets(sshTargets), sshEnv.tabNames, appScope,
+            profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
+            notify = { ask -> if (!ru.adsrv.frpjump.assistant.chatShown(assistantChatResumed.value, lock.locked.value)) ru.adsrv.frpjump.assistant.AssistantNotifier(this).postOwnerAsk(ask) }).also { it.refresh() }
     }
 
     /** The saved SSH connection of a tab's profile, device and port that is not hidden by an Undo; null when none matches. */
@@ -228,7 +240,7 @@ class FrpJumpApp : Application() {
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
-            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, waitCountOut = assistantWaitCount)
+            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, waitCountOut = assistantWaitCount)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -260,6 +272,9 @@ class FrpJumpApp : Application() {
 
     /** The assistant notification's tap asks to open the chat (set in-process by its trampoline); taken once by the navigation. */
     val openAssistantRequest = MutableStateFlow(false)
+
+    /** The "needs your input" notification's Open asks for the assistant's session with this id as a tab (set in-process by its trampoline); taken once by the navigation. */
+    val showSessionRequest = MutableStateFlow<Int?>(null)
 
     /** True while the chat route is resumed (the top screen of a resumed activity); the chat is shown when also not locked. */
     val assistantChatResumed = MutableStateFlow(false)
@@ -431,7 +446,7 @@ class FrpJumpApp : Application() {
         sshEnv = SshEnvironment(
             sshKeys, sshPasswords, keyComment = ::sshKeyComment,
             tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))),
-            tabNames = TabNameStore(AtomicTextFile(File(filesDir, "tab_names.json"))),
+            tabNames = SessionRecordStore(AtomicTextFile(File(filesDir, "tab_names.json"))),
             historyRows = { settings.settings.value.terminalHistoryRows },
             visible = visible,
         )
@@ -503,7 +518,10 @@ class FrpJumpApp : Application() {
         )
         mqttPluginObserver = PluginObserver(mqttPlugins, mqtt.sessions, appScope)
         sessions = OpenSessions(ssh.through, ssh::throughNow, mqtt.through, mqtt::throughNow, pendingUndo.hidden)
-        closeSessions = SessionCloser(pendingUndo, closeTerminal = { ssh.close(it, endTmux = true) }, closeMqtt = mqtt::close)
+        closeSessions = SessionCloser(pendingUndo, closeTerminal = { id ->
+            // The assistant's own sessions (also the remembered ones, which are attached to end their tmux session) go through the assistant's close.
+            if (assistantSessions.isAssistant(id)) appScope.launch { assistantSessions.closeByOwner(id) } else ssh.close(id, endTmux = true)
+        }, closeMqtt = mqtt::close)
         // A kept file session closes with the last terminal session on its tunnel.
         appScope.launch { ssh.through.collect(files::onTerminals) }
     }
