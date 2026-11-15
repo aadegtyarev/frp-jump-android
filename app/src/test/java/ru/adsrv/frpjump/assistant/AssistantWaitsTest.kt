@@ -170,12 +170,16 @@ class AssistantWaitsTest {
         val t = tool(f)
         assertEquals("Wait in the background for one event; you get a new turn when it happens or the time runs out. It returns at once: finish your answer after calling it. " +
             "event: tab_connected, tab_closed, tab_text (with text), tab_quiet, tunnel_on, tunnel_off or time. Tab events take tab_id from terminal_tabs; tunnel events take profile_id and connection_id from profile_information. " +
-            "minutes: 1 to 45. The owner sees every wait and can cancel it.", t.spec.description)
+            "minutes: 1 to 45. The owner sees every wait and can cancel it. " +
+            "tab_text and tab_quiet count output after `from` (a cursor) when given, else after the wait starts. tab_quiet takes `seconds` of silence (default 10, up to the longest wait).", t.spec.description)
         val props = t.spec.parameters.getValue("properties").jsonObject
         assertEquals(45, props.getValue("minutes").jsonObject.getValue("maximum").jsonPrimitive.content.toInt())
         assertEquals(WaitKind.entries.map { it.wire }, props.getValue("event").jsonObject.getValue("enum").jsonArray.map { it.jsonPrimitive.content })
         assertEquals(listOf("event", "minutes"), t.spec.parameters.getValue("required").jsonArray.map { it.jsonPrimitive.content })
         assertEquals(200, props.getValue("text").jsonObject.getValue("maxLength").jsonPrimitive.content.toInt())
+        // `seconds` goes up to the longest wait, in seconds; `from` is a cursor.
+        assertEquals(45 * 60, props.getValue("seconds").jsonObject.getValue("maximum").jsonPrimitive.content.toInt())
+        assertEquals(TabCursor.MAX_CHARS, props.getValue("from").jsonObject.getValue("maxLength").jsonPrimitive.content.toInt())
         // Tab events only with the terminal tabs, tunnel events only with the profile information: the enum follows the switches.
         fun kinds(tools: AssistantTools, tabs: Boolean = true, tunnels: Boolean = true) = AssistantToolFactory.waitKinds(tools, tabs, tunnels)
         assertEquals(listOf(WaitKind.TIME), kinds(AssistantTools()))
@@ -212,6 +216,12 @@ class AssistantWaitsTest {
             arrayOf("event" to "tab_connected", "tab_id" to 3, "text" to "x", "minutes" to 1),
             arrayOf("event" to "tunnel_on", "profile_id" to "p1", "minutes" to 1), arrayOf("event" to "time", "tab_id" to 3, "minutes" to 1),
             arrayOf("event" to "time"), arrayOf("event" to "time", "minutes" to 1, "extra" to "x"),
+            // A cursor is for tab_text and tab_quiet and must be one; seconds are for tab_quiet, 1 to the longest wait.
+            arrayOf("event" to "tab_connected", "tab_id" to 3, "from" to "1.0123abcd", "minutes" to 1),
+            arrayOf("event" to "tab_quiet", "tab_id" to 3, "from" to "nope", "minutes" to 1),
+            arrayOf("event" to "tab_text", "tab_id" to 3, "text" to "x", "from" to "", "minutes" to 1),
+            arrayOf("event" to "tab_quiet", "tab_id" to 3, "seconds" to 0, "minutes" to 1), arrayOf("event" to "tab_quiet", "tab_id" to 3, "seconds" to 1201, "minutes" to 1),
+            arrayOf("event" to "tab_text", "tab_id" to 3, "text" to "x", "seconds" to 5, "minutes" to 1), arrayOf("event" to "time", "seconds" to 5, "minutes" to 1),
         )
         val g = fixture(AssistantLimits(waitsAtOnce = 20, waitMaxMinutes = 20))
         for (args in bad) assertEquals(args.toList().toString(), provide, call(tool(g), *args))
@@ -225,23 +235,18 @@ class AssistantWaitsTest {
         assertTrue(f.waits.waits.value.isEmpty())
     }
 
-    // ---- the text matcher ----
-
-    private fun OutputMatcher.feedText(text: String) = feed(text.toByteArray(), text.toByteArray().size)
-
-    @Test fun `the matcher finds plain text in new output across chunks, escape codes and split characters`() {
-        val m = OutputMatcher("build done")
-        assertFalse(m.feedText("compiling\r\n")); assertFalse(m.feedText("build do"))
-        assertTrue(m.feedText("ne\r\n"))
-        // Colours and cursor moves do not split the text.
-        val c = OutputMatcher("ready")
-        assertFalse(c.feedText("\u001B[32mre\u001B[0m")); assertTrue(c.feedText("\u001B[1;32mad\u001B[0my"))
-        // A character cut in the middle of its UTF-8 bytes.
-        val bytes = "готово".toByteArray()
-        val u = OutputMatcher("готово")
-        assertFalse(u.feed(bytes.copyOfRange(0, 5), 5)); assertTrue(u.feed(bytes.copyOfRange(5, bytes.size), bytes.size - 5))
-        // Output from before the matcher was made is never seen; nothing matches an empty needle.
-        assertFalse(OutputMatcher("old").feedText("new output only"))
-        assertFalse(OutputMatcher("").feedText("anything"))
+    @Test fun `tab_quiet takes seconds, ten by default and at most the longest wait, and a cursor reaches the wait as given`() {
+        val f = fixture(AssistantLimits(waitsAtOnce = 20, waitMaxMinutes = 20))
+        val t = tool(f)
+        fun last() = f.waits.waits.value.last().spec
+        call(t, "event" to "tab_quiet", "tab_id" to 3, "minutes" to 5)
+        assertEquals(10, last().seconds); assertEquals(null, last().from)
+        call(t, "event" to "tab_quiet", "tab_id" to 3, "seconds" to 1200, "minutes" to 5)
+        assertEquals(1200, last().seconds)
+        call(t, "event" to "tab_quiet", "tab_id" to 3, "seconds" to 3, "from" to "12.0badf00d", "minutes" to 5)
+        assertEquals(3, last().seconds); assertEquals("12.0badf00d", last().from)
+        call(t, "event" to "tab_text", "tab_id" to 3, "text" to "ok", "from" to "0.811c9dc5", "minutes" to 5)
+        assertEquals("0.811c9dc5", last().from); assertEquals(null, last().seconds)
+        assertEquals(10, WaitForTool.DEFAULT_QUIET_SECONDS)
     }
 }

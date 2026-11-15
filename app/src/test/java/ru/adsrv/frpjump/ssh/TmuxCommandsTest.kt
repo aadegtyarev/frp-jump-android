@@ -18,14 +18,12 @@ class TmuxCommandsTest {
 
     @Test
     fun `the read-only commands of the assistant`() {
-        assertEquals("tmux capture-pane -p -J -S -100 -t '=frpjump-0a1b2c-7:'", tmuxCapturePaneCommand(name, 100))
-        assertEquals("tmux capture-pane -p -J -S -0 -t '=frpjump-0a1b2c-7:'", tmuxCapturePaneCommand(name, 0))
-        assertEquals("tmux capture-pane -p -J -S -1000 -t '=frpjump-0a1b2c-7:'", tmuxCapturePaneCommand(name, 1000))
+        // The whole history and the screen's height: what is shown of it is cut by the app, so every read and every cursor sees the same rows.
+        assertEquals("tmux capture-pane -p -J -S - -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' '#{pane_height}'", tmuxCapturePaneCommand(name))
         assertEquals("tmux display-message -p -t '=frpjump-0a1b2c-7:' '#{pane_current_command}'", tmuxPaneProgramCommand(name))
-        assertFalse(" -e" in tmuxCapturePaneCommand(name, 5))
-        for (bad in listOf(-1, 1001)) assertThrows(IllegalArgumentException::class.java) { tmuxCapturePaneCommand(name, bad) }
+        assertFalse(" -e" in tmuxCapturePaneCommand(name))
         for (bad in listOf("x; rm -rf /", "frpjump-0a1b2c-0", "")) {
-            assertThrows(IllegalArgumentException::class.java) { tmuxCapturePaneCommand(bad, 5) }
+            assertThrows(IllegalArgumentException::class.java) { tmuxCapturePaneCommand(bad) }
             assertThrows(IllegalArgumentException::class.java) { tmuxPaneProgramCommand(bad) }
         }
     }

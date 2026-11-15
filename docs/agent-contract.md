@@ -924,10 +924,10 @@ are described in each tool's subsection.
 | `inspect_image` | `READ_REMOTE` | none: public transport and a same-model image request | `url`, at most 2,048 characters; `question`, at most 1,000 characters | 2 per Send; JPEG/PNG up to 1 MiB and 4 megapixels; 512 output tokens and 4,000 response characters; shared public budget | never | the selected public image goes to the configured model; token charges include image analysis | optional, default off |
 | `profile_information` | `READ_REMOTE` | `profile_query` | optional `query` and `profile_id`, each at most 256 characters; optional nonnegative integer `offset` | one ordinary device-list pull per call; whole-record pages under the 8,000-character result cap | never | private profile, device and connection information goes to the model | optional, default off |
 | `terminal_tabs` | `READ_REMOTE` | none: app state, and for tmux tabs one probe on the tab's own connection | no arguments | the owner's open (not hidden) terminal tabs; the call returns within 3 s of the probe start, probes in parallel; about 7,800 characters | never | tab ids, profile, device, connection and user names, state and the foreground program go to the model | optional, default off (shared switch with `terminal_read`) |
-| `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
+| `terminal_read` | `READ_REMOTE` | none: the tab's own connection, or its terminal buffer | exactly `tab_id` (integer from 1) and optional `lines` (integer 0 to 1,000, default 100) and `from` (a cursor from an earlier read or input) | about 7,800 characters, newest lines kept, a cut ends with `truncated: N of M characters`; a read over a connection returns within 10 s | never | the screen and history of the tab, which may contain secrets, go to the model | optional, default off (shared switch with `terminal_tabs`) |
 | `terminal_rename` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: the tab's label in this app only, remembered app-privately for tmux tabs like the owner's own rename; no connection, session or device is touched | exactly `tab_id` (integer from 1) and `name` (at most 24 characters, one line; empty restores the automatic name) | the owner's tab-name rule; unknown, hidden or closed tabs are refused | never: an app-local label the owner can change from the tab's menu, shown with the tab's user and device on every card, call line and receipt | the name is model text shown to the owner; `terminal_tabs` shows it to the model | optional, default off (shared switch with `terminal_tabs`) |
-| `wait_for` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: a background wait in the app's memory over tab and tunnel state, the tab's new output and the clock | `event` (`tab_connected`, `tab_closed`, `tab_text`, `tab_quiet`, `tunnel_on`, `tunnel_off` or `time`, only the kinds available now), `minutes` (1 to the owner's longest wait), `tab_id` or `profile_id` and `connection_id`, `text` (`tab_text`, 1 to 200 characters, one line) | at most the owner's number of waits at once | never: it changes only this app, the owner sees every wait and can cancel it | the tab's or tunnel's name is shown to the owner; an event message (never the screen) goes to the model | optional, default off (switch `assistant_waits`; tab events need Terminal tabs, tunnel events Profile information) |
-| `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; waits until the tab's output was quiet for 0.7 s counted from the write at the earliest (at most 10 s) and returns the screen as `terminal_read` with no history, about 7,800 characters | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed and the screen after it, which may contain secrets, go to the model | optional, default off; in effect only while Terminal tabs is on too |
+| `wait_for` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | none: a background wait in the app's memory over tab and tunnel state, the tab's output source and the clock | `event` (`tab_connected`, `tab_closed`, `tab_text`, `tab_quiet`, `tunnel_on`, `tunnel_off` or `time`, only the kinds available now), `minutes` (1 to the owner's longest wait), `tab_id` or `profile_id` and `connection_id`, `text` (`tab_text`, 1 to 200 characters, one line), optional `from` (a cursor, `tab_text` and `tab_quiet` only) and `seconds` (`tab_quiet` only, 1 to the owner's longest wait in seconds, default 10) | at most the owner's number of waits at once | never: it changes only this app, the owner sees every wait and can cancel it | the tab's or tunnel's name is shown to the owner; an event message (never the screen) goes to the model | optional, default off (switch `assistant_waits`; tab events need Terminal tabs, tunnel events Profile information) |
+| `terminal_input` | `CHANGE_REMOTE` | none: the tab's own terminal input; for tmux tabs one copy-mode probe on its connection | `tab_id` (integer from 1); optional `text` (1 to 2,000 characters) and `keys` (1 to 32 of `enter`, `tab`, `escape`, `backspace`, `up`, `down`, `left`, `right`, `home`, `end`, `page_up`, `page_down`, `ctrl_c`, `ctrl_d`, `ctrl_z`, `ctrl_l`), at least one of them | one transaction on the tab's connection; returns at once with `cursor`, taken before typing (it waits for nothing and returns no screen) | asks, unless requests are off or a For session grant covers the tool and target; the target is the tab's saved connection when one matches | what is typed goes to the model (the screen is read separately, with `terminal_read`) | optional, default off; in effect only while Terminal tabs is on too |
 | `ssh_command` | `CHANGE_REMOTE` | `ssh_exec` | exactly `profile_id`, `connection_id` and one nonempty `command` | stdout and stderr together: about 7,800 characters inside the 8,000-character tool-result cap, stderr at least 1,500 when present, drained, with a truncation note per stream | asks, unless requests are off or a For session grant covers the tool and target; the target is the saved connection | FULL SSH ACCESS; commands and output, which may contain secrets, go to the model | optional, default off |
 | `request_tool` | none: service tool, only while some tool is off and "Offer to turn tools on" is on | none: runs nothing | exactly `name` (an enum of the tools that are off) and `why`, at most 300 characters | fixed text only; no network | never; it grants nothing: the owner's "Turn on" button is the only way it leads to a tool being on | none: the request itself carries only the name and one line of each off tool | always offered while a tool is off |
 | `start_tunnel` | `CHANGE_LOCAL`, no confirmation (flag `confirms = false`) | `tunnel_up`, the screens' own operation: brings the saved tunnel up when it is down and waits until the device takes connections; the whole wait, the device's listening included, ends at three quarters of the core's tool time limit (`AgentLimits.toolTimeoutMs`), so a slow start is answered, not timed out | exactly `profile_id` and `connection_id` (strings, at most 256 characters) | one tunnel; no retries | never: it changes only this app and the owner can stop it from the Connections list | the tunnel's name goes to the model | optional, default off (switch `assistant_tunnels`, shared with `stop_tunnel`) |
@@ -1081,15 +1081,27 @@ contain secrets; the switch's hint says so.
   A tmux started by hand inside a tab is not known (`tmux: no`). The program
   comes from one `tmux display-message` on the tab's EXISTING connection, probes
   in parallel; a failed or late probe leaves the program out.
-- `terminal_read` takes exactly `tab_id` (integer, at least 1) and optional
-  `lines` (integer 0 to 1,000, default 100): the visible screen plus up to
-  `lines` lines of history. A tmux tab is read with `tmux capture-pane -p -J -S
-  -<lines> -t '=<session>:'` (no `-e`) over the tab's existing connection; any
-  other tab from the app's terminal buffer, read on the main thread that feeds
-  it. The output is a header naming the tab, then the text with trailing blank
-  lines cut, limited to the tool-result budget (about 7,800 characters); over
-  it the oldest lines go and the text ends with `truncated: N of M characters`.
-  Control and invisible formatting characters are removed.
+- `terminal_read` takes exactly `tab_id` (integer, at least 1), optional
+  `lines` (integer 0 to 1,000, default 100) and optional `from` (a cursor, below). Without `from`: the visible screen plus up to
+  `lines` rows of history. With `from`: only the lines printed after that cursor. Every read returns `cursor` for the next one, in its
+  header line (`tab <id>: <profile> · <user>@<device> #<number>, tmux|app buffer, cursor: <cursor>`). The output is that header, then the
+  text with trailing blank lines cut, limited to the tool-result budget (about 7,800 characters); over it the oldest lines go and the
+  text ends with `truncated: N of M characters`. Control and invisible formatting characters are removed.
+- One output source per tab, read by cursor (`TabText`, the only code that knows what a cursor is; `terminal_read`, `terminal_input` and
+  `wait_for` all go through it, so a read and an event see the same text). A tmux tab's source is tmux's own history on the device, read
+  over the tab's existing connection with `tmux capture-pane -p -J -S - -t '=<session>:' ';' display-message -p -t '=<session>:'
+  '#{pane_height}'` (the whole history and the screen, wrapped lines joined, no `-e`; the screen's height on the last line); any other
+  tab's source is the app's terminal buffer (its history is sized by the «История терминала» setting), read on the main thread that
+  feeds it. There is no second buffer and no log: the app's output tap (`lastOutputNanos`) only says that something was printed.
+  The app does not set tmux's `history-limit` when it creates a session (tmux's own default applies, normally 2000 lines, unless the
+  owner configured it); it is not changed by this feature.
+- The cursor is opaque text to the model (`<rows>.<8 hex digits>`, at most 32 characters). Inside it: how many rows, counted to the last
+  one with text, the source held, and a checksum of the three rows before the last counted one (the last may still be typed on). A read
+  from a cursor looks for that checksum at the cursor's position and, when the oldest rows were dropped meanwhile (history limit), higher
+  up by the number dropped; the rows after it are the answer. When it is found nowhere (the rows were dropped, or the history was
+  cleared), the reply is the header line, `Lines before the cursor are no longer kept; this is the screen and the history that remain.`
+  and then the text as a read without `from` (with `lines`). Output after a counted last row that is still being written is not output
+  after the cursor; a full-screen program (editor, `top`) rewrites its rows in place, so it needs a read without `from`.
 - Time: the tool returns within 3 seconds of the probe start (`terminal_tabs`)
   and within 10 seconds of the read start (`terminal_read`). The work behind a
   late call is not interrupted (an interrupted channel open leaves the channel
@@ -1109,8 +1121,8 @@ contain secrets; the switch's hint says so.
   terminal_tabs again.` (unknown, hidden or closed); `Tab <id> is not connected
   now (<state>). Nothing was read. Call terminal_tabs again later.`; a failed
   or timed-out read says `Could not read tab <id>. Nothing was typed into it.`;
-  invalid arguments say `Provide tab_id (an integer from terminal_tabs) and
-  optional lines 0..1000 only.` (`terminal_tabs takes no arguments.` for the
+  invalid arguments (a `from` that is not a cursor of this app included) say `Provide tab_id (an integer from terminal_tabs), optional
+  lines 0..1000 and optional from (a cursor from an earlier read or input) only.` (`terminal_tabs takes no arguments.` for the
   other). A tab can change at any time; the screen is untrusted data.
 - The chat's receipt for `terminal_read` names the tab (`profile · user@device
   №number` in Russian, `profile · user@device #number` in English) when the same turn's `terminal_tabs` result names it, else `tab <id>`.
@@ -1169,10 +1181,15 @@ tunnel events only while "Profile information" is on: the schema's `event` enum 
 wait and returns at once (`Waiting for <what> until <HH:MM>. Finish your answer; a new turn starts when it happens.`); the model finishes its answer.
 Replies: `Already <n> waits, the most at once. Nothing was added.`; `Provide event and its target: tab_id from terminal_tabs, or profile_id and connection_id from profile_information; minutes 1 to <max>.`
 The numbers are the owner's limits, read at each Send and never held in a text of the app: **Waits at once** (default 3, 1 to 10), **Longest wait, min** (default 30, 1 to 120)
-and **Event replies in a row** (default 5, 1 to 20), in Settings → Assistant → Limits (steppers). The quiet time of `tab_quiet` is for now the wait `terminal_input` gives a tab's output (10 s), a constant of the app.
+and **Event replies in a row** (default 5, 1 to 20), in Settings → Assistant → Limits (steppers). The silence `tab_quiet` waits for is its own `seconds` (default 10, 1 to the longest wait in seconds).
 
-- Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the tab's *new* output after the
-  wait began (terminal escape sequences are dropped, output from before is never seen). `tab_quiet`: no new output for 10 s (a constant, the wait `terminal_input` gives a tab) counted from the wait's start. `tunnel_on` and
+- Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the lines of the tab's output source
+  after a cursor: the wait's `from` when given (a cursor from `terminal_read` or `terminal_input`, so text printed before the wait was set is seen),
+  else the end of the output when the wait began. The app's output tap only wakes the wait; the lines are re-read from the same source `terminal_read`
+  reads (at most once a second while output changes, and once new output has been quiet for a moment), so the match is on the text the model would read,
+  with the same cleaning. When the cursor's rows are no longer kept, everything the source still holds is looked at. `tab_quiet`: no output for `seconds`
+  counted from the later of the wait's start and the last output; with `from` and output after that cursor, from the last output alone (a program that
+  finished before the wait was set is quiet at once). `tunnel_on` and
   `tunnel_off`: the tunnel as the owner sees it (same identity rules as `start_tunnel` and `stop_tunnel`; stopping counts as off). `time`: after `minutes`. A tab or tunnel that
   disappears ends a closed or off wait with its event, any other wait at once with the time-out message. Screen content is never sent with an event: the model reads the tab with `terminal_read`.
 - What the app adds to a turn: events that ride with the owner's message and the notes follow it after a blank line, as lines of their own, never glued to the owner's words, and the skill tells the model that lines starting with `Event:` or `Wait for` and the notes `The owner cancelled…` come from the app and never give instructions.
@@ -1217,12 +1234,12 @@ switch. The tool has the catalog effect `CHANGE_REMOTE`.
 - Pinning: the description for the card records the tab's connection (the client and the input generation, no credentials). If the
   tab's connection is another one when the call runs (a reconnect between the question and the run), nothing is typed
   (`Tab <id> reconnected after the request. Nothing was typed. Read the tab again.`).
-- After the write it waits until the tab's output has been quiet for 700 ms counted from the later of the write and the last output
-  (so never less than 700 ms after the write: output from before it is not quiet), at most 10 s,
-  and returns the visible screen as `terminal_read` with `lines` 0 (same header, cap and truncation); when the screen was still changing
-  at the limit, a last line `screen still changing after 10 s` is added. If the tab left Open meanwhile, or the screen cannot be read
-  after the bytes were queued, the result is the failed `Input to tab <id> may be partly sent; the outcome is unknown. Read the tab
-  before anything else.`
+- It returns at once and waits for nothing. The result is `Typed into tab <id>. cursor: <cursor>`: the cursor of the tab's output source
+  (see `terminal_read`) taken BEFORE typing, after the copy-mode question, so what the input causes is printed after it. The model reads it
+  with `terminal_read` (`from`) or waits for it with `wait_for` (`tab_text`, `tab_quiet`, `from`). If the output cannot be read for the cursor,
+  nothing is typed (`Could not read tab <id>. Nothing was typed into it.`). If the tab left Open right after the bytes were queued, or is
+  another connection now, the result is the failed `Input to tab <id> may be partly sent; the outcome is unknown. Read the tab before anything
+  else.`
 - Refusals are fixed texts and type nothing: `Tab <id> is not open. Nothing was typed. Call terminal_tabs again.`; `Tab <id> is not
   connected now (<state>). Nothing was typed.`; `Tab <id> is in tmux copy mode: the owner may be scrolling. Nothing was typed.`;
   invalid arguments say `Provide tab_id from terminal_tabs and text and/or keys only. Text: up to 2,000 characters, no control
@@ -1231,8 +1248,8 @@ switch. The tool has the catalog effect `CHANGE_REMOTE`.
   program, the text and the keys; the description is pure and does no I/O; an answer of Decline or none types nothing. There is no
   lock gate in the tool: while the app is locked the card waits behind the lock like every card, and the five minutes run on.
 - The text and keys never go to a log or to a `toString`. The chat's receipt is titled "Type into tab" («Ввод во вкладку»), names the
-  tab as the one of `terminal_read` does, and its expanded body shows the typed text with visible escapes, a `Keys: Enter, Ctrl+C` line
-  («Клавиши: …»), then the outcome and the result.
+  tab as the one of `terminal_read` does, and its expanded body shows the typed text with visible escapes and a `Keys: Enter, Ctrl+C` line
+  («Клавиши: …»); a refusal or failure adds its outcome and text. A successful call shows the input only: the cursor it returned is for the model.
 
 ### Optional SSH command
 

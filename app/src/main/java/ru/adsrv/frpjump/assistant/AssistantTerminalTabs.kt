@@ -5,7 +5,6 @@ import com.termux.terminal.RemoteTerminal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -67,8 +66,6 @@ internal interface TabHandle {
     val user: String
     val number: Int
     val state: SshState
-    /** Calls [tap] with each new chunk of the tab's output until the handle is closed; null when the tab cannot be watched (no text waits). */
-    fun watchOutput(tap: (ByteArray, Int) -> Unit): AutoCloseable? = null
     /** The tab's own name (owner- or assistant-set), null when it has none. */
     val customName: String? get() = null
     /** Sets the tab's name ([ru.adsrv.frpjump.ssh.checkTabName]'s valid one; null clears it): the same as the owner's Rename…. Main thread. */
@@ -81,12 +78,12 @@ internal interface TabHandle {
      * waiting calls [lease]'s abandon, which closes the channel. Throws when the command fails.
      */
     fun exec(command: String, maxBytes: Int, lease: ExecLease): String?
-    /** The terminal buffer's text: the last [lines] history rows and the visible screen. Called on the main thread. */
-    fun bufferText(lines: Int): String
+    /** The app's terminal buffer, which is the output source of a tab without tmux: all its history rows and the visible screen. Called on the main thread. */
+    fun bufferSource(): SourceText
 
     // What typing needs. The defaults fail closed: a tab that does not say how to type cannot be typed into.
 
-    /** [System.nanoTime] of the latest output the remote side sent to the tab. */
+    /** [System.nanoTime] of the latest output the remote side sent to the tab: the only thing the app's output tap tells (that something was printed). */
     val lastOutputNanos: Long get() = 0L
     /** The tab's connection as it is now (see [InputPin]); null while none is open. Reads state only. */
     fun capturePin(): InputPin? = null
@@ -109,13 +106,12 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
     override val user get() = session.user
     override val number get() = session.number
     override val state get() = session.state.value
-    override fun watchOutput(tap: (ByteArray, Int) -> Unit): AutoCloseable? = session.terminal.addOutputTap(tap)
     override val customName get() = session.tabName.value?.text
     // Named by the assistant: the tab's chip shows it together with the automatic label until the owner saves it.
     override fun rename(name: String?) = session.rename(name, ru.adsrv.frpjump.ssh.NameSetter.ASSISTANT)
     override val tmuxName get() = session.tmux.assigned?.takeIf { session.tmux.inUse }
     override fun exec(command: String, maxBytes: Int, lease: ExecLease): String? = session.openClient()?.let { execOutputTail(it, command, maxBytes, lease) }
-    override fun bufferText(lines: Int): String = terminalBufferText(session.terminal.session.emulator, lines)
+    override fun bufferSource(): SourceText = terminalBufferSource(session.terminal.session.emulator)
     override val lastOutputNanos get() = session.terminal.lastOutputNanos
     override fun capturePin(): InputPin? = session.capturePasteTarget()?.let(::SessionPin)
     override fun pinCurrent(pin: InputPin) = pin is SessionPin && session.isCurrent(pin.target)
@@ -125,17 +121,19 @@ internal class SessionTab(private val session: SshSession) : TabHandle {
 }
 
 /**
- * The visible screen of [emulator] with the last [lines] rows of history before it; wrapped rows joined, trailing spaces of a row
- * dropped. Only the buffer in use is read (a full-screen program's own screen has no history). Main thread, where the emulator takes input.
+ * The history and the visible screen of [emulator], wrapped rows joined. Only the buffer in use is read (a full-screen program's own screen has
+ * no history). Main thread, where the emulator takes input.
  */
-internal fun terminalBufferText(emulator: TerminalEmulator, lines: Int): String {
+internal fun terminalBufferSource(emulator: TerminalEmulator): SourceText {
     val screen = emulator.screen
-    val history = minOf(lines, screen.activeTranscriptRows)
-    return screen.getSelectedText(0, -history, emulator.mColumns - 1, emulator.mRows - 1)
+    return SourceText(screen.getSelectedText(0, -screen.activeTranscriptRows, emulator.mColumns - 1, emulator.mRows - 1), emulator.mRows)
 }
 
-/** What a tab read gave: its text and where it came from. */
-internal class TabRead(val tab: TerminalTab, val text: String)
+/**
+ * What a tab read gave: its [text] (already clean) and where it came from, and the [cursor] of the end of the tab's output at the time of
+ * the read. [cursorGone]: a read from a cursor whose rows are no longer kept, so [text] is the screen and the remaining history.
+ */
+internal class TabRead(val tab: TerminalTab, val text: String, val cursor: TabCursor, val cursorGone: Boolean = false)
 
 internal class TabNotOpen : Exception()
 internal class TabNotConnected(val state: TabState) : Exception()
@@ -148,9 +146,6 @@ internal class TypedUnknown : Exception()
 
 /** What the confirmation card and the pin need of a tab, from app state only: no I/O. [pin] is null while the tab has no open connection. */
 internal class TypingView(val tab: TerminalTab, val program: String?, val target: GrantTarget?, val pin: InputPin?)
-
-/** A finished typing: the screen as `terminal_read` shows it, and whether it had stopped changing before the time limit. */
-internal class TabTyped(val read: TabRead, val settled: Boolean)
 
 /**
  * The owner's open terminal tabs for `terminal_tabs`, `terminal_read` and `terminal_input`: the tabs the owner has not hidden (a closed tab
@@ -171,8 +166,6 @@ class AssistantTerminalTabs internal constructor(
     /** The saved SSH connection's id for profile, device and port: the grant target of typing into a tab of it. Null when none matches. */
     private val connectionId: (String, String, Int) -> String? = { _, _, _ -> null },
     private val copyProbeTimeoutMs: Long = COPY_PROBE_TIMEOUT_MS,
-    private val quietMs: Long = QUIET_MS,
-    private val maxWaitMs: Long = MAX_WAIT_MS,
     /** Milliseconds on a clock that only moves forward; the age of a program probe. */
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -272,11 +265,11 @@ class AssistantTerminalTabs internal constructor(
     }
 
     /**
-     * Reads tab [id]: [TabNotOpen] when it is unknown, hidden or closed, [TabNotConnected] while it is not connected (no I/O in both);
-     * otherwise a tmux tab is captured over its existing connection and any other tab from its terminal buffer. Any other exception is a
-     * failed read.
+     * The state checks of a read of tab [id] and its [TabText]: [TabNotOpen] when it is unknown, hidden or closed, [TabNotConnected] while it
+     * is not connected (no I/O in both); otherwise the tab's one output source is read: a tmux tab over its existing connection, any other tab
+     * from its terminal buffer. Any other exception is a failed read.
      */
-    internal suspend fun read(id: Int, lines: Int): TabRead {
+    internal suspend fun snapshot(id: Int): Pair<TerminalTab, TabText> {
         val handle = visible().firstOrNull { it.id == id } ?: throw TabNotOpen()
         val tab = describe(handle)
         when (tab.state) {
@@ -284,24 +277,47 @@ class AssistantTerminalTabs internal constructor(
             TabState.RECONNECTING -> throw TabNotConnected(tab.state)
             TabState.CONNECTED -> Unit
         }
-        val name = handle.tmuxName
-        if (name == null) return TabRead(tab, withContext(main) { handle.bufferText(lines) })
+        return tab to source(handle)
+    }
+
+    /** The one place a tab's output is read from: the device's tmux for a tmux tab, the app's terminal buffer for any other. */
+    private suspend fun source(handle: TabHandle): TabText {
+        val name = handle.tmuxName ?: return TabText(withContext(main) { handle.bufferSource() })
         admitSideEffect(DISPATCH)
-        val text = bounded(readTimeoutMs) { lease -> handle.exec(tmuxCapturePaneCommand(name, lines), READ_MAX_BYTES, lease) }
+        val output = bounded(readTimeoutMs) { lease -> handle.exec(tmuxCapturePaneCommand(name), READ_MAX_BYTES, lease) }
             ?: throw java.io.IOException("tab read failed")
-        return TabRead(tab, text)
+        return TabText(tmuxSource(output))
+    }
+
+    /** The capture of [tmuxCapturePaneCommand]: the rows, then the screen's height on the last line. */
+    private fun tmuxSource(output: String): SourceText {
+        val body = output.trimEnd('\n')
+        val cut = body.lastIndexOf('\n')
+        val height = body.substring(cut + 1).trim().toIntOrNull()?.takeIf { it > 0 } ?: throw java.io.IOException("tab read unreadable")
+        var rows = body.substring(0, cut + 1)
+        // Only the newest bytes are kept: when the cut fell in a row, that row is partial and goes.
+        if (output.toByteArray(Charsets.UTF_8).size >= READ_MAX_BYTES - CUT_MARGIN) rows = rows.substringAfter('\n', "")
+        return SourceText(rows, height)
     }
 
     /**
-     * Types [input] into its tab, as the owner would, on the connection [pin] was taken on, and returns the screen as [read] with no
-     * history. Checks before anything is typed (each throws and types nothing): [TabNotOpen], [TabNotConnected], [TabReconnected] (no pin,
-     * or the connection is no longer the pinned one), [TabInCopyMode] (a tmux tab's pane is in copy mode), and any other exception when
-     * the copy-mode question could not be answered. The bytes then go in one transaction; from there on a failure is [TypedUnknown].
-     * Then it waits until the tab's output has been quiet for [quietMs] counted from the later of the write and the last output (so never
-     * less than [quietMs] after the write: output from before it is not "quiet"), at most [maxWaitMs]; [TabTyped.settled] is false when it
-     * ran out of time.
+     * Reads tab [id] ([snapshot]): without [from] the visible screen with up to [lines] rows of history; with it only the rows printed after that
+     * cursor, or, when they are gone, the screen and history as without it ([TabRead.cursorGone]). Types nothing.
      */
-    internal suspend fun type(input: TypedInput, pin: InputPin?): TabTyped {
+    internal suspend fun read(id: Int, lines: Int, from: TabCursor? = null): TabRead {
+        val (tab, text) = snapshot(id)
+        val since = from?.let(text::since)
+        return TabRead(tab, since ?: text.screen(lines), text.cursor, cursorGone = from != null && since == null)
+    }
+
+    /**
+     * Types [input] into its tab, as the owner would, on the connection [pin] was taken on, and returns the cursor of the tab's output as it was
+     * just BEFORE typing: what the input causes is printed after it. It does not wait for anything. Checks before anything is typed (each throws and types nothing): [TabNotOpen],
+     * [TabNotConnected], [TabReconnected] (no pin, or the connection is no longer the pinned one), [TabInCopyMode] (a tmux tab's pane is in copy mode), and any other exception when
+     * the copy-mode question could not be answered. The cursor is read next (any exception there types nothing). The bytes then go in one
+     * transaction; from there on a failure, or a tab that is no longer that connection, is [TypedUnknown].
+     */
+    internal suspend fun type(input: TypedInput, pin: InputPin?): TabCursor {
         val handle = visible().firstOrNull { it.id == input.tabId } ?: throw TabNotOpen()
         val state = tabState(handle.state)
         when (state) {
@@ -321,6 +337,7 @@ class AssistantTerminalTabs internal constructor(
                 else -> throw java.io.IOException("copy mode probe unreadable")
             }
         }
+        val before = source(handle).cursor
         val modes = withContext(main) { handle.keyModes() }
         val bytes = input.bytes(modes) ?: throw IllegalStateException("a key has no bytes")
         admitSideEffect(TYPE)
@@ -334,25 +351,9 @@ class AssistantTerminalTabs internal constructor(
             RemoteTerminal.TypeOutcome.PARTIAL -> throw TypedUnknown()
             RemoteTerminal.TypeOutcome.QUEUED -> Unit
         }
-        val wroteAt = System.nanoTime()
-        try {
-            val settled = waitQuiet(handle, wroteAt)
-            // The tab left Open meanwhile, or is another connection now: what was typed may have gone nowhere or half way.
-            if (tabState(handle.state) != TabState.CONNECTED || !handle.pinCurrent(pin)) throw TypedUnknown()
-            return TabTyped(read(input.tabId, 0), settled)
-        } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { throw TypedUnknown() }
-    }
-
-    /** True once [quietMs] have passed since the later of [wroteAt] and the tab's last output; false at [maxWaitMs]. Ends early when the tab leaves Open. */
-    private suspend fun waitQuiet(handle: TabHandle, wroteAt: Long): Boolean {
-        while (true) {
-            val now = System.nanoTime()
-            if (tabState(handle.state) != TabState.CONNECTED) return true
-            if (now - maxOf(wroteAt, handle.lastOutputNanos) >= quietMs * NANOS_PER_MS) return true
-            if (now - wroteAt >= maxWaitMs * NANOS_PER_MS) return false
-            delay(POLL_MS)
-        }
+        // The tab left Open meanwhile, or is another connection now: what was typed may have gone nowhere or half way.
+        if (tabState(handle.state) != TabState.CONNECTED || !handle.pinCurrent(pin)) throw TypedUnknown()
+        return before
     }
 
     companion object {
@@ -361,16 +362,14 @@ class AssistantTerminalTabs internal constructor(
         /** The admission category of the write into a tab. */
         const val TYPE = "terminal-input"
         const val COPY_PROBE_TIMEOUT_MS = 3_000L
-        const val QUIET_MS = 700L
-        const val MAX_WAIT_MS = 10_000L
         /** How old a `terminal_tabs` probe may be for the typing card to show its program. */
         const val PROGRAM_FRESH_MS = 60_000L
-        private const val POLL_MS = 25L
-        private const val NANOS_PER_MS = 1_000_000L
         const val PROBE_TIMEOUT_MS = 3_000L
         const val READ_TIMEOUT_MS = 10_000L
         private const val PROBE_MAX_BYTES = 1_024
         private const val READ_MAX_BYTES = 1 shl 20
+        /** Room for a character that the byte limit cut in two. */
+        private const val CUT_MARGIN = 8
         const val PROGRAM_CHARS = 64
 
         /** A program name from tmux's answer: its first line, printable characters only, no record separator, at most [PROGRAM_CHARS]; null when nothing is left. */

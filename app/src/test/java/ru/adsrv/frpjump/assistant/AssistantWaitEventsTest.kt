@@ -43,7 +43,8 @@ class AssistantWaitEventsTest {
 
     private val connected = WaitSpec(WaitKind.TAB_CONNECTED, 10, tabId = 3)
     private val closed = WaitSpec(WaitKind.TAB_CLOSED, 10, tabId = 3)
-    private val quiet = WaitSpec(WaitKind.TAB_QUIET, 10, tabId = 3)
+    // The tool fills in the default silence, so the registered spec carries it.
+    private val quiet = WaitSpec(WaitKind.TAB_QUIET, 10, tabId = 3, seconds = WaitForTool.DEFAULT_QUIET_SECONDS)
 
     private inner class Harness(limits: AssistantLimits = AssistantLimits(), private val arm: List<WaitSpec> = listOf(connected)) : AutoCloseable {
         val sources = FakeWaitSources().also { it.tabs[3] = "logs" }

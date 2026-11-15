@@ -2,7 +2,8 @@ package com.termux.terminal
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import ru.adsrv.frpjump.assistant.terminalBufferText
+import ru.adsrv.frpjump.assistant.TabText
+import ru.adsrv.frpjump.assistant.terminalBufferSource
 
 /** What the assistant reads of a real Termux buffer: the screen and the asked-for history, nothing typed. */
 class TerminalBufferTextTest {
@@ -22,24 +23,26 @@ class TerminalBufferTextTest {
         val e = emulator()
         e.feed((1..10).joinToString("\r\n") { "line $it" })
         // 4 screen rows show lines 7..10; 6 rows went to history.
-        assertEquals("line 7\nline 8\nline 9\nline 10", terminalBufferText(e, 0).trimEnd())
-        assertEquals("line 5\nline 6\nline 7\nline 8\nline 9\nline 10", terminalBufferText(e, 2).trimEnd())
-        assertEquals((1..10).joinToString("\n") { "line $it" }, terminalBufferText(e, 1000).trimEnd())
+        assertEquals("line 7\nline 8\nline 9\nline 10", screen(e, 0).trimEnd())
+        assertEquals("line 5\nline 6\nline 7\nline 8\nline 9\nline 10", screen(e, 2).trimEnd())
+        assertEquals((1..10).joinToString("\n") { "line $it" }, screen(e, 1000).trimEnd())
     }
 
     @Test fun `wrapped rows are joined and trailing spaces dropped`() {
         val e = emulator(columns = 10, rows = 3)
         e.feed("0123456789abcdef   \r\nnext")
-        assertEquals("0123456789abcdef\nnext", terminalBufferText(e, 5).trimEnd())
+        assertEquals("0123456789abcdef\nnext", screen(e, 5).trimEnd())
     }
 
     @Test fun `an empty screen is empty text`() {
-        assertEquals("", terminalBufferText(emulator(), 100).trim())
+        assertEquals("", screen(emulator(), 100).trim())
     }
 
     @Test fun `a full-screen program's own screen has no history`() {
         val e = emulator()
         e.feed("old 1\r\nold 2\r\nold 3\r\nold 4\r\nold 5\r\n\u001B[?1049h\u001B[Hvim screen")
-        assertEquals("vim screen", terminalBufferText(e, 1000).trim())
+        assertEquals("vim screen", screen(e, 1000).trim())
     }
+
+    private fun screen(e: TerminalEmulator, history: Int) = TabText(terminalBufferSource(e)).screen(history)
 }

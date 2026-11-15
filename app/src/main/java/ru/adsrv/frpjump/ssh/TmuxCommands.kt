@@ -116,13 +116,13 @@ fun tmuxTapStateCommand(name: String): String {
 }
 
 /**
- * What the assistant reads of session [name]'s active pane: its visible screen plus [lines] lines of history, wrapped lines joined
- * (`-J`), no escape sequences (no `-e`). Read-only: it types nothing, leaves no copy mode and sets no option. [lines] is 0..1000.
+ * What the assistant reads of session [name]'s active pane: the whole of tmux's history and the visible screen, wrapped lines joined (`-J`), no
+ * escape sequences (no `-e`), then the screen's height on a last line. Read-only: it types nothing, leaves no copy mode and sets no option.
  */
-fun tmuxCapturePaneCommand(name: String, lines: Int): String {
+fun tmuxCapturePaneCommand(name: String): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
-    require(lines in 0..1000) { "history lines out of range" }
-    return "tmux capture-pane -p -J -S -$lines -t ${shellQuote("=$name:")}"
+    val target = shellQuote("=$name:")
+    return "tmux capture-pane -p -J -S - -t $target ';' display-message -p -t $target ${shellQuote("#{pane_height}")}"
 }
 
 /** The program in the foreground of session [name]'s active pane, one line. Read-only. */

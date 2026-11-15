@@ -169,8 +169,9 @@ class AssistantChatScreenTest {
     private class SyntheticTab(override val id: Int, override val number: Int, override val tmuxName: String?, private val screen: String) : TabHandle {
         override val profileId = "synthetic-profile"; override val device = "synthetic-device"; override val port = 22; override val user = "pi"
         override val state: ru.adsrv.frpjump.ssh.SshState = ru.adsrv.frpjump.ssh.SshState.Open
-        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? = if ("pane_in_mode" in command) "0\n" else "htop\n"
-        override fun bufferText(lines: Int) = screen
+        override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? =
+            if ("pane_in_mode" in command) "0\n" else if ("capture-pane" in command) "\n24\n" else "htop\n"
+        override fun bufferSource() = ru.adsrv.frpjump.assistant.SourceText(screen, 24)
         /** The tab's own name, as the owner's Rename… or the assistant's terminal_rename sets it. */
         override var customName: String? = null
         override fun rename(name: String?) { customName = name }
@@ -310,7 +311,8 @@ class AssistantChatScreenTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         historyCleanup = { scope.cancel(); file.delete(); box.destroy() }
         val snapshot = store.currentSnapshot
-        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=12_400,outputTokens=512),snapshot.revision))
+        // Tuned to the size of the system prompt (1 token per byte, the summary starts at 80 %): 142 bytes more in skill.md move it by 178.
+        store.save(AssistantProviderDraft(snapshot.settings!!.copy(contextTokens=12_578,outputTokens=512),snapshot.revision))
         history = AssistantChatHistory(ru.adsrv.frpjump.store.AtomicTextFile(file),box,scope)
         val records = (0 until 40).map { i ->
             val user = if (i==0) "target=work-root done=diagnostic unknown=upgrade" else "Progress $i"
@@ -654,7 +656,8 @@ class AssistantChatScreenTest {
             val results = owner!!.state.value.receipts.ifEmpty { owner!!.state.value.turns.last().receipts }.map { it.result!! }
             assertTrue(results[0].text, results[0].text.contains("tab_id: 1 | profile: Synthetic profile (profile_id: synthetic-profile) | device: synthetic-device | tunnel: Synthetic shell | user: pi | tab: 1 | state: connected | tmux: no"))
             assertTrue(results[0].text, results[0].text.contains("tab_id: 2 |") && results[0].text.endsWith("| tmux: yes | program: htop"))
-            assertEquals("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer\npi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$", results[1].text)
+            val screen = "pi@synthetic-device:~$ ls\nreport.txt  notes.txt\npi@synthetic-device:~$"
+            assertEquals("tab 1: Synthetic profile · pi@synthetic-device #1, app buffer, cursor: ${ru.adsrv.frpjump.assistant.TabText(ru.adsrv.frpjump.assistant.SourceText(screen, 24)).cursor}\n$screen", results[1].text)
         }
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").assertIsDisplayed()
@@ -972,8 +975,7 @@ class AssistantChatScreenTest {
     private fun startTypingConfirmation(tabName: String? = null): SyntheticTab {
         val plain = SyntheticTab(1, 1, null, "pi@synthetic-device:~$ ")
         val tmuxTab = SyntheticTab(2, 2, "frpjump-0a1b2c-2", "").also { it.customName = tabName }
-        terminalTabs = AssistantTerminalTabs(tabs = { listOf(plain, tmuxTab) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" },
-            quietMs = 50)
+        terminalTabs = AssistantTerminalTabs(tabs = { listOf(plain, tmuxTab) }, hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" })
         settings.update { it.copy(assistantTerminalTabs = true, assistantTerminalInput = true) }
         // The program of the tab as `terminal_tabs` last saw it, so that the card has its line.
         runBlocking { terminalTabs!!.programs() }
@@ -1012,9 +1014,10 @@ class AssistantChatScreenTest {
             assertEquals(listOf("ls -l\r\u0003\r"), tab.typed.toList())
             val result = requests.last().turns.last().exchanges.single().results.single()
             assertEquals(ToolOutcome.SUCCESS, result.outcome)
-            assertTrue(result.text, result.text.startsWith("tab 2: Synthetic profile · pi@synthetic-device #2, tmux"))
+            // At once, with the cursor taken before typing: no screen in the result.
+            assertTrue(result.text, Regex("Typed into tab 2\\. cursor: \\d+\\.[0-9a-f]{8}").matches(result.text))
         }
-        // The receipt: titled for typing, naming the tab; expanded it shows the text with its Enter mark, the keys, then the screen.
+        // The receipt: titled for typing, naming the tab; expanded it shows the text with its Enter mark and the keys (the owner's call shows the input only: no screen after it).
         button("chat_history").performScrollToNode(hasTestTag("chat_tool_receipts"))
         compose.onNodeWithTag("chat_tool_receipts").performClick()
         val receipt = compose.onNodeWithTag("chat_tool_receipt_0")

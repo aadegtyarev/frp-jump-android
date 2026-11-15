@@ -31,11 +31,13 @@ internal class WaitForTool(
         string("profile_id", 256, required = false)
         string("connection_id", 256, required = false)
         string("text", MAX_TEXT, required = false, minLength = 1)
+        string("from", TabCursor.MAX_CHARS, required = false, minLength = 1)
+        integer("seconds", 1, required = false, maximum = limits.waitMaxMinutes * SECONDS_PER_MINUTE)
         integer("minutes", 1, maximum = limits.waitMaxMinutes)
     },
 ) {
     override fun parse(args: StrictArgs) = args.run {
-        onlyKeys("event", "tab_id", "profile_id", "connection_id", "text", "minutes")
+        onlyKeys("event", "tab_id", "profile_id", "connection_id", "text", "from", "seconds", "minutes")
         val kind = WaitKind.fromWire(string("event")) ?: throw InvalidArguments()
         if (kind !in kinds) throw InvalidArguments()
         val minutes = int("minutes", min = 1, max = limits.waitMaxMinutes)
@@ -43,6 +45,8 @@ internal class WaitForTool(
         val profile = optionalString("profile_id", 256)
         val connection = optionalString("connection_id", 256)
         val text = optionalString("text", MAX_TEXT)
+        val from = optionalString("from", TabCursor.MAX_CHARS)?.also { if (TabCursor.parse(it) == null) throw InvalidArguments() }
+        val seconds = optionalInt("seconds", min = 1, max = limits.waitMaxMinutes * SECONDS_PER_MINUTE)
         // Each kind takes its own target and nothing else.
         when {
             kind.isTab -> if (tab == null || profile != null || connection != null) throw InvalidArguments()
@@ -50,7 +54,10 @@ internal class WaitForTool(
             else -> if (tab != null || profile != null || connection != null) throw InvalidArguments()
         }
         if (kind == WaitKind.TAB_TEXT) { if (text == null || !oneLine(text)) throw InvalidArguments() } else if (text != null) throw InvalidArguments()
-        WaitSpec(kind, minutes, tab, profile, connection, text)
+        // A cursor is for the waits that read the tab's output; the silence is for `tab_quiet` alone.
+        if (from != null && kind != WaitKind.TAB_TEXT && kind != WaitKind.TAB_QUIET) throw InvalidArguments()
+        if (seconds != null && kind != WaitKind.TAB_QUIET) throw InvalidArguments()
+        WaitSpec(kind, minutes, tab, profile, connection, text, from, if (kind == WaitKind.TAB_QUIET) seconds ?: DEFAULT_QUIET_SECONDS else null)
     }
 
     override val invalidArguments = ToolOutput(
@@ -71,13 +78,17 @@ internal class WaitForTool(
 
     companion object {
         const val MAX_TEXT = 200
+        /** The silence `tab_quiet` waits for when `seconds` is not given. */
+        const val DEFAULT_QUIET_SECONDS = 10
+        private const val SECONDS_PER_MINUTE = 60
         private const val NAME_CHARS = 64
 
         fun description(maxMinutes: Int) =
             "Wait in the background for one event; you get a new turn when it happens or the time runs out. It returns at once: finish your answer after calling it. " +
                 "event: tab_connected, tab_closed, tab_text (with text), tab_quiet, tunnel_on, tunnel_off or time. " +
                 "Tab events take tab_id from terminal_tabs; tunnel events take profile_id and connection_id from profile_information. " +
-                "minutes: 1 to $maxMinutes. The owner sees every wait and can cancel it."
+                "minutes: 1 to $maxMinutes. The owner sees every wait and can cancel it. " +
+                "tab_text and tab_quiet count output after `from` (a cursor) when given, else after the wait starts. tab_quiet takes `seconds` of silence (default $DEFAULT_QUIET_SECONDS, up to the longest wait)."
 
         /** One line without control characters. */
         fun oneLine(text: String) = text.isNotEmpty() && text.none { Character.isISOControl(it) || it == ' ' || it == ' ' }
