@@ -171,11 +171,108 @@ class TabCursorTest {
         val command = tab.commands[before]
         assertEquals(ru.adsrv.frpjump.ssh.tmuxReadFromCommand(tmuxName, TabCursor.parse(from)!!.position, TabCursor.parse(from)!!.history), command)
         // What the device sent: a few rows, the rows above the cursor and the numbers.
-        assertTrue(tab.term.exec(command)!!.lines().size < 12)
+        assertTrue(tab.term.exec(command)!!.lines().size < 16)
         // A read without a cursor asks for the history it was asked for, no more.
         val count = tab.commands.size
         read(o, "lines" to 7)
         assertEquals(ru.adsrv.frpjump.ssh.tmuxReadScreenCommand(tmuxName, 7), tab.commands[count])
+    }
+
+    // ---- a terminal that changes under a read (tmux): the numbers are asked again at the end ----
+
+    @Test fun `output between the first numbers and the end of a read is retried once, and never used when it goes on`() {
+        val tab = Tab(1, tmuxName).also { it.term.set(rows(1..40)) }
+        val o = owner(tab)
+        val from = cursorOf(read(o).text)
+        tab.term.print("row 41")
+        // One burst of output while the exec runs: the numbers at its end differ from the first, so the whole exec is run again.
+        var bursts = 1
+        tab.term.gap = { if (it.endsWith(" 0") && bursts > 0) { bursts--; tab.term.print("row 42") } }
+        val before = tab.commands.size
+        val out = read(o, "from" to from)
+        assertEquals(2, tab.commands.size - before)
+        assertEquals(rows(40..42), body(out.text))
+        assertEquals(tab.term.cursor().toString(), cursorOf(out.text))
+        // Output that never stops: the read is unsettled. From a cursor that is "no longer kept" with a fresh cursor (a read without a cursor settles
+        // when the output does); never rows from numbers that do not belong together.
+        tab.term.gap = { if (it.endsWith(" 0")) tab.term.print("busy") }
+        val busy = read(o, "from" to from)
+        assertEquals(gone, busy.text.lines()[1])
+        tab.term.gap = { tab.term.print("busy") }
+        val none = read(o, "from" to from)
+        assertEquals("Could not read tab 1. Nothing was typed into it.", none.text)
+        assertEquals(ToolOutcome.FAILED, none.outcome)
+    }
+
+    @Test fun `a wait treats an unsettled read as no look and tries again`() {
+        val tab = Tab(1, tmuxName).also { it.term.set("\$ ") }
+        val o = owner(tab)
+        val from = cursorOf(read(o).text)
+        tab.print("build done")
+        var busy = true
+        tab.term.gap = { if (busy) tab.term.print("noise") }
+        val s = waitSources(o)
+        val result = runBlocking {
+            val waiting = async(Dispatchers.Default) { withTimeoutOrNull(3_000) { s.await(spec(WaitKind.TAB_TEXT, "build done", from)) } }
+            delay(150)
+            assertFalse("nothing was matched on numbers that do not belong together", waiting.isCompleted)
+            busy = false
+            tab.lastOutputNanos++
+            waiting.await()
+        }
+        assertEquals(SourceResult.FIRED, result)
+    }
+
+    @Test fun `no rows above the cursor are asked for when the cursor is on the first row of an empty history`() {
+        val tab = Tab(1, tmuxName)
+        val o = owner(tab)
+        read(o)
+        assertEquals(0, tab.term.aboveCaptures)
+        tab.term.set("a\nb")
+        read(o)
+        assertEquals(1, tab.term.aboveCaptures)
+    }
+
+    // ---- what a read of a history that may have dropped rows costs ----
+
+    @Test fun `when rows may have dropped only one trim above the cursor is read, the whole history only as the last fallback`() {
+        val tab = Tab(1, tmuxName, limit = 2000).also { it.term.set(rows(1..1900)) }
+        val o = owner(tab)
+        val from = cursorOf(read(o).text)
+        val position = TabCursor.parse(from)!!.position
+        tab.term.print(*(1901..2200).map { "row $it" }.toTypedArray())
+        val before = tab.commands.size
+        assertEquals(rows(1900..2200), body(read(o, "from" to from).text))
+        assertEquals("one read, from a tenth of the limit above the cursor", 1, tab.commands.size - before)
+        val window = tab.term.exec(tab.commands.last())!!.lines().size
+        assertTrue("window $window rows of ${tab.term.lines.size}", window < 400)
+        assertTrue(position - 3 - 200 > 0)
+        // Dropped further than one trim: the window does not hold it, the whole history is read once, and nothing is guessed.
+        tab.term.print(*(2201..4600).map { "row $it" }.toTypedArray())
+        val c = tab.commands.size
+        val out = read(o, "from" to from)
+        assertEquals(gone, out.text.lines()[1])
+        assertTrue(tab.commands[c].endsWith(" 0") && tab.commands[c + 1].endsWith(" 1"))
+    }
+
+    @Test fun `waits with different read points share one read from the oldest of them`() {
+        val tab = Tab(1, tmuxName).also { it.term.set(rows(1..100)) }
+        val o = owner(tab)
+        val old = cursorOf(read(o).text)
+        tab.print("row 101", "row 102")
+        val newer = cursorOf(read(o).text)
+        tab.print("row 103")
+        val s = waitSources(o)
+        val before = tab.commands.size
+        runBlocking {
+            val a = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { withTimeoutOrNull(500) { s.await(spec(WaitKind.TAB_TEXT, "never", old)) } }
+            val b = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { withTimeoutOrNull(500) { s.await(spec(WaitKind.TAB_TEXT, "row 103", newer)) } }
+            assertEquals(SourceResult.FIRED, b.await())
+            a.cancel()
+        }
+        val reads = tab.commands.drop(before)
+        assertEquals("one read for both: $reads", 1, reads.size)
+        assertEquals(TabCursor.parse(old)!!.position, Regex(" sh '[^']*' (\\d+) (\\d+) [01]$").find(reads.single())!!.groupValues[1].toInt())
     }
 
     // ---- a real terminal buffer: its history limit is the «История терминала» setting ----
@@ -209,6 +306,17 @@ class TabCursorTest {
         e.feed("\r\n" + (16..315).joinToString("\r\n") { "line $it" })
         assertNull(TabText(terminalBufferSource(e, ReadMode.From(cursor))).since(cursor))
         assertEquals("line 315", TabText(terminalBufferSource(e, ReadMode.Screen(0))).screen().lines().last())
+        // Past its capacity (100 rows of history) only one trim (a tenth) above the cursor is copied, the whole transcript only when asked.
+        val later = TabText(terminalBufferSource(e, ReadMode.Screen(0))).cursor
+        e.feed("\r\n" + (316..320).joinToString("\r\n") { "line $it" })
+        val window = terminalBufferSource(e, ReadMode.From(later))
+        assertEquals(later.position - 3 - trimRows(com.termux.terminal.transcriptCapacity(e)), window.firstRow)
+        assertEquals((315..320).joinToString("\n") { "line $it" }, TabText(window).since(later))
+        assertEquals(0, terminalBufferSource(e, ReadMode.From(later, full = true)).firstRow)
+        // Dropped further than one trim: the window does not place it, the whole transcript does.
+        e.feed("\r\n" + (321..345).joinToString("\r\n") { "line $it" })
+        assertNull(TabText(terminalBufferSource(e, ReadMode.From(later))).since(later))
+        assertEquals((315..345).joinToString("\n") { "line $it" }, TabText(terminalBufferSource(e, ReadMode.From(later, full = true))).since(later))
     }
 
     // ---- waits ----
@@ -262,7 +370,7 @@ class TabCursorTest {
         }
     }
 
-    @Test fun `tab_text matches across the break of a wrapped line, and looks at the screen when the cursor's rows are gone`() {
+    @Test fun `tab_text matches across the break of a wrapped line`() {
         for (name in sources) {
             val tab = Tab(1, name).also { it.term.set("\$ ") }
             val o = owner(tab)
@@ -270,14 +378,31 @@ class TabCursorTest {
             tab.print("see the build", "done now", "\$ ")
             assertEquals("$name", SourceResult.FIRED, await(waitSources(o), spec(WaitKind.TAB_TEXT, "build done now", from)))
         }
+    }
+
+    @Test fun `a wait whose read point is gone starts again from now and matches nothing before it, an older prompt in history included`() {
         for (name in sources) {
-            val tab = Tab(1, name, screenRows = 5, limit = 100).also { t -> repeat(150) { t.term.print("not ready") } }
+            val tab = Tab(1, name, screenRows = 5, limit = 100).also { t -> t.term.print("user@host:~\$"); repeat(150) { t.term.print("not ready") } }
             val o = owner(tab)
             val from = cursorOf(read(o).text)
             repeat(30) { tab.term.print("not ready") }
+            // Rows that tell the place apart from now on (a restarted wait needs a place it can find again), then the text.
+            tab.term.print("u1", "u2", "u3")
             tab.print("all done")
-            // The rows from the cursor cannot be told: what a read without a cursor shows is looked at.
-            assertEquals("$name", SourceResult.FIRED, await(waitSources(o), spec(WaitKind.TAB_TEXT, "all done", from)))
+            // The cursor's rows cannot be told apart (repeated rows on a full history): the screen and history from before are never matched.
+            val s = waitSources(o)
+            assertNull("$name all done", await(s, spec(WaitKind.TAB_TEXT, "all done", from), ms = 200))
+            val prompt = tab.term.lines.indexOf("user@host:~\$")
+            // The older prompt may still be in the history on the device; a new wait for a prompt must not fire on it.
+            assertNull("$name old prompt ${prompt >= 0}", await(waitSources(o), spec(WaitKind.TAB_TEXT, "user@host:~\$", from), ms = 200))
+            // What is printed after the wait started fires it.
+            val result = runBlocking {
+                val waiting = async(Dispatchers.Default) { withTimeoutOrNull(3_000) { s.await(spec(WaitKind.TAB_TEXT, "all done two", from)) } }
+                delay(150)
+                tab.print("all done two")
+                waiting.await()
+            }
+            assertEquals("$name", SourceResult.FIRED, result)
         }
     }
 
@@ -297,7 +422,7 @@ class TabCursorTest {
             a.await() to b.await()
         }
         assertEquals(null to null, result)
-        val reads = tab.commands.drop(1).map { Regex(" sh '[^']*' (\\d+) (\\d+)$").find(it)!!.groupValues[1].toInt() }
+        val reads = tab.commands.drop(1).map { Regex(" sh '[^']*' (\\d+) (\\d+) [01]$").find(it)!!.groupValues[1].toInt() }
         // The two waits asked for the same read of the same tab once; the next read starts from where the last one ended, never from the wait's cursor again.
         assertEquals(reads.sorted(), reads)
         assertTrue(reads.toString(), reads.first() >= TabCursor.parse(from)!!.position && reads.last() > reads.first())

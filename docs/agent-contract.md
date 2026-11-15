@@ -1092,11 +1092,16 @@ contain secrets; the switch's hint says so.
   over the tab's existing connection in ONE exec of one `sh -c` script (no single quote, no backslash in it; the session name and the
   numbers are arguments). Without a cursor it captures the visible screen and up to `lines` rows of history (`capture-pane -p -J -S -<lines>`,
   wrapped lines joined, no `-e`); from a cursor it captures the physical rows from three rows above the cursor's row down to the bottom of the
-  screen (`-S` relative to the pane), and the whole history only when the cursor cannot be placed by its row number (below). Either way it
-  also prints the three physical rows above the terminal's cursor row and a last line of numbers, `history_size history_limit cursor_y
-  pane_height pane_in_mode`, the last asked after the capture. Any other tab's source is the app's terminal buffer (its history is sized by
+  screen (`-S` relative to the pane); when rows may have been dropped since (cursor not placed by its row number, below) from one trim of the
+  history (a tenth of `history_limit`) higher, and the whole history only as the last fallback, when that window did not place the cursor. Either
+  way it also prints the three physical rows above the terminal's cursor row (none for an empty history) and two lines of numbers,
+  `history_size history_limit cursor_y pane_height` as asked BEFORE the captures and the same four and `pane_in_mode` asked AFTER them. The two
+  must be equal: output that came in between shifts the rows, so the whole exec is run once more, and when they still differ the read is
+  unsettled and no number of it is used (from a cursor: the "no longer kept" reply with a fresh cursor; a wait: no look this time; a typing:
+  nothing typed, `Could not read tab <id>. Nothing was typed into it.`). Any other tab's source is the app's terminal buffer (its history is sized by
   the «История терминала» setting), copied on the main thread with no more rows than the read needs (from three rows above the cursor's
-  row, the whole history only when the cursor cannot be placed by its row number); the rows are cleaned and searched off the main thread.
+  row; when rows may have dropped, one trim, a tenth of its capacity, higher; the whole transcript only as the last fallback); the rows are
+  cleaned and searched off the main thread.
   There is no second buffer and no log: the app's output tap (`lastOutputNanos`) only says that something was printed. The app does not set
   tmux's `history-limit` when it creates a session (tmux's own default applies, normally 2000 lines, unless the owner configured it); it is
   not changed by this feature.
@@ -1194,12 +1199,11 @@ and **Event replies in a row** (default 5, 1 to 20), in Settings → Assistant �
 
 - Events. `tab_connected` and `tab_closed`: the tab's state, a tab already in it fires at once. `tab_text`: a plain substring in the rows of the tab's output source
   from a read point: the wait's `from` (a cursor from `terminal_read` or `terminal_input`, so text printed before the wait was set is seen) or, without
-  one, the terminal's cursor row when the wait began, never the history before it (a half-printed line at that moment can still be finished). The
+  one, the terminal's cursor row when the wait began, never the history before it (a half-printed line at that moment can still be finished). A read point that cannot be placed any more (rows dropped or cleared, or repeated rows) is replaced by the cursor of now and that look matches nothing: what was printed before, history included, never fires a wait. The
   app's output tap only wakes the wait; each look (the first one, then at most once a second while output changes, and once new output has
   settled for a moment) reads from the tab's one source only the rows from the read point on, with the same cleaning as `terminal_read`, and moves
-  the read point to the end, so a long history is never read again; waits on one tab ask for the same read once. The rows are physical, so a text
-  split by a wrapped line is also looked for across the break. When the rows from the cursor cannot be told (above), what a read without
-  `from` shows is looked at once. `tab_quiet`: no output for `seconds` counted from the later of the wait's start and the last output; with
+  the read point to the end, so a long history is never read again; waits on one tab share one read per output, from the oldest of their read points,
+  each taking its own rows out of it. The rows are physical, so a text split by a wrapped line is also looked for across the break. `tab_quiet`: no output for `seconds` counted from the later of the wait's start and the last output; with
   `from`, and output printed after that cursor (more rows, or the cursor's row moved), from the last output alone (a program that finished
   before the wait was set is quiet at once). `tunnel_on` and
   `tunnel_off`: the tunnel as the owner sees it (same identity rules as `start_tunnel` and `stop_tunnel`; stopping counts as off). `time`: after `minutes`. A tab or tunnel that

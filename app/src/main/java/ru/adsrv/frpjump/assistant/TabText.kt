@@ -4,8 +4,11 @@ package ru.adsrv.frpjump.assistant
 internal sealed interface ReadMode {
     /** The visible screen with up to [lines] rows of history, wrapped lines joined: what `terminal_read` shows without `from`. */
     data class Screen(val lines: Int) : ReadMode
-    /** The physical rows from [cursor] on (a few more above it, to check it), or the whole kept history when the cursor cannot be placed by position. */
-    data class From(val cursor: TabCursor) : ReadMode
+    /**
+     * The physical rows from [cursor] on, from three rows above it to check it; when rows may have been dropped since, from as far above it as one
+     * trim of the history can have moved it, and with [full] the whole kept history (the last fallback).
+     */
+    data class From(val cursor: TabCursor, val full: Boolean = false) : ReadMode
 }
 
 /**
@@ -44,6 +47,9 @@ internal class TabCursor(val position: Int, val history: Int, val sum: Int) {
     }
 }
 
+/** The rows a read starts above the cursor's row when rows may have dropped since: one trim of the history (tmux drops a tenth at once). */
+internal fun trimRows(limit: Int) = limit / 10
+
 /**
  * One reading of a tab's source (see [SourceText]) and everything the tools do with it. `terminal_read`, `terminal_input` and `wait_for` all go
  * through here, so a read and an event see the same text.
@@ -69,7 +75,7 @@ internal class TabText(private val source: SourceText) {
     fun since(from: TabCursor): String? {
         if (first < 0) return null
         val at = when {
-            source.noDrop && source.historyRows >= from.history -> from.position.takeIf { sumAt(it) == from.sum }
+            placedByRow(from) -> from.position.takeIf { sumAt(it) == from.sum }
             else -> {
                 var found = -1
                 for (q in 0..minOf(from.position, first + rows.size)) {
@@ -83,6 +89,9 @@ internal class TabText(private val source: SourceText) {
         if (at - first > rows.size) return null
         return rows.subList(maxOf(0, at - first), rows.size).dropLastWhile { it.isEmpty() }.joinToString("\n")
     }
+
+    /** Whether [since] placed [from] by its row number: a read that could not do so (null) cannot be helped by reading more rows. */
+    fun placedByRow(from: TabCursor) = source.noDrop && source.historyRows >= from.history
 
     private fun cleanAbove(): List<String> = if (source.above.isEmpty()) emptyList() else cleanRows(source.above.joinToString("\n"))
 

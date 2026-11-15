@@ -45,35 +45,33 @@ internal class AppWaitSources(
         }
     }
 
-    /** One read of a tab's source, kept while the tab has printed nothing since: what waits that ask for the same read share. */
-    private class Fetched(val stamp: Long, val mode: ReadMode, val text: TabText)
+    /** One read of a tab's source, kept while the tab has printed nothing since: every wait on the tab slices its own rows out of it. */
+    private class Fetched(val stamp: Long, val tab: TerminalTab, val text: TabText)
 
     private val locks = java.util.concurrent.ConcurrentHashMap<Int, kotlinx.coroutines.sync.Mutex>()
     private val fetched = java.util.concurrent.ConcurrentHashMap<Int, Fetched>()
-
-    /** The tab's source read as [mode]; one read at a time per tab, and the same read again only after the tab printed something. [TabNotOpen] when it is gone. */
-    private suspend fun fetch(id: Int, stamp: Long, mode: ReadMode): TabText = locks.getOrPut(id) { kotlinx.coroutines.sync.Mutex() }.withLock {
-        fetched[id]?.takeIf { it.stamp == stamp && it.mode == mode }?.let { return@withLock it.text }
-        val text = (tabs ?: throw TabNotOpen()).look(id, mode).second
-        fetched[id] = Fetched(stamp, mode, text)
-        text
-    }
+    private val followers = java.util.concurrent.ConcurrentHashMap<Int, MutableSet<Follow>>()
 
     /** What a look at a tab's output found after the wait's read point: the [rows] from it on, and whether anything was [fresh]ly printed besides the cursor row. */
     private class Look(val rows: String, val fresh: Boolean)
 
     /**
      * A wait's read point in a tab's output: a cursor, the wait's `from` or, without one, the cursor of the first look (the wait's start). Each look reads
-     * the rows from the point on from the tab's one source (the same lines `terminal_read` reads, see [TabText]) and moves the point to the end, so the
+     * the rows from the point on from the tab's one source (the same rows `terminal_read` reads, see [TabText]) and moves the point to the end, so the
      * next look fetches only what is new; the row the terminal's cursor is on stays in the next look (a half-printed line is finished there). Output only
-     * wakes it: a look is due the first time, and after new output has settled for [settleMs] or at most every [rereadMs] while output goes on.
+     * wakes it: a look is due the first time, and after new output has settled for [settleMs] or at most every [rereadMs] while output goes on. Waits on
+     * one tab share a read: it starts from the oldest read point among them, and each wait takes its own rows out of it. A point that cannot be placed
+     * any more (its rows were dropped or cleared) is replaced by the cursor of now, and that look matches nothing.
      */
-    private inner class Follow(private val id: Int, from: TabCursor?) {
-        private var point: TabCursor? = from
+    private inner class Follow(private val id: Int, from: TabCursor?) : AutoCloseable {
+        @Volatile var point: TabCursor? = from
         private var seen = Long.MIN_VALUE
         private var lastAt = Long.MIN_VALUE
 
-        /** The look, or null when it is not time or the tab cannot be read now (not connected, a failed read: the next poll tries again). [TabNotOpen] when it is gone. */
+        init { followers.getOrPut(id) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(this) }
+        override fun close() { followers[id]?.remove(this) }
+
+        /** The look, or null when it is not time or the tab cannot be read now (not connected, a failed or unsettled read: the next poll tries again). [TabNotOpen] when it is gone. */
         suspend fun next(tab: TabHandle): Look? {
             val now = nanos()
             val output = tab.lastOutputNanos
@@ -91,22 +89,36 @@ internal class AppWaitSources(
         }
 
         private suspend fun read(stamp: Long): Look {
+            val owner = tabs ?: throw TabNotOpen()
             val from = point
             // The start of a wait without a cursor: nothing is counted before it.
-            if (from == null) { point = fetch(id, stamp, ReadMode.Screen(0)).cursor; return Look("", false) }
-            val text = fetch(id, stamp, ReadMode.From(from))
-            val rows = text.since(from)
-            if (rows != null) {
-                val to = text.cursor
-                point = to
-                return Look(rows, to.position != from.position || rows.lines().drop(1).any { it.isNotBlank() })
+            if (from == null) { point = owner.look(id, ReadMode.Screen(0)).second.cursor; return Look("", false) }
+            val since = sliceOf(owner, id, stamp, from)
+            if (since != null) {
+                point = since.cursor
+                return Look(since.rows, owner.offMain { since.cursor.position != from.position || since.rows.lines().drop(1).any { it.isNotBlank() } })
             }
-            // The rows from the cursor cannot be told (dropped, cleared): what a read without a cursor shows is looked at, once.
-            val (_, screen) = (tabs ?: throw TabNotOpen()).look(id, ReadMode.Screen(AssistantTerminalReadTool.MAX_LINES))
-            point = screen.cursor
-            return Look(screen.screen(), true)
+            // The rows from the cursor cannot be told (dropped, cleared): start again from the cursor of now and match nothing on this look. What was
+            // printed before it, history included, never fires a wait.
+            point = owner.look(id, ReadMode.Screen(0)).second.cursor
+            return Look("", true)
         }
     }
+
+    /**
+     * The rows of tab [id] from [mine] on. One read of the tab per output (stamp [stamp]), from the oldest read point of the waits on it, sliced for each
+     * of them; when [mine] cannot be placed in it, its own read as [AssistantTerminalTabs.rowsSince] does it. Null when it cannot be placed at all.
+     */
+    private suspend fun sliceOf(owner: AssistantTerminalTabs, id: Int, stamp: Long, mine: TabCursor): AssistantTerminalTabs.Since? =
+        locks.getOrPut(id) { kotlinx.coroutines.sync.Mutex() }.withLock {
+            suspend fun slice(f: Fetched) = owner.offMain { f.text.since(mine) }?.let { AssistantTerminalTabs.Since(f.tab, it, f.text.cursor) }
+            fetched[id]?.takeIf { it.stamp == stamp }?.let { cached -> slice(cached)?.let { return@withLock it } }
+            val oldest = ((followers[id]?.mapNotNull { it.point } ?: emptyList()) + mine).minByOrNull { it.position } ?: mine
+            val (tab, text) = owner.look(id, ReadMode.From(oldest))
+            val read = Fetched(stamp, tab, text)
+            fetched[id] = read
+            slice(read) ?: owner.rowsSince(id, mine)
+        }
 
     /** [needle] in [text], also across the break of a wrapped line (the rows are physical: a long text may be split in two, its space lost). */
     private fun found(text: String, needle: String) = text.contains(needle) || text.replace("\n", "").contains(needle) || text.replace("\n", " ").contains(needle)
@@ -115,13 +127,15 @@ internal class AppWaitSources(
     private suspend fun awaitText(spec: WaitSpec): SourceResult {
         val id = spec.tabId ?: return SourceResult.GONE
         val needle = spec.text ?: return SourceResult.GONE
-        val follow = Follow(id, spec.from?.let(TabCursor::parse))
+        val owner = tabs ?: return SourceResult.GONE
         try {
-            while (true) {
-                val tab = tabs?.handle(id) ?: return SourceResult.GONE
-                val look = follow.next(tab)
-                if (look != null && found(look.rows, needle)) return SourceResult.FIRED
-                delay(pollMs)
+            Follow(id, spec.from?.let(TabCursor::parse)).use { follow ->
+                while (true) {
+                    val tab = owner.handle(id) ?: return SourceResult.GONE
+                    val look = follow.next(tab)
+                    if (look != null && owner.offMain { found(look.rows, needle) }) return SourceResult.FIRED
+                    delay(pollMs)
+                }
             }
         } catch (_: TabNotOpen) { return SourceResult.GONE }
     }
@@ -135,15 +149,16 @@ internal class AppWaitSources(
         val quietNanos = (spec.seconds ?: WaitForTool.DEFAULT_QUIET_SECONDS) * 1_000L * NANOS_PER_MS
         val from = spec.from?.let(TabCursor::parse)
         val start = nanos()
-        val follow = Follow(id, from)
         var printed = false
         try {
-            while (true) {
-                val tab = tabs?.handle(id) ?: return SourceResult.GONE
-                if (from != null && !printed) printed = follow.next(tab)?.fresh == true
-                val last = if (printed) tab.lastOutputNanos else maxOf(start, tab.lastOutputNanos)
-                if (nanos() - last >= quietNanos) return SourceResult.FIRED
-                delay(pollMs)
+            Follow(id, from).use { follow ->
+                while (true) {
+                    val tab = tabs?.handle(id) ?: return SourceResult.GONE
+                    if (from != null && !printed) printed = follow.next(tab)?.fresh == true
+                    val last = if (printed) tab.lastOutputNanos else maxOf(start, tab.lastOutputNanos)
+                    if (nanos() - last >= quietNanos) return SourceResult.FIRED
+                    delay(pollMs)
+                }
             }
         } catch (_: TabNotOpen) { return SourceResult.GONE }
     }

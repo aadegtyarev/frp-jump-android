@@ -137,9 +137,16 @@ internal fun terminalBufferSource(emulator: TerminalEmulator, mode: ReadMode): S
     return when (mode) {
         is ReadMode.Screen -> SourceText(screen.getSelectedText(0, -minOf(mode.lines, history), last, rows - 1), -1, cursorRow, above, history, noDrop)
         is ReadMode.From -> {
-            // Where the cursor can be placed by its row number, from three rows above it; else the whole history, to look for it.
+            // From three rows above the cursor when its row number places it; when rows may have dropped, from one trim of the history higher (the
+            // buffer drops a row at a time, so a tenth of its capacity is a window, not a promise: the caller widens it with [ReadMode.From.full]).
             val exact = noDrop && history >= mode.cursor.history
-            val top = if (exact) minOf(maxOf(0, mode.cursor.position - ANCHOR_ROWS) - history, rows - 1) else -history
+            val above3 = maxOf(0, mode.cursor.position - ANCHOR_ROWS)
+            val start = when {
+                mode.full -> 0
+                exact -> above3
+                else -> maxOf(0, above3 - trimRows(com.termux.terminal.transcriptCapacity(emulator)))
+            }
+            val top = minOf(start - history, rows - 1)
             SourceText(screen.getSelectedText(0, top, last, rows - 1, false, false), top + history, cursorRow, above, history, noDrop)
         }
     }
@@ -153,6 +160,8 @@ private const val ANCHOR_ROWS = 3
  */
 internal class TabRead(val tab: TerminalTab, val text: String, val cursor: TabCursor, val cursorGone: Boolean = false)
 
+/** The terminal changed under two reads in a row: its rows and numbers do not belong together. */
+internal class TabUnsettled : Exception()
 internal class TabNotOpen : Exception()
 internal class TabNotConnected(val state: TabState) : Exception()
 /** The tab's tmux pane is in copy mode: the owner may be scrolling. Nothing was typed. */
@@ -314,26 +323,37 @@ class AssistantTerminalTabs internal constructor(
         admitSideEffect(DISPATCH)
         val command = when (mode) {
             is ReadMode.Screen -> tmuxReadScreenCommand(name, mode.lines)
-            is ReadMode.From -> tmuxReadFromCommand(name, mode.cursor.position, mode.cursor.history)
+            is ReadMode.From -> tmuxReadFromCommand(name, mode.cursor.position, mode.cursor.history, mode.full)
         }
-        val output = bounded(timeoutMs) { lease -> handle.exec(command, READ_MAX_BYTES, lease) } ?: throw java.io.IOException("tab read failed")
-        return withContext(compute) { tmuxSource(output, mode) }
+        // Output that came between the first numbers and the captures shifts the rows: the numbers are asked again at the end and must not have
+        // changed. One more try; then the read is unsettled and no numbers are ever used.
+        repeat(2) {
+            val output = bounded(timeoutMs) { lease -> handle.exec(command, READ_MAX_BYTES, lease) } ?: throw java.io.IOException("tab read failed")
+            withContext(compute) { tmuxSource(output, mode) }?.let { return it }
+        }
+        throw TabUnsettled()
     }
 
     /**
-     * What [tmuxReadScreenCommand] and [tmuxReadFromCommand] print: the rows, the rows above the cursor, and a last line of numbers
-     * (`history_size history_limit cursor_y pane_height pane_in_mode`). Read from the end, because only the newest bytes are kept.
+     * What [tmuxReadScreenCommand] and [tmuxReadFromCommand] print: the rows, the rows above the cursor, a line of numbers (`history_size history_limit
+     * cursor_y pane_height`) and a last line of the same numbers and `pane_in_mode`. Read from the end, because only the newest bytes are kept. Null
+     * when the two lines of numbers differ.
      */
-    private fun tmuxSource(output: String, mode: ReadMode): Pair<TabText, Boolean> {
+    private fun tmuxSource(output: String, mode: ReadMode): Pair<TabText, Boolean>? {
         val lines = output.removeSuffix("\n").split('\n')
-        val n = lines.last().trim().split(' ').map { it.toIntOrNull() ?: throw java.io.IOException("tab read unreadable") }
-        if (n.size != 5 || n.any { it < 0 } || n[3] == 0) throw java.io.IOException("tab read unreadable")
-        val (history, limit, cursorY, height, inMode) = n
+        fun numbers(line: String) = line.trim().split(' ').map { it.toIntOrNull() ?: throw java.io.IOException("tab read unreadable") }
+        if (lines.size < 2) throw java.io.IOException("tab read unreadable")
+        val n = numbers(lines[lines.size - 2])
+        val end = numbers(lines.last())
+        if (n.size != 4 || end.size != 5 || n.any { it < 0 } || n[3] == 0) throw java.io.IOException("tab read unreadable")
+        if (n != end.subList(0, 4)) return null
+        val (history, limit, cursorY, height) = n
+        val inMode = end[4]
         val cursorRow = history + cursorY
         val aboveCount = minOf(ANCHOR_ROWS, cursorRow)
-        if (lines.size < 1 + aboveCount) throw java.io.IOException("tab read unreadable")
-        val above = lines.subList(lines.size - 1 - aboveCount, lines.size - 1)
-        var rows = lines.subList(0, lines.size - 1 - aboveCount)
+        if (lines.size < 2 + aboveCount) throw java.io.IOException("tab read unreadable")
+        val above = lines.subList(lines.size - 2 - aboveCount, lines.size - 2)
+        var rows = lines.subList(0, lines.size - 2 - aboveCount)
         // Only the newest bytes are kept: when the cut fell in a row, that row is partial and goes.
         if (output.length >= READ_MAX_BYTES / 4 && output.toByteArray(Charsets.UTF_8).size >= READ_MAX_BYTES - CUT_MARGIN) rows = rows.drop(1)
         val first = if (mode is ReadMode.From) history + height - rows.size else -1
@@ -341,17 +361,37 @@ class AssistantTerminalTabs internal constructor(
         return TabText(source) to (inMode == 1)
     }
 
+    /** Runs [block] off the main thread: rows are cleaned and searched where the app's UI is not. */
+    internal suspend fun <T> offMain(block: () -> T): T = withContext(compute) { block() }
+
     /**
      * Reads tab [id] ([look]): without [from] the visible screen with up to [lines] rows of history; with it only the rows printed from that
      * cursor on, or, when they cannot be told, the screen and history as without it ([TabRead.cursorGone]). Types nothing.
      */
     internal suspend fun read(id: Int, lines: Int, from: TabCursor? = null): TabRead {
         if (from != null) {
-            val (tab, text) = look(id, ReadMode.From(from))
-            text.since(from)?.let { return TabRead(tab, it, text.cursor) }
+            val found = try { rowsSince(id, from) } catch (_: TabUnsettled) { null }
+            if (found != null) return TabRead(found.tab, found.rows, found.cursor)
         }
+        // Without a cursor, or when it cannot be placed (or the terminal never settled for the read from it): the screen and its history, and a fresh cursor.
         val (tab, text) = look(id, ReadMode.Screen(lines))
         return TabRead(tab, text.screen(), text.cursor, cursorGone = from != null)
+    }
+
+    /** The rows read from a cursor, and the cursor of their end. */
+    internal class Since(val tab: TerminalTab, val rows: String, val cursor: TabCursor)
+
+    /**
+     * The rows from [from] on: read as little as places it (from three rows above it; when rows may have been dropped, from one trim of the history
+     * higher), then, only when that did not, the whole history; null when it is placed by neither. [TabUnsettled] when the terminal changed during both tries.
+     */
+    internal suspend fun rowsSince(id: Int, from: TabCursor): Since? {
+        for (full in listOf(false, true)) {
+            val (tab, text) = look(id, ReadMode.From(from, full))
+            offMain { text.since(from) }?.let { return Since(tab, it, text.cursor) }
+            if (full || text.placedByRow(from)) return null
+        }
+        return null
     }
 
     /**

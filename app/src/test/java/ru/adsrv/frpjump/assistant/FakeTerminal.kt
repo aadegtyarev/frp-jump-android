@@ -41,38 +41,48 @@ internal class FakeTerminal(var screenRows: Int = 24, var historyLimit: Int = 20
     fun source(mode: ReadMode): SourceText {
         val rows = all()
         val noDrop = history < historyLimit
-        val text = when (mode) {
+        when (mode) {
             is ReadMode.Screen -> return SourceText(rows.subList(history - minOf(mode.lines, history), rows.size).joinToString("\n"), -1, history + cursorY, above(), history, noDrop)
             is ReadMode.From -> {
-                val exact = noDrop && history >= mode.cursor.history
-                val first = if (exact) maxOf(0, mode.cursor.position - 3) else 0
-                first to rows.subList(minOf(first, rows.size), rows.size).joinToString("\n")
+                val first = firstRow(mode.cursor, mode.full, noDrop && history >= mode.cursor.history)
+                return SourceText(rows.subList(minOf(first, rows.size), rows.size).joinToString("\n"), first, history + cursorY, above(), history, noDrop)
             }
         }
-        return SourceText(text.second, text.first, history + cursorY, above(), history, noDrop)
+    }
+
+    /** Where a read from [cursor] starts: three rows above it; one trim of the history higher when rows may have dropped; the oldest row when [full]. */
+    private fun firstRow(cursor: TabCursor, full: Boolean, exact: Boolean): Int {
+        if (full) return 0
+        val above3 = maxOf(0, cursor.position - 3)
+        return if (exact) above3 else maxOf(0, above3 - historyLimit / 10)
     }
 
     // ---- the device's tmux ----
+
+    /** Called after the captures and before the last numbers of a tmux read: output that comes in between (the numbers then differ). */
+    var gap: ((String) -> Unit)? = null
+
+    /** The commands the tmux reads sent, with the rows above the cursor taken (a read of an empty history takes none). */
+    var aboveCaptures = 0
+
+    private fun numbers() = "$history $historyLimit $cursorY $screenRows"
 
     /** What the device answers to the tmux read commands; null for any other command. */
     fun exec(command: String): String? {
         val m = ARGS.find(command) ?: return null
         val rows = all()
-        val numbers = "$history $historyLimit $cursorY $screenRows"
+        val start = numbers()
         val out = StringBuilder()
-        val first: Int
-        if (m.groupValues[2].isEmpty()) {
-            first = history - minOf(m.groupValues[1].toInt(), history)
-        } else {
-            val position = m.groupValues[1].toInt(); val since = m.groupValues[2].toInt()
-            first = if (history.toLong() * 10 < historyLimit.toLong() * 9 && history >= since) maxOf(0, position - 3) else 0
-        }
-        for (row in rows.subList(first, rows.size)) out.append(row).append('\n')
-        for (row in above()) out.append(row).append('\n')
-        return out.append("$numbers ${if (inCopyMode) 1 else 0}\n").toString()
+        val first = if (m.groupValues[2].isEmpty()) history - minOf(m.groupValues[1].toInt(), history)
+            else firstRow(TabCursor(m.groupValues[1].toInt(), m.groupValues[2].toInt(), 0), m.groupValues[3] == "1",
+                history.toLong() * 10 < historyLimit.toLong() * 9 && history >= m.groupValues[2].toInt())
+        for (row in rows.subList(minOf(first, rows.size), rows.size)) out.append(row).append('\n')
+        if (history + cursorY > 0) { aboveCaptures++; for (row in above()) out.append(row).append('\n') }
+        gap?.invoke(command)
+        return out.append(start).append('\n').append("${numbers()} ${if (inCopyMode) 1 else 0}\n").toString()
     }
 
     private companion object {
-        val ARGS = Regex(" sh '=[^']*' (\\d+)(?: (\\d+))?$")
+        val ARGS = Regex(" sh '=[^']*' (\\d+)(?: (\\d+) ([01]))?$")
     }
 }

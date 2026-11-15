@@ -268,6 +268,21 @@ class AssistantTerminalInputTest {
         assertEquals("", slowish.allTyped())
     }
 
+    @Test fun `a tmux read that the terminal keeps changing is not used, so nothing is typed`() {
+        val tab = TypeTab(1, tmuxName = tmux)
+        tab.term.gap = { tab.term.print("busy") }
+        val out = send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
+        assertEquals("Could not read tab 1. Nothing was typed into it.", out.text)
+        assertEquals(ToolOutcome.FAILED, out.outcome)
+        assertTrue(tab.typed.isEmpty())
+        // One try more, and then it settles: typed, with the cursor of the settled read.
+        val once = TypeTab(1, tmuxName = tmux)
+        var bursts = 1
+        once.term.gap = { if (bursts-- > 0) once.term.print("busy") }
+        assertTrue(send(AssistantTerminalInputTool(tabs(once)), typing(1, "ls")).text.startsWith("Typed into tab 1. cursor: "))
+        assertEquals(2, once.commands.size)
+    }
+
     @Test fun `a tab without tmux is not asked anything`() {
         val tab = TypeTab(1)
         send(AssistantTerminalInputTool(tabs(tab)), typing(1, "ls", "enter"))
