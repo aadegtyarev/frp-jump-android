@@ -80,6 +80,11 @@ class AssistantLimitsScreenTest {
         compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { limits.value = it }, onBack = {}) } }
         scrolled("limit_reply_s_value").assertTextEquals("180")
         scrolled("limit_reply_s_hint").assertTextEquals(compose.activity.getString(R.string.limit_reply_raised, 180))
+        // At its live minimum (one call plus one model answer) the minus is off; one step up and it works again.
+        scrolled("limit_reply_s_minus").assertIsNotEnabled()
+        scrolled("limit_reply_s_plus").performClick()
+        compose.runOnIdle { assertEquals(210, limits.value.replySeconds) }
+        scrolled("limit_reply_s_minus").assertIsEnabled()
         limits.value = AssistantLimits()
         compose.onAllNodesWithTag("limit_reply_s_hint").assertCountEquals(0)
     }

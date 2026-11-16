@@ -77,7 +77,9 @@ internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (Assistant
                     // The whole reply is raised to one call plus one model answer when it is set lower: the row shows what is in force and says why.
                     val effective = if (spec.key == "reply_s") (limits.replyLimitMs() / 1000).toInt() else spec.get(limits)
                     val hint = if (spec.key == "reply_s" && effective > spec.get(limits)) stringResource(R.string.limit_reply_raised, effective) else null
-                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), effective, spec.range, spec.step, hint) { onChange(spec.set(limits, it)) }
+                    // The whole reply cannot go below one call plus one model answer (live): its minus is off there, so it never looks dead above it.
+                    val range = if (spec.key == "reply_s") maxOf(spec.range.first, limits.toolTimeoutSeconds + limits.modelTimeoutSeconds)..spec.range.last else spec.range
+                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), effective, range, spec.step, hint) { onChange(spec.set(limits, it)) }
                 }
             }
         }
