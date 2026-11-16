@@ -94,6 +94,9 @@ class AssistantNotifier(private val context: Context) : AssistantNoticeSink {
         runCatching { manager.notify(NOTIFICATION_ASK_BASE + ask.id, builder.build()) }
     }
 
+    /** The ask about session [id] is answered or its session is gone: the notification goes. */
+    fun cancelOwnerAsk(id: Int) { manager?.cancel(NOTIFICATION_ASK_BASE + id) }
+
     private fun permitted(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

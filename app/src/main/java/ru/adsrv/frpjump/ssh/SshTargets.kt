@@ -123,6 +123,17 @@ class SshTargets(
         return login.user to login.method.toAuth(remember = true)
     }
 
+    /**
+     * Whether [profile] is known and loaded and has no saved SSH connection to [device]:[port] any more (removed): not merely a tunnel that is off, and
+     * never while the profiles are still loading.
+     */
+    fun connectionGone(profile: String, device: String, port: Int): Boolean {
+        val state = profiles.value
+        if (!state.loaded || state.index.profiles.none { it.id == profile }) return false
+        val runtime = state.runtimes[profile] ?: return false
+        return runtime.connections.connections.value.none { it.kind == PortKind.SSH && it.device == device && it.port == port }
+    }
+
     /** The id of the saved SSH connection of [profile] to [device]:[port], or null (a remembered session of the assistant finds its tunnel again by it). */
     fun savedConnectionAt(profile: String, device: String, port: Int): String? =
         profiles.value.runtimes[profile]?.connections?.connections?.value?.firstOrNull { it.kind == PortKind.SSH && it.device == device && it.port == port }?.id

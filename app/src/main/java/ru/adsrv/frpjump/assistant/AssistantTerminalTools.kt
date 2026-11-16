@@ -96,6 +96,8 @@ internal class AssistantTerminalReadTool(private val tabs: AssistantTerminalTabs
         val read = try { tabs.read(args.tabId, args.lines, args.from) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: TabNotOpen) { return ToolOutput("Tab ${args.tabId} is not open. Call terminal_tabs again.", ToolOutcome.FAILED) }
+        catch (_: TabEnded) { return ToolOutput("Session ${args.tabId} has ended.", ToolOutcome.FAILED) }
+        catch (_: TabNeedsSetup) { return ToolOutput(SshRefusalTexts.NEEDS_SETUP, ToolOutcome.FAILED) }
         catch (not: TabNotConnected) {
             return ToolOutput("Tab ${args.tabId} is not connected now (${not.state.wire}). Nothing was read. Call terminal_tabs again later.", ToolOutcome.FAILED)
         }
@@ -160,6 +162,8 @@ internal class AssistantTerminalInputTool(private val tabs: AssistantTerminalTab
         val cursor = try { tabs.type(args, pin) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: TabNotOpen) { return refused("Tab $id is not open. Nothing was typed. Call terminal_tabs again.") }
+        catch (_: TabEnded) { return refused("Session $id has ended. Nothing was typed.") }
+        catch (_: TabNeedsSetup) { return refused(SshRefusalTexts.NEEDS_SETUP) }
         catch (not: TabNotConnected) { return refused("Tab $id is not connected now (${not.state.wire}). Nothing was typed.") }
         catch (_: TabInCopyMode) { return refused("Tab $id is in tmux copy mode: the owner may be scrolling. Nothing was typed.") }
         catch (_: TabReconnected) { return refused("Tab $id reconnected after the request. Nothing was typed. Read the tab again.") }

@@ -1479,7 +1479,7 @@
     <string name="tool_needs_tabs_input">Работает вместе с «Вкладками терминала» и «Вводом во вкладки».</string>
     <string name="tool_terminal_open_progress">Открываю сессию…</string>
     <string name="tool_terminal_open_receipt">Открыть сессию</string>
-    <string name="tool_terminal_show_progress">Прошу вас действовать…</string>
+    <string name="tool_terminal_show_progress">Прошу ваш ввод…</string>
     <string name="tool_terminal_show_receipt">Нужен ваш ввод</string>
     <string name="tool_terminal_close_progress">Закрываю сессию…</string>
     <string name="tool_terminal_close_receipt">Закрыть сессию</string>
@@ -1495,4 +1495,7 @@
     <string name="sessions_assistant_close">Закрыть</string>
     <string name="terminal_state_detached">Отсоединена</string>
     <string name="terminal_session_by_assistant">Сессия помощника</string>
+    <string name="ssh_session_gone">Сессии больше нет на устройстве.</string>
+    <string name="session_tunnel_gone">Сессия на устройстве осталась: сохранённого туннеля больше нет</string>
+    <string name="session_close_tunnel_off">Не удалось закрыть: туннель выключен</string>
 </resources>

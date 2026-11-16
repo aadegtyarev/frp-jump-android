@@ -40,6 +40,9 @@ fun ownTmuxListing(output: String, install: String): OwnSessions {
     )
 }
 
+/** The tmux names a restore keeps new tabs from taking: every session of this install in [listing], the assistant's too (a tab that `-A`s into one would take it over). */
+fun namesToReserve(listing: OwnSessions): List<String> = listing.all
+
 /** The owner's tabs' sessions of this install in [output]; see [ownTmuxListing]. */
 fun ownTmuxSessions(output: String, install: String): List<String> = ownTmuxListing(output, install).owner
 

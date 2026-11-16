@@ -94,10 +94,11 @@ class FrpJumpApp : Application() {
     /** The owner's open terminal tabs for the assistant; the same hidden set as the Sessions list. */
     val assistantTerminalTabs by lazy {
         ru.adsrv.frpjump.assistant.AssistantTerminalTabs(
-            // Every session: the owner's tabs, the assistant's own (shown or not) and the ones it remembers from before a restart (detached).
-            tabs = { ssh.allNow().map { ru.adsrv.frpjump.assistant.SessionTab(it) } + assistantSessions.detachedHandles() },
+            // The owner's own tabs, then the assistant's sessions as its records say (attached or detached; never listed twice).
+            tabs = { ssh.allNow().filter { it.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.OWNER }.map { ru.adsrv.frpjump.assistant.SessionTab(it) } +
+                assistantSessions.handles { id -> ssh.find(id)?.let { ru.adsrv.frpjump.assistant.SessionTab(it) } } },
             hidden = { pendingUndo.hidden.value },
-            attach = assistantSessions::attach,
+            attach = { id -> assistantSessions.attach(id) },
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
             connectionName = { profile, device, port -> savedSshConnection(profile, device, port)?.customName },
             connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id })
@@ -110,7 +111,15 @@ class FrpJumpApp : Application() {
     val assistantSessions by lazy {
         ru.adsrv.frpjump.assistant.AssistantSessions(ru.adsrv.frpjump.assistant.SshSessionHost(ssh), ru.adsrv.frpjump.assistant.SshSessionTargets(sshTargets), sshEnv.tabNames, appScope,
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
-            notify = { ask -> if (!ru.adsrv.frpjump.assistant.chatShown(assistantChatResumed.value, lock.locked.value)) ru.adsrv.frpjump.assistant.AssistantNotifier(this).postOwnerAsk(ask) }).also { it.refresh() }
+            notify = { ask -> if (!ru.adsrv.frpjump.assistant.chatShown(assistantChatResumed.value, lock.locked.value)) ru.adsrv.frpjump.assistant.AssistantNotifier(this).postOwnerAsk(ask) },
+            cancelNotify = { id -> ru.adsrv.frpjump.assistant.AssistantNotifier(this).cancelOwnerAsk(id) },
+            notice = { which ->
+                notices.showInApp(ru.adsrv.frpjump.locale.Texts.get(when (which) {
+                    ru.adsrv.frpjump.assistant.SessionNotice.TUNNEL_GONE -> R.string.session_tunnel_gone
+                    ru.adsrv.frpjump.assistant.SessionNotice.CLOSE_TUNNEL_OFF -> R.string.session_close_tunnel_off
+                }), ru.adsrv.frpjump.notices.NoticeKind.WARN)
+            },
+            enabled = { settings.assistantAvailability.tools[ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_OPEN] }).also { it.refresh() }
     }
 
     /** The saved SSH connection of a tab's profile, device and port that is not hidden by an Undo; null when none matches. */

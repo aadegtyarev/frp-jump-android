@@ -205,7 +205,7 @@ class SshSessions(
      * tab until [show], that never picks up the owner's sessions; [id] one [reserveId] gave. Main thread.
      */
     fun open(profile: String, hostKeys: HostKeyStore, device: String, port: Int, localPort: Int, user: String, auth: SshAuth,
-        openedBy: SessionOpener = SessionOpener.OWNER, id: Int? = null, tmuxName: String? = null): SshSession {
+        openedBy: SessionOpener = SessionOpener.OWNER, id: Int? = null, tmuxName: String? = null, attachOnly: Boolean = false): SshSession {
         // A new password typed: the refusal of the old one says nothing about it.
         if (auth is SshAuth.Password && auth.typed != null) env.refusals.clear(profile, device, port, user)
         val target = SshTarget(user, device, port)
@@ -214,7 +214,7 @@ class SshSessions(
         val first = openedBy == SessionOpener.OWNER && hasNoTab(profile, device, port)
         val session = SshSession(
             id ?: nextId++, profile, hostKeys, device, port, localPort, user, auth, env, scope, ClientForScreen(), number,
-            tmuxName = tmuxName, onReattached = ::sayReattached, pickUp = if (first) ::pickUp else null, openedBy = openedBy,
+            tmuxName = tmuxName, onReattached = ::sayReattached, pickUp = if (first) ::pickUp else null, openedBy = openedBy, attachOnly = attachOnly,
         )
         drafts.open(session.id)
         update { it + session }
@@ -240,7 +240,7 @@ class SshSessions(
         val fresh = SshSession(
             nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
-            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value, openedBy = old.openedBy,
+            pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value, openedBy = old.openedBy, attachOnly = old.attachOnly,
         )
         if (old.openedBy == SessionOpener.ASSISTANT && old.shown.value) fresh.show()
         drafts.close(old.id)
@@ -314,8 +314,10 @@ class SshSessions(
      */
     private fun pickUp(from: SshSession, listing: OwnSessions): String? {
         // Every session of the install is in the listing, the assistant's too: a record is forgotten only when its session is gone; only the owner's become tabs.
-        forgetGoneTabNames(from, listing.all)
+        forgetGoneTabNames(from, listing)
         val found = listing.owner
+        // The counter moves past EVERY session of the install, the assistant's too: a new tab never takes (`-A`) one of them.
+        env.tmuxNames.reserve(namesToReserve(listing))
         val free = claims.claim(found, held = { _all.value.mapNotNull { it.tmux.assigned }.toSet() }, adopt = from.tmux::adopt)
         if (free.isEmpty()) return null
         // The session is the tab's now: the name the owner gave it, if one was remembered.
@@ -331,10 +333,12 @@ class SshSessions(
      * login's sessions it does not have are forgotten, except those of tabs open now (their session may have started
      * after the listing was taken, so they are looked up when the work runs). Off the caller's thread.
      */
-    private fun forgetGoneTabNames(from: SshSession, found: List<String>) {
+    private fun forgetGoneTabNames(from: SshSession, listing: OwnSessions) {
         scope.launch(Dispatchers.IO) {
             val held = _all.value.mapNotNull { it.tmux.assigned }.toSet()
-            env.tabNames.afterListing(from.profile, from.device, from.port, from.user, found, keep = held)
+            env.tabNames.afterListing(from.profile, from.device, from.port, from.user, listing.all, keep = held)
+            // Marked as the assistant's and without a record: the record comes back.
+            env.tabNames.adoptAssistant(from.profile, from.device, from.port, from.user, listing.assistant)
         }
     }
 
@@ -401,9 +405,12 @@ class SshSessions(
         val found = ownTmuxSessions(result.stdout, env.tmuxNames.install)
         // Only a listing that really answered ([tmuxListing]) forgets remembered names of this login's sessions that are not in it
         // (never those of open tabs); a failed command with empty output says nothing.
-        val listed = tmuxListing(result)?.let { ownTmuxListing(it, env.tmuxNames.install).all }
-        env.tabNames.afterListing(from.profile, from.device, from.port, from.user, listed, keep = _all.value.mapNotNull { it.tmux.assigned }.toSet())
-        return found
+        val listing = tmuxListing(result)?.let { ownTmuxListing(it, env.tmuxNames.install) }
+        env.tabNames.afterListing(from.profile, from.device, from.port, from.user, listing?.all, keep = _all.value.mapNotNull { it.tmux.assigned }.toSet())
+        listing?.let { env.tabNames.adoptAssistant(from.profile, from.device, from.port, from.user, it.assistant) }
+        // "Close all" closes every tab the owner sees, an assistant session he opened as a tab too (its tmux session ends with it); the ones he has no tab for stay.
+        val shownAssistant = _all.value.filter { it.openedBy == SessionOpener.ASSISTANT && it.shown.value }.mapNotNull { it.tmux.assigned }
+        return found + (listing?.assistant.orEmpty().filter { it in shownAssistant })
     }
 
     /**

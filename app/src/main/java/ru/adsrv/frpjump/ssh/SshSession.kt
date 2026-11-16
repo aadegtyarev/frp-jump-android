@@ -120,7 +120,14 @@ class SshSession(
     tabName: TabName? = null,
     /** Who opened the session: the assistant's own sessions have no tab until the owner opens one ([show]), and say so in tmux. */
     val openedBy: SessionOpener = SessionOpener.OWNER,
+    /** Only attach to the tmux session [tmuxName]: when it no longer runs the session ends ([sessionGone]) and nothing is created (no `new-session -A`). */
+    val attachOnly: Boolean = false,
 ) {
+    /** An attach-only session found its tmux session gone on the device. */
+    @Volatile
+    var sessionGone = false
+        private set
+
     private val _shown = MutableStateFlow(openedBy == SessionOpener.OWNER)
 
     /** Whether the owner has it as a tab: always for the owner's own sessions, for the assistant's after the owner opened it. */
@@ -608,6 +615,12 @@ class SshSession(
             // One short exec first: with tmux the tab's channel attaches to (or creates) its session.
             val name = tmux.name()
             val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name)
+            if (attachOnly && probe != TmuxProbe.EXISTING) {
+                // Never creates: a session that is gone stays gone.
+                sessionGone = true
+                fail(attempt, Texts.get(R.string.ssh_session_gone), retrying)
+                return
+            }
             val channel = ssh.startSession() as SessionChannel
             val columns = terminal.columns
             val rows = terminal.rows

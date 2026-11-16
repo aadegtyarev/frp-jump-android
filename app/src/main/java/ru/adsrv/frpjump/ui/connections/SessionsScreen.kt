@@ -76,7 +76,7 @@ fun SessionsScreen(
 ) {
     val allTerminals by terminals.sessions.collectAsStateWithLifecycle()
     val everyTerminal by terminals.all.collectAsStateWithLifecycle()
-    val remembered by (assistant?.detached ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<ru.adsrv.frpjump.assistant.AssistantSessions.Remembered>()) }).collectAsStateWithLifecycle()
+    val remembered by (assistant?.entries ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<ru.adsrv.frpjump.assistant.AssistantSessions.Entry>()) }).collectAsStateWithLifecycle()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val allExplorers by mqtt.sessions.collectAsStateWithLifecycle()
     val gone by hidden.collectAsStateWithLifecycle()
@@ -86,13 +86,14 @@ fun SessionsScreen(
     val explorers = remember(allExplorers, gone) {
         allExplorers.filterNot { sessionHidden(gone, SessionKind.MQTT, it.id, TunnelRef(it.profile, it.device, it.port)) }
     }
-    // The assistant's sessions the owner does not have as tabs: live ones, and the ones remembered from before a restart (detached).
+    // The assistant's sessions as its records say (the records are the ONE list, each once), except those the owner has opened as tabs (they are in the list above).
     val mine = remember(everyTerminal, remembered, gone) {
-        val live = everyTerminal.filter { it.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT && !it.shown.value }
-            .filterNot { sessionHidden(gone, SessionKind.TERMINAL, it.id, TunnelRef(it.profile, it.device, it.port)) }
-        live.map { AssistantRow(it.id, it.title, it) } +
-            remembered.filterNot { sessionHidden(gone, SessionKind.TERMINAL, it.id, TunnelRef(it.key.profile, it.key.device, it.key.port)) }
-                .map { AssistantRow(it.id, "${it.key.user}@${it.key.device}", null) }
+        remembered.mapNotNull { entry ->
+            val live = everyTerminal.firstOrNull { it.tabNameKey() == entry.key }
+            val id = live?.id ?: entry.id
+            if (live?.shown?.value == true || sessionHidden(gone, SessionKind.TERMINAL, id, TunnelRef(entry.key.profile, entry.key.device, entry.key.port))) null
+            else AssistantRow(entry.id, entry.name?.text ?: ru.adsrv.frpjump.ui.ssh.tabLabel(entry.key.user, entry.key.device, entry.key.port, live?.number ?: ru.adsrv.frpjump.ssh.tmuxNumber(entry.key.session).toInt().coerceAtLeast(1)), live, id)
+        }
     }
     val colors = AppTheme.colors
     LazyColumn(
@@ -131,14 +132,14 @@ fun SessionsScreen(
                     modifier = Modifier.padding(start = 4.dp, top = 12.dp).testTag("sessions_assistant_group"))
             }
             items(mine, key = { "a${it.id}" }) { row ->
-                AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.id) })
+                AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.sessionId) })
             }
         }
     }
 }
 
 /** One of the assistant's sessions in the group: [session] is null while it is remembered and not attached (detached). */
-internal class AssistantRow(val id: Int, val title: String, val session: SshSession?)
+internal class AssistantRow(val id: Int, val title: String, val session: SshSession?, /** The id the owner's Close and the Undo use: the live session's, else the record's. */ val sessionId: Int = id)
 
 @Composable
 internal fun AssistantLine(row: AssistantRow, onOpen: () -> Unit, onClose: () -> Unit) {

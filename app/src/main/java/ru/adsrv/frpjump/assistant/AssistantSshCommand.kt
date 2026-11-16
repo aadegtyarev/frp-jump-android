@@ -21,6 +21,13 @@ open class AssistantSshCommands(private val targets: SshTargets) {
     internal open val exec: Operation<SshExecInput, SshExecOutput> by lazy { SshExec(targets) }
 }
 
+/** The refusals every tool that logs in through a saved SSH tunnel says, defined once ([AssistantSshCommandTool], `terminal_open`, a session attached on use). */
+internal object SshRefusalTexts {
+    const val TARGET_UNAVAILABLE = "SSH target unavailable. Use a saved SSH tunnel that is on and ready; no tunnel was started."
+    const val NEEDS_SETUP = "SSH login or host trust needs setup. Open this tunnel in the ordinary SSH UI first. No command was executed."
+    const val CONNECT_FAILED = "SSH unavailable. Check the tunnel in the ordinary SSH UI. No command was executed."
+}
+
 internal class AssistantSshCommandTool(commands: AssistantSshCommands) : OperationTool<SshExecInput, SshExecOutput>(
     AssistantToolId.SSH_COMMAND,
     "Run one noninteractive command through a saved SSH tunnel that is on and ready. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about 7,800 characters for stdout and stderr together (stderr keeps at least 1,500 when present); a cut stream ends with \"truncated: N of M characters\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).",
@@ -39,10 +46,10 @@ internal class AssistantSshCommandTool(commands: AssistantSshCommands) : Operati
     override val unexpected: OpFailure = SshFailure.Unexpected
 
     override fun modelText(refusal: OpRefusal) = when (refusal as SshRefusal) {
-        SshRefusal.TargetUnavailable -> "SSH target unavailable. Use a saved SSH tunnel that is on and ready; no tunnel was started."
-        SshRefusal.NeedsSetup -> "SSH login or host trust needs setup. Open this tunnel in the ordinary SSH UI first. No command was executed."
+        SshRefusal.TargetUnavailable -> SshRefusalTexts.TARGET_UNAVAILABLE
+        SshRefusal.NeedsSetup -> SshRefusalTexts.NEEDS_SETUP
         SshRefusal.TargetLostBeforeExec -> "SSH target unavailable. No command was executed. Check the tunnel in the app."
-        SshRefusal.ConnectFailed -> "SSH unavailable. Check the tunnel in the ordinary SSH UI. No command was executed."
+        SshRefusal.ConnectFailed -> SshRefusalTexts.CONNECT_FAILED
     }
 
     override fun modelText(failure: OpFailure): String {

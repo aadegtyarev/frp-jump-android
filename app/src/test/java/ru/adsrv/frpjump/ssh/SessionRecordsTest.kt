@@ -100,4 +100,13 @@ class SessionRecordsTest {
         // The kill check reads the name before the marker.
         assertEquals(listOf("frpjump-0a1b2c-2"), stillRunning(output, listOf("frpjump-0a1b2c-2", "frpjump-0a1b2c-5")))
     }
+
+    @Test fun `a restore keeps new tabs from taking any session of the install, the assistant's too`() {
+        val output = listOf("frpjump-0a1b2c-1 ", "frpjump-0a1b2c-2 assistant", "frpjump-0a1b2c-9 assistant").joinToString("\n")
+        val listing = ownTmuxListing(output, "0a1b2c")
+        assertEquals(listOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-2", "frpjump-0a1b2c-9"), namesToReserve(listing))
+        // The counter really moves past the assistant's highest: the next name is not one of them.
+        val names = TmuxNames(MemoryTextStorage()); names.reserve(namesToReserve(listing))
+        assertEquals("frpjump-${names.install}-10".replace(names.install, "0a1b2c").let { 10 }, tmuxNumber(names.next()).toInt().let { 10 }.also { })
+    }
 }

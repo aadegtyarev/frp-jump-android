@@ -38,13 +38,13 @@ internal class TerminalOpenTool(private val sessions: AssistantSessions, private
     override suspend fun run(args: SavedTunnelIds): ToolOutput = when (val r = sessions.open(args, limit)) {
         is OpenResult.Opened -> ToolOutput("Session opened: tab_id ${r.id} (${shown(r.user)}@${shown(r.device)}). Type with terminal_input and read with terminal_read.")
         is OpenResult.TooMany -> ToolOutput("Already ${r.atOnce} sessions of yours, the most at once. Close one with terminal_close first.", ToolOutcome.FAILED)
-        OpenResult.Unavailable -> ToolOutput("SSH target unavailable. Use a saved SSH tunnel that is on and ready; no tunnel was started.", ToolOutcome.FAILED)
-        OpenResult.NeedsSetup -> ToolOutput("SSH login or host trust needs setup. Open this tunnel in the ordinary SSH UI first. No command was executed.", ToolOutcome.FAILED)
-        OpenResult.ConnectFailed -> ToolOutput("SSH unavailable. Check the tunnel in the ordinary SSH UI. No command was executed.", ToolOutcome.FAILED)
+        OpenResult.Unavailable -> ToolOutput(SshRefusalTexts.TARGET_UNAVAILABLE, ToolOutcome.FAILED)
+        OpenResult.NeedsSetup -> ToolOutput(SshRefusalTexts.NEEDS_SETUP, ToolOutcome.FAILED)
+        OpenResult.ConnectFailed -> ToolOutput(SshRefusalTexts.CONNECT_FAILED, ToolOutcome.FAILED)
         OpenResult.NoTmux -> ToolOutput("tmux is not available on the device, so a session cannot be kept. Nothing was opened.", ToolOutcome.FAILED)
     }
 
-    override fun failure(error: Exception) = ToolOutput("Could not open a session. Nothing was typed.", ToolOutcome.FAILED)
+    override fun failure(error: Exception) = ToolOutput("Could not open a session. Check terminal_tabs.", ToolOutcome.FAILED)
 
     companion object {
         const val OPEN_DESCRIPTION = "Open a terminal session for yourself on a saved SSH tunnel (profile_id, connection_id from profile_information) that is on: a tmux session on the device with no tab for the owner. It survives app restarts and lost connections; terminal_tabs lists it. Returns its tab_id. Use it for long or interactive work instead of ssh_command."

@@ -173,6 +173,10 @@ private const val ANCHOR_ROWS = 3
  */
 internal class TabRead(val tab: TerminalTab, val text: String, val cursor: TabCursor, val cursorGone: Boolean = false)
 
+/** The assistant's session ended on the device (its tmux session is gone): it is not listed any more. */
+internal class TabEnded : Exception()
+/** The saved login of a session needs the ordinary SSH UI (or is another user's): nothing was attached. */
+internal class TabNeedsSetup : Exception()
 internal class TabNotOpen : Exception()
 internal class TabNotConnected(val state: TabState) : Exception()
 /** The tab's tmux pane is in copy mode: the owner may be scrolling. Nothing was typed. */
@@ -207,8 +211,8 @@ class AssistantTerminalTabs internal constructor(
     private val cursorReadTimeoutMs: Long = CURSOR_READ_TIMEOUT_MS,
     /** Where rows are cleaned and searched: never the main thread. */
     private val compute: CoroutineDispatcher = Dispatchers.Default,
-    /** Attaches the remembered assistant session [id] over its tunnel (it then is a live tab with that id); false when it cannot be. */
-    private val attach: suspend (Int) -> Boolean = { false },
+    /** Attaches the assistant's session [id] over its tunnel (a remembered one, or one that ended: it then is a live tab with that id). */
+    private val attach: suspend (Int) -> AttachResult = { AttachResult.UNREACHABLE },
     /** Milliseconds on a clock that only moves forward; the age of a program probe. */
     private val clockMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -399,8 +403,14 @@ class AssistantTerminalTabs internal constructor(
      * over its tunnel (the first read, typing or wait does it): [TabNotConnected] when it cannot be.
      */
     private suspend fun attached(handle: TabHandle): TabHandle {
-        if (!handle.detached) return handle
-        if (!attach(handle.id)) throw TabNotConnected(TabState.DETACHED)
+        // A detached session, or one of the assistant's whose connection ended: attached again over its tunnel (never created anew).
+        if (!handle.detached && !(handle.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT && tabState(handle.state) == TabState.CLOSED)) return handle
+        when (attach(handle.id)) {
+            AttachResult.ATTACHED -> Unit
+            AttachResult.GONE -> throw TabEnded()
+            AttachResult.NEEDS_SETUP -> throw TabNeedsSetup()
+            AttachResult.UNREACHABLE -> throw TabNotConnected(TabState.DETACHED)
+        }
         return visible().firstOrNull { it.id == handle.id } ?: throw TabNotOpen()
     }
 

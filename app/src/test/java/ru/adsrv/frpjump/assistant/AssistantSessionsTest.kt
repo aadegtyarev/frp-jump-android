@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.assistant
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -122,8 +124,9 @@ class AssistantSessionsTest {
     }
 
     private fun tabs(rig: SessionRig, term: FakeTerminal) = AssistantTerminalTabs(
-        tabs = { rig.host.sessions.map { HostedTab(it, term) } + rig.sessions.detachedHandles() }, hidden = { emptySet() }, profileName = { "Home" },
-        connectionName = { _, _, _ -> null }, io = Dispatchers.IO, main = Dispatchers.Unconfined, attach = rig.sessions::attach)
+        tabs = { rig.host.sessions.filter { it.openedBy == SessionOpener.OWNER }.map { HostedTab(it, term) } +
+            rig.sessions.handles { id -> rig.host.sessions.firstOrNull { it.id == id }?.let { HostedTab(it, term) } } },
+        hidden = { emptySet() }, profileName = { "Home" }, connectionName = { _, _, _ -> null }, io = Dispatchers.IO, main = Dispatchers.Unconfined, attach = { rig.sessions.attach(it) })
 
     private fun remembered(vararg numbers: Int): SessionRig {
         val rig = SessionRig()
@@ -140,7 +143,7 @@ class AssistantSessionsTest {
         assertTrue(list.all { it.openedBy == SessionOpener.ASSISTANT && !it.shown })
         val line = tabsText(list, emptyMap()).lines().first()
         assertTrue(line, line.contains("| state: detached | tmux: yes | opened by: you | shown: no"))
-        assertEquals("the ids stay the same", list.map { it.id }, rig.sessions.also { it.refresh() }.let { tabs(rig, FakeTerminal()).list().map { t -> t.id } })
+        assertEquals("the ids stay the same", list.map { it.id }, tabs(rig, FakeTerminal()).list().map { t -> t.id })
         assertTrue("no connection was made", rig.host.log.isEmpty())
         // An owner's own session without a name is no record, so nothing of the owner's is listed this way.
         val owner = SessionRig(); owner.records.put(SessionKey("p1", "pi", 22, "root", "frpjump-0a1b2c-3"), "mine"); owner.sessions.refresh()
@@ -154,7 +157,7 @@ class AssistantSessionsTest {
         val id = owner.list().single().id
         val read = runBlocking { owner.read(id, 10) }
         assertTrue(read.text, read.text.contains("building"))
-        assertEquals(listOf("open $id attach frpjump-0a1b2c-1"), rig.host.log)
+        assertEquals(listOf("open $id attach frpjump-0a1b2c-1 only"), rig.host.log)
         val live = rig.host.sessions.single()
         assertEquals(id, live.id); assertEquals(SessionOpener.ASSISTANT, live.openedBy); assertFalse(live.shown)
         assertEquals("deploy", live.name?.text)
@@ -171,6 +174,119 @@ class AssistantSessionsTest {
         val out = runBlocking { AssistantTerminalReadTool(owner).execute(tab(id)) }
         assertEquals("Tab $id is not connected now (detached). Nothing was read. Call terminal_tabs again later.", out.text)
         assertTrue(rig.host.log.isEmpty())
+    }
+
+    // ---- the records are the one list ----
+
+    @Test fun `the limit and the listing follow the records, so a tunnel that went down and up does not free the slots`() {
+        val rig = SessionRig()
+        repeat(3) { assertEquals(ToolOutcome.SUCCESS, open(rig, limit = 3).outcome) }
+        assertEquals(3, rig.sessions.count())
+        // The tunnel goes down: the app closes every live session of it. The sessions still run on the device and their records stay.
+        rig.host.sessions.clear()
+        assertEquals(3, rig.sessions.count())
+        val owner = tabs(rig, FakeTerminal())
+        assertEquals(List(3) { TabState.DETACHED }, owner.list().map { it.state })
+        // The tunnel is back: three more cannot be opened.
+        assertEquals(ToolOutput("Already 3 sessions of yours, the most at once. Close one with terminal_close first.", ToolOutcome.FAILED), open(rig, limit = 3))
+        assertEquals(3, rig.sessions.count())
+    }
+
+    @Test fun `a session that is attaching while the list is built is listed once, with one id`() {
+        val rig = remembered(1, 2)
+        val owner = tabs(rig, FakeTerminal())
+        val before = owner.list().map { it.id }
+        // Attached: the live session and its record are ONE entry, under the same id; it is never in two lists.
+        runBlocking { assertEquals(AttachResult.ATTACHED, rig.sessions.attach(before.first())) }
+        val after = owner.list()
+        assertEquals(before, after.map { it.id })
+        assertEquals(before.distinct(), after.map { it.id })
+        assertEquals(listOf(TabState.CONNECTED, TabState.DETACHED), after.map { it.state })
+        assertEquals(2, rig.sessions.entries.value.map { it.id }.toSet().size)
+        // An owner's session shown as a tab is not an assistant session at all.
+        rig.tab(9)
+        assertEquals(3, owner.list().size); assertEquals(1, owner.list().count { it.openedBy == SessionOpener.OWNER })
+    }
+
+    @Test fun `the owner's Close of a session that cannot be reached keeps it and says so`() {
+        val rig = remembered(1); rig.targets.ready.clear()
+        runBlocking { rig.sessions.closeByOwner(rig.sessions.entries.value.single().id) }
+        assertEquals(listOf(SessionNotice.CLOSE_TUNNEL_OFF), rig.notices)
+        assertEquals(1, rig.sessions.count()); assertTrue(rig.host.log.isEmpty())
+        // Reachable: attached, reconnected when it ended, and killed.
+        val ok = remembered(1)
+        runBlocking { ok.sessions.closeByOwner(ok.sessions.entries.value.single().id) }
+        assertEquals(listOf("open ${100} attach frpjump-0a1b2c-1 only", "close 100 tmux=true"), ok.host.log.map { it.replace(Regex("open \\d+"), "open 100").replace(Regex("close \\d+"), "close 100") })
+        assertTrue(ok.notices.isEmpty()); assertEquals(0, ok.sessions.count())
+        // A live session that ended is reconnected first, then ended.
+        val ended = SessionRig(); ended.existing(4).flow.value = SshState.Ended("drop")
+        runBlocking { ended.sessions.closeByOwner(4) }
+        assertTrue(ended.host.log.toString(), ended.host.log.first().startsWith("reconnect 4") && ended.host.log.last().endsWith("tmux=true"))
+    }
+
+    @Test fun `attaching only attaches, a session that is gone is forgotten, never created again`() {
+        val rig = remembered(1); rig.host.running = emptySet()
+        val owner = tabs(rig, FakeTerminal())
+        val id = owner.list().single().id
+        val out = runBlocking { AssistantTerminalReadTool(owner).execute(tab(id)) }
+        assertEquals(ToolOutput("Session $id has ended.", ToolOutcome.FAILED), out)
+        assertEquals(listOf("open $id attach frpjump-0a1b2c-1 only", "close $id tmux=false"), rig.host.log)
+        assertEquals("its record is forgotten", 0, rig.sessions.count()); assertNull(rig.records.record(SessionKey("p1", "pi", 22, "root", "frpjump-0a1b2c-1")))
+        assertEquals(ToolOutput("Tab $id is not open. Call terminal_tabs again.", ToolOutcome.FAILED), runBlocking { AssistantTerminalReadTool(owner).execute(tab(id)) })
+    }
+
+    @Test fun `the saved login of another user is never offered for a remembered session, and the switch off attaches nothing`() {
+        val rig = remembered(1); rig.targets.user = "admin"
+        val owner = tabs(rig, FakeTerminal().set("x"))
+        val id = owner.list().single().id
+        assertEquals(ToolOutput(SshRefusalTexts.NEEDS_SETUP, ToolOutcome.FAILED), runBlocking { AssistantTerminalReadTool(owner).execute(tab(id)) })
+        assertTrue(rig.host.log.isEmpty())
+        val off = remembered(1); off.switchOn = false
+        val offTabs = tabs(off, FakeTerminal().set("x"))
+        assertTrue(runBlocking { AssistantTerminalReadTool(offTabs).execute(tab(offTabs.list().single().id)) }.text.contains("not connected now (detached)"))
+        assertTrue(off.host.log.isEmpty())
+        // The owner's own Open still attaches (he asked): the switch is the assistant's.
+        assertNotNull(runBlocking { off.sessions.show(off.sessions.entries.value.single().id) })
+    }
+
+    @Test fun `a removed saved connection forgets the record, tells the owner, and leaves the session on the device`() {
+        val rig = remembered(1); rig.targets.removed += "p1"
+        runBlocking { assertEquals(AttachResult.GONE, rig.sessions.attach(rig.sessions.entries.value.single().id)) }
+        assertEquals(listOf(SessionNotice.TUNNEL_GONE), rig.notices)
+        assertEquals(0, rig.sessions.count()); assertTrue("nothing was killed", rig.host.log.isEmpty())
+    }
+
+    @Test fun `a Stop while terminal_open waits closes the half-open session`() {
+        val rig = SessionRig(); rig.host.comes = SshState.Connecting
+        val job = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Default) { rig.sessions.open(ru.adsrv.frpjump.ops.tunnel.SavedTunnelIds("p1", "c1"), 3) }
+        runBlocking { kotlinx.coroutines.delay(100); job.cancelAndJoin() }
+        assertEquals(1, rig.host.log.count { it.startsWith("open") })
+        assertTrue(rig.host.log.toString(), rig.host.log.last().endsWith("tmux=true")); assertTrue(rig.host.sessions.isEmpty()); assertEquals(0, rig.sessions.count())
+    }
+
+    @Test fun `an ask goes, with its notification, when its session is closed or the owner opens it`() {
+        val rig = SessionRig(); rig.existing(7, number = 2)
+        run(TerminalShowTool(rig.sessions), buildJsonObject { put("tab_id", 7); put("reason", "x") })
+        runBlocking { rig.sessions.show(7) }
+        assertTrue(rig.sessions.asks.value.isEmpty()); assertEquals(listOf(7), rig.cancelled)
+        run(TerminalShowTool(rig.sessions), buildJsonObject { put("tab_id", 7); put("reason", "y") })
+        // The record goes (a listing without it): the ask and its notification go with it.
+        rig.records.forget(SessionKey("p1", "pi", 22, "root", "frpjump-0a1b2c-7"))
+        assertTrue(rig.sessions.asks.value.isEmpty()); assertEquals(listOf(7, 7), rig.cancelled)
+    }
+
+    @Test fun `the cap never evicts an assistant record, and a lost record comes back from the device's marker`() {
+        val store = ru.adsrv.frpjump.ssh.SessionRecordStore(ru.adsrv.frpjump.ssh.MemoryTextStorage(), max = 2)
+        val a = SessionKey("p", "d", 22, "u", "frpjump-0a1b2c-1")
+        store.put(a, null, openedBy = SessionOpener.ASSISTANT)
+        for (n in 2..6) store.put(SessionKey("p", "d", 22, "u", "frpjump-0a1b2c-$n"), "n$n")
+        assertTrue(store.record(a) != null)
+        assertEquals(1, store.assistantSessions().size)
+        // The record is lost (Forget profile, a file that did not save); the device still says the session is the assistant's: it is adopted again.
+        store.forgetProfile("p"); assertNull(store.record(a))
+        store.adoptAssistant("p", "d", 22, "u", listOf(a.session))
+        assertEquals(SessionOpener.ASSISTANT, store.record(a)?.openedBy)
+        store.adoptAssistant("p", "d", 22, "u", listOf(a.session)); assertEquals(1, store.assistantSessions().size)
     }
 
     // ---- terminal_show ----

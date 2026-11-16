@@ -118,6 +118,11 @@ class SessionRecordStore(private val storage: TextStorage, private val max: Int 
     /** Oldest written first. */
     private var entries: MutableList<Entry>? = null
 
+    private val _changed = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    /** Counts every change of the records, so that whoever derives from them (the assistant's session list) follows them. */
+    val changed: kotlinx.coroutines.flow.StateFlow<Int> = _changed
+
     /** The record of [key], or null. May read the file: not for the main thread. */
     @Synchronized
     fun record(key: SessionKey): SessionRecord? = load().firstOrNull { it.matches(key) }?.record()
@@ -146,7 +151,7 @@ class SessionRecordStore(private val storage: TextStorage, private val max: Int 
         if (at == list.lastIndex && at >= 0 && list[at].name == text && list[at].by == tag && list[at].opened == opened) return
         if (at >= 0) list.removeAt(at)
         list += Entry(key.profile, key.device, key.port, key.user, key.session, text, if (text.isEmpty()) "owner" else tag, opened)
-        while (list.size > max) list.removeAt(0)
+        trim(list)
         save()
     }
 
@@ -183,6 +188,18 @@ class SessionRecordStore(private val storage: TextStorage, private val max: Int 
         }
     }
 
+    /**
+     * Sessions marked as the assistant's on [device]:[port] for [user] in a successful listing ([names]) that have no record (it was lost: the
+     * cap, "Forget profile", a file that did not save) get their record back.
+     */
+    @Synchronized
+    fun adoptAssistant(profile: String, device: String, port: Int, user: String, names: Collection<String>) {
+        for (name in names) {
+            val key = SessionKey(profile, device, port, user, name)
+            if (load().none { it.matches(key) }) put(key, null, openedBy = SessionOpener.ASSISTANT)
+        }
+    }
+
     /** The profile was removed ("Forget profile"): its records go. */
     @Synchronized
     fun forgetProfile(profile: String) {
@@ -199,11 +216,20 @@ class SessionRecordStore(private val storage: TextStorage, private val max: Int 
             // A foreign or edited file: only well-formed records, once each, and not more than the cap.
             .filter { isTmuxName(it.session) && (it.name.isEmpty() && it.opener() == SessionOpener.ASSISTANT || checkTabName(it.name).let { c -> c is TabNameCheck.Valid && c.name == it.name && it.name.isNotEmpty() }) }
             .reversed().distinctBy { listOf(it.profile, it.device, it.port, it.user, it.session) }.reversed()
-            .takeLast(max)
-        return read.toMutableList().also { entries = it }
+        return read.toMutableList().also { trim(it); entries = it }
+    }
+
+    /** Past the cap the oldest of the OWNER's records go; the assistant's never (their number is bounded by the owner's limit of sessions, and a record is how one is found). */
+    private fun trim(list: MutableList<Entry>) {
+        while (list.size > max) {
+            val at = list.indexOfFirst { it.opener() == SessionOpener.OWNER }
+            if (at < 0) return
+            list.removeAt(at)
+        }
     }
 
     private fun save() {
+        _changed.value += 1
         try {
             storage.write(WireJson.encodeToString(Stored(entries.orEmpty())))
         } catch (e: Exception) {

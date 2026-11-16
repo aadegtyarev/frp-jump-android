@@ -1235,23 +1235,23 @@ tabs and Typing into tabs are on; turning either off turns it off, and turning t
 
 - ONE session concept: an assistant session is the same session object, buffer and cursor reads as an owner's tab, opened by the assistant and not shown as a tab. It is a tmux
   session of this install on the device; who opened it is a tmux user option set in the same invocation that creates it, and the session is remembered in the one session-record
-  store (see [ssh-persist-contract](ssh-persist-contract.md#session-records)). Nothing else keeps its output.
-- `terminal_open` refuses past the owner's limit (`Already <n> sessions of yours, the most at once. Close one with terminal_close first.`), reuses `ssh_command`'s refusals for a tunnel that is not on
+  store (see [ssh-persist-contract](ssh-persist-contract.md#session-records)), which is the ONLY owner of which assistant sessions exist: the list, the count and the limit derive from the records, never from the live connections. Nothing else keeps its output.
+- `terminal_open` refuses past the owner's limit (`Already <n> sessions of yours, the most at once. Close one with terminal_close first.`), reuses `ssh_command`'s refusals (one shared definition of the texts) for a tunnel that is not on
   or ready and for a login or host key that needs the ordinary SSH UI (nothing is started, no password is asked or typed), and refuses when the device has no working tmux (`tmux is not
   available on the device, so a session cannot be kept. Nothing was opened.`). A session that logs in but whose host key needs the owner's decision is closed, not left waiting.
 - `terminal_tabs` lists them with `opened by: you` and `shown: no|yes`, and with state `detached` when remembered from before a restart and not attached yet. `terminal_read`, `terminal_input`,
-  `terminal_rename` and `wait_for` work on them unchanged; the first read, input or wait on a detached one attaches it over its tunnel (tunnel on; none is started). The confirmation of
+  `terminal_rename` and `wait_for` work on them unchanged; the first read, input or wait on a detached one (or one whose connection ended) attaches it again over the tunnel's saved login (tunnel on; none is started; ONLY attaches: a tmux session that is gone is not created, the reply is `Session <id> has ended.`; a saved login of another user than the record's is refused with the needs-setup text). The confirmation of
   `terminal_input`, its pins and the password rule are unchanged: the model never types a password, it calls `terminal_show`.
 - `terminal_show` asks the owner to act in one of the assistant's sessions: a card «Нужен ваш ввод» / "Your input is needed" in the chat (the session's identity, the reason as plain text
   with the chat's cleaning and cap, and «Открыть» / "Open", which shows the session as a tab), and a notification «Помощнику нужен ваш ввод» / "The assistant needs your input" with Open
   while the chat is not on screen (low importance, no sound; nothing is shown over the app lock). Reply `The owner was asked to act in tab <id>.`
 - `terminal_close` goes through the common confirmation (card «Закрыть сессию?» / "Close session?", the identity line, `Всё, что в ней запущено, остановится.` / `Anything running in it stops.`;
   no "For session"). An owner's tab is never closed by it (`Tab <id> is the owner's; only the owner closes it.`). Reply `Session <id> is closed.`; a remembered session is attached first, and
-  when it cannot be reached nothing is closed.
+  when it cannot be reached nothing is closed. Open failure: `Could not open a session. Check terminal_tabs.`; a Stop in the middle closes the half-open session.
 - Owner UI: Sessions has a group «Помощник» / "Assistant" (only while there are sessions the owner has not opened as tabs) with each session's label, state and «Открыть» / «Закрыть»
-  (his Close: no confirmation, the shared Undo); an opened one stays marked as the assistant's in its tab menu. Chat call lines: «Открыть сессию», «Закрыть сессию», «Нужен ваш ввод».
+  (his Close: no confirmation, the shared Undo; when its tunnel is off it stays listed and he is told «Не удалось закрыть: туннель выключен»); progress lines: «Открываю сессию…», «Закрываю сессию…», «Прошу ваш ввод…»; an opened one stays marked as the assistant's in its tab menu. Chat call lines: «Открыть сессию», «Закрыть сессию», «Нужен ваш ввод».
 - Old -> new: the assistant worked only in the owner's open tabs; it may now open its own tmux sessions on a saved SSH tunnel that is on, only with the switch on (default off), at most the
-  owner's limit; they stay on the device until it or the owner closes them and are always listed in Sessions. Closing one asks like every changing tool.
+  owner's limit; they stay on the device until it or the owner closes them and are always listed in Sessions. Closing one asks like every changing tool. A read or input on a detached session logs in again over the tunnel's saved login (the owner's «Свои сессии» switch on).
 
 #### Optional typing into a tab (`terminal_input`)
 
