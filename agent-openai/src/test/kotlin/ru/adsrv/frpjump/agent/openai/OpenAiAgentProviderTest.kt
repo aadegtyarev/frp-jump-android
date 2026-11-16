@@ -17,7 +17,7 @@ class OpenAiAgentProviderTest {
     private suspend fun assertHeld(job: Job) = assertNull("the caller must still wait for the blocking call", withTimeoutOrNull(300) { job.join() })
     private val final = """{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"done"}}]}"""
     private val request = AgentRequest("skill", emptyList(), listOf(AgentTurn("user")), 512)
-    private data class Reply(val text: String, val status: Int = 200, val chunked: Boolean = false, val gzip: Boolean = false, val gate: CountDownLatch? = null, val retryAfterZero: Boolean = false)
+    private data class Reply(val text: String, val status: Int = 200, val chunked: Boolean = false, val gzip: Boolean = false, val gate: CountDownLatch? = null, val retryAfterZero: Boolean = false, val delayMs: Long = 0)
     private data class Seen(val path: String, val method: String, val authorization: String?, val body: String)
     private class Endpoint : AutoCloseable {
         val replies = LinkedBlockingQueue<Reply>()
@@ -30,6 +30,7 @@ class OpenAiAgentProviderTest {
                     seen.put(Seen(exchange.requestURI.toString(), exchange.requestMethod, exchange.requestHeaders.getFirst("Authorization"), exchange.requestBody.readBytes().toString(Charsets.UTF_8)))
                     val reply = replies.poll(5, TimeUnit.SECONDS) ?: Reply("{}", 500)
                     reply.gate?.await(5, TimeUnit.SECONDS)
+                    if (reply.delayMs > 0) Thread.sleep(reply.delayMs)
                     var bytes = reply.text.toByteArray()
                     if (reply.gzip) {
                         val output = ByteArrayOutputStream()
@@ -429,6 +430,38 @@ class OpenAiAgentProviderTest {
         }.build()
     }
     private fun template(interceptor: okhttp3.Interceptor) = okhttp3.OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false).addInterceptor(interceptor).build()
+
+    @Test fun `the run's model timeout is the only limit of a call, a shorter fixed transport timeout cannot cut it`() = runBlocking {
+        // A client with fixed timeouts shorter than the answer's delay: an answer after 700 ms is still received under a 5 s model timeout...
+        val fixed = okhttp3.OkHttpClient.Builder().retryOnConnectionFailure(false).followRedirects(false)
+            .readTimeout(200, TimeUnit.MILLISECONDS).callTimeout(300, TimeUnit.MILLISECONDS).build()
+        Endpoint().use { e ->
+            e.replies += Reply(final, delayMs = 700)
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, fixed)
+            assertEquals("done", provider.complete(request.copy(timeoutMs = 5_000)).text)
+        }
+        // ... the same slow answer is cut at the model timeout when that is the shorter one ...
+        Endpoint().use { e ->
+            e.replies += Reply(final, delayMs = 1_500)
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, fixed)
+            val error = assertThrows(OpenAiProviderException::class.java) { runBlocking { provider.complete(request.copy(timeoutMs = 400)) } }
+            assertEquals(ProviderFailure.TIMEOUT, error.failure)
+        }
+        // ... and without a model timeout the provider's own transport limits stay.
+        Endpoint().use { e ->
+            e.replies += Reply(final, delayMs = 700)
+            val provider = OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key, fixed)
+            val error = assertThrows(OpenAiProviderException::class.java) { runBlocking { provider.complete(request) } }
+            assertEquals(ProviderFailure.TIMEOUT, error.failure)
+        }
+    }
+
+    @Test fun `a 300 s model timeout leaves no fixed OkHttp timeout shorter than it`() {
+        val production = OpenAiAgentProvider.withModelTimeout(okhttp3.OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).build(), 300_000)
+        assertEquals(0, production.callTimeoutMillis); assertTrue(production.readTimeoutMillis >= 300_000)
+        // A short model timeout does not shorten the template's read timeout (an idle read is still cut by the call's own timeout).
+        assertEquals(30_000, OpenAiAgentProvider.withModelTimeout(okhttp3.OkHttpClient.Builder().readTimeout(30, TimeUnit.SECONDS).build(), 10_000).readTimeoutMillis)
+    }
 
     @Test fun `stalled response is cancelled promptly by call cancel`() = runBlocking {
         Endpoint().use { e ->

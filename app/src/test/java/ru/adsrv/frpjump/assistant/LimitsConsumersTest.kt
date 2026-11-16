@@ -84,18 +84,15 @@ class LimitsConsumersTest {
         assertTrue(sshTool.spec.description.contains("about 4,000 characters for stdout and stderr together (stderr keeps at least 1,500"))
     }
 
-    @Test fun `the tmux attach carries the owner's terminal history in the same invocation, nothing when none is given`() {
-        val plain = tmuxAttachCommand("frpjump-0a1b2c-1")
-        assertFalse(plain.contains("history-limit"))
-        val with = tmuxAttachCommand("frpjump-0a1b2c-1", historyRows = 5_000)
-        assertTrue(with, with.contains("';' set-option -t '=frpjump-0a1b2c-1:' history-limit 5000"))
-        assertEquals(1, Regex("tmux").findAll(with).count().coerceAtMost(1))
-        assertTrue(with.startsWith(plain.substringBefore(" ';' set-option")))
+    @Test fun `the tmux attach never sets history-limit, tmux keeps its own history`() {
+        assertFalse(tmuxAttachCommand("frpjump-0a1b2c-1").contains("history-limit"))
+        assertFalse(tmuxAttachCommand("frpjump-0a1b2c-1", ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT).contains("history-limit"))
+        assertFalse(java.io.File("src/main/java/ru/adsrv/frpjump/ssh/SshSession.kt").readText().contains("history-limit"))
     }
 
-    @Test fun `the sessions attach with the owner's terminal history, and the app reads each limit from the settings at use`() {
+    @Test fun `the terminal history is the app buffer only, and the app reads each limit from the settings at use`() {
         val session = java.io.File("src/main/java/ru/adsrv/frpjump/ssh/SshSession.kt").readText()
-        assertTrue(session.contains("tmuxAttachCommand(name, openedBy, env.historyRows())"))
+        assertTrue(session.contains("RemoteTerminal(terminalClient, historyRows = env.historyRows())"))
         val app = java.io.File("src/main/java/ru/adsrv/frpjump/FrpJumpApp.kt").readText()
         assertTrue(app.contains("historyRows = { settings.settings.value.terminalHistoryRows }"))
         assertTrue(app.contains("reconnectGiveUpMs = { settings.settings.value.assistantLimits.reconnectMinutes * 60_000L }"))

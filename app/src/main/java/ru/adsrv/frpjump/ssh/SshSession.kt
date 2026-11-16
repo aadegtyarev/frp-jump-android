@@ -73,7 +73,7 @@ class SshEnvironment(
     val refusals: LoginRefusals = LoginRefusals(),
     /** The timers of auto-reconnect. */
     val reconnectClock: ReconnectClock = ExecutorReconnectClock(),
-    /** Read only when a new terminal is constructed, never on automatic reconnect. */
+    /** The rows of the app's own terminal buffer ("Terminal history"); tmux keeps its own history. Read only when a new terminal is constructed, never on automatic reconnect. */
     val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
     /** How long a dropped session keeps reconnecting, in ms; read at each drop. */
     val reconnectGiveUpMs: () -> Long = { RECONNECT_GIVE_UP_MS },
@@ -643,7 +643,7 @@ class SshSession(
             val rows = terminal.rows
             channel.allocatePTY(TERM, columns, rows, 0, 0, emptyMap())
             windowChange.sent(columns, rows)
-            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name, openedBy, env.historyRows()))
+            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name, openedBy))
             val resumeKind = synchronized(lifecycle) {
                 if (!current(attempt)) return
                 resumed(dropped, probe)

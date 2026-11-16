@@ -19,7 +19,7 @@ internal object AssistantToolFactory {
         // terminal_input is offered only while the tabs are on: the model asks for terminal_tabs first.
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
-            AssistantProfileInformationTool(profileInformation)) else emptyList()) +
+            AssistantProfileInformationTool(profileInformation, limits)) else emptyList()) +
             (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, limits.toolTimeoutSeconds * 1000L), StopTunnelTool(tunnels)) else emptyList()) +
             (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs, limits), AssistantTerminalReadTool(terminalTabs, limits), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
             (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs, limits)) else emptyList()) +

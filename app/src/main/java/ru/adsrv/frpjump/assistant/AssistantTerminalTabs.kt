@@ -205,6 +205,8 @@ class AssistantTerminalTabs internal constructor(
     private val main: CoroutineDispatcher = Dispatchers.Main,
     private val probeTimeoutMs: Long = PROBE_TIMEOUT_MS,
     private val readTimeoutMs: Long = READ_TIMEOUT_MS,
+    /** The owner's limit of one tool call, read at use: no wait of a read is longer than [withinCall] of it. */
+    private val toolTimeoutMs: () -> Long = { ru.adsrv.frpjump.settings.AssistantLimits().toolTimeoutSeconds * 1000L },
     /** The saved SSH connection's id for profile, device and port: the grant target of typing into a tab of it. Null when none matches. */
     private val connectionId: (String, String, Int) -> String? = { _, _, _ -> null },
     /** The most the cursor read before a typing may take (it also answers whether a tmux pane is in copy mode). */
@@ -327,7 +329,7 @@ class AssistantTerminalTabs internal constructor(
             TabState.RECONNECTING, TabState.DETACHED -> throw TabNotConnected(tab.state)
             TabState.CONNECTED -> Unit
         }
-        return tab to source(handle, mode, readTimeoutMs).first
+        return tab to source(handle, mode, withinCall(readTimeoutMs, toolTimeoutMs())).first
     }
 
     /**

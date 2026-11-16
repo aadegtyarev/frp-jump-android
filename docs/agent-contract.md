@@ -167,10 +167,10 @@ tunnel limits are read at use. The kernel's own parameters stay validated (`Agen
 | Section | Limit (default; range; step) |
 | --- | --- |
 | Assistant | One call, s (30; 10-300; 5) = tool timeout (the owner's confirmation wait is not part of it) |
-| Assistant | Model answer, s (60; 10-600; 10) = model request timeout (it does not include the confirmation wait either) |
+| Assistant | Model answer, s (60; 10-600; 10) = model request timeout (it does not include the confirmation wait either); the provider gets it as the call's own timeout and has no fixed transport timeout shorter than it |
 | Assistant | Whole reply, s (120; 30-1800; 30) = the Send's active-time deadline; never less than one call plus one model answer (the larger is used) |
 | Assistant | Steps per reply (12; 1-50; 1) and Calls per step (4; 1-10; 1) |
-| Assistant | Tool output, characters (8,000; 2,000-32,000; 1,000) = the tool-result cap (`ssh_command` and the terminal reads keep that less 200) |
+| Assistant | Tool output, characters (8,000; 2,000-32,000; 1,000) = the tool-result cap (`ssh_command`, the terminal reads and the `profile_information` pages keep that less 200) |
 | Assistant | Reply length, characters (32,000; 4,000-128,000; 4,000) |
 | Waits | Waits at once (3; 1-10), Longest wait, min (30; 1-120), Event replies in a row (5; 1-20), Assistant sessions (3; 1-10) |
 | Terminal | Input at once, characters (2,000; 100-10,000; 100), Keys at once (32; 1-100; 1), Lines per read, at most (1,000; 100-10,000; 100) |
@@ -997,7 +997,7 @@ variants. Several suitable results are legitimate: active tool guidance requests
 a concise answer distinguishing profiles/devices/connections, not a silent first
 choice or an unnecessary clarification. Exact saved action IDs remain available.
 
-Results are whole-record pages under the default 8,000-character kernel cap.
+Results are whole-record pages of at most the owner's tool-output limit less 200 characters (7,800 by default), so the kernel cap never cuts a page in the middle of a record.
 The envelope contains `query`, `profile_id`, `offset`, `total_records`,
 `next_offset`, `source_status` and `results`. Records have a `record_type` of
 `profile`, `device`, `connection` or `tunnel_operation` and repeated safe profile
@@ -1119,8 +1119,7 @@ contain secrets; the switch's hint says so.
   terminal buffer (its history is sized by the «История терминала» setting), copied on the main thread with no more rows than the read needs (from
   three rows above the cursor's row; when rows may have dropped, one trim, a tenth of its capacity, higher; the whole transcript only as the last
   fallback); the rows are cleaned and searched off the main thread. There is no second buffer and no log: the app's output tap
-  (`lastOutputNanos`) only says that something was printed. The app sets tmux's `history-limit` on the sessions it creates or attaches to to the owner's "Terminal history" rows, in the same attach
-  invocation as `status` and `mouse` (`set-option -t <session> history-limit <rows>`); tmux applies it to the panes created after it, so a pane that already exists keeps its own.
+  (`lastOutputNanos`) only says that something was printed. The app does not set tmux's `history-limit` when it creates a session: tmux keeps its own history (its default, normally 2000 lines, or the owner's `tmux.conf`); the owner's "Terminal history" setting is the app's own terminal buffer only.
 - The cursor is opaque text to the model (`<row>.<history>.<8 hex digits>`, at most 32 characters): the row the terminal's cursor is on
   (counted in physical rows from the oldest kept one), how many rows of history were kept, and a checksum of the three rows just above that
   row. The row itself is the one still being written (a prompt that is typed on, a progress bar, a half-printed line), so it belongs to what

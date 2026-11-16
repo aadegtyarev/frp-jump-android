@@ -30,15 +30,21 @@ class LimitsSettingsTest {
         assertTrue(validAssistantLimits(defaults))
     }
 
-    @Test fun `each key is clamped on its own, out of range is refused and a bad value in a file resets only itself`() {
+    @Test fun `each key is clamped into its range on its own, out of range is refused when set and clamped when read, and a malformed one resets only itself`() {
         for (spec in LIMITS) {
             val d = AssistantLimits()
             assertFalse(spec.key, validAssistantLimits(spec.set(d, spec.range.first - 1)))
             assertFalse(spec.key, validAssistantLimits(spec.set(d, spec.range.last + 1)))
             assertTrue(spec.key, validAssistantLimits(spec.set(d, spec.range.first)) && validAssistantLimits(spec.set(d, spec.range.last)))
             val control = LIMITS.first { it.key != spec.key }
-            val bad = SettingsStore(MemoryStorage("""{"assistant_limits":{"${spec.key}":${spec.range.last + 1},"${control.key}":${control.range.last}}}""")).settings.value.assistantLimits
-            assertEquals(spec.key, control.set(AssistantLimits(), control.range.last), bad)
+            // Out of range in a file: clamped into the range (not reset to the default); another key is untouched.
+            val over = SettingsStore(MemoryStorage("""{"assistant_limits":{"${spec.key}":${spec.range.last + 1},"${control.key}":${control.range.last}}}""")).settings.value.assistantLimits
+            assertEquals(spec.key, spec.range.last, spec.get(over)); assertEquals(spec.key, control.range.last, control.get(over))
+            val under = SettingsStore(MemoryStorage("""{"assistant_limits":{"${spec.key}":${spec.range.first - 1}}}""")).settings.value.assistantLimits
+            assertEquals(spec.key, spec.range.first, spec.get(under))
+            // Malformed (not a number): the default, and only that key.
+            val text = SettingsStore(MemoryStorage("""{"assistant_limits":{"${spec.key}":"many","${control.key}":${control.range.last}}}""")).settings.value.assistantLimits
+            assertEquals(spec.key, spec.get(AssistantLimits()), spec.get(text)); assertEquals(spec.key, control.range.last, control.get(text))
             val good = SettingsStore(MemoryStorage("""{"assistant_limits":{"${spec.key}":${spec.range.last}}}""")).settings.value.assistantLimits
             assertEquals(spec.key, spec.range.last, spec.get(good))
         }
@@ -67,5 +73,12 @@ class LimitsSettingsTest {
         assertEquals(AgentLimits(), AgentLimits().withOwnerLimits(AssistantLimits()))
         // Every key of the agent's range is accepted by the kernel.
         for (spec in LIMITS) for (v in listOf(spec.range.first, spec.range.last)) AgentLimits().withOwnerLimits(spec.set(AssistantLimits(), v))
+    }
+
+    @Test fun `the kernel's own defaults in agent-core mirror the owner's defaults, pinned equal (agent-core cannot depend on the app)`() {
+        val agent = AgentLimits(); val owner = AssistantLimits()
+        assertEquals(owner.stepsPerReply, agent.maxSteps); assertEquals(owner.callsPerStep, agent.maxCallsPerStep)
+        assertEquals(owner.toolOutputChars, agent.maxToolChars); assertEquals(owner.replyChars, agent.maxReplyChars)
+        assertEquals(owner.modelTimeoutSeconds * 1000L, agent.modelTimeoutMs); assertEquals(owner.toolTimeoutSeconds * 1000L, agent.toolTimeoutMs)
     }
 }

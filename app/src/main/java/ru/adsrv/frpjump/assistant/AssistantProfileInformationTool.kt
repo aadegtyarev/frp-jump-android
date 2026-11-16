@@ -10,15 +10,18 @@ import ru.adsrv.frpjump.ops.OpRefusal
 import ru.adsrv.frpjump.ops.ProfileQueryFailure
 import ru.adsrv.frpjump.ops.profile.ProfileInformationQuery
 import ru.adsrv.frpjump.ops.profile.ProfileQuery
+import ru.adsrv.frpjump.ops.ssh.sshResultBudget
 import ru.adsrv.frpjump.profiles.ProfileInformation
+import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.profiles.ProfileInformationState
 
 /** Explicit invocation over the shared source; no inventory owner, cache or connection control. */
 internal class AssistantProfileInformationTool(
     private val refresh: suspend () -> Unit,
     private val read: suspend () -> ProfileInformationState,
+    private val limits: AssistantLimits = AssistantLimits(),
 ) : OperationTool<ProfileInformationQuery, ProfileInformationState>(AssistantToolId.PROFILE_INFORMATION, DESCRIPTION, SCHEMA, ProfileQuery(refresh, read)) {
-    constructor(information: ProfileInformation) : this(
+    constructor(information: ProfileInformation, limits: AssistantLimits = AssistantLimits()) : this(
         {
             // FrpJumpApi asks the ambient admission with a neutral endpoint name; this tool names the category the app guard knows.
             val outer = currentCoroutineContext()[SideEffectAdmission]
@@ -26,6 +29,7 @@ internal class AssistantProfileInformationTool(
             else withContext(SideEffectAdmission { operation -> outer.check("profile-$operation-dispatch") }) { information.refreshAll() }
         },
         { information.observe().first() },
+        limits,
     )
 
     override fun parse(args: StrictArgs) = args.run {
@@ -34,7 +38,7 @@ internal class AssistantProfileInformationTool(
             optionalString("profile_id", 256), optionalInt("offset", min = 0) ?: 0)
     }
     override val invalidArguments = ToolOutput("Invalid profile information arguments: optional query/profile_id strings up to 256 characters and a nonnegative integer offset.", ToolOutcome.FAILED)
-    override fun render(input: ProfileInformationQuery, output: ProfileInformationState) = profileInformationText(output, input)
+    override fun render(input: ProfileInformationQuery, output: ProfileInformationState) = profileInformationText(output, input, sshResultBudget(limits.toolOutputChars))
     override val unexpected: OpFailure = ProfileQueryFailure.Unavailable
     // A reading operation has no refusal; its failure is worded here.
     override fun modelText(refusal: OpRefusal): String = error("profile_information has no refusals")

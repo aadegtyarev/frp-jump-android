@@ -34,7 +34,7 @@ internal class AssistantSummary(
             if (before * 100 < settings.contextTokens.toLong() * settings.summaryPercent) return request
             val parts = mutableListOf<String>(); var turn = doc.summary?.turn ?: doc.contextStart; var exchange = doc.summary?.exchange ?: 0
             fun summaryRequest(extra: String = "") = AgentRequest(prompt, emptyList(), listOf(AgentTurn(
-                "Previous summary:\n${doc.summary?.text.orEmpty()}\nObserved conversation:\n" + parts.joinToString("\n") + extra)), minOf(1024, settings.outputTokens))
+                "Previous summary:\n${doc.summary?.text.orEmpty()}\nObserved conversation:\n" + parts.joinToString("\n") + extra)), minOf(1024, settings.outputTokens), timeoutMs = raw.timeoutMs)
             scan@ for (i in turn..doc.records.lastIndex) {
                 val record = doc.records[i]
                 val from = if (i == doc.summary?.turn) doc.summary.exchange else 0

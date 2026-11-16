@@ -92,19 +92,15 @@ fun parseTmuxProbe(output: String): TmuxProbe {
  * the user's shell, so tmux's exit status is the channel's. `-u`: UTF-8
  * even when the non-login exec has no LANG. TERM is the PTY's
  * (`xterm-256color`), set by sshd from the pty request.
- *
- * With [historyRows] (the owner's "Terminal history" setting) the session gets `history-limit` of that many rows, in the same invocation like the
- * other options; tmux applies it to the panes created after it.
  */
-fun tmuxAttachCommand(name: String, openedBy: SessionOpener = SessionOpener.OWNER, historyRows: Int? = null): String {
+fun tmuxAttachCommand(name: String, openedBy: SessionOpener = SessionOpener.OWNER): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     val target = shellQuote("=$name:")
     // A session the assistant opened says so in tmux itself, in the same invocation that creates it: the owner's restore then never takes it for a tab.
     val marker = if (openedBy == SessionOpener.ASSISTANT) " ';' set-option -t $target $OPENED_BY_OPTION ${shellQuote(OPENED_BY_ASSISTANT)}" else ""
     return "exec tmux -u new-session -A -D -s ${shellQuote(name)}" +
         " ';' set-option -t $target status off" +
-        " ';' set-option -t $target mouse on" +
-        (if (historyRows != null) " ';' set-option -t $target history-limit $historyRows" else "") + marker
+        " ';' set-option -t $target mouse on" + marker
 }
 
 /** Who opened a session: the owner (a tab) or the assistant (its own session, no tab until the owner opens one). */

@@ -1515,4 +1515,5 @@
     <string name="ssh_session_gone">Сессии больше нет на устройстве.</string>
     <string name="session_tunnel_gone">Сессия на устройстве осталась: сохранённого туннеля больше нет</string>
     <string name="session_close_tunnel_off">Не удалось закрыть: туннель выключен</string>
+    <string name="limit_reply_raised">не меньше одного вызова и ответа модели: %1$d с</string>
 </resources>

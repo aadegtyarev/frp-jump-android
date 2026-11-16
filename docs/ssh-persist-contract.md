@@ -233,8 +233,8 @@ keeps its emulator and original limit; manual replacement/new tabs capture the
 current choice. See [history setting](terminal-diagnostics-contract.md#history-setting).
 
 While tmux uses the alternate screen, that local main-buffer history does not
-fill; remote history follows tmux's `history-limit`, which the app sets on the sessions it creates or attaches to to the same "Terminal history" setting (in the attach
-invocation; it applies to panes created after it, so an existing pane keeps its own). With mouse reporting, swipes become wheel
+fill; remote history follows tmux's `history-limit` (normally 2000 lines unless
+the owner's config changes it); the app does not set it, and the "Terminal history" setting is the app's own terminal buffer only. With mouse reporting, swipes become wheel
 events and taps clicks. `mouse on` lets tmux enter copy mode to scroll history
 and leave it at the bottom. Long press still selects/copies visible text,
 including history scrolled into view; phone copying does not use tmux drag

@@ -74,7 +74,10 @@ internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (Assistant
             Group(stringResource(limitGroupTitle(group))) {
                 LIMITS.filter { it.group == group }.forEachIndexed { index, spec ->
                     if (index > 0) RowDivider()
-                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), spec.get(limits), spec.range, spec.step) { onChange(spec.set(limits, it)) }
+                    // The whole reply is raised to one call plus one model answer when it is set lower: the row shows what is in force and says why.
+                    val effective = if (spec.key == "reply_s") (limits.replyLimitMs() / 1000).toInt() else spec.get(limits)
+                    val hint = if (spec.key == "reply_s" && effective > spec.get(limits)) stringResource(R.string.limit_reply_raised, effective) else null
+                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), effective, spec.range, spec.step, hint) { onChange(spec.set(limits, it)) }
                 }
             }
         }
@@ -110,16 +113,27 @@ private fun limitLabel(key: String) = when (key) {
 /** The label (the row reads it with its value), then "−" and "+" around the value, in the row's own text size. */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun LimitRow(tag: String, label: String, value: Int, range: IntRange, step: Int, onChange: (Int) -> Unit) {
+private fun LimitRow(tag: String, label: String, value: Int, range: IntRange, step: Int, hint: String?, onChange: (Int) -> Unit) {
     val style = MaterialTheme.typography.bodyLarge
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically,
+    val shown = limitNumber(value)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Row(Modifier.fillMaxWidth().testTag(tag), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = style, color = AppTheme.colors.ink, modifier = Modifier.weight(1f).semantics { contentDescription = "$label: $value" })
+        Text(label, style = style, color = AppTheme.colors.ink, modifier = Modifier.weight(1f).semantics { contentDescription = "$label: $shown" })
         StepButton("−", stringResource(R.string.limit_decrease), value > range.first, "${tag}_minus") { onChange((value - step).coerceAtLeast(range.first)) }
-        Text(value.toString(), style = style, color = AppTheme.colors.ink, textAlign = TextAlign.Center,
+        Text(shown, style = style, color = AppTheme.colors.ink, textAlign = TextAlign.Center,
             modifier = Modifier.defaultMinSize(minWidth = 56.dp).testTag("${tag}_value").semantics { invisibleToUser() })
         StepButton("+", stringResource(R.string.limit_increase), value < range.last, "${tag}_plus") { onChange((value + step).coerceAtMost(range.last)) }
     }
+    if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag("${tag}_hint"))
+    }
+}
+
+/** A limit's number with the locale's grouping (128,000 / 128 000). */
+@Composable
+internal fun limitNumber(value: Int): String {
+    val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
+    return java.text.NumberFormat.getIntegerInstance(locale).format(value)
 }
 
 /**

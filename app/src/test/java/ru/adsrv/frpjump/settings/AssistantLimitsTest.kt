@@ -47,13 +47,13 @@ class AssistantLimitsTest {
         assertEquals(null, file.text)
     }
 
-    @Test fun `an old file without the keys keeps the defaults, and one bad value resets only itself`() {
+    @Test fun `an old file without the keys keeps the defaults, and one out-of-range value is clamped on its own`() {
         val old = SettingsStore(MemoryStorage("""{"assistant_enabled":true,"assistant_search":true}"""))
         assertEquals(AssistantLimits(), old.settings.value.assistantLimits)
         assertTrue(old.settings.value.assistantEnabled && old.settings.value.assistantSearch)
         assertFalse(old.settings.value.assistantWaits)
         val mixed = SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4,"wait_max_minutes":500,"event_replies":"many"},"assistant_waits":true,"assistant_search":true}"""))
-        assertEquals(AssistantLimits(waitsAtOnce = 4, waitMaxMinutes = 30, eventReplies = 5), mixed.settings.value.assistantLimits)
+        assertEquals(AssistantLimits(waitsAtOnce = 4, waitMaxMinutes = 120, eventReplies = 5), mixed.settings.value.assistantLimits)
         assertTrue(mixed.settings.value.assistantWaits && mixed.settings.value.assistantSearch)
         // A file written by an earlier build of this change may still carry the removed key: it is ignored.
         assertEquals(AssistantLimits(), SettingsStore(MemoryStorage("""{"assistant_limits":{"after_input_seconds":15}}""")).settings.value.assistantLimits)
@@ -61,14 +61,14 @@ class AssistantLimitsTest {
         assertEquals(AssistantLimits(), SettingsStore(MemoryStorage("""{"assistant_limits":7}""")).settings.value.assistantLimits)
     }
 
-    @Test fun `the assistant's sessions at once default to 3, within 1 to 10, each read on its own`() {
+    @Test fun `the assistant's sessions at once default to 3, within 1 to 10, each read on its own and clamped`() {
         assertEquals(3, AssistantLimits().sessionsAtOnce); assertEquals(1..10, AssistantLimits.SESSIONS_AT_ONCE_RANGE)
         assertTrue(validAssistantLimits(AssistantLimits(sessionsAtOnce = 1))); assertTrue(validAssistantLimits(AssistantLimits(sessionsAtOnce = 10)))
         assertFalse(validAssistantLimits(AssistantLimits(sessionsAtOnce = 0))); assertFalse(validAssistantLimits(AssistantLimits(sessionsAtOnce = 11)))
         // Files written before the limit existed read as the default, and a bad value resets only itself.
         assertEquals(3, SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4}}""")).settings.value.assistantLimits.sessionsAtOnce)
         val bad = SettingsStore(MemoryStorage("""{"assistant_limits":{"waits_at_once":4,"sessions_at_once":99}}""")).settings.value.assistantLimits
-        assertEquals(AssistantLimits(waitsAtOnce = 4), bad)
+        assertEquals(AssistantLimits(waitsAtOnce = 4, sessionsAtOnce = 10), bad)
         assertEquals(7, SettingsStore(MemoryStorage("""{"assistant_limits":{"sessions_at_once":7}}""")).settings.value.assistantLimits.sessionsAtOnce)
     }
 }

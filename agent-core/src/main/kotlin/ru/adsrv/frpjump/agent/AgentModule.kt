@@ -96,7 +96,7 @@ class AgentModule(
                 checkOwner()
                 val prepared = try {
                     withTimeout(limits.modelTimeoutMs) {
-                        prepareRequest(AgentRequest(instructions, specs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens, ownerInstructions))
+                        prepareRequest(AgentRequest(instructions, specs, past + AgentTurn(user, exchanges.toList()), limits.outputReserveTokens, ownerInstructions, limits.modelTimeoutMs))
                     }
                 } catch (timeout: TimeoutCancellationException) { checkOwner(); return@coroutineScope finish(AgentFinish.MODEL_TIMEOUT) }
                 catch (cancelled: CancellationException) { throw cancelled }

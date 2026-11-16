@@ -101,7 +101,8 @@ class FrpJumpApp : Application() {
             attach = { id -> assistantSessions.attach(id) },
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
             connectionName = { profile, device, port -> savedSshConnection(profile, device, port)?.customName },
-            connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id })
+            connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id },
+            toolTimeoutMs = { settings.settings.value.assistantLimits.toolTimeoutSeconds * 1000L })
     }
 
     /**
@@ -119,7 +120,8 @@ class FrpJumpApp : Application() {
                     ru.adsrv.frpjump.assistant.SessionNotice.CLOSE_TUNNEL_OFF -> R.string.session_close_tunnel_off
                 }), ru.adsrv.frpjump.notices.NoticeKind.WARN)
             },
-            enabled = { settings.assistantAvailability.tools[ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_OPEN] }).also { it.refresh() }
+            enabled = { settings.assistantAvailability.tools[ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_OPEN] },
+            toolTimeoutMs = { settings.settings.value.assistantLimits.toolTimeoutSeconds * 1000L }).also { it.refresh() }
     }
 
     /** The saved SSH connection of a tab's profile, device and port that is not hidden by an Undo; null when none matches. */

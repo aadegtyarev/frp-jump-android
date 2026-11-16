@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.settings
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -74,6 +75,15 @@ class AssistantLimitsScreenTest {
         scrolled("limit_wait_max_minutes_plus").assertIsNotEnabled()
     }
 
+    @Test fun theWholeReplyRowShowsTheRaisedValueAndSaysWhy() {
+        val limits = mutableStateOf(AssistantLimits(replySeconds = 30, toolTimeoutSeconds = 100, modelTimeoutSeconds = 80))
+        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { limits.value = it }, onBack = {}) } }
+        scrolled("limit_reply_s_value").assertTextEquals("180")
+        scrolled("limit_reply_s_hint").assertTextEquals(compose.activity.getString(R.string.limit_reply_raised, 180))
+        limits.value = AssistantLimits()
+        compose.onAllNodesWithTag("limit_reply_s_hint").assertCountEquals(0)
+    }
+
     /** The node of [tag], scrolled into view (the screen is longer than the window). */
     private fun scrolled(tag: String) = compose.onNodeWithTag(tag).performScrollTo()
 
@@ -83,7 +93,7 @@ class AssistantLimitsScreenTest {
         for (group in ru.adsrv.frpjump.settings.LimitGroup.entries) scrolled("limit_${LIMITS.first { it.group == group }.key}_value")
         for (spec in LIMITS) {
             val tag = "limit_${spec.key}"
-            scrolled("${tag}_value").assertTextEquals(spec.get(AssistantLimits()).toString())
+            scrolled("${tag}_value").assertTextEquals(java.text.NumberFormat.getIntegerInstance(compose.activity.resources.configuration.locales[0]).format(spec.get(AssistantLimits())))
             scrolled("${tag}_plus").performClick()
             compose.runOnIdle { assertEquals(spec.key, minOf(spec.get(AssistantLimits()) + spec.step, spec.range.last), spec.get(limits.value)) }
             scrolled("${tag}_minus").performClick(); scrolled("${tag}_minus").performClick()
