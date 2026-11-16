@@ -121,8 +121,16 @@ class SshSession(
     /** Who opened the session: the assistant's own sessions have no tab until the owner opens one ([show]), and say so in tmux. */
     val openedBy: SessionOpener = SessionOpener.OWNER,
     /** Only attach to the tmux session [tmuxName]: when it no longer runs the session ends ([sessionGone]) and nothing is created (no `new-session -A`). */
-    val attachOnly: Boolean = false,
+    attachOnly: Boolean = false,
 ) {
+    /**
+     * Only attach to the tmux session: when it no longer runs the session ends ([sessionGone]) and nothing is created (no `new-session -A`). An assistant's
+     * session is attach-only from the moment its tmux session was created, so a reconnect after a drop never creates it again.
+     */
+    @Volatile
+    var attachOnly: Boolean = attachOnly
+        private set
+
     /** An attach-only session found its tmux session gone on the device. */
     @Volatile
     var sessionGone = false
@@ -520,7 +528,7 @@ class SshSession(
      * (exec refused, no answer in time) counts as no tmux: a plain shell, as
      * before. A connection gone fails the try as any other failure.
      */
-    private fun probeTmux(ssh: SSHClient, name: String): TmuxProbe =
+    private fun probeTmux(ssh: SSHClient, name: String, strict: Boolean = false): TmuxProbe =
         try {
             ssh.startSession().use { s ->
                 val command = s.exec(tmuxProbeCommand(name))
@@ -532,7 +540,8 @@ class SshSession(
         } catch (e: IOException) {
             if (!ssh.isConnected) throw e
             Log.w(TAG, "tmux probe failed: ${e.javaClass.simpleName}")
-            TmuxProbe.ABSENT
+            // An attach-only session must tell "no answer" from "the session is not there".
+            if (strict) TmuxProbe.UNKNOWN else TmuxProbe.ABSENT
         }
 
     /**
@@ -614,11 +623,17 @@ class SshSession(
             if (!current(attempt)) return
             // One short exec first: with tmux the tab's channel attaches to (or creates) its session.
             val name = tmux.name()
-            val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name)
-            if (attachOnly && probe != TmuxProbe.EXISTING) {
-                // Never creates: a session that is gone stays gone.
-                sessionGone = true
-                fail(attempt, Texts.get(R.string.ssh_session_gone), retrying)
+            val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name, strict = attachOnly)
+            val verdict = attachOnlyVerdict(probe)
+            if (attachOnly && verdict != AttachVerdict.ATTACH) {
+                // Never creates. Only a real answer that says the session is not there (tmux runs, it does not) is "gone"; no answer, or no tmux
+                // to ask, is just unreachable and the record stays.
+                if (verdict == AttachVerdict.GONE) {
+                    sessionGone = true
+                    fail(attempt, Texts.get(R.string.ssh_session_gone), false)
+                } else {
+                    fail(attempt, Texts.get(R.string.ssh_session_unknown), retrying)
+                }
                 return
             }
             val channel = ssh.startSession() as SessionChannel
@@ -640,6 +655,8 @@ class SshSession(
             reconnect.succeeded()
             attached = commit(attempt) {
                 tmux.inUse = probe != TmuxProbe.ABSENT
+                // Created (or found): from now on it is only ever attached to.
+                if (openedBy == SessionOpener.ASSISTANT && tmux.inUse) attachOnly = true
                 channelStartedAt = System.nanoTime()
                 copyMode.active = tmux.inUse
                 shell = channel

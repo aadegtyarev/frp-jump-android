@@ -34,8 +34,20 @@ fun isTmuxName(name: String): Boolean = TMUX_NAME.matches(name)
 /** [s] as one shell word, single-quoted; a `'` inside becomes `'\''`. */
 fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
+/** What an attach-only session does with a probe: attach, end as gone (the ONLY answer that forgets its record), or end as unreachable (the record stays). */
+enum class AttachVerdict { ATTACH, GONE, UNREACHABLE }
+
+fun attachOnlyVerdict(probe: TmuxProbe): AttachVerdict = when (probe) {
+    TmuxProbe.EXISTING -> AttachVerdict.ATTACH
+    TmuxProbe.FRESH -> AttachVerdict.GONE
+    TmuxProbe.ABSENT, TmuxProbe.UNKNOWN -> AttachVerdict.UNREACHABLE
+}
+
 /** What the probe found on the device. */
 enum class TmuxProbe {
+    /** The probe got no answer in time (or the exec failed) on a connection still up. Only an attach-only session sees it; every other treats it as [ABSENT]. */
+    UNKNOWN,
+
     /** No tmux on the exec PATH (or a shell that cannot run the probe): a plain shell. */
     ABSENT,
 

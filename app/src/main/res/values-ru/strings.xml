@@ -1495,6 +1495,7 @@
     <string name="sessions_assistant_close">Закрыть</string>
     <string name="terminal_state_detached">Отсоединена</string>
     <string name="terminal_session_by_assistant">Сессия помощника</string>
+    <string name="ssh_session_unknown">Не удалось проверить, есть ли сессия на устройстве.</string>
     <string name="ssh_session_gone">Сессии больше нет на устройстве.</string>
     <string name="session_tunnel_gone">Сессия на устройстве осталась: сохранённого туннеля больше нет</string>
     <string name="session_close_tunnel_off">Не удалось закрыть: туннель выключен</string>

@@ -34,6 +34,8 @@ internal class FakeHost : SessionHost {
     var tmux = true
     /** The tmux sessions that still run on the device: an attach-only session to another one finds it gone. */
     var running: Set<String>? = null
+    /** The probe of an attach-only session gets no answer: it ends, but not as gone. */
+    var probeTimesOut = false
     private var next = 100
     override fun all(): List<HostedSession> = sessions.toList()
     override fun reserveId() = next++
@@ -43,6 +45,7 @@ internal class FakeHost : SessionHost {
         val s = FakeHosted(id ?: next++, SessionOpener.ASSISTANT, spec.profile, spec.user, spec.device, spec.port, number, if (gone) SshState.Ended("gone") else comes, tmux,
             SessionKey(spec.profile, spec.device, spec.port, spec.user, tmuxName ?: "frpjump-0a1b2c-$number"))
         s.sessionGone = gone
+        if (attachOnly && probeTimesOut) s.flow.value = SshState.Ended("no answer")
         sessions += s
         log += "open ${s.id}${if (tmuxName != null) " attach $tmuxName" else ""}${if (attachOnly) " only" else ""}"
         return s
@@ -50,7 +53,7 @@ internal class FakeHost : SessionHost {
     override fun reconnect(id: Int): HostedSession? {
         val old = sessions.firstOrNull { it.id == id } ?: return null
         sessions.remove(old)
-        val s = FakeHosted(next++, old.openedBy, old.profile, old.user, old.device, old.port, old.number, comes, tmux, old.key, old.name).also { it.shown = old.shown }
+        val s = FakeHosted(old.id, old.openedBy, old.profile, old.user, old.device, old.port, old.number, comes, tmux, old.key, old.name).also { it.shown = old.shown }
         sessions += s
         log += "reconnect $id -> ${s.id}"
         return s

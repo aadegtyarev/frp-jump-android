@@ -1445,6 +1445,7 @@
     <string name="sessions_assistant_close">Close</string>
     <string name="terminal_state_detached">Detached</string>
     <string name="terminal_session_by_assistant">Assistant’s session</string>
+    <string name="ssh_session_unknown">Could not check whether the session still exists on the device.</string>
     <string name="ssh_session_gone">The session no longer exists on the device.</string>
     <string name="session_tunnel_gone">The session stays on the device: its saved tunnel is gone</string>
     <string name="session_close_tunnel_off">Could not close: the tunnel is off</string>

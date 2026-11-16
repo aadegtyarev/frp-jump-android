@@ -29,6 +29,9 @@ import ru.adsrv.frpjump.assistant.tools.ChangeRequest
 import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.settings.ConfirmationPolicy
 import ru.adsrv.frpjump.ssh.ExecLease
+import ru.adsrv.frpjump.ssh.AttachVerdict
+import ru.adsrv.frpjump.ssh.TmuxProbe
+import ru.adsrv.frpjump.ssh.attachOnlyVerdict
 import ru.adsrv.frpjump.ssh.SessionKey
 import ru.adsrv.frpjump.ssh.SessionOpener
 import ru.adsrv.frpjump.ssh.SshState
@@ -287,6 +290,34 @@ class AssistantSessionsTest {
         store.adoptAssistant("p", "d", 22, "u", listOf(a.session))
         assertEquals(SessionOpener.ASSISTANT, store.record(a)?.openedBy)
         store.adoptAssistant("p", "d", 22, "u", listOf(a.session)); assertEquals(1, store.assistantSessions().size)
+    }
+
+    @Test fun `a probe that gets no answer is unreachable and never gone, the record stays`() {
+        val rig = remembered(1); rig.host.probeTimesOut = true
+        val owner = tabs(rig, FakeTerminal().set("x"))
+        val id = owner.list().single().id
+        val out = runBlocking { AssistantTerminalReadTool(owner).execute(tab(id)) }
+        assertTrue(out.text, out.text.contains("not connected now (detached)"))
+        assertEquals(1, rig.sessions.count())
+        assertNotNull(rig.records.record(SessionKey("p1", "pi", 22, "root", "frpjump-0a1b2c-1")))
+        runBlocking { rig.sessions.closeByOwner(id) }
+        assertEquals(listOf(SessionNotice.CLOSE_TUNNEL_OFF), rig.notices); assertEquals(1, rig.sessions.count())
+    }
+
+    @Test fun `only a real answer that the session is not there says gone`() {
+        assertEquals(AttachVerdict.ATTACH, attachOnlyVerdict(TmuxProbe.EXISTING))
+        assertEquals(AttachVerdict.GONE, attachOnlyVerdict(TmuxProbe.FRESH))
+        assertEquals(AttachVerdict.UNREACHABLE, attachOnlyVerdict(TmuxProbe.UNKNOWN))
+        assertEquals(AttachVerdict.UNREACHABLE, attachOnlyVerdict(TmuxProbe.ABSENT))
+    }
+
+    @Test fun `a reconnect keeps the tab_id of an assistant session`() {
+        val rig = SessionRig(); val live = rig.existing(4); live.flow.value = SshState.Ended("drop")
+        val owner = tabs(rig, FakeTerminal().set("x"))
+        runBlocking { assertEquals(AttachResult.ATTACHED, rig.sessions.attach(4)) }
+        assertEquals(listOf(4), rig.host.sessions.map { it.id }); assertEquals(listOf(4), rig.sessions.entries.value.map { it.id })
+        assertEquals(listOf(4), owner.list().map { it.id })
+        assertTrue(rig.host.log.single().startsWith("reconnect 4 -> 4"))
     }
 
     // ---- terminal_show ----

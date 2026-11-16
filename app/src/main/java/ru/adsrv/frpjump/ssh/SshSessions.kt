@@ -237,8 +237,10 @@ class SshSessions(
         // A first tab that never got as far as the pick-up (refused login, host key) still does it.
         val pickUpStill = old.openedBy == SessionOpener.OWNER && old.tmux.assigned == null &&
             _all.value.none { it.id != id && it.openedBy == SessionOpener.OWNER && it.profile == old.profile && it.device == old.device && it.port == old.port }
+        // An assistant session keeps its id: the model's tab_id stays valid across a reconnect.
+        val freshId = if (old.openedBy == SessionOpener.ASSISTANT) old.id else nextId++
         val fresh = SshSession(
-            nextId++, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
+            freshId, old.profile, old.hostKeys, old.device, old.port, old.localPort, login, auth ?: old.auth, env, scope, ClientForScreen(), number,
             tmuxName = old.tmux.assigned, noTmux = old.tmux.disabled, onReattached = ::sayReattached,
             pickUp = if (pickUpStill) ::pickUp else null, tabName = old.tabName.value, openedBy = old.openedBy, attachOnly = old.attachOnly,
         )
