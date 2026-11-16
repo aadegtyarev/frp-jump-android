@@ -46,7 +46,7 @@ class AssistantSkillCardsTest {
         compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(text(R.string.tool_skill_save_receipt))
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("restart-nginx")
         compose.onNodeWithTag("chat_confirm_skill_description", useUnmergedTree = true).assertTextContains("Use when nginx must restart.", substring = true)
-        compose.onNodeWithTag("chat_confirm_skill_requires", useUnmergedTree = true).assertTextContains("ssh_command, terminal_input", substring = true)
+        compose.onNodeWithTag("chat_confirm_skill_requires", useUnmergedTree = true).assertTextContains(text(R.string.tool_ssh_command) + ", " + text(R.string.tool_terminal_input), substring = true)
         // The text is shown as it is: markup characters are not rendered, and the box scrolls (30 lines).
         compose.onNodeWithTag("chat_confirm_command", useUnmergedTree = true).assertTextContains("<b>run</b> **this**", substring = true)
         compose.onNodeWithTag("chat_confirm_text_label", useUnmergedTree = true).assertTextEquals(text(R.string.confirm_skill_text))
@@ -58,15 +58,26 @@ class AssistantSkillCardsTest {
     }
 
     @Test fun replacingASkillSaysSoAndKeepsTheOldTextReachable() {
-        val card = SkillCard(SkillCard.Kind.REPLACE, "restart-nginx", "Use when nginx must restart.", emptyList(), "new text", oldBody = "old text that was there")
+        val card = SkillCard(SkillCard.Kind.REPLACE, "restart-nginx", "Use when nginx must restart.", emptyList(), "new text", oldBody = "old text that was there",
+            oldDescription = "Use when the old thing happens.", oldRequires = listOf("ssh_command"))
         compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.SKILL_SAVE, "new text", null, null, skill = card), onAnswer = {}) } }
         compose.onNodeWithTag("chat_confirm_skill_requires", useUnmergedTree = true).assertTextContains(text(R.string.confirm_skill_requires_none), substring = true)
+        // The old description and requirements stand next to the new ones.
+        compose.onNodeWithTag("chat_confirm_skill_old_description", useUnmergedTree = true).assertTextContains("Use when the old thing happens.", substring = true)
+        compose.onNodeWithTag("chat_confirm_skill_old_requires", useUnmergedTree = true).assertTextContains(text(R.string.tool_ssh_command), substring = true)
         compose.onNodeWithTag("chat_confirm_skill_old").assertDoesNotExist()
         compose.onNodeWithTag("chat_confirm_skill_old_toggle").performClick()
         compose.onNodeWithTag("chat_confirm_skill_old", useUnmergedTree = true).assertTextEquals("old text that was there")
         shot("card-skill-replace")
         compose.onNodeWithTag("chat_confirm_skill_old_toggle").performClick()
         compose.onNodeWithTag("chat_confirm_skill_old").assertDoesNotExist()
+    }
+
+    @Test fun aDescriptionWithInvisibleCharactersIsShownWithVisibleEscapes() {
+        val card = SkillCard(SkillCard.Kind.SAVE, "restart-nginx", "Use when a\u2028b\uFE0F", emptyList(), "text")
+        compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.SKILL_SAVE, "text", null, null, skill = card), onAnswer = {}) } }
+        compose.onNodeWithTag("chat_confirm_skill_description", useUnmergedTree = true).assertTextContains("⟨U+2028⟩", substring = true)
+        compose.onNodeWithTag("chat_confirm_skill_description", useUnmergedTree = true).assertTextContains("⟨U+FE0F⟩", substring = true)
     }
 
     @Test fun deletingASkillShowsOnlyItsNameAndDescription() {

@@ -1,11 +1,16 @@
 package ru.adsrv.frpjump.assistant
 
 import android.util.Log
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import ru.adsrv.frpjump.api.WireJson
+import ru.adsrv.frpjump.assistant.chat.needsEscape
 import ru.adsrv.frpjump.settings.sanitizeModelText
 import ru.adsrv.frpjump.settings.AssistantTools
 import ru.adsrv.frpjump.store.TextStorage
@@ -32,19 +37,31 @@ object SkillRules {
     fun validName(name: String) = name.length in NAME_MIN..NAME_MAX && NAME.matches(name)
 
     /**
-     * The skill that [name], [description], [requires] and [body] make, or null when they are not a skill: a kebab-case name of 2 to 40 characters; one line of at most
-     * [DESCRIPTION_MAX] characters; known switch names, each once; a body that is not blank and has at most [maxChars] characters. Text is cleaned of control and
-     * invisible characters ([sanitizeModelText]) first, so what is checked and saved is what is shown.
+     * The skill that [name], [description], [requires] and [body] make, or null when they are not a skill: a kebab-case name of 2 to 40 characters; a description that is
+     * printable one-line text of at most [DESCRIPTION_MAX] characters (it enters the system prompt on every Send, so NOTHING invisible or line-breaking is accepted in it, nor
+     * cleaned away: any character the card would have to escape refuses the skill); known switch names, each once; a body that is not blank and has at most [maxChars]
+     * characters (control and invisible characters are removed from it, [sanitizeModelText], the card showing it as it is saved).
      */
     fun make(name: String, description: String, requires: List<String>, body: String, maxChars: Int, builtIn: Boolean = false): Skill? {
         if (!validName(name)) return null
-        val line = sanitizeModelText(description).trim()
-        if (line.isEmpty() || '\n' in line || line.length > DESCRIPTION_MAX) return null
+        val line = description.trim(' ')
+        if (line.isEmpty() || line.length > DESCRIPTION_MAX || !printableLine(line)) return null
         val known = knownSwitches().toSet()
         if (requires.any { it !in known } || requires.toSet().size != requires.size) return null
         val text = sanitizeModelText(body).trim()
         if (text.isEmpty() || text.length > maxChars) return null
         return Skill(name, line, requires, text, builtIn)
+    }
+
+    /** Whether [text] is printable one-line text: no character that [needsEscape] flags (line and paragraph separators, format and zero-width characters, variation selectors, controls) except the plain space. */
+    fun printableLine(text: String): Boolean {
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            i += Character.charCount(cp)
+            if (cp != ' '.code && needsEscape(cp)) return false
+        }
+        return true
     }
 }
 
@@ -52,62 +69,75 @@ object SkillRules {
 @Serializable
 private class StoredSkill(val name: String, val description: String, val requires: List<String> = emptyList(), val body: String)
 
-@Serializable
-private class StoredSkills(val version: Int = 1, @SerialName("skills") val skills: List<StoredSkill> = emptyList())
+/** What a read of the file gave: the skills that parse, and the entries that do not (kept as they are, so that a write never loses them). */
+private class Loaded(val skills: List<Skill>, val unparsed: List<JsonElement>)
 
 /**
- * The owner's skills: one app-private file, written only through [put] and [delete] (the tools, after his confirmation). A missing, unreadable or malformed file is no
- * skills; an entry that is not a skill (by [SkillRules]) is left out when read. Thread-safe.
+ * The owner's skills: one app-private file, written only through [put] and [delete] (the tools, after his confirmation). An absent file is no skills. A file that
+ * exists but cannot be read (an I/O error, not JSON) is NOT cached as empty and refuses every write, so a later write can never replace what is there; an entry that is
+ * not a skill (by [SkillRules]: an unknown switch name, a bad name) is not listed but is carried through every write unchanged. Thread-safe.
  */
-class SkillStore(private val storage: TextStorage, private val maxChars: () -> Int) {
-    private var cache: List<Skill>? = null
+class SkillStore(private val storage: TextStorage) {
+    private var cache: Loaded? = null
 
-    /** The owner's skills by name. */
+    /** The owner's skills by name (none while the file cannot be read). */
     @Synchronized
-    fun all(): List<Skill> = load()
+    fun all(): List<Skill> = load()?.skills.orEmpty()
 
     @Synchronized
-    fun get(name: String): Skill? = load().firstOrNull { it.name == name }
+    fun get(name: String): Skill? = all().firstOrNull { it.name == name }
 
-    /** Saves [skill] (replacing the one of its name); false when it could not be written (nothing then changed). */
+    /** False while the file exists and cannot be read (every write is then refused). */
+    @get:Synchronized
+    val readable: Boolean get() = load() != null
+
+    /** Saves [skill] (replacing the one of its name); false when it could not be written or the file cannot be read (nothing then changed). */
     @Synchronized
     fun put(skill: Skill): Boolean {
-        val next = (load().filter { it.name != skill.name } + skill).sortedBy { it.name }
-        return write(next)
+        val loaded = load() ?: return false
+        return write(loaded, (loaded.skills.filter { it.name != skill.name } + skill).sortedBy { it.name })
     }
 
-    /** Deletes the skill [name]; false when there is none or it could not be written. */
+    /** Deletes the skill [name]; false when there is none, it could not be written or the file cannot be read. */
     @Synchronized
     fun delete(name: String): Boolean {
-        val current = load()
-        if (current.none { it.name == name }) return false
-        return write(current.filter { it.name != name })
+        val loaded = load() ?: return false
+        if (loaded.skills.none { it.name == name }) return false
+        return write(loaded, loaded.skills.filter { it.name != name })
     }
 
-    private fun write(next: List<Skill>): Boolean = try {
-        storage.write(WireJson.encodeToString(StoredSkills(skills = next.map { StoredSkill(it.name, it.description, it.requires, it.body) })))
-        cache = next
+    private fun write(loaded: Loaded, next: List<Skill>): Boolean = try {
+        val entries = next.map { WireJson.encodeToJsonElement(StoredSkill(it.name, it.description, it.requires, it.body)) } + loaded.unparsed
+        storage.write(WireJson.encodeToString(JsonObject(mapOf("version" to JsonPrimitive(1), "skills" to JsonArray(entries)))))
+        cache = Loaded(next, loaded.unparsed)
         true
     } catch (e: Exception) {
         Log.w(TAG, "skills not saved: ${e.javaClass.simpleName}")
         false
     }
 
-    private fun load(): List<Skill> {
+    /** The file as read, or null when it exists and cannot be read (then nothing is cached: the next call reads again). */
+    private fun load(): Loaded? {
         cache?.let { return it }
-        val read = try {
-            // Entry by entry: one that cannot be read (a missing field) is left out and the others stay.
-            (storage.read()?.let { WireJson.parseToJsonElement(it) } as? kotlinx.serialization.json.JsonObject)?.get("skills")
-                ?.let { it as? kotlinx.serialization.json.JsonArray }.orEmpty()
-                .mapNotNull { runCatching { WireJson.decodeFromJsonElement<StoredSkill>(it) }.getOrNull() }
+        val loaded = try {
+            val text = storage.read()?.takeIf { it.isNotBlank() }
+            if (text == null) Loaded(emptyList(), emptyList())
+            else {
+                val entries = (WireJson.parseToJsonElement(text) as JsonObject)["skills"]?.let { it as JsonArray }.orEmpty()
+                val skills = ArrayList<Skill>(); val unparsed = ArrayList<JsonElement>()
+                for (entry in entries) {
+                    // The size limit is the owner's now: one saved under a higher limit stays readable, so entries are not cut by length here.
+                    val skill = runCatching { WireJson.decodeFromJsonElement<StoredSkill>(entry) }.getOrNull()
+                        ?.let { SkillRules.make(it.name, it.description, it.requires, it.body, Int.MAX_VALUE) }
+                    if (skill != null && skills.none { it.name == skill.name }) skills += skill else unparsed += entry
+                }
+                Loaded(skills.sortedBy { it.name }, unparsed)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "skills not read: ${e.javaClass.simpleName}")
-            emptyList()
+            null
         }
-        // An owner's size limit may have been lowered since a skill was saved: it stays readable, so entries are not cut by length here.
-        val skills = read.mapNotNull { SkillRules.make(it.name, it.description, it.requires, it.body, Int.MAX_VALUE) }
-            .distinctBy { it.name }.sortedBy { it.name }
-        return skills.also { cache = it }
+        return loaded?.also { cache = it }
     }
 
     private companion object { const val TAG = "SkillStore" }
@@ -161,9 +191,12 @@ class SkillRegistry internal constructor(private val builtInSkills: Lazy<List<Sk
 
     fun builtInNames(): Set<String> = builtInSkills.value.map { it.name }.toSet()
 
-    /** Whether every switch the skill requires is on now. A name that is no tool's is never on. */
+    /**
+     * Whether the skill is in effect for a request in which the switches are [tools]: every switch it requires is on (a name that is no tool's is never on), and an OWNER
+     * skill only while «Скиллы» is on, so the owner has an off switch for a mistaken skill. Only the built-in skills whose requirements are on are in effect without it.
+     */
     fun relevant(skill: Skill, tools: AssistantTools): Boolean =
-        skill.requires.all { wire -> AssistantToolId.fromWire(wire)?.let { tools[it] } == true }
+        (skill.builtIn || tools[AssistantToolId.SKILLS_LIST]) && skill.requires.all { wire -> AssistantToolId.fromWire(wire)?.let { tools[it] } == true }
 
     fun relevant(tools: AssistantTools): List<Skill> = all().filter { relevant(it, tools) }
 

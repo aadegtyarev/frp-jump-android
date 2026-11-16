@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -133,8 +134,13 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             }
             if (skill != null) {
                 // The whole skill as plain text: its description and what it requires here, its text in the box below.
-                FieldLine(stringResource(R.string.confirm_skill_description), skill.description, "chat_confirm_skill_description")
-                FieldLine(stringResource(R.string.confirm_skill_requires), skill.requires.joinToString(", ").ifEmpty { stringResource(R.string.confirm_skill_requires_none) }, "chat_confirm_skill_requires")
+                // The description enters the system prompt on every Send, so it is shown like the command: every invisible character as a visible escape.
+                FieldLine(stringResource(R.string.confirm_skill_description), skillText(skill.description, escapeStyle), "chat_confirm_skill_description")
+                FieldLine(stringResource(R.string.confirm_skill_requires), switchTitles(skill.requires), "chat_confirm_skill_requires")
+                if (skill.oldDescription != null) {
+                    FieldLine(stringResource(R.string.confirm_skill_old_description), skillText(skill.oldDescription, escapeStyle), "chat_confirm_skill_old_description")
+                    FieldLine(stringResource(R.string.confirm_skill_old_requires), switchTitles(skill.oldRequires.orEmpty()), "chat_confirm_skill_old_requires")
+                }
             }
         }
     }
@@ -187,7 +193,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Column(Modifier.weight(1f, fill = false).verticalScroll(sectionScroll).testTag("chat_confirm_section"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Header(); if (showCommand) CommandBlock()
-                skill?.oldBody?.let { old -> OldSkillText(old, confirmation.id) }
+                skill?.oldBody?.let { old -> OldSkillText(skillText(old, escapeStyle), confirmation.id) }
                 typing?.keys?.takeIf { it.isNotEmpty() }?.let { FieldLine(stringResource(R.string.confirm_keys), it.joinToString(", "), "chat_confirm_keys") }
                 Warning(); if (withAnswers) Answers()
             }
@@ -224,11 +230,26 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     )
 }
 
+/** [raw] as the card shows model text: every non-printing or disguising character as a highlighted visible escape ([displayCommandSpans]). */
+private fun skillText(raw: String, escape: SpanStyle): AnnotatedString = buildAnnotatedString {
+    for (span in displayCommandSpans(raw, forRender = true)) if (span.escape) withStyle(escape) { append(span.text) } else append(span.text)
+}
+
+/** The owner's own words for the switches a skill requires (their titles on the Tools screen), "nothing" for none; an unknown name as it is. */
+@Composable
+private fun switchTitles(wires: List<String>): AnnotatedString {
+    val titles = wires.map { wire -> ru.adsrv.frpjump.assistant.AssistantToolId.fromWire(wire)?.let { stringResource(it.title()) } ?: wire }
+    return AnnotatedString(titles.joinToString(", ").ifEmpty { stringResource(R.string.confirm_skill_requires_none) })
+}
+
 /** "Label: value", the label bold; the value wraps in full (the card's section scrolls), and TalkBack reads both. */
 @Composable
-private fun FieldLine(label: String, value: String, tag: String) {
+private fun FieldLine(label: String, value: String, tag: String) = FieldLine(label, AnnotatedString(value), tag)
+
+@Composable
+private fun FieldLine(label: String, value: AnnotatedString, tag: String) {
     Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$label: ") }; append(value) },
-        modifier = Modifier.semantics { contentDescription = "$label: $value" }.testTag(tag))
+        modifier = Modifier.semantics { contentDescription = "$label: ${value.text}" }.testTag(tag))
 }
 
 @Composable
@@ -264,7 +285,7 @@ private fun skillTitle(skill: ru.adsrv.frpjump.assistant.SkillCard) = when (skil
 
 /** The text a replaced skill had, reachable from the card (closed at first): plain text, in its own scrolling box. */
 @Composable
-private fun OldSkillText(old: String, id: Long) {
+private fun OldSkillText(old: AnnotatedString, id: Long) {
     var shown by remember(id) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         TextButton(onClick = { shown = !shown }, modifier = Modifier.testTag("chat_confirm_skill_old_toggle")) {

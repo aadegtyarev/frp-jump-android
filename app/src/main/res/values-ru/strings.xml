@@ -1539,4 +1539,6 @@
     <string name="limit_skills_max">Скиллов, не больше</string>
     <string name="limit_skill_chars">Размер скилла, символов</string>
     <string name="limit_skills_list">Список скиллов в запросе, символов</string>
+    <string name="confirm_skill_old_description">Прежнее описание</string>
+    <string name="confirm_skill_old_requires">Прежние требования</string>
 </resources>

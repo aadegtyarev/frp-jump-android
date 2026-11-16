@@ -11,7 +11,7 @@ internal object SkillFixtures {
         Skill(name, description, requires, body, false)
 
     fun registry(builtIn: List<Skill> = listOf(authoring), owner: List<Skill> = emptyList(), storage: TextStorage = MemoryTextStorage(), maxChars: Int = 4_000): SkillRegistry {
-        val store = SkillStore(storage) { maxChars }
+        val store = SkillStore(storage)
         owner.forEach { check(store.put(it)) }
         return SkillRegistry(lazy { builtIn }, store)
     }

@@ -5,6 +5,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -59,7 +62,10 @@ class SkillsTest {
         assertNull(make(body = "   ")); assertNull(make(body = "x".repeat(101))); assertNotNull(make(body = "x".repeat(100)))
         // Control and invisible characters are cleaned before the checks: what is saved is what is shown.
         assertEquals("a\nb", make(body = "a\u0007\nb‮")!!.body)
-        assertEquals("Use when x.", make(description = "Use when x.‮")!!.description)
+        assertEquals("Use when x.", make(description = "  Use when x.  ")!!.description)
+        // The description enters the system prompt on every Send: nothing invisible or line-breaking is accepted in it, nor cleaned away.
+        for (bad in listOf("a\u2028b", "a\u2029b", "a\u200Bb", "a\uFEFFb", "a\uFE0Fb", "a\uDB40\uDD00b", "a\u202Eb", "a\u0007b", "a\tb", "a\u00A0b", "a\u2060b", "a\u200Db")) assertNull(bad.map { it.code.toString(16) }.toString(), make(description = bad))
+        assertNotNull(make(description = "Use when restarting nginx on the Pi, пожалуйста."))
         assertEquals(SkillRules.knownSwitches(), AssistantToolId.switches.map { it.wire })
     }
 
@@ -71,7 +77,7 @@ class SkillsTest {
         assertEquals(listOf(true, true, false, false), registry.all().map { it.builtIn })
         // A same-named owner skill in the file (written by hand, or before the built-in existed) is hidden by the built-in one.
         val storage = MemoryTextStorage()
-        SkillStore(storage) { 4_000 }.put(SkillFixtures.owner("skill-authoring", body = "mine"))
+        SkillStore(storage).put(SkillFixtures.owner("skill-authoring", body = "mine"))
         val shadowed = SkillFixtures.registry(storage = storage)
         assertEquals("Authoring text.", shadowed.find("skill-authoring")!!.body); assertEquals(1, shadowed.all().size)
         // The tool refuses the name and asks nothing.
@@ -87,17 +93,22 @@ class SkillsTest {
         val free = SkillFixtures.owner("free")
         val registry = SkillFixtures.registry(builtIn = listOf(SkillFixtures.authoring), owner = listOf(ssh, both, free))
         fun names(tools: AssistantTools) = registry.relevant(tools).map { it.name }
-        assertEquals(listOf("free"), names(AssistantTools()))
+        // While «Скиллы» is off NO owner skill is listed or readable (the owner's off switch for a mistaken skill); a built-in one only when its requirements are on.
+        assertEquals(emptyList<String>(), names(AssistantTools()))
+        assertEquals(emptyList<String>(), names(AssistantTools(sshCommand = true, terminalTabs = true, terminalInput = true)))
         assertEquals(listOf("skill-authoring", "free"), names(AssistantTools(skills = true)))
-        assertEquals(listOf("free", "ssh-only"), names(AssistantTools(sshCommand = true)))
+        assertEquals(listOf("skill-authoring", "free", "ssh-only"), names(AssistantTools(skills = true, sshCommand = true)))
         // terminal_input is in effect only with the tabs on too (the effective state, not the raw switch).
-        assertEquals(listOf("free"), names(AssistantTools(terminalInput = true)))
-        assertEquals(listOf("free", "tabs-and-input"), names(AssistantTools(terminalTabs = true, terminalInput = true)))
+        assertEquals(listOf("skill-authoring", "free"), names(AssistantTools(skills = true, terminalInput = true)))
+        assertEquals(listOf("skill-authoring", "free", "tabs-and-input"), names(AssistantTools(skills = true, terminalTabs = true, terminalInput = true)))
+        // A built-in skill that needs nothing is in effect without the switch.
+        assertEquals(listOf("always-here"), SkillFixtures.registry(builtIn = listOf(SkillFixtures.builtInFree, SkillFixtures.authoring), owner = listOf(free)).relevant(AssistantTools()).map { it.name })
         // A name that is no tool's is never on.
-        val odd = SkillStore(MemoryTextStorage().also { it.write("""{"version":1,"skills":[{"name":"odd","description":"Use when x.","requires":["nope"],"body":"b"}]}""") }) { 4_000 }
+        val odd = SkillStore(MemoryTextStorage().also { it.write("""{"version":1,"skills":[{"name":"odd","description":"Use when x.","requires":["nope"],"body":"b"}]}""") })
         assertTrue("an unknown switch name is not a skill", odd.all().isEmpty())
         // What the prompt gets is the relevant ones, never more.
-        assertEquals(listOf("- free: Use when restarting nginx."), registry.section(AssistantTools(), 2_000).lines)
+        assertEquals(listOf("- skill-authoring: Use when the user asks to save what was done as a skill.", "- free: Use when restarting nginx."), registry.section(AssistantTools(skills = true), 2_000).lines)
+        assertEquals(emptyList<String>(), registry.section(AssistantTools(), 2_000).lines)
     }
 
     @Test fun `the list in the request is cut to its budget, descriptions first and then whole entries with a pointer to skills_list`() {
@@ -120,8 +131,8 @@ class SkillsTest {
         assertEquals(emptyList<String>(), skillsSection(emptyList(), 100).lines)
         // The budget is the owner's, at the registry.
         val registry = SkillFixtures.registry(owner = skills.map { SkillFixtures.owner(it.name, it.description) })
-        assertTrue(size(registry.section(AssistantTools(), 500).lines) <= 500)
-        assertTrue(size(registry.section(AssistantTools(), AssistantLimits().skillsListChars).lines) <= AssistantLimits().skillsListChars)
+        assertTrue(size(registry.section(on, 500).lines) <= 500)
+        assertTrue(size(registry.section(on, AssistantLimits().skillsListChars).lines) <= AssistantLimits().skillsListChars)
     }
 
     @Test fun `a body is never in the prompt, only read_skill gives it`() {
@@ -142,7 +153,7 @@ class SkillsTest {
         assertEquals(ToolOutput("No skill named \"nope-x\". Call skills_list.", ToolOutcome.FAILED), run(tool, named("nope-x")))
         // Not relevant now: as if it were not there.
         assertEquals(ToolOutput("No skill named \"needs-ssh\". Call skills_list.", ToolOutcome.FAILED), run(tool, named("needs-ssh")))
-        assertEquals(ToolOutput("No skill named \"nope-x\".", ToolOutcome.FAILED), run(ReadSkillTool(registry, AssistantTools(), listed = false), named("nope-x")))
+        assertEquals(ToolOutput("No skill named \"nope-x\".", ToolOutcome.FAILED), run(ReadSkillTool(registry, on, listed = false), named("nope-x")))
         assertEquals(ToolOutput("Provide name of a skill listed under Skills.", ToolOutcome.FAILED), run(tool, obj()))
         assertEquals(ToolOutput("Provide name of a skill listed under Skills.", ToolOutcome.FAILED), run(tool, buildJsonObject { put("name", "x"); put("extra", 1) }))
         // Reading is not a change: no question.
@@ -228,6 +239,9 @@ class SkillsTest {
             assertSame(bad.toString(), ChangeCheck.Invalid, tool.changeCheck(bad)); assertEquals(invalid, run(tool, bad))
         }
         assertTrue(tool.spec.description.contains("up to 500 characters"))
+        // A description with a line separator or invisible variation selectors is refused like any invalid argument.
+        for (bad in listOf("Use when a\u2028b", "Use when a\uFE0Fb", "Use when a\uDB40\uDD00b")) { assertSame(bad, ChangeCheck.Invalid, tool.changeCheck(save(description = bad))); assertEquals(invalid, run(tool, save(description = bad))) }
+        assertEquals(2, registry.store.all().size)
         // Full: a new name is refused with no question; replacing one that exists is not "new".
         assertSame(ChangeCheck.ReadOnly, tool.changeCheck(save(name = "three")))
         assertEquals(ToolOutput("Already 2 skills, the most allowed. Delete one first.", ToolOutcome.FAILED), run(tool, save(name = "three")))
@@ -264,22 +278,22 @@ class SkillsTest {
 
     @Test fun `the owner's skills are saved to one file and read back, an absent or broken file is no skills, and a bad entry is left out`() {
         val storage = MemoryTextStorage()
-        val store = SkillStore(storage) { 4_000 }
+        val store = SkillStore(storage)
         assertTrue(store.all().isEmpty())
         assertTrue(store.put(SkillFixtures.owner("b-skill", requires = listOf("ssh_command"), body = "line1\nline2")))
         assertTrue(store.put(SkillFixtures.owner("a-skill")))
-        val back = SkillStore(storage) { 4_000 }.all()
+        val back = SkillStore(storage).all()
         assertEquals(listOf("a-skill", "b-skill"), back.map { it.name })
         assertEquals(listOf("ssh_command"), back[1].requires); assertEquals("line1\nline2", back[1].body); assertTrue(back.none { it.builtIn })
         assertTrue(store.delete("a-skill")); assertFalse(store.delete("a-skill"))
-        assertEquals(listOf("b-skill"), SkillStore(storage) { 4_000 }.all().map { it.name })
+        assertEquals(listOf("b-skill"), SkillStore(storage).all().map { it.name })
         // Broken or alien files: no skills, nothing thrown.
-        for (text in listOf("not json", "[]", "{\"skills\":\"x\"}", "")) assertTrue(text, SkillStore(MemoryTextStorage().also { it.write(text) }) { 4_000 }.all().isEmpty())
+        for (text in listOf("not json", "[]", "{\"skills\":\"x\"}", "")) assertTrue(text, SkillStore(MemoryTextStorage().also { it.write(text) }).all().isEmpty())
         // An entry that is not a skill (a bad name, a missing field) is left out; the rest stay.
         val mixed = """{"version":1,"skills":[{"name":"BAD","description":"d","body":"b"},{"name":"good-one","description":"Use when x.","body":"b"},{"description":"d"}]}"""
-        assertEquals(listOf("good-one"), SkillStore(MemoryTextStorage().also { it.write(mixed) }) { 4_000 }.all().map { it.name })
+        assertEquals(listOf("good-one"), SkillStore(MemoryTextStorage().also { it.write(mixed) }).all().map { it.name })
         // A lowered size limit never loses a saved skill: it stays readable.
-        assertEquals(1, SkillStore(storage) { 10 }.all().size)
+        assertEquals(1, SkillStore(storage).all().size)
     }
 
     @Test fun `the file is app-private and not backed up, and no skills file exists until a skill is saved`() {
@@ -299,9 +313,10 @@ class SkillsTest {
         // The built-in skill needs the switch: nothing relevant, nothing offered.
         assertEquals(emptyList<String>(), offered(AssistantTools(), registry).filter { "skill" in it })
         assertEquals(listOf("read_skill", "skills_list", "skill_save", "skill_delete"), offered(on, registry))
-        // An owner skill that needs nothing is readable without the switch; the writing tools stay off.
+        // The switch off: no owner skill is in effect, so nothing is offered; a built-in skill that needs nothing is readable without the switch.
         val free = SkillFixtures.registry(owner = listOf(SkillFixtures.owner()))
-        assertEquals(listOf("read_skill"), offered(AssistantTools(), free))
+        assertEquals(emptyList<String>(), offered(AssistantTools(), free).filter { "skill" in it })
+        assertEquals(listOf("read_skill"), offered(AssistantTools(), SkillFixtures.registry(builtIn = listOf(SkillFixtures.builtInFree))))
         // No registry (a conversation without skills): none.
         assertEquals(emptyList<String>(), offered(on, null).filter { "skill" in it })
         // With the switch on but no skill relevant (an empty registry), only the writing tools.
@@ -330,5 +345,66 @@ class SkillsTest {
         for (bad in listOf("no frontmatter", "---\nname: a-skill\n", "---\nname: other\ndescription: Use when x.\n---\nbody", "---\nname: a-skill\ndescription: Use when x.\nrequires: nope\n---\nbody", "---\nname: a-skill\ndescription: Use when x.\n---\n")) {
             assertTrue(bad, runCatching { load(bad) }.isFailure)
         }
+    }
+
+    @Test fun `a skill is saved only up to what read_skill can give back whole, and the reply names that maximum`() {
+        val registry = SkillFixtures.registry()
+        val limits = AssistantLimits(skillChars = 20_000, toolOutputChars = 2_000)
+        assertEquals(1_800, maxSkillChars(limits)); assertEquals(4_000, maxSkillChars(AssistantLimits())); assertEquals(500, maxSkillChars(AssistantLimits(skillChars = 500)))
+        val tool = SkillSaveTool(registry, limits)
+        assertTrue(tool.spec.description.contains("up to 1800 characters"))
+        val invalid = ToolOutput("Provide name (kebab-case, 2–40), description (one line, up to 200 characters), requires (known switch names) and body (up to 1800 characters).", ToolOutcome.FAILED)
+        assertEquals(invalid, run(tool, save(body = "x".repeat(1_801)))); assertSame(ChangeCheck.Invalid, tool.changeCheck(save(body = "x".repeat(1_801))))
+        assertEquals(ToolOutput("Skill new-skill is saved."), run(tool, save(body = "x".repeat(1_800))))
+        // What was saved is read back whole, with no cut at read time.
+        assertEquals(ToolOutput("x".repeat(1_800)), run(ReadSkillTool(registry, on, true), named("new-skill")))
+    }
+
+    private class FlakyStorage(var text: String?, var failReads: Boolean = false, var failWrites: Boolean = false) : TextStorage {
+        var writes = 0
+        override fun read(): String? { if (failReads) throw java.io.IOException("disk"); return text }
+        override fun write(text: String) { if (failWrites) throw java.io.IOException("disk"); writes++; this.text = text }
+        override fun delete() { text = null }
+    }
+
+    @Test fun `a failed read is never cached, and writes are refused while an existing file cannot be read`() {
+        val good = """{"version":1,"skills":[{"name":"kept-one","description":"Use when x.","requires":[],"body":"b"}]}"""
+        val storage = FlakyStorage(good, failReads = true)
+        val store = SkillStore(storage)
+        assertTrue(store.all().isEmpty())
+        // The disk comes back: the skill is there (the failure was not remembered as "no skills").
+        storage.failReads = false
+        assertEquals(listOf("kept-one"), store.all().map { it.name })
+        // Unreadable (a fresh store): writes are refused and the file is untouched.
+        val broken = FlakyStorage(good, failReads = true)
+        val fresh = SkillStore(broken)
+        assertFalse(fresh.put(SkillFixtures.owner("another"))); assertFalse(fresh.delete("kept-one")); assertEquals(0, broken.writes); assertEquals(good, broken.text)
+        val registry = SkillFixtures.registry(storage = broken)
+        assertEquals(ToolOutput("Could not save the skill. Nothing was changed.", ToolOutcome.FAILED), run(SkillSaveTool(registry), save()))
+        assertEquals(ToolOutput("Could not delete the skill. Nothing was changed.", ToolOutcome.FAILED), run(SkillDeleteTool(registry), named("kept-one")))
+        // A file that is not the skills file at all is unreadable too: never replaced.
+        for (text in listOf("not json", "[]")) {
+            val s = FlakyStorage(text); assertFalse(text, SkillStore(s).put(SkillFixtures.owner())); assertEquals(text, s.text)
+        }
+        // An absent or blank file is simply no skills, and a write works.
+        val absent = FlakyStorage(null); assertTrue(SkillStore(absent).put(SkillFixtures.owner())); assertEquals(1, absent.writes)
+        assertTrue(SkillStore(FlakyStorage("  ")).put(SkillFixtures.owner()))
+        // A failing write leaves the memory as it was.
+        val w = FlakyStorage(null, failWrites = true); val ws = SkillStore(w)
+        assertFalse(ws.put(SkillFixtures.owner())); assertTrue(ws.all().isEmpty())
+    }
+
+    @Test fun `entries that do not parse are not listed but are carried through every write unchanged`() {
+        val odd = """{"name":"odd-one","description":"Use when x.","requires":["no_such_switch"],"body":"keep me"}"""
+        val spaced = """{"name":"bad-desc","description":"Use when\u2028x","requires":[],"body":"b"}"""
+        val storage = FlakyStorage("""{"version":1,"skills":[$odd,{"name":"good-one","description":"Use when x.","requires":[],"body":"b"},$spaced]}""")
+        val store = SkillStore(storage)
+        assertEquals(listOf("good-one"), store.all().map { it.name })
+        assertTrue(store.put(SkillFixtures.owner("new-one")))
+        assertTrue(store.delete("good-one"))
+        val after = kotlinx.serialization.json.Json.parseToJsonElement(storage.text!!).jsonObject.getValue("skills").jsonArray
+        assertEquals(listOf("new-one", "odd-one", "bad-desc"), after.map { it.jsonObject.getValue("name").jsonPrimitive.content })
+        assertEquals("keep me", after[1].jsonObject.getValue("body").jsonPrimitive.content)
+        assertEquals(listOf("new-one"), SkillStore(storage).all().map { it.name })
     }
 }

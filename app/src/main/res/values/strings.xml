@@ -1489,4 +1489,6 @@
     <string name="limit_skills_max">Skills, at most</string>
     <string name="limit_skill_chars">Skill size, characters</string>
     <string name="limit_skills_list">Skills list per request, characters</string>
+    <string name="confirm_skill_old_description">Old description</string>
+    <string name="confirm_skill_old_requires">Old requirements</string>
 </resources>

@@ -7,13 +7,16 @@ import ru.adsrv.frpjump.assistant.tools.ChangeRequest
 import ru.adsrv.frpjump.assistant.tools.InvalidArguments
 import ru.adsrv.frpjump.assistant.tools.StrictArgs
 import ru.adsrv.frpjump.assistant.tools.objectSchema
+import ru.adsrv.frpjump.ops.ssh.sshResultBudget
 import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.settings.AssistantTools
 
 /** What the card of a skill call shows: the skill, whole, as plain text. Not a data class: toString never prints the text. */
 class SkillCard(val kind: Kind, val name: String, val description: String, val requires: List<String>, val body: String,
     /** The text being replaced, when [kind] is [Kind.REPLACE]; reachable from the card. */
-    val oldBody: String? = null) {
+    val oldBody: String? = null,
+    /** The description and requirements being replaced (shown next to the new ones), when [kind] is [Kind.REPLACE]. */
+    val oldDescription: String? = null, val oldRequires: List<String>? = null) {
     enum class Kind { SAVE, REPLACE, DELETE }
     override fun toString() = "SkillCard($kind, $name)"
 }
@@ -41,6 +44,12 @@ internal class ReadSkillTool(private val registry: SkillRegistry, private val to
     }
 }
 
+/**
+ * The most characters a skill's text may have: the owner's skill size, but never more than `read_skill` can give back whole, the tool-output limit less the overhead every
+ * output budget keeps ([sshResultBudget]). A longer body is refused when saved, so no read-time cut is ever needed.
+ */
+internal fun maxSkillChars(limits: AssistantLimits): Int = minOf(limits.skillChars, sshResultBudget(limits.toolOutputChars))
+
 /** A name from a call, as it is quoted back: printable characters only, so it cannot carry anything but itself. */
 private fun quoted(name: String) = name.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(SkillRules.NAME_MAX)
 
@@ -58,11 +67,12 @@ internal class SkillsListTool(private val registry: SkillRegistry, private val t
             "name: ${s.name} | description: ${s.description} | requires: ${s.requires.joinToString(", ").ifEmpty { "none" }} | size: ${s.body.length} characters | " +
                 "${if (s.builtIn) "built-in" else "owner"} | relevant now: ${if (registry.relevant(s, tools)) "yes" else "no"}"
         }
-        val budget = limits.toolOutputChars - 200
+        // Whole lines within the same budget and the same room for the closing note as every other tool's output.
+        val budget = sshResultBudget(limits.toolOutputChars)
         if (lines.sumOf { it.length + 1 } <= budget) return ToolOutput(lines.joinToString("\n"))
         val kept = ArrayList<String>()
         var used = 0
-        for (line in lines) { if (used + line.length + 1 > budget - 64) break; kept += line; used += line.length + 1 }
+        for (line in lines) { if (used + line.length + 1 > budget - TRUNCATED_NOTE_CHARS) break; kept += line; used += line.length + 1 }
         return ToolOutput(kept.joinToString("\n") + "\ntruncated: ${kept.size} of ${lines.size} skills")
     }
 
@@ -78,12 +88,12 @@ internal class SkillsListTool(private val registry: SkillRegistry, private val t
  * question is asked about a call that cannot save (a full store, a built-in name).
  */
 internal class SkillSaveTool(private val registry: SkillRegistry, private val limits: AssistantLimits = AssistantLimits()) : AppTool<Skill>(
-    AssistantToolId.SKILL_SAVE, saveDescription(limits),
+    AssistantToolId.SKILL_SAVE, saveDescription(maxSkillChars(limits)),
     objectSchema {
         string("name", SkillRules.NAME_MAX)
         string("description", SkillRules.DESCRIPTION_MAX)
         enumArray("requires", SkillRules.knownSwitches(), 0, SkillRules.knownSwitches().size)
-        string("body", limits.skillChars)
+        string("body", maxSkillChars(limits))
     },
 ) {
     override fun parse(args: StrictArgs) = args.run {
@@ -91,10 +101,10 @@ internal class SkillSaveTool(private val registry: SkillRegistry, private val li
         val name = string("name", SkillRules.NAME_MAX)
         val description = string("description", SkillRules.DESCRIPTION_MAX)
         val requires = optionalStrings("requires", 0, SkillRules.knownSwitches().size) ?: throw InvalidArguments()
-        val body = string("body", limits.skillChars)
-        SkillRules.make(name, description, requires, body, limits.skillChars) ?: throw InvalidArguments()
+        val body = string("body", maxSkillChars(limits))
+        SkillRules.make(name, description, requires, body, maxSkillChars(limits)) ?: throw InvalidArguments()
     }
-    override val invalidArguments = ToolOutput(invalidText(limits), ToolOutcome.FAILED)
+    override val invalidArguments = ToolOutput(invalidText(maxSkillChars(limits)), ToolOutcome.FAILED)
 
     private fun builtIn(name: String) = name in registry.builtInNames()
     private fun full(name: String) = registry.store.get(name) == null && registry.store.all().size >= limits.skillsMax
@@ -104,7 +114,7 @@ internal class SkillSaveTool(private val registry: SkillRegistry, private val li
 
     override fun describeChange(args: Skill): ChangeRequest {
         val old = registry.store.get(args.name)
-        val card = SkillCard(if (old != null) SkillCard.Kind.REPLACE else SkillCard.Kind.SAVE, args.name, args.description, args.requires, args.body, old?.body)
+        val card = SkillCard(if (old != null) SkillCard.Kind.REPLACE else SkillCard.Kind.SAVE, args.name, args.description, args.requires, args.body, old?.body, old?.description, old?.requires)
         return ChangeRequest(id, null, args.body, skill = card)
     }
 
@@ -119,9 +129,9 @@ internal class SkillSaveTool(private val registry: SkillRegistry, private val li
     override fun failure(error: Exception) = ToolOutput("Could not save the skill. Nothing was changed.", ToolOutcome.FAILED)
 
     companion object {
-        fun saveDescription(limits: AssistantLimits) = "Create or replace one owner skill: name (kebab-case), description (one line starting \"Use when\"), requires (tool switch names, may be empty), " +
-            "body (Markdown, up to ${limits.skillChars} characters). Follow the skill-authoring skill. The owner may be asked before it is saved; built-in skills cannot be changed."
-        fun invalidText(limits: AssistantLimits) = "Provide name (kebab-case, 2–40), description (one line, up to 200 characters), requires (known switch names) and body (up to ${limits.skillChars} characters)."
+        fun saveDescription(maxChars: Int) = "Create or replace one owner skill: name (kebab-case), description (one line starting \"Use when\"), requires (tool switch names, may be empty), " +
+            "body (Markdown, up to $maxChars characters). Follow the skill-authoring skill. The owner may be asked before it is saved; built-in skills cannot be changed."
+        fun invalidText(maxChars: Int) = "Provide name (kebab-case, 2–40), description (one line, up to 200 characters), requires (known switch names) and body (up to $maxChars characters)."
     }
 }
 
@@ -141,6 +151,7 @@ internal class SkillDeleteTool(private val registry: SkillRegistry) : AppTool<St
 
     override suspend fun run(args: String): ToolOutput {
         if (args in registry.builtInNames()) return ToolOutput("Skill $args is built in and cannot be deleted.", ToolOutcome.FAILED)
+        if (!registry.store.readable) return failure(IllegalStateException())
         if (registry.store.get(args) == null) return ToolOutput("No owner skill named \"${quoted(args)}\".", ToolOutcome.FAILED)
         if (!registry.store.delete(args)) return failure(IllegalStateException())
         return ToolOutput("Skill $args is deleted.")
