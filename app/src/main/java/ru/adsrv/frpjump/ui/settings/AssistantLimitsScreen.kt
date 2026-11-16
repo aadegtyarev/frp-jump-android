@@ -48,6 +48,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.settings.AssistantLimits
+import ru.adsrv.frpjump.settings.LIMITS
+import ru.adsrv.frpjump.settings.LimitGroup
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.ClockGlyph
 
@@ -68,30 +70,55 @@ internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (Assistant
             IconButton(onClick = onBack, modifier = Modifier.testTag("limits_back")) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
             Text(stringResource(R.string.assistant_limits_title), style = MaterialTheme.typography.titleLarge)
         }
-        Group(null) {
-            LimitRow("limit_waits_at_once", stringResource(R.string.limit_waits_at_once), limits.waitsAtOnce, AssistantLimits.WAITS_AT_ONCE_RANGE) { onChange(limits.copy(waitsAtOnce = it)) }
-            RowDivider()
-            LimitRow("limit_wait_max_minutes", stringResource(R.string.limit_wait_max_minutes), limits.waitMaxMinutes, AssistantLimits.WAIT_MAX_MINUTES_RANGE) { onChange(limits.copy(waitMaxMinutes = it)) }
-            RowDivider()
-            LimitRow("limit_event_replies", stringResource(R.string.limit_event_replies), limits.eventReplies, AssistantLimits.EVENT_REPLIES_RANGE) { onChange(limits.copy(eventReplies = it)) }
-            RowDivider()
-            LimitRow("limit_sessions_at_once", stringResource(R.string.limit_sessions_at_once), limits.sessionsAtOnce, AssistantLimits.SESSIONS_AT_ONCE_RANGE) { onChange(limits.copy(sessionsAtOnce = it)) }
+        for (group in LimitGroup.entries) {
+            Group(stringResource(limitGroupTitle(group))) {
+                LIMITS.filter { it.group == group }.forEachIndexed { index, spec ->
+                    if (index > 0) RowDivider()
+                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), spec.get(limits), spec.range, spec.step) { onChange(spec.set(limits, it)) }
+                }
+            }
         }
     }
+}
+
+private fun limitGroupTitle(group: LimitGroup) = when (group) {
+    LimitGroup.ASSISTANT -> R.string.limits_group_assistant
+    LimitGroup.WAITS -> R.string.limits_group_waits
+    LimitGroup.TERMINAL -> R.string.limits_group_terminal
+    LimitGroup.TUNNELS -> R.string.limits_group_tunnels
+}
+
+private fun limitLabel(key: String) = when (key) {
+    "tool_timeout_s" -> R.string.limit_tool_timeout
+    "model_timeout_s" -> R.string.limit_model_timeout
+    "reply_s" -> R.string.limit_reply_seconds
+    "steps_per_reply" -> R.string.limit_steps
+    "calls_per_step" -> R.string.limit_calls
+    "tool_output_chars" -> R.string.limit_tool_output
+    "reply_chars" -> R.string.limit_reply_chars
+    "waits_at_once" -> R.string.limit_waits_at_once
+    "wait_max_minutes" -> R.string.limit_wait_max_minutes
+    "event_replies" -> R.string.limit_event_replies
+    "sessions_at_once" -> R.string.limit_sessions_at_once
+    "input_chars" -> R.string.limit_input_chars
+    "keys_at_once" -> R.string.limit_keys
+    "read_lines_max" -> R.string.limit_read_lines
+    "tunnel_wait_s" -> R.string.limit_tunnel_wait
+    else -> R.string.limit_reconnect
 }
 
 /** The label (the row reads it with its value), then "−" and "+" around the value, in the row's own text size. */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun LimitRow(tag: String, label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+private fun LimitRow(tag: String, label: String, value: Int, range: IntRange, step: Int, onChange: (Int) -> Unit) {
     val style = MaterialTheme.typography.bodyLarge
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = style, color = AppTheme.colors.ink, modifier = Modifier.weight(1f).semantics { contentDescription = "$label: $value" })
-        StepButton("−", stringResource(R.string.limit_decrease), value > range.first, "${tag}_minus") { onChange((value - 1).coerceAtLeast(range.first)) }
+        StepButton("−", stringResource(R.string.limit_decrease), value > range.first, "${tag}_minus") { onChange((value - step).coerceAtLeast(range.first)) }
         Text(value.toString(), style = style, color = AppTheme.colors.ink, textAlign = TextAlign.Center,
-            modifier = Modifier.defaultMinSize(minWidth = 40.dp).testTag("${tag}_value").semantics { invisibleToUser() })
-        StepButton("+", stringResource(R.string.limit_increase), value < range.last, "${tag}_plus") { onChange((value + 1).coerceAtMost(range.last)) }
+            modifier = Modifier.defaultMinSize(minWidth = 56.dp).testTag("${tag}_value").semantics { invisibleToUser() })
+        StepButton("+", stringResource(R.string.limit_increase), value < range.last, "${tag}_plus") { onChange((value + step).coerceAtMost(range.last)) }
     }
 }
 

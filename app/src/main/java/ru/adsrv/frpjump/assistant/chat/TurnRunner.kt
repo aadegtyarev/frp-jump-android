@@ -9,7 +9,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
-    val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
+    val limits: (AssistantProviderSettings, ru.adsrv.frpjump.settings.AssistantLimits) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
     val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?, val waits: WaitAdder?, val sessions: AssistantSessions?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -32,8 +32,9 @@ private class HistoryFull : Exception()
 internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private val owner = a.owner
     private val own = env.own
-    private val deadline = ActiveDeadline(SEND_LIMIT_MS, env.clock)
-    private companion object { const val SEND_LIMIT_MS = 120_000L; const val CARD_POLL_MS = 5_000L }
+    /** The whole Send: the owner's setting, but never less than one call plus one model answer. */
+    private val deadline = ActiveDeadline(a.limits.replyLimitMs(), env.clock)
+    private companion object { const val CARD_POLL_MS = 5_000L }
     private var transportTimeout = false
     private var invalidReply = false
     private var summaryProblem: ChatProblem? = null
@@ -63,9 +64,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         own.adopt(owner, active)
         withContext(env.io + SideEffectAdmission { category -> own.guarded(owner, category) { true } ?: false }) {
             val past = a.past.map { it to it.model(active) }
-            val limits = env.limits(a.settings)
+            val limits = env.limits(a.settings, a.limits)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                limits.toolTimeoutMs, env.waits, a.limits, env.sessions)
+                env.waits, a.limits, env.sessions)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system(a.tools), a.modelText, past.map { it.second },
@@ -219,3 +220,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
 
     private fun webSources(values: List<SavedSource>) = values.map { ChatSource(it.title, it.url) }
 }
+
+/** The agent's limits for one Send: the provider's token limits, with the owner's limits of steps, calls, characters and time. */
+internal fun AgentLimits.withOwnerLimits(owner: ru.adsrv.frpjump.settings.AssistantLimits) = copy(
+    maxSteps = owner.stepsPerReply, maxCallsPerStep = owner.callsPerStep, maxToolChars = owner.toolOutputChars, maxReplyChars = owner.replyChars,
+    modelTimeoutMs = owner.modelTimeoutSeconds * 1000L, toolTimeoutMs = owner.toolTimeoutSeconds * 1000L,
+)

@@ -159,16 +159,27 @@ support cancellation of their own I/O.
 
 ### Limits
 
-Execution defaults are finite, validated kernel parameters, not settings UI:
+Every limit that bounds what the assistant, its terminal tools, the tunnels it starts or the terminal's reconnect do is an owner's setting with a default and
+a range, on the Limits screen (Settings → Assistant → Limits, steppers in four sections), saved in the one `assistant_limits` group of the settings file
+(each key read on its own; a file without a key keeps the default). The agent's limits are read at the start of each Send and held for it; the terminal and
+tunnel limits are read at use. The kernel's own parameters stay validated (`AgentLimits`); the app builds them from the owner's settings:
 
-| Limit | Default |
+| Section | Limit (default; range; step) |
 | --- | --- |
-| Model steps per run | 12 |
-| Tool calls per step | 4 |
-| Model request timeout | 60 seconds |
-| Tool timeout | 30 seconds (the owner's confirmation wait is not part of it) |
+| Assistant | One call, s (30; 10-300; 5) = tool timeout (the owner's confirmation wait is not part of it) |
+| Assistant | Model answer, s (60; 10-600; 10) = model request timeout (it does not include the confirmation wait either) |
+| Assistant | Whole reply, s (120; 30-1800; 30) = the Send's active-time deadline; never less than one call plus one model answer (the larger is used) |
+| Assistant | Steps per reply (12; 1-50; 1) and Calls per step (4; 1-10; 1) |
+| Assistant | Tool output, characters (8,000; 2,000-32,000; 1,000) = the tool-result cap (`ssh_command` and the terminal reads keep that less 200) |
+| Assistant | Reply length, characters (32,000; 4,000-128,000; 4,000) |
+| Waits | Waits at once (3; 1-10), Longest wait, min (30; 1-120), Event replies in a row (5; 1-20), Assistant sessions (3; 1-10) |
+| Terminal | Input at once, characters (2,000; 100-10,000; 100), Keys at once (32; 1-100; 1), Lines per read, at most (1,000; 100-10,000; 100) |
+| Tunnels | Start wait, s (45; 5-120; 5) = how long a tunnel brought up by the owner's Start, "Use key login" or `start_tunnel` is waited for (`start_tunnel` still ends at three quarters of One call); Terminal auto-reconnect, min (10; 1-60; 1) |
 
-The model timeout does not include the confirmation wait either.
+The model's texts that state these numbers (the input, key, line and output limits, the `wait_for` limits) are built from the settings when the tools are described:
+at the defaults the words are exactly the ones this contract quotes with the default numbers. The numbers below are the defaults.
+Kept as internal constants (mechanics, not limits of what the assistant does): poll and settle intervals, probe and read timeouts, the display truncation of labels and
+names, file search, image jobs, the history window's token budget.
 
 ### Sliding window, not compression
 
@@ -1108,8 +1119,8 @@ contain secrets; the switch's hint says so.
   terminal buffer (its history is sized by the «История терминала» setting), copied on the main thread with no more rows than the read needs (from
   three rows above the cursor's row; when rows may have dropped, one trim, a tenth of its capacity, higher; the whole transcript only as the last
   fallback); the rows are cleaned and searched off the main thread. There is no second buffer and no log: the app's output tap
-  (`lastOutputNanos`) only says that something was printed. The app does not set tmux's `history-limit` when it creates a session (tmux's own
-  default applies, normally 2000 lines, unless the owner configured it); it is not changed by this feature.
+  (`lastOutputNanos`) only says that something was printed. The app sets tmux's `history-limit` on the sessions it creates or attaches to to the owner's "Terminal history" rows, in the same attach
+  invocation as `status` and `mouse` (`set-option -t <session> history-limit <rows>`); tmux applies it to the panes created after it, so a pane that already exists keeps its own.
 - The cursor is opaque text to the model (`<row>.<history>.<8 hex digits>`, at most 32 characters): the row the terminal's cursor is on
   (counted in physical rows from the oldest kept one), how many rows of history were kept, and a checksum of the three rows just above that
   row. The row itself is the one still being written (a prompt that is typed on, a progress bar, a half-printed line), so it belongs to what

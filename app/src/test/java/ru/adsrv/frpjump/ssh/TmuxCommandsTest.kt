@@ -27,7 +27,8 @@ class TmuxCommandsTest {
         assertEquals("tmux capture-pane -p -S - -t '=frpjump-0a1b2c-7:' ';' display-message -p -t '=frpjump-0a1b2c-7:' $numbers", tmuxReadWindowCommand(name, null))
         for (command in listOf(tmuxReadScreenCommand(name, 5), tmuxReadWindowCommand(name, 9), tmuxReadWindowCommand(name, null))) assertFalse(" -e " in command)
         assertEquals("tmux display-message -p -t '=frpjump-0a1b2c-7:' '#{pane_current_command}'", tmuxPaneProgramCommand(name))
-        for (bad in listOf(-1, 1001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(name, bad) }
+        for (bad in listOf(-1, 10_001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(name, bad) }
+        assertTrue(" -S -10000 " in tmuxReadScreenCommand(name, 10_000))
         for (bad in listOf(-1, 0, 2, 1_000_001)) assertThrows(IllegalArgumentException::class.java) { tmuxReadWindowCommand(name, bad) }
         for (bad in listOf("x; rm -rf /", "frpjump-0a1b2c-0", "")) {
             assertThrows(IllegalArgumentException::class.java) { tmuxReadScreenCommand(bad, 5) }

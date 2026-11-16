@@ -46,7 +46,7 @@ class AssistantConversationTest {
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
             preparations++; prepareGate?.invoke(); provider
-        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off, onEnded = { ends += it })
+        }, store::requireRevision, module, io, { _, _ -> limit }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off, onEnded = { ends += it })
         suspend fun idle() = withTimeout(3000) { chat.state.first { !it.busy } }
         suspend fun send(text: String = "question"): ChatState { chat.edit(text); chat.send(); return idle() }
         fun revise() = store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), store.state.value.revision))

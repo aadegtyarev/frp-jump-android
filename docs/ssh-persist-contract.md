@@ -90,7 +90,7 @@ This reference does not certify runtime conformance to those requirements.
 - Try immediately, then pause 2, 4, 8, 15 s, then 30 s between failures.
   The default network returning/changing triggers an immediate try and resets
   the next pause to 2 s. **Now** tries immediately unless a try is in flight.
-- Give up after 10 minutes without success, ending with the last reason and
+- Give up after 10 minutes (the owner's «Автопереподключение терминала» limit, 1 to 60 minutes, read at each drop) without success, ending with the last reason and
   **Reconnect**. Manual Reconnect after give-up starts the loop again with
   the same login.
 - During reconnect, keys/snippets/paste are not sent or saved for replay.
@@ -233,8 +233,8 @@ keeps its emulator and original limit; manual replacement/new tabs capture the
 current choice. See [history setting](terminal-diagnostics-contract.md#history-setting).
 
 While tmux uses the alternate screen, that local main-buffer history does not
-fill; remote history follows tmux's `history-limit` (normally 2000 lines unless
-the owner's config changes it). With mouse reporting, swipes become wheel
+fill; remote history follows tmux's `history-limit`, which the app sets on the sessions it creates or attaches to to the same "Terminal history" setting (in the attach
+invocation; it applies to panes created after it, so an existing pane keeps its own). With mouse reporting, swipes become wheel
 events and taps clicks. `mouse on` lets tmux enter copy mode to scroll history
 and leave it at the bottom. Long press still selects/copies visible text,
 including history scrolled into view; phone copying does not use tmux drag

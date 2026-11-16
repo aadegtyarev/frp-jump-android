@@ -75,6 +75,8 @@ class SshEnvironment(
     val reconnectClock: ReconnectClock = ExecutorReconnectClock(),
     /** Read only when a new terminal is constructed, never on automatic reconnect. */
     val historyRows: () -> Int = { DEFAULT_TERMINAL_HISTORY_ROWS },
+    /** How long a dropped session keeps reconnecting, in ms; read at each drop. */
+    val reconnectGiveUpMs: () -> Long = { RECONNECT_GIVE_UP_MS },
     val visible: StateFlow<Boolean> = MutableStateFlow(false),
     /** Owner-set tab names of tmux tabs, remembered app-privately. */
     val tabNames: SessionRecordStore = SessionRecordStore(MemoryTextStorage()),
@@ -346,7 +348,7 @@ class SshSession(
         private set
 
     /** Tries again after a drop; see [SshReconnect]. */
-    private val reconnect = SshReconnect(env.reconnectClock, attempt = ::retry, giveUp = ::onGiveUp)
+    private val reconnect = SshReconnect(env.reconnectClock, attempt = ::retry, giveUp = ::onGiveUp, giveUpMs = env.reconnectGiveUpMs)
 
     /** Why the connection went last, for the bar and for Ended when the tries run out. */
     @Volatile
@@ -641,7 +643,7 @@ class SshSession(
             val rows = terminal.rows
             channel.allocatePTY(TERM, columns, rows, 0, 0, emptyMap())
             windowChange.sent(columns, rows)
-            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name, openedBy))
+            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name, openedBy, env.historyRows()))
             val resumeKind = synchronized(lifecycle) {
                 if (!current(attempt)) return
                 resumed(dropped, probe)

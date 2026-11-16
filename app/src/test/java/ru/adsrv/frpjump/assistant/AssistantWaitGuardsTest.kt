@@ -46,7 +46,7 @@ class AssistantWaitGuardsTest {
         val module = bindAssistantLifecycle(settings, scope)
         val provider = AgentProvider { request -> requests += request; AgentReply("ok") }
         val chat: AssistantConversation = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
-            store::requireRevision, module, Dispatchers.IO, { AgentLimits() }, settings.assistantChat,
+            store::requireRevision, module, Dispatchers.IO, { _, _ -> AgentLimits() }, settings.assistantChat,
             terminalTabs = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null }), waitSources = sources,
             waitSleep = { kotlinx.coroutines.CompletableDeferred<Unit>().await() },
             prompts = TestPrompts.lazy, confirmations = TestConfirmations.off,

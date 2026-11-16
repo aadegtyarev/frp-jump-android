@@ -55,7 +55,7 @@ class TunnelUpTest {
 
     @Test fun `a tunnel that is down is connected once for the kind and waited for, and its device is waited for as fresh`() = runBlocking {
         val tunnels = Tunnels()
-        val job = async { TunnelUp(Host(tunnels), waitMs = 5_000)(input.copy(kind = PortKind.MQTT)) }
+        val job = async { TunnelUp(Host(tunnels), waitMs = { 5_000L })(input.copy(kind = PortKind.MQTT)) }
         withTimeout(2_000) { while (tunnels.connects.isEmpty()) delay(5) }
         tunnels.state.value = TunnelsState(tunnels = listOf(tunnel(4100)))
         assertEquals(OpResult.Done(4100), withTimeout(2_000) { job.await() })
@@ -66,7 +66,7 @@ class TunnelUpTest {
     @Test fun `a connect already in flight is not started again`() = runBlocking {
         val key = localPortKey("wb", 22)
         val tunnels = Tunnels(TunnelsState(pending = mapOf(key to PendingOp.CONNECTING)))
-        val result = TunnelUp(Host(tunnels), waitMs = 30)(input)
+        val result = TunnelUp(Host(tunnels), waitMs = { 30L })(input)
         assertEquals(emptyList<Any>(), tunnels.connects)
         assertTrue(result is OpResult.Failed)
     }
@@ -84,8 +84,8 @@ class TunnelUpTest {
     @Test fun `a tunnel that does not come up in time fails with the manager's last typed error, or none, and its remote outcome unknown`() = runBlocking {
         val key = localPortKey("wb", 22)
         val withError = Tunnels(TunnelsState(errors = mapOf(key to DomainError.ServerError("server said no"))))
-        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(DomainError.ServerError("server said no")), RemoteOutcome.UNKNOWN), TunnelUp(Host(withError), waitMs = 30)(input))
-        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(null), RemoteOutcome.UNKNOWN), TunnelUp(Host(Tunnels()), waitMs = 30)(input))
+        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(DomainError.ServerError("server said no")), RemoteOutcome.UNKNOWN), TunnelUp(Host(withError), waitMs = { 30L })(input))
+        assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(null), RemoteOutcome.UNKNOWN), TunnelUp(Host(Tunnels()), waitMs = { 30L })(input))
     }
 
     @Test fun `a device that does not open the port fails with the port that is not open and an unknown outcome`() = runBlocking {
@@ -94,18 +94,33 @@ class TunnelUpTest {
     }
 
     @Test fun `cancellation while waiting propagates and is not a result`() = runBlocking {
-        val job = launch(Dispatchers.Default) { TunnelUp(Host(Tunnels()), waitMs = 60_000)(input) }
+        val job = launch(Dispatchers.Default) { TunnelUp(Host(Tunnels()), waitMs = { 60_000L })(input) }
         delay(50)
         job.cancelAndJoin()
         assertTrue(job.isCancelled)
     }
 
-    @Test fun `the wait is 45 s and the Connections actions use that default`() {
+    @Test fun `the wait is the owner's setting, 45 s by default, read at each start by every caller`() {
         assertEquals(45_000L, TunnelUp.TUNNEL_WAIT_MS)
-        val source = java.io.File("src/main/java/ru/adsrv/frpjump/ui/connections/ConnectionActions.kt").readText()
-        assertTrue(source.contains("TunnelUp(object : TunnelUpHost"))
-        assertFalse("ConnectionActions must not pick its own wait", source.contains("waitMs"))
-        assertFalse(source.contains("TUNNEL_WAIT_MS"))
+        assertEquals(TunnelUp.TUNNEL_WAIT_MS, ru.adsrv.frpjump.settings.AssistantLimits().tunnelWaitSeconds * 1000L)
+        for (file in listOf("ui/connections/ConnectionActions.kt", "FrpJumpApp.kt")) {
+            val source = java.io.File("src/main/java/ru/adsrv/frpjump/$file").readText()
+            assertTrue("$file reads the setting", source.contains("assistantLimits.tunnelWaitSeconds * 1000L"))
+            assertFalse(source.contains("TUNNEL_WAIT_MS"))
+        }
+    }
+
+    @Test fun `a changed wait is in force at the next start`() = runBlocking {
+        var wait = 30L
+        val tunnels = Tunnels()
+        val up = TunnelUp(Host(tunnels), waitMs = { wait })
+        assertTrue("short wait, not up in time", up(input) is OpResult.Failed)
+        wait = 5_000L
+        val job = async { up(input) }
+        withTimeout(2_000) { while (tunnels.connects.size < 2) delay(5) }
+        delay(100)
+        tunnels.state.value = TunnelsState(tunnels = listOf(tunnel(4100)))
+        assertEquals("long wait, still waiting after the old limit", OpResult.Done(4100), withTimeout(2_000) { job.await() })
     }
 
     @Test fun `a disconnect being done is awaited before the state is read and before the connect`() = runBlocking {
@@ -124,7 +139,7 @@ class TunnelUpTest {
             override fun revive(tunnel: TunnelRef): Boolean { log += "revive"; return false }
             override suspend fun awaitDisconnected(tunnel: TunnelRef) { log += "await-start"; gate.await(); log += "await-end" }
         }
-        val job = async { TunnelUp(host, waitMs = 2_000)(input) }
+        val job = async { TunnelUp(host, waitMs = { 2_000L })(input) }
         withTimeout(2_000) { while ("await-start" !in log) delay(5) }
         delay(100)
         assertEquals("nothing reads or connects while the disconnect is being done", listOf("revive", "await-start"), log.toList())
@@ -137,7 +152,7 @@ class TunnelUpTest {
     @Test fun `the last error is read after the wait, not before it`() = runBlocking {
         val key = localPortKey("wb", 22)
         val tunnels = Tunnels()
-        val job = async { TunnelUp(Host(tunnels), waitMs = 300)(input) }
+        val job = async { TunnelUp(Host(tunnels), waitMs = { 300L })(input) }
         delay(100)
         tunnels.state.value = TunnelsState(errors = mapOf(key to DomainError.ServerError("late error")))
         assertEquals(OpResult.Failed(TunnelFailure.DidNotComeUp(DomainError.ServerError("late error")), RemoteOutcome.UNKNOWN), job.await())

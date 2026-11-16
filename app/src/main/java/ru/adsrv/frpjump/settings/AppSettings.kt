@@ -370,12 +370,9 @@ class SettingsStore(private val storage: TextStorage) {
         val defaults = AssistantLimits()
         fun number(key: String, range: IntRange, fallback: Int): Int =
             (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it in range } ?: fallback
-        return WireJson.encodeToJsonElement(AssistantLimits(
-            number("waits_at_once", AssistantLimits.WAITS_AT_ONCE_RANGE, defaults.waitsAtOnce),
-            number("wait_max_minutes", AssistantLimits.WAIT_MAX_MINUTES_RANGE, defaults.waitMaxMinutes),
-            number("event_replies", AssistantLimits.EVENT_REPLIES_RANGE, defaults.eventReplies),
-            number("sessions_at_once", AssistantLimits.SESSIONS_AT_ONCE_RANGE, defaults.sessionsAtOnce),
-        ))
+        var limits = defaults
+        for (spec in LIMITS) limits = spec.set(limits, number(spec.key, spec.range, spec.get(defaults)))
+        return WireJson.encodeToJsonElement(limits)
     }
 
     private fun normalizeMqttCache(raw: JsonElement?): JsonElement {

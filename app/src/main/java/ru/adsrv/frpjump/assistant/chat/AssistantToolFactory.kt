@@ -13,7 +13,6 @@ internal object AssistantToolFactory {
     fun create(enabled: AssistantTools, runtime: AssistantChatRuntime, active: AgentProvider, profileInformation: ProfileInformation?,
         sshCommands: AssistantSshCommands?, publish: (ChatSource) -> Unit,
         declined: Set<String> = emptySet(), terminalTabs: AssistantTerminalTabs? = null, tunnels: AssistantTunnels? = null,
-        toolTimeoutMs: Long = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs,
         waits: WaitAdder? = null, limits: ru.adsrv.frpjump.settings.AssistantLimits = ru.adsrv.frpjump.settings.AssistantLimits(),
         sessions: AssistantSessions? = null): List<AgentTool> {
         val web = AssistantWebTools(enabled, runtime.publicWeb, runtime.webSearch, active as? ImageInspector, publish)
@@ -21,12 +20,12 @@ internal object AssistantToolFactory {
         val off = AssistantToolId.switches.filter { !enabled[it] && enabled.offerable(it) }
         return web.tools + (if (enabled.profileInformation && profileInformation != null) listOf(
             AssistantProfileInformationTool(profileInformation)) else emptyList()) +
-            (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, toolTimeoutMs), StopTunnelTool(tunnels)) else emptyList()) +
-            (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs), AssistantTerminalReadTool(terminalTabs), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
-            (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs)) else emptyList()) +
+            (if (enabled.tunnels && tunnels != null) listOf(StartTunnelTool(tunnels, limits.toolTimeoutSeconds * 1000L), StopTunnelTool(tunnels)) else emptyList()) +
+            (if (enabled.terminalTabs && terminalTabs != null) listOf(AssistantTerminalTabsTool(terminalTabs, limits), AssistantTerminalReadTool(terminalTabs, limits), AssistantTerminalRenameTool(terminalTabs)) else emptyList()) +
+            (if (enabled[AssistantToolId.TERMINAL_INPUT] && terminalTabs != null) listOf(AssistantTerminalInputTool(terminalTabs, limits)) else emptyList()) +
             (if (enabled[AssistantToolId.TERMINAL_OPEN] && sessions != null && terminalTabs != null) listOf(TerminalOpenTool(sessions, limits.sessionsAtOnce), TerminalShowTool(sessions), TerminalCloseTool(sessions)) else emptyList()) +
             (if (enabled[AssistantToolId.WAIT_FOR] && waits != null) listOf(WaitForTool(waits, limits, waitKinds(enabled, terminalTabs != null, tunnels != null))) else emptyList()) +
-            (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands)) else emptyList()) +
+            (if (enabled.sshCommand && sshCommands != null) listOf(AssistantSshCommandTool(sshCommands, limits)) else emptyList()) +
             (if (off.isNotEmpty() && enabled.offer) listOf(AssistantRequestTool(off, declined)) else emptyList())
     }
 

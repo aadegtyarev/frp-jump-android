@@ -55,11 +55,6 @@ internal class TypedInput(val tabId: Int, val text: String?, val keys: List<Term
         for (key in keys) out.write(key.bytes(modes) ?: return null)
         return out.toByteArray()
     }
-
-    companion object {
-        const val MAX_TEXT = 2000
-        const val MAX_KEYS = 32
-    }
 }
 
 /** [raw] as typed: `\r\n`, `\n` and `\r` each become one CR (Enter). */

@@ -134,7 +134,7 @@ class FrpJumpApp : Application() {
 
     /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */
     val assistantTunnels by lazy {
-        val up = ru.adsrv.frpjump.ops.tunnel.TunnelUp(object : ru.adsrv.frpjump.ops.tunnel.TunnelUpHost {
+        val up = ru.adsrv.frpjump.ops.tunnel.TunnelUp(waitMs = { settings.settings.value.assistantLimits.tunnelWaitSeconds * 1000L }, host = object : ru.adsrv.frpjump.ops.tunnel.TunnelUpHost {
             override fun tunnels(profile: String) = profiles.runtime(profile)?.tunnels?.let { manager ->
                 object : ru.adsrv.frpjump.ops.tunnel.TunnelUpTunnels {
                     override val state get() = manager.state
@@ -457,6 +457,7 @@ class FrpJumpApp : Application() {
             tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))),
             tabNames = SessionRecordStore(AtomicTextFile(File(filesDir, "tab_names.json"))),
             historyRows = { settings.settings.value.terminalHistoryRows },
+            reconnectGiveUpMs = { settings.settings.value.assistantLimits.reconnectMinutes * 60_000L },
             visible = visible,
         )
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })

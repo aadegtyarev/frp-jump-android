@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ssh
 
+import ru.adsrv.frpjump.settings.AssistantLimits
 import java.io.InputStream
 
 /*
@@ -91,15 +92,19 @@ fun parseTmuxProbe(output: String): TmuxProbe {
  * the user's shell, so tmux's exit status is the channel's. `-u`: UTF-8
  * even when the non-login exec has no LANG. TERM is the PTY's
  * (`xterm-256color`), set by sshd from the pty request.
+ *
+ * With [historyRows] (the owner's "Terminal history" setting) the session gets `history-limit` of that many rows, in the same invocation like the
+ * other options; tmux applies it to the panes created after it.
  */
-fun tmuxAttachCommand(name: String, openedBy: SessionOpener = SessionOpener.OWNER): String {
+fun tmuxAttachCommand(name: String, openedBy: SessionOpener = SessionOpener.OWNER, historyRows: Int? = null): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     val target = shellQuote("=$name:")
     // A session the assistant opened says so in tmux itself, in the same invocation that creates it: the owner's restore then never takes it for a tab.
     val marker = if (openedBy == SessionOpener.ASSISTANT) " ';' set-option -t $target $OPENED_BY_OPTION ${shellQuote(OPENED_BY_ASSISTANT)}" else ""
     return "exec tmux -u new-session -A -D -s ${shellQuote(name)}" +
         " ';' set-option -t $target status off" +
-        " ';' set-option -t $target mouse on" + marker
+        " ';' set-option -t $target mouse on" +
+        (if (historyRows != null) " ';' set-option -t $target history-limit $historyRows" else "") + marker
 }
 
 /** Who opened a session: the owner (a tab) or the assistant (its own session, no tab until the owner opens one). */
@@ -145,13 +150,13 @@ fun tmuxTapStateCommand(name: String): String {
 /**
  * What the assistant reads of session [name]'s active pane without a cursor, in ONE tmux invocation (its commands are chained with `;`, so tmux runs
  * them as one list without serving the pane's output in between: the rows and the numbers belong together). In this order: the visible screen and up to
- * [lines] rows of history (0..1000), wrapped lines joined (`-J`), no escape sequences (no `-e`); the physical rows from three rows above the screen to
+ * [lines] rows of history (0..the owner's limit of lines per read), wrapped lines joined (`-J`), no escape sequences (no `-e`); the physical rows from three rows above the screen to
  * its bottom (the rows above the terminal's cursor are cut out of them); and one line `history_size history_limit cursor_y pane_height pane_in_mode`.
  * Read-only: it types nothing, leaves no copy mode and sets no option.
  */
 fun tmuxReadScreenCommand(name: String, lines: Int): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
-    require(lines in 0..1000) { "history lines out of range" }
+    require(lines in 0..AssistantLimits.READ_LINES_RANGE.last) { "history lines out of range" }
     val target = shellQuote("=$name:")
     return "tmux capture-pane -p -J -S -$lines -t $target ';' capture-pane -p -S -3 -t $target ';' display-message -p -t $target ${shellQuote(NUMBERS)}"
 }

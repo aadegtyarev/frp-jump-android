@@ -69,6 +69,28 @@ class SshReconnectTest {
     }
 
     @Test
+    fun `the owner's give-up time is read at each drop, 10 minutes by default`() {
+        assertEquals(10 * 60_000L, RECONNECT_GIVE_UP_MS)
+        var minutes = 1
+        val short = SshReconnect(clock, attempt = { n -> tries += clock.now() to n; answer(loop) }, giveUp = { gaveUp++ }, giveUpMs = { minutes * 60_000L })
+        answer = { it.failed() }
+        val shortLoop = short
+        answer = { shortLoop.failed() }
+        shortLoop.start()
+        clock.advanceBy(60_000L - 1)
+        assertEquals(0, gaveUp)
+        clock.advanceBy(2)
+        assertEquals("gave up after the setting's one minute", 1, gaveUp)
+        // A changed setting is in force at the next drop.
+        minutes = 3; gaveUp = 0
+        shortLoop.start()
+        clock.advanceBy(2 * 60_000L)
+        assertEquals(0, gaveUp)
+        clock.advanceBy(60_000L + 1)
+        assertEquals(1, gaveUp)
+    }
+
+    @Test
     fun `the network coming back tries at once and the next pause is 2 s again`() {
         loop.start()
         clock.advanceBy(30_000)

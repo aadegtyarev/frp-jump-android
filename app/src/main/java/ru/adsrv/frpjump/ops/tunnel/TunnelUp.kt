@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ops.tunnel
 
+import ru.adsrv.frpjump.settings.AssistantLimits
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapNotNull
@@ -44,8 +45,8 @@ interface TunnelUpHost {
  */
 class TunnelUp(
     private val host: TunnelUpHost,
-    /** How long a tunnel brought up here is waited for. */
-    private val waitMs: Long = TUNNEL_WAIT_MS,
+    /** How long a tunnel brought up here is waited for: the owner's setting, read at each start. */
+    private val waitMs: () -> Long = { TUNNEL_WAIT_MS },
 ) : Operation<TunnelUpInput, Int> {
     override val name = "tunnel_up"
     override val effect = Effect.CHANGE_LOCAL
@@ -60,7 +61,7 @@ class TunnelUp(
         if (!host.revive(ref)) host.awaitDisconnected(ref)
         val already = up(tunnels.state.value)
         if (already == null && tunnels.state.value.pending[key] == null) tunnels.connectAsync(device, port, kind)
-        val localPort = already ?: withTimeoutOrNull(waitMs) { tunnels.state.mapNotNull { up(it) }.first() }
+        val localPort = already ?: withTimeoutOrNull(waitMs()) { tunnels.state.mapNotNull { up(it) }.first() }
             // Asked to connect; the server may have granted it.
             ?: return OpResult.Failed(TunnelFailure.DidNotComeUp(tunnels.state.value.errors[key]), RemoteOutcome.UNKNOWN)
         // A tunnel brought up just now may not be open on the device yet: wait for it rather than fail the first connection.
@@ -70,7 +71,7 @@ class TunnelUp(
     }
 
     companion object {
-        /** How long "Use key login" waits for a tunnel it brought up. */
-        const val TUNNEL_WAIT_MS = 45_000L
+        /** How long a tunnel brought up here is waited for, by default: the settings default ([AssistantLimits.tunnelWaitSeconds]). */
+        const val TUNNEL_WAIT_MS = AssistantLimits.DEFAULT_TUNNEL_WAIT_S * 1000L
     }
 }

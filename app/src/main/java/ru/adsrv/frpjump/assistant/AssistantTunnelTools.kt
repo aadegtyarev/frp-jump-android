@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.agent.AgentLimits
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.agent.ToolOutput
@@ -32,7 +33,7 @@ internal const val PROVIDE_IDS = "Provide profile_id and connection_id from prof
 internal class StartTunnelTool(
     tunnels: AssistantTunnels,
     /** The core's limit for one tool call: the whole wait of a start ends inside it, with room left to say how it ended. */
-    toolTimeoutMs: Long = AgentLimits().toolTimeoutMs,
+    toolTimeoutMs: Long = AssistantLimits().toolTimeoutSeconds * 1000L,
 ) : OperationTool<SavedTunnelIds, TunnelStarted>(
     AssistantToolId.START_TUNNEL, START_DESCRIPTION, objectSchema { string("profile_id", 256); string("connection_id", 256) }, tunnels.start(startWaitMs(toolTimeoutMs)),
 ) {

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ssh
 
+import ru.adsrv.frpjump.settings.AssistantLimits
 import android.util.Log
 import net.schmizz.sshj.userauth.UserAuthException
 import java.io.IOException
@@ -48,13 +49,13 @@ fun reconnectPauseMs(failures: Int): Long = RECONNECT_PAUSES_MS.getOrElse(failur
 
 private val RECONNECT_PAUSES_MS = listOf(2_000L, 4_000L, 8_000L, 15_000L, 30_000L)
 
-/** How long a dropped session keeps trying before it ends. */
-const val RECONNECT_GIVE_UP_MS = 10 * 60_000L
+/** How long a dropped session keeps trying before it ends, by default: the owner's setting ([AssistantLimits.reconnectMinutes]) is read at each drop. */
+const val RECONNECT_GIVE_UP_MS = AssistantLimits.DEFAULT_RECONNECT_MINUTES * 60_000L
 
 /**
  * When a dropped SSH session tries again: at once, then after the
  * [reconnectPauseMs] pauses; at once when the network comes back or the
- * owner taps "Now"; gives up [RECONNECT_GIVE_UP_MS] after the drop.
+ * owner taps "Now"; gives up [giveUpMs] after the drop.
  *
  * It only decides the timing. [attempt] (number of the try, from 1) starts
  * one connect and must answer with [succeeded], [failed] (worth another
@@ -66,6 +67,8 @@ class SshReconnect(
     private val clock: ReconnectClock,
     private val attempt: (Int) -> Unit,
     private val giveUp: () -> Unit,
+    /** How long after the drop it gives up; read at each use, so the owner's setting is in force at once. */
+    private val giveUpMs: () -> Long = { RECONNECT_GIVE_UP_MS },
 ) {
     private var active = false
     private var held = false
@@ -134,7 +137,7 @@ class SshReconnect(
         failures++
         // Held: Undo (or the close) decides; nothing is scheduled.
         if (held) return
-        val left = startedAt + RECONNECT_GIVE_UP_MS - clock.now()
+        val left = startedAt + giveUpMs() - clock.now()
         if (left <= 0) {
             timeUp()
             return
@@ -158,7 +161,7 @@ class SshReconnect(
         if (inFlight || held) return
         cancelTimer?.invoke()
         cancelTimer = null
-        if (clock.now() - startedAt >= RECONNECT_GIVE_UP_MS) {
+        if (clock.now() - startedAt >= giveUpMs()) {
             timeUp()
             return
         }
