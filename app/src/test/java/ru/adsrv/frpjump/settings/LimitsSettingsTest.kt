@@ -11,6 +11,7 @@ import ru.adsrv.frpjump.ssh.MemoryStorage
 /** The one table of the owner's limits: every key's default, range and step, normalized each on its own, and how a Send reads them. */
 class LimitsSettingsTest {
     private val approved = mapOf(
+        "skills_max" to Triple(50, 1..200, 1), "skill_chars" to Triple(4_000, 500..20_000, 500), "skills_list_chars" to Triple(2_000, 500..8_000, 500),
         "tool_timeout_s" to Triple(30, 10..300, 5), "model_timeout_s" to Triple(60, 10..600, 10), "reply_s" to Triple(120, 30..1800, 30),
         "steps_per_reply" to Triple(12, 1..50, 1), "calls_per_step" to Triple(4, 1..10, 1), "tool_output_chars" to Triple(8_000, 2_000..32_000, 1_000),
         "reply_chars" to Triple(32_000, 4_000..128_000, 4_000), "waits_at_once" to Triple(3, 1..10, 1), "wait_max_minutes" to Triple(30, 1..120, 1),

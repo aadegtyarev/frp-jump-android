@@ -62,7 +62,11 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val typing = confirmation.typing
     val stop = confirmation.stop
     val close = confirmation.close
-    val target = if (close != null) {
+    val skill = confirmation.skill
+    val target = if (skill != null) {
+        // The skill's name, bidi-isolated.
+        ru.adsrv.frpjump.ssh.isolateName(skill.name)
+    } else if (close != null) {
         // The session as a tab's identity (profile, user and device, number), a name after it, bidi-isolated, never alone.
         if (close.profile != null && close.user != null && close.device != null && close.number != null)
             if (close.name != null) stringResource(R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName(close.name), close.profile, close.user, close.device, close.number)
@@ -79,7 +83,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         else stringResource(R.string.chat_detail_tab, typing.tabId)
     } else if (info == null) stringResource(R.string.confirm_unknown_target)
         else stringResource(R.string.confirm_target, info.profileName, info.connection.device, info.connection.label { kindWord(context, it) })
-    val tool = stringResource(if (typing != null || close != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
+    val tool = stringResource(if (typing != null || close != null || skill != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
     val always = stringResource(R.string.confirm_always)
@@ -98,10 +102,10 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val rtl = remember(confirmation.id) { containsStrongRtl(confirmation.command) }
     val sectionScroll = rememberScrollState()
     val commandScroll = rememberScrollState()
-    val commandLabel = stringResource(if (typing != null) R.string.confirm_text else R.string.confirm_command)
+    val commandLabel = stringResource(if (skill != null) R.string.confirm_skill_text else if (typing != null) R.string.confirm_text else R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
     // No "For session" for a stop: its hint speaks of commands on a tunnel.
-    val canSession = info != null && confirmation.target != null && stop == null && close == null
+    val canSession = info != null && confirmation.target != null && stop == null && close == null && skill == null
     // The command is always left to right: a line that starts with a right-to-left letter must not reverse the order of its commands.
     val ltr = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Ltr)
     // The command box shows four lines (three in the two-pane layout) at the user's font size, then scrolls.
@@ -115,7 +119,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 
     @Composable fun Header() {
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(if (close != null) R.string.confirm_close_title else if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(stringResource(if (skill != null) skillTitle(skill) else if (close != null) R.string.confirm_close_title else if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
             Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("chat_confirm_tool"))
@@ -123,9 +127,15 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 // The tab and the program as lines of their own, each with its label; the whole value stays readable (the section scrolls).
                 FieldLine(stringResource(R.string.confirm_tab), target, "chat_confirm_target")
                 typing.program?.let { FieldLine(stringResource(R.string.confirm_program), it, "chat_confirm_program") }
-            } else
-            // Two lines at most, ellipsis after that; TalkBack reads the whole name.
-            Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
+            } else {
+                // Two lines at most, ellipsis after that; TalkBack reads the whole name.
+                Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
+            }
+            if (skill != null) {
+                // The whole skill as plain text: its description and what it requires here, its text in the box below.
+                FieldLine(stringResource(R.string.confirm_skill_description), skill.description, "chat_confirm_skill_description")
+                FieldLine(stringResource(R.string.confirm_skill_requires), skill.requires.joinToString(", ").ifEmpty { stringResource(R.string.confirm_skill_requires_none) }, "chat_confirm_skill_requires")
+            }
         }
     }
     @Composable fun CommandBlock() {
@@ -136,8 +146,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 if (more) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_more"))
                 if (rtl) Text(stringResource(R.string.confirm_rtl_note), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.error, modifier = Modifier.testTag("chat_confirm_rtl"))
             }
-            if (typing != null) Text(commandLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("chat_confirm_text_label"))
-            Box(Modifier.heightIn(max = lineHeight * (if (wide) 3 else 4)).verticalScroll(commandScroll).testTag("chat_confirm_command_box")) {
+            if (typing != null || skill != null) Text(commandLabel, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.testTag("chat_confirm_text_label"))
+            Box(Modifier.heightIn(max = lineHeight * (if (skill != null) (if (wide) 6 else 10) else if (wide) 3 else 4)).verticalScroll(commandScroll).testTag("chat_confirm_command_box")) {
                 SelectionContainer {
                     Text(shownCommand, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
                         modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$commandLabel: $describedCommand" }.testTag("chat_confirm_command"))
@@ -146,10 +156,12 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         }
     }
     // Keys-only typing has no text: no empty box.
-    val showCommand = stop == null && close == null && (typing == null || confirmation.command.isNotEmpty())
+    val showCommand = stop == null && close == null && (skill == null || skill.kind != ru.adsrv.frpjump.assistant.SkillCard.Kind.DELETE) && (typing == null || confirmation.command.isNotEmpty())
     // A stop says how many tabs close, only when some do.
     @Composable fun Warning() {
-        if (close != null) {
+        if (skill != null) {
+            // The card shows the whole skill: no further warning.
+        } else if (close != null) {
             Text(stringResource(R.string.confirm_close_warning), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("chat_confirm_close_warning"))
         } else if (stop != null) {
             if (stop.tabs > 0) Text(stringResource(R.string.confirm_stop_tabs, stop.tabs), style = MaterialTheme.typography.bodyMedium,
@@ -175,6 +187,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Column(Modifier.weight(1f, fill = false).verticalScroll(sectionScroll).testTag("chat_confirm_section"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Header(); if (showCommand) CommandBlock()
+                skill?.oldBody?.let { old -> OldSkillText(old, confirmation.id) }
                 typing?.keys?.takeIf { it.isNotEmpty() }?.let { FieldLine(stringResource(R.string.confirm_keys), it.joinToString(", "), "chat_confirm_keys") }
                 Warning(); if (withAnswers) Answers()
             }
@@ -239,6 +252,29 @@ internal fun OwnerAskCard(ask: ru.adsrv.frpjump.assistant.OwnerAsk, onOpen: () -
             Text(identity, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("chat_ask_identity"))
             if (ask.reason.isNotEmpty()) Text(ask.reason, modifier = Modifier.testTag("chat_ask_reason"))
             Button(onClick = { onOpen(); onDismiss() }, modifier = Modifier.testTag("chat_ask_open")) { Text(stringResource(R.string.assistant_ask_open)) }
+        }
+    }
+}
+
+private fun skillTitle(skill: ru.adsrv.frpjump.assistant.SkillCard) = when (skill.kind) {
+    ru.adsrv.frpjump.assistant.SkillCard.Kind.SAVE -> R.string.confirm_skill_save_title
+    ru.adsrv.frpjump.assistant.SkillCard.Kind.REPLACE -> R.string.confirm_skill_replace_title
+    ru.adsrv.frpjump.assistant.SkillCard.Kind.DELETE -> R.string.confirm_skill_delete_title
+}
+
+/** The text a replaced skill had, reachable from the card (closed at first): plain text, in its own scrolling box. */
+@Composable
+private fun OldSkillText(old: String, id: Long) {
+    var shown by remember(id) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        TextButton(onClick = { shown = !shown }, modifier = Modifier.testTag("chat_confirm_skill_old_toggle")) {
+            Text(stringResource(if (shown) R.string.confirm_skill_old_hide else R.string.confirm_skill_old_show))
+        }
+        if (shown) {
+            Text(stringResource(R.string.confirm_skill_old_text), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Box(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState()).testTag("chat_confirm_skill_old_box")) {
+                SelectionContainer { Text(old, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr), modifier = Modifier.fillMaxWidth().testTag("chat_confirm_skill_old")) }
+            }
         }
     }
 }

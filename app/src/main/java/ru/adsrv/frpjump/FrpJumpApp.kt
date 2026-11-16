@@ -109,6 +109,16 @@ class FrpJumpApp : Application() {
      * The assistant's own terminal sessions: the same sessions as the owner's tabs, opened by the assistant and not shown as a tab until the owner opens one;
      * remembered in the session records so that a restart lists them again. A session that needs the owner (a password) is asked for through [OwnerAsk]s.
      */
+    /**
+     * The skills of the assistant: the built-in ones from the app's assets and the owner's own, one app-private file (no-backup storage, like the chat). The size of a
+     * skill is the owner's limit at the time of reading it back, so a lowered limit never loses a saved skill.
+     */
+    val assistantSkills by lazy {
+        ru.adsrv.frpjump.assistant.SkillRegistry(
+            lazy { ru.adsrv.frpjump.assistant.BuiltInSkills.load({ assets.list(it)?.toList().orEmpty() }, { assets.open(it) }) },
+            ru.adsrv.frpjump.assistant.SkillStore(AtomicTextFile(File(noBackupFilesDir, "assistant_skills.json"))) { settings.settings.value.assistantLimits.skillChars })
+    }
+
     val assistantSessions by lazy {
         ru.adsrv.frpjump.assistant.AssistantSessions(ru.adsrv.frpjump.assistant.SshSessionHost(ssh), ru.adsrv.frpjump.assistant.SshSessionTargets(sshTargets), sshEnv.tabNames, appScope,
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
@@ -251,7 +261,7 @@ class FrpJumpApp : Application() {
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
-            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, waitCountOut = assistantWaitCount)
+            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

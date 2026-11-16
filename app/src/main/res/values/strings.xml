@@ -1466,4 +1466,27 @@
     <string name="session_tunnel_gone">The session stays on the device: its saved tunnel is gone</string>
     <string name="session_close_tunnel_off">Could not close: the tunnel is off</string>
     <string name="limit_reply_raised">at least one call and one model answer: %1$d s</string>
+    <string name="tool_skills">Skills</string>
+    <string name="tool_skills_hint">The assistant turns what you did together into skills and uses them later. It saves and deletes skills after your confirmation if “Ask before changing commands” is on.</string>
+    <string name="tool_read_skill_progress">Reading a skill…</string>
+    <string name="tool_read_skill_receipt">Read skill</string>
+    <string name="tool_skills_list_progress">Listing skills…</string>
+    <string name="tool_skills_list_receipt">List skills</string>
+    <string name="tool_skill_save_progress">Saving a skill…</string>
+    <string name="tool_skill_save_receipt">Save skill</string>
+    <string name="tool_skill_delete_progress">Deleting a skill…</string>
+    <string name="tool_skill_delete_receipt">Delete skill</string>
+    <string name="confirm_skill_save_title">Save skill?</string>
+    <string name="confirm_skill_replace_title">Replace skill?</string>
+    <string name="confirm_skill_delete_title">Delete skill?</string>
+    <string name="confirm_skill_description">Description</string>
+    <string name="confirm_skill_requires">Requires</string>
+    <string name="confirm_skill_requires_none">nothing</string>
+    <string name="confirm_skill_text">Text</string>
+    <string name="confirm_skill_old_show">Show the old text</string>
+    <string name="confirm_skill_old_hide">Hide the old text</string>
+    <string name="confirm_skill_old_text">Old text</string>
+    <string name="limit_skills_max">Skills, at most</string>
+    <string name="limit_skill_chars">Skill size, characters</string>
+    <string name="limit_skills_list">Skills list per request, characters</string>
 </resources>

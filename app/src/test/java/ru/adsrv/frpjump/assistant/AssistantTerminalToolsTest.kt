@@ -420,7 +420,7 @@ class AssistantTerminalToolsTest {
         val off = names(AssistantTools()).last()
         assertTrue("terminal_tabs - read and rename the owner's open terminal tabs" in off.spec.description)
         assertFalse("terminal_read" in off.spec.description)
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "terminal_tabs", "wait_for", "ssh_command"), enumOf(off))
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "terminal_tabs", "skills_list", "wait_for", "ssh_command"), enumOf(off))
     }
 
     private fun enumOf(tool: ru.adsrv.frpjump.agent.AgentTool) =

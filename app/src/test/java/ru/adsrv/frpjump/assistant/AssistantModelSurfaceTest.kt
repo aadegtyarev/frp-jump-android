@@ -61,10 +61,11 @@ class AssistantModelSurfaceTest {
         actual += specJson(AssistantTerminalRenameTool(noTabs()).spec)
         actual += specJson(AssistantTerminalInputTool(noTabs()).spec)
         SessionRig().sessions.let { sessions -> actual += specJson(TerminalOpenTool(sessions, 3).spec); actual += specJson(TerminalShowTool(sessions).spec); actual += specJson(TerminalCloseTool(sessions).spec) }
+        SkillFixtures.registry().let { skills -> val on = AssistantTools(skills = true); actual += specJson(ReadSkillTool(skills, on, listed = true).spec); actual += specJson(SkillsListTool(skills, on).spec); actual += specJson(SkillSaveTool(skills).spec); actual += specJson(SkillDeleteTool(skills).spec) }
         actual += specJson(WaitForTool(WaitFixture().waits, AssistantLimits(), WaitKind.entries).spec)
         SshFixture().use { f -> actual += specJson(f.tool.spec) }
         assertEquals(golden, JsonArray(actual))
-        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "wait_for", "ssh_command"),
+        assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "ssh_command"),
             actual.map { it.jsonObject.getValue("name").jsonPrimitive.content })
     }
 
@@ -73,8 +74,8 @@ class AssistantModelSurfaceTest {
             c.chat.edit("synthetic"); c.chat.send()
             withTimeout(5000) { c.chat.state.first { !it.busy } }
             val request = c.requests.first()
-            assertEquals(TestPrompts.real.system(TestPrompts.allTools), request.instructions)
-            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "wait_for", "ssh_command"), request.tools.map { it.name })
+            assertEquals(TestPrompts.real.system(TestPrompts.allTools, c.skills.section(TestPrompts.allTools, AssistantLimits().skillsListChars)), request.instructions)
+            assertEquals(listOf("web_search", "read_page", "inspect_image", "profile_information", "start_tunnel", "stop_tunnel", "terminal_tabs", "terminal_read", "terminal_rename", "terminal_input", "terminal_open", "terminal_show", "terminal_close", "read_skill", "skills_list", "skill_save", "skill_delete", "wait_for", "ssh_command"), request.tools.map { it.name })
             val golden = Json.parseToJsonElement(javaClass.getResource("/assistant/tool-specs.json")!!.readText()).jsonArray
             assertEquals(golden, JsonArray(request.tools.map(::specJson)))
         } }
@@ -537,18 +538,19 @@ class AssistantModelSurfaceTest {
     private class ChatFixture(val f: SshFixture) : AutoCloseable {
         val settings = SettingsStore(MemoryStorage()).apply {
             update { it.copy(assistantEnabled = true, assistantSearch = true, assistantReadPage = true, assistantInspectImage = true,
-                assistantProfileInformation = true, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true, assistantTunnels = true, assistantWaits = true, assistantSessions = true) }
+                assistantProfileInformation = true, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true, assistantTunnels = true, assistantWaits = true, assistantSessions = true, assistantSkills = true) }
         }
         val store = AssistantProviderStore(MemoryStorage(), FakeKeystore().box("synthetic-model"), settings.assistantChat).apply {
             save(AssistantProviderDraft(AssistantProviderSettings(model = "synthetic"), null, "synthetic-key"))
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val requests = CopyOnWriteArrayList<AgentRequest>()
+        val skills = SkillFixtures.registry()
         val provider = AgentProvider { request -> requests += request; AgentReply("Synthetic answer") }
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
             store::requireRevision, module, Dispatchers.IO, { _, _ -> AgentLimits() }, settings.assistantChat,
-            profileInformation = f.profiles.information, sshCommands = f.service, terminalTabs = noTabs(), tunnels = TunnelFixture().tunnels, sessions = SessionRig().sessions, waitSources = FakeWaitSources(), prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
+            profileInformation = f.profiles.information, sshCommands = f.service, terminalTabs = noTabs(), tunnels = TunnelFixture().tunnels, sessions = SessionRig().sessions, skills = skills, waitSources = FakeWaitSources(), prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         override fun close() { chat.close(); scope.cancel() }
     }
 }

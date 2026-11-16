@@ -75,9 +75,11 @@ internal abstract class AppTool<A : Any>(
  * [typing] is what the card shows besides the text of a call that types into a terminal tab ([command] is then that text); null for others.
  * [stop] is what the card of a stop of a saved tunnel shows (there is no command text); null for others.
  * [close] is what the card of a close of the assistant's own session shows (no command text either); null for others.
+ * [skill] is what the card of saving or deleting a skill shows (the whole skill; [command] is its text); null for others.
  */
 internal class ChangeRequest(val tool: AssistantToolId, val target: GrantTarget?, val command: String, val described: Boolean = true,
-    val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null, val close: ru.adsrv.frpjump.assistant.CloseCard? = null)
+    val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null, val close: ru.adsrv.frpjump.assistant.CloseCard? = null,
+    val skill: ru.adsrv.frpjump.assistant.SkillCard? = null)
 
 internal sealed interface ChangeCheck {
     data object Invalid : ChangeCheck

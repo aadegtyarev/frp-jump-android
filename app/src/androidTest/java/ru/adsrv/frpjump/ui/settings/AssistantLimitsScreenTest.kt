@@ -104,7 +104,7 @@ class AssistantLimitsScreenTest {
             scrolled("${tag}_minus").performClick(); scrolled("${tag}_minus").performClick()
             compose.runOnIdle { assertEquals(spec.key, maxOf(spec.get(AssistantLimits()) - spec.step, spec.range.first), spec.get(limits.value)) }
         }
-        compose.runOnIdle { assertEquals("all sixteen rows are covered", 16, LIMITS.size) }
+        compose.runOnIdle { assertEquals("all nineteen rows are covered", 19, LIMITS.size) }
         // The last row, at the foot of the screen, and every limit at its largest.
         scrolled("limit_reconnect_minutes_value")
         capture("limits-defaults-scrolled")

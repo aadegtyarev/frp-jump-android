@@ -1,0 +1,1 @@
+- skills_list, skill_save and skill_delete manage the owner's skills. Save one only when the user asks, or offer to at the end of a task worth repeating; load skill-authoring first. Never put secrets, passwords or keys into a skill.

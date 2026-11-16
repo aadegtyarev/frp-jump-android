@@ -25,6 +25,11 @@ class AssistantToolTextsTest {
             AssistantToolId.TERMINAL_OPEN to Triple(R.string.tool_sessions, R.string.tool_sessions_hint, R.string.tool_terminal_open_progress),
             AssistantToolId.TERMINAL_SHOW to Triple(R.string.tool_sessions, R.string.tool_sessions_hint, R.string.tool_terminal_show_progress),
             AssistantToolId.TERMINAL_CLOSE to Triple(R.string.tool_sessions, R.string.tool_sessions_hint, R.string.tool_terminal_close_progress),
+            // The four skill tools share one switch (its title and hint); each has its own progress line.
+            AssistantToolId.READ_SKILL to Triple(R.string.tool_skills, R.string.tool_skills_hint, R.string.tool_read_skill_progress),
+            AssistantToolId.SKILLS_LIST to Triple(R.string.tool_skills, R.string.tool_skills_hint, R.string.tool_skills_list_progress),
+            AssistantToolId.SKILL_SAVE to Triple(R.string.tool_skills, R.string.tool_skills_hint, R.string.tool_skill_save_progress),
+            AssistantToolId.SKILL_DELETE to Triple(R.string.tool_skills, R.string.tool_skills_hint, R.string.tool_skill_delete_progress),
             AssistantToolId.SSH_COMMAND to Triple(R.string.tool_ssh_command, R.string.tool_ssh_command_hint, R.string.tool_ssh_command_progress),
         )
         assertEquals("Every tool must be pinned", AssistantToolId.entries.toSet(), expected.keys)
@@ -40,6 +45,8 @@ class AssistantToolTextsTest {
         assertEquals(R.string.tool_terminal_open_receipt, AssistantToolId.TERMINAL_OPEN.receiptTitle())
         assertEquals(R.string.tool_terminal_show_receipt, AssistantToolId.TERMINAL_SHOW.receiptTitle())
         assertEquals(R.string.tool_terminal_close_receipt, AssistantToolId.TERMINAL_CLOSE.receiptTitle())
-        for (id in AssistantToolId.entries - AssistantToolId.START_TUNNEL - AssistantToolId.STOP_TUNNEL - AssistantToolId.WAIT_FOR - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT - AssistantToolId.TERMINAL_OPEN - AssistantToolId.TERMINAL_SHOW - AssistantToolId.TERMINAL_CLOSE) assertEquals(id.name, id.title(), id.receiptTitle())
+        assertEquals(R.string.tool_read_skill_receipt, AssistantToolId.READ_SKILL.receiptTitle()); assertEquals(R.string.tool_skills_list_receipt, AssistantToolId.SKILLS_LIST.receiptTitle())
+        assertEquals(R.string.tool_skill_save_receipt, AssistantToolId.SKILL_SAVE.receiptTitle()); assertEquals(R.string.tool_skill_delete_receipt, AssistantToolId.SKILL_DELETE.receiptTitle())
+        for (id in AssistantToolId.entries - AssistantToolId.READ_SKILL - AssistantToolId.SKILLS_LIST - AssistantToolId.SKILL_SAVE - AssistantToolId.SKILL_DELETE - AssistantToolId.START_TUNNEL - AssistantToolId.STOP_TUNNEL - AssistantToolId.WAIT_FOR - AssistantToolId.TERMINAL_TABS - AssistantToolId.TERMINAL_READ - AssistantToolId.TERMINAL_RENAME - AssistantToolId.TERMINAL_INPUT - AssistantToolId.TERMINAL_OPEN - AssistantToolId.TERMINAL_SHOW - AssistantToolId.TERMINAL_CLOSE) assertEquals(id.name, id.title(), id.receiptTitle())
     }
 }

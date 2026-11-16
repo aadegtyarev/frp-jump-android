@@ -31,7 +31,7 @@ class TypingCard(val tabId: Int, val profile: String?, val user: String?, val de
  */
 class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: String, val target: GrantTarget?,
     val info: ConfirmationTargetInfo?, val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null,
-    val close: ru.adsrv.frpjump.assistant.CloseCard? = null) {
+    val close: ru.adsrv.frpjump.assistant.CloseCard? = null, val skill: ru.adsrv.frpjump.assistant.SkillCard? = null) {
     override fun equals(other: Any?) = other is PendingConfirmation && other.id == id
     override fun hashCode() = id.hashCode()
     override fun toString() = "PendingConfirmation(id=$id, tool=$tool)"

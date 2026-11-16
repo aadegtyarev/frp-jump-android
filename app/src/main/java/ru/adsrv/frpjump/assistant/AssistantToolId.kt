@@ -49,6 +49,17 @@ enum class AssistantToolId(val wire: String, val settingKey: String, val effect:
     /** Ends one session the assistant opened, with anything running in it. Asks as every changing tool does. No switch of its own. */
     TERMINAL_CLOSE("terminal_close", "assistant_sessions", Effect.CHANGE_REMOTE, ownsSwitch = false),
     /**
+     * Loads one skill by name: the owner's know-how (built in or his own). No switch and no confirmation: reading the owner's own text; it is offered
+     * only while at least one skill is relevant (see the skills section of the system prompt).
+     */
+    READ_SKILL("read_skill", "assistant_skills", Effect.READ_LOCAL, ownsSwitch = false),
+    /** Lists all skills, relevant or not. The switch of the three skill-writing tools (`assistant_skills`, default off). */
+    SKILLS_LIST("skills_list", "assistant_skills", Effect.READ_LOCAL),
+    /** Creates or replaces one owner skill. Asks as every changing tool does, the card showing the whole text. No switch of its own. */
+    SKILL_SAVE("skill_save", "assistant_skills", Effect.CHANGE_LOCAL, ownsSwitch = false),
+    /** Deletes one owner skill. Asks as every changing tool does. No switch of its own. */
+    SKILL_DELETE("skill_delete", "assistant_skills", Effect.CHANGE_LOCAL, ownsSwitch = false),
+    /**
      * Waits in the background for one event (a tab, a tunnel or the clock) and starts a new turn when it happens. Its own switch (default off);
      * it changes only this app (the wait is visible in the chat and the owner can cancel it), so it runs without a question ([confirms] false).
      */

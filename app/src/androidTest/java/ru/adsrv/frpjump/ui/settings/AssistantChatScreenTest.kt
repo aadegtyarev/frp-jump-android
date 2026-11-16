@@ -957,6 +957,25 @@ class AssistantChatScreenTest {
         shot("tools-terminal-tabs-on")
     }
 
+    @Test fun toolsScreenShowsTheSkillsSwitchOffByDefaultWorkingAloneAndSavedWhenTurnedOn() {
+        install()
+        button("chat_tools").performClick()
+        val switch = hasAnyAncestor(hasTestTag("tool_skills_list")) and isToggleable()
+        compose.onNodeWithTag("tool_skills_list").performScrollTo().assertIsDisplayed()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_skills)) and hasAnyAncestor(hasTestTag("tool_skills_list"))).assertExists()
+        compose.onNode(hasText(localizedText(ru.adsrv.frpjump.R.string.tool_skills_hint), substring = true) and hasAnyAncestor(hasTestTag("tool_skills_list"))).assertExists()
+        // Off by default and not tied to any other switch: it works alone.
+        compose.onNode(switch).assertIsOff().assertIsEnabled()
+        shot("tools-skills-off")
+        compose.onNode(switch).performClick()
+        compose.waitUntil(WAIT_MS) { settings.assistantAvailability.tools.skills }
+        compose.waitUntil(WAIT_MS) { chatBinding?.state?.value?.let { "skills_list" !in it.pending } == true }
+        compose.onNode(switch).assertIsOn()
+        assertTrue(settings.assistantAvailability.tools[AssistantToolId.SKILL_SAVE])
+        assertFalse(settings.assistantAvailability.tools.terminalTabs)
+        shot("tools-skills-on")
+    }
+
     @Test fun toolsScreenShowsOwnSessionsDisabledUntilTabsAndTypingAreOnAndTurnsThemOffWithEither() {
         install()
         button("chat_tools").performClick()
