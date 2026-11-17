@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -236,6 +237,43 @@ class TabMenuAndNamesTest {
         compose.onNode(hasText(text(R.string.cancel)) and hasAnyAncestor(isDialog())).performClick()
         compose.waitForIdle()
         tab("A").assertExists()
+    }
+
+    /** The dialog's buttons are on screen above the keyboard (landscape at 200 % font used to leave them under it). */
+    @Test fun theDialogButtonsStayAboveTheKeyboard() {
+        start()
+        openRename("A")
+        dialogField().performTextInput("build")
+        val button = { compose.onNode(hasText(text(R.string.cancel)) and hasAnyAncestor(isDialog())) }
+        val view = { (button().fetchSemanticsNode().root as androidx.compose.ui.platform.ViewRootForTest).view }
+        // The keyboard comes up by itself with the field's focus; this is the condition, not a pause.
+        try {
+            compose.waitUntil(10_000) {
+                androidx.core.view.ViewCompat.getRootWindowInsets(view())?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+            }
+        } catch (e: androidx.compose.ui.test.ComposeTimeoutException) { capture("rename-dialog-no-ime"); throw AssertionError("the keyboard did not come up", e) }
+        compose.waitForIdle()
+        // The keyboard's slide is a system animation that Compose does not wait for: read the frame until it stops moving.
+        fun frame(): List<Int> {
+            val v = view(); val at = IntArray(2); v.getLocationOnScreen(at)
+            val node = button().fetchSemanticsNode().boundsInRoot
+            val ime = androidx.core.view.ViewCompat.getRootWindowInsets(v)!!.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
+            val screen = v.resources.displayMetrics.heightPixels
+            return listOf(at[1] + node.top.toInt(), at[1] + node.bottom.toInt(), screen - ime)
+        }
+        var last = frame(); var stable = 0
+        val until = SystemClock.uptimeMillis() + 5_000
+        while (stable < 3 && SystemClock.uptimeMillis() < until) {
+            compose.waitForIdle(); SystemClock.sleep(100)
+            val now = frame(); if (now == last) stable++ else { stable = 0; last = now }
+        }
+        capture("rename-dialog-ime")
+        val (top, bottom, keyboardTop) = last
+        assertTrue("Cancel [$top, $bottom] is under the keyboard (top $keyboardTop)", top >= 0 && bottom <= keyboardTop)
+        button().assertIsDisplayed()
+        dialogSave().assertIsDisplayed()
+        // The title is the first line of the scrolling content: with the field focused it may be scrolled out, but it is still there.
+        compose.onNodeWithText(text(R.string.terminal_tab_name_title)).assertExists()
     }
 
     @Test fun theTwentyFifthCharacterAndABarAreRefusedAndImeDoneSaves() {
