@@ -94,25 +94,26 @@ internal fun AssistantChatContent(
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
     // The one owner of "follow the bottom". The list shows the end of the conversation (the bottom of the last item, not its top) when it
-    // opens and while the content grows (a new call line, streamed text, a card); a scroll of the owner's that ends away from the bottom
-    // stops the following, and one that ends at the bottom (or the owner's Send) resumes it. Growth itself is told from a scroll by the scroll
-    // state: it flips canScrollForward with no gesture before it.
+    // opens and while the content grows (a new call line, streamed text, a card) or the viewport shrinks (the keyboard). A scroll, by the
+    // owner or by an accessibility action, ends the following when it leaves the bottom and resumes it when it ends at the bottom; Send
+    // resumes it. A scroll is told from growth by the first visible item and its offset: growth and a smaller viewport leave them as
+    // they were and only make the end reachable (canScrollForward).
     var following by remember { mutableStateOf(true) }
     LaunchedEffect(historyScroll) {
-        var wasMoving = false
-        snapshotFlow { Triple(historyScroll.isScrollInProgress, historyScroll.canScrollForward, following) }.collect { (moving, more, follow) ->
-            when {
-                moving -> wasMoving = true
-                wasMoving -> { wasMoving = false; following = !more }
-                follow && more -> try {
-                    // Content that grows while we scroll leaves the same (follow, more) pair, which the flow does not emit again: look again
-                    // here. Each pass ends at the real bottom, so a pass that does not is the last (the cap only guards a list that never settles).
-                    var passes = 0
-                    while (following && historyScroll.canScrollForward && passes++ < 20) historyScroll.scrollToBottom()
-                } catch (e: CancellationException) {
-                    // A touch took the list over mid-scroll: that is the owner's scroll, judged when it ends. Our own cancel passes on.
-                    currentCoroutineContext().ensureActive(); wasMoving = true
-                }
+        fun position() = historyScroll.firstVisibleItemIndex to historyScroll.firstVisibleItemScrollOffset
+        var seen = position()
+        snapshotFlow { Triple(position(), historyScroll.canScrollForward, following) }.collect { (at, more, follow) ->
+            var follows = follow
+            if (at != seen) { seen = at; following = !more; follows = following }
+            if (follows && more) try {
+                // Content that grows while we scroll leaves the same pair, which the flow does not emit again: look again here. Each pass
+                // ends at the real bottom, so a pass that does not is the last (the cap only guards a list that never settles).
+                var passes = 0
+                while (following && historyScroll.canScrollForward && passes++ < 20) historyScroll.scrollToBottom()
+                seen = position()
+            } catch (e: CancellationException) {
+                // A touch took the list over mid-scroll: its position is the owner's, judged by the next emission. Our own cancel passes on.
+                currentCoroutineContext().ensureActive()
             }
         }
     }
