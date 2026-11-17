@@ -63,6 +63,8 @@ class AssistantChatOwner(
     private val tunnels: AssistantTunnels? = null,
     /** The assistant's own terminal sessions; null in tests that do not use them. */
     private val sessions: AssistantSessions? = null,
+    /** The skills; null in tests that do not use them. */
+    private val skills: SkillRegistry? = null,
     /** How many background waits run now, for the notification "Assistant is waiting for events: N"; written for the live conversation only. */
     private val waitCountOut: MutableStateFlow<Int> = MutableStateFlow(0),
     /** What waits watch; the app's own (tabs and tunnels) unless a test passes its own. */
@@ -153,7 +155,7 @@ class AssistantChatOwner(
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
-            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
+            profileInformation = profileInformation, sshCommands = sshCommands, terminalTabs = terminalTabs, tunnels = tunnels, sessions = sessions, skills = skills, waitSources = waitSources ?: AppWaitSources(terminalTabs, tunnels), waitSleep = waitSleep, historyStore = historyStore,
             awaitHistoryClear = { historyUndo?.awaitDone(HISTORY_UNDO_KEY) },
             commitHistoryClear = { historyUndo?.let { it.commit(HISTORY_UNDO_KEY); it.awaitDone(HISTORY_UNDO_KEY) } }, prompts = prompts, confirmations = confirmations,
             realtime = realtime, onSettled = ::settled, screenAttachedAt = ::attachedAt,

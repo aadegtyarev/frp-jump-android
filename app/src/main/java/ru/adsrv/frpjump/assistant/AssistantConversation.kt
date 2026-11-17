@@ -28,6 +28,8 @@ class AssistantConversation(
     private val tunnels: AssistantTunnels? = null,
     /** The assistant's own terminal sessions for `terminal_open`, `terminal_show` and `terminal_close`; null: none in this conversation. */
     private val sessions: AssistantSessions? = null,
+    /** The skills (built-in and the owner's) for `read_skill` and the skills section of the system prompt; null: none in this conversation. */
+    private val skills: SkillRegistry? = null,
     /** What background waits watch (tabs, tunnels, the clock); null: no waits in this conversation. */
     private val waitSources: WaitSources? = null,
     /** The waits' pause between looks and their clock are the registry's own; tests pass the registry's sleep here. */
@@ -79,7 +81,7 @@ class AssistantConversation(
     }
     private val c = ChatCells(SavedChat().bind(snapshot().settings), availability(), snapshot().revision, historyStore, confirmations)
     private val own = RunOwnership(c, runtime, availability, snapshot, onRevoked = { disabled -> endWaitsLocked(note = disabled) })
-    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
+    private val env = TurnEnv(own, runtime, module, io, limits, prepare, requireRevision, profileInformation, sshCommands, terminalTabs, tunnels, waitAdder, sessions, skills, historyStore != null, prompts, confirmations, activeClock, realtime, screenAttachedAt, onUnanswered)
     val state: StateFlow<ChatState> = c.mutable
 
     init {

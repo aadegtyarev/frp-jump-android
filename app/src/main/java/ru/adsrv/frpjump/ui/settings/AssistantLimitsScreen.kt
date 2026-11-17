@@ -99,6 +99,9 @@ private fun limitLabel(key: String) = when (key) {
     "reply_s" -> R.string.limit_reply_seconds
     "steps_per_reply" -> R.string.limit_steps
     "calls_per_step" -> R.string.limit_calls
+    "skills_max" -> R.string.limit_skills_max
+    "skill_chars" -> R.string.limit_skill_chars
+    "skills_list_chars" -> R.string.limit_skills_list
     "tool_output_chars" -> R.string.limit_tool_output
     "reply_chars" -> R.string.limit_reply_chars
     "waits_at_once" -> R.string.limit_waits_at_once

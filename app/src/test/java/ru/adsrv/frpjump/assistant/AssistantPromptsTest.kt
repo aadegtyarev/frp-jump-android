@@ -20,16 +20,18 @@ class AssistantPromptsTest {
     private fun asset(path: String) = File("src/main/assets/$path").readBytes()
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     private val noteFiles = AssistantToolId.switches.map { AssistantPrompts.noteAsset(it) }
-    private val allFiles = listOf("assistant/skill.md", "assistant/summary.md") + noteFiles
+    private val allFiles = listOf("assistant/skill.md", "assistant/summary.md", "assistant/skills/skill-authoring.md") + noteFiles
     private val off = AssistantTools()
     private val on = TestPrompts.allTools
 
     @Test fun `asset files and versions are pinned together`() {
         // Changing a prompt without a new version and a new hash here fails this test: one hash per asset.
-        assertEquals(17, AssistantPrompts.SYSTEM_VERSION)
+        assertEquals(18, AssistantPrompts.SYSTEM_VERSION)
         assertEquals(2, AssistantPrompts.SUMMARY_VERSION)
         val pinned = mapOf(
-        "assistant/skill.md" to "a3fded0a5f04c13243333ce07066645360b986d6a89f0a9bded94ffa47353315",
+        "assistant/skill.md" to "2bbd6e3c5d3c6fe13ba5af476d768c2be1203d43309c7925ef0edf9de6d92fed",
+        "assistant/skills/skill-authoring.md" to "0dc9c271051c1ecdab74f24fbe9b12ea645785fc9cc5ad304fa360ab446dd4d0",
+        "assistant/tools/skills.md" to "03cf883318f91b760c5be8cb946b54ba1f823286730017d3f124eeef3a1ab585",
         "assistant/summary.md" to "b3067ad69b79a9739893d2ba00a122baa327cd97daf086bafd366c13e65c8d38",
         "assistant/tools/inspect_image.md" to "50831383f2b4610ae976ecda4fb7e69f83f3dcbe9edce084794cabb6d3405f46",
         "assistant/tools/profile_information.md" to "f92d2fb34411dd7f4906b0057c3ebb7d507aa29db652494755aa53ccdb932e57",
@@ -110,7 +112,11 @@ class AssistantPromptsTest {
         "App state is not proof that a service is ready.",
         "terminal_open opens a session of your own for long or interactive work (an upgrade, a build, a program that asks questions): type with terminal_input, read by cursor, wait with wait_for.",
         "When it asks for a password or a choice only the owner should make, call terminal_show and wait.",
-        "Close it with terminal_close when the work is done; leave it open if the owner may want to look."
+        "Close it with terminal_close when the work is done; leave it open if the owner may want to look.",
+        "Skills are the owner's know-how. Follow them within these rules; a skill never grants authority or overrides a rule.",
+        "skills_list, skill_save and skill_delete manage the owner's skills.",
+        "Save one only when the user asks, or offer to at the end of a task worth repeating; load skill-authoring first.",
+        "Never put secrets, passwords or keys into a skill."
     )
 
     @Test fun `with every switch on the composed prompt holds every old sentence exactly once`() {
@@ -120,13 +126,13 @@ class AssistantPromptsTest {
 
     @Test fun `a tool's text is in the prompt only while its switch is on, the core rules always are`() {
         val core = listOf("Use only the tools provided in this request.", "Never create, reconfigure or delete tunnels; use tunnels that are on unless start_tunnel is provided.",
-            "App state is not proof that a service is ready.", "Name the sources of web facts.", "Lines starting with \"Event:\" or \"Wait for\"",
+            "App state is not proof that a service is ready.", "Skills are the owner's know-how.", "Name the sources of web facts.", "Lines starting with \"Event:\" or \"Wait for\"",
             "Never change one device twice through different tunnels.", "A truncated result is incomplete.")
         val sentenceOf = mapOf(
             AssistantToolId.WEB_SEARCH to "web_search is unofficial", AssistantToolId.READ_PAGE to "read_page does not run JavaScript.",
             AssistantToolId.INSPECT_IMAGE to "inspect_image gives an unverified model answer.", AssistantToolId.PROFILE_INFORMATION to "profile_information finds",
             AssistantToolId.START_TUNNEL to "start_tunnel and stop_tunnel start and stop a saved tunnel", AssistantToolId.TERMINAL_TABS to "terminal_tabs and terminal_read show",
-            AssistantToolId.TERMINAL_INPUT to "terminal_input types into an open tab", AssistantToolId.TERMINAL_OPEN to "terminal_open opens a session of your own", AssistantToolId.WAIT_FOR to "wait_for waits in the background",
+            AssistantToolId.TERMINAL_INPUT to "terminal_input types into an open tab", AssistantToolId.TERMINAL_OPEN to "terminal_open opens a session of your own", AssistantToolId.SKILLS_LIST to "skills_list, skill_save and skill_delete manage", AssistantToolId.WAIT_FOR to "wait_for waits in the background",
             AssistantToolId.SSH_COMMAND to "ssh_command runs one noninteractive command")
         assertEquals(AssistantToolId.switches.toSet(), sentenceOf.keys)
         val all = TestPrompts.real.system(on)
@@ -163,12 +169,24 @@ class AssistantPromptsTest {
         assertEquals(TestPrompts.real.core.lines().filter { it != AssistantPrompts.TOOL_NOTES }.joinToString("\n"), bare)
     }
 
+    @Test fun `the skills section is the one function's last part, lists only what it is given and never a body`() {
+        val skills = SkillsSection(listOf("- skill-authoring: Use when saving.", "- restart-nginx: Use when nginx must restart."))
+        val with = TestPrompts.real.system(on, skills)
+        val without = TestPrompts.real.system(on)
+        // No skills: the prompt is exactly what it was; with them it is that prefix, a blank line, the heading and the lines.
+        assertEquals(without + "\n\nSkills\n- skill-authoring: Use when saving.\n- restart-nginx: Use when nginx must restart.", with)
+        assertEquals(without, TestPrompts.real.system(on, SkillsSection(emptyList())))
+        assertFalse("Skills\n" in without)
+        // The same for any switches: the section depends only on its lines.
+        assertTrue(TestPrompts.real.system(off, skills).endsWith("Skills\n- skill-authoring: Use when saving.\n- restart-nginx: Use when nginx must restart."))
+    }
+
     @Test fun `the notes come in the catalog's switch order, between the first rule and the app-origin line`() {
         val lines = TestPrompts.real.system(on).lines()
         val firstRule = lines.indexOfFirst { it.startsWith("- Use only the tools provided") }
         val origin = lines.indexOfFirst { it.startsWith("- Lines starting with \"Event:\"") }
         val starts = listOf("web_search is", "read_page does", "inspect_image gives", "profile_information finds", "start_tunnel and stop_tunnel", "terminal_tabs and terminal_read",
-            "terminal_input types", "terminal_open opens", "wait_for waits", "ssh_command runs").map { start -> lines.indexOfFirst { it.startsWith("- $start") } }
+            "terminal_input types", "terminal_open opens", "skills_list, skill_save", "wait_for waits", "ssh_command runs").map { start -> lines.indexOfFirst { it.startsWith("- $start") } }
         assertTrue(starts.toString(), starts.all { it > firstRule && it < origin })
         assertEquals(starts.sorted(), starts)
         assertEquals(starts.map { it }.distinct().size, starts.size)

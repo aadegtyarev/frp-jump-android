@@ -61,6 +61,7 @@ internal class AssistantRequestTool(private val off: List<AssistantToolId>, priv
             AssistantToolId.WAIT_FOR -> "wait in the background for tab, tunnel and time events"
             AssistantToolId.TERMINAL_INPUT -> "type into the owner's open terminal tabs"
             AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> "open and use its own terminal sessions"
+            AssistantToolId.READ_SKILL, AssistantToolId.SKILLS_LIST, AssistantToolId.SKILL_SAVE, AssistantToolId.SKILL_DELETE -> "save and delete the owner's skills"
             AssistantToolId.SSH_COMMAND -> "run one command through a saved SSH tunnel"
         }
 

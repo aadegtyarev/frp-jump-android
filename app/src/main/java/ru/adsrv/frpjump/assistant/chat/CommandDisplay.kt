@@ -83,7 +83,7 @@ private fun isCombiningMark(cp: Int): Boolean = when (Character.getType(cp).toBy
     else -> false
 }
 
-private fun needsEscape(cp: Int): Boolean = when (Character.getType(cp).toByte()) {
+internal fun needsEscape(cp: Int): Boolean = when (Character.getType(cp).toByte()) {
     Character.CONTROL, Character.FORMAT, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR, Character.SPACE_SEPARATOR,
     Character.SURROGATE, Character.PRIVATE_USE, Character.UNASSIGNED -> true
     else -> isDefaultIgnorable(cp) || cp == 0x2800 || cp in OWN_GLYPHS

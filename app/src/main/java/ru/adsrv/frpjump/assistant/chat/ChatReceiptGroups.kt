@@ -110,6 +110,8 @@ internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("a
             if (target == null) command else "$target · ${receiptText(command, RECEIPT_DETAIL_CHARS)}"
         }
         AssistantRequestTool.WIRE -> a.text("name")?.let(words.toolTitle)
+        // A skill is named by its own name (the model's text, cleaned below).
+        AssistantToolId.READ_SKILL.wire, AssistantToolId.SKILL_SAVE.wire, AssistantToolId.SKILL_DELETE.wire -> a.text("name")
         AssistantToolId.WEB_SEARCH.wire -> a.text("query")
         AssistantToolId.READ_PAGE.wire -> a.text("url")?.let(::hostAndPath)
         AssistantToolId.INSPECT_IMAGE.wire -> a.text("url")?.let(::imageName)

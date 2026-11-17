@@ -45,7 +45,7 @@ internal suspend fun authorizeCall(
     val found = (tool.changeCheck(call.arguments) as? ChangeCheck.Change)?.request ?: return null
     if (support == null || !found.described) return refused
     // The card names the registered tool, not whatever identity a description claims.
-    val request = ChangeRequest(tool.id, found.target, found.command, typing = found.typing, stop = found.stop, close = found.close)
+    val request = ChangeRequest(tool.id, found.target, found.command, typing = found.typing, stop = found.stop, close = found.close, skill = found.skill)
     val key = request.target?.let { GrantKey(tool.id, it) }
     val stamp = request.target?.let(support.stamp)
     if (!mustAsk(tool.id, key, support.policy(), support.grants, stamp = stamp)) return null

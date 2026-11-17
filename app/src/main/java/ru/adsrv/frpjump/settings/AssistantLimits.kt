@@ -28,6 +28,12 @@ data class AssistantLimits(
     @SerialName("steps_per_reply") val stepsPerReply: Int = DEFAULT_STEPS_PER_REPLY,
     /** How many tool calls the model may make in one step. */
     @SerialName("calls_per_step") val callsPerStep: Int = DEFAULT_CALLS_PER_STEP,
+    /** How many skills the owner's skill store may hold. */
+    @SerialName("skills_max") val skillsMax: Int = DEFAULT_SKILLS_MAX,
+    /** How many characters one skill's text may have. */
+    @SerialName("skill_chars") val skillChars: Int = DEFAULT_SKILL_CHARS,
+    /** How many characters the list of skills in a request's system prompt may have. */
+    @SerialName("skills_list_chars") val skillsListChars: Int = DEFAULT_SKILLS_LIST_CHARS,
     /** How many characters of one tool's output go to the model. */
     @SerialName("tool_output_chars") val toolOutputChars: Int = DEFAULT_TOOL_OUTPUT_CHARS,
     /** How many characters one model reply may have. */
@@ -56,6 +62,9 @@ data class AssistantLimits(
         const val DEFAULT_REPLY_S = 120
         const val DEFAULT_STEPS_PER_REPLY = 12
         const val DEFAULT_CALLS_PER_STEP = 4
+        const val DEFAULT_SKILLS_MAX = 50
+        const val DEFAULT_SKILL_CHARS = 4_000
+        const val DEFAULT_SKILLS_LIST_CHARS = 2_000
         const val DEFAULT_TOOL_OUTPUT_CHARS = 8_000
         const val DEFAULT_REPLY_CHARS = 32_000
         const val DEFAULT_INPUT_CHARS = 2_000
@@ -72,6 +81,9 @@ data class AssistantLimits(
         val REPLY_RANGE = 30..1800
         val STEPS_RANGE = 1..50
         val CALLS_RANGE = 1..10
+        val SKILLS_MAX_RANGE = 1..200
+        val SKILL_CHARS_RANGE = 500..20_000
+        val SKILLS_LIST_CHARS_RANGE = 500..8_000
         val TOOL_OUTPUT_RANGE = 2_000..32_000
         val REPLY_CHARS_RANGE = 4_000..128_000
         val INPUT_CHARS_RANGE = 100..10_000
@@ -97,6 +109,9 @@ val LIMITS: List<LimitSpec> = listOf(
     LimitSpec("reply_s", LimitGroup.ASSISTANT, AssistantLimits.REPLY_RANGE, 30, { it.replySeconds }, { l, v -> l.copy(replySeconds = v) }),
     LimitSpec("steps_per_reply", LimitGroup.ASSISTANT, AssistantLimits.STEPS_RANGE, 1, { it.stepsPerReply }, { l, v -> l.copy(stepsPerReply = v) }),
     LimitSpec("calls_per_step", LimitGroup.ASSISTANT, AssistantLimits.CALLS_RANGE, 1, { it.callsPerStep }, { l, v -> l.copy(callsPerStep = v) }),
+    LimitSpec("skills_max", LimitGroup.ASSISTANT, AssistantLimits.SKILLS_MAX_RANGE, 1, { it.skillsMax }, { l, v -> l.copy(skillsMax = v) }),
+    LimitSpec("skill_chars", LimitGroup.ASSISTANT, AssistantLimits.SKILL_CHARS_RANGE, 500, { it.skillChars }, { l, v -> l.copy(skillChars = v) }),
+    LimitSpec("skills_list_chars", LimitGroup.ASSISTANT, AssistantLimits.SKILLS_LIST_CHARS_RANGE, 500, { it.skillsListChars }, { l, v -> l.copy(skillsListChars = v) }),
     LimitSpec("tool_output_chars", LimitGroup.ASSISTANT, AssistantLimits.TOOL_OUTPUT_RANGE, 1_000, { it.toolOutputChars }, { l, v -> l.copy(toolOutputChars = v) }),
     LimitSpec("reply_chars", LimitGroup.ASSISTANT, AssistantLimits.REPLY_CHARS_RANGE, 4_000, { it.replyChars }, { l, v -> l.copy(replyChars = v) }),
     LimitSpec("waits_at_once", LimitGroup.WAITS, AssistantLimits.WAITS_AT_ONCE_RANGE, 1, { it.waitsAtOnce }, { l, v -> l.copy(waitsAtOnce = v) }),

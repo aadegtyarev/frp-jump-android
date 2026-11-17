@@ -23,9 +23,9 @@ class AssistantChangeRequestTest {
         val box = FakeKeystore().box("synthetic-ssh")
         val env = SshEnvironment(SshKeyStore(MemoryStorage(), box), SshPasswords(MemoryStorage(), box), { "synthetic" }, TmuxNames(MemoryStorage()),
             clientFactory = { throw AssertionError("must not construct a client") })
-        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
+        val all = AssistantToolFactory.create(AssistantTools(true, true, true, true, true, terminalTabs = true, terminalInput = true, tunnels = true, waits = true, sessions = true, skills = true), AssistantChatRuntime(), AgentProvider { AgentReply("x") },
             synthetic.information, AssistantSshCommands(SshTargets(synthetic.state, synthetic.hidden, env)), { }, terminalTabs = AssistantTerminalTabs({ emptyList() }, { emptySet() }, { null }, { _, _, _ -> null }), tunnels = TunnelFixture().also { it.host.add(profile = "p", id = "c", isOn = true) }.tunnels, waits = WaitFixture().waits,
-            sessions = SessionRig().also { it.existing(1) }.sessions)
+            sessions = SessionRig().also { it.existing(1) }.sessions, skills = SkillFixtures.registry(owner = listOf(SkillFixtures.owner())))
         return all.associate { tool -> AssistantToolId.fromWire(tool.spec.name)!! to (tool as AppTool<*>) }
     }
 
@@ -49,6 +49,10 @@ class AssistantChangeRequestTest {
             AssistantToolId.TERMINAL_OPEN to obj("profile_id" to JsonPrimitive("p1"), "connection_id" to JsonPrimitive("c1")),
             AssistantToolId.TERMINAL_SHOW to obj("tab_id" to JsonPrimitive(1), "reason" to JsonPrimitive("a password")),
             AssistantToolId.TERMINAL_CLOSE to obj("tab_id" to JsonPrimitive(1)),
+            AssistantToolId.READ_SKILL to obj("name" to JsonPrimitive("skill-authoring")),
+            AssistantToolId.SKILLS_LIST to obj(),
+            AssistantToolId.SKILL_SAVE to obj("name" to JsonPrimitive("new-skill"), "description" to JsonPrimitive("Use when x."), "requires" to kotlinx.serialization.json.JsonArray(emptyList()), "body" to JsonPrimitive("Steps.")),
+            AssistantToolId.SKILL_DELETE to obj("name" to JsonPrimitive("my-skill")),
             AssistantToolId.SSH_COMMAND to obj("profile_id" to JsonPrimitive("p"), "connection_id" to JsonPrimitive("c"), "command" to JsonPrimitive("uptime")),
         )
         assertEquals(AssistantToolId.entries.toSet(), valid.keys)

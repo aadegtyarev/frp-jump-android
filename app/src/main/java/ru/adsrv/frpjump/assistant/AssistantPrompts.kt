@@ -30,21 +30,27 @@ import ru.adsrv.frpjump.settings.AssistantTools
  * Changing an asset requires a new version and a new pinned hash in `AssistantPromptsTest`.
  */
 class AssistantPrompts(val core: String, val summary: String, private val notes: Map<AssistantToolId, String> = emptyMap()) {
-    /** The system prompt of a request in which the tool switches are [tools]. */
-    fun system(tools: AssistantTools): String {
+    /**
+     * The system prompt of a request in which the tool switches are [tools] and the relevant skills are [skills] (a [SkillRegistry.section], one `- <name>: <description>`
+     * line each, never a body): the core with the notes of the switches that are on, then, only when there are skills, a "Skills" section at the very end.
+     */
+    fun system(tools: AssistantTools, skills: SkillsSection = SkillsSection(emptyList())): String {
         val on = AssistantToolId.switches.filter { tools[it] }.mapNotNull { notes[it] }
         val lines = core.split('\n')
-        if (TOOL_NOTES !in lines) return (listOf(core) + on).joinToString("\n\n")
-        return lines.flatMap { if (it == TOOL_NOTES) on else listOf(it) }.joinToString("\n")
+        val text = if (TOOL_NOTES !in lines) (listOf(core) + on).joinToString("\n\n")
+            else lines.flatMap { if (it == TOOL_NOTES) on else listOf(it) }.joinToString("\n")
+        return if (skills.lines.isEmpty()) text else text + "\n\n" + SKILLS_HEADING + "\n" + skills.lines.joinToString("\n")
     }
 
     companion object {
-        const val SYSTEM_VERSION = 17
+        const val SYSTEM_VERSION = 18
         const val SUMMARY_VERSION = 2
         const val SYSTEM_ASSET = "assistant/skill.md"
         const val SUMMARY_ASSET = "assistant/summary.md"
         /** The line of the core where the notes of the tools that are on go (the line itself is never sent). */
         const val TOOL_NOTES = "<tool-notes>"
+        /** The heading of the skills section at the end of the system prompt. */
+        const val SKILLS_HEADING = "Skills"
 
         /** The asset of a switch's note. */
         fun noteAsset(id: AssistantToolId) = "assistant/tools/${id.settingKey.removePrefix("assistant_")}.md"
@@ -55,6 +61,8 @@ class AssistantPrompts(val core: String, val summary: String, private val notes:
          */
         fun load(open: (String) -> InputStream) = AssistantPrompts(read(open, SYSTEM_ASSET), read(open, SUMMARY_ASSET),
             AssistantToolId.switches.associateWith { read(open, noteAsset(it)) })
+
+        internal fun readAsset(open: (String) -> InputStream, path: String): String = read(open, path)
 
         private fun read(open: (String) -> InputStream, path: String): String {
             val bytes = open(path).use { it.readBytes() }

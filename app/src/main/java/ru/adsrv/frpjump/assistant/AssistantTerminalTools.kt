@@ -20,7 +20,7 @@ import ru.adsrv.frpjump.ssh.checkTabName
 /** Characters of a name (profile, device, user, connection) in a tab line. */
 private const val NAME_CHARS = 64
 /** Room kept for the closing `truncated: N of M characters` line. */
-private const val TRUNCATED_NOTE_CHARS = 64
+internal const val TRUNCATED_NOTE_CHARS = 64
 
 /** `terminal_tabs`: the owner's open terminal tabs, one line each. Reads app state and, for tmux tabs, one bounded probe over the tab's own connection. */
 internal class AssistantTerminalTabsTool(private val tabs: AssistantTerminalTabs, private val limits: AssistantLimits = AssistantLimits()) : AppTool<Unit>(
