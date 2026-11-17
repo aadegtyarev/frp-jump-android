@@ -829,14 +829,16 @@ class AssistantChatScreenTest {
      * found, and the list now rests at the bottom of a tall last item, where the top of that item is composed but above the list.
      */
     private fun scrollHistoryTo(matcher: SemanticsMatcher) {
-        val items = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.CollectionInfo].rowCount
-        for (index in 0 until items) {
-            button("chat_history").performScrollToIndex(index)
+        var index = 0
+        // Past the last item the scroll action refuses: that ends the search.
+        while (runCatching { button("chat_history").performScrollToIndex(index) }.isSuccess) {
             compose.waitForIdle()
             if (compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() && runCatching { compose.onAllNodes(matcher)[0].assertIsDisplayed() }.isSuccess) return
+            index++
         }
         button("chat_history").performScrollToNode(matcher)
     }
+
     /** The list's end is on screen: its scroll position has no further to go. */
     private fun atBottom(): Boolean = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].let { it.value() >= it.maxValue() }
     private fun scrollValue(): Float = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
