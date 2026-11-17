@@ -236,7 +236,9 @@ data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long 
     /** Captured at Send admission like [tools]; text for the model only, never read for a permission or confirmation. */
     val ownerInstructions: String = "",
     /** The owner's limits, committed with the other assistant preferences; read live where a limit applies to something already running. */
-    val limits: AssistantLimits = AssistantLimits())
+    val limits: AssistantLimits = AssistantLimits(),
+    /** How many times each tool went from in effect to out of effect (like [disableVersion] for the assistant): what a session grant is checked against. */
+    val toolOffs: Map<AssistantToolId, Long> = emptyMap())
 
 /** The app's settings in one JSON file; unreadable or invalid content falls back to the defaults. */
 class SettingsStore(private val storage: TextStorage) {
@@ -289,7 +291,8 @@ class SettingsStore(private val storage: TextStorage) {
                 val previous = assistantAvailability
                 assistantAvailability = AssistantAvailability(next.assistantEnabled,
                     previous.disableVersion + if (previous.enabled && !next.assistantEnabled) 1 else 0,
-                    next.assistantTools(), next.assistantOwnerInstructions, next.assistantLimits)
+                    next.assistantTools(), next.assistantOwnerInstructions, next.assistantLimits,
+                    AssistantToolId.entries.associateWith { id -> (previous.toolOffs[id] ?: 0L) + if (previous.tools[id] && !next.assistantTools()[id]) 1L else 0L })
                 committedSettings = next
                 assistantConfirmations = next.assistantConfirmations
                 assistantAvailability.disableVersion

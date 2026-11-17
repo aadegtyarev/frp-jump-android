@@ -43,7 +43,7 @@ class AssistantTunnelToolsTest {
     /** What the kernel does: authorize (the common gate), then run unless refused. */
     private class Asker(val answer: ConfirmationDecision = ConfirmationDecision.ONCE, var mode: ConfirmationMode = ConfirmationMode.ASK) {
         val asked = ArrayList<ChangeRequest>()
-        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true }, stamp = { "s" })
+        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true })
         fun kernel(tool: AgentTool, a: JsonObject): ToolOutput = runBlocking {
             authorizeCall(support, mapOf(tool.spec.name to tool), ToolCall("id", tool.spec.name, a),
                 wait = { request, _ -> asked += request; answer }, onNotSaved = {}, io = Dispatchers.Unconfined) ?: tool.execute(a)

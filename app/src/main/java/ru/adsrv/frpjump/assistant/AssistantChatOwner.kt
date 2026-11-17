@@ -16,6 +16,7 @@ import ru.adsrv.frpjump.agent.AgentProvider
 import ru.adsrv.frpjump.assistant.chat.ConfirmationSupport
 import ru.adsrv.frpjump.assistant.chat.chatConfirmationSupport
 import ru.adsrv.frpjump.profiles.ProfileInformation
+import ru.adsrv.frpjump.settings.SessionGrants
 import ru.adsrv.frpjump.settings.SettingsStore
 import ru.adsrv.frpjump.settings.assistantTools
 import ru.adsrv.frpjump.undo.PendingUndo
@@ -31,8 +32,8 @@ enum class ChatEnd { NONE, COMPLETED, FAILED, UNANSWERED }
 
 /**
  * The app-lived owner of the one chat conversation (Р32). A chat screen [attach]es and [detach]es; the conversation lasts while a screen
- * is attached or an attempt (a Send, a card wait included) runs, and is closed (draft saved, "For session" grants cleared, memory
- * released) only when both have ended. The next [attach] then builds a new one from the saved history.
+ * is attached or an attempt (a Send, a card wait included) runs, and is closed (draft saved, memory released; the app's "For session" grants
+ * stay) only when both have ended. The next [attach] then builds a new one from the saved history.
  *
  * It is built on first use (the first chat opening), never at app start. The reactions that used to live in the chat's ViewModel
  * (disable, provider revision, the busy slot, a tool switched off) run here, in [scope], so they work while no screen exists.
@@ -70,6 +71,8 @@ class AssistantChatOwner(
     /** What waits watch; the app's own (tabs and tunnels) unless a test passes its own. */
     private val waitSources: WaitSources? = null,
     private val waitSleep: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+    /** The app's "For session" grants, which outlive a conversation. */
+    private val grants: SessionGrants = SessionGrants(),
 ) {
     private class Live(val conversation: AssistantConversation, val scope: CoroutineScope, val confirmations: ConfirmationSupport)
     private val lock = Any()
@@ -151,7 +154,7 @@ class AssistantChatOwner(
 
     private fun build(): Live {
         val child = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
-        val confirmations: ConfirmationSupport = chatConfirmationSupport(settingsStore, sshCommands)
+        val confirmations: ConfirmationSupport = chatConfirmationSupport(settingsStore, sshCommands, grants)
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,
@@ -164,7 +167,6 @@ class AssistantChatOwner(
         child.launch { settingsStore.assistantDisables.collect { chat.refresh() } }
         child.launch { settingsStore.assistantChat.busy.collect { chat.refresh() } }
         child.launch { providerStore.state.collect { chat.refresh() } }
-        // A tool that is switched off loses its session grants, even though the Tools screen opens without leaving Chat.
         child.launch { settingsStore.settings.map { it.assistantTools() }.distinctUntilChanged().collect { chat.toolsChanged(it) } }
         child.launch {
             var before = ChatActivity.IDLE

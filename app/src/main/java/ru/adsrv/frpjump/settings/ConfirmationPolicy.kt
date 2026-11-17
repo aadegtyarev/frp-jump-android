@@ -5,6 +5,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.ops.ActionClass
 
 /** Whether a changing assistant tool call asks the owner first. [ASK] is the default and the fail-closed value. */
 @Serializable
@@ -45,36 +46,19 @@ data class ConfirmationPolicy(
 /** A saved connection as a grant target: two fields, so ids containing any character can never collide. */
 data class GrantTarget(val profileId: String, val connectionId: String)
 
-/** The key of a session grant: the tool plus its target (ssh_command: profile and connection). Never the command. */
-data class GrantKey(val tool: AssistantToolId, val target: GrantTarget?)
-
 /**
- * Session grants, in memory only, owned by one chat screen. Thread-safe; never persisted, never in history.
- * A grant may carry a [stamp] of the target it was given for (its saved definition); a grant whose current stamp differs
- * (the target was edited or removed) is dropped when next looked up, so a grant never follows an edited target.
+ * The key of a session grant: the action class plus its target (a saved connection). Never the tool and never the command: a grant is
+ * given for the class on one connection, and only the tools that are [AssistantToolId.grantable] and were in effect are covered ([SessionGrants]).
  */
-class GrantStore {
-    private val keys = HashMap<GrantKey, Any?>()
-    fun has(key: GrantKey): Boolean = has(key, null)
-    fun has(key: GrantKey, stamp: Any?): Boolean = synchronized(keys) {
-        if (!keys.containsKey(key)) false else if (keys[key] == stamp) true else { keys.remove(key); false }
-    }
-    fun grant(key: GrantKey, stamp: Any? = null) { synchronized(keys) { keys[key] = stamp } }
-    fun clear() = synchronized(keys) { keys.clear() }
-    fun clear(tool: AssistantToolId) = synchronized(keys) { keys.keys.removeAll { it.tool == tool } }
-    /** Drop the grants of one connection, or of a whole profile when [connectionId] is null. */
-    fun clearTarget(profileId: String, connectionId: String? = null) = synchronized(keys) {
-        keys.keys.removeAll { key -> key.target?.let { it.profileId == profileId && (connectionId == null || it.connectionId == connectionId) } == true }
-    }
-    fun snapshot(): Set<GrantKey> = synchronized(keys) { keys.keys.toSet() }
-}
+data class GrantKey(val actionClass: ActionClass, val target: GrantTarget)
 
 /**
  * Pure decision: must this call ask the owner? Only tools whose catalog effect changes something and that [AssistantToolId.confirms] can ask; the policy (read live at
- * each call) and a session grant can waive the question. Unknown and read tools never ask.
+ * each call) and a session grant can waive the question. Unknown and read tools never ask. Class never decides it by itself: a read class has no
+ * question, and a `confirms = false` tool never asks whatever its class. A grant of another class than the tool's covers nothing (fail closed).
  */
-fun mustAsk(tool: AssistantToolId?, key: GrantKey?, policy: ConfirmationPolicy, grants: GrantStore, scopes: List<ConfirmationScope> = emptyList(), stamp: Any? = null): Boolean =
-    tool != null && tool.effect.changes && tool.confirms && policy.resolve(scopes) == ConfirmationMode.ASK && (key == null || !grants.has(key, stamp))
+fun mustAsk(tool: AssistantToolId?, key: GrantKey?, policy: ConfirmationPolicy, grants: SessionGrants, scopes: List<ConfirmationScope> = emptyList()): Boolean =
+    tool != null && tool.effect.changes && tool.confirms && policy.resolve(scopes) == ConfirmationMode.ASK && (key == null || !grants.covers(tool, key))
 
 /** Fixed texts the model receives; the owner's text is never forwarded. */
 object ConfirmationTexts {

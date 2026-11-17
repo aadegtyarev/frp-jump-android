@@ -21,6 +21,7 @@ internal class ProfileQuery(
 ) : Operation<ProfileInformationQuery, ProfileInformationState> {
     override val name = "profile_query"
     override val effect = Effect.READ_REMOTE
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.CONNECTION_READ
 
     override suspend fun invoke(input: ProfileInformationQuery): OpResult<ProfileInformationState> = try {
         refresh()

@@ -40,6 +40,7 @@ internal class FakeSavedTunnels : SavedTunnelHost {
 internal class FakeUp(var result: OpResult<Int> = OpResult.Done(40001), var onCall: (TunnelUpInput) -> Unit = {}, var delayMs: Long = 0) : Operation<TunnelUpInput, Int> {
     override val name = "tunnel_up"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
     val calls = ArrayList<TunnelUpInput>()
     override suspend fun invoke(input: TunnelUpInput): OpResult<Int> { calls += input; onCall(input); if (delayMs > 0) kotlinx.coroutines.delay(delayMs); return result }
     companion object {
@@ -52,6 +53,7 @@ internal class FakeUp(var result: OpResult<Int> = OpResult.Done(40001), var onCa
 internal class FakeDown(var onCall: (TunnelDownTarget) -> Unit = {}) : Operation<TunnelDownTarget, Unit> {
     override val name = "tunnel_down"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
     val targets = ArrayList<TunnelDownTarget>()
     override suspend fun invoke(input: TunnelDownTarget): OpResult<Unit> { targets += input; onCall(input); return OpResult.Done(Unit) }
 }

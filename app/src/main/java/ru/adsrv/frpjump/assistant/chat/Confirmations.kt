@@ -4,7 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.settings.ConfirmationPolicy
-import ru.adsrv.frpjump.settings.GrantStore
+import ru.adsrv.frpjump.settings.SessionGrants
 import ru.adsrv.frpjump.settings.GrantTarget
 
 /** The owner's answer to a confirmation card; [NO_ANSWER] is the 5-minute wait running out. */
@@ -31,7 +31,9 @@ class TypingCard(val tabId: Int, val profile: String?, val user: String?, val de
  */
 class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: String, val target: GrantTarget?,
     val info: ConfirmationTargetInfo?, val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null,
-    val close: ru.adsrv.frpjump.assistant.CloseCard? = null, val skill: ru.adsrv.frpjump.assistant.SkillCard? = null) {
+    val close: ru.adsrv.frpjump.assistant.CloseCard? = null, val skill: ru.adsrv.frpjump.assistant.SkillCard? = null,
+    /** The grantable tools a For session answer on this card would cover (in effect when the card was raised): what its hint says. Empty: none. */
+    val sessionTools: Set<AssistantToolId> = emptySet()) {
     override fun equals(other: Any?) = other is PendingConfirmation && other.id == id
     override fun hashCode() = id.hashCode()
     override fun toString() = "PendingConfirmation(id=$id, tool=$tool)"
@@ -45,7 +47,7 @@ internal class ConfirmationSlot(val id: Long, val answer: CompletableDeferred<Co
 
 /**
  * The app-side pieces a chat needs to ask: the live policy (read at each call, never captured), session grants, persisting "off"
- * for the Always answer, target names for the card and a stamp that changes when a saved target is edited or removed.
+ * for the Always answer and target names for the card. [grants] is the app's, not the conversation's: it holds what a grant is bound to.
  * An [AssistantConversation] built without it asks nothing (kernel-only tests); the chat owner always supplies one.
  */
 class ConfirmationSupport(
@@ -53,8 +55,5 @@ class ConfirmationSupport(
     /** True when "off" was committed. Runs to completion even when Stop races the answer (the owner's choice stands). */
     val persistOff: suspend () -> Boolean,
     val info: (GrantTarget) -> ConfirmationTargetInfo? = { null },
-    val stamp: (GrantTarget) -> Any? = { null },
-    val grants: GrantStore = GrantStore(),
-    /** Whether the tool is still switched on; a session grant is not recorded for a tool switched off while the owner was asked. */
-    val toolEnabled: (AssistantToolId) -> Boolean = { true },
+    val grants: SessionGrants = SessionGrants(),
 )

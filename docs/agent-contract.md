@@ -14,7 +14,7 @@ specific to it. `ssh_command` and `profile_information` are assistant adapters
 over operations of the [operations surface](contracts/surfaces/operations.md);
 the texts and behavior below are unchanged by that layer. Calls of tools that
 change something (today `ssh_command`) ask the owner first unless the owner
-turned the question off or answered For session for that tool and target; see
+turned the question off or answered For session for that action class on that connection (and that tool is covered by it); see
 [Confirmation of changing calls](#confirmation-of-changing-calls).
 
 The assistant answers the owner's message. The one exception is an event of a background wait the owner's switch "Event waits" let it order
@@ -71,7 +71,7 @@ its conversation, its saved history and a running Send are never doubled or stop
 once and kept in memory only; it goes after the draft once the saved draft has loaded and no Send runs, and it is dropped with the chat
 screen if the owner leaves first (an attempt that goes on does not keep it). If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
 
-Whichever entry opened the chat, the app lock, Stop, "For session" lasting while the chat is open or an attempt runs, a disabled
+Whichever entry opened the chat, the app lock, Stop, "For session" lasting for the tunnel's open period, a disabled
 module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
 works from every entry. The assistant never reads terminal tabs by itself: only the opt-in, default-off [Terminal tabs](#optional-terminal-tabs)
 tools do, when the model calls them in a Send. It never types into terminal tabs by itself either: only the opt-in, default-off
@@ -457,7 +457,7 @@ There is no automatic retry, streaming or provider/model fallback.
 **An attempt outlives the chat screen.** The conversation belongs to the app, not to the screen. It is built when the chat is first
 opened (never at app start) and lasts while a chat screen is open (anywhere on the back stack, including under Tools or a screen
 opened over it; an entry that has left the back stack no longer counts, even if its state was saved) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
-the "For session" grants are cleared and memory is released; the next opening restores the saved history. Leaving the chat (Back, the
+memory is released (the "For session" grants are the app's, not the conversation's, and stay); the next opening restores the saved history. Leaving the chat (Back, the
 arrow, another section, another app, the lock, activity recreation, the activity finishing) does not stop an attempt: its reply and
 results are saved to the history and are there when the chat is opened again. Reopening while it runs shows that same attempt with its
 Stop; there is no second conversation and no second admission. The chat's reactions to a disabled assistant, a provider revision, the
@@ -709,7 +709,7 @@ Each Send captures the committed tool booleans atomically at admission and keeps
 that fixed set throughout the run, including calls dispatched after a switch
 changes. Changes apply only to the next Send; the current Send may finish with
 its original tools (the confirmation switch and session grants are the exception:
-they are read at each call). They neither cancel work nor clear history, provider
+they are read at each call, and a tool switched off loses its grant at once). They neither cancel work nor clear history, provider
 or draft. There is no tool-change epoch/revocation signal. Failed saves retain
 prior settings. Proposals unavailable in that Send's captured set return bounded
 explicit unknown-tool results without network; they do not grant authority.
@@ -797,10 +797,14 @@ settings and provider commits is described in [Run authority](#run-authority).
 
 Before a call whose effect changes something runs, the owner is asked, unless
 the app-wide switch (Settings → LLM assistant → Tools → "Ask before changing
-commands") is off or a For session grant covers that call's tool and target.
+commands") is off or a For session grant covers that call's tool on that call's connection.
 The effect is the tool's catalog effect; for a tool built on an operation the
-operation's effect and target are used, and a test pins its effect equal to the
-catalog's. Today the changing tools are `ssh_command`, whose target is a
+operation's effect, action class and target are used, and tests pin its effect and class equal to the
+catalog's. Every catalog tool and operation has an action class (`PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, `APP_READ`,
+`APP_CHANGE`) and cannot be built without one; the class never decides by itself whether a call asks (that is the effect, the tool's
+`confirms` flag, the switch and a grant), and a tool with no question stays one whatever its class. The card's tool line reads
+"class · tool" ("Changes in connections · SSH command" / «Изменения в подключениях · Команда SSH»; "Changes in the app" /
+«Изменения в приложении» for the app-changing tools). Today the changing tools are `ssh_command`, whose target is a
 saved connection, and `terminal_input`, whose target is the saved SSH connection that matches the tab's profile, device and port (none when
 no saved connection matches: the card then has no For session answer). Calls whose effect only reads never ask. The default is on.
 
@@ -828,13 +832,34 @@ name, with its own title, warning and For session hint. Nothing is cut: the whol
 unpaired surrogate is invalid for every tool (no card, nothing runs).
 
 Answers: **Allow** (this call), **For session**, **Always**, **Decline**. For
-session covers the tool and the exact target (today a saved connection) until
-the chat screen is left and no attempt runs (the conversation ends; it gives no new authority, and a session no longer ends in the
-middle of an attempt), the assistant is disabled, the tool is switched off,
-the history is cleared, or the target, or what it belongs to, is edited or
-removed (for a saved connection: the connection or its profile; a grant is
-stamped with the target's saved definition and dropped when it changes). A For session grant is in memory
-only. Always turns the app-wide switch off after a second confirmation (a dialog
+session is a grant of the action class on one connection: `ssh_command` and `terminal_input` share the `CONNECTION_CHANGE` grant of a saved
+connection, and a grant covers only the grantable tools that the card said it covers (the hint on the card names them: "Commands in this
+connection while its tunnel is open." / "Typing into tabs of this connection while its tunnel is open." / both) and that are still in effect;
+a tool that was not in effect when the card was raised is never added by switching it on later. `grantable` is a property of the tool, not of
+its class: `terminal_close`, `stop_tunnel`, `skill_save` and `skill_delete` are not covered by any grant whatever class they share, and a
+card of theirs has no For session answer. The grant lives for the open period of the connection's tunnel: it survives leaving the chat,
+closing the conversation and the end of an attempt, and ends, each at once, when
+- the tunnel is disconnected (the owner's Disconnect, the assistant's `stop_tunnel`, an error that removes it, Disconnect all, the server removing
+  this phone's profile) and connected again, or a Disconnect is pending, or the tunnel is hidden for Undo, also when Undo then cancels it, or a
+  different grant id takes its place (a case that cannot be told apart ends the period); a transient change (frpc reconnect, via-server/direct,
+  a local-port rebind) does not end it;
+- the connection or its profile is edited, deleted or forgotten, or its enrollment is replaced: the fingerprint is every field of the
+  connection, the profile's id, key alias and activation, the enrollment, and the non-secret SSH login (user and method) and the pinned host
+  key of its device and port (no secret is read and no Keystore unlock is needed); the profile's name and colour are not in it;
+- the assistant is turned off (off and on again included);
+- a tool's switch goes off (or it falls out of effect: Typing goes off with Terminal tabs): that tool leaves the grant for good, an emptied
+  grant is dropped, and switching it on again does not bring it back, even if no one looked in between (each switch-off is counted and the
+  grant remembers the count);
+- the chat history is cleared;
+- the app lock engages, or would engage the moment the owner returns (Settings › Lock after has run out while the app is out of sight): all
+  grants end, so no turn, a wait- or event-triggered one included, runs changing calls under a session grant after the lock. With the app lock off
+  nothing changes. This is read at every use, not only when the lock changes.
+Rename and colour of the profile, a transient reconnect, leaving the chat and closing the conversation end nothing. A grant is bound before
+the question is shown (the tunnel's period, the fingerprint, the assistant's off count, the tools' switch-off counts), so a close, an edit or
+a switch-off during the wait makes the answer act as Allow once: no grant is recorded and no line says so. An app-level cleaner
+(independent of any conversation) drops a stale grant as soon as it goes stale and the connection card never shows a stale line; every use re-checks
+all of it as well (fail closed). A For session grant is in memory
+only, never in the history, receipts, logs or backups. Always turns the app-wide switch off after a second confirmation (a dialog
 says what is turned off and where to turn it back on; Cancel returns to the
 question, still waiting); if that cannot be saved, the call is allowed once, an
 inline note says so, and requests stay on. Decline, and five minutes without an
@@ -851,7 +876,8 @@ and shows its own grey line ("The question was not answered, so the assistant st
 and the conversation closes once no screen remains. With a chat screen attached, "No answer" only declines that call and the model goes on; a
 card whose screen came back before the expiry keeps waiting. The model-facing declined text is unchanged. An Always answer may
 still persist "off" when Stop races the call, and a For session answer racing
-Stop may record its grant; the call itself never runs. The wait is in neither
+Stop may record its grant; the call itself never runs. A For session answer is not recorded when the tunnel's period ended, the connection
+changed, the assistant was turned off or the tool was switched off during the wait. The wait is in neither
 the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts
 active time only).
 
@@ -933,6 +959,14 @@ The kinds `profile_information` sends, and the fixed texts of the other tools,
 are described in each tool's subsection.
 
 ## Tool table
+
+Action classes (catalog `actionClass`; the class never decides by itself whether a call asks): `PUBLIC_READ` (`web_search`, `read_page`,
+`inspect_image`), `CONNECTION_READ` (`profile_information`, `terminal_tabs`, `terminal_read`), `CONNECTION_CHANGE` (`ssh_command`, `terminal_input`,
+`terminal_open`, `terminal_close`), `APP_READ` (`read_skill`, `skills_list`), `APP_CHANGE` (`skill_save`, `skill_delete`, `start_tunnel`,
+`stop_tunnel`, `terminal_rename`, `terminal_show`, `wait_for`). Tools that ask: `ssh_command`, `terminal_input`, `terminal_close`, `skill_save`,
+`skill_delete`, `stop_tunnel` (when the tunnel is on); `confirms = false` tools (`terminal_open`, `start_tunnel`, `terminal_rename`, `terminal_show`,
+`wait_for`) never ask whatever their class. Grantable (a For session grant may cover them): `ssh_command` and `terminal_input` only.
+`request_tool` is a service tool with no class.
 
 | Tool | Effect | Operation | Arguments | Limits | Confirmation | Disclosure | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -1197,7 +1231,7 @@ and `ssh_command` still never starts one.
 - `stop_tunnel` takes exactly `profile_id` and `connection_id`. It goes through the common confirmation: the card's title is "Stop tunnel?"
   («Выключить туннель?»), its identity line `profile · "tunnel name" · device:port` (the name between its marks, bidi-isolated), then, only
   when sessions of the tunnel are open (terminal and MQTT), `N tabs of this tunnel will close. tmux sessions on the device stay.` Allow, Always and Decline are the
-  common answers; there is no session grant for a stop. After Allow it runs `tunnel_down` for that one tunnel at once with no 5 s Undo, as the
+  common answers; there is no session grant for a stop (`stop_tunnel` is not grantable although it shares the `APP_CHANGE` class). After Allow it runs `tunnel_down` for that one tunnel at once with no 5 s Undo, as the
   card is the check; the owner's own Stop keeps its Undo. Its terminal and MQTT sessions close with it; tmux sessions on the device stay
   ([SSH persistence](ssh-persist-contract.md)). The call is pinned to the tunnel that was described (the saved tunnel, its profile and enrollment,
   and the running tunnel instance): when it was removed, edited, restarted or is already stopping, nothing is stopped (`Tool was not authorized;
@@ -1261,7 +1295,7 @@ tabs and Typing into tabs are on; turning either off turns it off, and turning t
   with the chat's cleaning and cap, and «Открыть» / "Open", which shows the session as a tab), and a notification «Помощнику нужен ваш ввод» / "The assistant needs your input" with Open
   while the chat is not on screen (low importance, no sound; nothing is shown over the app lock). Reply `The owner was asked to act in tab <id>.`
 - `terminal_close` goes through the common confirmation (card «Закрыть сессию?» / "Close session?", the identity line, `Всё, что в ней запущено, остановится.` / `Anything running in it stops.`;
-  no "For session"). An owner's tab is never closed by it (`Tab <id> is the owner's; only the owner closes it.`). Reply `Session <id> is closed.`; a remembered session is attached first, and
+  no "For session": `terminal_close` is not grantable although it shares the `CONNECTION_CHANGE` class with the grantable `ssh_command` and `terminal_input`, and a grant of that class never covers it). An owner's tab is never closed by it (`Tab <id> is the owner's; only the owner closes it.`). Reply `Session <id> is closed.`; a remembered session is attached first, and
   when it cannot be reached nothing is closed. Open failure: `Could not open a session. Check terminal_tabs.`; a Stop in the middle closes the half-open session.
 - Owner UI: Sessions has a group «Помощник» / "Assistant" (only while there are sessions the owner has not opened as tabs) with each session's label, state and «Открыть» / «Закрыть»
   (his Close: no confirmation, the shared Undo; when its tunnel is off it stays listed and he is told «Не удалось закрыть: туннель выключен»); progress lines: «Открываю сессию…», «Закрываю сессию…», «Прошу ваш ввод…»; an opened one stays marked as the assistant's in its tab menu. Chat call lines: «Открыть сессию», «Закрыть сессию», «Нужен ваш ввод».
@@ -1284,7 +1318,7 @@ no-backup file (`assistant_skills.json`), written only by `skill_save` and `skil
 - The switch «Скиллы» / "Skills" (`assistant_skills`, default off, no dependency on other switches) turns on `skills_list`, `skill_save` and `skill_delete`.
 - `skill_save` takes exactly `name`, `description`, `requires` (known switch names, each once) and `body` (not blank, at most the owner's skill size, default 4,000 characters, and never more than `read_skill` can give back whole: the tool-output limit less 200, so no read-time cut exists; the reply names that effective maximum; control and invisible
   characters are removed). The description is the only skill text that enters the system prompt on every Send, so it must be printable one-line text: any character the card would have to escape (line and paragraph separators, format and zero-width characters, variation selectors, controls) refuses the skill, and the cards show it, and the old text, as the command is shown (visible escapes). The card's «Требует» names the switches by their titles on the Tools screen; the replace card shows the old description and requirements next to the new ones. It goes through the common confirmation (`CHANGE_LOCAL`, confirms): the card «Сохранить скилл?» / "Save skill?" shows the name, the description, `requires` and the
-  FULL text, scrollable, as plain text with no markup rendering; «Заменить скилл?» / "Replace skill?" when the name exists, with the old text reachable from the card. There is no session grant.
+  FULL text, scrollable, as plain text with no markup rendering; «Заменить скилл?» / "Replace skill?" when the name exists, with the old text reachable from the card. There is no session grant (`skill_save` and `skill_delete` are not grantable; their class `APP_CHANGE` has no grants).
   Replies: `Skill <name> is saved.` / `Skill <name> is replaced.` / the invalid reply `Provide name (kebab-case, 2–40), description (one line, up to 200 characters), requires (known switch names) and body (up to <max> characters).` /
   `Already <n> skills, the most allowed. Delete one first.` (the owner's «Скиллов, не больше», default 50). A built-in name or a full store is refused without a question (`Skill <name> is built in and cannot be changed.`).
 - `skill_delete` takes exactly `name`; the card «Удалить скилл?» / "Delete skill?" shows the name and the description. Replies: `Skill <name> is deleted.` / `No owner skill named "<name>".`
@@ -1303,7 +1337,7 @@ no-backup file (`assistant_skills.json`), written only by `skill_save` and `skil
 
 A second independent default-off switch, "Typing into tabs" («Ввод во вкладки»), turns on `terminal_input`. It is in effect only while
 "Terminal tabs" is on too: with the tabs off the switch is off and greyed and says "Works together with Terminal tabs.", the
-tool is not offered, and a session grant for it is dropped. Turning Terminal tabs off also turns Typing into tabs off; turning the tabs
+tool is not offered, and it leaves every session grant for good (switching it on later does not bring it back). Turning Terminal tabs off also turns Typing into tabs off; turning the tabs
 on never turns typing on (the owner does that, or the chat's "Turn on" for `terminal_input`). `request_tool` lists `terminal_input` ("type into the owner's open terminal
 tabs") only while the tabs are on (otherwise the model asks for `terminal_tabs` first); the owner's "Turn on" for it turns on only this
 switch. The tool has the catalog effect `CHANGE_REMOTE`.
@@ -1591,7 +1625,7 @@ malformed-field fallback, disable invalidation, credential/root binding,
 revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
-Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope and resets (including an edited target), Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the shield and the Tools switch.
+Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope (class and connection; never a tool that is not grantable) and every end of a grant (tunnel disconnect/reconnect/pending/Undo-hide with Undo cancelling, a different grant id, each connection field, the profile's key alias, activation and enrollment, SSH login method and host key, assistant off and off/on, a tool switched off and on again, history clear, the app lock engaging or its interval running out), a grant never wider than the card's hint, no record when the period, the fingerprint or a switch changed during the wait, a cleaner with no conversation, the 19-row class table (class, effect, `confirms`, `grantable`, six asking tools, two grantable) and the operation class pin, Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the shield and the Tools switch.
 Tool-request tests (production conversation, factory and kernel with a fake provider and a fetcher that fails when reached) cover: `request_tool`
 offered only while a tool is off with an enum of exactly the off tools and descriptions without schemas; an off tool called by name still
 unknown with no network; the three fixed answers and the invalid-call answer with no setting changed; the decline saved with the history,
@@ -1612,8 +1646,7 @@ changes before explicit retry is proven with a fake provider built on `blockingC
 Synthetic navigation/Compose checks use the production Settings chat entry,
 chat ViewModel and screen: complete answers/follow-up, Stop, recoverable errors,
 setup recovery, recreation, Back with an attempt that goes on, and the close of an idle conversation. Owner tests (unit and
-component) cover: the reply of an attempt that outlived the screen, a reopen that gets the same attempt and its Stop, grants kept while
-the screen or an attempt remains and cleared when both have ended, disable, provider change and tool-off reactions with no screen,
+component) cover: the reply of an attempt that outlived the screen, a reopen that gets the same attempt and its Stop, grants kept after the screen and the attempt have ended (they are the app's), disable, provider change and tool-off reactions with no screen,
 the profile's removal stopping the attempt, the one interrupted note, and the bottom navigation's dot and its TalkBack state. The
 notification is covered by: unit tests of its decision (off-screen working and waiting with Stop, none while shown or locked, each final
 text, none after Stop, a requested Stop or a disable, none without the permission, the end reset by a new Send, ends not told for an

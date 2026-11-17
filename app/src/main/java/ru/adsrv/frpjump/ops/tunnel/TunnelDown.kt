@@ -48,6 +48,7 @@ class TunnelDown(
 ) : Operation<TunnelDownTarget, Unit> {
     override val name = "tunnel_down"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
 
     override suspend fun invoke(input: TunnelDownTarget): OpResult<Unit> {
         when (input) {

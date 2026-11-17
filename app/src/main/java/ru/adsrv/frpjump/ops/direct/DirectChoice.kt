@@ -19,6 +19,7 @@ interface DirectChoicesPort {
 class DirectRetry(private val choices: DirectChoicesPort) : Operation<DirectChoiceInput, Unit> {
     override val name = "direct_retry"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
 
     override suspend fun invoke(input: DirectChoiceInput): OpResult<Unit> {
         choices.retryDirect(input.profile, input.device)
@@ -30,6 +31,7 @@ class DirectRetry(private val choices: DirectChoicesPort) : Operation<DirectChoi
 class DirectKeep(private val choices: DirectChoicesPort) : Operation<DirectChoiceInput, Unit> {
     override val name = "direct_keep"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
 
     override suspend fun invoke(input: DirectChoiceInput): OpResult<Unit> =
         if (choices.keepThroughServer(input.profile, input.device)) OpResult.Done(Unit) else OpResult.Refused(DirectRefusal.NoNetwork)
