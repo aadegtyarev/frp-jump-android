@@ -421,4 +421,15 @@ class AssistantConfirmationFlowTest {
         h.world.locked = false; h.chat.edit("third"); h.chat.send(); h.idle()
         assertEquals("unlocked: the record covers again, no card", listOf("a", "a"), h.commands)
     }
+
+    @Test fun `a history clear a closed conversation and a new one leave the remembered permission`() {
+        val h = Harness(one(), named = true)
+        h.send(); h.chat.answer(h.card().id, ConfirmationDecision.CONNECTION); h.idle()
+        val key = GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c"))
+        runBlocking { h.chat.deleteHistory() }
+        assertEquals("a history clear is not tied to it", 1, h.settings.assistantConfirmations.overrides.size)
+        h.chat.close()
+        assertTrue("nor is a closed conversation", ConnectionGrants(h.settings, h.world).covers(AssistantToolId.SSH_COMMAND, key))
+        assertTrue("nor a restart", ConnectionGrants(SettingsStore(h.file), h.world).covers(AssistantToolId.SSH_COMMAND, key))
+    }
 }

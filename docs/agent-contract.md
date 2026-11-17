@@ -14,7 +14,7 @@ specific to it. `ssh_command` and `profile_information` are assistant adapters
 over operations of the [operations surface](contracts/surfaces/operations.md);
 the texts and behavior below are unchanged by that layer. Calls of tools that
 change something (today `ssh_command`) ask the owner first unless the owner
-turned the question off or answered For session for that action class on that connection (and that tool is covered by it); see
+turned the question off or answered For session or For this connection for that action class on that connection (and that tool is covered by it); see
 [Confirmation of changing calls](#confirmation-of-changing-calls).
 
 The assistant answers the owner's message. The one exception is an event of a background wait the owner's switch "Event waits" let it order
@@ -71,7 +71,7 @@ its conversation, its saved history and a running Send are never doubled or stop
 once and kept in memory only; it goes after the draft once the saved draft has loaded and no Send runs, and it is dropped with the chat
 screen if the owner leaves first (an attempt that goes on does not keep it). If the history cannot be read the chat's own "could not restore history" notice shows and the quote is not added.
 
-Whichever entry opened the chat, the app lock, Stop, "For session" lasting for the tunnel's open period, a disabled
+Whichever entry opened the chat, the app lock, Stop, "For session" lasting for the tunnel's open period, "For this connection" being remembered, a disabled
 module and an unconfigured provider behave as described elsewhere in this contract, and the provider screen opened from the chat
 works from every entry. The assistant never reads terminal tabs by itself: only the opt-in, default-off [Terminal tabs](#optional-terminal-tabs)
 tools do, when the model calls them in a Send. It never types into terminal tabs by itself either: only the opt-in, default-off
@@ -459,7 +459,7 @@ There is no automatic retry, streaming or provider/model fallback.
 **An attempt outlives the chat screen.** The conversation belongs to the app, not to the screen. It is built when the chat is first
 opened (never at app start) and lasts while a chat screen is open (anywhere on the back stack, including under Tools or a screen
 opened over it; an entry that has left the back stack no longer counts, even if its state was saved) or while an attempt (a Send, a confirmation wait included) runs. When both have ended it closes: the draft is saved,
-memory is released (the "For session" grants are the app's, not the conversation's, and stay); the next opening restores the saved history. Leaving the chat (Back, the
+memory is released (the "For session" grants and the remembered "For this connection" permissions are the app's, not the conversation's, and stay); the next opening restores the saved history. Leaving the chat (Back, the
 arrow, another section, another app, the lock, activity recreation, the activity finishing) does not stop an attempt: its reply and
 results are saved to the history and are there when the chat is opened again. Reopening while it runs shows that same attempt with its
 Stop; there is no second conversation and no second admission. The chat's reactions to a disabled assistant, a provider revision, the
@@ -732,7 +732,7 @@ authority, never presentation; pending UI acknowledgement is not network authori
 Each Send captures the committed tool booleans atomically at admission and keeps
 that fixed set throughout the run, including calls dispatched after a switch
 changes. Changes apply only to the next Send; the current Send may finish with
-its original tools (the confirmation switch and session grants are the exception:
+its original tools (the confirmation switch and the session and remembered grants are the exception:
 they are read at each call, and a tool switched off loses its grant at once). They neither cancel work nor clear history, provider
 or draft. There is no tool-change epoch/revocation signal. Failed saves retain
 prior settings. Proposals unavailable in that Send's captured set return bounded
@@ -821,7 +821,8 @@ settings and provider commits is described in [Run authority](#run-authority).
 
 Before a call whose effect changes something runs, the owner is asked, unless
 the app-wide switch (Settings → LLM assistant → Tools → "Ask before changing
-commands") is off or a For session grant covers that call's tool on that call's connection.
+commands") is off, a For session grant covers that call's tool on that call's connection, or a remembered "For this connection" permission does.
+The order at a call: the switch is off, a session grant covers it, a remembered permission covers it, else ask.
 The effect is the tool's catalog effect; for a tool built on an operation the
 operation's effect, action class and target are used, and tests pin its effect and class equal to the
 catalog's. Every catalog tool and operation has an action class (`PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, `APP_READ`,
@@ -830,7 +831,7 @@ catalog's. Every catalog tool and operation has an action class (`PUBLIC_READ`, 
 "class · tool" ("Changes in connections · SSH command" / «Изменения в подключениях · Команда SSH»; "Changes in the app" /
 «Изменения в приложении» for the app-changing tools). Today the changing tools are `ssh_command`, whose target is a
 saved connection, and `terminal_input`, whose target is the saved SSH connection that matches the tab's profile, device and port (none when
-no saved connection matches: the card then has no For session answer). Calls whose effect only reads never ask. The default is on.
+no saved connection matches: the card then has no For session and no For this connection answer). Calls whose effect only reads never ask. The default is on.
 
 The question is a card above the message field (the history takes the room the
 card and Stop leave; with the keyboard up at large font the history stays at
@@ -839,7 +840,7 @@ the setup or retry buttons) and the message field's height are capped; a capped
 notice region ends on a whole text line, shows at least one full line, and while
 more is below shows "▼ Scroll for more" / «▼ Прокрутите вниз»; the disabled
 message field is hidden while a question is open; each question opens at its
-top). The four answers are pinned at the bottom of the card; above them a
+top). The answers are pinned at the bottom of the card (five on a card that can remember, otherwise three); above them a
 section scrolls with the tool, the target by name, never by ID (for a saved
 connection: profile · device · connection; "Unknown connection" when
 unresolved), what the call will run, in full, and the tool's warning. For a command
@@ -852,10 +853,16 @@ mark follows each of them, so the order shown is the order that runs) and the
 full-access warning. For `terminal_input` the card names the tab (`profile · user@device №number`, or `tab <id>` when it is not known),
 the program in the tab's foreground when a `terminal_tabs` probe of that tab is at most 60 seconds old (else no program line), the text
 (the same scrolling box and escapes; every line break is shown as a highlighted ⏎ mark, because it is typed as Enter) and the keys by
-name, with its own title, warning and For session hint. Nothing is cut: the whole text is in the scrolling box. A string argument with an
+name, with its own title, warning and For session and For this connection hints. Nothing is cut: the whole text is in the scrolling box. A string argument with an
 unpaired surrogate is invalid for every tool (no card, nothing runs).
 
-Answers: **Allow** (this call), **For session**, **Always**, **Decline**. For
+Answers: **Allow** (this call), **Decline**, and under the caption "Allow and remember" («Разрешить и запомнить») **For session**,
+**For this connection** («Для этого подключения») and **Always**, in this order and in these two rows (a flow layout: at 200 % font one
+answer per line, no label cut, every button at least 48 dp high; in landscape the answers stay in the right column). A card that cannot be
+remembered (the tool is not grantable, the connection is not known by name, a stop, a close or a skill card) has three answers, Allow,
+Always and Decline, and no caption; an answer a card did not offer acts as Allow once and records nothing. The hints of For session and
+For this connection are in the scrolling section after the warning (the pinned block is only the buttons; if the pinned answers, the header
+and the first content line do not fit, the whole card scrolls from its top), and each button is read as "<answer>. <hint>". For
 session is a grant of the action class on one connection: `ssh_command` and `terminal_input` share the `CONNECTION_CHANGE` grant of a saved
 connection, and a grant covers only the grantable tools that the card said it covers (the hint on the card names them: "Commands in this
 connection while its tunnel is open." / "Typing into tabs of this connection while its tunnel is open." / both) and that are still in effect;
@@ -883,7 +890,56 @@ the question is shown (the tunnel's period, the fingerprint, the assistant's off
 a switch-off during the wait makes the answer act as Allow once: no grant is recorded and no line says so. An app-level cleaner
 (independent of any conversation) drops a stale grant as soon as it goes stale and the connection card never shows a stale line; every use re-checks
 all of it as well (fail closed). A For session grant is in memory
-only, never in the history, receipts, logs or backups. Always turns the app-wide switch off after a second confirmation (a dialog
+only, never in the history, receipts, logs or backups.
+
+**For this connection** is the one remembered answer: a persistent record of (class, saved connection, fingerprint, tools) that later calls of
+exactly those tools on that connection skip the question under, until it ends. It is offered under exactly the condition that offers For session,
+so only `ssh_command` and `terminal_input` (the grantable tools of `CONNECTION_CHANGE`) can get it; never a tool, a command, a tab, a tunnel or a
+device alone. The record's tools are the grantable tools the card said it covers (its hint names them) that were in effect and not switched off
+since the stamp when the owner answered; a tool that joins the class later is not covered (it asks; the record stays). Like a session grant it is
+bound before the question (the fingerprint, the tunnel's open period, the assistant's off count and the tools' switch-off counts), so an edit, a
+switch-off or an assistant off during the wait makes the answer act as Allow once (no record, no line); recording also needs the app not to be
+locked. A CONNECTION answer racing Stop may record (the owner's choice stands, as Always); the call itself never runs. Recording replaces any record
+of the same (class, connection) and drops the connection's session entry, so one line speaks for the wider permission. If the record cannot be
+written the call is allowed once and the note "Could not save the setting. This call was allowed once." shows (as for Always); nothing is kept
+in memory instead. Unlike a session grant it is not tied to a tunnel or a chat: it survives closing the tunnel, an Undo-hide of the tunnel,
+leaving the chat, closing the conversation, a history clear, a restart, the global switch off and on, and a rename or colour change of the
+profile. It ends, each at once, when
+- the connection or its profile is edited: its fingerprint (`"v1:" + base64url(SHA-256(JSON))`, one stable value, persisted) is every field of the
+  connection, the profile's id, key alias and activation, the enrollment (a hash of the public control URL, device id and certificate: no sealed
+  field is opened, no Keystore unlock is needed, nothing is wiped on a read failure), the non-secret SSH login (user and method) and the pinned host
+  key of its device and port, and the MQTT user; not the profile's name and colour, the connection's enabled state or any secret. A mismatch deletes
+  the record. The check is three-valued: match covers; mismatch, and gone (the profile or connection is absent from a LOADED profile state), delete;
+  unknown (profiles not loaded yet, a credential file, login store or host-key store unreadable) asks and KEEPS the record, so a transient read
+  failure or a cold start never erases a long-term decision. A change is seen by a cleaner independent of any conversation and again at every use;
+- the connection's delete commits (Undo expired, or the app locked or closed; with Undo cancelled the record lives on, and hidden for Undo it does
+  not act), "Forget profile" in both modes, the last profile's wipe, the server removing this phone's profile, or the profile is enrolled again in
+  place: the record is removed first, before the rest, so a failure leaves none behind;
+- the owner taps Forget on the connection's card: the session and the remembered permission of that connection go together, with no confirmation;
+- the assistant is turned off (off and on again included): every record is removed in the same write that turns it off, and switching it on brings
+  nothing back (stricter than "sleeping", the same as a session grant);
+- a tool's switch goes off, or it falls out of effect (Typing goes off with Terminal tabs): that tool leaves every record for good in the same
+  write as the switch, an emptied record is removed, and switching it on again brings nothing back, also after a restart (a recorded tool that is not
+  in effect is dropped when the file is read).
+The app lock: while Settings › Lock after has run out (or the lock is engaged) NO turn, a wait- or event-triggered one included, uses ANY grant,
+persistent or session. A persistent record is not deleted by the lock (it would otherwise die at every cold start, when the lock engages), it simply
+asks, and the card waits behind the lock with the five-minute clock running; no record can be made while locked. The global switch off or on makes
+and ends no record (while it is off nothing asks and records are not consulted); Always, Allow once, Decline, no answer and Stop record nothing.
+The record is one entry of the `overrides` array of the existing `assistant_confirmations` object in `settings.json` (app-private, in the
+`file` domain that both backup and device transfer exclude), `{"scope":{"kind":"target","id":"<profile uuid>","sub":"<connection uuid>"},
+"class":"connection_change","mode":"off","fp":"v1:...","tools":["ssh_command","terminal_input"],"at":<epoch millis>}`: only UUIDs, a hash,
+class and tool wire names and a time, never a name, address, user, command or secret, and never in the history, receipts, logs or exports. `version`
+stays 1 (a record only weakens a question, so an older build that reads the object by `global` alone ignores it and asks; after a rollback its first
+settings write drops the records and the grants must be given again). It is read strictly and fails closed, each record on its own: it is kept only
+if `scope.kind` is `target` with two non-empty ids, `class` is a known class that has a question and is grantable, `mode` is `off`, `fp` is a string
+starting `v1:`, `tools` holds at least one known grantable tool of that class (other names are dropped) and `at` is a number; duplicates of
+(class, connection) keep the last, at most 500 are read, a broken array reads as empty, a non-1 version or the assistant off in the file reads as no
+records, and an invalid record never resets `global` or any other setting and never allows. Records are never read through
+`ConfirmationPolicy.resolve` (it returns `global` only). Where it is seen: the line on the connection's card (below) is the only place; there is
+no sheet, "⋮" item or list in Tools. A call that ran without a question shows, on its line in "Tool calls and results", a muted reason ("no
+question: for this connection" / "no question: for the tunnel's lifetime" / "no question: confirmations are off"; «без вопроса: для этого
+подключения» / «на время туннеля» / «подтверждения выключены»), kept in memory only: a conversation restored from the saved history shows none, the
+saved format is unchanged, and the model is never told about grants. An edit that resets a record gives no notice. Always turns the app-wide switch off after a second confirmation (a dialog
 says what is turned off and where to turn it back on; Cancel returns to the
 question, still waiting); if that cannot be saved, the call is allowed once, an
 inline note says so, and requests stay on. Decline, and five minutes without an
@@ -899,7 +955,7 @@ whole attempt as Stop does: nothing runs, no later question is raised, the turn 
 and shows its own grey line ("The question was not answered, so the assistant stopped. Nothing more was run."), not the interrupted note,
 and the conversation closes once no screen remains. With a chat screen attached, "No answer" only declines that call and the model goes on; a
 card whose screen came back before the expiry keeps waiting. The model-facing declined text is unchanged. An Always answer may
-still persist "off" when Stop races the call, and a For session answer racing
+still persist "off" when Stop races the call, and a For session or For this connection answer racing
 Stop may record its grant; the call itself never runs. A For session answer is not recorded when the tunnel's period ended, the connection
 changed, the assistant was turned off or the tool was switched off during the wait. The wait is in neither
 the 30 s tool, the 60 s model nor the 120 s Send time (the Send limit counts
@@ -917,9 +973,9 @@ common tool pipeline), is refused (nothing runs, no card), and so is every
 changing call when no confirmation support exists; invalid arguments ask nothing
 and run nothing; the policy is read live at each call. The setting is the
 `assistant_confirmations` object `{"version":1,"global":"ask"|"off"}`; ask is the
-default and is omitted from the file, any other or malformed value reads as ask,
-and per-device or per-target overrides may be added later (a stricter override
-needs a version bump). The prompt rule (`skill.md` v5) tells the model that a
+default and is omitted from the file, any other or malformed value reads as ask;
+the remembered "For this connection" records are the optional `overrides` array (above), which an older build ignores (a record
+only weakens a question, so no version bump), and `global` is never touched by them. The prompt rule (`skill.md` v5) tells the model that a
 declined call must not be redone another way; it is guidance, not enforcement.
 A history written with a `declined` outcome cannot be read by app versions
 before this one; this version reads an unknown outcome name as a failure.
@@ -989,7 +1045,7 @@ Action classes (catalog `actionClass`; the class never decides by itself whether
 `terminal_open`, `terminal_close`), `APP_READ` (`read_skill`, `skills_list`), `APP_CHANGE` (`skill_save`, `skill_delete`, `start_tunnel`,
 `stop_tunnel`, `terminal_rename`, `terminal_show`, `wait_for`). Tools that ask: `ssh_command`, `terminal_input`, `terminal_close`, `skill_save`,
 `skill_delete`, `stop_tunnel` (when the tunnel is on); `confirms = false` tools (`terminal_open`, `start_tunnel`, `terminal_rename`, `terminal_show`,
-`wait_for`) never ask whatever their class. Grantable (a For session grant may cover them): `ssh_command` and `terminal_input` only.
+`wait_for`) never ask whatever their class. Grantable (a For session or For this connection grant may cover them): `ssh_command` and `terminal_input` only.
 `request_tool` is a service tool with no class.
 
 | Tool | Effect | Operation | Arguments | Limits | Confirmation | Disclosure | Status |
@@ -1361,7 +1417,7 @@ no-backup file (`assistant_skills.json`), written only by `skill_save` and `skil
 
 A second independent default-off switch, "Typing into tabs" («Ввод во вкладки»), turns on `terminal_input`. It is in effect only while
 "Terminal tabs" is on too: with the tabs off the switch is off and greyed and says "Works together with Terminal tabs.", the
-tool is not offered, and it leaves every session grant for good (switching it on later does not bring it back). Turning Terminal tabs off also turns Typing into tabs off; turning the tabs
+tool is not offered, and it leaves every session grant and every remembered record for good (switching it on later does not bring it back). Turning Terminal tabs off also turns Typing into tabs off; turning the tabs
 on never turns typing on (the owner does that, or the chat's "Turn on" for `terminal_input`). `request_tool` lists `terminal_input` ("type into the owner's open terminal
 tabs") only while the tabs are on (otherwise the model asks for `terminal_tabs` first); the owner's "Turn on" for it turns on only this
 switch. The tool has the catalog effect `CHANGE_REMOTE`.
@@ -1649,7 +1705,7 @@ malformed-field fallback, disable invalidation, credential/root binding,
 revisions and read/write/crypto failures. Compose test fixtures cover
 committed/busy/error/disposed-callback states, explicit discovery and restored
 drafts; a separate Android fixture exercises an ephemeral Keystore alias.
-Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope (class and connection; never a tool that is not grantable) and every end of a grant (tunnel disconnect/reconnect/pending/Undo-hide with Undo cancelling, a different grant id, each connection field, the profile's key alias, activation and enrollment, SSH login method and host key, assistant off and off/on, a tool switched off and on again, history clear, the app lock engaging or its interval running out), a grant never wider than the card's hint, no record when the period, the fingerprint or a switch changed during the wait, a cleaner with no conversation, the 19-row class table (class, effect, `confirms`, `grantable`, six asking tools, two grantable) and the operation class pin, Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the four answers, the hints, the shield and the Tools switch.
+Confirmation tests use the production conversation, tool factory and kernel with a counting fake command owner: no command or client before the answer, each answer, grant scope (class and connection; never a tool that is not grantable) and every end of a grant (tunnel disconnect/reconnect/pending/Undo-hide with Undo cancelling, a different grant id, each connection field, the profile's key alias, activation and enrollment, SSH login method and host key, assistant off and off/on, a tool switched off and on again, history clear, the app lock engaging or its interval running out), a grant never wider than the card's hint, no record when the period, the fingerprint or a switch changed during the wait, a cleaner with no conversation, the 19-row class table (class, effect, `confirms`, `grantable`, six asking tools, two grantable) and the operation class pin, Stop/disable/removal during the wait, leaving the chat during it (the card waits and is answerable on return), stale and repeated answers, virtual-time and real-clock five-minute cases (an answer after the limit and a card expired while no screen was shown run nothing) and Send-limit cases, the fail-closed rules for an undescribed changing call, the persisted object and its malformed values; and for "For this connection": the strict reader (every rule, `global` independent, an earlier build ignoring the records), a golden fingerprint vector and one test per field of the fingerprint, the parity of the persisted and the session fingerprint, unknown versus mismatch versus gone for each unreadable part, recording with the pre-wait stamp and the card's tools only, no record for a card that did not offer the answer or after a change during the wait or while locked, a failed save, the order and reasons (switch, session, remembered), the lock (no use, record kept), hidden for Undo, atomic narrowing by a tool's switch-off and by the assistant off (never revived, also after a restart), Forget and Forget profile, every re-enrollment path, and the exclusion of `settings.json` from backup and transfer. Component checks (chat runner, portrait/landscape/200% font, EN/RU) cover the card, the answers and their order, the caption, the hints, the shield and the Tools switch.
 Tool-request tests (production conversation, factory and kernel with a fake provider and a fetcher that fails when reached) cover: `request_tool`
 offered only while a tool is off with an enum of exactly the off tools and descriptions without schemas; an off tool called by name still
 unknown with no network; the three fixed answers and the invalid-call answer with no setting changed; the decline saved with the history,

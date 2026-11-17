@@ -246,7 +246,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     }
     OutlinedCard(modifier.fillMaxWidth().testTag("chat_confirm_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
         if (wide) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Section(Modifier.weight(1f).heightIn(max = 260.dp))
+            // The row is as tall as the answers anyway (five of them wrap at a large font): the section may use that height instead of stopping at 260 dp.
+            Section(Modifier.weight(1f).heightIn(max = maxOf(260.dp, with(LocalDensity.current) { answersPx.toDp() })))
             Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers() }
         } else BoxWithConstraints {
             // Pinned layout (answers fixed below a scrolling section) only while the room holds the answers, the header and at least the first

@@ -126,17 +126,20 @@ class AssistantConnectionAnswersTest {
             shown(tag)
             val b = bounds(tag)
             assertTrue("$tag inside the screen: $b root=$root", b.left >= root.left - 1f && b.right <= root.right + 1f)
-            val node = compose.onNode(hasText(text(label)) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).fetchSemanticsNode()
+            val textNode = compose.onNode(hasText(text(label)) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true).fetchSemanticsNode()
             val out = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
-            compose.runOnIdle { node.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(out) }
-            assertFalse("$tag: the label is cut", out.first().hasVisualOverflow)
+            compose.runOnIdle { textNode.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(out) }
+            assertTrue("$tag: the label is cut (ellipsis)", (0 until out.first().lineCount).none { out.first().isLineEllipsized(it) })
+            val t = textNode.boundsInRoot
+            assertTrue("$tag: the label is inside its button: text=$t button=$b", t.left >= b.left - 1f && t.right <= b.right + 1f && t.top >= b.top - 1f && t.bottom <= b.bottom + 1f)
         }
     }
 
     @Test fun theHintsAreInTheScrollingSectionAndTheButtonsReadThemToo() {
         named()
-        val section = bounds("chat_confirm_section")
-        for (tag in listOf("chat_confirm_session_hint", "chat_confirm_connection_hint")) assertTrue("$tag in the section", bounds(tag).top >= section.top - 1f && bounds(tag).bottom <= section.bottom + 1f)
+        // The hints are descendants of the scrolling section (its content may be below the viewport, so bounds say nothing).
+        for (tag in listOf("chat_confirm_session_hint", "chat_confirm_connection_hint"))
+            compose.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag("chat_confirm_section")), useUnmergedTree = true).assertExists()
         compose.onNodeWithTag("chat_confirm_connection_hint", useUnmergedTree = true).assertTextContains(text(R.string.confirm_connection_hint_both), substring = true)
         compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(text(R.string.confirm_session_hint_both), substring = true)
         val described = compose.onNodeWithTag("chat_confirm_connection").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription]
@@ -161,22 +164,18 @@ class AssistantConnectionAnswersTest {
         compose.runOnIdle { assertEquals("Always still asks first", 4, answers.size) }
     }
 
-    @Test fun cardsThatCannotBeRememberedKeepThreeAnswersAndNoCaption() {
-        val cards = mapOf(
-            "unknown connection" to PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", null, null),
-            "no name" to PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", GrantTarget("p", "c1"), null),
-            "close" to PendingConfirmation(1, AssistantToolId.TERMINAL_CLOSE, "", null, null, close = CloseCard(4, "Synthetic profile", "pi", "synthetic-device", 2, null)),
-            "stop" to PendingConfirmation(1, AssistantToolId.STOP_TUNNEL, "", GrantTarget("p", "c1"), info, stop = StopCard("Synthetic profile", "Pi shell", "synthetic-device", 22, 2)),
-            "skill" to PendingConfirmation(1, AssistantToolId.SKILL_SAVE, "body", null, null, skill = SkillCard(SkillCard.Kind.SAVE, "synthetic-skill", "d", emptyList(), "body")),
-        )
-        for ((what, card) in cards) {
-            show(card)
-            compose.onNodeWithTag("chat_confirm_card").assertIsDisplayed()
-            for (tag in listOf("chat_confirm_connection", "chat_confirm_remember", "chat_confirm_session", "chat_confirm_connection_hint", "chat_confirm_session_hint")) {
-                assertTrue("$what: $tag is not offered", compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-            }
-            for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) shown(tag).assertHeightIsAtLeast(48.dp)
-            if (what == "unknown connection") shot("card-three-answers")
+    private fun threeAnswersOnly(what: String, card: PendingConfirmation) {
+        show(card)
+        compose.onNodeWithTag("chat_confirm_card").assertIsDisplayed()
+        for (tag in listOf("chat_confirm_connection", "chat_confirm_remember", "chat_confirm_session", "chat_confirm_connection_hint", "chat_confirm_session_hint")) {
+            assertTrue("$what: $tag is not offered", compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         }
+        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) shown(tag).assertHeightIsAtLeast(48.dp)
+        shot("card-three-answers-" + what)
     }
+    @Test fun unknownConnectionHasThreeAnswers() = threeAnswersOnly("unknown", PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", null, null))
+    @Test fun aConnectionWithNoNameHasThreeAnswers() = threeAnswersOnly("noname", PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", GrantTarget("p", "c1"), null))
+    @Test fun closeHasThreeAnswers() = threeAnswersOnly("close", PendingConfirmation(1, AssistantToolId.TERMINAL_CLOSE, "", null, null, close = CloseCard(4, "Synthetic profile", "pi", "synthetic-device", 2, null)))
+    @Test fun stopHasThreeAnswers() = threeAnswersOnly("stop", PendingConfirmation(1, AssistantToolId.STOP_TUNNEL, "", GrantTarget("p", "c1"), info, stop = StopCard("Synthetic profile", "Pi shell", "synthetic-device", 22, 2)))
+    @Test fun skillHasThreeAnswers() = threeAnswersOnly("skill", PendingConfirmation(1, AssistantToolId.SKILL_SAVE, "body", null, null, skill = SkillCard(SkillCard.Kind.SAVE, "synthetic-skill", "d", emptyList(), "body")))
 }
