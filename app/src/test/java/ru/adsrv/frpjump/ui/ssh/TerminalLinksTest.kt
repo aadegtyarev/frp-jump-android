@@ -151,7 +151,9 @@ class TerminalLinksTest {
             "http://0.0.0.0/", "http://0.0.0.0:80/", "http://0/", "http://0x0/",
             "http://[::1]/", "http://[::1]:8080/x", "http://[0:0:0:0:0:0:0:1]/", "http://[0000::0001]/", "http://[::]/", "http://[::ffff:127.0.0.1]/",
             "http://[::ffff:7f00:1]/", "http://[::ffff:0.0.0.0]/",
-            "http://%6Cocalhost/", "http://%6c%6f%63%61%6c%68%6f%73%74/", "http://\uFF4C\uFF4F\uFF43\uFF41\uFF4C\uFF48\uFF4F\uFF53\uFF54/",
+            "http://%6Cocalhost/", "http://%6c%6f%63%61%6c%68%6f%73%74/",
+            "http://%EF%BD%8C%EF%BD%8F%EF%BD%83%EF%BD%81%EF%BD%8C%EF%BD%88%EF%BD%8F%EF%BD%93%EF%BD%94/", "http://local%C2%ADhost/", "http://127.0.0.%EF%BC%91/",
+            "http://127.0.0.\uFF11/", "http://\uFF4C\uFF4F\uFF43\uFF41\uFF4C\uFF48\uFF4F\uFF53\uFF54/",
             "http://user@127.0.0.1/", "http://127.0.0.1\\@example.com/", "http://127.0.0.1?x=1", "http://127.0.0.1#x",
         )) {
             assertEquals(text, LinkVerdict.REMOTE, verdict(text))
@@ -169,7 +171,10 @@ class TerminalLinksTest {
     @Test fun `an address that cannot be read does not open`() {
         for (text in listOf("http://", "http:///x", "http://:80/", "http://a:b/", "http://a:80:80/", "http://[::1/x", "http://[zzz]/", "http://[::1]x/", "http://[1:2:3:4:5:6:7:8:9]/",
             "http://256.1.1.1/", "http://1.2.3.4.5/", "http://1.2.3.4.5.6/", "http://08/", "http://a.1/", "http://%zz/", "http://%4/", "http://@/", "http://user@/",
-            "http://[::1%25eth0]/", "http://4294967296/", "http://[1::2::3]/")) {
+            "http://[::1%25eth0]/", "http://4294967296/", "http://[1::2::3]/",
+            // A delimiter that shows only after decoding or folding: the launcher would read the address another way.
+            "http://a%2Fb/", "http://a%40b/", "http://a%3Ab/", "http://a%5Cb/", "http://a%3Fb/", "http://a%23b/", "http://a%5Bb/", "http://a%25b/",
+            "http://a\uFF1Ab/", "http://a\uFF0Fb/", "http://x\uFF20127.0.0.1/", "http://a%EF%BC%8Fb/", "http://a%EF%BC%9Ab/")) {
             assertEquals(text, LinkVerdict.INVALID, verdict(text))
             assertNull(text, linkOpenTarget(text))
         }
@@ -227,6 +232,35 @@ class TerminalLinksTest {
         // Ordinary non-ASCII text is not hidden.
         assertEquals(LinkVerdict.OPEN, verdict("https://example.com/\u043F\u0443\u0442\u044C/\u4E2D\u6587?q=\u00E9"))
         assertEquals(LinkVerdict.OPEN, verdict("https://example.com/a\u0301"))
+    }
+
+    @Test fun `the host after an at sign is named, and only for a link that may open`() {
+        val trick = describeLink("https://accounts.google.com@evil.example/login")
+        assertEquals(LinkVerdict.OPEN, trick.verdict)
+        assertEquals("evil.example", trick.actualHost)
+        assertEquals("evil.example", describeLink("https://user:pw@evil.example:8443/x").actualHost)
+        assertEquals("xn--80ak6aa92e.com", describeLink("https://google.com@\u0430\u0440\u0440\u04CF\u0435.com/").actualHost)
+        assertEquals("[2001:db8::1]", describeLink("http://a.com@[2001:db8::1]/").actualHost)
+        // Nothing to say without an @ in the authority; an @ later in the address is not userinfo.
+        assertNull(describeLink("https://example.com/").actualHost)
+        assertNull(describeLink("https://example.com/@user").actualHost)
+        assertNull(describeLink("https://example.com/?mail=a@b.c").actualHost)
+        assertNull(describeLink("https://example.com#a@b").actualHost)
+        // A link that does not open has no such line.
+        assertNull(describeLink("http://google.com@127.0.0.1/").actualHost)
+        assertNull(describeLink("ftp://user@host/").actualHost)
+        assertNull(describeLink("http://a@/").actualHost)
+    }
+
+    @Test fun `the second gate gives no intent for a link that must not open`() {
+        for (text in listOf(
+            "ftp://example.com/x", "javascript://%0Aalert(1)", "intent://scan/#Intent;scheme=zxing;end", "file:///etc/passwd", "content://com.android.contacts/contacts",
+            "http://localhost:5173/", "http://127.0.0.1/", "http://[::1]/", "http://0.0.0.0/", "http://127.0.0.%EF%BC%91/", "http://local%C2%ADhost/",
+            "https://example.com/\u202Efdp.exe", "https://exa\u200Bmple.com/", "http://", "http://a:b/", "http://[::1/x", "not a link", "", "https:example.com",
+            "https://\u0430\u0440\u0440\u04CF\u0435.com/login",
+        )) {
+            assertNull(text, browserIntent(text))
+        }
     }
 
     @Test fun `what is opened is the address that was shown`() {
@@ -367,6 +401,37 @@ class TerminalLinksTest {
             linksOnScreen(g, false),
         )
         assertEquals(emptyList<String>(), linksOnScreen(grid(20, "no links", "here"), false))
+    }
+
+    private fun gridWithHistory(columns: Int, screenRows: Int, vararg rows: String): TapGrid {
+        // rows[0] is the oldest history row; the last screenRows rows are the live screen (rows 0..screenRows-1).
+        val history = rows.size - screenRows
+        val cells = rows.map { it.removeSuffix("\\").padEnd(columns) }
+        return object : TapGrid {
+            override val columns = columns
+            override val firstRow = -history
+            override val lastRow = screenRows - 1
+            override fun wraps(row: Int) = rows[row + history].endsWith("\\")
+            override fun isWideTail(row: Int, column: Int) = false
+            override fun isBlank(row: Int, column: Int) = cells[row + history][column] == ' '
+            override fun text(row: Int, column: Int) = cells[row + history][column].toString()
+        }
+    }
+
+    @Test fun `scrolled back, the links on the screen are those of the rows shown`() {
+        val g = gridWithHistory(
+            30, 3,
+            "old https://old.example/a", "old https://old.example/b", "mid https://mid.example/c", // history
+            "live https://live.example/1", "live https://live.example/2", "nothing",
+        )
+        // Not scrolled: the live screen.
+        assertEquals(listOf("https://live.example/1", "https://live.example/2"), linksOnScreen(g, false, 0))
+        // Scrolled back by one row: the last history row and the first two live rows.
+        assertEquals(listOf("https://mid.example/c", "https://live.example/1", "https://live.example/2"), linksOnScreen(g, false, -1))
+        // Scrolled to the top of the history.
+        assertEquals(listOf("https://old.example/a", "https://old.example/b", "https://mid.example/c"), linksOnScreen(g, false, -3))
+        // Further than there is history: clipped to it, not an error.
+        assertEquals(listOf("https://old.example/a", "https://old.example/b", "https://mid.example/c"), linksOnScreen(g, false, -10))
     }
 
     @Test fun `the list is capped`() {

@@ -30,8 +30,16 @@ enum class LinkVerdict {
 /**
  * A link as the sheet shows it. [address] is what is shown, copied and, for [LinkVerdict.OPEN], opened: the link's text with a
  * non-Latin host turned into punycode. [original] is the text as the terminal had it, set only when [address] differs from it.
+ * [actualHost] is set when the part before an `@` could pass for the site.
  */
-data class LinkInfo(val text: String, val verdict: LinkVerdict, val address: String, val original: String?)
+data class LinkInfo(
+    val text: String,
+    val verdict: LinkVerdict,
+    val address: String,
+    val original: String?,
+    /** For an openable link whose authority has an `@` (`https://accounts.google.com@evil.example/`): the host that really opens, as the browser has it. */
+    val actualHost: String? = null,
+)
 
 /** The longest link taken (UTF-16 units); a longer run is not a link (no browser or intent takes more, and a screen of one is noise). */
 const val MAX_LINK_CHARS = 4096
@@ -148,10 +156,12 @@ fun describeLink(text: String): LinkInfo {
         HostKind.INVALID -> LinkVerdict.INVALID
         HostKind.OTHER -> LinkVerdict.OPEN
     }
-    if (asciiHost == host) return LinkInfo(text, verdict, text, null)
+    // Before an @ is userinfo, not the site: say which host opens, so a trusted name there does not pass for it.
+    val actual = if (verdict == LinkVerdict.OPEN && at >= 0) (if (bracketed) "[$asciiHost]" else asciiHost) else null
+    if (asciiHost == host) return LinkInfo(text, verdict, text, null, actual)
     val hostEnd = hostStart + (if (bracketed) host.length + 2 else host.length)
     val address = text.substring(0, hostStart) + (if (bracketed) "[$asciiHost]" else asciiHost) + text.substring(hostEnd)
-    return LinkInfo(text, verdict, address, text)
+    return LinkInfo(text, verdict, address, text, actual)
 }
 
 /**
@@ -174,7 +184,13 @@ private fun hostKind(host: String, bracketed: Boolean): HostKind {
             else -> HostKind.OTHER
         }
     }
-    val decoded = percentDecode(host) ?: return HostKind.INVALID
+    var decoded = percentDecode(host) ?: return HostKind.INVALID
+    // What the browser makes of it: full-width letters, a soft hyphen and the like fold to the plain name (127.0.0.%EF%BC%91 is 127.0.0.1).
+    if (decoded.any { it.code > 0x7F }) {
+        decoded = try { IDN.toASCII(decoded, IDN.ALLOW_UNASSIGNED) } catch (e: IllegalArgumentException) { return HostKind.INVALID }
+    }
+    // A delimiter that only shows after decoding or folding: the launcher would read the address differently from this check.
+    if (decoded.any { it in "@:/\\?#[]%" }) return HostKind.INVALID
     val name = decoded.lowercase(Locale.ROOT).trimEnd('.')
     if (name.isEmpty()) return HostKind.INVALID
     if (name == "localhost" || name.endsWith(".localhost")) return HostKind.REMOTE
@@ -349,11 +365,17 @@ fun linkAt(grid: TapGrid, hardWrapped: Boolean, row: Int, column: Int): String? 
     return chain.text.substring(span.start, span.end)
 }
 
-/** The links on the screen's visible rows, each once, in reading order. */
-fun linksOnScreen(grid: TapGrid, hardWrapped: Boolean, limit: Int = 100): List<String> {
+/**
+ * The links on the rows the screen shows now, each once, in reading order. [topRow] is the first visible row (0, or negative while
+ * the view is scrolled back into the history); the screen is as tall as the grid's rows from 0 to its last one.
+ */
+fun linksOnScreen(grid: TapGrid, hardWrapped: Boolean, topRow: Int = 0, limit: Int = 100): List<String> {
+    val first = topRow.coerceIn(grid.firstRow, 0)
+    val last = minOf(first + grid.lastRow, grid.lastRow)
     val found = LinkedHashSet<String>()
-    for (chain in rowChains(grid, hardWrapped, 0, grid.lastRow)) {
+    for (chain in rowChains(grid, hardWrapped, first, last)) {
         for (span in findLinks(chain.text)) {
+            // A chain cut by the window's edge may hold a link that starts above it; only whole rows are read, so it is read as seen.
             found += chain.text.substring(span.start, span.end)
             if (found.size >= limit) return found.toList()
         }

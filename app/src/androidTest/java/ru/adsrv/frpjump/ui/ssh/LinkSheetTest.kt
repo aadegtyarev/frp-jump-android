@@ -1,11 +1,13 @@
 package ru.adsrv.frpjump.ui.ssh
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +27,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -68,7 +71,28 @@ class LinkSheetTest {
         assertEquals(args.getString("composerFontScale")?.toFloat() ?: 1f, compose.activity.resources.configuration.fontScale, 0.01f)
     }
 
+    /** The system's clipboard preview (a window of the system UI) floats over the screen for a few seconds after a copy. */
+    private fun clipboardOverlayShown(): Boolean = try {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.serviceInfo = automation.serviceInfo.apply { flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS }
+        fun has(node: AccessibilityNodeInfo): Boolean {
+            if (node.viewIdResourceName?.contains("clipboard", ignoreCase = true) == true) return true
+            for (i in 0 until node.childCount) { val child = node.getChild(i) ?: continue; if (has(child)) return true }
+            return false
+        }
+        automation.windows.any { window -> window.root?.let { it.packageName == "com.android.systemui" && has(it) } == true }
+    } catch (e: RuntimeException) {
+        false
+    }
+
+    /** Waits, at most 10 s, until the clipboard preview is gone. */
+    private fun waitClipboardOverlayGone() {
+        val deadline = SystemClock.uptimeMillis() + 10_000
+        while (clipboardOverlayShown() && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(200)
+    }
+
     private fun shot(name: String) {
+        waitClipboardOverlayGone()
         compose.waitForIdle(); SystemClock.sleep(400); compose.waitForIdle()
         val tag = listOf(args.getString("composerOrientation") ?: "portrait", args.getString("composerFontScale") ?: "1.0", args.getString("chatLocale") ?: "en").joinToString("-")
         val image = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
@@ -138,9 +162,11 @@ class LinkSheetTest {
             assertTrue(opened.isEmpty())
             val clip = compose.activity.getSystemService(ClipboardManager::class.java).primaryClip
             assertEquals("https://example.com/a?b=c", clip?.getItemAt(0)?.text?.toString())
+            // The system's clipboard preview is not to show the address again.
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                assertTrue(clip?.description?.extras?.getBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE) == true)
+            }
         }
-        // The system's clipboard preview floats over the screen for a few seconds: let it go before another test takes a picture.
-        SystemClock.sleep(8_000)
     }
 
     @Test fun aNonLatinDomainShowsAndOpensPunycodeAndSaysWhatTheTextWas() {
@@ -149,6 +175,30 @@ class LinkSheetTest {
         compose.onNodeWithTag("link_note").performScrollTo().assertTextContains("аррӏе.com", substring = true)
         compose.onNodeWithTag("link_open").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf("https://xn--80ak6aa92e.com/login"), opened) }
+    }
+
+    @Test fun aTrustedNameBeforeAnAtSignIsNotTakenForTheSite() {
+        show("https://accounts.google.com@evil.example/login")
+        address().assertTextEquals("https://accounts.google.com@evil.example/login")
+        compose.onNodeWithTag("link_note").performScrollTo().assertTextEquals(text(R.string.link_userinfo, "evil.example"))
+        compose.onNodeWithTag("link_open").performScrollTo().assertIsDisplayed()
+        shot("userinfo")
+    }
+
+    @Test fun theIntentForAnOpenableLinkIsAPlainViewOfTheShownAddress() {
+        for (address in listOf("https://example.com/a?b=c#d", "http://192.168.1.20:5173/x", "https://xn--80ak6aa92e.com/login", "HTTPS://Example.COM/x")) {
+            val intent = browserIntent(address)!!
+            assertEquals(address, android.content.Intent.ACTION_VIEW, intent.action)
+            assertEquals(setOf(android.content.Intent.CATEGORY_BROWSABLE), intent.categories)
+            assertNull(intent.component)
+            assertNull(intent.`package`)
+            assertNull(intent.selector)
+            // The scheme is lower-cased for the system; nothing else of the address changes.
+            assertEquals(address.replaceFirst(address.substringBefore("://"), address.substringBefore("://").lowercase()), intent.dataString)
+        }
+        for (address in listOf("ftp://example.com/x", "http://localhost/", "https://example.com/\u202Efdp.exe", "javascript://x", "https://\u0430\u0440\u0440\u04CF\u0435.com/")) {
+            assertNull(address, browserIntent(address))
+        }
     }
 
     @Test fun anAddressOfTheRemoteMachineHasOnlyCopyAndSaysSo() {

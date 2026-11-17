@@ -3,9 +3,12 @@ package ru.adsrv.frpjump.ui.ssh
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ClipDescription
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.PersistableBundle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -60,28 +64,34 @@ fun LinkSheet(text: String, onDismiss: () -> Unit, open: (Context, String) -> Bo
     val info = remember(text) { describeLink(text) }
     val target = remember(text) { linkOpenTarget(text) }
     val escapeStyle = SpanStyle(background = colors.accentContainer, color = colors.onAccentContainer, fontWeight = FontWeight.Bold)
-    val shown = remember(info, escapeStyle) {
-        buildAnnotatedString {
-            for (span in displayCommandSpans(info.address, forRender = true)) if (span.escape) withStyle(escapeStyle) { append(span.text) } else append(span.text)
-        }
-    }
+    val shown = remember(info, escapeStyle) { linkText(info.address, escapeStyle) }
     val described = remember(info) { displayCommand(info.address) }
     val noApp = stringResource(R.string.link_no_app)
     val copiedText = stringResource(R.string.copied)
+    val copyFailed = stringResource(R.string.viewer_copy_failed)
     val label = stringResource(R.string.link_title)
-    val explanation = when (info.verdict) {
-        LinkVerdict.OPEN -> info.original?.let { stringResource(R.string.link_punycode, displayCommand(it)) }
-        LinkVerdict.REMOTE -> stringResource(R.string.link_remote)
-        LinkVerdict.OTHER_SCHEME -> stringResource(R.string.link_other_scheme)
-        LinkVerdict.HIDDEN -> stringResource(R.string.link_hidden)
-        LinkVerdict.INVALID -> stringResource(R.string.link_invalid)
+    // Quiet lines under the address; a link that must not open gets the warning colour only when it is hidden or unreadable.
+    val notes = ArrayList<String>()
+    when (info.verdict) {
+        LinkVerdict.OPEN -> info.original?.let { notes += stringResource(R.string.link_punycode, displayCommand(it)) }
+        LinkVerdict.REMOTE -> notes += stringResource(R.string.link_remote)
+        LinkVerdict.OTHER_SCHEME -> notes += stringResource(R.string.link_other_scheme)
+        LinkVerdict.HIDDEN -> notes += stringResource(R.string.link_hidden)
+        LinkVerdict.INVALID -> notes += stringResource(R.string.link_invalid)
     }
+    info.actualHost?.let { notes += stringResource(R.string.link_userinfo, displayCommand(it)) }
+    val noteColor = if (info.verdict == LinkVerdict.HIDDEN || info.verdict == LinkVerdict.INVALID) colors.warning else colors.muted
     fun copy() {
+        val clip = ClipData.newPlainText(label, info.address)
+        // The system's clipboard preview would show the address on screen again; a link in a terminal can carry a token.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+        }
         try {
-            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(label, info.address))
+            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
             context.notice(copiedText, NoticeKind.DONE)
         } catch (e: RuntimeException) {
-            context.notice(noApp, NoticeKind.WARN)
+            context.notice(copyFailed, NoticeKind.WARN)
         }
         onDismiss()
     }
@@ -102,8 +112,9 @@ fun LinkSheet(text: String, onDismiss: () -> Unit, open: (Context, String) -> Bo
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = described }.testTag("link_address"),
             )
         }
-        explanation?.let {
-            Text(it, fontSize = 13.sp, lineHeight = 18.sp, color = if (info.verdict == LinkVerdict.OPEN) colors.muted else colors.warning, modifier = Modifier.testTag("link_note"))
+        notes.forEachIndexed { index, note ->
+            // The theme's body style, so the lines follow the font size like the rest of the app.
+            Text(note, style = MaterialTheme.typography.bodyMedium, color = noteColor, modifier = Modifier.testTag(if (index == 0) "link_note" else "link_note_$index"))
         }
         // Side by side as in the mockup; stacked once the text is large enough that the words would be squeezed.
         val stacked = LocalDensity.current.fontScale >= 1.4f
@@ -140,21 +151,23 @@ fun LinkSheet(text: String, onDismiss: () -> Unit, open: (Context, String) -> Bo
  */
 @Composable
 fun LinksListSheet(links: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val colors = AppTheme.colors
+    val escapeStyle = SpanStyle(background = colors.accentContainer, color = colors.onAccentContainer, fontWeight = FontWeight.Bold)
     AppSheet(title = stringResource(R.string.terminal_links_title), onDismiss = onDismiss) {
         Column(Modifier.testTag("links_list")) {
             for (link in links) {
                 val described = displayCommand(link)
+                val spans = remember(link, escapeStyle) { linkText(link, escapeStyle) }
                 Text(
-                    described,
+                    spans,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
                     style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
                         .clickable(role = Role.Button) { onPick(link) }
                         .padding(vertical = 12.dp)
+                        .semantics { contentDescription = described }
                         .testTag("links_item"),
                 )
             }
@@ -162,13 +175,24 @@ fun LinksListSheet(links: List<String>, onPick: (String) -> Unit, onDismiss: () 
     }
 }
 
+/** [address] as the sheet shows it: every invisible or disguising character as a highlighted visible mark, laid out left to right. */
+private fun linkText(address: String, escape: SpanStyle): AnnotatedString = buildAnnotatedString {
+    for (span in displayCommandSpans(address, forRender = true)) if (span.escape) withStyle(escape) { append(span.text) } else append(span.text)
+}
+
 /**
- * Hands [address] to the system's browser: ACTION_VIEW and BROWSABLE, in another app, never inside this one. Refuses anything but
- * http and https, whatever the caller thinks it has checked. False when nothing can take it.
+ * The intent that hands [address] to whatever the system opens web links with: ACTION_VIEW and BROWSABLE, no component, package or
+ * selector of ours, in another app, never inside this one. Null for anything but an http or https link that may open
+ * ([linkOpenTarget]), whatever the caller thinks it has checked: the second gate before a launch.
  */
+fun browserIntent(address: String): Intent? {
+    if (linkOpenTarget(address) != address) return null
+    return Intent(Intent.ACTION_VIEW, Uri.parse(address).normalizeScheme()).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+}
+
+/** Starts [browserIntent] for [address]; false when it is refused or nothing can take it. */
 fun openInBrowser(context: Context, address: String): Boolean {
-    if (linkOpenTarget(address) != address) return false
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(address).normalizeScheme()).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val intent = browserIntent(address) ?: return false
     return try {
         context.startActivity(intent)
         true

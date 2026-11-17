@@ -199,9 +199,9 @@ internal class BufferGrid(emulator: TerminalEmulator) : TapGrid {
     }
 }
 
-/** The links on the visible screen of [session], each once, in reading order; empty when the view shows another session. */
+/** The links on the rows [session] shows now (scrolled back into the history too), each once, in reading order; empty when the view shows another session. */
 internal fun TerminalView.screenLinks(session: SshSession): List<String> {
     if (currentSession !== session.terminal.session) return emptyList()
     val emulator = mEmulator ?: return emptyList()
-    return linksOnScreen(BufferGrid(emulator), session.tmux.inUse)
+    return linksOnScreen(BufferGrid(emulator), session.tmux.inUse, topRow)
 }

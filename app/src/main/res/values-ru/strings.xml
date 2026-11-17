@@ -1458,6 +1458,7 @@
     <string name="link_hidden">В адресе скрытые символы. Открыть нельзя, можно скопировать.</string>
     <string name="link_invalid">Адрес не разобрать как веб-адрес. Открыть нельзя, можно скопировать.</string>
     <string name="link_no_app">Нет приложения, чтобы открыть ссылку.</string>
+    <string name="link_userinfo">Всё до @ — не сайт. Откроется сайт: %s.</string>
     <string name="terminal_links_menu">Ссылки на экране…</string>
     <string name="terminal_links_title">Ссылки на экране</string>
     <string name="terminal_links_action">Ссылки на экране</string>

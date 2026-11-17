@@ -1410,6 +1410,7 @@
     <string name="link_hidden">The address has hidden characters. It cannot be opened, only copied.</string>
     <string name="link_invalid">The address cannot be read as a web address. It cannot be opened, only copied.</string>
     <string name="link_no_app">No app can open this link.</string>
+    <string name="link_userinfo">The text before the @ is not the site. The site that opens: %s.</string>
     <string name="terminal_links_menu">Links on screen…</string>
     <string name="terminal_links_title">Links on screen</string>
     <string name="terminal_links_action">Links on screen</string>
