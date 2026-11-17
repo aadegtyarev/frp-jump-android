@@ -139,6 +139,8 @@ class LinkSheetTest {
             val clip = compose.activity.getSystemService(ClipboardManager::class.java).primaryClip
             assertEquals("https://example.com/a?b=c", clip?.getItemAt(0)?.text?.toString())
         }
+        // The system's clipboard preview floats over the screen for a few seconds: let it go before another test takes a picture.
+        SystemClock.sleep(8_000)
     }
 
     @Test fun aNonLatinDomainShowsAndOpensPunycodeAndSaysWhatTheTextWas() {
