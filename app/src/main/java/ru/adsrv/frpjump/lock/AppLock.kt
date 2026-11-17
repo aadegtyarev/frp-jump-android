@@ -147,10 +147,14 @@ class AppLock(
      * of sight and the lock would engage on return (the setting on and the
      * interval elapsed: [LockPolicy.wouldLockNow]); never the prompt's own launch.
      */
-    private fun shouldHold(action: String?, forResult: Boolean, enabled: Boolean, afterMs: Long): Boolean {
-        val engaged = _locked.value || (!policy.started && policy.wouldLockNow(clock(), enabled, afterMs))
-        return engaged && !(forResult && isPromptLaunch(action))
-    }
+    private fun shouldHold(action: String?, forResult: Boolean, enabled: Boolean, afterMs: Long): Boolean =
+        engaged(enabled, afterMs) && !(forResult && isPromptLaunch(action))
+
+    /**
+     * Whether the lock is engaged now, or the app is out of sight and the lock would engage the moment the owner returns (the setting on and
+     * [afterMs] run out: [LockPolicy.wouldLockNow]). Any thread: the assistant asks it at every use of a "For session" grant.
+     */
+    fun engaged(enabled: Boolean, afterMs: Long): Boolean = _locked.value || (!policy.started && policy.wouldLockNow(clock(), enabled, afterMs))
 
     /**
      * The system's confirm-device-credential screen, which androidx.biometric

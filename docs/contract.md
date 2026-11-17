@@ -280,6 +280,13 @@ profile without re-enrollment.
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
   when connected and "Start and open" when not.
+- While the assistant has a "For session" grant on a saved connection (the owner answered For session in Chat; it lives for the open period of
+  the connection's tunnel, see the [assistant contract](agent-contract.md#confirmation-of-changing-calls)), its card shows, under the address, a
+  muted line "Assistant: no questions, for the tunnel's lifetime" / «Помощник: без вопросов, на время туннеля» with a text button "Forget" /
+  «Забыть» (a 48 dp target; TalkBack reads "Forget the assistant's permissions for <connection name>" / «Забыть разрешения помощника для
+  <имя подключения>»). The line wraps at a large font and is the same on the device card and the Connections tab. Forget removes every
+  session grant of that connection at once, with no confirmation (it narrows authority) and cannot fail. The line is gone the moment the
+  grant ends for any reason. No sheet and no list of grants anywhere else.
 - Bringing a connection's tunnel up for these actions (and for "Use key login" and "Change login") is the `tunnel_up` operation of the
   [operations surface](contracts/surfaces/operations.md): same order, same 45 s wait for the tunnel, same notices as before it was
   an operation. The assistant does not use it.
@@ -1028,7 +1035,7 @@ public/private-data disclosure and model token-charge notices. SSH command carri
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
 files within account rights; commands and output may contain secrets and go to
 the configured model. Before such a changing call runs, the owner is asked (Allow, For session, Always, Decline) unless the app-wide
-"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (until Chat is left and no attempt runs); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
+"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (for the open period of its tunnel; it ends with the tunnel, an edit of the connection, the app lock and the other ends the assistant contract lists); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
 or saving makes no request. Switches autosave through the same Tools binding in
 Settings and Chat. Actual committed values, pending progress and inline failures
 come from one snapshot; no Save button or pre-commit checked value. Storage runs
@@ -1044,7 +1051,7 @@ claims of visual understanding. Technical failures give understandable sanitized
 descriptions and known status/limits, never silent success or raw server errors. Chat also opens Tools without popping its conversation;
 returning from Tools keeps that owner/history. Leaving Chat does not cancel a running attempt (a Send, a confirmation wait included): the app keeps the conversation while a chat
 screen is open or an attempt runs, and its reply and results are saved to the history. When neither remains the conversation closes
-(draft saved, "For session" grants cleared, memory released) and one encrypted local conversation is restored on return.
+(draft saved, memory released; "For session" grants belong to the app and stay) and one encrypted local conversation is restored on return.
 Restoring makes no provider/tool call. Chat's menu clears it with shared Undo;
 read/write failures stay visible and accepted unsaved data remains available in
 memory for retry. The file contains one canonical conversation, not separate UI

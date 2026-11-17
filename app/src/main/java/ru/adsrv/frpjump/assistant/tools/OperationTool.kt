@@ -23,6 +23,7 @@ internal abstract class OperationTool<I : Any, O>(
     init {
         // Fail closed: the confirmation reads the effect from here and from the catalog; they must be one.
         require(operation.effect == id.effect) { "${id.wire}: operation effect ${operation.effect} differs from the catalog's ${id.effect}" }
+        require(operation.actionClass == id.actionClass) { "${id.wire}: operation class ${operation.actionClass} differs from the catalog's ${id.actionClass}" }
     }
     override val effect get() = operation.effect
 

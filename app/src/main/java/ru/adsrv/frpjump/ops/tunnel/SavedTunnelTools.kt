@@ -59,6 +59,7 @@ class StartSavedTunnel(
 ) : Operation<SavedTunnelIds, TunnelStarted> {
     override val name = "start_tunnel"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
     override fun target(input: SavedTunnelIds) = GrantTarget(input.profileId, input.connectionId)
 
     override suspend fun invoke(input: SavedTunnelIds): OpResult<TunnelStarted> {
@@ -94,6 +95,7 @@ class StopSavedTunnel(
 ) : Operation<StopTunnelInput, TunnelStopped> {
     override val name = "stop_tunnel"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
     override fun target(input: StopTunnelInput) = GrantTarget(input.ids.profileId, input.ids.connectionId)
 
     override suspend fun invoke(input: StopTunnelInput): OpResult<TunnelStopped> {

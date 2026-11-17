@@ -24,6 +24,9 @@ interface Operation<in I, out O> {
     val name: String
     val effect: Effect
 
+    /** What kind of action it is; the assistant's tool over it must have the same class (and effect). */
+    val actionClass: ActionClass
+
     /** For changing operations: the grant/confirmation target of [input]; null when there is none. */
     fun target(input: I): GrantTarget? = null
 

@@ -41,7 +41,6 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
         if (now.disableVersion != c.authority.disableVersion || !now.enabled || saved.revision != c.revision || saved.problem != null) {
             c.provider = null
             c.clearConfirmation()
-            if (!now.enabled || now.disableVersion != c.authority.disableVersion) c.confirmations?.grants?.clear()
             onRevoked(!now.enabled)
             if (!c.archive) {
                 c.document = SavedChat(draft = c.document.draft).bind(saved.settings)

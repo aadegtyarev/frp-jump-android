@@ -5,11 +5,12 @@ import org.junit.Assert.*
 import org.junit.Test
 import ru.adsrv.frpjump.api.WireJson
 import ru.adsrv.frpjump.assistant.AssistantToolId
+import ru.adsrv.frpjump.ops.ActionClass
 import ru.adsrv.frpjump.ssh.MemoryStorage
 
 class ConfirmationPolicyTest {
     private val ssh = AssistantToolId.SSH_COMMAND
-    private val key = GrantKey(ssh, GrantTarget("p", "c"))
+    private val key = GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c"))
     private val ask = ConfirmationPolicy()
     private val off = ConfirmationPolicy(global = ConfirmationMode.OFF)
 
@@ -29,58 +30,40 @@ class ConfirmationPolicyTest {
         assertEquals(ConfirmationMode.ASK, ConfirmationPolicy(overrides = listOf(ConfirmationOverride(target, ConfirmationMode.ASK))).resolve(listOf(target)))
     }
 
+    private fun grants(world: FakeGrantWorld = FakeGrantWorld()) = SessionGrants(world)
+
     @Test fun `only changing tools ask and ask means ask unless a grant or the policy waives it`() {
-        val grants = GrantStore()
+        val grants = grants()
         assertTrue(mustAsk(ssh, key, ask, grants))
-        for (read in AssistantToolId.entries.filter { !it.effect.changes }) assertFalse(read.name, mustAsk(read, GrantKey(read, null), ask, grants))
+        for (read in AssistantToolId.entries.filter { !it.effect.changes }) assertFalse(read.name, mustAsk(read, GrantKey(read.actionClass, GrantTarget("p", "c")), ask, grants))
         assertFalse(mustAsk(null, null, ask, grants))
-        // The tab rename changes a local label and is the one changing tool that never asks.
-        assertFalse(mustAsk(AssistantToolId.TERMINAL_RENAME, GrantKey(AssistantToolId.TERMINAL_RENAME, null), ask, grants))
+        // A changing tool that is catalogued as not confirming never asks, whatever its class.
+        for (quiet in AssistantToolId.entries.filter { it.effect.changes && !it.confirms }) assertFalse(quiet.name, mustAsk(quiet, GrantKey(quiet.actionClass, GrantTarget("p", "c")), ask, grants))
         assertFalse(mustAsk(ssh, key, off, grants))
-        grants.grant(key)
+        assertTrue(grants.record(key, ssh, grants.stamp(key.target)!!, grants.coverableBy(ssh)))
         assertFalse(mustAsk(ssh, key, ask, grants))
-        assertTrue("another connection still asks", mustAsk(ssh, GrantKey(ssh, GrantTarget("p", "other")), ask, grants))
-        assertTrue("another profile still asks", mustAsk(ssh, GrantKey(ssh, GrantTarget("q", "c")), ask, grants))
+        assertTrue("another connection still asks", mustAsk(ssh, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "other")), ask, grants))
+        assertTrue("another profile still asks", mustAsk(ssh, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("q", "c")), ask, grants))
         assertTrue(mustAsk(ssh, null, ask, grants))
     }
 
-    @Test fun `grants clear as a whole or per tool and are keyed by tool and target only`() {
-        val grants = GrantStore()
-        grants.grant(key); grants.grant(GrantKey(AssistantToolId.WEB_SEARCH, null))
-        grants.clear(ssh)
-        assertFalse(grants.has(key)); assertTrue(grants.has(GrantKey(AssistantToolId.WEB_SEARCH, null)))
-        grants.grant(key); grants.clear()
-        assertFalse(grants.has(key)); assertFalse(grants.has(GrantKey(AssistantToolId.WEB_SEARCH, null)))
-        assertEquals(key, GrantKey(ssh, GrantTarget("p", "c")))
-        assertNotEquals("structured, not joined", GrantKey(ssh, GrantTarget("a/b", "c")), GrantKey(ssh, GrantTarget("a", "b/c")))
+    @Test fun `the decision for every tool x global ask or off x no grant or a valid grant`() {
+        for (tool in AssistantToolId.entries) {
+            val target = GrantTarget("p", "c"); val k = GrantKey(tool.actionClass, target)
+            val none = grants()
+            val held = grants().also { g -> g.record(GrantKey(ActionClass.CONNECTION_CHANGE, target), AssistantToolId.SSH_COMMAND, g.stamp(target)!!, g.coverableBy(AssistantToolId.SSH_COMMAND)) }
+            val asksToday = tool.effect.changes && tool.confirms
+            assertEquals("${tool.name}: no grant, ask", asksToday, mustAsk(tool, k, ask, none))
+            assertFalse("${tool.name}: global off", mustAsk(tool, k, off, none)); assertFalse("${tool.name}: global off with a grant", mustAsk(tool, k, off, held))
+            // A valid grant of CONNECTION_CHANGE waives only the grantable tools of that class.
+            assertEquals("${tool.name}: a valid grant", asksToday && !(tool.grantable), mustAsk(tool, k, ask, held))
+        }
     }
 
-    @Test fun `grants are safe under concurrent use`() {
-        val grants = GrantStore()
-        val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
-        try {
-            val futures = (0 until 4).map { n -> pool.submit {
-                repeat(500) { i -> grants.grant(GrantKey(ssh, GrantTarget("p$n", "c$i"))); grants.has(key); grants.snapshot() }
-            } }
-            futures.forEach { it.get(30, java.util.concurrent.TimeUnit.SECONDS) }
-        } finally { pool.shutdownNow() }
-        val all = grants.snapshot()
-        assertEquals(2000, all.size)
-        for (n in 0 until 4) for (i in 0 until 500) assertTrue(all.contains(GrantKey(ssh, GrantTarget("p$n", "c$i"))))
-        grants.clearTarget("p1")
-        assertEquals(1500, grants.snapshot().size)
-    }
-
-    @Test fun `an edited or removed target drops only its own grants`() {
-        val grants = GrantStore()
-        val a = GrantKey(ssh, GrantTarget("p", "c1")); val b = GrantKey(ssh, GrantTarget("p", "c2")); val c = GrantKey(ssh, GrantTarget("q", "c1"))
-        grants.grant(a); grants.grant(b); grants.grant(c); grants.grant(GrantKey(AssistantToolId.WEB_SEARCH, null))
-        grants.clearTarget("p", "c1")
-        assertFalse(grants.has(a)); assertTrue(grants.has(b)); assertTrue(grants.has(c))
-        grants.clearTarget("p")
-        assertFalse(grants.has(b)); assertTrue(grants.has(c)); assertTrue(grants.has(GrantKey(AssistantToolId.WEB_SEARCH, null)))
-        grants.clearTarget("nobody")
-        assertEquals(2, grants.snapshot().size)
+    @Test fun `a grant is keyed by class and connection only and the key is structured`() {
+        assertEquals(key, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c")))
+        assertNotEquals(key, GrantKey(ActionClass.APP_CHANGE, GrantTarget("p", "c")))
+        assertNotEquals("structured, not joined", GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("a/b", "c")), GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("a", "b/c")))
     }
 
     @Test fun `fixed model texts are exact`() {

@@ -45,6 +45,8 @@ import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.settings.ConfirmationMode
 import ru.adsrv.frpjump.settings.SettingsStore
+import ru.adsrv.frpjump.settings.assistantTools
+import kotlinx.coroutines.flow.map
 import ru.adsrv.frpjump.settings.ThemeMode
 import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
@@ -152,11 +154,11 @@ class AssistantChatScreenTest {
         override fun tabs(tunnel: ru.adsrv.frpjump.ops.tunnel.SavedTunnel) = tabs
         fun assistant() = AssistantTunnels(this,
             up = object : ru.adsrv.frpjump.ops.Operation<ru.adsrv.frpjump.ops.tunnel.TunnelUpInput, Int> {
-                override val name = "tunnel_up"; override val effect = ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL
+                override val name = "tunnel_up"; override val effect = ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL; override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
                 override suspend fun invoke(input: ru.adsrv.frpjump.ops.tunnel.TunnelUpInput): ru.adsrv.frpjump.ops.OpResult<Int> { started += input.device; on = true; return ru.adsrv.frpjump.ops.OpResult.Done(40001) }
             },
             down = object : ru.adsrv.frpjump.ops.Operation<ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget, Unit> {
-                override val name = "tunnel_down"; override val effect = ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL
+                override val name = "tunnel_down"; override val effect = ru.adsrv.frpjump.ops.Effect.CHANGE_LOCAL; override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
                 override suspend fun invoke(input: ru.adsrv.frpjump.ops.tunnel.TunnelDownTarget): ru.adsrv.frpjump.ops.OpResult<Unit> { stopped += input; on = false; return ru.adsrv.frpjump.ops.OpResult.Done(Unit) }
             })
     }
@@ -220,6 +222,18 @@ class AssistantChatScreenTest {
      * fixtures the test has set by then, and ended after the test.
      */
     private var testOwner: AssistantChatOwner? = null
+    /** The app's grants stand-in: the tunnel period and the connection are fixed, the assistant's switches are the test's own settings. The cleaner runs with no conversation, as in the app. */
+    private val sessionGrants = ru.adsrv.frpjump.settings.SessionGrants(object : ru.adsrv.frpjump.settings.GrantWorld {
+        override fun period(target: ru.adsrv.frpjump.settings.GrantTarget): Long? = 1L
+        override fun fingerprint(target: ru.adsrv.frpjump.settings.GrantTarget): Any? = target
+        override fun enabled() = settings.assistantAvailability.enabled
+        override fun disableVersion() = settings.assistantAvailability.disableVersion
+        override fun inEffect(tool: AssistantToolId) = settings.assistantAvailability.tools[tool]
+        override fun toolOffs(tool: AssistantToolId) = settings.assistantAvailability.toolOffs[tool] ?: 0L
+        override fun locked() = false
+    })
+    private val grantCleaner = ru.adsrv.frpjump.settings.SessionGrantCleaner(sessionGrants, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        settings.settings.map { it.assistantEnabled to it.assistantTools() }, kotlinx.coroutines.flow.flowOf(false))
     private fun owner(): AssistantChatOwner = testOwner ?: AssistantChatOwner(CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate), settings, store, module,
         information, sshCommands, history, null, prompts, prepare = {
         if (mode == "prepare") { prepEntered.countDown(); check(prepRelease.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
@@ -325,7 +339,7 @@ class AssistantChatScreenTest {
             }
         }
     }, realtime = { SystemClock.elapsedRealtime() }, terminalTabs = terminalTabs, tunnels = tunnelsHost.assistant(),
-        waitSources = waitSources, waitSleep = { kotlinx.coroutines.CompletableDeferred<Unit>().await() }).also { testOwner = it }
+        waitSources = waitSources, waitSleep = { kotlinx.coroutines.CompletableDeferred<Unit>().await() }, grants = sessionGrants).also { testOwner = it }
     private fun vm() = AssistantChatViewModel(settings, store, owner())
     private fun summaryFacts(text: String) = listOf("target", "done", "unknown").joinToString("; ") { key ->
         "$key=" + (Regex("$key=([a-z-]+)").find(text)?.groupValues?.get(1) ?: error("Missing observed $key"))
@@ -1243,7 +1257,7 @@ class AssistantChatScreenTest {
         val tab = startTypingConfirmation()
         shown("chat_confirm_card")
         compose.runOnIdle { assertEquals(1, calls); assertTrue("nothing is typed while the question is open", tab.typed.isEmpty()) }
-        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt))
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt)))
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_tab), substring = true)
             .assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
         compose.onNodeWithTag("chat_confirm_program", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_program), substring = true)
@@ -2324,6 +2338,9 @@ class AssistantChatScreenTest {
         startConfirmation()
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("Work · board1500 · Service root")
         shown("chat_confirm_session"); shown("chat_confirm_session_hint")
+        // The tool line names the class, and the hint says what the answer covers: commands only (typing is off here), while the tunnel is open.
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))
+        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint), substring = true)
         shot("real-names")
         button("chat_confirm_session").performClick(); awaitIdle()
         compose.runOnIdle { assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }

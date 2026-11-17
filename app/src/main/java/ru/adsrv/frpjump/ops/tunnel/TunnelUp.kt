@@ -50,6 +50,7 @@ class TunnelUp(
 ) : Operation<TunnelUpInput, Int> {
     override val name = "tunnel_up"
     override val effect = Effect.CHANGE_LOCAL
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE
 
     override suspend fun invoke(input: TunnelUpInput): OpResult<Int> {
         val (profile, device, port, kind) = input

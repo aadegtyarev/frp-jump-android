@@ -80,6 +80,7 @@ fun DeviceCardScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
+    val grants by vm.actions.assistantGrants.collectAsStateWithLifecycle()
     val ui = remember { ConnectionUi() }
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val notificationsFirst = rememberNotificationsFirst()
@@ -201,6 +202,8 @@ fun DeviceCardScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     // As on the Connections tab: down on a device offline now, it cannot be connected.
                     offline = knownOffline(state.device),
+                    assistantGrant = row.saved && ru.adsrv.frpjump.settings.GrantTarget(row.profile, row.connection.id) in grants,
+                    onForgetAssistant = { vm.actions.forgetAssistant(row) },
                 )
             }
         }

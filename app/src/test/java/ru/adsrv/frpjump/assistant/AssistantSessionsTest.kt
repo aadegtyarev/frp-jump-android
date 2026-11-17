@@ -352,7 +352,7 @@ class AssistantSessionsTest {
 
     private class Asker(val answer: ConfirmationDecision, val mode: ConfirmationMode = ConfirmationMode.ASK) {
         val asked = ArrayList<ChangeRequest>()
-        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true }, stamp = { "s" })
+        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true })
         suspend fun authorize(tool: AgentTool, arguments: JsonObject) = authorizeCall(support, mapOf("terminal_close" to tool), ToolCall("id", "terminal_close", arguments),
             wait = { request, _ -> asked += request; answer }, onNotSaved = {}, io = Dispatchers.Unconfined)
     }

@@ -18,17 +18,17 @@ package ru.adsrv.frpjump.lock
  */
 class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
     /** Content is hidden until [unlocked]. */
-    var locked = false
+    @Volatile var locked = false
         private set
 
     /** Unlocked at least once in this process: otherwise any start locks. */
-    private var unlockedOnce = false
+    @Volatile private var unlockedOnce = false
 
     /** When the screen went out of sight, unlocked; null while shown or locked. */
-    private var leftAt: Long? = null
+    @Volatile private var leftAt: Long? = null
 
     /** A prompt is up: stops and starts are its own. */
-    var authenticating = false
+    @Volatile var authenticating = false
         private set
 
     /**
@@ -36,7 +36,7 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
      * "Open" starts a second MainActivity: the old one stops after the new
      * one has started), so the app is out of sight only at 0.
      */
-    private var startedCount = 0
+    @Volatile private var startedCount = 0
 
     /** The screen is in sight: at least one activity is between [onStart] and [onStop]. */
     val started: Boolean get() = startedCount > 0
@@ -45,7 +45,7 @@ class LockPolicy(private val timeoutMs: Long = DEFAULT_TIMEOUT_MS) {
     private var handoffAt: Long? = null
 
     /** The absence in [leftAt] began as a handoff. */
-    private var leftByHandoff = false
+    @Volatile private var leftByHandoff = false
 
     /**
      * The screen comes into sight; returns [locked]. [enabled]: the setting.

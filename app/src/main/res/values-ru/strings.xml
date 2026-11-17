@@ -1381,7 +1381,14 @@
     <string name="confirm_session">Для сессии</string>
     <string name="confirm_always">Всегда</string>
     <string name="confirm_decline">Отклонить</string>
-    <string name="confirm_session_hint">Любые команды в этом туннеле, пока вы не выйдете из чата и помощник не закончит.</string>
+    <string name="confirm_session_hint">Команды в этом подключении, пока открыт его туннель.</string>
+    <string name="confirm_session_hint_both">Команды и ввод во вкладки этого подключения, пока открыт его туннель.</string>
+    <string name="chat_confirm_tool">%1$s · %2$s</string>
+    <string name="action_class_connection_change">Изменения в подключениях</string>
+    <string name="action_class_app_change">Изменения в приложении</string>
+    <string name="connection_assistant_grant">Помощник: без вопросов, на время туннеля</string>
+    <string name="connection_assistant_forget">Забыть</string>
+    <string name="connection_assistant_forget_description">Забыть разрешения помощника для %1$s</string>
     <string name="always_dialog_title">Выключить подтверждения?</string>
     <string name="always_dialog_text">Изменяющие команды будут выполняться без вопроса во всём приложении, для всех инструментов и туннелей. Включить снова: %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Выключить</string>
@@ -1390,7 +1397,7 @@
     <string name="confirm_command">Команда</string>
     <string name="confirm_input_title">Ввести в эту вкладку?</string>
     <string name="confirm_input_warning">Как ввод с вашей клавиатуры, отменить нельзя. Экран после ввода передаётся модели.</string>
-    <string name="confirm_input_session_hint">Любой ввод во вкладки этого туннеля, пока вы не выйдете из чата и помощник не закончит.</string>
+    <string name="confirm_input_session_hint">Ввод во вкладки этого подключения, пока открыт его туннель.</string>
     <string name="confirm_tab">Вкладка</string>
     <string name="confirm_program">Программа</string>
     <string name="confirm_text">Текст</string>

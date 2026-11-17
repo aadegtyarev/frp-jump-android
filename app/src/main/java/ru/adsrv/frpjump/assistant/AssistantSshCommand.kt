@@ -18,9 +18,6 @@ open class AssistantSshCommands(private val targets: SshTargets) {
     /** Names for the confirmation card; a pure lookup of saved state: no client, no tunnel, no network. Null when unknown. */
     internal open fun info(target: GrantTarget): ConfirmationTargetInfo? = targets.labels(target.profileId, target.connectionId)
         ?.let { ConfirmationTargetInfo(it.first, it.second) }
-    /** Changes when the saved connection or its profile is edited or removed (a session grant must not follow it). */
-    internal open fun stamp(target: GrantTarget): Any? = targets.stamp(target.profileId, target.connectionId)
-
     internal open val exec: Operation<SshExecInput, SshExecOutput> by lazy { SshExec(targets) }
 }
 
