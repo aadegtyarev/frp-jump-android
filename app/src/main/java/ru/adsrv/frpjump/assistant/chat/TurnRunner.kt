@@ -39,6 +39,8 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private var invalidReply = false
     private var summaryProblem: ChatProblem? = null
     private var summaryProvider: AgentProvider? = null
+    /** The request as the kernel gave it to [prepared] (before any shortening) for the step now being sent: what an overflow resend starts from. */
+    @Volatile private var rawRequest: AgentRequest? = null
     /** Set by [ask] when a question ran out of time with no chat screen attached. */
     private var unanswered = false
 
@@ -152,8 +154,10 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         } catch (failure: ProviderException) {
             if (!failure.contextTooLong || !env.archive) failed(failure)
             // The provider says the request is too long: shorten the history right away and send it once more. If it cannot be made smaller, the provider's failure stands.
-            val shorter = try { summary.shortenAfterOverflow(bounded) }
+            val raw = rawRequest ?: failed(failure)
+            val shorter = try { summary.shortenAfterOverflow(raw) }
                 catch (cancelled: CancellationException) { throw cancelled }
+                catch (setup: ProviderSetupException) { summaryProblem = preparationProblem(setup); throw setup }
                 catch (_: Exception) { failed(failure) }
             try { complete(active, shorter) } catch (again: ProviderException) { failed(again) }
         }
@@ -177,10 +181,11 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         })
 
     private suspend fun prepared(summary: AssistantSummary, request: AgentRequest): AgentRequest =
-        if (!env.archive) request else try { summary.prepare(request) }
+        if (!env.archive) request else try { rawRequest = request; summary.prepare(request) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
-            summaryProblem = setupProblem(failure, ChatProblem.SUMMARY)
+            // The red "does not fit" text is only for that case; any other failure of the preparation is an ordinary setup problem (key and read problems keep their own).
+            summaryProblem = preparationProblem(failure)
             throw failure
         }
 

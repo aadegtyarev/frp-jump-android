@@ -577,6 +577,11 @@ class OpenAiAgentProviderTest {
         assertTrue(overflow(422, """{"detail":"input is too long for the context window"}"""))
         assertFalse(overflow(400, """{"error":{"message":"Unsupported parameter: max_tokens"}}"""))
         assertFalse(overflow(400, "{}"))
+        // A token phrase counts only beside "context", "prompt" or "input"; an answer-limit (max_tokens) refusal is not a context overflow.
+        assertTrue(overflow(400, """{"error":{"message":"input token limit exceeded"}}"""))
+        assertTrue(overflow(400, """{"error":{"message":"Too many tokens in the prompt"}}"""))
+        assertFalse(overflow(400, """{"error":{"message":"max_tokens is too large: 100000. The token limit for completions is 4096"}}"""))
+        assertFalse(overflow(400, """{"error":{"message":"Too many tokens requested for completion"}}"""))
         assertFalse(overflow(401, """{"error":"context length"}"""))
         assertFalse(overflow(429, """{"error":"too many tokens per minute"}"""))
         assertFalse(overflow(500, """{"error":"context window"}"""))

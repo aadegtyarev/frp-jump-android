@@ -106,6 +106,12 @@ import ru.adsrv.frpjump.assistant.tools.*
 @Serializable internal data class SavedSummary(val text: String, val turn: Int, val exchange: Int,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val byModel: Boolean = true)
 
+/**
+ * The longest summary text that can be saved: a summary is at most its share of the context window in UTF-8 bytes, so at most that many characters;
+ * the bound is the biggest window the agent accepts times the biggest summary size the Limits screen allows.
+ */
+internal const val MAX_SUMMARY_CHARS = AgentLimits.MAX_CONTEXT_TOKENS * ru.adsrv.frpjump.settings.AssistantLimits.SUMMARY_SIZE_MAX_PERCENT / 100
+
 /** What the saved chat's summary is, for the chat's calm line. */
 internal fun SavedChat.compaction(): Compaction? = summary?.let { if (it.byModel) Compaction.MODEL else Compaction.NO_MODEL }
 
@@ -134,7 +140,7 @@ internal fun SavedChat.compaction(): Compaction? = summary?.let { if (it.byModel
     fun restored(): SavedChat {
         require(version == 1 && draft.length <= ChatLimits.MAX_INPUT && contextStart in 0..records.size)
         require(records.size <= 1000)
-        summary?.let { require(it.text.isNotBlank() && it.text.length <= 4000 && it.turn in contextStart..records.lastIndex && it.exchange in 0..records[it.turn].exchanges.size) }
+        summary?.let { require(it.text.isNotBlank() && it.text.length <= MAX_SUMMARY_CHARS && it.turn in contextStart..records.lastIndex && it.exchange in 0..records[it.turn].exchanges.size) }
         return copy(records = records.map { if (it.status == SavedTurnState.RUNNING) it.copy(status = SavedTurnState.INTERRUPTED) else it },
             declinedTools = declinedTools.filter { AssistantToolId.fromWire(it) != null }.distinct())
     }

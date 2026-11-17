@@ -93,10 +93,14 @@ data class AgentLimits(
     val toolTimeoutMs: Long = 30_000,
 ) {
     init {
-        require(contextTokens in 512..1_000_000 && outputReserveTokens in 1 until contextTokens)
+        require(contextTokens in MIN_CONTEXT_TOKENS..MAX_CONTEXT_TOKENS && outputReserveTokens in 1 until contextTokens)
         require(maxSteps in 1..100 && maxCallsPerStep in 1..16)
         require(maxToolChars in 32..1_000_000 && maxReplyChars in 32..1_000_000)
         require(modelTimeoutMs in 1..600_000 && toolTimeoutMs in 1..600_000)
+    }
+    companion object {
+        const val MIN_CONTEXT_TOKENS = 512
+        const val MAX_CONTEXT_TOKENS = 1_000_000
     }
 }
 

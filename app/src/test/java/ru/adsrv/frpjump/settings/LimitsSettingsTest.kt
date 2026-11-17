@@ -120,9 +120,13 @@ class LimitsSettingsTest {
         assertEquals(60, SettingsStore(file).settings.value.assistantLimits.summaryPercent)
         val explicit = MemoryStorage(); val owner = SettingsStore(explicit); owner.setAssistantLimits(AssistantLimits().withSummaryPercent(80)); owner.adoptSummaryPercent(20)
         assertEquals(80, SettingsStore(explicit).settings.value.assistantLimits.summaryPercent)
-        // Old values outside the new range are clamped: 100 becomes 90 (the summary size gives way), 1 becomes 10.
-        val high = SettingsStore(MemoryStorage()); high.adoptSummaryPercent(100)
-        assertEquals(90, high.settings.value.assistantLimits.summaryPercent); assertTrue(validAssistantLimits(high.settings.value.assistantLimits))
+        // Old values outside the new range are clamped, and a trigger the default summary size leaves no room for becomes 80 with the size kept at 15.
+        for (legacy in listOf(81, 85, 90, 95, 100)) {
+            val high = SettingsStore(MemoryStorage()); high.adoptSummaryPercent(legacy)
+            val l = high.settings.value.assistantLimits
+            assertEquals("$legacy", 80, l.summaryPercent); assertEquals("$legacy", 15, l.summarySizePercent); assertTrue(validAssistantLimits(l))
+        }
+        for (legacy in listOf(60, 80)) { val ok = SettingsStore(MemoryStorage()); ok.adoptSummaryPercent(legacy); assertEquals(legacy, ok.settings.value.assistantLimits.summaryPercent); assertEquals(15, ok.settings.value.assistantLimits.summarySizePercent) }
         val low = SettingsStore(MemoryStorage()); low.adoptSummaryPercent(1)
         assertEquals(10, low.settings.value.assistantLimits.summaryPercent)
     }

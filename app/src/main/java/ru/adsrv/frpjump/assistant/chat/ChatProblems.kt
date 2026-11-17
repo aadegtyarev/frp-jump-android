@@ -1,6 +1,7 @@
 package ru.adsrv.frpjump.assistant.chat
 
 import ru.adsrv.frpjump.agent.*
+import ru.adsrv.frpjump.assistant.ContextCannotFit
 import ru.adsrv.frpjump.assistant.ProviderSetupException
 import ru.adsrv.frpjump.assistant.ProviderSetupProblem
 
@@ -20,6 +21,10 @@ internal fun setupProblem(failure: Exception, fallback: ChatProblem): ChatProble
     ProviderSetupProblem.READ_FAILED -> ChatProblem.READ
     else -> fallback
 }
+
+/** A failure while the request is being prepared: the red "does not fit" text is for that case alone, anything else is an ordinary setup problem. */
+internal fun preparationProblem(failure: Exception): ChatProblem =
+    setupProblem(failure, if (failure is ContextCannotFit) ChatProblem.SUMMARY else ChatProblem.SETUP)
 
 internal fun isTransportTimeout(kind: ProviderErrorKind): Boolean = kind == ProviderErrorKind.TIMEOUT
 

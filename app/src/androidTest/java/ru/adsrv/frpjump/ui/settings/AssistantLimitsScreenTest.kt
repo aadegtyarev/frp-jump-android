@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -90,11 +89,9 @@ class AssistantLimitsScreenTest {
         compose.onAllNodesWithTag("limit_reply_s_hint").assertCountEquals(0)
     }
 
-    @Test fun theSummaryRowsShareTheWindowSayWhyAPlusIsOffAndSayWhenTheAnswerLimitCapsTheSummary() {
+    @Test fun theSummaryRowsShareTheWindowAndSayWhyAPlusIsOff() {
         val limits = mutableStateOf(AssistantLimits())
-        // A 262,144-token window and the default 2,048-token answer limit: 15 % of the window is more than the model may answer.
-        val provider = ru.adsrv.frpjump.assistant.AssistantProviderSettings()
-        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { limits.value = it }, onBack = {}, provider = provider) } }
+        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { limits.value = it }, onBack = {}) } }
         scrolled("limit_summary_percent_value").assertTextEquals("80")
         scrolled("limit_summary_size_percent_value").assertTextEquals("15")
         scrolled("limit_fresh_tool_percent_value").assertTextEquals("20")
@@ -102,10 +99,8 @@ class AssistantLimitsScreenTest {
         scrolled("limit_summary_percent_plus").assertIsNotEnabled()
         scrolled("limit_summary_size_percent_plus").assertIsNotEnabled()
         val pair = compose.activity.getString(R.string.limit_summary_pair, 95)
-        val tokens2048 = java.text.NumberFormat.getIntegerInstance(compose.activity.resources.configuration.locales[0]).format(2048)
         scrolled("limit_summary_percent_hint").assertTextEquals(pair)
-        scrolled("limit_summary_size_percent_hint").assertTextContains(pair, substring = true)
-        scrolled("limit_summary_size_percent_hint").assertTextContains(compose.activity.getString(R.string.limit_summary_capped, tokens2048), substring = true)
+        scrolled("limit_summary_size_percent_hint").assertTextEquals(pair)
         capture("limits-summary-rows")
         // Lowering the trigger gives the summary room, and the explanation under the trigger goes away.
         scrolled("limit_summary_percent_minus").performClick()
@@ -118,8 +113,8 @@ class AssistantLimitsScreenTest {
         scrolled("limit_summary_percent_minus").assertIsNotEnabled(); scrolled("limit_summary_size_percent_minus").assertIsNotEnabled()
         compose.onAllNodesWithTag("limit_summary_percent_hint").assertCountEquals(0)
         scrolled("limit_summary_size_percent_plus").assertIsEnabled()
-        // The cap is still explained (5 % of this window is also more than 2,048 tokens), the pair no longer is.
-        scrolled("limit_summary_size_percent_hint").assertTextEquals(compose.activity.getString(R.string.limit_summary_capped, tokens2048))
+        // The answer limit is no cap any more: nothing is explained under the size once the pair has room.
+        compose.onAllNodesWithTag("limit_summary_size_percent_hint").assertCountEquals(0)
     }
 
     /** The node of [tag], scrolled into view (the screen is longer than the window). */

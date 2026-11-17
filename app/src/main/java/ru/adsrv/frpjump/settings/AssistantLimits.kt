@@ -123,7 +123,8 @@ data class AssistantLimits(
         val TUNNEL_WAIT_RANGE = 5..120
         val RECONNECT_RANGE = 1..60
         val SUMMARY_PERCENT_RANGE = 10..90
-        val SUMMARY_SIZE_RANGE = 5..40
+        const val SUMMARY_SIZE_MAX_PERCENT = 40
+        val SUMMARY_SIZE_RANGE = 5..SUMMARY_SIZE_MAX_PERCENT
         val FRESH_TOOL_RANGE = 5..50
     }
 }

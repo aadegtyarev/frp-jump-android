@@ -1530,7 +1530,6 @@
     <string name="limit_summary_size">Размер сводки, % окна</string>
     <string name="limit_fresh_tool">Свежий вывод инструментов, % окна</string>
     <string name="limit_summary_pair">Заполнение и размер сводки вместе: не больше %1$d %%</string>
-    <string name="limit_summary_capped">Ограничено лимитом ответа модели: %1$s токенов</string>
     <string name="limit_reply_raised">не меньше одного вызова и ответа модели: %1$d с</string>
     <string name="tool_skills">Скиллы</string>
     <string name="tool_skills_hint">Помощник оформляет то, что вы с ним сделали, в скиллы и потом пользуется ими. Сохраняет и удаляет скиллы после вашего подтверждения, если включено «Спрашивать перед изменяющими командами».</string>

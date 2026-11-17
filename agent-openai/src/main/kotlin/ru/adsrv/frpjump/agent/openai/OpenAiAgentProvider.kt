@@ -94,15 +94,20 @@ class OpenAiAgentProvider internal constructor(
     internal companion object {
         /** How much of an error response is looked at to classify it (never kept, never shown). */
         const val ERROR_PEEK_BYTES = 16_384L
-        private val OVERFLOW_PHRASES = listOf("context_length_exceeded", "context length", "context window", "maximum context", "too many tokens",
-            "prompt is too long", "input is too long", "reduce the length of the messages", "token limit")
+        private val CONTEXT_PHRASES = listOf("context_length_exceeded", "context length", "context window", "maximum context", "prompt is too long",
+            "input is too long", "reduce the length of the messages")
+        /** Token phrases count only beside a word that says it is the request that is too long, so an answer-limit refusal (max_tokens) is not taken for it. */
+        private val TOKEN_PHRASES = listOf("too many tokens", "token limit")
+        private val REQUEST_WORDS = listOf("context", "prompt", "input")
 
         /**
          * Whether a failed call says the request does not fit the model's context. Conservative: 413 by status alone; 400 and 422 only when the
-         * response text names the context or token limit; any other status is not one. [body] is read only for 400/422.
+         * response text names the context, or a token limit beside "context", "prompt" or "input"; any other status is not one. [body] is read only for 400/422.
          */
         fun contextOverflow(status: Int, body: () -> String?): Boolean =
-            status == 413 || (status == 400 || status == 422) && body()?.lowercase()?.let { text -> OVERFLOW_PHRASES.any { it in text } } == true
+            status == 413 || (status == 400 || status == 422) && body()?.lowercase()?.let { text ->
+                CONTEXT_PHRASES.any { it in text } || (TOKEN_PHRASES.any { it in text } && REQUEST_WORDS.any { it in text })
+            } == true
 
         /**
          * [template] for a call that has [timeoutMs] (the run's model timeout): no fixed call timeout, and a read timeout no shorter than it, so that the whole-call

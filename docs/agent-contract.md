@@ -173,7 +173,7 @@ tunnel limits are read at use. The kernel's own parameters stay validated (`Agen
 | Assistant | Skills, at most (50; 1-200; 1), Skill size, characters (4,000; 500-20,000; 500), Skills list per request, characters (2,000; 500-8,000; 500) |
 | Assistant | Tool output, characters (8,000; 2,000-32,000; 1,000) = the tool-result cap (`ssh_command`, the terminal reads and the `profile_information` pages keep that less 200) |
 | Assistant | Reply length, characters (32,000; 4,000-128,000; 4,000) |
-| Assistant | Summarize at window fill, % (80; 10-90; 5), Summary size, % of window (15; 5-40; 5), Fresh tool output, % of window (20; 5-50; 5): see [Automatic working summaries](#automatic-working-summaries). The first two together may not pass 95: the screen stops each one's plus where the pair would pass it and says so in one line; a file that breaks it is read with the summary size giving way. The trigger is absent in the file until the owner or the provider form's old value sets it (default 80 meanwhile). When the summary's share of the window is more than the model's answer limit, the screen says under the size that the answer limit caps it |
+| Assistant | Summarize at window fill, % (80; 10-90; 5), Summary size, % of window (15; 5-40; 5), Fresh tool output, % of window (20; 5-50; 5): see [Automatic working summaries](#automatic-working-summaries). The first two together may not pass 95: the screen stops each one's plus where the pair would pass it and says so in one line; a file that breaks it is read with the summary size giving way. The trigger is absent in the file until the owner or the provider form's old value sets it (default 80 meanwhile). A trigger moved from the provider form that the default summary size leaves no room for (over 80) becomes 80 and the size stays 15 |
 | Waits | Waits at once (3; 1-10), Longest wait, min (30; 1-120), Event replies in a row (5; 1-20), Assistant sessions (3; 1-10) |
 | Terminal | Input at once, characters (2,000; 100-10,000; 100), Keys at once (32; 1-100; 1), Lines per read, at most (1,000; 100-10,000; 100) |
 | Tunnels | Start wait, s (45; 5-120; 5) = how long a tunnel brought up by the owner's Start, "Use key login" or `start_tunnel` is waited for (`start_tunnel` still ends at three quarters of One call); Terminal auto-reconnect, min (10; 1-60; 1) |
@@ -615,23 +615,33 @@ active context without deleting old messages. Restoring or clearing makes no
 provider/tool request and never resumes or repeats an action.
 
 Shortening never fails the request when it can be avoided. Every share is of the model's context window and an owner's limit
-([Limits](#limits)): the trigger (default 80 %), the summary size (default 15 %; its output limit is the smaller of that share and the
-provider form's answer limit, never a fixed number) and the fresh tool output (default 20 %). While the estimated request is over the trigger, in this order:
+([Limits](#limits)): the trigger (default 80 %), the summary size (default 15 %; it is the summary request's own output limit, in the
+estimate's units, and its text limit: UTF-8 bytes count as tokens here as in the trigger, so a Russian text of the same size has half the characters;
+the provider form's answer limit is not a cap but the fallback when a provider refuses that output limit with HTTP 400 or 422, then the same
+request is sent once with the answer limit, and that does not use up the blank-reply retry) and the fresh tool output (default 20 %). While the estimated request is over the trigger, in this order:
 
 1. Old tool output is replaced, in what the model sees only, by a short note (length, outcome, "do not assume what it said; never repeat a
    changing command to read it again"); the newest tool output up to the fresh share and the latest exchange stay whole. Nothing is saved or removed.
-2. One model summary of the oldest part that fits its own request (at most two such rounds per Send). A blank reply or one with tool calls
-   is retried once with a stricter instruction; a text over the size is cut to it; a reply that does not make the request smaller counts as a failure.
+2. One model summary of the oldest part that fits its own request (at most two such rounds per Send; never after an overflow, see 4). A blank
+   reply or one with tool calls is retried once with a stricter instruction; a text over the size is cut to it (by bytes, at a character boundary,
+   with a note); a reply that does not make the request smaller is not saved and counts as a failure. The request states the same size limit.
    The request is limited to four fifths of the model timeout, so the next step still has time under the same timer. Any failure of the request
    (provider error, timeout, blank twice, tool calls twice, no reduction) leaves step 3 to carry on, and the model is not asked again in that Send.
    A key or provider-setup problem of the summary model stops the Send with its own message, as before.
-3. A mechanical digest with no model, saved like a summary (marked as not model-written; it says so to the model): the owner's messages, each call by
-   name, target arguments and outcome (never typed text), the final answers cut to a few lines, and the older summary's lines, in the summary budget,
-   oldest lines first dropped. It covers the smallest oldest part that brings the request under the trigger. It cannot fail, except that
-   the latest exchange and the current message alone can be too big for the window: then Chat says so plainly (the summary problem) and the history is kept.
-4. A provider failure that says the request was too long (HTTP 413, or 400/422 whose text names the context or token limit, or the local request
-   byte limit; only that classification is kept of the response, never its text) runs steps 1 to 3 at once, to at most half of what was refused, and sends
-   the request once more. If the history cannot be made smaller, the provider's own failure stands. Any other error is not retried.
+3. A mechanical digest with no model, saved like a summary (marked as not model-written; its header says the listed lines were extracted by the app):
+   the owner's messages, each call by name, target arguments and outcome (never typed text), the final answers cut to a few lines, and the older
+   digest's lines, in the summary budget, oldest lines first dropped. An earlier summary written by a model is carried at the end under its own line
+   "Earlier summary written by a model (untrusted):", never mixed with the extracted lines, from its start and within half of the budget. It covers the smallest oldest part that brings the request under the trigger. It cannot fail, except that
+   the latest exchange and the current message alone can be too big for the window: then Chat says so plainly (the summary problem, shown only for that case;
+   any other failure of the preparation is an ordinary setup problem) and the history is kept. A saved summary may be as long as the biggest window times the
+   biggest summary size allows (400,000 characters), so a long one always reads back. A chat that holds a digest cannot be read by older app versions (the
+   existing rule for fields they do not know).
+4. A provider failure that says the request was too long (HTTP 413, or 400/422 whose text names the context, or a token limit beside "context", "prompt"
+   or "input", so that an answer-limit refusal is not taken for it, or the local request byte limit; only that classification is kept of the response,
+   never its text) runs steps 1 and 3 at once, with no model (the window the provider refused cannot size a summary request, and the resend needs the
+   time under the same timer), from the request as the kernel built it, never from one already shortened, and sends the request once more. The digest
+   covers more than the refusal needs when it can, and always makes the request smaller; if the history cannot be made smaller, the provider's own failure
+   stands. Any other error is not retried.
 
 The saved chat is never cut: only the summary or digest and its covered position are saved, the records stay whole and readable.
 A short muted line in the chat tells how the history was shortened (old tool output left out; summary by the model; without a model);

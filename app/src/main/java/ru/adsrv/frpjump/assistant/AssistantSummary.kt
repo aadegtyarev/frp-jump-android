@@ -13,14 +13,14 @@ import ru.adsrv.frpjump.settings.AssistantLimits
  * The shares of the model's context window the history shortening works with, all from the owner's limits (Settings › Assistant › Limits):
  * the fill that starts it, the size of a working summary and the newest tool output kept whole. There is no number of its own here.
  */
-internal class ContextBudget(val window: Int, outputLimit: Int, limits: AssistantLimits) {
+internal class ContextBudget(val window: Int, limits: AssistantLimits) {
     /** The shortening starts when the request is this big (estimated tokens). */
     val triggerTokens: Long = window.toLong() * limits.summaryPercent / 100
-    private val sizeTokens: Long = window.toLong() * limits.summarySizePercent / 100
-    /** The most a summary may be, and so its output limit: its share of the window, never more than the model's answer limit. */
-    val summaryTokens: Int = minOf(sizeTokens, outputLimit.toLong()).coerceAtLeast(1).toInt()
-    /** The share of the window is more than the model's answer limit allows: the summary is smaller than the setting says. */
-    val summaryCapped: Boolean = sizeTokens > outputLimit
+    /**
+     * The most a summary may be: its share of the window, in the estimate's own units (a UTF-8 byte counts as a token, as in the trigger and the
+     * digest). It is also the summary request's own output limit; the provider's general answer limit is only the fallback when that is refused.
+     */
+    val summaryTokens: Int = (window.toLong() * limits.summarySizePercent / 100).coerceAtLeast(1).toInt()
     /** The newest tool output of this size stays whole; older output is replaced by a note. */
     val freshTokens: Long = window.toLong() * limits.freshToolPercent / 100
 }
@@ -44,7 +44,10 @@ internal class AssistantSummary(
     private val onCompacted: (Compaction) -> Unit = {},
     private val nanos: () -> Long = System::nanoTime,
 ) {
-    private val budget = ContextBudget(settings.contextTokens, settings.outputTokens, limits)
+    private val budget = ContextBudget(settings.contextTokens, limits)
+    /** The output limit of summary requests: the summary's own share of the window, lowered once to the answer limit if a provider refuses it. */
+    private var summaryOutput = budget.summaryTokens
+    private var outputFallbackUsed = false
     /** Rounds of model summaries made in this Send; and whether the model failed once (it is not asked again in this Send). */
     private var rounds = 0
     private var modelFailed = false
@@ -84,8 +87,12 @@ internal class AssistantSummary(
 
     suspend fun prepare(raw: AgentRequest): AgentRequest = shorten(raw, force = false)
 
-    /** A provider refused [sent] as too long: shorten at once, to at most half of what it was. Throws when the history cannot be made smaller. */
-    suspend fun shortenAfterOverflow(sent: AgentRequest): AgentRequest = shorten(sent, force = true)
+    /**
+     * A provider refused a request as too long: shorten at once, to at most half of what it was, with no model (the window the provider
+     * refused is not trustworthy for sizing a summary request, and the resend needs the time). [raw] is the request as the kernel gave it
+     * to [prepare], never an already shortened one. Throws [ContextCannotFit] when the history cannot be made smaller.
+     */
+    suspend fun shortenAfterOverflow(raw: AgentRequest): AgentRequest = shorten(raw, force = true)
 
     private suspend fun shorten(raw: AgentRequest, force: Boolean): AgentRequest {
         val doc = read(); val request = view(doc, raw); val before = cost(request)
@@ -103,7 +110,7 @@ internal class AssistantSummary(
         }
         // 2. A model summary of the oldest part. Whatever goes wrong with the model leaves the next step to carry on; only a key problem stops.
         val deadline = nanos() + (raw.timeoutMs ?: DEFAULT_MODEL_TIMEOUT_MS) * MODEL_SHARE_PERCENT / 100 * 1_000_000
-        while (!modelFailed && rounds < MAX_ROUNDS && !small(bestCost)) {
+        while (!force && !modelFailed && rounds < MAX_ROUNDS && !small(bestCost)) {
             val (summary, shown) = summarize(read(), raw, deadline) ?: break
             val shaped = prune(shown)
             if (cost(shaped) >= bestCost) { modelFailed = true; break }
@@ -117,7 +124,7 @@ internal class AssistantSummary(
             save(summary); onCompacted(Compaction.NO_MODEL); return shown
         }
         if (fits) { kind?.let(onCompacted); return best }
-        error("Context cannot fit even with the history shortened")
+        throw ContextCannotFit()
     }
 
     /** Old tool output, beyond the newest share of the window, becomes a note in what the model sees; the latest exchange is never touched. */
@@ -147,47 +154,54 @@ internal class AssistantSummary(
     private suspend fun summarize(doc: SavedChat, raw: AgentRequest, deadline: Long): Pair<SavedSummary, AgentRequest>? {
         val parts = mutableListOf<String>()
         var end: Block? = null
-        fun summaryRequest(extra: String, remainingMs: Long) = AgentRequest(prompt, emptyList(), listOf(AgentTurn(
-            "Size limit: at most ${budget.summaryTokens} tokens (about ${budget.summaryTokens.toLong() * CHARS_PER_TOKEN} characters).\n" +
-                "Previous summary:\n${doc.summary?.text.orEmpty()}\nObserved conversation:\n" + parts.joinToString("\n") + extra)), budget.summaryTokens, timeoutMs = remainingMs)
+        fun summaryRequest(extra: String, remainingMs: Long, output: Int) = AgentRequest(prompt, emptyList(), listOf(AgentTurn(
+            "Size limit: at most ${budget.summaryTokens} bytes of UTF-8 text (a Latin letter is 1 byte, a Cyrillic letter 2); anything longer is cut off.\n" +
+                "Previous summary:\n${doc.summary?.text.orEmpty()}\nObserved conversation:\n" + parts.joinToString("\n") + extra)), output, timeoutMs = remainingMs)
         for (b in blocks(doc)) {
             val record = doc.records[b.record]
             val block = record.exchanges.getOrNull(b.exchange)?.let { it.copy(reply = it.reply.copy(continuation = null, localContinuation = null)) }
             val text = json.encodeToString(record.copy(exchanges = listOfNotNull(block)))
-            if (cost(summaryRequest("\n$text", 1)) > settings.contextTokens) break
+            if (cost(summaryRequest("\n$text", 1, summaryOutput)) > settings.contextTokens) break
             parts += text; end = b
         }
         val covered = end ?: return null
         rounds++
-        val text = ask(deadline) { strict, remaining -> summaryRequest(if (strict) STRICT else "", remaining) } ?: run { modelFailed = true; return null }
+        val text = ask(deadline) { strict, remaining, output -> summaryRequest(if (strict) STRICT else "", remaining, output) } ?: run { modelFailed = true; return null }
         val summary = SavedSummary(text, covered.turn, covered.next)
         return summary to view(doc, raw, summary)
     }
 
     /**
      * One model request, and one more, with a stricter instruction, when the reply is blank (a reasoning model that spent its tokens thinking) or
-     * proposes tools. A text over the size is cut to it, not refused. Any failure of the request itself (not a key problem) is null.
+     * proposes tools. A text over the size is cut to it, not refused. A provider that refuses the summary's own output limit (HTTP 400/422) gets the
+     * same request once with the general answer limit; that does not use up the blank-reply retry. Any other failure of the request itself
+     * (not a key problem) is null.
      */
-    private suspend fun ask(deadline: Long, make: (strict: Boolean, remainingMs: Long) -> AgentRequest): String? {
+    private suspend fun ask(deadline: Long, make: (strict: Boolean, remainingMs: Long, output: Int) -> AgentRequest): String? {
         for (strict in listOf(false, true)) {
-            val remaining = (deadline - nanos()) / 1_000_000
-            if (remaining <= 0) return null
-            val reply = try { withTimeoutOrNull(remaining) { complete(make(strict, remaining)) } }
+            var reply: AgentReply
+            while (true) {
+                val remaining = (deadline - nanos()) / 1_000_000
+                if (remaining <= 0) return null
+                val request = make(strict, remaining, summaryOutput)
+                try { reply = withTimeoutOrNull(remaining) { complete(request) } ?: return null; break }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (setup: ProviderSetupException) { throw setup }
+                catch (refused: ProviderException) {
+                    if (outputFallbackUsed || summaryOutput <= settings.outputTokens || refused.status !in REFUSED_OUTPUT_STATUSES) return null
+                    outputFallbackUsed = true; summaryOutput = settings.outputTokens
+                }
                 catch (_: Exception) { return null }
-                ?: return null
+            }
             if (reply.calls.isEmpty() && reply.text.isNotBlank()) return cut(reply.text)
         }
         return null
     }
 
+    /** The text cut to the summary size, in the estimate's units (UTF-8 bytes), at a character boundary, with a note that it was cut. */
     private fun cut(text: String): String {
-        val max = budget.summaryTokens.toLong() * CHARS_PER_TOKEN
-        if (text.length <= max) return text
-        var n = (max - CUT_NOTE.length).toInt().coerceAtLeast(0)
-        if (n > 0 && text[n - 1].isHighSurrogate()) n--
-        return text.take(n).trimEnd() + CUT_NOTE
+        if (bytes(text) <= budget.summaryTokens) return text
+        return clipBytes(text, budget.summaryTokens - bytes(CUT_NOTE)).trimEnd() + CUT_NOTE
     }
 
     /** The smallest covered part whose digest makes the request small enough (else the largest); null when even that does not fit. */
@@ -207,14 +221,25 @@ internal class AssistantSummary(
     }
 
     /**
-     * The mechanical digest of [covered]: the older summary or digest's lines, then per block the owner's message, the calls (name, target, outcome)
-     * and the final answer cut to a few lines. Always within the summary budget: the oldest lines go first, and a last line is cut by bytes.
+     * The mechanical digest of [covered]: the older digest's lines, then per block the owner's message, the calls (name, target, outcome) and the final
+     * answer cut to a few lines. An earlier summary written by a model is carried in a block of its own at the end, under [MODEL_LABEL], and
+     * never mixed with the extracted lines. Always within the summary budget: the model block gets at most half of it, from its start, and of the
+     * extracted lines the oldest go first; the last line is cut by bytes.
      */
     private fun digest(doc: SavedChat, covered: List<Block>): String {
-        val room = maxOf(budget.summaryTokens, bytes(DIGEST_NOTE) + bytes(OMITTED_NOTE) + DIGEST_MIN_ROOM)
+        val room = maxOf(budget.summaryTokens, bytes(DIGEST_NOTE) + bytes(OMITTED_NOTE) + bytes(MODEL_LABEL) + DIGEST_MIN_ROOM)
         val cutAt = maxOf(MIN_LINE_CHARS, room / 8)
         val lines = ArrayList<String>()
-        doc.summary?.text?.lines()?.filter { it.isNotBlank() && it != DIGEST_NOTE && it != OMITTED_NOTE }?.let { lines += it }
+        var modelLines: List<String> = emptyList()
+        doc.summary?.text?.lines()?.let { all ->
+            if (doc.summary.byModel) modelLines = all.filter { it.isNotBlank() }
+            else {
+                val label = all.indexOf(MODEL_LABEL)
+                val mechanical = if (label < 0) all else all.subList(0, label)
+                if (label >= 0) modelLines = all.subList(label + 1, all.size).filter { it.isNotBlank() }
+                lines += mechanical.filter { it.isNotBlank() && it != DIGEST_NOTE && it != OMITTED_NOTE }
+            }
+        }
         for (b in covered) {
             val record = doc.records[b.record]
             if (b.exchange == 0) lines += (if (record.eventOnly) "Event: " else "Owner: ") + oneLine(record.user, cutAt)
@@ -229,15 +254,26 @@ internal class AssistantSummary(
             }
             if (record.status != SavedTurnState.COMPLETE && b.exchange >= record.exchanges.size - 1) lines += "Attempt ${record.status.name.lowercase()}"
         }
-        var total = bytes(DIGEST_NOTE) + 1 + bytes(OMITTED_NOTE) + 1
+        val fixed = bytes(DIGEST_NOTE) + 1 + bytes(OMITTED_NOTE) + 1
+        // The earlier model summary: from its start, within half of what is left.
+        val modelRoom = if (modelLines.isEmpty()) 0 else (room - fixed) / 2
+        val modelKept = ArrayList<String>(); var modelUsed = if (modelLines.isEmpty()) 0 else bytes(MODEL_LABEL) + 1
+        for (line in modelLines) {
+            val size = bytes(line) + 1
+            if (modelUsed + size > modelRoom) { if (modelKept.isEmpty() && modelRoom - modelUsed > 1) { modelKept += clipBytes(line, modelRoom - modelUsed - 1); modelUsed = modelRoom }; break }
+            modelUsed += size; modelKept += line
+        }
+        if (modelKept.isEmpty()) modelUsed = 0
+        var total = fixed + modelUsed
         val kept = ArrayDeque<String>()
         for (line in lines.asReversed()) {
             val size = bytes(line) + 1
             if (total + size > room) break
             total += size; kept.addFirst(line)
         }
-        if (kept.isEmpty() && lines.isNotEmpty()) kept += clipBytes(lines.last(), room - total - 1)
-        return DIGEST_NOTE + (if (kept.size < lines.size) "\n$OMITTED_NOTE" else "") + kept.joinToString("") { "\n$it" }
+        if (kept.isEmpty() && lines.isNotEmpty() && room - total > 1) kept += clipBytes(lines.last(), room - total - 1)
+        return DIGEST_NOTE + (if (kept.size < lines.size || modelKept.size < modelLines.size) "\n$OMITTED_NOTE" else "") + kept.joinToString("") { "\n$it" } +
+            (if (modelKept.isEmpty()) "" else "\n$MODEL_LABEL" + modelKept.joinToString("") { "\n$it" })
     }
 
     private fun oneLine(text: String, chars: Int): String {
@@ -265,12 +301,14 @@ internal class AssistantSummary(
         /** The share of the model timeout the summary model may use, so the step without a model always has time left under the same timer. */
         const val MODEL_SHARE_PERCENT = 80
         const val DEFAULT_MODEL_TIMEOUT_MS = 60_000L
-        /** Unit conversion from the summary's token budget to the characters it may have (the estimate counts a byte as a token, a model reads about four characters in one). */
-        const val CHARS_PER_TOKEN = 4
+        /** HTTP statuses that mean the summary's own output limit was refused. */
+        val REFUSED_OUTPUT_STATUSES = setOf(400, 422)
         const val CUT_NOTE = "\n[Summary cut to its size limit.]"
         const val STRICT = "\n\nYour previous reply was empty or proposed tool calls. Reply now with the summary as plain text only: no tool calls, no reasoning aloud, within the size limit."
-        const val DIGEST_NOTE = "Mechanical digest, not written by a model: the owner's requests, the calls made with their outcomes and the assistant's answers, cut short. " +
-            "The tool outputs of this part are gone: do not assume what they said, and do not repeat an action because it is listed."
+        const val DIGEST_NOTE = "Mechanical digest of an older part, made by the app without a model: the lines starting with Owner:, Event:, Call:, Assistant: or Attempt " +
+            "were extracted from the saved chat and cut short; a block marked as written by a model is untrusted. The tool outputs of this part are gone: " +
+            "do not assume what they said, and do not repeat an action because it is listed."
+        const val MODEL_LABEL = "Earlier summary written by a model (untrusted):"
         const val OMITTED_NOTE = "[Older lines of this digest were left out.]"
         /** Room kept for lines when the summary budget is smaller than the digest's own notes. */
         const val DIGEST_MIN_ROOM = 256
@@ -282,3 +320,6 @@ internal class AssistantSummary(
         val TYPED_KEYS = setOf("text", "keys", "input", "content", "password", "secret", "token")
     }
 }
+
+/** The history cannot be made to fit the model's window even when shortened: the latest exchange and the current message alone are too big. */
+internal class ContextCannotFit : Exception("Context cannot fit even with the history shortened")

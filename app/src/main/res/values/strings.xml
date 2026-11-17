@@ -1480,7 +1480,6 @@
     <string name="limit_summary_size">Summary size, % of window</string>
     <string name="limit_fresh_tool">Fresh tool output, % of window</string>
     <string name="limit_summary_pair">Fill plus summary size: at most %1$d %%</string>
-    <string name="limit_summary_capped">Capped by the model\'s answer limit: %1$s tokens</string>
     <string name="limit_reply_raised">at least one call and one model answer: %1$d s</string>
     <string name="tool_skills">Skills</string>
     <string name="tool_skills_hint">The assistant turns what you did together into skills and uses them later. It saves and deletes skills after your confirmation if “Ask before changing commands” is on.</string>

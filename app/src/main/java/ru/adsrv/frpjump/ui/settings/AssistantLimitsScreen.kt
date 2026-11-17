@@ -47,8 +47,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.assistant.AssistantProviderSettings
-import ru.adsrv.frpjump.assistant.ContextBudget
 import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.settings.LIMITS
 import ru.adsrv.frpjump.settings.LimitGroup
@@ -64,7 +62,7 @@ internal fun AssistantLimitsEntry(onLimits: () -> Unit) {
 
 /** Settings › Assistant › Limits: each limit is a row "label  −  value  +" over its range, saved at once; a button is off at its end of the range. */
 @Composable
-internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (AssistantLimits) -> Unit, onBack: () -> Unit, provider: AssistantProviderSettings? = null) {
+internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (AssistantLimits) -> Unit, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(AppTheme.colors.ground).statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -88,10 +86,7 @@ internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (Assistant
                         else -> spec.range
                     }
                     val pair = if (range.last < spec.range.last) stringResource(R.string.limit_summary_pair, AssistantLimits.SUMMARY_PAIR_MAX) else null
-                    // The summary is never bigger than the model's answer limit (Settings › Assistant provider): the row says when that is what limits it.
-                    val capped = if (spec.key == "summary_size_percent" && provider != null) ContextBudget(provider.contextTokens, provider.outputTokens, limits).takeIf { it.summaryCapped }
-                        ?.let { stringResource(R.string.limit_summary_capped, limitNumber(it.summaryTokens)) } else null
-                    val hint = listOfNotNull(raised, pair, capped).joinToString("\n").ifEmpty { null }
+                    val hint = listOfNotNull(raised, pair).joinToString("\n").ifEmpty { null }
                     LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), effective, range, spec.step, hint) { onChange(spec.set(limits, it)) }
                 }
             }
