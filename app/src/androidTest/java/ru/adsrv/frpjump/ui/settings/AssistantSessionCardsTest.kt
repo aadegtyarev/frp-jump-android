@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -74,7 +77,9 @@ class AssistantSessionCardsTest {
     @Test fun anAssistantRowInSessionsOffersOpenAndCloseAndSaysDetachedWhenNotAttached() {
         val log = ArrayList<String>()
         compose.setContent { FrpJumpTheme { AssistantLine(AssistantRow(9, "pi@synthetic-device", null), onOpen = { log += "open" }, onClose = { log += "close" }) } }
-        compose.onNodeWithTag("sessions_assistant_9").assertIsDisplayed().assertTextContains(text(R.string.terminal_state_detached), substring = true)
+        compose.onNodeWithTag("sessions_assistant_9").assertIsDisplayed()
+        // The row is a container: its state is a child line.
+        compose.onNode(hasAnyAncestor(hasTestTag("sessions_assistant_9")) and hasText(text(R.string.terminal_state_detached), substring = true)).assertIsDisplayed()
         compose.onNodeWithTag("sessions_assistant_open_9").assertTextEquals(text(R.string.sessions_assistant_open)).performClick()
         compose.onNodeWithTag("sessions_assistant_close_9").assertTextEquals(text(R.string.sessions_assistant_close)).performClick()
         compose.runOnIdle { assertTrue(log.toString(), log == listOf("open", "close")) }
