@@ -1,6 +1,6 @@
 # Assistant "For this connection": a persistent per-connection permission (stage E3)
 
-Status: draft for operator approval (2026-11-18); no implementation started. Base: `origin/main` = `05aecbc` (0.3.90 plus E1, #293).
+Status: approved; open questions Q1-Q6 decided under operator delegation (2026-11-15), see Decisions; implementation in progress. Base: `origin/main` = `05aecbc` (0.3.90 plus E1, #293).
 
 ## Goal and approval basis
 
@@ -25,11 +25,11 @@ User-visible result:
 ## Non-goals
 
 - No group switches (E2), no `RAW_TCP` class, no `tcp_exchange`, no new tool, no new class: only `CONNECTION_CHANGE` can be remembered.
-- No sheet "Assistant permissions", no "⋮" item, no list in Tools (see Open question Q4): one place, the connection card.
+- No sheet "Assistant permissions", no "⋮" item, no list in Tools (Decision Q4): one place, the connection card.
 - No change to Allow once, Decline, Always (its second confirmation and the app-wide `global` switch), Stop, the 5-minute wait, event waits,
   `ConfirmationTexts`, tool results or `skill.md`: the model is never told about grants.
 - No change to "For session" (E1): its lifetime, fingerprint, lock rule and in-memory storage stay as they are.
-- `assistant_confirmations.global` and its tool set are not touched (Open question Q2).
+- `assistant_confirmations.global` and its tool set are not touched (Decision Q2).
 
 ## Affected surfaces (legacy paths, normative until updated at completion)
 
@@ -112,7 +112,7 @@ E1 ends every session grant when the app locks or would lock the moment the owne
 interval has run out, read at every use), NO turn, wait- or event-triggered ones included, uses ANY grant; a persistent record is not deleted
 by the lock (it is an explicit long-term choice and would otherwise die at every cold start, when the lock engages), it simply asks, and the card
 waits behind the lock with the 5-minute clock running. With the app lock off nothing changes. Recording is refused while locked. This is read
-as E1 reads it and conflicts with B10 of R27 (see Open question Q1).
+as E1 reads it and replaces B10 of R27 (Decision Q1).
 
 ### Storage
 
@@ -174,7 +174,7 @@ rememberable (TCP).
 
 A call that ran without a question shows a muted suffix on its line in "Tool calls and results" (inside the grouped row; the counter is
 unchanged): "no question: for this connection", "no question: for the tunnel's lifetime" or "no question: confirmations are off". Memory only:
-calls made while the conversation is open; a conversation restored from the saved history shows none (Open question Q5).
+calls made while the conversation is open; a conversation restored from the saved history shows none (Decision Q5).
 
 ## Old -> new -> basis (security, assistant permissions, stored data)
 
@@ -186,44 +186,36 @@ calls made while the conversation is open; a conversation restored from the save
 | 4 | Malformed value reads as ask (`:895-896`) | retained and extended: any invalid, unknown, incomplete or unverifiable record asks; Unknown fingerprint asks and keeps, Mismatch and Gone delete | retained |
 | 5 | Grant ends on an edit, delete or forget of the connection or profile, or a replaced enrollment (`:846-848`) | retained for the persistent grant; enrollment identity is a hash of the public cert data (not the in-memory counter); delete ends at commit, Undo cancelled keeps it; hidden for Undo it does not act | D7, D10 |
 | 6 | Profile name and colour are not in the fingerprint (`:848`) | retained | D10, B14b |
-| 7 | Assistant off ends grants (`:849`) | retained: records removed in the write that turns it off | retained (see Q3) |
-| 8 | A tool's switch off ends it for that tool for good (`:850-852`) | retained: narrowed in the same write, never revived, also after a restart | retained (see Q3) |
+| 7 | Assistant off ends grants (`:849`) | retained: records removed in the write that turns it off; switching it on again brings nothing back | Q3: stricter than B11 (sleeping), same as E1 |
+| 8 | A tool's switch off ends it for that tool for good (`:850-852`) | retained: narrowed in the same write, never revived, also after a restart | Q3: stricter than B11 (sleeping), same as E1 |
 | 9 | History clear ends grants (`:853`) | session: retained; persistent: not ended (it is not tied to a chat) | D6, plan 3.1 |
 | 10 | Tunnel close, Undo-hide end a grant (`:842-845`) | session: retained; persistent: not ended | D6 |
-| 11 | The lock ends every grant, none is used after it (`:854-856`) | session: retained; persistent: kept but unused while locked; no turn uses any grant while locked | proposal, Q1 |
+| 11 | The lock ends every grant, none is used after it (`:854-856`) | session: retained; persistent: kept but unused while locked; no turn uses any grant while locked (the same rule as E1's lock interval) | Q1 = A, stricter than B10 |
 | 12 | Race rules: bound before the question, answer acts as Allow once (`:857-860`) | retained for CONNECTION; adds: a failed save is Allow once plus the existing note | retained, stricter |
 | 13 | Grantable tools: `ssh_command` and `terminal_input` only (`:968`, `:1298`) | retained: the record's tools are the card's offered set in effect, never wider; a later tool is not covered | retained |
 | 14 | Always: second confirmation, app-wide `global` (`:862-865`) | unchanged; moved to the last position | retained |
 | 15 | Rename, colour, transient reconnect, leaving the chat end nothing (`:857`) | retained; a restart and a tunnel close also end nothing (persistent only) | D6, D10 |
 | 16 | Not backed up, not transferred (`contract.md:1144`) | retained, guard test extended to `settings.json`'s domain | retained |
-| 17 | The card line has no sheet and no list elsewhere (`contract.md:283-289`) | retained: same line, new text for the persistent case; Forget clears both lifetimes | plan 3.5, minimal UI |
+| 17 | The card line has no sheet and no list elsewhere (`contract.md:283-289`) | retained: same line, new text for the persistent case; Forget clears both lifetimes; no sheet, no "⋮" item, no list in Tools | Q4, plan 3.5, minimal UI |
 | 18 | Deleting a connection removes its settings; forgetting a profile removes its connections (`contract.md:1015-1017`) | also removes its grant records (before the rest, so a failure leaves none behind) | D7, D10 |
 | 19 | Read-only calls and `confirms = false` tools never ask (`:809`) | unchanged; the class never decides by itself | retained |
 | 20 | Undo cannot apply to a remote change; the owner can turn the question off app-wide (`contract.md:70`) | unchanged; the owner can now also turn it off for one connection | D6 |
 
-## Open questions (not decided here)
+## Decisions (operator delegation, 2026-11-15)
 
-- **Q1. App lock and a persistent grant (row 11).** R27/B10 says covered calls, "For this connection" included, keep running while the app is
-  locked. E1 already chose the stricter reading for session grants (review fix, `agent-contract.md:854`): all grants end at the lock and no turn
-  uses one. Options: (A) persistent is kept but unused while locked, nothing runs covered; (B) persistent also deleted by the lock (dies at each
-  cold start: defeats D6); (C) persistent works while locked (B10 as written). Recommendation: A, the proposal above: it never weakens E1 and
-  keeps D6. A background wait-triggered turn on a locked phone then asks and times out; confirm that is acceptable.
-- **Q2. Snapshot of `global = off` (deferred from E1).** Today Always silently covers every asking tool (`ssh_command`, `terminal_input`,
-  `terminal_close`, `skill_save`, `skill_delete`, `stop_tunnel`). Options: (a) E3 leaves `global` as it is; (b) write the asking set as `tools`
-  next to `global=off` now and read an old `off` as that set (no re-ask now, a re-ask whenever an asking tool is added); (c) plan 3.4's baseline
-  `["ssh_command"]` (re-asks owners who chose Always for the rest: a behaviour change nobody approved). Recommendation: (a). E3 adds no asking tool,
-  so nothing widens; (b) needs its own migration matrix and approval, and the first stage that adds an asking tool must decide it. Never (c).
-- **Q3. Assistant off and a tool's switch off: end (this contract) or sleep (plan B11, accepted in R27).** Ending is stricter, matches E1's rows
-  and the per-tool switches of R63, and needs no "sleeping" state or UI. Sleeping keeps the owner's earlier choices after a switch is flipped
-  back. Recommendation: end; confirm it replaces B11 for the persistent grant.
-- **Q4. Where permissions are seen and forgotten.** Plan 3.5 proposes the card line, a sheet "Assistant permissions", a "⋮" item and a list in
-  Tools. Recommendation: the card line with Forget only, for the reasons under "The connection card line"; add the sheet and the Tools list with
-  the second rememberable class. Confirm the departure.
-- **Q5. Persist the receipt reason.** Options: (a) memory only (this contract: a restored conversation shows none, no change of the history format);
-  (b) an optional field in the saved turn (the reason stays for audit; an older build may not read such a file, as with `events` and `notes`).
-  Recommendation: (a) now; (b) when the owner asks to audit old calls.
-- **Q6. A notice when an edit resets a grant.** The line disappearing is the only signal today. Recommendation: none in E3 (E1 gives none for
-  session grants); add one line on Save if the owner is surprised by the new question.
+The six questions the draft left open are decided as recommended, with these exact outcomes:
+
+- **Q1 = A. App lock and a persistent grant (row 11).** The persistent record is kept across the lock (it is an explicit long-term choice and would
+  otherwise die at every cold start), but while the app is locked by the interval NO turn uses ANY grant, persistent or session: the same rule as
+  E1's lock interval, stricter than B10 of R27. A background wait-triggered turn on a locked phone asks and times out.
+- **Q2 = (a). `global = off`.** E3 does not touch `assistant_confirmations.global`, its tool set or its reading of an old `off`. E3 adds no asking
+  tool, so nothing widens; the first stage that adds an asking tool must decide the snapshot. Never plan 3.4's baseline `["ssh_command"]`.
+- **Q3. Assistant off and a tool's switch off REMOVE the persistent record** (it is not revived when switched back on). Basis: stricter than B11
+  (sleeping); the same as E1's session grants and the per-tool switches of R63; no "sleeping" state or UI.
+- **Q4. One place to see and forget:** the line on the connection card ("Assistant: no questions, remembered <date>" / «Помощник: без вопроса,
+  запомнено <дата>») with Forget and its TalkBack label. No sheet, no "⋮" item, no list in Tools; add them when a second class becomes rememberable.
+- **Q5. The receipt reason is kept in memory only**; the history format does not change.
+- **Q6. No notification when an edit resets a record**; the line disappearing is the signal (E1 gives none for session grants either).
 
 ## Texts (RU / EN), old -> new
 
@@ -234,7 +226,7 @@ calls made while the conversation is open; a conversation restored from the save
 | new `confirm_connection_hint` | none | "Commands in this connection, remembered until the connection is edited, even if text the assistant read asks for them. Forget it on the connection's card." / «Команды в этом подключении: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.» |
 | new `confirm_connection_hint_input` | none | "Typing into tabs of this connection, ..." / «Ввод во вкладки этого подключения: ...» (same tail) |
 | new `confirm_connection_hint_both` | none | "Commands and typing into tabs of this connection, ..." / «Команды и ввод во вкладки этого подключения: ...» (same tail) |
-| new `connection_assistant_remembered` | none | "Assistant: no questions, remembered %1$s" / «Помощник: без вопросов, запомнено %1$s» (date, e.g. "Nov 13" / «13 ноя») |
+| new `connection_assistant_remembered` | none | "Assistant: no questions, remembered %1$s" / «Помощник: без вопроса, запомнено %1$s» (date, e.g. "Nov 13" / «13 ноя») |
 | new receipt suffixes | none | "no question: for this connection" / «без вопроса: для этого подключения»; "no question: for the tunnel's lifetime" / «без вопроса: на время туннеля»; "no question: confirmations are off" / «без вопроса: подтверждения выключены» |
 | `connection_assistant_grant` (session-only line) | "Assistant: no questions, for the tunnel's lifetime" | unchanged |
 | `connection_assistant_forget`, `_description`, `confirm_not_saved`, `confirm_session*`, `always_dialog_*` | as is | unchanged |
