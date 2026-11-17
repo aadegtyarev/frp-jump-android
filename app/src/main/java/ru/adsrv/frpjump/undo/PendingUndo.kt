@@ -52,6 +52,14 @@ class PendingUndo(
     /** Keys of the actions waiting or being done: what the screens hide. Any thread. */
     val hidden: StateFlow<Set<String>> = _hidden
 
+    private val hides = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * How many times [key] was hidden since the process began. It grows BEFORE the key appears in [hidden], so whoever binds something to a key
+     * can tell "hidden and brought back by Undo" from "never hidden" without watching [hidden] at the right moment.
+     */
+    fun hideCount(key: String): Long = hides[key] ?: 0L
+
     /** How many actions the notice counts now. */
     val count: Int @Synchronized get() = waiting.size
 
@@ -65,6 +73,7 @@ class PendingUndo(
     fun enqueue(key: String, commit: suspend () -> Unit, undo: () -> Unit = {}, kind: UndoKind = UndoKind.DELETED) {
         if (key in _hidden.value) return
         waiting += Pending(key, kind, commit, undo)
+        hides.merge(key, 1L, Long::plus)
         _hidden.update { it + key }
         // Until the notice for it shows, only the cap runs; then its full time.
         restartTimer(capMs)

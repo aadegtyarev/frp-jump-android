@@ -226,4 +226,16 @@ class PendingUndoTest {
         delete("snippet:b"); pending.undoAll()
         assertFalse(pending.commit("snippet:b")); assertTrue(done.isEmpty())
     }
+
+    @Test fun `the hide count of a key grows when it is hidden, before it shows as hidden, and Undo does not take it back`() {
+        assertEquals(0L, pending.hideCount("tunnel:x"))
+        pending.enqueue("tunnel:x", commit = {})
+        assertEquals(1L, pending.hideCount("tunnel:x")); assertTrue("tunnel:x" in pending.hidden.value)
+        pending.enqueue("tunnel:x", commit = {})
+        assertEquals("a key already hidden is ignored", 1L, pending.hideCount("tunnel:x"))
+        pending.undoAll()
+        assertFalse("tunnel:x" in pending.hidden.value); assertEquals("Undo keeps the count: it was hidden", 1L, pending.hideCount("tunnel:x"))
+        pending.enqueue("tunnel:x", commit = {})
+        assertEquals(2L, pending.hideCount("tunnel:x")); assertEquals(0L, pending.hideCount("tunnel:y"))
+    }
 }

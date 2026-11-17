@@ -104,7 +104,7 @@ class ConfirmationGateTest {
     }
 
     private val key get() = GrantKey(ActionClass.CONNECTION_CHANGE, target)
-    private fun Rig.grant(tool: AssistantToolId = AssistantToolId.SSH_COMMAND) = support.grants.record(key, tool, support.grants.stamp(target)!!)
+    private fun Rig.grant(tool: AssistantToolId = AssistantToolId.SSH_COMMAND) = support.grants.record(key, tool, support.grants.stamp(target)!!, support.grants.coverableBy(tool))
 
     @Test fun `a session grant waives the question only for the same connection and while its period and fingerprint hold`() = runBlocking {
         val rig = Rig(ConfirmationDecision.ONCE); val tool = described(); val c = call("ssh_command", *withCommand)
@@ -153,7 +153,7 @@ class ConfirmationGateTest {
             val tool = Changing(id) { ChangeRequest(id, target, "x") }
             assertNull(id.name, rig.run(tool, call(id.wire, *withCommand)))
             assertTrue("${id.name}: an answer For session records nothing", rig.support.grants.snapshot().isEmpty())
-            assertFalse(rig.support.grants.record(GrantKey(id.actionClass, target), id, rig.support.grants.stamp(target)!!))
+            assertFalse(rig.support.grants.record(GrantKey(id.actionClass, target), id, rig.support.grants.stamp(target)!!, rig.support.grants.coverableBy(id)))
             // Even with a grant of the class held (by ssh_command), it still asks.
             assertTrue(rig.grant())
             assertNull(rig.run(tool, call(id.wire, *withCommand)))
@@ -162,6 +162,17 @@ class ConfirmationGateTest {
         // A key of another class than the tool's covers nothing.
         val rig = Rig(ConfirmationDecision.ONCE); assertTrue(rig.grant())
         assertFalse(rig.support.grants.covers(AssistantToolId.SSH_COMMAND, GrantKey(ActionClass.APP_CHANGE, target)))
+    }
+
+    @Test fun `typing turned on while the card is open is not in the grant the owner gave`() = runBlocking {
+        val world = FakeGrantWorld().also { it.off += AssistantToolId.TERMINAL_INPUT }
+        val grants = SessionGrants(world)
+        val support = ConfirmationSupport(policy = { ConfirmationPolicy() }, persistOff = { true }, grants = grants)
+        val shown = ArrayList<Set<AssistantToolId>>()
+        val result = authorizeCall(support, mapOf("ssh_command" to described()), call("ssh_command", *withCommand),
+            wait = { request, _ -> shown += request.sessionTools; world.off.clear(); ConfirmationDecision.SESSION }, onNotSaved = {}, io = Dispatchers.Unconfined)
+        assertNull(result); assertEquals("the card said commands only", listOf(setOf(AssistantToolId.SSH_COMMAND)), shown)
+        assertTrue(grants.covers(AssistantToolId.SSH_COMMAND, key)); assertFalse(grants.covers(AssistantToolId.TERMINAL_INPUT, key))
     }
 
     @Test fun `no grant is recorded when the period ends or the connection changes while the owner is asked and the call still obeys the answer`() = runBlocking {

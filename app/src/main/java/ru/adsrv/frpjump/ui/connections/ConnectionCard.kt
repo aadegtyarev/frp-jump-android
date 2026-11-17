@@ -132,6 +132,16 @@ fun ConnectionCard(
                                     SessionsPill(sessions)
                                 }
                             }
+                            if (assistantGrant) {
+                                // Muted, wraps at large font; Forget keeps its 48 dp target and is read with the connection's name.
+                                val forget = stringResource(R.string.connection_assistant_forget_description, rowName(row))
+                                Row(Modifier.testTag("connection_assistant_grant"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = onForgetAssistant, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
+                                        Text(stringResource(R.string.connection_assistant_forget))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -166,16 +176,6 @@ fun ConnectionCard(
                     MainButton(mainActionLabel(row, sessions)) { actions.main(row) }
                 } else {
                     ConnectButton(row, enabled = !unreachable) { actions.connect(row) }
-                }
-            }
-            if (assistantGrant) {
-                // Muted, wraps at large font; Forget keeps its 48 dp target and is read with the connection's name.
-                val forget = stringResource(R.string.connection_assistant_forget_description, rowName(row))
-                Row(Modifier.testTag("connection_assistant_grant"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onForgetAssistant, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
-                        Text(stringResource(R.string.connection_assistant_forget))
-                    }
                 }
             }
             if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {

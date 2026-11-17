@@ -12,11 +12,14 @@ Consumers: the assistant tools `ssh_command`, `profile_information` and `start_t
 
 ## Interface
 
-- `Operation<I, O>`: `name`, `effect`, `target(input)` (the F8 `GrantTarget` of a changing operation, null when none; `ops` therefore depends
+- `Operation<I, O>`: `name`, `effect`, `actionClass`, `target(input)` (the F8 `GrantTarget` of a changing operation, null when none; `ops` therefore depends
   on `settings.GrantTarget`) and
   `suspend invoke(input): OpResult<O>`.
 - `Effect` (`ops/Effect.kt`): `READ_LOCAL`, `READ_REMOTE`, `CHANGE_LOCAL`, `CHANGE_REMOTE`. An operation that changes something is
   `CHANGE_*`. For an assistant tool the effect equals `AssistantToolId.effect`; a test pins this for every operation tool.
+- `ActionClass` (`ops/ActionClass.kt`): `PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, `APP_READ`, `APP_CHANGE`; every operation declares one (it cannot
+  be built without) and an assistant tool cannot be built when its operation's class differs from `AssistantToolId.actionClass`, like the effect pin. The class
+  never decides by itself whether a call asks and never extends a For session grant to a tool that is not `grantable`.
 - `OpResult<O>`:
   - `Done(value)`: the operation ran to its end. A command that exited nonzero is `Done`: it ran.
   - `Refused(reason: OpRefusal)`: nothing was started.
@@ -121,7 +124,7 @@ The screens word it (`keep_no_network`). Fire-and-forget at the UI, as before. T
 
 - **Assistant (`OperationTool`).** Keeps the `AppTool` pipeline: admission first, then strict parsing, then the operation; any exception
   other than cancellation becomes one fixed text and never its message. The tool's effect is the operation's effect, and a tool cannot be built when it
-  differs from the catalog's (the confirmation reads both, so a mismatch would skip the question); a call counts as changing when either says
+  differs from the catalog's, and likewise its action class (the confirmation reads both, so a mismatch would skip the question); a call counts as changing when either says
   so. The confirmation asks by that effect and by the operation's target, and a changing call with nothing to show the owner (no command text)
   cannot be described and is refused. The adapter owns the model
   wording of the output and of each refusal and failure. Every result other than a clean exit is reported to the model as failed, with

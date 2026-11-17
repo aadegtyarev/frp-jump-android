@@ -40,7 +40,7 @@ class ConfirmationPolicyTest {
         // A changing tool that is catalogued as not confirming never asks, whatever its class.
         for (quiet in AssistantToolId.entries.filter { it.effect.changes && !it.confirms }) assertFalse(quiet.name, mustAsk(quiet, GrantKey(quiet.actionClass, GrantTarget("p", "c")), ask, grants))
         assertFalse(mustAsk(ssh, key, off, grants))
-        assertTrue(grants.record(key, ssh, grants.stamp(key.target)!!))
+        assertTrue(grants.record(key, ssh, grants.stamp(key.target)!!, grants.coverableBy(ssh)))
         assertFalse(mustAsk(ssh, key, ask, grants))
         assertTrue("another connection still asks", mustAsk(ssh, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "other")), ask, grants))
         assertTrue("another profile still asks", mustAsk(ssh, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("q", "c")), ask, grants))
@@ -51,7 +51,7 @@ class ConfirmationPolicyTest {
         for (tool in AssistantToolId.entries) {
             val target = GrantTarget("p", "c"); val k = GrantKey(tool.actionClass, target)
             val none = grants()
-            val held = grants().also { g -> g.record(GrantKey(ActionClass.CONNECTION_CHANGE, target), AssistantToolId.SSH_COMMAND, g.stamp(target)!!) }
+            val held = grants().also { g -> g.record(GrantKey(ActionClass.CONNECTION_CHANGE, target), AssistantToolId.SSH_COMMAND, g.stamp(target)!!, g.coverableBy(AssistantToolId.SSH_COMMAND)) }
             val asksToday = tool.effect.changes && tool.confirms
             assertEquals("${tool.name}: no grant, ask", asksToday, mustAsk(tool, k, ask, none))
             assertFalse("${tool.name}: global off", mustAsk(tool, k, off, none)); assertFalse("${tool.name}: global off with a grant", mustAsk(tool, k, off, held))

@@ -13,10 +13,10 @@ import ru.adsrv.frpjump.assistant.AssistantToolId
  */
 interface GrantWorld {
     /**
-     * The id of the open period of the tunnel of [target]'s connection; null when it is not open (not planned, a Disconnect pending, hidden
-     * for Undo, or the connection is unknown). Never reused in the process.
+     * An opaque token of the open period of the tunnel of [target]'s connection (equal only for the same open tunnel never hidden for Undo since);
+     * null when it is not open (not planned, a Disconnect pending, hidden for Undo, or the connection is unknown). Never reused in the process.
      */
-    fun period(target: GrantTarget): Long?
+    fun period(target: GrantTarget): Any?
 
     /** Equal while nothing the owner can edit about the connection changed (profile name and colour excluded); null when it is gone. */
     fun fingerprint(target: GrantTarget): Any?
@@ -30,6 +30,15 @@ interface GrantWorld {
     /** Whether the tool is in effect now (its switch, and for typing the terminal tabs too). */
     fun inEffect(tool: AssistantToolId): Boolean
 
+    /** How many times the tool went from in effect to out of effect: a switch-off that a later switch-on does not undo. */
+    fun toolOffs(tool: AssistantToolId): Long
+
+    /**
+     * Whether the app is locked or would lock the moment the owner returns (the lock's interval has run out while the app is out of sight);
+     * false with the app lock off. Grants do not live while this holds, and it is read at every use, not only when it changes.
+     */
+    fun locked(): Boolean
+
     /** A world with nothing open: no grant can be recorded in it. */
     object None : GrantWorld {
         override fun period(target: GrantTarget): Long? = null
@@ -37,6 +46,8 @@ interface GrantWorld {
         override fun enabled() = false
         override fun disableVersion() = 0L
         override fun inEffect(tool: AssistantToolId) = false
+        override fun toolOffs(tool: AssistantToolId) = 0L
+        override fun locked() = false
     }
 }
 
@@ -44,7 +55,9 @@ interface GrantWorld {
  * What a grant is born with, captured BEFORE the owner is asked, so an edit, a close or a switch-off during the wait makes the grant born stale.
  * Not a data class: its fields are never printed.
  */
-class GrantStamp internal constructor(internal val period: Long, internal val fingerprint: Any, internal val disableVersion: Long)
+class GrantStamp internal constructor(internal val period: Any, internal val fingerprint: Any, internal val disableVersion: Long,
+    /** The switch-off count of each grantable tool when the stamp was taken: a tool switched off since (and on again) is not covered. */
+    internal val toolOffs: Map<AssistantToolId, Long>)
 
 /**
  * "For session" grants, in memory only, one per app (not per conversation). A grant is (class, connection) with the open period of the connection's
@@ -64,10 +77,10 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
 
     /** The stamp to bind a grant for [target] to, or null when none can be given now (no open period, the connection is gone, the assistant is off). */
     fun stamp(target: GrantTarget): GrantStamp? {
-        if (!world.enabled()) return null
+        if (!world.enabled() || world.locked()) return null
         val period = world.period(target) ?: return null
         val fingerprint = world.fingerprint(target) ?: return null
-        return GrantStamp(period, fingerprint, world.disableVersion())
+        return GrantStamp(period, fingerprint, world.disableVersion(), AssistantToolId.entries.filter { it.grantable }.associateWith { world.toolOffs(it) })
     }
 
     /** Whether [tool] is in effect now. */
@@ -84,8 +97,8 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
         val entry = entries[key] ?: return false
         if (!current(key.target, entry.stamp)) { entries.remove(key); publish(); return false }
         if (tool !in entry.tools) return false
-        if (!world.inEffect(tool)) {
-            // Switched off: it leaves the grant for good; switching it on later does not bring it back.
+        if (!world.inEffect(tool) || !untouched(tool, entry.stamp)) {
+            // Switched off (now, or at any moment since, even if it is on again): it leaves the grant for good; switching it on later does not bring it back.
             narrow(key, entry, entry.tools - tool)
             return false
         }
@@ -93,13 +106,16 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
     }
 
     /**
-     * Records the owner's For session answer for [tool] on [key], bound to [stamp]. Only for a grantable tool that is in effect now, and only while
-     * the period and the fingerprint are still the stamp's (else nothing is recorded: the answer acts as Allow once). A repeated answer replaces the entry.
+     * Records the owner's For session answer for [tool] on [key], bound to [stamp]. [offered] is what the card said it covers (what [coverableBy]
+     * gave when the card was raised): the grant covers those of them that are still in effect and were not switched off since the stamp, never more
+     * than the owner saw. Only for a grantable tool among them, and only while the period and the fingerprint are still the stamp's (else nothing is
+     * recorded: the answer acts as Allow once). A repeated answer replaces the entry.
      */
-    fun record(key: GrantKey, tool: AssistantToolId, stamp: GrantStamp): Boolean = synchronized(entries) {
-        if (!tool.grantable || tool.actionClass != key.actionClass || !key.actionClass.grantable || !world.inEffect(tool)) return false
+    fun record(key: GrantKey, tool: AssistantToolId, stamp: GrantStamp, offered: Set<AssistantToolId>): Boolean = synchronized(entries) {
+        if (!tool.grantable || tool.actionClass != key.actionClass || !key.actionClass.grantable) return false
         if (!current(key.target, stamp)) return false
-        val tools = AssistantToolId.entries.filter { it.grantable && it.actionClass == key.actionClass && world.inEffect(it) }.toSet()
+        val tools = offered.filter { it.grantable && it.actionClass == key.actionClass && world.inEffect(it) && untouched(it, stamp) }.toSet()
+        if (tool !in tools) return false
         entries[key] = Entry(stamp, tools)
         publish()
         true
@@ -109,7 +125,7 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
     fun sweep() = synchronized(entries) {
         for ((key, entry) in entries.toList()) {
             if (!current(key.target, entry.stamp)) { entries.remove(key); continue }
-            val tools = entry.tools.filter { world.inEffect(it) }.toSet()
+            val tools = entry.tools.filter { world.inEffect(it) && untouched(it, entry.stamp) }.toSet()
             if (tools != entry.tools) narrow(key, entry, tools)
         }
         publish()
@@ -131,8 +147,11 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
         publish()
     }
 
+    /** The tool has not been switched off since the stamp was taken. */
+    private fun untouched(tool: AssistantToolId, stamp: GrantStamp): Boolean = world.toolOffs(tool) == stamp.toolOffs[tool]
+
     private fun current(target: GrantTarget, stamp: GrantStamp): Boolean =
-        world.enabled() && world.disableVersion() == stamp.disableVersion && world.period(target) == stamp.period && world.fingerprint(target) == stamp.fingerprint
+        world.enabled() && !world.locked() && world.disableVersion() == stamp.disableVersion && world.period(target) == stamp.period && world.fingerprint(target) == stamp.fingerprint
 
     private fun publish() { live.value = entries.keys.mapTo(HashSet()) { it.target } }
 }

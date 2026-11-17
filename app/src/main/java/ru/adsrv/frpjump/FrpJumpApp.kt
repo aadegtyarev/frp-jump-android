@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
-import ru.adsrv.frpjump.settings.assistantTools
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,7 +89,7 @@ class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
     val profileInformation by lazy { ru.adsrv.frpjump.profiles.ProfileInformation(profiles.state, pendingUndo.hidden) }
 
-    val sshTargets by lazy { ru.adsrv.frpjump.ssh.SshTargets(profiles.state, pendingUndo.hidden, sshEnv) }
+    val sshTargets by lazy { ru.adsrv.frpjump.ssh.SshTargets(profiles.state, pendingUndo.hidden, sshEnv, pendingUndo::hideCount) }
 
     /** The owner's open terminal tabs for the assistant; the same hidden set as the Sessions list. */
     val assistantTerminalTabs by lazy {
@@ -149,12 +148,7 @@ class FrpJumpApp : Application() {
      * connection's fingerprint, the assistant's off switch, the tools' switches, the app lock). Built on first use (the first chat, or a connection card).
      */
     val sessionGrants: ru.adsrv.frpjump.settings.SessionGrants by lazy {
-        ru.adsrv.frpjump.settings.SessionGrants(ru.adsrv.frpjump.assistant.AppGrantWorld(sshTargets, settings)).also { grants ->
-            ru.adsrv.frpjump.settings.SessionGrantCleaner(grants, appScope,
-                changes = kotlinx.coroutines.flow.merge(sshTargets.changes(), settings.assistantDisables,
-                    settings.settings.map { it.assistantEnabled to it.assistantTools() }.distinctUntilChanged()),
-                locked = lock.locked)
-        }
+        ru.adsrv.frpjump.assistant.appSessionGrants(sshTargets, settings, lock, appScope)
     }
 
     /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */

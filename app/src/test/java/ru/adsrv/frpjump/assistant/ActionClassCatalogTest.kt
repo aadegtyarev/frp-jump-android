@@ -50,8 +50,10 @@ class ActionClassCatalogTest {
         assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.TERMINAL_INPUT, AssistantToolId.TERMINAL_CLOSE, AssistantToolId.SKILL_SAVE,
             AssistantToolId.SKILL_DELETE, AssistantToolId.STOP_TUNNEL), asking.toSet())
         assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.TERMINAL_INPUT), AssistantToolId.entries.filter { it.grantable }.toSet())
-        // The class never decides by itself: no read tool asks, and every quiet changing tool is a class member that does not ask.
-        for (t in AssistantToolId.entries.filter { !it.effect.changes }) assertFalse(t.name, t.effect.changes && t.confirms)
+        // A read class holds exactly the tools whose effect reads; a changing class holds exactly the changing ones.
+        val readClasses = setOf(PUBLIC_READ, CONNECTION_READ, APP_READ)
+        for (t in AssistantToolId.entries) assertEquals("${t.name}: a read class iff it reads", !t.effect.changes, t.actionClass in readClasses)
+        // The class never decides by itself: every quiet changing tool is a class member that does not ask.
         assertEquals(setOf(AssistantToolId.TERMINAL_OPEN, AssistantToolId.START_TUNNEL, AssistantToolId.TERMINAL_RENAME, AssistantToolId.TERMINAL_SHOW, AssistantToolId.WAIT_FOR),
             AssistantToolId.entries.filter { it.effect.changes && !it.confirms }.toSet())
     }

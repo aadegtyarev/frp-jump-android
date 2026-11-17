@@ -46,7 +46,9 @@ internal suspend fun authorizeCall(
     val found = (tool.changeCheck(call.arguments) as? ChangeCheck.Change)?.request ?: return null
     if (support == null || !found.described) return refused
     // The card names the registered tool, not whatever identity a description claims.
-    val request = ChangeRequest(tool.id, found.target, found.command, typing = found.typing, stop = found.stop, close = found.close, skill = found.skill)
+    // What a For session answer on this card covers is fixed now, when the card is raised: the grant is never wider than what the owner saw.
+    val request = ChangeRequest(tool.id, found.target, found.command, typing = found.typing, stop = found.stop, close = found.close, skill = found.skill,
+        sessionTools = support.grants.coverableBy(tool.id))
     val key = request.target?.let { GrantKey(tool.id.actionClass, it) }
     // Bound to the tunnel's open period and the connection's fingerprint as they are BEFORE the question: an edit or a close during the wait makes the grant stale.
     val stamp = request.target?.let(support.grants::stamp)
@@ -55,7 +57,7 @@ internal suspend fun authorizeCall(
         ConfirmationDecision.ONCE -> null
         // A grant is not recorded (the answer acts as Allow once) for a tool that is not grantable or was switched off while the owner was being asked,
         // nor when the tunnel's period ended or the connection changed during the wait.
-        ConfirmationDecision.SESSION -> { if (key != null && stamp != null) support.grants.record(key, tool.id, stamp); null }
+        ConfirmationDecision.SESSION -> { if (key != null && stamp != null) support.grants.record(key, tool.id, stamp, request.sessionTools); null }
         ConfirmationDecision.ALWAYS -> {
             // The owner's choice stands even if Stop races this call; the call itself is stopped by the kernel's owner check.
             val saved = withContext(NonCancellable + io) { try { support.persistOff() } catch (_: Exception) { false } }

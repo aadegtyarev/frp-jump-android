@@ -108,15 +108,18 @@ private data class Core(
      * The id of each planned tunnel's open period, by [localPortKey] (see [TunnelManager.openPeriod]): assigned from one process-wide counter
      * when a key goes from not planned to planned, dropped when it leaves the plan or a Disconnect begins, never reused.
      */
-    val periods: Map<String, Long> = emptyMap(),
+    val periods: Map<String, Period> = emptyMap(),
 )
+
+/** One open period of a tunnel: its id and the grant it began with; another grant id under the same key is another period. */
+internal data class Period(val id: Long, val grantId: String)
 
 /** The next id of an open period of a tunnel; one counter for the whole process, so an id is never given twice. */
 private val periodCounter = java.util.concurrent.atomic.AtomicLong()
 
 /** [old] kept for the keys still planned, a new id for each key planned now that had none. */
-private fun renewPeriods(old: Map<String, Long>, planned: List<PlannedTunnel>): Map<String, Long> =
-    planned.map { it.key }.distinct().associateWith { old[it] ?: periodCounter.incrementAndGet() }
+private fun renewPeriods(old: Map<String, Period>, planned: List<PlannedTunnel>): Map<String, Period> =
+    planned.distinctBy { it.key }.associate { p -> p.key to (old[p.key]?.takeIf { it.grantId == p.grant.grantId } ?: Period(periodCounter.incrementAndGet(), p.grant.grantId)) }
 
 /**
  * One profile's agent loop, after the Linux agent's `poller.sync_once`:
@@ -252,17 +255,18 @@ class TunnelManager(
     /**
      * The id of the open period of the tunnel to [device]:[port], or null when it is not open: not planned, or a Disconnect is pending.
      * A new id starts when the tunnel goes from not planned to planned (a Connect), after a Disconnect began, and after a reset; a transient
-     * change (frpc reconnect, via-server/direct switch, local-port rebind, a new grant id or local port on restore) keeps the id. When the
-     * cases cannot be told apart the period must end (fail closed). Hiding for Undo is the caller's: this does not see it.
+     * change (frpc reconnect, via-server/direct switch, local-port rebind) keeps the id; a different grant id under the same key is another
+     * period (a case that cannot be told apart must end it, fail closed). Hiding for Undo is the caller's: this does not see it.
      */
     internal fun openPeriod(device: String, port: Int): Long? = core.value.let { c ->
         val key = localPortKey(device, port)
-        if (c.pending[key]?.kind == PendingOp.DISCONNECTING) null else c.periods[key]
+        // Only a key that is planned has an open period, whatever the map says.
+        if (c.pending[key]?.kind == PendingOp.DISCONNECTING || c.planned.none { it.key == key }) null else c.periods[key]?.id
     }
 
     /** Emits (distinct) whenever an open period starts or ends, for a cleaner that must not wait for a lookup. */
-    internal val periodChanges: kotlinx.coroutines.flow.Flow<Map<String, Long>> = core.map { c ->
-        c.periods.filterKeys { c.pending[it]?.kind != PendingOp.DISCONNECTING }
+    internal val periodChanges: kotlinx.coroutines.flow.Flow<Map<String, Period>> = core.map { c ->
+        c.periods.filterKeys { k -> c.pending[k]?.kind != PendingOp.DISCONNECTING && c.planned.any { it.key == k } }
     }.distinctUntilChanged()
 
     init {

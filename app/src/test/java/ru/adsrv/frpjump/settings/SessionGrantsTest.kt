@@ -21,7 +21,7 @@ class SessionGrantsTest {
     private val world = FakeGrantWorld()
     private val grants = SessionGrants(world)
     private fun key(t: GrantTarget) = GrantKey(CONNECTION, t)
-    private fun give(t: GrantTarget, tool: AssistantToolId = SSH) = grants.record(key(t), tool, grants.stamp(t)!!)
+    private fun give(t: GrantTarget, tool: AssistantToolId = SSH) = grants.record(key(t), tool, grants.stamp(t)!!, grants.coverableBy(tool))
 
     @Test fun `covers the tools in effect at the answer, on the connection only, and a repeated answer replaces the entry`() {
         world.off += TYPE
@@ -36,16 +36,47 @@ class SessionGrantsTest {
         world.off += TYPE; assertEquals(setOf(SSH), grants.coverableBy(TYPE))
     }
 
+    @Test fun `the grant covers no more than the card said even if typing is turned on while the card is open`() {
+        world.off += TYPE
+        val offered = grants.coverableBy(SSH); assertEquals(setOf(SSH), offered)
+        val stamp = grants.stamp(a)!!
+        world.off.clear()
+        assertTrue(grants.record(key(a), SSH, stamp, offered))
+        assertTrue(grants.covers(SSH, key(a))); assertFalse("typing was not on the card", grants.covers(TYPE, key(a)))
+        // And the asked tool must be among what the card offered.
+        assertFalse(grants.record(key(b), TYPE, grants.stamp(b)!!, setOf(SSH)))
+    }
+
+    @Test fun `a tool switched off and on again, even before any sweep, is not covered and not recorded`() {
+        give(a)
+        world.switchOff(SSH); world.off.clear()
+        assertFalse("off count grew", grants.covers(SSH, key(a))); assertTrue(grants.covers(TYPE, key(a)))
+        // During the question: switched off and on again, the stamp was taken before.
+        val offered = grants.coverableBy(TYPE); val stamp = grants.stamp(b)!!
+        world.switchOff(TYPE); world.off.clear()
+        assertFalse("not recorded: the tool was switched off during the question", grants.record(key(b), TYPE, stamp, offered))
+        assertTrue(grants.snapshot().none { it.target == b })
+    }
+
+    @Test fun `a locked app gives no stamp and covers nothing, read at every use`() {
+        give(a)
+        world.locked = true
+        assertNull(grants.stamp(b)); assertFalse(grants.covers(SSH, key(a))); assertTrue("and the entry is dropped", grants.snapshot().isEmpty())
+        world.locked = false
+        assertFalse("unlocking brings nothing back", grants.covers(SSH, key(a)))
+        assertNotNull(grants.stamp(b))
+    }
+
     @Test fun `no stamp without an open period a connection or the assistant on, and nothing is recorded for a tool out of effect`() {
         world.period = null; assertNull(grants.stamp(a))
         world.period = 1; world.fingerprint = null; assertNull(grants.stamp(a))
         world.fingerprint = "f1"; world.enabled = false; assertNull(grants.stamp(a))
         world.enabled = true
         val stamp = grants.stamp(a)!!
-        world.off += SSH; assertFalse(grants.record(key(a), SSH, stamp))
+        world.off += SSH; assertFalse(grants.record(key(a), SSH, stamp, setOf(SSH)))
         assertTrue(grants.snapshot().isEmpty())
-        assertFalse(grants.record(GrantKey(ActionClass.APP_CHANGE, a), AssistantToolId.SKILL_SAVE, stamp))
-        assertFalse(grants.record(key(a), AssistantToolId.TERMINAL_CLOSE, stamp))
+        assertFalse(grants.record(GrantKey(ActionClass.APP_CHANGE, a), AssistantToolId.SKILL_SAVE, stamp, setOf(AssistantToolId.SKILL_SAVE)))
+        assertFalse(grants.record(key(a), AssistantToolId.TERMINAL_CLOSE, stamp, setOf(AssistantToolId.TERMINAL_CLOSE)))
     }
 
     @Test fun `each thing a grant is bound to ends it, lazily at the lookup`() {
@@ -53,7 +84,7 @@ class SessionGrantsTest {
             { it.disableVersion = 1 }, { it.enabled = false })
         for (change in changes) {
             val w = FakeGrantWorld(); val g = SessionGrants(w)
-            g.record(key(a), SSH, g.stamp(a)!!)
+            g.record(key(a), SSH, g.stamp(a)!!, g.coverableBy(SSH))
             assertTrue(g.covers(SSH, key(a)))
             change(w)
             assertFalse(g.covers(SSH, key(a))); assertTrue("and the entry is gone", g.snapshot().isEmpty()); assertTrue(g.observe().value.isEmpty())
@@ -92,7 +123,7 @@ class SessionGrantsTest {
         val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
         try {
             val futures = (0 until 4).map { n -> pool.submit {
-                repeat(300) { i -> val t = GrantTarget("p$n", "c$i"); grants.record(key(t), SSH, grants.stamp(t)!!); grants.covers(SSH, key(a)); grants.snapshot(); grants.sweep() }
+                repeat(300) { i -> val t = GrantTarget("p$n", "c$i"); grants.record(key(t), SSH, grants.stamp(t)!!, grants.coverableBy(SSH)); grants.covers(SSH, key(a)); grants.snapshot(); grants.sweep() }
             } }
             futures.forEach { it.get(30, java.util.concurrent.TimeUnit.SECONDS) }
         } finally { pool.shutdownNow() }

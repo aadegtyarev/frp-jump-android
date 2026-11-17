@@ -56,6 +56,15 @@ import ru.adsrv.frpjump.ui.connections.kindWord
  * the program in its foreground, when known), the text typed (every Enter shown as a mark, the whole text in the same scrolling box) and
  * the keys pressed after it.
  */
+/** The hint of For session: both grantable tools in the grant, typing only, or commands; with none known, by the card's own kind. */
+internal fun sessionHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean): Int = when {
+    sessionTools.size > 1 -> R.string.confirm_session_hint_both
+    sessionTools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_input_session_hint
+    sessionTools.singleOrNull() != null -> R.string.confirm_session_hint
+    typing -> R.string.confirm_input_session_hint
+    else -> R.string.confirm_session_hint
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (ConfirmationDecision) -> Unit, wide: Boolean = false, modifier: Modifier = Modifier) {
@@ -93,13 +102,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     // What For session covers: the grantable tools of the class that were in effect when the card was raised (both: commands and typing).
-    val sessionHint = stringResource(when {
-        confirmation.sessionTools.size > 1 -> R.string.confirm_session_hint_both
-        confirmation.sessionTools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_input_session_hint
-        confirmation.sessionTools.singleOrNull() != null -> R.string.confirm_session_hint
-        typing != null -> R.string.confirm_input_session_hint
-        else -> R.string.confirm_session_hint
-    })
+    val sessionHint = stringResource(sessionHintRes(confirmation.sessionTools, typing != null))
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
         val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)

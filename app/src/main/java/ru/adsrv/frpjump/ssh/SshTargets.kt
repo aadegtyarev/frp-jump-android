@@ -48,6 +48,8 @@ class SshTargets(
     private val profiles: StateFlow<ProfilesState>,
     private val hidden: StateFlow<Set<String>>,
     private val env: SshEnvironment,
+    /** How many times an Undo key was hidden ([PendingUndo.hideCount]); part of a period, so a hide that Undo then cancels still ends it. */
+    private val hides: (String) -> Long = { 0L },
 ) {
     /** A saved SSH connection of [profileId] whose tunnel is already ready and visible; else [SshTargetResolution.Unavailable]. */
     fun resolveSaved(profileId: String, connectionId: String): SshTargetResolution {
@@ -86,18 +88,23 @@ class SshTargets(
     }
 
     /**
-     * The id of the open period of the tunnel of a saved connection ([ru.adsrv.frpjump.tunnel.TunnelManager.openPeriod]); null when its tunnel is
+     * The token of the open period of the tunnel of a saved connection ([ru.adsrv.frpjump.tunnel.TunnelManager.openPeriod]); null when its tunnel is
      * not open: not planned, a Disconnect pending, hidden for Undo (also when Undo then cancels it), or the connection or profile unknown or hidden.
      */
-    fun period(profileId: String, connectionId: String): Long? {
+    fun period(profileId: String, connectionId: String): Any? {
         val state = profiles.value
         if (state.index.profiles.none { it.id == profileId }) return null
         val runtime = state.runtimes[profileId] ?: return null
         val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return null
         val gone = hidden.value
         if (PendingUndo.connectionKey(profileId, connectionId) in gone || PendingUndo.tunnelKey(profileId, connection.device, connection.port) in gone) return null
-        return runtime.tunnels.openPeriod(connection.device, connection.port)
+        val open = runtime.tunnels.openPeriod(connection.device, connection.port) ?: return null
+        // The hide counts are part of it: hidden for Undo and brought back is not the same period any more (the key may be seen again by nobody in between).
+        return OpenPeriod(open, hides(PendingUndo.tunnelKey(profileId, connection.device, connection.port)), hides(PendingUndo.connectionKey(profileId, connectionId)))
     }
+
+    /** An opaque period of a saved connection's tunnel: equal only while it is the same open tunnel and was never hidden since. */
+    private data class OpenPeriod(val tunnel: Long, val tunnelHides: Long, val connectionHides: Long)
 
     /** Emits whenever something [fingerprint] or [period] reads may have changed (any profile, connection, login, host key, tunnel period or hidden key). */
     @OptIn(ExperimentalCoroutinesApi::class)
