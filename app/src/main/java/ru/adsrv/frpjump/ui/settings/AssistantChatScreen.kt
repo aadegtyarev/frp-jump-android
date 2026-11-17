@@ -96,11 +96,13 @@ internal fun AssistantChatContent(
     // The one owner of "follow the bottom". The list shows the end of the conversation (the bottom of the last item, not its top) when it
     // opens and while the content grows (a new call line, streamed text, a card) or the viewport shrinks (the keyboard). A scroll, by the
     // owner or by an accessibility action, ends the following when it leaves the bottom and resumes it when it ends at the bottom; Send
-    // resumes it. A scroll is told from growth by the first visible item and its offset: growth and a smaller viewport leave them as
+    // resumes it. A scroll is told from growth by the first visible item and its offset in the layout: growth and a smaller viewport leave them as
     // they were and only make the end reachable (canScrollForward).
     var following by remember { mutableStateOf(true) }
     LaunchedEffect(historyScroll) {
-        fun position() = historyScroll.firstVisibleItemIndex to historyScroll.firstVisibleItemScrollOffset
+        // From the measured layout, as canScrollForward is: the scroll state's own index and offset change at once on a jump, before the
+        // layout does, and a jump would then be read together with the old canScrollForward.
+        fun position() = historyScroll.layoutInfo.visibleItemsInfo.firstOrNull()?.let { it.index to it.offset }
         var seen = position()
         snapshotFlow { Triple(position(), historyScroll.canScrollForward, following) }.collect { (at, more, follow) ->
             var follows = follow
