@@ -7,7 +7,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
+import android.os.Bundle
 import android.util.TypedValue
+import android.view.View
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
@@ -81,7 +83,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.AccessibilityDelegateCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
@@ -214,6 +220,8 @@ fun TerminalScreen(
     var barMenu by remember { mutableStateOf(false) }
     /** The terminal's selected text, read when the menu opened; kept only until the menu closes (by any item or a dismiss). */
     var menuSelection by remember { mutableStateOf<String?>(null) }
+    /** The links on the visible screen, read when the menu opened. */
+    var menuLinks by remember { mutableStateOf<List<String>>(emptyList()) }
     // Ask takes it (and clears it) before it closes the menu, so this only drops what no item used.
     LaunchedEffect(barMenu) { if (!barMenu) menuSelection = null }
     /** "Close all sessions of this phone" is asking the device. */
@@ -320,10 +328,30 @@ fun TerminalScreen(
     val current = rememberUpdatedState(selected)
     val selectionToken = remember(selected.id) { Any() }
     val currentSelection = rememberUpdatedState(selectionToken)
+    // The link whose sheet is open (its text as in the terminal), and the list of the links on the screen (⋮ and TalkBack).
+    val linkAsk = remember { mutableStateOf<String?>(null) }
+    val linksList = remember { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(selected.id) { linkAsk.value = null; linksList.value = null }
     val input = remember {
         TerminalInput(context, TerminalView(context, null).apply { isFocusable = true; isFocusableInTouchMode = true }).apply {
             terminal.setTerminalViewClient(ViewClient(this, { current.value }, modifiers, sessions))
-            onTap = TerminalTap(terminal, { current.value }, ::showKeyboard)::onTap
+            onTap = TerminalTap(terminal, { current.value }, ::showKeyboard, onLink = { linkAsk.value = it })::onTap
+            // TalkBack: its touch exploration leaves taps alone, so the links are reached by an action on the terminal, there only
+            // while the screen has a link.
+            ViewCompat.setAccessibilityDelegate(terminal, object : AccessibilityDelegateCompat() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    if (terminal.screenLinks(current.value).isNotEmpty()) {
+                        info.addAction(AccessibilityActionCompat(R.id.terminal_links_action, host.context.getString(R.string.terminal_links_action)))
+                    }
+                }
+
+                override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                    if (action != R.id.terminal_links_action) return super.performAccessibilityAction(host, action, args)
+                    linksList.value = terminal.screenLinks(current.value).takeIf { it.isNotEmpty() }
+                    return true
+                }
+            })
         }
     }
     val inputSettings by (context.applicationContext as FrpJumpApp).settings.settings.collectAsStateWithLifecycle()
@@ -547,6 +575,7 @@ fun TerminalScreen(
                         IconButton(onClick = {
                             // The selection as it is when the menu is used, not later (the menu's own window can end it).
                             menuSelection = if (onAskAssistant != null) view.selectedTerminalText() else null
+                            menuLinks = view.screenLinks(selected)
                             barMenu = true
                         }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
@@ -584,6 +613,15 @@ fun TerminalScreen(
                                     val quote = ChatQuote.block(menuSelection, context.getString(R.string.chat_quote_truncated))
                                     menuSelection = null
                                     onAskAssistant(quote)
+                                },
+                            )
+                            // Only while the visible screen has a link, so the menu does not grow for nothing.
+                            if (menuLinks.isNotEmpty()) DropdownMenuItem(
+                                text = { Text(stringResource(R.string.terminal_links_menu)) },
+                                modifier = Modifier.testTag("terminal_links_menu"),
+                                onClick = {
+                                    barMenu = false
+                                    linksList.value = menuLinks
                                 },
                             )
                             InsertImageMenuItem(
@@ -830,6 +868,10 @@ fun TerminalScreen(
         )
     }
     if (managing) SnippetsSheet(snippets, snippetActions, onDismiss = { managing = false })
+    linksList.value?.let { links ->
+        LinksListSheet(links, onPick = { linksList.value = null; linkAsk.value = it }, onDismiss = { linksList.value = null })
+    }
+    linkAsk.value?.let { link -> LinkSheet(link, onDismiss = { linkAsk.value = null }) }
     // The session the dialog is for closed under it (its tunnel went): say so rather than vanish.
     val loginFrom = loginLikeId?.let { id -> list.firstOrNull { it.id == id } }
     LaunchedEffect(loginLikeId, loginFrom == null) {

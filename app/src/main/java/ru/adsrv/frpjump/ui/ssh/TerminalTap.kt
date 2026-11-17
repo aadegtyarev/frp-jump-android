@@ -28,6 +28,9 @@ import kotlin.math.abs
  *   [TmuxTapGate]): a shell on its own screen gets the arrows if nothing
  *   changed on the screen meanwhile; anything else gets the click it would
  *   have had; no answer in time, nothing.
+ * - A tap on a link anywhere else (output, a full-screen program) opens
+ *   the link's sheet ([onLink]) and goes no further: nothing is clicked or
+ *   typed, and nothing opens until the owner taps "Open" there.
  * - With TalkBack's touch exploration on, taps stay as they were.
  *
  * The arrows go as plain keys (a held Ctrl / Alt / Shift is not used up), in
@@ -41,23 +44,31 @@ class TerminalTap(
     private val view: TerminalView,
     private val session: () -> SshSession,
     private val showKeyboard: () -> Unit,
+    private val onLink: (String) -> Unit,
 ) {
     private val gate = TmuxTapGate({ SystemClock.elapsedRealtime() }) { ms, task -> view.postDelayed(task, ms) }
     private val hold = TapEchoHold { SystemClock.elapsedRealtime() }
     private val accessibility = view.context.getSystemService(AccessibilityManager::class.java)
 
-    /** Takes a tap at [event] if it lands on the cursor's line; false leaves it to the view as before. */
+    /**
+     * Takes a tap at [event] if it lands on the cursor's line or on a link; false leaves it to the view as before. The cursor's line comes
+     * first: a tap there stays the cursor's even when an address is typed on it.
+     */
     fun onTap(event: MotionEvent): Boolean {
         if (accessibility?.isTouchExplorationEnabled == true) return false
         val s = session()
-        if (s.state.value != SshState.Open || view.currentSession !== s.terminal.session) return false
+        if (view.currentSession !== s.terminal.session) return false
         val emulator = view.mEmulator ?: return false
         val tmux = s.tmux.inUse
-        if (!tmux && emulator.isAlternateBufferActive) return false
         val (column, row) = view.getColumnAndRow(event, true)
         val grid = BufferGrid(emulator)
-        val moves = tapCursorMoves(grid, emulator.cursorRow, emulator.cursorCol, row, column)
-            ?: return false
+        val onShellLine = s.state.value == SshState.Open && (tmux || !emulator.isAlternateBufferActive)
+        val moves = when (val route = routeTap(grid, onShellLine, tmux, emulator.cursorRow, emulator.cursorCol, row, column)) {
+            is TapRoute.Cursor -> route.moves
+            // A tap on a link opens its sheet and goes no further: no click for the program, no keyboard. Nothing opens before "Open".
+            is TapRoute.Link -> { onLink(route.text); return true }
+            TapRoute.Pass -> return false
+        }
         val line = cursorLineState(grid, emulator.cursorRow, emulator.cursorCol)
         // The last tap's arrows have not shown yet: counted from this screen, this one would be off.
         if (hold.holds(line)) {
@@ -127,7 +138,7 @@ class TerminalTap(
 }
 
 /** [emulator]'s screen and scrollback as [TapGrid]; read on the main thread, where the emulator takes its input. */
-private class BufferGrid(emulator: TerminalEmulator) : TapGrid {
+internal class BufferGrid(emulator: TerminalEmulator) : TapGrid {
     private val screen: TerminalBuffer = emulator.screen
     override val columns = emulator.mColumns
     override val firstRow = -screen.activeTranscriptRows
@@ -186,4 +197,11 @@ private class BufferGrid(emulator: TerminalEmulator) : TapGrid {
         const val TEXT: Byte = 1
         const val WIDE_TAIL: Byte = 2
     }
+}
+
+/** The links on the rows [session] shows now (scrolled back into the history too), each once, in reading order; empty when the view shows another session. */
+internal fun TerminalView.screenLinks(session: SshSession): List<String> {
+    if (currentSession !== session.terminal.session) return emptyList()
+    val emulator = mEmulator ?: return emptyList()
+    return linksOnScreen(BufferGrid(emulator), session.tmux.inUse, topRow)
 }
