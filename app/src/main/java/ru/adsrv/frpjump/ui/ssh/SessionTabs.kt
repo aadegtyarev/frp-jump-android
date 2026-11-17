@@ -6,6 +6,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import android.view.WindowManager
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -168,6 +176,17 @@ fun SessionTabs(list: List<SshSession>, selectedId: Int, profileColors: Map<Stri
 /** One entry of a tab's menu, and the TalkBack custom action of the same name. */
 private class TabAction(val label: String, val run: () -> Unit)
 
+/**
+ * Makes the dialog's window shrink above the keyboard (adjustResize) instead of being panned by it: a panned window pushes what
+ * does not fit (the buttons) under the keyboard, a resized one gives the content the room that is left. Call it inside the dialog.
+ */
+@Composable
+private fun ResizeWithKeyboard() {
+    val view = LocalView.current
+    val window = ((view.parent as? DialogWindowProvider) ?: (view as? DialogWindowProvider))?.window
+    SideEffect { window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+}
+
 /** The dialog that names a tab: [current] is its name now (null: none), [automatic] the label shown when empty. */
 @Composable
 private fun TabNameDialog(current: String?, automatic: String, onSave: (String?) -> Unit, onDismiss: () -> Unit) {
@@ -186,26 +205,31 @@ private fun TabNameDialog(current: String?, automatic: String, onSave: (String?)
     val spokenCount = stringResource(R.string.device_label_counter_spoken, length, TAB_NAME_MAX)
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.terminal_tab_name_title), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+        // The title is the first line of the scrolling content, not a fixed slot: with the keyboard up in landscape at a large font the
+        // room is a few lines, and only the buttons keep their place (they are what must stay reachable).
         text = {
-            Field(
-                label = stringResource(R.string.terminal_tab_name_field),
-                value = field,
-                onValueChange = { field = it },
-                problem = (check as? TabNameCheck.Invalid)?.let {
-                    stringResource(if (it.problem == TabNameProblem.TOO_LONG) R.string.terminal_tab_name_too_long else R.string.terminal_tab_name_bad_character)
-                },
-                note = stringResource(R.string.terminal_tab_name_automatic, automatic),
-                focusRequester = focus,
-                onDone = { save() },
-                counter = {
-                    Text(
-                        stringResource(R.string.device_label_counter, length, TAB_NAME_MAX),
-                        color = if (check is TabNameCheck.Invalid) AppTheme.colors.error else androidx.compose.ui.graphics.Color.Unspecified,
-                        modifier = Modifier.clearAndSetSemantics { contentDescription = spokenCount },
-                    )
-                },
-            )
+            ResizeWithKeyboard()
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(stringResource(R.string.terminal_tab_name_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AlertDialogDefaults.titleContentColor)
+                Field(
+                    label = stringResource(R.string.terminal_tab_name_field),
+                    value = field,
+                    onValueChange = { field = it },
+                    problem = (check as? TabNameCheck.Invalid)?.let {
+                        stringResource(if (it.problem == TabNameProblem.TOO_LONG) R.string.terminal_tab_name_too_long else R.string.terminal_tab_name_bad_character)
+                    },
+                    note = stringResource(R.string.terminal_tab_name_automatic, automatic),
+                    focusRequester = focus,
+                    onDone = { save() },
+                    counter = {
+                        Text(
+                            stringResource(R.string.device_label_counter, length, TAB_NAME_MAX),
+                            color = if (check is TabNameCheck.Invalid) AppTheme.colors.error else androidx.compose.ui.graphics.Color.Unspecified,
+                            modifier = Modifier.clearAndSetSemantics { contentDescription = spokenCount },
+                        )
+                    },
+                )
+            }
         },
         confirmButton = { TextButton(enabled = valid != null, onClick = { save() }) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
