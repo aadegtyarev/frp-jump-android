@@ -15,6 +15,12 @@ class FakeGrantWorld : GrantWorld {
     val fingerprints = ConcurrentHashMap<GrantTarget, Any>()
     val off: MutableSet<AssistantToolId> = ConcurrentHashMap.newKeySet()
 
+    @Volatile var persistentFp: PersistentFp = PersistentFp.Known("v1:pf1")
+    val persistentFps = ConcurrentHashMap<GrantTarget, PersistentFp>()
+    val hiddenTargets: MutableSet<GrantTarget> = ConcurrentHashMap.newKeySet()
+    override fun persistentFingerprint(target: GrantTarget): PersistentFp = persistentFps[target] ?: persistentFp
+    override fun hidden(target: GrantTarget) = target in hiddenTargets
+
     override fun period(target: GrantTarget): Any? = periods[target] ?: period
     override fun fingerprint(target: GrantTarget): Any? = fingerprints[target] ?: fingerprint
     override fun enabled() = enabled

@@ -14,7 +14,8 @@ data class ChatToolFailure(val result: ToolResult, val query: String? = null)
 data class ChatProfileInformation(val result: ToolResult, val page: JsonObject?) {
     val presentationChars: Int get() = if (page == null) 0 else result.text.length
 }
-data class ChatToolReceipt(val call: ToolCall, val result: ToolResult? = null)
+/** [noQuestion]: why the call ran without a question; in memory only (a restored conversation has none). */
+data class ChatToolReceipt(val call: ToolCall, val result: ToolResult? = null, val noQuestion: ru.adsrv.frpjump.settings.NoQuestion? = null)
 data class ChatTurn(val user: String, val answer: String, val sources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
     val interrupted: Boolean = false, val receipts: List<ChatToolReceipt> = emptyList(),

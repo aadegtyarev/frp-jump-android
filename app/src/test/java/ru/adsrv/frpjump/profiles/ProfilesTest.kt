@@ -147,6 +147,33 @@ class ProfilesTest {
     }
 
     @Test
+    fun `every path that replaces an enrollment tells the assistant's permissions to end, and no other does`() = runBlocking {
+        val told = ArrayList<String>()
+        val profiles = Profiles(store(), record.profiles, enrollmentReplaced = { told += it }) { profile, s, currentId ->
+            ProfileRuntime(profile.id, s.credentials(profile), s.dir(profile.id), currentId, shared)
+        }
+        profiles.load()
+        val work = profiles.enroll(credentials("work.example"))
+        assertTrue("a new profile replaces nothing", told.isEmpty())
+        profiles.update(work.id, "Renamed", "crimson"); profiles.setCurrent(work.id)
+        assertTrue("a rename and a switch end nothing", told.isEmpty())
+        // Forget with the data kept (a runtime exists), then enrolling in place.
+        profiles.forget(work.id, keepData = true)
+        assertEquals(listOf(work.id), told)
+        profiles.enroll(credentials("work.example", "phone-again"))
+        assertEquals("enrolled in place", listOf(work.id, work.id), told)
+        // Forget with no runtime (the profile is listed but not started) keeping the data.
+        val store = store(); val sleeping = store.add(credentials("sleep.example"))
+        val second = Profiles(store, record.profiles, enrollmentReplaced = { told += "second:$it" }) { profile, s, currentId ->
+            ProfileRuntime(profile.id, s.credentials(profile), s.dir(profile.id), currentId, shared)
+        }
+        second.load(); second.forget(sleeping.id, keepData = true)
+        assertTrue(told.any { it.startsWith("second:") })
+        // Removing a profile entirely is the app's forgetProfile (it ends them first), not an enrollment replacement.
+        val before = told.size; profiles.forget(work.id, keepData = false); assertEquals(before, told.size)
+    }
+
+    @Test
     fun `profiles unreadable at first are tried again, the restore waiting meanwhile`() = runBlocking {
         // Tunnels of a profile no longer listed: known once the profiles are read.
         record.set("gone", 1)

@@ -7,6 +7,7 @@ class CardAnswersTest {
     @Test fun `the plain buttons answer at once`() {
         assertEquals(ConfirmationDecision.ONCE, decisionFor(CardTap.ALLOW, false))
         assertEquals(ConfirmationDecision.SESSION, decisionFor(CardTap.SESSION, false))
+        assertEquals("For this connection needs no second confirmation (it narrows to one connection)", ConfirmationDecision.CONNECTION, decisionFor(CardTap.CONNECTION, false))
         assertEquals(ConfirmationDecision.DENY, decisionFor(CardTap.DECLINE, false))
     }
 

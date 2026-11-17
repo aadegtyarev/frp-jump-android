@@ -73,6 +73,8 @@ class AssistantChatOwner(
     private val waitSleep: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     /** The app's "For session" grants, which outlive a conversation. */
     private val grants: SessionGrants = SessionGrants(),
+    /** The app's persistent "For this connection" permissions, which outlive a conversation and a restart. */
+    private val connectionGrants: ru.adsrv.frpjump.settings.ConnectionGrants? = null,
 ) {
     private class Live(val conversation: AssistantConversation, val scope: CoroutineScope, val confirmations: ConfirmationSupport)
     private val lock = Any()
@@ -154,7 +156,7 @@ class AssistantChatOwner(
 
     private fun build(): Live {
         val child = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
-        val confirmations: ConfirmationSupport = chatConfirmationSupport(settingsStore, sshCommands, grants)
+        val confirmations: ConfirmationSupport = chatConfirmationSupport(settingsStore, sshCommands, grants, connectionGrants)
         val chat = AssistantConversation(child,
             availability = { settingsStore.assistantAvailability }, snapshot = { providerStore.currentSnapshot },
             prepare = prepare, requireRevision = providerStore::requireRevision, module = module, runtime = settingsStore.assistantChat,

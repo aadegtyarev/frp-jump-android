@@ -18,6 +18,9 @@ import ru.adsrv.frpjump.profiles.ProfileRuntime
 import ru.adsrv.frpjump.profiles.ProfilesState
 import ru.adsrv.frpjump.tunnel.Tunnel
 import ru.adsrv.frpjump.tunnel.TunnelStatus
+import ru.adsrv.frpjump.settings.GrantFingerprint
+import ru.adsrv.frpjump.settings.PersistentFp
+import ru.adsrv.frpjump.store.EnrollmentIdentity
 import ru.adsrv.frpjump.undo.PendingUndo
 
 /** A saved SSH connection with its ready tunnel, as captured by [SshTargets.resolveSaved]. */
@@ -50,6 +53,8 @@ class SshTargets(
     private val env: SshEnvironment,
     /** How many times an Undo key was hidden ([PendingUndo.hideCount]); part of a period, so a hide that Undo then cancels still ends it. */
     private val hides: (String) -> Long = { 0L },
+    /** The remembered broker USER of an MQTT connection (never the password); throws when the store cannot be read. */
+    private val mqttUser: (profileId: String, connectionId: String) -> String? = { _, _ -> null },
 ) {
     /** A saved SSH connection of [profileId] whose tunnel is already ready and visible; else [SshTargetResolution.Unavailable]. */
     fun resolveSaved(profileId: String, connectionId: String): SshTargetResolution {
@@ -86,6 +91,34 @@ class SshTargets(
         return listOf(connection, profile.id, profile.keyAlias, profile.activationPending, state.enrollments[profileId],
             runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port))
     }
+
+    /**
+     * The fingerprint a PERSISTENT assistant permission is bound to ([GrantFingerprint]): one stable value, three-valued. [PersistentFp.Gone] only when the
+     * profile or the connection is absent from a LOADED profile state; [PersistentFp.Unknown] when profiles are not loaded yet, the profile has no runtime, or
+     * the enrollment file, the login store, the host-key store or the MQTT login store cannot be read (the caller asks and keeps its record). Reads only public
+     * fields: no sealed field is opened, no Keystore unlock is needed and nothing is wiped on a read failure.
+     */
+    fun persistentFingerprint(profileId: String, connectionId: String): PersistentFp {
+        val state = profiles.value
+        if (!state.loaded) return PersistentFp.Unknown
+        val listed = state.index.profiles.filter { it.id == profileId }
+        if (listed.isEmpty()) return PersistentFp.Gone
+        val profile = listed.singleOrNull() ?: return PersistentFp.Unknown
+        val runtime = state.runtimes[profileId] ?: return PersistentFp.Unknown
+        val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return PersistentFp.Gone
+        if (!runtime.sshLogins.readable || !runtime.hostKeys.readable) return PersistentFp.Unknown
+        val enrollment = when (val identity = runtime.store.identity()) {
+            is EnrollmentIdentity.Present -> identity.hash
+            EnrollmentIdentity.None -> null
+            EnrollmentIdentity.Unreadable -> return PersistentFp.Unknown
+        }
+        val user = if (connection.kind == PortKind.MQTT) (try { mqttUser(profileId, connectionId) } catch (_: Exception) { return PersistentFp.Unknown }) else null
+        return PersistentFp.Known(GrantFingerprint.of(connection, profile.id, profile.keyAlias, profile.activationPending, enrollment,
+            runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port), user))
+    }
+
+    /** Whether the connection is hidden for Undo (its delete waits for the notice to go): a persistent permission does not act then. */
+    fun hidden(profileId: String, connectionId: String): Boolean = PendingUndo.connectionKey(profileId, connectionId) in hidden.value
 
     /**
      * The token of the open period of the tunnel of a saved connection ([ru.adsrv.frpjump.tunnel.TunnelManager.openPeriod]); null when its tunnel is

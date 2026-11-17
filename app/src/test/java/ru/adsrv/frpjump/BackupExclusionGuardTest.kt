@@ -27,4 +27,16 @@ class BackupExclusionGuardTest {
             assertEquals("$section excludes all domains whole", allDomains, excluded)
         }
     }
+
+    @Test fun `the settings file holds the assistant's remembered permissions, lives in the excluded file domain and is never exported`() {
+        // settings.json (with assistant_confirmations.overrides) is written to filesDir: the "file" domain, excluded whole from both backup paths above.
+        val app = File("src/main/java/ru/adsrv/frpjump/FrpJumpApp.kt").readText()
+        assertTrue("the settings file is in filesDir", Regex("""AtomicTextFile\(File\(filesDir, "settings\.json"\)\)""").containsMatchIn(app))
+        val body = rules.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
+        for (section in listOf("cloud-backup", "device-transfer"))
+            assertTrue("$section excludes the file domain", body.substring(body.indexOf("<$section>"), body.indexOf("</$section>")).contains("<exclude domain=\"file\" path=\".\" />"))
+        // A record is only UUIDs, a hash, class and tool names and a time: nothing else is written for it.
+        val record = File("src/main/java/ru/adsrv/frpjump/settings/ConfirmationPolicy.kt").readText()
+        for (secret in listOf("command", "password", "token", "address")) assertTrue("$secret is not a field of a record", !Regex("""class ConfirmationOverride\([^)]*$secret""", RegexOption.IGNORE_CASE).containsMatchIn(record))
+    }
 }

@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.merge
 import ru.adsrv.frpjump.lock.AppLock
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.settings.GrantWorld
+import ru.adsrv.frpjump.settings.PersistentFp
+import ru.adsrv.frpjump.settings.ConnectionGrantCleaner
+import ru.adsrv.frpjump.settings.ConnectionGrants
 import ru.adsrv.frpjump.settings.SessionGrantCleaner
 import ru.adsrv.frpjump.settings.SessionGrants
 import ru.adsrv.frpjump.settings.SettingsStore
@@ -23,6 +26,8 @@ import ru.adsrv.frpjump.ssh.SshTargets
 class AppGrantWorld(private val targets: SshTargets, private val settings: SettingsStore, private val lock: AppLock) : GrantWorld {
     override fun period(target: GrantTarget): Any? = targets.period(target.profileId, target.connectionId)
     override fun fingerprint(target: GrantTarget): Any? = targets.fingerprint(target.profileId, target.connectionId)
+    override fun persistentFingerprint(target: GrantTarget): PersistentFp = targets.persistentFingerprint(target.profileId, target.connectionId)
+    override fun hidden(target: GrantTarget): Boolean = targets.hidden(target.profileId, target.connectionId)
     override fun enabled(): Boolean = settings.assistantAvailability.enabled
     override fun disableVersion(): Long = settings.assistantAvailability.disableVersion
     override fun inEffect(tool: AssistantToolId): Boolean = settings.assistantAvailability.tools[tool]
@@ -45,5 +50,17 @@ fun appSessionGrants(targets: SshTargets, settings: SettingsStore, lock: AppLock
         changes = merge(targets.changes(), settings.assistantDisables,
             settings.settings.map { Triple(it.assistantEnabled to it.assistantTools(), it.appLock, it.appLockAfter) }.distinctUntilChanged(), tick),
         locked = lock.locked)
+    return grants
+}
+
+/**
+ * THE one way the app's persistent "For this connection" permissions are built: [ConnectionGrants] over the same [AppGrantWorld] and a cleaner that needs no
+ * conversation. Every change of what a record is bound to (connections, profiles, logins, host keys, enrollments) and the tick sweep it, off Main; a read that
+ * cannot tell (Unknown) keeps it. The lock does not delete a record (it only stops its use).
+ */
+fun appConnectionGrants(targets: SshTargets, settings: SettingsStore, lock: AppLock, scope: CoroutineScope,
+    tick: Flow<*> = flow { while (true) { emit(Unit); delay(GRANT_TICK_MS) } }): ConnectionGrants {
+    val grants = ConnectionGrants(settings, AppGrantWorld(targets, settings, lock))
+    ConnectionGrantCleaner(grants, scope, merge(targets.changes(), tick))
     return grants
 }

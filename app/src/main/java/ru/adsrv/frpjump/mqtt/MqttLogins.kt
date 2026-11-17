@@ -34,6 +34,10 @@ class MqttLogins(private val storage: TextStorage, private val box: SecretBox) {
         }
     }
 
+    /** The remembered broker USER only: the password is never unsealed. Throws when the store cannot be read (a caller must not read that as "none"). */
+    @Synchronized
+    fun userOf(profile: String, connectionId: String): String? = logins[connectionKey(profile, connectionId)]?.user
+
     @Synchronized
     fun remember(profile: String, connectionId: String, login: MqttLogin) =
         save(logins + (connectionKey(profile, connectionId) to StoredLogin(login.user, box.seal(login.password))))

@@ -89,7 +89,7 @@ class FrpJumpApp : Application() {
     val api: FrpJumpApi by lazy { FrpJumpApi() }
     val profileInformation by lazy { ru.adsrv.frpjump.profiles.ProfileInformation(profiles.state, pendingUndo.hidden) }
 
-    val sshTargets by lazy { ru.adsrv.frpjump.ssh.SshTargets(profiles.state, pendingUndo.hidden, sshEnv, pendingUndo::hideCount) }
+    val sshTargets by lazy { ru.adsrv.frpjump.ssh.SshTargets(profiles.state, pendingUndo.hidden, sshEnv, pendingUndo::hideCount, mqttUser = { profile, connection -> mqttLogins.userOf(profile, connection) }) }
 
     /** The owner's open terminal tabs for the assistant; the same hidden set as the Sessions list. */
     val assistantTerminalTabs by lazy {
@@ -149,6 +149,14 @@ class FrpJumpApp : Application() {
      */
     val sessionGrants: ru.adsrv.frpjump.settings.SessionGrants by lazy {
         ru.adsrv.frpjump.assistant.appSessionGrants(sshTargets, settings, lock, appScope)
+    }
+
+    /**
+     * The persistent "For this connection" permissions of the assistant: one per app, over the committed settings, kept honest by a cleaner that needs no
+     * conversation (a changed connection, login, host key or enrollment, a forgotten profile). Built on first use (the first chat, or a connection card).
+     */
+    val connectionGrants: ru.adsrv.frpjump.settings.ConnectionGrants by lazy {
+        ru.adsrv.frpjump.assistant.appConnectionGrants(sshTargets, settings, lock, appScope)
     }
 
     /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */
@@ -269,7 +277,7 @@ class FrpJumpApp : Application() {
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
             terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount,
-            grants = sessionGrants)
+            grants = sessionGrants, connectionGrants = connectionGrants)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -429,7 +437,7 @@ class FrpJumpApp : Application() {
         val store = ProfileStore(filesDir, boxFor = ::KeystoreSecretBox, storageFor = ::AtomicTextFile)
         // Tunnels whose disconnect waits for Undo are counted as down, but run on.
         val dark = pendingUndo.hidden.map(PendingUndo::darkTunnels).stateIn(appScope, SharingStarted.Eagerly, emptySet())
-        profiles = Profiles(store, restoreRecord.profiles, dark) { profile, profileStore, currentId ->
+        profiles = Profiles(store, restoreRecord.profiles, dark, enrollmentReplaced = { id -> connectionGrants.forgetProfile(id) }) { profile, profileStore, currentId ->
             ProfileRuntime(profile.id, profileStore.credentials(profile), profileStore.dir(profile.id), currentId, shared)
         }
         directChoices = DirectChoices(profiles, directKept, network.id)
@@ -575,6 +583,8 @@ class FrpJumpApp : Application() {
     suspend fun forgetProfile(id: String, keepData: Boolean) {
         // Not left to be done on a profile already gone.
         pendingUndo.commitAll()
+        // The assistant's persistent permissions of this profile end first, in both modes: a failure leaves the profile listed, never a permission behind.
+        withContext(Dispatchers.IO) { connectionGrants.forgetProfile(id) }
         ssh.closeProfile(id)
         mqtt.closeProfile(id)
         profiles.forget(id, keepData) { last ->

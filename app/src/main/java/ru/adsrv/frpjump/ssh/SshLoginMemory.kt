@@ -25,7 +25,11 @@ data class SshLogin(val user: String = DEFAULT_USER, val method: SshAuthMethod =
 
 /** The last user name and auth method per (device, port). Passwords are not kept here. */
 class SshLoginMemory(private val storage: TextStorage) {
+    private var unreadable = false
     private var logins: Map<String, Map<String, SshLogin>> = read()
+
+    /** False while the stored logins could not be read (they then show as none): what a decision bound to them must not trust. A write or a wipe makes it true again. */
+    val readable: Boolean @Synchronized get() = !unreadable
 
     private val _changes = MutableStateFlow(0)
 
@@ -45,6 +49,7 @@ class SshLoginMemory(private val storage: TextStorage) {
         val value = logins + (device to (logins[device].orEmpty() + (port.toString() to clean)))
         storage.write(WireJson.encodeToString(value))
         logins = value
+        unreadable = false
         _changes.value++
     }
 
@@ -52,10 +57,11 @@ class SshLoginMemory(private val storage: TextStorage) {
     fun wipe() {
         storage.delete()
         logins = emptyMap()
+        unreadable = false
         _changes.value++
     }
 
     private fun read(): Map<String, Map<String, SshLogin>> =
         runCatching { storage.read()?.let { WireJson.decodeFromString<Map<String, Map<String, SshLogin>>>(it) } }
-            .getOrNull().orEmpty()
+            .onFailure { unreadable = true }.getOrNull().orEmpty()
 }

@@ -43,6 +43,8 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     @Volatile private var rawRequest: AgentRequest? = null
     /** Set by [ask] when a question ran out of time with no chat screen attached. */
     private var unanswered = false
+    /** Why a call of this Send ran without a question, by call id, until its result is recorded (memory only; never saved). */
+    private val noQuestion = java.util.concurrent.ConcurrentHashMap<String, ru.adsrv.frpjump.settings.NoQuestion>()
 
     suspend fun run() {
         // Active time only: a pause (owner confirmation, from the next change on) does not count against the Send.
@@ -84,7 +86,8 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     /** The kernel's `authorize` hook: see [authorizeCall]. Pauses the Send's active-time clock while the owner is asked. */
     private suspend fun authorize(tools: Map<String, AgentTool>, call: ToolCall): ToolOutput? {
         val output = authorizeCall(env.confirm, tools, call, wait = { request, info -> deadline.paused { ask(request, info) } },
-            onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io)
+            onNotSaved = { own.guarded(owner, "notice") { mutable.value = mutable.value.copy(confirmationNotSaved = true) } }, io = env.io,
+            onNoQuestion = { c, reason -> noQuestion[c.id] = reason })
         if (unanswered) endUnanswered(call)
         return output
     }
@@ -200,7 +203,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             }
             is AgentEvent.Calling -> own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = progressOnCall(event.call.name)) }
             is AgentEvent.FinishedTool -> {
-                val received = SavedResult.of(event.result)
+                val received = SavedResult.of(event.result).copy(noQuestion = noQuestion.remove(event.result.callId))
                 val value = update { record -> val last = record.exchanges.last(); record.copy(exchanges = record.exchanges.dropLast(1) + last.copy(results = last.results + received)) }
                 project(value)
                 if (value.records.last().chars > ChatLimits.MAX_HISTORY_CHARS) throw HistoryFull()

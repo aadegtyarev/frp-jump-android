@@ -21,6 +21,15 @@ interface GrantWorld {
     /** Equal while nothing the owner can edit about the connection changed (profile name and colour excluded); null when it is gone. */
     fun fingerprint(target: GrantTarget): Any?
 
+    /**
+     * The fingerprint a PERSISTENT permission is bound to ([GrantFingerprint]), three-valued: [PersistentFp.Known], [PersistentFp.Gone] (absent from a
+     * loaded profile state) or [PersistentFp.Unknown] (not loaded yet, or something unreadable). Unlike [fingerprint] it holds no in-memory counter.
+     */
+    fun persistentFingerprint(target: GrantTarget): PersistentFp
+
+    /** Whether the connection is hidden for Undo (its delete is pending). */
+    fun hidden(target: GrantTarget): Boolean
+
     /** Whether the assistant is on now. */
     fun enabled(): Boolean
 
@@ -43,6 +52,8 @@ interface GrantWorld {
     object None : GrantWorld {
         override fun period(target: GrantTarget): Long? = null
         override fun fingerprint(target: GrantTarget): Any? = null
+        override fun persistentFingerprint(target: GrantTarget): PersistentFp = PersistentFp.Unknown
+        override fun hidden(target: GrantTarget) = false
         override fun enabled() = false
         override fun disableVersion() = 0L
         override fun inEffect(tool: AssistantToolId) = false

@@ -49,6 +49,7 @@ import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.AppTheme
+import ru.adsrv.frpjump.ui.shortDate
 
 /**
  * One connection, the same on the device card and the Connections tab:
@@ -72,6 +73,8 @@ fun ConnectionCard(
     offline: Boolean = false,
     /** The assistant has a "For session" grant on this connection ([ru.adsrv.frpjump.settings.SessionGrants]): a line says so, with Forget. */
     assistantGrant: Boolean = false,
+    /** When the owner remembered the permission ("For this connection", epoch millis); null: a session grant alone. */
+    assistantRemembered: Long? = null,
     onForgetAssistant: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -136,7 +139,8 @@ fun ConnectionCard(
                                 // Muted, wraps at large font; Forget keeps its 48 dp target and is read with the connection's name.
                                 val forget = stringResource(R.string.connection_assistant_forget_description, rowName(row))
                                 Row(Modifier.testTag("connection_assistant_grant"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
+                                    Text(if (assistantRemembered != null) stringResource(R.string.connection_assistant_remembered, shortDate(java.time.Instant.ofEpochMilli(assistantRemembered)))
+                                        else stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
                                     TextButton(onClick = onForgetAssistant, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
                                         Text(stringResource(R.string.connection_assistant_forget))
                                     }

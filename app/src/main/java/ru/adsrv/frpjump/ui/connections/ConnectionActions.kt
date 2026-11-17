@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.adsrv.frpjump.FrpJumpApp
@@ -81,11 +82,24 @@ import java.io.IOException
 class ConnectionActions(private val app: FrpJumpApp, private val scope: CoroutineScope) {
     private fun runtime(profile: String) = app.profiles.runtime(profile)
 
-    /** The connections the assistant has "For session" grants on now (the card's "Assistant: no questions" line). */
-    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Set<ru.adsrv.frpjump.settings.GrantTarget>> get() = app.sessionGrants.observe()
+    /**
+     * The connections the assistant may act on without a question now (the card's "Assistant: no questions" line): the value is the time of the persistent
+     * "For this connection" permission (the line says "remembered <date>"), null for a "For session" grant alone.
+     */
+    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Map<ru.adsrv.frpjump.settings.GrantTarget, Long?>> by lazy {
+        kotlinx.coroutines.flow.combine(app.sessionGrants.observe(), app.connectionGrants.observe()) { session, remembered ->
+            session.associateWith<ru.adsrv.frpjump.settings.GrantTarget, Long?> { null } + remembered
+        }.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, app.sessionGrants.observe().value.associateWith<ru.adsrv.frpjump.settings.GrantTarget, Long?> { null } + app.connectionGrants.current())
+    }
 
-    /** "Forget": every session grant of [row]'s connection at once. Narrows authority, so it asks nothing and cannot fail. */
-    fun forgetAssistant(row: ConnectionRow) = app.sessionGrants.forgetConnection(row.profile, row.connection.id)
+    /**
+     * "Forget": every permission of [row]'s connection at once, the session one and the remembered one. Narrows authority, so it asks nothing; the session
+     * entry goes in memory at once, the remembered record in the app's scope (the line stays until it is really gone).
+     */
+    fun forgetAssistant(row: ConnectionRow) {
+        app.sessionGrants.forgetConnection(row.profile, row.connection.id)
+        app.appScope.launch(Dispatchers.IO) { try { app.connectionGrants.forget(row.profile, row.connection.id) } catch (e: CancellationException) { throw e } catch (_: Exception) { } }
+    }
 
     /** "Use key login": in the app's scope, so it finishes when the screen goes. */
     val keyLogin = KeyLoginFlow(KeyInstaller(app.sshEnv, app.ssh), app.appScope)
@@ -293,6 +307,8 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         app.mqtt.closeConnection(row.profile, row.connection.id)
         val failure = try {
             withContext(Dispatchers.IO) {
+                // The assistant's persistent permission for it goes first: a failure leaves the connection in place, never a permission behind.
+                app.connectionGrants.forget(row.profile, row.connection.id)
                 app.mqtt.changeStored {
                     app.mqttLogins.forget(row.profile, row.connection.id)
                     app.mqttPins.forget(row.profile, row.connection.id)

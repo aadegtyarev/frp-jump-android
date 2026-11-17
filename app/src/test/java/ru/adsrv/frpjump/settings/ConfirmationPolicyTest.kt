@@ -19,15 +19,12 @@ class ConfirmationPolicyTest {
         assertEquals(ConfirmationPolicy.VERSION, ask.version)
     }
 
-    @Test fun `overrides of any level win by specificity without changing the call shape`() {
-        val device = ConfirmationScope("device", "d1"); val target = ConfirmationScope("target", "p", "c")
-        val policy = ConfirmationPolicy(global = ConfirmationMode.OFF, overrides = listOf(
-            ConfirmationOverride(device, ConfirmationMode.ASK), ConfirmationOverride(target, ConfirmationMode.OFF)))
-        assertEquals(ConfirmationMode.OFF, policy.resolve())
-        assertEquals(ConfirmationMode.ASK, policy.resolve(listOf(device)))
-        assertEquals(ConfirmationMode.OFF, policy.resolve(listOf(target, device)))
-        assertEquals(ConfirmationMode.ASK, policy.resolve(listOf(ConfirmationScope("tunnel", "x"), device)))
-        assertEquals(ConfirmationMode.ASK, ConfirmationPolicy(overrides = listOf(ConfirmationOverride(target, ConfirmationMode.ASK))).resolve(listOf(target)))
+    @Test fun `resolve is the global value only and never reads a record`() {
+        val record = ConfirmationOverride(ConfirmationScope("target", "p", "c"), "connection_change", ConfirmationMode.OFF, "v1:x", listOf("ssh_command"), 1L)
+        // A record never waives the question through resolve (it ignores class, fingerprint and tools): it is ConnectionGrants' alone.
+        assertEquals(ConfirmationMode.ASK, ConfirmationPolicy(overrides = listOf(record)).resolve())
+        assertEquals(ConfirmationMode.OFF, ConfirmationPolicy(global = ConfirmationMode.OFF, overrides = listOf(record)).resolve())
+        assertTrue(mustAsk(ssh, key, ConfirmationPolicy(overrides = listOf(record)), grants()))
     }
 
     private fun grants(world: FakeGrantWorld = FakeGrantWorld()) = SessionGrants(world)

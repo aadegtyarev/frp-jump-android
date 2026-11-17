@@ -226,6 +226,8 @@ class AssistantChatScreenTest {
     private val sessionGrants = ru.adsrv.frpjump.settings.SessionGrants(object : ru.adsrv.frpjump.settings.GrantWorld {
         override fun period(target: ru.adsrv.frpjump.settings.GrantTarget): Long? = 1L
         override fun fingerprint(target: ru.adsrv.frpjump.settings.GrantTarget): Any? = target
+        override fun persistentFingerprint(target: ru.adsrv.frpjump.settings.GrantTarget): ru.adsrv.frpjump.settings.PersistentFp = ru.adsrv.frpjump.settings.PersistentFp.Known("v1:synthetic")
+        override fun hidden(target: ru.adsrv.frpjump.settings.GrantTarget) = false
         override fun enabled() = settings.assistantAvailability.enabled
         override fun disableVersion() = settings.assistantAvailability.disableVersion
         override fun inEffect(tool: AssistantToolId) = settings.assistantAvailability.tools[tool]

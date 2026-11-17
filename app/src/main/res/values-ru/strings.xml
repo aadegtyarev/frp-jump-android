@@ -1387,6 +1387,15 @@
     <string name="action_class_connection_change">Изменения в подключениях</string>
     <string name="action_class_app_change">Изменения в приложении</string>
     <string name="connection_assistant_grant">Помощник: без вопросов, на время туннеля</string>
+    <string name="connection_assistant_remembered">Помощник: без вопроса, запомнено %1$s</string>
+    <string name="confirm_connection">Для этого подключения</string>
+    <string name="confirm_remember">Разрешить и запомнить</string>
+    <string name="confirm_connection_hint">Команды в этом подключении: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.</string>
+    <string name="confirm_connection_hint_input">Ввод во вкладки этого подключения: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.</string>
+    <string name="confirm_connection_hint_both">Команды и ввод во вкладки этого подключения: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.</string>
+    <string name="receipt_no_question_connection">без вопроса: для этого подключения</string>
+    <string name="receipt_no_question_session">без вопроса: на время туннеля</string>
+    <string name="receipt_no_question_off">без вопроса: подтверждения выключены</string>
     <string name="connection_assistant_forget">Забыть</string>
     <string name="connection_assistant_forget_description">Забыть разрешения помощника для %1$s</string>
     <string name="always_dialog_title">Выключить подтверждения?</string>
