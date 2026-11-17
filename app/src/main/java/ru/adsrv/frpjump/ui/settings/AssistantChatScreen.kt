@@ -17,7 +17,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -88,9 +93,40 @@ internal fun AssistantChatContent(
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
-    LaunchedEffect(state.turns.size, state.pendingText, state.toolFailures.size, state.information.size, state.confirmation?.id) {
-        val count = state.turns.size + if (state.pendingText != null || state.toolFailures.isNotEmpty() || state.information.isNotEmpty() || state.currentSources.isNotEmpty()) 1 else 0
-        if (count > 0) historyScroll.scrollToItem(count - 1)
+    // The one owner of "follow the bottom". The list shows the end of the conversation (the bottom of the last item, not its top) when it
+    // opens and while the content grows (a new call line, streamed text, a card) or the viewport shrinks (the keyboard). A scroll, by the
+    // owner or by an accessibility action, ends the following when it leaves the bottom and resumes it when it ends at the bottom; Send
+    // resumes it. A scroll is told from growth by the first visible item and its offset in the layout: growth and a smaller viewport leave them as
+    // they were and only make the end reachable (canScrollForward).
+    var following by remember { mutableStateOf(true) }
+    LaunchedEffect(historyScroll) {
+        // From the measured layout, as canScrollForward is: the scroll state's own index and offset change at once on a jump, before the
+        // layout does, and a jump would then be read together with the old canScrollForward.
+        fun position() = historyScroll.layoutInfo.visibleItemsInfo.firstOrNull()?.let { it.index to it.offset }
+        var seen = position()
+        snapshotFlow { Triple(position(), historyScroll.canScrollForward, following) }.collect { (at, more, follow) ->
+            var follows = follow
+            // No item is no scroll: an empty list is at its bottom, and the first item to arrive is growth, not a scroll away.
+            if (at == null) { seen = null; following = true; follows = true }
+            else if (at != seen) { val moved = seen != null; seen = at; if (moved) { following = !more; follows = following } }
+            if (follows && more) try {
+                // Content that grows while we scroll leaves the same pair, which the flow does not emit again: look again here. Each pass
+                // ends at the real bottom, so a pass that does not is the last (the cap only guards a list that never settles).
+                var passes = 0
+                var expected = at
+                while (following && historyScroll.canScrollForward && passes++ < 20) {
+                    // The change that woke us can come from a measure pass, and a scroll forces its own measure: start at the next frame's
+                    // beginning. Anything that scrolled the list since the decision (an accessibility jump, say) is the owner's, not ours to undo.
+                    withFrameNanos { }
+                    if (position() != expected) break
+                    historyScroll.scrollToBottom()
+                    expected = position(); seen = expected
+                }
+            } catch (e: CancellationException) {
+                // A touch took the list over mid-scroll: its position is the owner's, judged by the next emission. Our own cancel passes on.
+                currentCoroutineContext().ensureActive()
+            }
+        }
     }
     // The field keeps its own cursor; a draft changed from outside (loaded, a quote added, cleared by Send) puts it at the end.
     var field by remember { mutableStateOf(TextFieldValue(state.draft, TextRange(state.draft.length))) }
@@ -277,7 +313,7 @@ internal fun AssistantChatContent(
                 // The draft the conversation holds now: a refused edit (too long, a run) shows as it was.
                 val live = conversation.state.value.draft
                 field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
-            }, state = state, asking = asking, canSend = state.sendEnabled(setup == null), onSend = conversation::send, onStop = conversation::stop,
+            }, state = state, asking = asking, canSend = state.sendEnabled(setup == null), onSend = { following = true; conversation.send() }, onStop = conversation::stop,
                 maxLines = if (density.fontScale > 1.3f) 3 else 5)
         }
     }
@@ -401,3 +437,14 @@ private fun ChatSources(sources: List<ChatSource>) {
 /** A declined result whose text is the fixed "no answer" one: the five minutes ran out, the owner did not decline. */
 internal fun ru.adsrv.frpjump.agent.ToolResult?.isNoAnswer(): Boolean =
     this != null && outcome == ToolOutcome.DECLINED && text == ru.adsrv.frpjump.settings.ConfirmationTexts.NO_ANSWER
+
+/** Scrolls so that the bottom of the last item is at the bottom of the list (scrollToItem alone aligns that item's top). */
+private suspend fun LazyListState.scrollToBottom() {
+    val last = layoutInfo.totalItemsCount - 1
+    if (last < 0) return
+    scrollToItem(last)
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.lastOrNull { it.index == last } ?: return
+    val hidden = item.offset + item.size - (info.viewportEndOffset - info.afterContentPadding)
+    if (hidden > 0) scrollBy(hidden.toFloat())
+}

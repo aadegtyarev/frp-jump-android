@@ -92,6 +92,8 @@ class AssistantChatScreenTest {
         }
     }
     private var heldProviderReply = CompletableDeferred<Unit>()
+    /** One ticket releases one step of the "steps" run: a tool call each, then the answer after the eighth. */
+    private val stepTickets = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     private var mode = "answer"
     private var calls = 0
     private var summaryCalls = 0
@@ -300,6 +302,13 @@ class AssistantChatScreenTest {
                         put("tab_id", 2); put("text", typedText)
                         put("keys", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("ctrl_c"), kotlinx.serialization.json.JsonPrimitive("enter"))))
                     }))) else AgentReply("Typed into the tab.")
+                "steps" -> {
+                    val n = request.turns.last().exchanges.size
+                    stepTickets.receive()
+                    if (n >= 8) AgentReply("Steps done.")
+                    else if (n % 2 == 0) AgentReply(calls = listOf(ToolCall("step-$n", "terminal_tabs", buildJsonObject { })))
+                    else AgentReply(calls = listOf(ToolCall("step-$n", "terminal_read", buildJsonObject { put("tab_id", 1); put("lines", 10 + n) })))
+                }
                 "wait" -> awaitCancellation()
                 "held-answer" -> { heldProviderReply.await(); AgentReply("late reply") }
                 "error" -> error("synthetic-private-error")
@@ -650,7 +659,7 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_tool_group_0_item_1").assertExists()
         compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(2)
         compose.onAllNodesWithText("profile_information", substring = true).assertCountEquals(0)
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_group_0_item_0"))
+        scrollHistoryTo(hasTestTag("chat_profile_information_facts"))
         compose.onAllNodes(hasTestTag("chat_profile_information_facts"))[0].assertIsDisplayed()
         shot("calls-expanded")
         // The second page's label says where it starts; its facts follow.
@@ -810,6 +819,160 @@ class AssistantChatScreenTest {
         compose.waitForIdle()
         compose.onNode(more).performClick()
         compose.onNodeWithTag("chat_waits_cancel_all").assertDoesNotExist()
+    }
+
+    // ---- The list follows the bottom: on open, while the run adds lines, and when the keyboard moves the composer. ----
+
+    private fun history() = compose.onNodeWithTag("chat_history")
+    /**
+     * Scrolls the history until [matcher]'s node is on screen, item by item from the top. performScrollToNode takes a node that is composed as
+     * found, and the list now rests at the bottom of a tall last item, where the top of that item is composed but above the list.
+     */
+    private fun scrollHistoryTo(matcher: SemanticsMatcher) {
+        var index = 0
+        // Past the last item the scroll action refuses: that ends the search.
+        while (runCatching { button("chat_history").performScrollToIndex(index) }.isSuccess) {
+            compose.waitForIdle()
+            if (compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() && runCatching { compose.onAllNodes(matcher)[0].assertIsDisplayed() }.isSuccess) return
+            index++
+        }
+        button("chat_history").performScrollToNode(matcher)
+    }
+
+    /** The list's end is on screen: its scroll position has no further to go. */
+    private fun atBottom(): Boolean = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].let { it.value() >= it.maxValue() }
+    private fun scrollValue(): Float = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+    private fun awaitAtBottom(what: String) {
+        try { compose.waitUntil(WAIT_MS) { atBottom() } } catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("$what: the list is not at its bottom: " + diagnose("not-at-bottom"), e) }
+        compose.waitForIdle()
+    }
+    /** [tag]'s node lies inside the list's own frame at the bottom edge: its end is what the owner sees right above the composer. */
+    private fun assertEndInView(tag: String, what: String) {
+        val list = history().fetchSemanticsNode().boundsInRoot
+        val node = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        assertTrue("$what: [${node.top}, ${node.bottom}] against the list [${list.top}, ${list.bottom}]", node.bottom <= list.bottom + 1f && node.bottom > list.top)
+    }
+    private fun lastLineOfLongAnswer() = compose.onNode(hasText("Line 120", substring = true))
+    private fun assertLongAnswerEndInView(what: String) {
+        // The answer is drawn after the list opens (its Markdown renders off the main thread) and grows the list when it lands.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasText("Line 120", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        awaitAtBottom(what)
+        val list = history().fetchSemanticsNode().boundsInRoot
+        val node = lastLineOfLongAnswer().fetchSemanticsNode().boundsInRoot
+        assertTrue("$what: the answer ends at ${node.bottom}, the list at ${list.bottom}", node.bottom <= list.bottom + 1f && node.bottom > list.top)
+    }
+    private fun sendLongAnswerTurn() {
+        mode = "long"
+        input().performTextInput("Give me the long one")
+        sendAndAwait()
+        awaitIdle()
+    }
+    /** A tall first answer in the history, then the "steps" run started: no step released yet. */
+    private fun startStepsRun() {
+        // Tab 1 exists, so a read of it is a plain call line (a failed read adds red lines under the calls, taller than a small list).
+        terminalTabs = AssistantTerminalTabs(tabs = { listOf(SyntheticTab(1, 1, null, "pi@synthetic-device:~$")) },
+            hidden = { emptySet() }, profileName = { "Synthetic profile" }, connectionName = { _, _, _ -> "Synthetic shell" })
+        settings.update { it.copy(assistantTerminalTabs = true) }
+        install()
+        sendLongAnswerTurn()
+        compose.runOnIdle { mode = "steps" }
+        input().performTextInput("Look at my terminal")
+        button("chat_send").performClick()
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.pendingText != null }
+    }
+    private fun releaseStep(done: Int) {
+        stepTickets.trySend(Unit)
+        compose.waitUntil(WAIT_MS) { owner!!.state.value.receipts.let { r -> r.size == done && r.all { it.result != null } } }
+        compose.waitForIdle()
+    }
+
+    /** The chat opens on the END of the conversation: a last answer taller than the list shows its last line, not its first. */
+    @Test fun theChatOpensOnTheEndOfATallLastAnswer() {
+        install()
+        sendLongAnswerTurn()
+        // A fresh composition over the same conversation: what opening the chat does (the list state starts anew).
+        compose.activityRule.scenario.onActivity { install(it) }
+        compose.waitForIdle()
+        // The chat may already be the open screen (its route state is saved), or the entry may be showing: open it only then.
+        if (compose.onAllNodesWithTag("assistant_chat_entry").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithTag("assistant_chat_entry").performClick()
+        compose.waitForIdle()
+        assertLongAnswerEndInView("after opening")
+        shot("opens-at-end")
+    }
+
+    /** While a run adds tool calls the list follows: the newest call line is in view each time. */
+    @Test fun theListFollowsTheNewCallLinesWhileTheRunGoes() {
+        startStepsRun()
+        awaitAtBottom("at the start of the run")
+        for (step in 1..6) {
+            releaseStep(step)
+            awaitAtBottom("after call $step")
+            assertEndInView("chat_tool_call_${step - 1}", "call line ${step - 1} after call $step")
+        }
+        shot("follows-calls")
+        repeat(4) { stepTickets.trySend(Unit) }
+        awaitIdle()
+    }
+
+    /** An owner who scrolled up to read is not pulled down by a new call; back at the bottom, the list follows again. */
+    @Test fun aListTheOwnerScrolledUpStaysWhereItIs() {
+        startStepsRun()
+        releaseStep(1)
+        awaitAtBottom("after the first call")
+        button("chat_history").performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        assertFalse("the swipe moved the list up", atBottom())
+        val kept = scrollValue()
+        releaseStep(2)
+        assertFalse("a new call pulled the list down", atBottom())
+        assertEquals("the list moved", kept, scrollValue(), 1f)
+        shot("scrolled-up-stays")
+        // Back at the bottom by the owner's own scroll: the list follows again.
+        var swipes = 0
+        while (!atBottom() && swipes++ < 40) { button("chat_history").performTouchInput { swipeUp() }; compose.waitForIdle() }
+        awaitAtBottom("after scrolling down again")
+        releaseStep(3)
+        awaitAtBottom("after the third call")
+        assertEndInView("chat_tool_call_2", "call line 2 after returning to the bottom")
+        repeat(8) { stepTickets.trySend(Unit) }
+        awaitIdle()
+    }
+
+    /** The owner's Send goes to the bottom even from a scrolled-up list. */
+    @Test fun sendingGoesToTheBottomFromAScrolledUpList() {
+        install()
+        sendLongAnswerTurn()
+        button("chat_history").performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        assertFalse("the swipe moved the list up", atBottom())
+        mode = "answer"
+        input().performTextInput("And now?")
+        sendAndAwait()
+        awaitIdle()
+        awaitAtBottom("after Send")
+        compose.onNode(hasText("Complete answer", substring = true) and hasAnyAncestor(hasTestTag("chat_history"))).assertExists()
+    }
+
+    private fun imeUp(): Boolean = androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+        ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+
+    /** At the bottom, the keyboard shrinks the list: the last line stays in view above the composer, and again when the keyboard closes. */
+    @Test fun theListStaysAtTheBottomWhenTheKeyboardOpensAndCloses() {
+        install()
+        sendLongAnswerTurn()
+        awaitAtBottom("before the keyboard")
+        assertLongAnswerEndInView("before the keyboard")
+        input().performClick()
+        compose.waitUntil(WAIT_MS) { imeUp() }
+        compose.waitForIdle()
+        awaitAtBottom("with the keyboard up")
+        assertLongAnswerEndInView("with the keyboard up")
+        shot("keyboard-up-at-end")
+        hideKeyboard()
+        compose.waitUntil(WAIT_MS) { !imeUp() }
+        compose.waitForIdle()
+        awaitAtBottom("after the keyboard closed")
+        assertLongAnswerEndInView("after the keyboard closed")
     }
 
     /** An event starts a turn by itself: its muted line, then the answer; no message of the owner's is drawn for it. */
@@ -1149,7 +1312,7 @@ class AssistantChatScreenTest {
                 .hideSoftInputFromWindow(it.window.decorView.windowToken, 0)
         }
         compose.waitForIdle(); awaitMarkdown()
-        button("chat_history").performScrollToNode(hasText("A bold year", substring = true))
+        scrollHistoryTo(hasText("A bold year", substring = true))
         compose.onNodeWithText("Literal **question**").assertExists()
         val answer = compose.onNodeWithText("A bold year", substring = true)
         answer.assertIsDisplayed().assertTextEquals("A bold year and quiet detail.")
@@ -1605,9 +1768,9 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertTrue(owner!!.state.value.turns.isEmpty())
         }
-        button("chat_history").performScrollToNode(hasText("HTTP 202", substring = true))
+        scrollHistoryTo(hasText("HTTP 202", substring = true))
         compose.onNodeWithText("HTTP 202", substring = true).assertIsDisplayed()
-        button("chat_history").performScrollToNode(hasText("synthetic generated documentation query", substring = true))
+        scrollHistoryTo(hasText("synthetic generated documentation query", substring = true))
         compose.onNodeWithText("synthetic generated documentation query", substring = true).assertIsDisplayed()
     }
 
