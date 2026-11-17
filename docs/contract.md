@@ -1101,6 +1101,8 @@ cancellation and current execution boundaries belong to the
 | The owner's skills (written only by the assistant's `skill_save` / `skill_delete` after the owner's confirmation, with «Скиллы» on): name, description, required tool names and a Markdown text of each; not secret by rule (the model is told never to put secrets in a skill) | app-private no-backup storage (`assistant_skills.json`); removed with the app's data; no file until a skill is saved |
 | The «Скиллы» / "Skills" switch (`assistant_skills`, default off) | app-private storage; the settings file |
 
+None of the above leaves the phone by cloud backup or by Android 12+ device-to-device transfer: the manifest sets `allowBackup="false"`, `fullBackupContent="false"` and `dataExtractionRules` (`res/xml/data_extraction_rules.xml`), which excludes every domain from both `cloud-backup` and `device-transfer`. A unit test guards it.
+
 Permitted app-originated network flows are calls to the configured frp-jump
 servers, traffic through the owner's tunnels, public GitHub update checks and
 requested APK/checksum downloads, and explicit provider model discovery and
