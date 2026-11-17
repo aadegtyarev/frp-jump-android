@@ -97,7 +97,7 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /** Brings a tunnel up for the screens: the operation, over this app's tunnels. */
-    private val tunnelUp = TunnelUp(object : TunnelUpHost {
+    private val tunnelUp = TunnelUp(waitMs = { app.settings.settings.value.assistantLimits.tunnelWaitSeconds * 1000L }, host = object : TunnelUpHost {
         override fun tunnels(profile: String) = runtime(profile)?.tunnels?.let { manager ->
             object : TunnelUpTunnels {
                 override val state get() = manager.state

@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.ssh.SshTargetResolution
 import ru.adsrv.frpjump.ssh.SshTargets
 
 /** Not a data class: its toString must never print the command. */
-class SshExecInput(val profile: String, val connection: String, val command: String)
+class SshExecInput(val profile: String, val connection: String, val command: String, /** Stream text kept per result: the owner's tool-output limit, less the labels. */ val budget: Int = SSH_RESULT_BUDGET)
 
 /**
  * What a command that ran to its end left: the captured streams and how it ended. A nonzero [status] is still a finished command.
@@ -43,7 +43,7 @@ class SshExec(private val targets: SshTargets) : Operation<SshExecInput, SshExec
             operation.run {
                 if (!targets.isAvailable(target)) return@run OpResult.Refused(SshRefusal.TargetUnavailable)
                 val connector = targets.connector(target) ?: return@run OpResult.Refused(SshRefusal.NeedsSetup)
-                operation.execute(connector, input.command) { targets.isAvailable(target) }
+                operation.execute(connector, input.command, { targets.isAvailable(target) }, input.budget)
             }
         } finally { watchers.forEach { it.cancel() } }
     }

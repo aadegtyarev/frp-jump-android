@@ -110,7 +110,8 @@ class AssistantTunnelToolsTest {
 
     @Test fun `the whole wait of a start ends inside the core's tool limit`() {
         val limit = ru.adsrv.frpjump.agent.AgentLimits().toolTimeoutMs
-        assertTrue(StartTunnelTool.startWaitMs(limit) in 1 until limit)
+        assertTrue(withinCall(Long.MAX_VALUE, limit) in 1 until limit)
+        assertEquals("three quarters of the call", 22_500L, withinCall(Long.MAX_VALUE, 30_000)); assertEquals("a shorter wait stays", 5_000L, withinCall(5_000, 30_000))
         // A slow start is cut at the wait derived from the limit it is given: not on yet, it did not start; on, but not taking connections.
         val slow = TunnelFixture(up = FakeUp(delayMs = 5_000)); slow.host.add()
         val cut = runBlocking { StartTunnelTool(slow.tunnels, toolTimeoutMs = 400).execute(args()) }

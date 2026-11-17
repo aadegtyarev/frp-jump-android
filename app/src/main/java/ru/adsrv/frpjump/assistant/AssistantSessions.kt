@@ -168,6 +168,8 @@ class AssistantSessions internal constructor(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** The longest a session may take to come up or to be reached. */
     private val connectWaitMs: Long = CONNECT_WAIT_MS,
+    /** The owner's limit of one tool call, read at use: the connect wait is cut to fit inside it ([withinCall]). */
+    private val toolTimeoutMs: () -> Long = { ru.adsrv.frpjump.settings.AssistantLimits().toolTimeoutSeconds * 1000L },
     /** A profile's name for the cards (the id when it has none). */
     private val profileName: (String) -> String? = { null },
 ) {
@@ -254,7 +256,7 @@ class AssistantSessions internal constructor(
         val session = ssh.open(spec)
         var done = false
         try {
-            val state = withTimeoutOrNull(connectWaitMs) { session.state.first { it is SshState.Open || it is SshState.Ended || it is SshState.HostKeyUnknown || it is SshState.HostKeyChanged } }
+            val state = withTimeoutOrNull(withinCall(connectWaitMs, toolTimeoutMs())) { session.state.first { it is SshState.Open || it is SshState.Ended || it is SshState.HostKeyUnknown || it is SshState.HostKeyChanged } }
             val key = session.key
             val result = when {
                 state is SshState.Open && session.tmuxInUse && key != null -> {
@@ -313,7 +315,7 @@ class AssistantSessions internal constructor(
                 else -> ssh.open(OpenSpec(spec.profile, spec.hostKeys, key.device, key.port, spec.localPort, key.user, spec.auth), id = entry.id, tmuxName = key.session, attachOnly = true)
             }
             entry.name?.let(session::restoreName)
-            val state = withTimeoutOrNull(connectWaitMs) { session.state.first { it is SshState.Open || it is SshState.Ended || it is SshState.HostKeyUnknown || it is SshState.HostKeyChanged } }
+            val state = withTimeoutOrNull(withinCall(connectWaitMs, toolTimeoutMs())) { session.state.first { it is SshState.Open || it is SshState.Ended || it is SshState.HostKeyUnknown || it is SshState.HostKeyChanged } }
             when {
                 state is SshState.Open -> AttachResult.ATTACHED
                 session.sessionGone -> {

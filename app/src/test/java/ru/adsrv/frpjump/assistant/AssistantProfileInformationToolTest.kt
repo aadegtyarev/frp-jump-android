@@ -32,7 +32,7 @@ class AssistantProfileInformationToolTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.currentSnapshot }, { provider },
-            store::requireRevision, module, Dispatchers.Unconfined, { limits }, settings.assistantChat, f.information, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
+            store::requireRevision, module, Dispatchers.Unconfined, { _, _ -> limits }, settings.assistantChat, f.information, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         suspend fun idle() = withTimeout(5000) { chat.state.first { !it.busy } }
         suspend fun send() { chat.edit("question"); chat.send(); idle() }
         override fun close() { chat.close(); scope.cancel() }
@@ -132,6 +132,25 @@ class AssistantProfileInformationToolTest {
         val job = launch { suspended.execute(empty); fail("Cancellation swallowed") }
         entered.await(); job.cancelAndJoin(); assertTrue(exited)
     }
+    @Test fun `pages are whole records within the owner's tool-output limit less the overhead, at the default and at 2000`() = runBlocking {
+        val state = ProfileInformationState(profiles = List(100) { ProfileInformationPart("$it", "Long profile $it", "green", false, false) })
+        for ((chars, budget) in listOf(8_000 to 7_800, 2_000 to 1_800, 32_000 to 31_800)) {
+            val limits = ru.adsrv.frpjump.settings.AssistantLimits(toolOutputChars = chars)
+            val text = profileInformationText(state, budget = ru.adsrv.frpjump.ops.ssh.sshResultBudget(limits.toolOutputChars))
+            assertTrue("$chars: ${text.length}", text.length <= budget)
+            val page = kotlinx.serialization.json.Json.parseToJsonElement(text).jsonObject
+            val shown = page.getValue("results").jsonArray.size
+            assertTrue(shown in 1..100)
+            // Whole records only: the next page starts exactly after the last one shown.
+            if (shown < 100) assertEquals(shown, page.getValue("next_offset").jsonPrimitive.int) else assertTrue(page.getValue("next_offset") is JsonNull)
+            // The tool itself passes the owner's limit.
+            val tool = AssistantProfileInformationTool({}, { state }, limits)
+            assertTrue(tool.execute(empty).text.length <= budget)
+        }
+        // At the default it is the same page as before this limit existed, less the 200 of overhead: the old fixed 8,000 is gone.
+        assertTrue(profileInformationText(state).length <= 7_800)
+    }
+
     @Test fun `ordinary kernel result bounds and Chat Stop also cover profile information`() = runBlocking {
         val tool = AssistantProfileInformationTool({}, { ProfileInformationState(profiles = List(100) {
             ProfileInformationPart("$it", "Long profile $it", "green", false, false)

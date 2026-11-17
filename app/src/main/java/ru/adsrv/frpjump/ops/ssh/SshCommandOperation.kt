@@ -5,6 +5,7 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.connection.channel.direct.Session
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.ops.*
+import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.ssh.*
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -86,7 +87,7 @@ internal class SshCommandOperation {
         return synchronized(lock) { if (targetLost) targetFailure() else checkNotNull(result) }
     }
 
-    suspend fun execute(connector: SshConnector, command: String, available: () -> Boolean): OpResult<SshExecOutput> {
+    suspend fun execute(connector: SshConnector, command: String, available: () -> Boolean, budget: Int = SSH_RESULT_BUDGET): OpResult<SshExecOutput> {
         val ssh = connector.newClient()
         synchronized(lock) { client = ssh }
         var session: Session? = null
@@ -103,10 +104,10 @@ internal class SshCommandOperation {
             val running = session.exec(command).also { synchronized(lock) { this.command = it } }
             running.outputStream.close()
             return coroutineScope {
-                val stdout = async(Dispatchers.IO) { captureSshStream(running.inputStream) }
-                val stderr = async(Dispatchers.IO) { captureSshStream(running.errorStream) }
+                val stdout = async(Dispatchers.IO) { captureSshStream(running.inputStream, budget) }
+                val stderr = async(Dispatchers.IO) { captureSshStream(running.errorStream, budget) }
                 try {
-                    val (out, err) = fitSshStreams(stdout.await(), stderr.await())
+                    val (out, err) = fitSshStreams(stdout.await(), stderr.await(), budget)
                     running.join()
                     checkActive()
                     val status = running.exitStatus
@@ -141,7 +142,10 @@ internal const val SSH_RESULT_OVERHEAD = 200
  * Stream text (stdout and stderr together) per result. Derived from the kernel's tool-result cap so the kernel never cuts
  * an ssh_command result in the middle; the output goes to the provider, so never raise it above that cap.
  */
-internal val SSH_RESULT_BUDGET = AgentLimits().maxToolChars - SSH_RESULT_OVERHEAD
+internal val SSH_RESULT_BUDGET = sshResultBudget(AssistantLimits.DEFAULT_TOOL_OUTPUT_CHARS)
+
+/** The stream text per result for a tool-output limit of [toolOutputChars] (the owner's setting; [SSH_RESULT_BUDGET] at its default). */
+internal fun sshResultBudget(toolOutputChars: Int): Int = toolOutputChars - SSH_RESULT_OVERHEAD
 /** Stderr, when present, keeps at least this much (or its whole length if shorter); stdout gets the rest. */
 internal const val SSH_STDERR_MIN = 1_500
 
@@ -149,7 +153,7 @@ internal const val SSH_STDERR_MIN = 1_500
 internal class SshCapture(val head: String, val total: Long)
 
 /** Retain at most [SSH_RESULT_BUDGET] characters; keep draining and counting the rest without retaining it (no channel deadlock). */
-internal fun captureSshStream(stream: InputStream): SshCapture {
+internal fun captureSshStream(stream: InputStream, budget: Int = SSH_RESULT_BUDGET): SshCapture {
     val text = StringBuilder()
     var total = 0L
     val reader = stream.reader(Charsets.UTF_8)
@@ -158,7 +162,7 @@ internal fun captureSshStream(stream: InputStream): SshCapture {
         val n = reader.read(buffer)
         if (n < 0) break
         total += n
-        val keep = minOf(n, SSH_RESULT_BUDGET - text.length)
+        val keep = minOf(n, budget - text.length)
         if (keep > 0) text.append(buffer, 0, keep)
     }
     return SshCapture(text.toString(), total)
@@ -173,8 +177,8 @@ private fun clipSshStream(capture: SshCapture, keep: Int): String {
 }
 
 /** Shares [SSH_RESULT_BUDGET] between the streams: stderr keeps at least [SSH_STDERR_MIN] and stdout gets the rest. */
-internal fun fitSshStreams(out: SshCapture, err: SshCapture): Pair<String, String> {
-    val errKeep = minOf(err.head.length, maxOf(SSH_STDERR_MIN, SSH_RESULT_BUDGET - out.head.length))
-    val outKeep = minOf(out.head.length, SSH_RESULT_BUDGET - errKeep)
+internal fun fitSshStreams(out: SshCapture, err: SshCapture, budget: Int = SSH_RESULT_BUDGET): Pair<String, String> {
+    val errKeep = minOf(err.head.length, maxOf(SSH_STDERR_MIN, budget - out.head.length))
+    val outKeep = minOf(out.head.length, budget - errKeep)
     return clipSshStream(out, outKeep) to clipSshStream(err, errKeep)
 }

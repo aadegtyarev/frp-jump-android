@@ -38,7 +38,7 @@ class OpenAiAgentProvider internal constructor(
         require(request.maxOutputTokens in 1..1_000_000) { "Invalid model output limit" }
         val body = OpenAiCodec.encode(request, config, owner).toByteArray(Charsets.UTF_8)
         if (body.size > config.maxRequestBytes) throw OpenAiProviderException(ProviderFailure.REQUEST_TOO_LARGE)
-        return OpenAiCodec.decode(executeChat(body), owner)
+        return OpenAiCodec.decode(executeChat(body, request.timeoutMs), owner)
     }
 
     override suspend fun inspectImage(mime: String, bytes: ByteArray, question: String): String {
@@ -47,12 +47,12 @@ class OpenAiAgentProvider internal constructor(
         return OpenAiCodec.decodeImage(executeChat(body), owner)
     }
 
-    private suspend fun executeChat(body: ByteArray): String {
+    private suspend fun executeChat(body: ByteArray, timeoutMs: Long? = null): String {
         if (body.size > config.maxRequestBytes) throw OpenAiProviderException(ProviderFailure.REQUEST_TOO_LARGE)
         val target = config.baseUrl.newBuilder().addPathSegment("chat").addPathSegment("completions").build()
         val http = Request.Builder().url(target).header("Authorization", "Bearer $apiKey")
             .post(body.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-        return execute(http)
+        return execute(http, timeoutMs)
     }
 
     /** Called explicitly by the future settings UI; a model ID can also be entered without discovery. */
@@ -65,8 +65,10 @@ class OpenAiAgentProvider internal constructor(
      * The coroutine ends only after the blocking exchange, body read and close have returned; cancellation cancels this exact call.
      * The cancel runs promptly on an IO worker, never on a non-IO caller thread such as Main ([blockingCancellable]).
      */
-    private suspend fun execute(request: Request): String {
-        val call = template.newCall(request)
+    private suspend fun execute(request: Request, timeoutMs: Long? = null): String {
+        val call = withModelTimeout(template, timeoutMs).newCall(request)
+        // The run's model timeout is the ONE limit of the call; no fixed transport timeout cuts it sooner.
+        if (timeoutMs != null) call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
         return blockingCancellable(call::cancel) {
             try { call.execute().use { readBounded(it) } }
             catch (failure: OpenAiProviderException) { throw failure }
@@ -88,7 +90,15 @@ class OpenAiAgentProvider internal constructor(
         catch (_: Exception) { throw OpenAiProviderException(ProviderFailure.INVALID_RESPONSE) }
     }
 
-    private companion object {
+    internal companion object {
+        /**
+         * [template] for a call that has [timeoutMs] (the run's model timeout): no fixed call timeout, and a read timeout no shorter than it, so that the whole-call
+         * timeout set on the call is the only one that can end it. Without [timeoutMs] the template as it is.
+         */
+        fun withModelTimeout(template: OkHttpClient, timeoutMs: Long?): OkHttpClient =
+            if (timeoutMs == null) template else template.newBuilder().callTimeout(0, TimeUnit.MILLISECONDS)
+                .readTimeout(maxOf(timeoutMs, template.readTimeoutMillis.toLong()), TimeUnit.MILLISECONDS).build()
+
         fun ioFailure(error: IOException) = OpenAiProviderException(
             if (error is java.io.InterruptedIOException) ProviderFailure.TIMEOUT else ProviderFailure.NETWORK)
 

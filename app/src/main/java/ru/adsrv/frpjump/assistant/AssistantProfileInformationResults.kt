@@ -6,11 +6,17 @@ import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.errors.ErrorKind
 import ru.adsrv.frpjump.devices.searchMatches
 import ru.adsrv.frpjump.ops.profile.ProfileInformationQuery
+import ru.adsrv.frpjump.ops.ssh.sshResultBudget
+import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.profiles.ProfileInformationPart
 import ru.adsrv.frpjump.profiles.ProfileInformationState
 
-/** A bounded live selection, not a snapshot/cache. Records are rendered only for this page. */
-internal fun profileInformationText(state: ProfileInformationState, query: ProfileInformationQuery = ProfileInformationQuery()): String {
+/**
+ * A bounded live selection, not a snapshot/cache. Records are rendered only for this page. Whole-record pages of at most [budget] characters: the owner's tool-output
+ * limit less the same overhead the other output budgets keep ([sshResultBudget]), so the kernel never cuts a page in the middle of a record.
+ */
+internal fun profileInformationText(state: ProfileInformationState, query: ProfileInformationQuery = ProfileInformationQuery(),
+    budget: Int = sshResultBudget(AssistantLimits.DEFAULT_TOOL_OUTPUT_CHARS)): String {
     val profiles = state.profiles.filter { query.profileId == null || it.id == query.profileId }
     val coverage = buildJsonObject {
         put("loaded", state.loaded)
@@ -40,7 +46,7 @@ internal fun profileInformationText(state: ProfileInformationState, query: Profi
         val position = total++
         if (position < query.offset || full) continue
         var record = render(256)
-        fun fits() = page(selected + record, Int.MAX_VALUE, Int.MAX_VALUE).length <= 8000
+        fun fits() = page(selected + record, Int.MAX_VALUE, Int.MAX_VALUE).length <= budget
         if (!fits()) {
             if (selected.isNotEmpty()) { full = true; continue }
             // Only pathological display fields are shortened; saved action identifiers stay exact.

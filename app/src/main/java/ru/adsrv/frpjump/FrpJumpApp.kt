@@ -101,7 +101,8 @@ class FrpJumpApp : Application() {
             attach = { id -> assistantSessions.attach(id) },
             profileName = { id -> profiles.state.value.index.profiles.singleOrNull { it.id == id }?.name },
             connectionName = { profile, device, port -> savedSshConnection(profile, device, port)?.customName },
-            connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id })
+            connectionId = { profile, device, port -> savedSshConnection(profile, device, port)?.id },
+            toolTimeoutMs = { settings.settings.value.assistantLimits.toolTimeoutSeconds * 1000L })
     }
 
     /**
@@ -119,7 +120,8 @@ class FrpJumpApp : Application() {
                     ru.adsrv.frpjump.assistant.SessionNotice.CLOSE_TUNNEL_OFF -> R.string.session_close_tunnel_off
                 }), ru.adsrv.frpjump.notices.NoticeKind.WARN)
             },
-            enabled = { settings.assistantAvailability.tools[ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_OPEN] }).also { it.refresh() }
+            enabled = { settings.assistantAvailability.tools[ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_OPEN] },
+            toolTimeoutMs = { settings.settings.value.assistantLimits.toolTimeoutSeconds * 1000L }).also { it.refresh() }
     }
 
     /** The saved SSH connection of a tab's profile, device and port that is not hidden by an Undo; null when none matches. */
@@ -134,7 +136,7 @@ class FrpJumpApp : Application() {
 
     /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */
     val assistantTunnels by lazy {
-        val up = ru.adsrv.frpjump.ops.tunnel.TunnelUp(object : ru.adsrv.frpjump.ops.tunnel.TunnelUpHost {
+        val up = ru.adsrv.frpjump.ops.tunnel.TunnelUp(waitMs = { settings.settings.value.assistantLimits.tunnelWaitSeconds * 1000L }, host = object : ru.adsrv.frpjump.ops.tunnel.TunnelUpHost {
             override fun tunnels(profile: String) = profiles.runtime(profile)?.tunnels?.let { manager ->
                 object : ru.adsrv.frpjump.ops.tunnel.TunnelUpTunnels {
                     override val state get() = manager.state
@@ -457,6 +459,7 @@ class FrpJumpApp : Application() {
             tmuxNames = TmuxNames(AtomicTextFile(File(filesDir, "tmux_names.json"))),
             tabNames = SessionRecordStore(AtomicTextFile(File(filesDir, "tab_names.json"))),
             historyRows = { settings.settings.value.terminalHistoryRows },
+            reconnectGiveUpMs = { settings.settings.value.assistantLimits.reconnectMinutes * 60_000L },
             visible = visible,
         )
         listings = ListingCache({ profile, key -> AtomicTextFile(File(PhoneFiles.listingsDir(this, profile), "$key.json")) })

@@ -34,7 +34,12 @@ data class AgentTurn(val user: String, val exchanges: List<AgentExchange> = empt
  * [systemContent] as the one system message: the base prompt is its exact byte prefix, and without owner text it is the whole message.
  */
 data class AgentRequest(val instructions: String, val tools: List<ToolSpec>, val turns: List<AgentTurn>, val maxOutputTokens: Int,
-    val ownerInstructions: String = "")
+    val ownerInstructions: String = "",
+    /**
+     * How long the provider may take to answer this request: the run's model timeout ([AgentLimits.modelTimeoutMs]), the ONE limit. A provider with a fixed
+     * transport timeout shorter than it must not cut the call sooner. Null: the provider's own default (calls that are not part of a run).
+     */
+    val timeoutMs: Long? = null)
 
 /** Fixed, model-facing heading of the owner's own instructions; the text follows after one line break. */
 const val OWNER_INSTRUCTIONS_HEADER = "## Owner's additional instructions"

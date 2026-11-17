@@ -19,7 +19,8 @@ class AssistantConversation(
     private val requireRevision: (String?) -> Unit,
     private val module: AgentModule,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    private val limits: (AssistantProviderSettings) -> AgentLimits = { it.limits() },
+    /** The agent's limits of one Send: the provider's token limits and the owner's limits (steps, calls, characters, time) at its start. */
+    private val limits: (AssistantProviderSettings, ru.adsrv.frpjump.settings.AssistantLimits) -> AgentLimits = { provider, owner -> provider.limits().withOwnerLimits(owner) },
     private val runtime: AssistantChatRuntime = AssistantChatRuntime(),
     private val profileInformation: ru.adsrv.frpjump.profiles.ProfileInformation? = null,
     private val sshCommands: AssistantSshCommands? = null,

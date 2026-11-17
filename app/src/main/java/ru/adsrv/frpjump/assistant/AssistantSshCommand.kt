@@ -5,6 +5,9 @@ import ru.adsrv.frpjump.assistant.chat.ConfirmationTargetInfo
 import ru.adsrv.frpjump.assistant.tools.*
 import ru.adsrv.frpjump.ops.*
 import ru.adsrv.frpjump.ops.ssh.SshExec
+import ru.adsrv.frpjump.ops.ssh.SSH_STDERR_MIN
+import ru.adsrv.frpjump.ops.ssh.sshResultBudget
+import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.ops.ssh.SshExecInput
 import ru.adsrv.frpjump.ops.ssh.SshExecOutput
 import ru.adsrv.frpjump.settings.GrantTarget
@@ -28,15 +31,15 @@ internal object SshRefusalTexts {
     const val CONNECT_FAILED = "SSH unavailable. Check the tunnel in the ordinary SSH UI. No command was executed."
 }
 
-internal class AssistantSshCommandTool(commands: AssistantSshCommands) : OperationTool<SshExecInput, SshExecOutput>(
+internal class AssistantSshCommandTool(commands: AssistantSshCommands, private val limits: AssistantLimits = AssistantLimits()) : OperationTool<SshExecInput, SshExecOutput>(
     AssistantToolId.SSH_COMMAND,
-    "Run one noninteractive command through a saved SSH tunnel that is on and ready. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about 7,800 characters for stdout and stderr together (stderr keeps at least 1,500 when present); a cut stream ends with \"truncated: N of M characters\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).",
+    "Run one noninteractive command through a saved SSH tunnel that is on and ready. Use profile_information IDs. FULL SSH ACCESS within account rights; command/output may contain secrets and go to the model. No retries. Output is limited to about ${grouped(sshResultBudget(limits.toolOutputChars))} characters for stdout and stderr together (stderr keeps at least ${grouped(SSH_STDERR_MIN)} when present); a cut stream ends with \"truncated: N of M characters\" (N shown, M total). To read more, narrow the output (tail -n, head -n, grep), print only what the task needs, read big output in pieces, or for tmux scrollback use tmux capture-pane -p -S -<N> (N history lines; -E <line> sets the end line).",
     objectSchema { string("profile_id"); string("connection_id"); string("command") },
     commands.exec,
 ) {
     override fun parse(args: StrictArgs) = args.run {
         exactKeys("profile_id", "connection_id", "command")
-        SshExecInput(string("profile_id"), string("connection_id"), string("command"))
+        SshExecInput(string("profile_id"), string("connection_id"), string("command"), sshResultBudget(limits.toolOutputChars))
     }
     override val invalidArguments = ToolOutput("Provide profile_id, connection_id and one nonempty command only.", ToolOutcome.FAILED)
     override fun commandText(input: SshExecInput) = input.command
@@ -65,3 +68,6 @@ internal class AssistantSshCommandTool(commands: AssistantSshCommands) : Operati
 
     private fun exitText(exit: SshExit) = "exit_status: ${exit.status ?: "unknown"}\nexit_signal: ${exit.signal ?: "unknown"}"
 }
+
+/** [n] with a comma between thousands, as the tool texts say numbers ("7,800"). */
+internal fun grouped(n: Int): String = String.format(java.util.Locale.US, "%,d", n)

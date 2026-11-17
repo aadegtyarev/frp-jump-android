@@ -72,7 +72,7 @@ class AssistantConfirmationFlowTest {
                     }))) else AgentReply("done")
                 }
             }, {}, AgentModule(true, { settings.assistantAvailability.disableVersion }, { settings.assistantAvailability.enabled }),
-                io = dispatcher ?: Dispatchers.Default, limits = { AgentLimits(modelTimeoutMs = modelTimeoutMs) }, runtime = settings.assistantChat, sshCommands = ssh, prompts = TestPrompts.placeholder,
+                io = dispatcher ?: Dispatchers.Default, limits = { _, _ -> AgentLimits(modelTimeoutMs = modelTimeoutMs) }, runtime = settings.assistantChat, sshCommands = ssh, prompts = TestPrompts.placeholder,
                 confirmations = if (withSupport) support else null, activeClock = clock ?: { System.nanoTime() / 1_000_000 }, realtime = realtime ?: clock ?: { System.nanoTime() / 1_000_000 })
             live += this
         }

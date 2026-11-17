@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.assistant
 
+import ru.adsrv.frpjump.settings.AssistantLimits
 import ru.adsrv.frpjump.agent.AgentLimits
 import ru.adsrv.frpjump.agent.ToolOutcome
 import ru.adsrv.frpjump.agent.ToolOutput
@@ -25,6 +26,12 @@ private const val NAME_CHARS = 64
 /** Owner text in a reply: cleaned of control and invisible characters, cut. */
 private fun shown(name: String) = receiptText(name, NAME_CHARS)
 
+/**
+ * [ms] cut to fit inside one tool call: at most three quarters of the call's own limit ([toolTimeoutMs]), so that a quarter is left to word the answer. The ONE rule for
+ * every wait a tool does (the whole wait of a start, the connect wait of a session, a terminal read); the call limit is the owner's.
+ */
+internal fun withinCall(ms: Long, toolTimeoutMs: Long): Long = minOf(ms, toolTimeoutMs - toolTimeoutMs / 4)
+
 /** The reply of both tools to ids that name no saved tunnel (also a profile that is gone or hidden). */
 internal const val PROVIDE_IDS = "Provide profile_id and connection_id from profile_information."
 
@@ -32,9 +39,9 @@ internal const val PROVIDE_IDS = "Provide profile_id and connection_id from prof
 internal class StartTunnelTool(
     tunnels: AssistantTunnels,
     /** The core's limit for one tool call: the whole wait of a start ends inside it, with room left to say how it ended. */
-    toolTimeoutMs: Long = AgentLimits().toolTimeoutMs,
+    toolTimeoutMs: Long = AssistantLimits().toolTimeoutSeconds * 1000L,
 ) : OperationTool<SavedTunnelIds, TunnelStarted>(
-    AssistantToolId.START_TUNNEL, START_DESCRIPTION, objectSchema { string("profile_id", 256); string("connection_id", 256) }, tunnels.start(startWaitMs(toolTimeoutMs)),
+    AssistantToolId.START_TUNNEL, START_DESCRIPTION, objectSchema { string("profile_id", 256); string("connection_id", 256) }, tunnels.start(withinCall(Long.MAX_VALUE, toolTimeoutMs)),
 ) {
     override fun parse(args: StrictArgs) = args.run {
         exactKeys("profile_id", "connection_id")
@@ -55,9 +62,6 @@ internal class StartTunnelTool(
     }
 
     companion object {
-        /** A quarter of the core's tool limit is left to word the answer; the rest is the whole wait of a start, the device's listening included. */
-        fun startWaitMs(toolTimeoutMs: Long) = toolTimeoutMs - toolTimeoutMs / 4
-
         const val START_DESCRIPTION = "Start one saved tunnel from profile_information (profile_id, connection_id), as the owner's Start button does, and wait until the device takes connections through it. Changes only this app, nothing on the device."
     }
 }

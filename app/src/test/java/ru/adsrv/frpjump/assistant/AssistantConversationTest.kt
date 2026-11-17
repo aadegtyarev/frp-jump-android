@@ -46,7 +46,7 @@ class AssistantConversationTest {
         val module = bindAssistantLifecycle(settings, scope)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { store.state.value }, {
             preparations++; prepareGate?.invoke(); provider
-        }, store::requireRevision, module, io, { limit }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off, onEnded = { ends += it })
+        }, store::requireRevision, module, io, { _, _ -> limit }, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off, onEnded = { ends += it })
         suspend fun idle() = withTimeout(3000) { chat.state.first { !it.busy } }
         suspend fun send(text: String = "question"): ChatState { chat.edit(text); chat.send(); return idle() }
         fun revise() = store.save(AssistantProviderDraft(AssistantProviderSettings(model = "new"), store.state.value.revision))
@@ -317,9 +317,10 @@ class AssistantConversationTest {
                 store.save(AssistantProviderDraft(AssistantProviderSettings("http://127.0.0.1:${server.localPort}/v1", "m"), null, "synthetic"))
                 val chat = AssistantConversation(scope, { AssistantAvailability(true) }, { store.state.value }, {
                     store.provider(AssistantProviderDraft(it.settings!!, it.revision))
-                }, store::requireRevision, AgentModule(true), prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
+                }, store::requireRevision, AgentModule(true), limits = { _, _ -> AgentLimits(modelTimeoutMs = 700) }, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
                 chat.edit("retry after timeout"); chat.send(); assertTrue(received.await(2, TimeUnit.SECONDS))
-                val state = withTimeout(35000) { chat.state.first { !it.busy } }
+                // The run's model timeout is the one limit of the real adapter's call (no fixed 30 s one), so a short one ends it at once.
+                val state = withTimeout(10_000) { chat.state.first { !it.busy } }
                 assertEquals("partialBody=$partialBody", ChatProblem.TIMEOUT, state.problem)
                 assertEquals("retry after timeout", state.draft); assertTrue(state.turns.isEmpty()); chat.close()
             } finally { scope.cancel(); server.close(); thread.join(1000) }

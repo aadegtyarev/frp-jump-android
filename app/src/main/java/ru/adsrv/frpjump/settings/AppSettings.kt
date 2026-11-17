@@ -364,18 +364,16 @@ class SettingsStore(private val storage: TextStorage) {
         return WireJson.encodeToJsonElement(limits)
     }
 
-    /** Each limit is read on its own: a missing, malformed or out-of-range one is its default and resets nothing else. */
+    /** Each limit is read on its own: a missing or malformed one is its default, an out-of-range one is clamped into its range, and none resets another. */
     private fun normalizeAssistantLimits(raw: JsonElement?): JsonElement {
         val group = raw as? JsonObject
         val defaults = AssistantLimits()
+        // A number outside its range is clamped into it; one that is not a number is the default. Each key on its own.
         fun number(key: String, range: IntRange, fallback: Int): Int =
-            (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it in range } ?: fallback
-        return WireJson.encodeToJsonElement(AssistantLimits(
-            number("waits_at_once", AssistantLimits.WAITS_AT_ONCE_RANGE, defaults.waitsAtOnce),
-            number("wait_max_minutes", AssistantLimits.WAIT_MAX_MINUTES_RANGE, defaults.waitMaxMinutes),
-            number("event_replies", AssistantLimits.EVENT_REPLIES_RANGE, defaults.eventReplies),
-            number("sessions_at_once", AssistantLimits.SESSIONS_AT_ONCE_RANGE, defaults.sessionsAtOnce),
-        ))
+            (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(range) ?: fallback
+        var limits = defaults
+        for (spec in LIMITS) limits = spec.set(limits, number(spec.key, spec.range, spec.get(defaults)))
+        return WireJson.encodeToJsonElement(limits)
     }
 
     private fun normalizeMqttCache(raw: JsonElement?): JsonElement {

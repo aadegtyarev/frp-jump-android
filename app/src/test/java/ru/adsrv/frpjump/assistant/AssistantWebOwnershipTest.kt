@@ -114,7 +114,7 @@ class AssistantWebOwnershipTest {
                 if (request.turns.last().exchanges.isEmpty()) reply("call-${++calls}")
                 else AgentReply("x".repeat(30_000))
             }
-        }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
+        }, {}, AgentModule(true), limits = { _, _ -> AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             repeat(20) { chat.edit("q$it"); chat.send(); idle(chat) }
             val state = chat.state.value
@@ -134,7 +134,7 @@ class AssistantWebOwnershipTest {
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
             calls++
             AgentReply("x".repeat(30_000), (1..4).map { index -> ToolCall("$calls-$index", "read_page", buildJsonObject { put("url", "https://public.org/doc") }) })
-        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
+        } }, {}, AgentModule(true), limits = { _, _ -> AgentLimits(contextTokens = 1_000_000, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("Keep exact input"); chat.send(); idle(chat)
             assertEquals(ChatProblem.CONTEXT_FULL, chat.state.value.problem)
@@ -253,7 +253,7 @@ class AssistantWebOwnershipTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val chat = AssistantConversation(scope, { settings.assistantAvailability }, { saved }, { AgentProvider {
             calls++; AgentReply("x".repeat(4000), listOf(ToolCall("read", "read_page", buildJsonObject { put("url", "https://public.org/doc") })))
-        } }, {}, AgentModule(true), limits = { AgentLimits(contextTokens = 4096, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
+        } }, {}, AgentModule(true), limits = { _, _ -> AgentLimits(contextTokens = 4096, outputReserveTokens = 100) }, runtime = settings.assistantChat, prompts = TestPrompts.placeholder, confirmations = TestConfirmations.off)
         try {
             chat.edit("Read"); chat.send(); idle(chat)
             assertEquals(1, calls)

@@ -1249,7 +1249,7 @@
     <string name="tool_wait_for_progress">Setting up a wait…</string>
     <string name="tool_wait_for_receipt">Wait</string>
     <string name="assistant_limits_title">Limits</string>
-    <string name="assistant_limits_hint">Waits and event replies</string>
+    <string name="assistant_limits_hint">Assistant, waits, terminal, tunnels</string>
     <string name="limit_waits_at_once">Waits at once</string>
     <string name="limit_wait_max_minutes">Longest wait, min</string>
     <string name="limit_event_replies">Event replies in a row</string>
@@ -1434,6 +1434,22 @@
     <string name="tool_terminal_close_progress">Closing a session…</string>
     <string name="tool_terminal_close_receipt">Close session</string>
     <string name="limit_sessions_at_once">Assistant sessions</string>
+    <string name="limits_group_assistant">Assistant</string>
+    <string name="limits_group_waits">Waits</string>
+    <string name="limits_group_terminal">Terminal</string>
+    <string name="limits_group_tunnels">Tunnels</string>
+    <string name="limit_tool_timeout">One call, s</string>
+    <string name="limit_model_timeout">Model answer, s</string>
+    <string name="limit_reply_seconds">Whole reply, s</string>
+    <string name="limit_steps">Steps per reply</string>
+    <string name="limit_calls">Calls per step</string>
+    <string name="limit_tool_output">Tool output, characters</string>
+    <string name="limit_reply_chars">Reply length, characters</string>
+    <string name="limit_input_chars">Input at once, characters</string>
+    <string name="limit_keys">Keys at once</string>
+    <string name="limit_read_lines">Lines per read, at most</string>
+    <string name="limit_tunnel_wait">Start wait, s</string>
+    <string name="limit_reconnect">Terminal auto-reconnect, min</string>
     <string name="confirm_close_title">Close session?</string>
     <string name="confirm_close_warning">Anything running in it stops.</string>
     <string name="assistant_ask_title">Your input is needed</string>
@@ -1449,4 +1465,5 @@
     <string name="ssh_session_gone">The session no longer exists on the device.</string>
     <string name="session_tunnel_gone">The session stays on the device: its saved tunnel is gone</string>
     <string name="session_close_tunnel_off">Could not close: the tunnel is off</string>
+    <string name="limit_reply_raised">at least one call and one model answer: %1$d s</string>
 </resources>

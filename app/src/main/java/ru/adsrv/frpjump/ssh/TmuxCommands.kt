@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ssh
 
+import ru.adsrv.frpjump.settings.AssistantLimits
 import java.io.InputStream
 
 /*
@@ -145,13 +146,13 @@ fun tmuxTapStateCommand(name: String): String {
 /**
  * What the assistant reads of session [name]'s active pane without a cursor, in ONE tmux invocation (its commands are chained with `;`, so tmux runs
  * them as one list without serving the pane's output in between: the rows and the numbers belong together). In this order: the visible screen and up to
- * [lines] rows of history (0..1000), wrapped lines joined (`-J`), no escape sequences (no `-e`); the physical rows from three rows above the screen to
+ * [lines] rows of history (0..the owner's limit of lines per read), wrapped lines joined (`-J`), no escape sequences (no `-e`); the physical rows from three rows above the screen to
  * its bottom (the rows above the terminal's cursor are cut out of them); and one line `history_size history_limit cursor_y pane_height pane_in_mode`.
  * Read-only: it types nothing, leaves no copy mode and sets no option.
  */
 fun tmuxReadScreenCommand(name: String, lines: Int): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
-    require(lines in 0..1000) { "history lines out of range" }
+    require(lines in 0..AssistantLimits.READ_LINES_RANGE.last) { "history lines out of range" }
     val target = shellQuote("=$name:")
     return "tmux capture-pane -p -J -S -$lines -t $target ';' capture-pane -p -S -3 -t $target ';' display-message -p -t $target ${shellQuote(NUMBERS)}"
 }
