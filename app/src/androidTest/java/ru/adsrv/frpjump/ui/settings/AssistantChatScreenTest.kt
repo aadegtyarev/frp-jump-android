@@ -659,7 +659,7 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_tool_group_0_item_1").assertExists()
         compose.onAllNodesWithTag("chat_profile_information_facts").assertCountEquals(2)
         compose.onAllNodesWithText("profile_information", substring = true).assertCountEquals(0)
-        button("chat_history").performScrollToNode(hasTestTag("chat_tool_group_0_item_0"))
+        scrollHistoryTo(hasTestTag("chat_profile_information_facts"))
         compose.onAllNodes(hasTestTag("chat_profile_information_facts"))[0].assertIsDisplayed()
         shot("calls-expanded")
         // The second page's label says where it starts; its facts follow.
@@ -824,6 +824,19 @@ class AssistantChatScreenTest {
     // ---- The list follows the bottom: on open, while the run adds lines, and when the keyboard moves the composer. ----
 
     private fun history() = compose.onNodeWithTag("chat_history")
+    /**
+     * Scrolls the history until [matcher]'s node is on screen, item by item from the top. performScrollToNode takes a node that is composed as
+     * found, and the list now rests at the bottom of a tall last item, where the top of that item is composed but above the list.
+     */
+    private fun scrollHistoryTo(matcher: SemanticsMatcher) {
+        val items = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.CollectionInfo].rowCount
+        for (index in 0 until items) {
+            button("chat_history").performScrollToIndex(index)
+            compose.waitForIdle()
+            if (compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() && runCatching { compose.onAllNodes(matcher)[0].assertIsDisplayed() }.isSuccess) return
+        }
+        button("chat_history").performScrollToNode(matcher)
+    }
     /** The list's end is on screen: its scroll position has no further to go. */
     private fun atBottom(): Boolean = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].let { it.value() >= it.maxValue() }
     private fun scrollValue(): Float = history().fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
@@ -1297,7 +1310,7 @@ class AssistantChatScreenTest {
                 .hideSoftInputFromWindow(it.window.decorView.windowToken, 0)
         }
         compose.waitForIdle(); awaitMarkdown()
-        button("chat_history").performScrollToNode(hasText("A bold year", substring = true))
+        scrollHistoryTo(hasText("A bold year", substring = true))
         compose.onNodeWithText("Literal **question**").assertExists()
         val answer = compose.onNodeWithText("A bold year", substring = true)
         answer.assertIsDisplayed().assertTextEquals("A bold year and quiet detail.")
@@ -1753,9 +1766,9 @@ class AssistantChatScreenTest {
             assertTrue(owner!!.state.value.toolFailed)
             assertTrue(owner!!.state.value.turns.isEmpty())
         }
-        button("chat_history").performScrollToNode(hasText("HTTP 202", substring = true))
+        scrollHistoryTo(hasText("HTTP 202", substring = true))
         compose.onNodeWithText("HTTP 202", substring = true).assertIsDisplayed()
-        button("chat_history").performScrollToNode(hasText("synthetic generated documentation query", substring = true))
+        scrollHistoryTo(hasText("synthetic generated documentation query", substring = true))
         compose.onNodeWithText("synthetic generated documentation query", substring = true).assertIsDisplayed()
     }
 
