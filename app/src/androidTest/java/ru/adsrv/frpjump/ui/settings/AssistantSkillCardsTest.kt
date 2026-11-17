@@ -44,7 +44,7 @@ class AssistantSkillCardsTest {
         compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.SKILL_SAVE, body, null, null, skill = card), onAnswer = { answers += it }) } }
         compose.onNodeWithTag("chat_confirm_card").assertIsDisplayed()
         compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(text(R.string.tool_skill_save_receipt))
-        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("restart-nginx")
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("\u2068restart-nginx\u2069") // isolated: a name never reorders its neighbours
         compose.onNodeWithTag("chat_confirm_skill_description", useUnmergedTree = true).assertTextContains("Use when nginx must restart.", substring = true)
         compose.onNodeWithTag("chat_confirm_skill_requires", useUnmergedTree = true).assertTextContains(text(R.string.tool_ssh_command) + ", " + text(R.string.tool_terminal_input), substring = true)
         // The text is shown as it is: markup characters are not rendered, and the box scrolls (30 lines).
@@ -84,7 +84,7 @@ class AssistantSkillCardsTest {
         val answers = ArrayList<ConfirmationDecision>()
         val card = SkillCard(SkillCard.Kind.DELETE, "restart-nginx", "Use when nginx must restart.", emptyList(), "the text is not shown")
         compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.SKILL_DELETE, "", null, null, skill = card), onAnswer = { answers += it }) } }
-        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("restart-nginx")
+        compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("\u2068restart-nginx\u2069") // isolated: a name never reorders its neighbours
         compose.onNodeWithTag("chat_confirm_skill_description", useUnmergedTree = true).assertTextContains("Use when nginx must restart.", substring = true)
         compose.onNodeWithTag("chat_confirm_command_box").assertDoesNotExist()
         shot("card-skill-delete")
