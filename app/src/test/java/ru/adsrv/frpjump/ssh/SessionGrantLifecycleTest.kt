@@ -35,7 +35,12 @@ class SessionGrantLifecycleTest {
         }
         fun give(): Boolean = grants.record(key, tool, grants.stamp(target)!!)
         /** What the cleaner alone left: nothing here looks the grant up (a lookup would drop a stale one by itself). */
-        val held get() = grants.observe().value.isNotEmpty()
+        val held: Boolean get() {
+            // The cleaner runs on its own thread: give it a moment before saying the grant is still there.
+            val until = System.nanoTime() + 500_000_000L
+            while (grants.observe().value.isNotEmpty() && System.nanoTime() < until) Thread.sleep(5)
+            return grants.observe().value.isNotEmpty()
+        }
         override fun close() { scope.cancel() }
     }
 
