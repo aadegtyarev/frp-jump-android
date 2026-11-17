@@ -29,6 +29,7 @@ data class AssistantProviderSettings(
     val contextTokens: Int = DEFAULT_CONTEXT_TOKENS,
     val outputTokens: Int = 2_048,
     val completionTokenField: Boolean = false,
+    /** Legacy: the summary trigger now lives with the owner's limits; this stored value is read once to set it there, and kept as it is. */
     val summaryPercent: Int = 80,
     val summaryModel: String? = null,
 ) {

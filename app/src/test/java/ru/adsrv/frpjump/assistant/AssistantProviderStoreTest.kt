@@ -208,4 +208,15 @@ class AssistantProviderStoreTest {
         problem(ProviderSetupProblem.STALE) { first.provider(AssistantProviderDraft(settings, old.revision)) }
         assertEquals(old, first.state.value)
     }
+
+    @Test fun `settings stored with the old summary trigger are read unchanged and the trigger is kept as stored`() {
+        val file = File(); val store = AssistantProviderStore(file, Box())
+        save(store, settings.copy(summaryPercent = 60, summaryModel = "small"))
+        val restored = AssistantProviderStore(file, Box())
+        assertEquals(60, restored.state.value.settings!!.summaryPercent); assertEquals("small", restored.state.value.settings!!.summaryModel)
+        assertTrue(file.text!!.contains("summaryPercent"))
+        // A stored 100 (the old range was 1..100) still reads.
+        save(restored, settings.copy(summaryPercent = 100))
+        assertEquals(100, AssistantProviderStore(file, Box()).state.value.settings!!.summaryPercent)
+    }
 }

@@ -19,5 +19,9 @@ interface ImageInspector {
 
 enum class ProviderErrorKind { HTTP, NETWORK, TIMEOUT, INCOMPATIBLE_CONTEXT, RESPONSE_TOO_LARGE, REQUEST_TOO_LARGE, INVALID_RESPONSE, INCOMPLETE_RESPONSE }
 
-/** Provider-neutral failure. No response body, endpoint, key, exception cause or user-supplied arguments in diagnostics. */
-open class ProviderException(val kind: ProviderErrorKind, val status: Int?, message: String?) : Exception(message)
+/**
+ * Provider-neutral failure. No response body, endpoint, key, exception cause or user-supplied arguments in diagnostics.
+ * [contextTooLong]: the provider (or the local request-size check) refused the request as too large for the model's context;
+ * only this classification is kept of the response, never its text.
+ */
+open class ProviderException(val kind: ProviderErrorKind, val status: Int?, message: String?, val contextTooLong: Boolean = false) : Exception(message)

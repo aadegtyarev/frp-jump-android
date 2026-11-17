@@ -37,7 +37,7 @@ class OpenAiAgentProvider internal constructor(
         require(config.model.isNotBlank()) { "Select a provider model before running" }
         require(request.maxOutputTokens in 1..1_000_000) { "Invalid model output limit" }
         val body = OpenAiCodec.encode(request, config, owner).toByteArray(Charsets.UTF_8)
-        if (body.size > config.maxRequestBytes) throw OpenAiProviderException(ProviderFailure.REQUEST_TOO_LARGE)
+        if (body.size > config.maxRequestBytes) throw OpenAiProviderException(ProviderFailure.REQUEST_TOO_LARGE, contextTooLong = true)
         return OpenAiCodec.decode(executeChat(body, request.timeoutMs), owner)
     }
 
@@ -78,7 +78,8 @@ class OpenAiAgentProvider internal constructor(
     }
 
     private fun readBounded(response: Response): String {
-        if (!response.isSuccessful) throw OpenAiProviderException(ProviderFailure.HTTP, response.code)
+        if (!response.isSuccessful) throw OpenAiProviderException(ProviderFailure.HTTP, response.code,
+            contextTooLong = contextOverflow(response.code) { try { response.peekBody(ERROR_PEEK_BYTES).string() } catch (_: Exception) { null } })
         val body = response.body ?: throw OpenAiProviderException(ProviderFailure.INVALID_RESPONSE)
         if (body.contentLength() > config.maxResponseBytes) throw OpenAiProviderException(ProviderFailure.RESPONSE_TOO_LARGE)
         val buffer = Buffer()
@@ -91,6 +92,23 @@ class OpenAiAgentProvider internal constructor(
     }
 
     internal companion object {
+        /** How much of an error response is looked at to classify it (never kept, never shown). */
+        const val ERROR_PEEK_BYTES = 16_384L
+        private val CONTEXT_PHRASES = listOf("context_length_exceeded", "context length", "context window", "maximum context", "prompt is too long",
+            "input is too long", "reduce the length of the messages")
+        /** Token phrases count only beside a word that says it is the request that is too long, so an answer-limit refusal (max_tokens) is not taken for it. */
+        private val TOKEN_PHRASES = listOf("too many tokens", "token limit")
+        private val REQUEST_WORDS = listOf("context", "prompt", "input")
+
+        /**
+         * Whether a failed call says the request does not fit the model's context. Conservative: 413 by status alone; 400 and 422 only when the
+         * response text names the context, or a token limit beside "context", "prompt" or "input"; any other status is not one. [body] is read only for 400/422.
+         */
+        fun contextOverflow(status: Int, body: () -> String?): Boolean =
+            status == 413 || (status == 400 || status == 422) && body()?.lowercase()?.let { text ->
+                CONTEXT_PHRASES.any { it in text } || (TOKEN_PHRASES.any { it in text } && REQUEST_WORDS.any { it in text })
+            } == true
+
         /**
          * [template] for a call that has [timeoutMs] (the run's model timeout): no fixed call timeout, and a read timeout no shorter than it, so that the whole-call
          * timeout set on the call is the only one that can end it. Without [timeoutMs] the template as it is.

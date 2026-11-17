@@ -38,8 +38,9 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private var transportTimeout = false
     private var invalidReply = false
     private var summaryProblem: ChatProblem? = null
-    private var summaryStatus: Int? = null
     private var summaryProvider: AgentProvider? = null
+    /** The request as the kernel gave it to [prepared] (before any shortening) for the step now being sent: what an overflow resend starts from. */
+    @Volatile private var rawRequest: AgentRequest? = null
     /** Set by [ask] when a question ran out of time with no chat screen attached. */
     private var unanswered = false
 
@@ -71,12 +72,12 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val skillsSection = env.skills?.section(a.tools, a.limits.skillsListChars) ?: SkillsSection(emptyList())
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
-            val result = env.module.run(toolProvider(active, past), tools, prompts.system(a.tools, skillsSection), a.modelText, past.map { it.second },
+            val result = env.module.run(toolProvider(active, past, summary), tools, prompts.system(a.tools, skillsSection), a.modelText, past.map { it.second },
                 limits, ownerInstructions = a.ownerInstructions, prepareRequest = { request -> prepared(summary, request) }, onEvent = { event -> onEvent(active, event) },
                 authorize = { call -> authorize(byName, call) })
             env.requireRevision(a.saved.revision)
             val problem = finishProblem(summaryProblem, result.finish, transportTimeout, invalidReply)
-            finish(problem, if (problem == null) "answer" else "finish-error", summaryStatus)
+            finish(problem, if (problem == null) "answer" else "finish-error")
         }
     }
 
@@ -139,17 +140,27 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         } ?: throw CancellationException()
     }
 
-    private fun toolProvider(active: AgentProvider, past: List<Pair<SavedTurn, AgentTurn>>) = AgentProvider { request ->
+    private fun toolProvider(active: AgentProvider, past: List<Pair<SavedTurn, AgentTurn>>, summary: AssistantSummary) = AgentProvider { request ->
         val retained = own.guarded(owner, "history") { document.records.toList() } ?: throw CancellationException()
         val included = if (env.archive) request.turns.dropLast(1) else request.turns.dropLast(1).filter { turn -> past.any { (record, model) -> model === turn && retained.any { it === record } } }
         val bounded = request.copy(turns = included + request.turns.last())
         if (included.size != request.turns.size - 1) own.guarded(owner, "window") { document = document.withOmitted(); mutable.value = mutable.value.copy(omitted = true) }
-        try {
-            complete(active, bounded)
-        } catch (failure: ProviderException) {
+        fun failed(failure: ProviderException): Nothing {
             transportTimeout = isTransportTimeout(failure.kind)
             invalidReply = isInvalidReply(failure.kind)
             throw failure
+        }
+        try {
+            complete(active, bounded)
+        } catch (failure: ProviderException) {
+            if (!failure.contextTooLong || !env.archive) failed(failure)
+            // The provider says the request is too long: shorten the history right away and send it once more. If it cannot be made smaller, the provider's failure stands.
+            val raw = rawRequest ?: failed(failure)
+            val shorter = try { summary.shortenAfterOverflow(raw) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (setup: ProviderSetupException) { summaryProblem = preparationProblem(setup); throw setup }
+                catch (_: Exception) { failed(failure) }
+            try { complete(active, shorter) } catch (again: ProviderException) { failed(again) }
         }
     }
 
@@ -157,20 +168,25 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         read = { own.guarded(owner, "history") { document } ?: throw CancellationException() },
         save = { value -> own.guarded(owner, "summary") {
             document = document.withSummary(value); persist()
-            mutable.value = mutable.value.copy(summarized = true, toolProgress = null)
+            mutable.value = mutable.value.copy(summarized = true, compaction = document.compaction(), toolProgress = null)
         } ?: throw CancellationException() },
         complete = { request ->
             own.guarded(owner, "progress") { mutable.value = mutable.value.copy(toolProgress = ChatToolProgress.SUMMARY) } ?: throw CancellationException()
             val selected = summaryProvider ?: (a.settings.summaryModel?.let { model -> env.prepare(a.saved.copy(settings = a.settings.copy(model = model))) } ?: active).also { summaryProvider = it }
             complete(selected, request)
-        }, prompt)
+        }, prompt, a.limits, onCompacted = { kind ->
+            // The note about old tool output is for this session; a saved summary says its own kind (see [save]).
+            if (kind == Compaction.TOOL_OUTPUT) own.guarded(owner, "progress") {
+                if (!mutable.value.summarized) mutable.value = mutable.value.copy(compaction = Compaction.TOOL_OUTPUT)
+            }
+        })
 
     private suspend fun prepared(summary: AssistantSummary, request: AgentRequest): AgentRequest =
-        if (!env.archive) request else try { summary.prepare(request) }
+        if (!env.archive) request else try { rawRequest = request; summary.prepare(request) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
-            summaryProblem = setupProblem(failure, ChatProblem.SUMMARY)
-            summaryStatus = (failure as? ProviderException)?.status
+            // The red "does not fit" text is only for that case; any other failure of the preparation is an ordinary setup problem (key and read problems keep their own).
+            summaryProblem = preparationProblem(failure)
             throw failure
         }
 

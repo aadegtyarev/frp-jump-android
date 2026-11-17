@@ -48,7 +48,7 @@ internal class RunOwnership(private val c: ChatCells, private val runtime: Assis
                     toolFailed = false, toolFailures = emptyList(), information = emptyList(), receipts = emptyList())
             } else c.document = c.document.bind(saved.settings)
             c.pending?.let(::stopLocked)
-            c.mutable.value = c.mutable.value.copy(contextChanged = c.document.contextStart > 0, summarized = c.document.summary != null)
+            c.mutable.value = c.mutable.value.copy(contextChanged = c.document.contextStart > 0, summarized = c.document.summary != null, compaction = c.document.compaction())
         }
         c.authority = now; c.revision = saved.revision
         if (c.pending == null) c.mutable.value = c.mutable.value.copy(busy = runtime.occupied(), stopping = runtime.occupied())

@@ -391,6 +391,8 @@ class FrpJumpApp : Application() {
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         assistantProvider = ru.adsrv.frpjump.assistant.AssistantProviderStore(
             AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"), settings.assistantChat)
+        // The summary trigger used to be a field of the provider form: its stored value becomes the limit once, unless the owner set one already.
+        assistantProvider.currentSnapshot.settings?.let { settings.adoptSummaryPercent(it.summaryPercent) }
         assistant = ru.adsrv.frpjump.assistant.bindAssistantLifecycle(settings, appScope)
         restoreAppLanguage(settings.settings.value.language)
         applyTheme(settings.settings.value.theme)

@@ -201,8 +201,12 @@ internal fun AssistantChatContent(
                 }), color = AppTheme.colors.error)
                 TextButton(onClick = conversation::retryHistory, enabled = state.retryEnabled) { Text(stringResource(R.string.chat_history_retry)) }
             }
-            if (state.summarized || state.contextChanged || state.omitted) CappedNotices(noticeMax, "chat_notices_above") {
-                if (state.summarized) Text(stringResource(R.string.chat_summary_saved), color = AppTheme.colors.muted)
+            if (state.compaction != null || state.contextChanged || state.omitted) CappedNotices(noticeMax, "chat_notices_above") {
+                state.compaction?.let { Text(stringResource(when (it) {
+                    Compaction.TOOL_OUTPUT -> R.string.chat_compacted_tools
+                    Compaction.MODEL -> R.string.chat_compacted_model
+                    Compaction.NO_MODEL -> R.string.chat_compacted_digest
+                }), color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_compacted")) }
                 if (state.contextChanged) Text(stringResource(R.string.chat_context_changed), color = AppTheme.colors.muted)
                 if (state.omitted) Text(stringResource(R.string.chat_omitted), color = AppTheme.colors.muted)
             }
@@ -302,7 +306,7 @@ internal fun AssistantChatContent(
                     ChatProblem.TOO_LONG -> R.string.chat_too_long
                     ChatProblem.SUMMARY -> R.string.chat_summary_failed
                     ChatProblem.HISTORY_FULL -> R.string.chat_history_full
-                }) + state.problemStatus?.takeIf { state.problem == ChatProblem.SUMMARY }?.let { " (HTTP $it)" }.orEmpty(), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
+                }), color = AppTheme.colors.error, modifier = Modifier.testTag("chat_error")) }
             }
             if (setup == null && state.problem in setOf(ChatProblem.SETUP, ChatProblem.READ, ChatProblem.KEY, ChatProblem.CONTEXT_FULL, ChatProblem.SUMMARY)) {
                 TextButton(onClick = onSetup) { Text(stringResource(R.string.assistant_provider_title)) }

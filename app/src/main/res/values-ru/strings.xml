@@ -1363,13 +1363,13 @@
     <string name="tool_request_title">Просьба включить инструмент</string>
     <string name="offer_tools_setting">Предлагать включить инструменты</string>
     <string name="offer_tools_setting_hint">Помощник сможет попросить включить выключенный инструмент. Выключите для моделей, которые не поддерживают инструменты.</string>
-    <string name="assistant_summary_percent">Суммаризация при % заполнения окна</string>
-    <string name="assistant_summary_hint">От 1 до 100%, по умолчанию 80. Включает резерв ответа. Делает дополнительный запрос модели.</string>
     <string name="assistant_summary_model">Модель для сводки (необязательно)</string>
     <string name="assistant_summary_model_hint">Пустое поле — модель чата. Тот же провайдер и ключ; модель должна поддерживать указанное окно.</string>
     <string name="chat_summary_progress">Подготавливаю рабочую сводку…</string>
-    <string name="chat_summary_saved">Ранний контекст свёрнут в сводку; исходные сообщения доступны в истории.</string>
-    <string name="chat_summary_failed">Не удалось подготовить полезную сводку. История сохранена. Проверьте модель сводки или увеличьте контекстное окно.</string>
+    <string name="chat_compacted_tools">История сжата: старый вывод инструментов убран из вида модели. В чате всё сохранено.</string>
+    <string name="chat_compacted_model">История сжата: сводка моделью. В чате всё сохранено.</string>
+    <string name="chat_compacted_digest">История сжата без модели: давняя часть заменена кратким перечнем. В чате всё сохранено.</string>
+    <string name="chat_summary_failed">Запрос не помещается в окно модели, даже когда история сжата: один текущий запрос слишком велик. История сохранена. Увеличьте окно или сократите запрос.</string>
     <string name="chat_history_full">Достигнут лимит локальной истории. Очистите её для нового разговора.</string>
 
     <!-- Подтверждение изменяющих вызовов ассистента -->
@@ -1533,6 +1533,10 @@
     <string name="ssh_session_gone">Сессии больше нет на устройстве.</string>
     <string name="session_tunnel_gone">Сессия на устройстве осталась: сохранённого туннеля больше нет</string>
     <string name="session_close_tunnel_off">Не удалось закрыть: туннель выключен</string>
+    <string name="limit_summary_percent">Сводка при заполнении окна, %</string>
+    <string name="limit_summary_size">Размер сводки, % окна</string>
+    <string name="limit_fresh_tool">Свежий вывод инструментов, % окна</string>
+    <string name="limit_summary_pair">Заполнение и размер сводки вместе: не больше %1$d %%</string>
     <string name="limit_reply_raised">не меньше одного вызова и ответа модели: %1$d с</string>
     <string name="tool_skills">Скиллы</string>
     <string name="tool_skills_hint">Помощник оформляет то, что вы с ним сделали, в скиллы и потом пользуется ими. Сохраняет и удаляет скиллы после вашего подтверждения, если включено «Спрашивать перед изменяющими командами».</string>

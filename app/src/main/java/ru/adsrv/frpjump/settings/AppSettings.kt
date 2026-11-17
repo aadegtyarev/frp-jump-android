@@ -272,6 +272,17 @@ class SettingsStore(private val storage: TextStorage) {
     /** The assistant's limits; refused outside their ranges. */
     fun setAssistantLimits(limits: AssistantLimits) = update { it.copy(assistantLimits = limits) }
 
+    /**
+     * The summary trigger used to be a field of the provider form. When the owner has not set it here, the value that form held (1..100) becomes
+     * the setting (clamped into its range, and to 80 at most so the default summary size of 15 stays); once set, the provider form's copy is never read again.
+     */
+    fun adoptSummaryPercent(legacy: Int) = update { s ->
+        if (s.assistantLimits.summaryPercentSet != null) s
+        // Over what the default summary size leaves (80) the trigger becomes 80 and the size stays 15: the size is not made smaller to keep a high trigger.
+        else s.copy(assistantLimits = s.assistantLimits.withSummaryPercent(legacy.coerceIn(AssistantLimits.SUMMARY_PERCENT_RANGE)
+            .coerceAtMost(AssistantLimits.SUMMARY_PAIR_MAX - AssistantLimits.DEFAULT_SUMMARY_SIZE_PERCENT)))
+    }
+
     /** The "Offer to turn tools on" switch (same autosave path as the tool switches; applies from the next Send). */
     fun setAssistantOfferTools(on: Boolean) = update { it.copy(assistantOfferTools = on) }
 
@@ -384,6 +395,10 @@ class SettingsStore(private val storage: TextStorage) {
             (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(range) ?: fallback
         var limits = defaults
         for (spec in LIMITS) limits = spec.set(limits, number(spec.key, spec.range, spec.get(defaults)))
+        // The trigger stays unset (absent) until the owner or the provider form's old value sets it; the pair must fit, the summary size gives way.
+        val setTrigger = (group?.get("summary_percent") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(AssistantLimits.SUMMARY_PERCENT_RANGE)
+        limits = limits.copy(summaryPercentSet = setTrigger, summarySizePercent = number("summary_size_percent", AssistantLimits.SUMMARY_SIZE_RANGE, defaults.summarySizePercent))
+            .let { it.copy(summarySizePercent = minOf(it.summarySizePercent, AssistantLimits.SUMMARY_PAIR_MAX - it.summaryPercent).coerceAtLeast(AssistantLimits.SUMMARY_SIZE_RANGE.first)) }
         return WireJson.encodeToJsonElement(limits)
     }
 

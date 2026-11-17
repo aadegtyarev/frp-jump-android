@@ -1026,9 +1026,10 @@ instructions for the model (guidance only, sent with every message, never
 authority over permissions or confirmations), plus a Chat
 entry for explicit conversations. The same chat opens from the bottom navigation (an "Assistant" item shown only while the module is on:
 over the current section, Back returns to it; on the section screens' bottom bar it shows a small dot, announced as "Working" / «Работает» or "Waiting for your answer" / «Ждёт ответа», while an assistant attempt runs or a confirmation card waits) and from Terminal ⋮ → Ask the assistant (see [entry points](agent-contract.md#entry-points)). While an attempt runs and the chat is not on screen, one notification without sound or vibration (default importance, so it shows on the lock screen) on the "Assistant" / «Помощник» channel says so ("The assistant is working" / "is waiting for your answer", with Stop) and then how it ended ("answered", "could not answer", "stopped: no answer from you"); it never carries reply text or targets, needs no new permission, and a tap opens the chat behind the lock (see [the notification](agent-contract.md#text-chat)). Automatic working summaries use the chat model
-or an optional other model of the same provider. The configurable trigger defaults
-to 80% of estimated context use, including output reserve; summary calls have no
-tools and incur an additional model request. Tools offers independent, default-off Web
+or an optional other model of the same provider. The trigger, the summary size and the newest tool output kept whole are
+limits (Settings → Assistant → Limits, shares of the context window; the trigger defaults
+to 80% of estimated context use, including output reserve); summary calls have no
+tools and incur an additional model request, and shortening never fails the request when it can be avoided (see below). Tools offers independent, default-off Web
 search, Read page, Inspect image, Profile information and SSH command switches, with
 public/private-data disclosure and model token-charge notices. SSH command carries
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
@@ -1057,12 +1058,14 @@ memory for retry. The file contains one canonical conversation, not separate UI
 and model histories. Context/output limit changes retain continuity; changing API
 root/model keeps previous messages readable but begins a new active context with
 a notice, without forwarding old private continuation or requiring deletion.
-Before old context is evicted, Chat saves a working summary and its covered
+Before old context is evicted, Chat first leaves old tool output out of what the model sees, then saves a working summary
+(by the model, or without one when the model cannot) and its covered
 position in the same encrypted document, then uses it with recent complete
 exchanges. Original records remain readable within finite archive/file limits;
-they are not deleted by summarization. The summary preserves task/target facts,
-observed and uncertain outcomes, and remaining steps. Failure retains history
-and the last useful summary with recovery feedback; Stop suppresses late results
+they are not deleted by summarization. The summary preserves the owner's requests, task/target facts,
+observed and uncertain outcomes, and remaining steps. A muted line tells how the history was shortened; only a request
+that cannot fit even then (the current message alone is too big) is an error, and history is kept;
+Stop suppresses late results
 under the existing actual-exit ownership. See [summary behavior and limits](agent-contract.md#automatic-working-summaries).
 The information tool reads the same derived application API as Devices and
 Tunnels, including devices without saved connections and distinct profiles.

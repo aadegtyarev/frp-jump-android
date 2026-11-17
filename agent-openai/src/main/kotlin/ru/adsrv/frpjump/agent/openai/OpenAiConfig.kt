@@ -30,8 +30,8 @@ class OpenAiConfig(
 enum class OutputLimitField(val wire: String) { MAX_TOKENS("max_tokens"), MAX_COMPLETION_TOKENS("max_completion_tokens") }
 typealias ProviderFailure = ProviderErrorKind
 /** No response body, endpoint, key, exception cause or user-supplied arguments in diagnostics. */
-class OpenAiProviderException(failure: ProviderFailure, status: Int? = null) :
-    ProviderException(failure, status, "Provider failure: $failure${status?.let { " ($it)" }.orEmpty()}") {
+class OpenAiProviderException(failure: ProviderFailure, status: Int? = null, contextTooLong: Boolean = false) :
+    ProviderException(failure, status, "Provider failure: $failure${status?.let { " ($it)" }.orEmpty()}", contextTooLong) {
     val failure: ProviderFailure get() = kind
 }
 data class ProviderModel(val id: String)
