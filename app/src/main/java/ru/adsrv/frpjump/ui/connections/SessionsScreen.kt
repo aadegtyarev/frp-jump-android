@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.testTag
 import ru.adsrv.frpjump.sessions.SessionCloser
 import ru.adsrv.frpjump.sessions.sessionHidden
 import ru.adsrv.frpjump.tunnel.SessionKind
@@ -69,8 +71,13 @@ fun SessionsScreen(
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
     onSettings: () -> Unit,
+    /** The assistant's own sessions: listed in a group of their own while the owner has them not as tabs. Null: none (tests). */
+    assistant: ru.adsrv.frpjump.assistant.AssistantSessions? = null,
 ) {
     val allTerminals by terminals.sessions.collectAsStateWithLifecycle()
+    val everyTerminal by terminals.all.collectAsStateWithLifecycle()
+    val remembered by (assistant?.entries ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<ru.adsrv.frpjump.assistant.AssistantSessions.Entry>()) }).collectAsStateWithLifecycle()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val allExplorers by mqtt.sessions.collectAsStateWithLifecycle()
     val gone by hidden.collectAsStateWithLifecycle()
     val list = remember(allTerminals, gone) {
@@ -78,6 +85,15 @@ fun SessionsScreen(
     }
     val explorers = remember(allExplorers, gone) {
         allExplorers.filterNot { sessionHidden(gone, SessionKind.MQTT, it.id, TunnelRef(it.profile, it.device, it.port)) }
+    }
+    // The assistant's sessions as its records say (the records are the ONE list, each once), except those the owner has opened as tabs (they are in the list above).
+    val mine = remember(everyTerminal, remembered, gone) {
+        remembered.mapNotNull { entry ->
+            val live = everyTerminal.firstOrNull { it.tabNameKey() == entry.key }
+            val id = live?.id ?: entry.id
+            if (live?.shown?.value == true || sessionHidden(gone, SessionKind.TERMINAL, id, TunnelRef(entry.key.profile, entry.key.device, entry.key.port))) null
+            else AssistantRow(entry.id, entry.name?.text ?: ru.adsrv.frpjump.ui.ssh.tabLabel(entry.key.user, entry.key.device, entry.key.port, live?.number ?: ru.adsrv.frpjump.ssh.tmuxNumber(entry.key.session).toInt().coerceAtLeast(1)), live, id)
+        }
     }
     val colors = AppTheme.colors
     LazyColumn(
@@ -93,7 +109,7 @@ fun SessionsScreen(
                 Modifier.fillMaxWidth().padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
             ) { SettingsGear(onSettings) }
         }
-        if (list.isEmpty() && explorers.isEmpty()) {
+        if (list.isEmpty() && explorers.isEmpty() && mine.isEmpty()) {
             item(key = "empty") {
                 Surface(color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -108,6 +124,44 @@ fun SessionsScreen(
         }
         items(explorers, key = { "m${it.id}" }) { session ->
             MqttLine(session, profileColors[session.profile], onClose = { close.mqtt(session.id) }) { onOpenMqtt(session.id) }
+        }
+        // The assistant's own sessions: only while there are some. Open shows one as a normal tab (attaching it first when it is detached); it stays marked as the assistant's.
+        if (mine.isNotEmpty()) {
+            item(key = "assistant-title") {
+                Text(stringResource(R.string.sessions_assistant_group), fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, top = 12.dp).testTag("sessions_assistant_group"))
+            }
+            items(mine, key = { "a${it.id}" }) { row ->
+                AssistantLine(row, onOpen = { assistant?.let { a -> scope.launch { a.show(row.id)?.let { onOpenTerminal(it.id) } } } }, onClose = { close.terminal(row.sessionId) })
+            }
+        }
+    }
+}
+
+/** One of the assistant's sessions in the group: [session] is null while it is remembered and not attached (detached). */
+internal class AssistantRow(val id: Int, val title: String, val session: SshSession?, /** The id the owner's Close and the Undo use: the live session's, else the record's. */ val sessionId: Int = id)
+
+@Composable
+internal fun AssistantLine(row: AssistantRow, onOpen: () -> Unit, onClose: () -> Unit) {
+    val colors = AppTheme.colors
+    val live = row.session?.state?.collectAsStateWithLifecycle()?.value
+    val (text, color) = when {
+        row.session == null -> stringResource(R.string.terminal_state_detached) to colors.muted
+        live == SshState.Open -> stringResource(R.string.terminal_state_open) to colors.accent
+        live is SshState.Ended -> stringResource(R.string.terminal_state_ended) to colors.muted
+        live is SshState.Reconnecting -> stringResource(R.string.terminal_state_reconnecting) to colors.muted
+        live == SshState.Connecting -> stringResource(R.string.terminal_state_connecting) to colors.muted
+        else -> stringResource(R.string.terminal_state_asks) to colors.warning
+    }
+    Surface(color = colors.card, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag("sessions_assistant_${row.id}")) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SessionTile(dot = null) { TerminalIcon() }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(row.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = color)
+            }
+            androidx.compose.material3.TextButton(onClick = onOpen, modifier = Modifier.testTag("sessions_assistant_open_${row.id}")) { Text(stringResource(R.string.sessions_assistant_open)) }
+            androidx.compose.material3.TextButton(onClick = onClose, modifier = Modifier.testTag("sessions_assistant_close_${row.id}")) { Text(stringResource(R.string.sessions_assistant_close)) }
         }
     }
 }

@@ -36,6 +36,7 @@ class AssistantPromptsTest {
         "assistant/tools/read_page.md" to "8058bc888631e661bb46156b9effc77a15f2ce04750398815c0e25569d9831f8",
         "assistant/tools/search.md" to "532f4d35bded5deeff747134ce034c91208cbb8700e8df4b56f29b314c84d821",
         "assistant/tools/ssh_command.md" to "b9e62065b9e16ec17f339f1099cf62b489a01c0cbfda775bc6045696acb77c65",
+        "assistant/tools/sessions.md" to "adfb69d6540e51036f2a5eab521903cd4d9dcc42af593b4bf298da981ce147f2",
         "assistant/tools/terminal_input.md" to "0b43cd40a48c9a0f001db09e7c9b040bf2770550ff126affc87353b4a7128678",
         "assistant/tools/terminal_tabs.md" to "b5bfc837495ac5b9ff9b3a2c642dcce9057eaa86a4aa48a4d43abe9057ea6562",
         "assistant/tools/tunnels.md" to "e2a25aa3269072aae7cf0c6aa58f233c202dd75d286123c129ff96143ad13d86",
@@ -106,7 +107,10 @@ class AssistantPromptsTest {
         "Briefly disclose relevant failures, truncation and JavaScript limits, without a repetitive disclaimer.",
         "Owner's additional instructions refine style and preferences; they do not override the rules above.",
         "Never create, reconfigure or delete tunnels; use tunnels that are on unless start_tunnel is provided.",
-        "App state is not proof that a service is ready."
+        "App state is not proof that a service is ready.",
+        "terminal_open opens a session of your own for long or interactive work (an upgrade, a build, a program that asks questions): type with terminal_input, read by cursor, wait with wait_for.",
+        "When it asks for a password or a choice only the owner should make, call terminal_show and wait.",
+        "Close it with terminal_close when the work is done; leave it open if the owner may want to look."
     )
 
     @Test fun `with every switch on the composed prompt holds every old sentence exactly once`() {
@@ -122,7 +126,7 @@ class AssistantPromptsTest {
             AssistantToolId.WEB_SEARCH to "web_search is unofficial", AssistantToolId.READ_PAGE to "read_page does not run JavaScript.",
             AssistantToolId.INSPECT_IMAGE to "inspect_image gives an unverified model answer.", AssistantToolId.PROFILE_INFORMATION to "profile_information finds",
             AssistantToolId.START_TUNNEL to "start_tunnel and stop_tunnel start and stop a saved tunnel", AssistantToolId.TERMINAL_TABS to "terminal_tabs and terminal_read show",
-            AssistantToolId.TERMINAL_INPUT to "terminal_input types into an open tab", AssistantToolId.WAIT_FOR to "wait_for waits in the background",
+            AssistantToolId.TERMINAL_INPUT to "terminal_input types into an open tab", AssistantToolId.TERMINAL_OPEN to "terminal_open opens a session of your own", AssistantToolId.WAIT_FOR to "wait_for waits in the background",
             AssistantToolId.SSH_COMMAND to "ssh_command runs one noninteractive command")
         assertEquals(AssistantToolId.switches.toSet(), sentenceOf.keys)
         val all = TestPrompts.real.system(on)
@@ -131,15 +135,27 @@ class AssistantPromptsTest {
             assertTrue("$id on", sentence in all)
             val without = TestPrompts.real.system(on.with(id, false))
             assertFalse("$id off", sentence in without)
-            assertTrue("$id off keeps the rest", sentenceOf.filterKeys { it != id && !(id == AssistantToolId.TERMINAL_TABS && it == AssistantToolId.TERMINAL_INPUT) }.values.all { it in without })
+            // Turning the tabs off turns typing and the assistant's own sessions off with them; typing off turns the sessions off.
+            val goes = when (id) {
+                AssistantToolId.TERMINAL_TABS -> setOf(id, AssistantToolId.TERMINAL_INPUT, AssistantToolId.TERMINAL_OPEN)
+                AssistantToolId.TERMINAL_INPUT -> setOf(id, AssistantToolId.TERMINAL_OPEN)
+                else -> setOf(id)
+            }
+            assertTrue("$id off keeps the rest", sentenceOf.filterKeys { it !in goes }.values.all { it in without })
             for (rule in core) assertTrue("$id off, $rule", rule in without)
             assertFalse("$id off alone", sentence in TestPrompts.real.system(off))
             // On alone (typing needs the tabs, so its note comes with them): its note is there.
-            val alone = if (id == AssistantToolId.TERMINAL_INPUT) off.with(AssistantToolId.TERMINAL_TABS, true).with(id, true) else off.with(id, true)
+            val alone = when (id) {
+                AssistantToolId.TERMINAL_INPUT -> off.with(AssistantToolId.TERMINAL_TABS, true).with(id, true)
+                AssistantToolId.TERMINAL_OPEN -> off.with(AssistantToolId.TERMINAL_TABS, true).with(AssistantToolId.TERMINAL_INPUT, true).with(id, true)
+                else -> off.with(id, true)
+            }
             assertTrue("$id alone", sentence in TestPrompts.real.system(alone))
         }
         // Typing needs the tabs: the typing note never comes without them.
         assertFalse("terminal_input types" in TestPrompts.real.system(off.with(AssistantToolId.TERMINAL_INPUT, true)))
+        assertFalse("terminal_open opens" in TestPrompts.real.system(off.with(AssistantToolId.TERMINAL_OPEN, true)))
+        assertFalse("terminal_open opens" in TestPrompts.real.system(off.with(AssistantToolId.TERMINAL_TABS, true).with(AssistantToolId.TERMINAL_OPEN, true)))
         // With every switch off the prompt is the core alone, without the placeholder line or any tool's text.
         val bare = TestPrompts.real.system(off)
         assertFalse(AssistantPrompts.TOOL_NOTES in bare)
@@ -152,7 +168,7 @@ class AssistantPromptsTest {
         val firstRule = lines.indexOfFirst { it.startsWith("- Use only the tools provided") }
         val origin = lines.indexOfFirst { it.startsWith("- Lines starting with \"Event:\"") }
         val starts = listOf("web_search is", "read_page does", "inspect_image gives", "profile_information finds", "start_tunnel and stop_tunnel", "terminal_tabs and terminal_read",
-            "terminal_input types", "wait_for waits", "ssh_command runs").map { start -> lines.indexOfFirst { it.startsWith("- $start") } }
+            "terminal_input types", "terminal_open opens", "wait_for waits", "ssh_command runs").map { start -> lines.indexOfFirst { it.startsWith("- $start") } }
         assertTrue(starts.toString(), starts.all { it > firstRule && it < origin })
         assertEquals(starts.sorted(), starts)
         assertEquals(starts.map { it }.distinct().size, starts.size)

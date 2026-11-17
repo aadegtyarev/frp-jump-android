@@ -128,6 +128,8 @@ data class AppSettings(
     @SerialName("assistant_tunnels") val assistantTunnels: Boolean = false,
     /** The switch of `wait_for`: the assistant waits in the background for an event and answers when it happens. */
     @SerialName("assistant_waits") val assistantWaits: Boolean = false,
+    /** The switch of `terminal_open`, `terminal_show` and `terminal_close`: the assistant's own terminal sessions. Works only with the tabs and typing on. */
+    @SerialName("assistant_sessions") val assistantSessions: Boolean = false,
     /** The assistant's limits (waits at once, longest wait, event replies in a row, wait after input). */
     @SerialName("assistant_limits") val assistantLimits: AssistantLimits = AssistantLimits(),
     @SerialName("assistant_inspect_image") val assistantInspectImage: Boolean = false,
@@ -173,11 +175,14 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
     val tunnels: Boolean = false,
     /** The switch of `wait_for`. */
     val waits: Boolean = false,
+    /** One switch for `terminal_open`, `terminal_show` and `terminal_close`; takes effect only while [terminalTabs] and [terminalInput] are on (see [get]). */
+    val sessions: Boolean = false,
     /** "Offer to turn tools on": whether `request_tool` is offered while some tool is off. Captured at Send with the tool switches. */
     val offer: Boolean = true) {
     /** Whether the tool is in effect: its switch, and for `terminal_input` also the terminal tabs switch. Everything that asks "is this tool on" asks here. */
     operator fun get(id: AssistantToolId): Boolean = when (id) {
         AssistantToolId.TERMINAL_INPUT -> terminalInput && terminalTabs
+        AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> sessions && terminalInput && terminalTabs
         else -> switch(id)
     }
     /** The tool's own switch as the owner set it (the Tools screen shows this one). */
@@ -191,25 +196,32 @@ data class AssistantTools(val search: Boolean = false, val readPage: Boolean = f
         AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> tunnels
         AssistantToolId.SSH_COMMAND -> sshCommand
         AssistantToolId.WAIT_FOR -> waits
+        AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> sessions
     }
     /** Whether the model may be offered a button to turn the tool on: `terminal_input` only while the terminal tabs are on (else it asks for those first). */
-    fun offerable(id: AssistantToolId): Boolean = id != AssistantToolId.TERMINAL_INPUT || terminalTabs
+    fun offerable(id: AssistantToolId): Boolean = when (id) {
+        AssistantToolId.TERMINAL_INPUT -> terminalTabs
+        AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> terminalTabs && terminalInput
+        else -> true
+    }
     fun with(id: AssistantToolId, enabled: Boolean): AssistantTools = when (id) {
         AssistantToolId.WEB_SEARCH -> copy(search = enabled)
         AssistantToolId.READ_PAGE -> copy(readPage = enabled)
         AssistantToolId.INSPECT_IMAGE -> copy(inspectImage = enabled)
         AssistantToolId.PROFILE_INFORMATION -> copy(profileInformation = enabled)
         // Turning the tabs off turns typing off with them, so that turning the tabs on again never brings typing back by itself.
-        AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> if (enabled) copy(terminalTabs = true) else copy(terminalTabs = false, terminalInput = false)
-        AssistantToolId.TERMINAL_INPUT -> copy(terminalInput = enabled)
+        AssistantToolId.TERMINAL_TABS, AssistantToolId.TERMINAL_READ, AssistantToolId.TERMINAL_RENAME -> if (enabled) copy(terminalTabs = true) else copy(terminalTabs = false, terminalInput = false, sessions = false)
+        // Typing off turns the assistant's own sessions off with it (they are typed into), and turning it on again never brings them back by itself.
+        AssistantToolId.TERMINAL_INPUT -> if (enabled) copy(terminalInput = true) else copy(terminalInput = false, sessions = false)
+        AssistantToolId.TERMINAL_OPEN, AssistantToolId.TERMINAL_SHOW, AssistantToolId.TERMINAL_CLOSE -> copy(sessions = enabled)
         AssistantToolId.START_TUNNEL, AssistantToolId.STOP_TUNNEL -> copy(tunnels = enabled)
         AssistantToolId.SSH_COMMAND -> copy(sshCommand = enabled)
         AssistantToolId.WAIT_FOR -> copy(waits = enabled)
     }
 }
-fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantWaits, assistantOfferTools)
+fun AppSettings.assistantTools() = AssistantTools(assistantSearch, assistantReadPage, assistantInspectImage, assistantProfileInformation, assistantSshCommand, assistantTerminalTabs, assistantTerminalInput, assistantTunnels, assistantWaits, assistantSessions, assistantOfferTools)
 private fun AppSettings.withAssistantTools(tools: AssistantTools) = copy(assistantSearch = tools.search, assistantReadPage = tools.readPage,
-    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantWaits = tools.waits, assistantOfferTools = tools.offer)
+    assistantInspectImage = tools.inspectImage, assistantProfileInformation = tools.profileInformation, assistantSshCommand = tools.sshCommand, assistantTerminalTabs = tools.terminalTabs, assistantTerminalInput = tools.terminalInput, assistantTunnels = tools.tunnels, assistantWaits = tools.waits, assistantSessions = tools.sessions, assistantOfferTools = tools.offer)
 /** Committed preferences are captured per Send; only assistant disables revoke admitted work. */
 data class AssistantAvailability(val enabled: Boolean, val disableVersion: Long = 0,
     val tools: AssistantTools = AssistantTools(),
@@ -362,6 +374,7 @@ class SettingsStore(private val storage: TextStorage) {
             number("waits_at_once", AssistantLimits.WAITS_AT_ONCE_RANGE, defaults.waitsAtOnce),
             number("wait_max_minutes", AssistantLimits.WAIT_MAX_MINUTES_RANGE, defaults.waitMaxMinutes),
             number("event_replies", AssistantLimits.EVENT_REPLIES_RANGE, defaults.eventReplies),
+            number("sessions_at_once", AssistantLimits.SESSIONS_AT_ONCE_RANGE, defaults.sessionsAtOnce),
         ))
     }
 

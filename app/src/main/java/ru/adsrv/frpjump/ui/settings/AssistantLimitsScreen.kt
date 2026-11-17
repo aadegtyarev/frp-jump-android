@@ -74,6 +74,8 @@ internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (Assistant
             LimitRow("limit_wait_max_minutes", stringResource(R.string.limit_wait_max_minutes), limits.waitMaxMinutes, AssistantLimits.WAIT_MAX_MINUTES_RANGE) { onChange(limits.copy(waitMaxMinutes = it)) }
             RowDivider()
             LimitRow("limit_event_replies", stringResource(R.string.limit_event_replies), limits.eventReplies, AssistantLimits.EVENT_REPLIES_RANGE) { onChange(limits.copy(eventReplies = it)) }
+            RowDivider()
+            LimitRow("limit_sessions_at_once", stringResource(R.string.limit_sessions_at_once), limits.sessionsAtOnce, AssistantLimits.SESSIONS_AT_ONCE_RANGE) { onChange(limits.copy(sessionsAtOnce = it)) }
         }
     }
 }

@@ -160,7 +160,7 @@ back to the automatic label.
   reconnect, **Reconnect** and **Change login** (the same tab place) and is
   gone when the tab is closed for good.
 - **Remembered for tmux tabs.** While a tab runs tmux, its name is also kept
-  app-privately in `tab_names.json` (next to `tmux_names.json`, the same
+  app-privately in `tab_names.json` (now the one store of session records, [below](#session-records)) (next to `tmux_names.json`, the same
   no-backup rule: the app disables Android backup), keyed by profile id,
   device host, port, SSH user and the tab's tmux session name. When the app
   attaches that session again (“Restored N sessions” after an app restart or
@@ -455,3 +455,26 @@ implementation gap does not withdraw the requirements or define a new schema.
 - After a drop longer than 10 minutes, Reconnect needs a tap; remote tmux work
   can continue independently. Mobile/vendor process survival and live SSH
   delivery are not certified by synthetic lifecycle or buffer tests.
+
+## Session records
+
+`tab_names.json` is the app's ONE store of session records (`SessionRecordStore`), keyed by profile id, device host, port, SSH user and the tmux
+session name: an optional name, who set it (owner or assistant) and **who opened the session** (owner or assistant). A file of the first
+version, which held names only, reads as it is: every record in it is the owner's. At most 200 records, the oldest of the OWNER's written first (an assistant record is never evicted by the cap: its number is bounded by the limit of sessions); the same
+no-backup storage; the same forget rules as the names (the app ends the session, a successful listing for that profile, device, port and user
+without it, the profile removed (“Forget profile”)); a failed listing forgets nothing. The record of an assistant session stays when its name is
+cleared (it is how the session is found again), an owner's session without a name has no record.
+
+An assistant session is a tmux session of this install like a tab's (`frpjump-<install>-<n>`, the same attach command) that the assistant
+opened and the owner has no tab for. It says so in tmux itself: the attach command sets the user option `@frpjump_by assistant` on the session in
+the SAME tmux invocation that creates it (a further `set-option` chained with `';'`), and the session listing prints it
+(`tmux list-sessions -F '#{session_name} #{@frpjump_by}'`; a line with only a name is the owner's). The records are the ONLY owner of which assistant sessions exist: the Sessions list, `terminal_tabs`, the count and the limit all derive from
+them, never from the live connections (a tunnel that goes down and up frees no slot). A successful listing adopts a session the device marks as
+the assistant's that has no record, and its names are reserved for the install's counter like every other. The owner's restore (“Restored N sessions”,
+the pick-up after a kill) takes only the owner's sessions; Close all closes every tab the owner sees, an assistant session he opened as a tab too (its
+tmux session ends with it), and leaves the assistant's hidden ones. After an app restart the
+assistant's sessions are listed from the records as **detached** and attached over their tunnel (which must be on) at the first read, input or wait (only while the switch is on); attaching ONLY attaches: a tmux session that is gone is not created again and its
+record is forgotten (the model is told the session has ended), a saved login of another user than the record's is never used, and no tunnel is started.
+A record whose saved connection was removed is forgotten with a notice (the session stays on the device). The owner's Close of a session whose tunnel is off keeps
+it listed and says «Не удалось закрыть: туннель выключен». The owner can open one as a tab from Sessions («Открыть»): it is then a tab like any other and stays marked as the
+assistant's in its menu; his Close ends it, through the same Undo.

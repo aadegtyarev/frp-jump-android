@@ -82,6 +82,7 @@ internal class AppWaitSources(
             val look = try { read(output) }
             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (gone: TabNotOpen) { throw gone }
+            catch (_: TabEnded) { throw TabNotOpen() }
             catch (_: Exception) { null }
             // What was not read is looked at again, not counted as seen.
             if (look != null) seen = output

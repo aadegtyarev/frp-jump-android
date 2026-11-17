@@ -49,7 +49,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 
 @Composable
-fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit) {
+fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup: () -> Unit, onOpenTerminal: (Int) -> Unit = {}) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val provider by vm.provider.collectAsStateWithLifecycle()
     val toolsState by vm.tools.state.collectAsStateWithLifecycle()
@@ -64,7 +64,8 @@ fun AssistantChatScreen(vm: AssistantChatViewModel, onBack: () -> Unit, onSetup:
     } else CompositionLocalProvider(LocalChatTextScale provides ru.adsrv.frpjump.settings.ChatTextSize.factor(settings.assistantChatTextSize)) {
         AssistantChatContent(vm.conversation, settings.assistantEnabled, provider, onBack, onSetup, onTools = { toolsOpen = true }, onClear = vm::clearHistory,
             confirmationsOff = settings.assistantConfirmations.global == ConfirmationMode.OFF,
-            tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed)
+            tools = toolsState.committed, onTurnOn = vm::turnOnRequested, toolsFailed = toolsState.failed,
+            asks = vm.ownerAsks.collectAsStateWithLifecycle().value, onOpenAsk = { vm.openAsk(it, onOpenTerminal) }, onDismissAsk = vm::dismissAsk)
     }
 }
 
@@ -81,6 +82,9 @@ internal fun AssistantChatContent(
     onTurnOn: ((AssistantToolId, String) -> Unit)? = null,
     /** Tool keys whose switch could not be saved (the Tools binding's failures): shown near that tool's buttons. */
     toolsFailed: Set<String> = emptySet(),
+    /** What the assistant asked the owner to act on in its own sessions: a card each, with Open (the session as a tab). */
+    asks: List<ru.adsrv.frpjump.assistant.OwnerAsk> = emptyList(), onOpenAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
+    onDismissAsk: ((ru.adsrv.frpjump.assistant.OwnerAsk) -> Unit)? = null,
 ) {
     val state by conversation.state.collectAsStateWithLifecycle()
     val historyScroll = rememberLazyListState()
@@ -237,6 +241,7 @@ internal fun AssistantChatContent(
             // (weight), shrinking to nothing only when the question needs the room. A fresh question gets a fresh card (key), so its scroll
             // state starts at the top.
             val question: @Composable () -> Unit = {
+                asks.forEach { ask -> key("ask${ask.id}") { OwnerAskCard(ask, onOpen = { onOpenAsk?.invoke(ask) }, onDismiss = { onDismissAsk?.invoke(ask) }) } }
                 state.confirmation?.let { pending ->
                     if (!state.stopping) key(pending.id) {
                         Box(Modifier.bringIntoViewRequester(cardInView)) {

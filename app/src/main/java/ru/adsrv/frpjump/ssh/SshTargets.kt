@@ -112,10 +112,31 @@ class SshTargets(
      */
     fun connector(target: SavedSshTarget): SshConnector? {
         val saved = target.connection
-        val login = directLogin(target.profile, target.runtime, saved.device, saved.port, saved.sshUser) ?: return null
-        return SshConnector(target.profile, target.runtime.hostKeys, saved.device, saved.port, target.tunnel.localPort, login.user,
-            login.method.toAuth(remember = true), env)
+        val (user, auth) = directSession(target) ?: return null
+        return SshConnector(target.profile, target.runtime.hostKeys, saved.device, saved.port, target.tunnel.localPort, user, auth, env)
     }
+
+    /** The user and authentication of the target's stored login when it connects without the dialog; null when it needs setup in the ordinary SSH UI. */
+    fun directSession(target: SavedSshTarget): Pair<String, SshAuth>? {
+        val saved = target.connection
+        val login = directLogin(target.profile, target.runtime, saved.device, saved.port, saved.sshUser) ?: return null
+        return login.user to login.method.toAuth(remember = true)
+    }
+
+    /**
+     * Whether [profile] is known and loaded and has no saved SSH connection to [device]:[port] any more (removed): not merely a tunnel that is off, and
+     * never while the profiles are still loading.
+     */
+    fun connectionGone(profile: String, device: String, port: Int): Boolean {
+        val state = profiles.value
+        if (!state.loaded || state.index.profiles.none { it.id == profile }) return false
+        val runtime = state.runtimes[profile] ?: return false
+        return runtime.connections.connections.value.none { it.kind == PortKind.SSH && it.device == device && it.port == port }
+    }
+
+    /** The id of the saved SSH connection of [profile] to [device]:[port], or null (a remembered session of the assistant finds its tunnel again by it). */
+    fun savedConnectionAt(profile: String, device: String, port: Int): String? =
+        profiles.value.runtimes[profile]?.connections?.connections?.value?.firstOrNull { it.kind == PortKind.SSH && it.device == device && it.port == port }?.id
 
     /** The remembered login of [device]:[port] as [user] when it can be used without the dialog, else null. */
     fun directLogin(profile: String, device: String, port: Int, user: String): SshLogin? =

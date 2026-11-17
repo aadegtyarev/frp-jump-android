@@ -19,7 +19,7 @@ class AssistantNotificationSurfaceGuardTest {
     }
 
     @Test fun `the Stop receiver and the tap trampoline are not exported and have no intent filter`() {
-        for ((tag, name) in listOf("receiver" to ".assistant.AssistantStopReceiver", "activity" to ".assistant.AssistantOpenActivity")) {
+        for ((tag, name) in listOf("receiver" to ".assistant.AssistantStopReceiver", "activity" to ".assistant.AssistantOpenActivity", "activity" to ".assistant.AssistantShowActivity")) {
             val e = element(tag, name)
             assertTrue("$name exported=false", e.contains("android:exported=\"false\""))
             assertFalse("$name exported=true", e.contains("android:exported=\"true\""))
@@ -33,7 +33,9 @@ class AssistantNotificationSurfaceGuardTest {
     @Test fun `the PendingIntents are immutable and explicit, a broadcast for Stop and an activity for the tap`() {
         assertTrue(notifier.contains("PendingIntent.getBroadcast(") && notifier.contains("Intent(context, AssistantStopReceiver::class.java)"))
         assertTrue(notifier.contains("PendingIntent.getActivity(") && notifier.contains("Intent(context, AssistantOpenActivity::class.java)"))
-        assertEquals(3, Regex("FLAG_IMMUTABLE").findAll(notifier).count())
+        assertEquals(4, Regex("FLAG_IMMUTABLE").findAll(notifier).count())
+        // The "needs your input" notification: its Open is an explicit activity of the app, immutable; the session id it carries is its own extra (the trampoline is not exported).
+        assertTrue(notifier.contains("Intent(context, AssistantShowActivity::class.java)"))
         // The waiting notification's own action: a broadcast to its own explicit receiver.
         assertTrue(notifier.contains("Intent(context, AssistantCancelWaitsReceiver::class.java)"))
         assertFalse(notifier.contains("FLAG_MUTABLE")); assertFalse(notifier.contains("getService("))

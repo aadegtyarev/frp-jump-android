@@ -37,7 +37,7 @@ class TmuxPickUpTest {
     /** The listing through a real `sh -c`, as sshd runs it. */
     @Test
     fun `the listing through sh, with and without tmux`() {
-        assertEquals(listOf("list-sessions", "-F", "#{session_name}"), run(TMUX_LIST_COMMAND, tmux = "printf '%s\\n' \"\$@\"").lines().dropLast(1))
+        assertEquals(listOf("list-sessions", "-F", "#{session_name} #{@frpjump_by}"), run(TMUX_LIST_COMMAND, tmux = "printf '%s\\n' \"\$@\"").lines().dropLast(1))
         assertEquals(
             listOf("frpjump-0a1b2c-3"),
             ownTmuxSessions(run(TMUX_LIST_COMMAND, tmux = "printf 'work\\nfrpjump-0a1b2c-3\\n'"), "0a1b2c"),
@@ -99,7 +99,7 @@ class TmuxPickUpTest {
     fun `a kill is checked by what is still listed, not by the exit status`() {
         val names = listOf("frpjump-0a1b2c-1", "frpjump-0a1b2c-2")
         assertEquals(
-            "tmux kill-session -t '=frpjump-0a1b2c-1'; tmux kill-session -t '=frpjump-0a1b2c-2'; tmux list-sessions -F '#{session_name}'",
+            "tmux kill-session -t '=frpjump-0a1b2c-1'; tmux kill-session -t '=frpjump-0a1b2c-2'; tmux list-sessions -F '#{session_name} #{@frpjump_by}'",
             tmuxKillAllAndListCommand(names),
         )
         // All gone: the server exits, the listing fails and prints nothing.

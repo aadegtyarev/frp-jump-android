@@ -34,8 +34,20 @@ fun isTmuxName(name: String): Boolean = TMUX_NAME.matches(name)
 /** [s] as one shell word, single-quoted; a `'` inside becomes `'\''`. */
 fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
+/** What an attach-only session does with a probe: attach, end as gone (the ONLY answer that forgets its record), or end as unreachable (the record stays). */
+enum class AttachVerdict { ATTACH, GONE, UNREACHABLE }
+
+fun attachOnlyVerdict(probe: TmuxProbe): AttachVerdict = when (probe) {
+    TmuxProbe.EXISTING -> AttachVerdict.ATTACH
+    TmuxProbe.FRESH -> AttachVerdict.GONE
+    TmuxProbe.ABSENT, TmuxProbe.UNKNOWN -> AttachVerdict.UNREACHABLE
+}
+
 /** What the probe found on the device. */
 enum class TmuxProbe {
+    /** The probe got no answer in time (or the exec failed) on a connection still up. Only an attach-only session sees it; every other treats it as [ABSENT]. */
+    UNKNOWN,
+
     /** No tmux on the exec PATH (or a shell that cannot run the probe): a plain shell. */
     ABSENT,
 
@@ -80,13 +92,28 @@ fun parseTmuxProbe(output: String): TmuxProbe {
  * even when the non-login exec has no LANG. TERM is the PTY's
  * (`xterm-256color`), set by sshd from the pty request.
  */
-fun tmuxAttachCommand(name: String): String {
+fun tmuxAttachCommand(name: String, openedBy: SessionOpener = SessionOpener.OWNER): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     val target = shellQuote("=$name:")
+    // A session the assistant opened says so in tmux itself, in the same invocation that creates it: the owner's restore then never takes it for a tab.
+    val marker = if (openedBy == SessionOpener.ASSISTANT) " ';' set-option -t $target $OPENED_BY_OPTION ${shellQuote(OPENED_BY_ASSISTANT)}" else ""
     return "exec tmux -u new-session -A -D -s ${shellQuote(name)}" +
         " ';' set-option -t $target status off" +
-        " ';' set-option -t $target mouse on"
+        " ';' set-option -t $target mouse on" + marker
 }
+
+/** Who opened a session: the owner (a tab) or the assistant (its own session, no tab until the owner opens one). */
+enum class SessionOpener(val wire: String) {
+    OWNER("owner"), ASSISTANT("assistant");
+
+    companion object { fun fromWire(raw: String?) = if (raw == ASSISTANT.wire) ASSISTANT else OWNER }
+}
+
+/** The tmux user option that says who opened a session; absent on every session the owner's tabs made (they are the owner's). */
+const val OPENED_BY_OPTION = "@frpjump_by"
+
+/** Its value for the assistant's sessions. */
+const val OPENED_BY_ASSISTANT = "assistant"
 
 /** Ends session [name] when its tab is closed for good. */
 fun tmuxKillCommand(name: String): String {

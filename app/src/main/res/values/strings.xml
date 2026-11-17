@@ -1422,4 +1422,31 @@
         <item quantity="one">%1$s, %2$d call</item>
         <item quantity="other">%1$s, %2$d calls</item>
     </plurals>
+
+    <!-- The assistant's own terminal sessions -->
+    <string name="tool_sessions">Own sessions</string>
+    <string name="tool_sessions_hint">The assistant opens its own terminal sessions in tmux on the device, without a tab, and works in them. They show in Sessions, where you can open or close them. Before closing one it asks if “Ask before changing commands” is on.</string>
+    <string name="tool_needs_tabs_input">Works together with Terminal tabs and Typing into tabs.</string>
+    <string name="tool_terminal_open_progress">Opening a session…</string>
+    <string name="tool_terminal_open_receipt">Open session</string>
+    <string name="tool_terminal_show_progress">Asking for your input…</string>
+    <string name="tool_terminal_show_receipt">Your input is needed</string>
+    <string name="tool_terminal_close_progress">Closing a session…</string>
+    <string name="tool_terminal_close_receipt">Close session</string>
+    <string name="limit_sessions_at_once">Assistant sessions</string>
+    <string name="confirm_close_title">Close session?</string>
+    <string name="confirm_close_warning">Anything running in it stops.</string>
+    <string name="assistant_ask_title">Your input is needed</string>
+    <string name="assistant_ask_open">Open</string>
+    <string name="assistant_ask_notice">The assistant needs your input</string>
+    <string name="assistant_channel_input">Assistant: your input is needed</string>
+    <string name="sessions_assistant_group">Assistant</string>
+    <string name="sessions_assistant_open">Open</string>
+    <string name="sessions_assistant_close">Close</string>
+    <string name="terminal_state_detached">Detached</string>
+    <string name="terminal_session_by_assistant">Assistant’s session</string>
+    <string name="ssh_session_unknown">Could not check whether the session still exists on the device.</string>
+    <string name="ssh_session_gone">The session no longer exists on the device.</string>
+    <string name="session_tunnel_gone">The session stays on the device: its saved tunnel is gone</string>
+    <string name="session_close_tunnel_off">Could not close: the tunnel is off</string>
 </resources>

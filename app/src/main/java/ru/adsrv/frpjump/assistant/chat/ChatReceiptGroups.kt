@@ -97,7 +97,10 @@ internal const val RECEIPT_DETAIL_CHARS = 40
 internal fun receiptDetail(call: ToolCall, words: ReceiptWords = ReceiptWords("all", { "from record $it" })): String? {
     val a = call.arguments
     if (call.name == AssistantToolId.PROFILE_INFORMATION.wire) return profileInformationDetail(a, words)
-    if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire) return terminalReadDetail(a, words)
+    if (call.name == AssistantToolId.TERMINAL_READ.wire || call.name == AssistantToolId.TERMINAL_INPUT.wire ||
+        call.name == AssistantToolId.TERMINAL_SHOW.wire || call.name == AssistantToolId.TERMINAL_CLOSE.wire) return terminalReadDetail(a, words)
+    // The call line of an open ends with where the session is, "user@device" (from its reply), isolated; before the reply, the saved connection's name.
+    if (call.name == AssistantToolId.TERMINAL_OPEN.wire) return words.tunnelName(call.id)?.let { receiptText(it, RECEIPT_DETAIL_CHARS) }?.takeIf { it.isNotEmpty() }?.let { isolateName(it) } ?: tunnelDetail(call, a, words)
     if (call.name == AssistantToolId.TERMINAL_RENAME.wire) return terminalRenameDetail(a, words)
     if (call.name == AssistantToolId.START_TUNNEL.wire || call.name == AssistantToolId.STOP_TUNNEL.wire) return tunnelDetail(call, a, words)
     val raw = when (call.name) {
@@ -159,12 +162,16 @@ internal fun tunnelNames(receipts: List<ChatToolReceipt>): Map<String, String> {
     val out = HashMap<String, String>()
     for (receipt in receipts) {
         val call = receipt.call
-        if (call.name != AssistantToolId.START_TUNNEL.wire && call.name != AssistantToolId.STOP_TUNNEL.wire) continue
+        if (call.name != AssistantToolId.START_TUNNEL.wire && call.name != AssistantToolId.STOP_TUNNEL.wire && call.name != AssistantToolId.TERMINAL_OPEN.wire) continue
         val text = receipt.result?.text ?: continue
+        // A session opened says where: "user@device" ends its call line.
+        if (call.name == AssistantToolId.TERMINAL_OPEN.wire) { OPEN_REPLY.find(text)?.groupValues?.get(1)?.let { out[call.id] = it }; continue }
         TUNNEL_REPLY.find(text)?.groupValues?.get(1)?.let { out[call.id] = it }
     }
     return out
 }
+
+private val OPEN_REPLY = Regex("^Session opened: tab_id \\d+ \\((.+?)\\)\\.")
 
 private val TUNNEL_REPLY = Regex("^Tunnel (.+?) (?:is on[.,]|was already on\\.|is off\\.|was not on\\.|is being stopped\\.|did not start\\.)")
 

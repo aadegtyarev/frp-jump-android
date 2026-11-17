@@ -64,7 +64,7 @@
   },
   {
     "name": "terminal_tabs",
-    "description": "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model.",
+    "description": "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, who opened it, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model.",
     "parameters": {
       "type": "object",
       "additionalProperties": false,
@@ -102,6 +102,36 @@
         "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
         "keys": { "type": "array", "items": { "type": "string", "enum": ["enter", "tab", "escape", "backspace", "up", "down", "left", "right", "home", "end", "page_up", "page_down", "ctrl_c", "ctrl_d", "ctrl_z", "ctrl_l"] }, "minItems": 1, "maxItems": 32 }
       },
+      "required": ["tab_id"]
+    }
+  },
+  {
+    "name": "terminal_open",
+    "description": "Open a terminal session for yourself on a saved SSH tunnel (profile_id, connection_id from profile_information) that is on: a tmux session on the device with no tab for the owner. It survives app restarts and lost connections; terminal_tabs lists it. Returns its tab_id. Use it for long or interactive work instead of ssh_command.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "profile_id": { "type": "string", "maxLength": 256 }, "connection_id": { "type": "string", "maxLength": 256 } },
+      "required": ["profile_id", "connection_id"]
+    }
+  },
+  {
+    "name": "terminal_show",
+    "description": "Ask the owner to act in one of your sessions (tab_id): a card in the chat opens it as a tab, with a notification when the chat is not on screen. Use it when the screen asks for a password or for a choice only the owner should make; then wait for the result with wait_for. `reason`: up to 80 characters, shown to the owner.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "tab_id": { "type": "integer", "minimum": 1 }, "reason": { "type": "string", "minLength": 1, "maxLength": 80 } },
+      "required": ["tab_id", "reason"]
+    }
+  },
+  {
+    "name": "terminal_close",
+    "description": "Close one session you opened (tab_id): its tmux session on the device ends, with anything still running in it. The owner may be asked before it runs.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "tab_id": { "type": "integer", "minimum": 1 } },
       "required": ["tab_id"]
     }
   },

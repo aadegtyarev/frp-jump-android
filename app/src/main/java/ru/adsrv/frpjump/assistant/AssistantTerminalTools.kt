@@ -36,7 +36,7 @@ internal class AssistantTerminalTabsTool(private val tabs: AssistantTerminalTabs
     override fun failure(error: Exception) = ToolOutput("Could not list terminal tabs.", ToolOutcome.FAILED)
 
     companion object {
-        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
+        const val TABS_DESCRIPTION = "List the owner's open terminal tabs in this app: tab_id, name (when the owner or you set one), profile, device, tunnel, user, tab number, who opened it, state (connected, reconnecting, closed) and, for tmux tabs, the program in the foreground. No arguments. Tab details go to the model."
     }
 }
 
@@ -96,6 +96,8 @@ internal class AssistantTerminalReadTool(private val tabs: AssistantTerminalTabs
         val read = try { tabs.read(args.tabId, args.lines, args.from) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: TabNotOpen) { return ToolOutput("Tab ${args.tabId} is not open. Call terminal_tabs again.", ToolOutcome.FAILED) }
+        catch (_: TabEnded) { return ToolOutput("Session ${args.tabId} has ended.", ToolOutcome.FAILED) }
+        catch (_: TabNeedsSetup) { return ToolOutput(SshRefusalTexts.NEEDS_SETUP, ToolOutcome.FAILED) }
         catch (not: TabNotConnected) {
             return ToolOutput("Tab ${args.tabId} is not connected now (${not.state.wire}). Nothing was read. Call terminal_tabs again later.", ToolOutcome.FAILED)
         }
@@ -160,6 +162,8 @@ internal class AssistantTerminalInputTool(private val tabs: AssistantTerminalTab
         val cursor = try { tabs.type(args, pin) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: TabNotOpen) { return refused("Tab $id is not open. Nothing was typed. Call terminal_tabs again.") }
+        catch (_: TabEnded) { return refused("Session $id has ended. Nothing was typed.") }
+        catch (_: TabNeedsSetup) { return refused(SshRefusalTexts.NEEDS_SETUP) }
         catch (not: TabNotConnected) { return refused("Tab $id is not connected now (${not.state.wire}). Nothing was typed.") }
         catch (_: TabInCopyMode) { return refused("Tab $id is in tmux copy mode: the owner may be scrolling. Nothing was typed.") }
         catch (_: TabReconnected) { return refused("Tab $id reconnected after the request. Nothing was typed. Read the tab again.") }
@@ -192,6 +196,8 @@ internal fun tabsText(list: List<TerminalTab>, programs: Map<Int, String>, budge
             append(" | profile: ${name(tab.profile)} (profile_id: ${name(tab.profileId)}) | device: ${name(tab.device)}")
             tab.connection?.let { append(" | tunnel: ${name(it)}") }
             append(" | user: ${name(tab.user)} | tab: ${tab.number} | state: ${tab.state.wire} | tmux: ${if (tab.tmux) "yes" else "no"}")
+            // The assistant's own sessions say so, and whether the owner has them as a tab.
+            if (tab.openedBy == ru.adsrv.frpjump.ssh.SessionOpener.ASSISTANT) append(" | opened by: you | shown: ${if (tab.shown) "yes" else "no"}")
             programs[tab.id]?.let { append(" | program: ${name(it)}") }
         }
     }

@@ -1472,4 +1472,31 @@
         <item quantity="many">%1$s, %2$d вызовов</item>
         <item quantity="other">%1$s, %2$d вызова</item>
     </plurals>
+
+    <!-- Собственные сессии терминала помощника -->
+    <string name="tool_sessions">Свои сессии</string>
+    <string name="tool_sessions_hint">Помощник открывает свои сессии терминала в tmux на устройстве, без вкладки, и работает в них. Они видны в «Сессиях», их можно открыть или закрыть. Перед закрытием спрашивает, если включено «Спрашивать перед изменяющими командами».</string>
+    <string name="tool_needs_tabs_input">Работает вместе с «Вкладками терминала» и «Вводом во вкладки».</string>
+    <string name="tool_terminal_open_progress">Открываю сессию…</string>
+    <string name="tool_terminal_open_receipt">Открыть сессию</string>
+    <string name="tool_terminal_show_progress">Прошу ваш ввод…</string>
+    <string name="tool_terminal_show_receipt">Нужен ваш ввод</string>
+    <string name="tool_terminal_close_progress">Закрываю сессию…</string>
+    <string name="tool_terminal_close_receipt">Закрыть сессию</string>
+    <string name="limit_sessions_at_once">Сессий помощника</string>
+    <string name="confirm_close_title">Закрыть сессию?</string>
+    <string name="confirm_close_warning">Всё, что в ней запущено, остановится.</string>
+    <string name="assistant_ask_title">Нужен ваш ввод</string>
+    <string name="assistant_ask_open">Открыть</string>
+    <string name="assistant_ask_notice">Помощнику нужен ваш ввод</string>
+    <string name="assistant_channel_input">Помощник: нужен ваш ввод</string>
+    <string name="sessions_assistant_group">Помощник</string>
+    <string name="sessions_assistant_open">Открыть</string>
+    <string name="sessions_assistant_close">Закрыть</string>
+    <string name="terminal_state_detached">Отсоединена</string>
+    <string name="terminal_session_by_assistant">Сессия помощника</string>
+    <string name="ssh_session_unknown">Не удалось проверить, есть ли сессия на устройстве.</string>
+    <string name="ssh_session_gone">Сессии больше нет на устройстве.</string>
+    <string name="session_tunnel_gone">Сессия на устройстве осталась: сохранённого туннеля больше нет</string>
+    <string name="session_close_tunnel_off">Не удалось закрыть: туннель выключен</string>
 </resources>

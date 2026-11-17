@@ -10,7 +10,7 @@ import ru.adsrv.frpjump.settings.ConfirmationTexts
 /** Conversation-lived dependencies of every Send. */
 internal class TurnEnv(val own: RunOwnership, val runtime: AssistantChatRuntime, val module: AgentModule, val io: CoroutineDispatcher,
     val limits: (AssistantProviderSettings) -> AgentLimits, val prepare: (AssistantProviderSnapshot) -> AgentProvider,
-    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?, val waits: WaitAdder?,
+    val requireRevision: (String?) -> Unit, val profileInformation: ProfileInformation?, val sshCommands: AssistantSshCommands?, val terminalTabs: AssistantTerminalTabs?, val tunnels: AssistantTunnels?, val waits: WaitAdder?, val sessions: AssistantSessions?,
     val archive: Boolean, val prompts: Lazy<AssistantPrompts>, val confirm: ConfirmationSupport?,
     val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Clock of the card's five-minute limit (elapsed real time, device sleep included). */
@@ -65,7 +65,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
             val past = a.past.map { it to it.model(active) }
             val limits = env.limits(a.settings)
             val tools = AssistantToolFactory.create(a.tools, env.runtime, active, env.profileInformation, env.sshCommands, ::publishSource, a.declinedTools, env.terminalTabs, env.tunnels,
-                limits.toolTimeoutMs, env.waits, a.limits)
+                limits.toolTimeoutMs, env.waits, a.limits, env.sessions)
             val summary = summary(active, prompts.summary)
             val byName = tools.associateBy { it.spec.name }
             val result = env.module.run(toolProvider(active, past), tools, prompts.system(a.tools), a.modelText, past.map { it.second },
@@ -93,7 +93,7 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
         val slot = ConfirmationSlot(id, answer, started)
         own.guarded(owner, "confirmation") {
             confirmation = slot
-            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info, request.typing, request.stop))
+            mutable.value = mutable.value.copy(confirmation = PendingConfirmation(id, request.tool, request.command, request.target, info, request.typing, request.stop, request.close))
         } ?: throw CancellationException("Send no longer owned")
         try {
             // The coroutine timer does not count device sleep, so the wait also looks at the real clock every few seconds.

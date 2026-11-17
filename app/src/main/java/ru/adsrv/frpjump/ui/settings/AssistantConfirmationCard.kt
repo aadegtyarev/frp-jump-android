@@ -61,7 +61,14 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val info = confirmation.info
     val typing = confirmation.typing
     val stop = confirmation.stop
-    val target = if (stop != null) {
+    val close = confirmation.close
+    val target = if (close != null) {
+        // The session as a tab's identity (profile, user and device, number), a name after it, bidi-isolated, never alone.
+        if (close.profile != null && close.user != null && close.device != null && close.number != null)
+            if (close.name != null) stringResource(R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName(close.name), close.profile, close.user, close.device, close.number)
+            else stringResource(R.string.chat_detail_tab_named, close.profile, close.user, close.device, close.number)
+        else stringResource(R.string.chat_detail_tab, close.tabId)
+    } else if (stop != null) {
         // Identity first (profile, device and port), the tunnel's name between its marks, bidi-isolated.
         stringResource(R.string.confirm_stop_target, stop.profile, ru.adsrv.frpjump.ssh.isolateName(stop.name), stop.device, stop.port)
     } else if (typing != null) {
@@ -72,7 +79,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         else stringResource(R.string.chat_detail_tab, typing.tabId)
     } else if (info == null) stringResource(R.string.confirm_unknown_target)
         else stringResource(R.string.confirm_target, info.profileName, info.connection.device, info.connection.label { kindWord(context, it) })
-    val tool = stringResource(if (typing != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
+    val tool = stringResource(if (typing != null || close != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
     val always = stringResource(R.string.confirm_always)
@@ -94,7 +101,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val commandLabel = stringResource(if (typing != null) R.string.confirm_text else R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
     // No "For session" for a stop: its hint speaks of commands on a tunnel.
-    val canSession = info != null && confirmation.target != null && stop == null
+    val canSession = info != null && confirmation.target != null && stop == null && close == null
     // The command is always left to right: a line that starts with a right-to-left letter must not reverse the order of its commands.
     val ltr = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Ltr)
     // The command box shows four lines (three in the two-pane layout) at the user's font size, then scrolls.
@@ -108,7 +115,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 
     @Composable fun Header() {
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(stringResource(if (close != null) R.string.confirm_close_title else if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
             Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("chat_confirm_tool"))
@@ -139,10 +146,12 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         }
     }
     // Keys-only typing has no text: no empty box.
-    val showCommand = stop == null && (typing == null || confirmation.command.isNotEmpty())
+    val showCommand = stop == null && close == null && (typing == null || confirmation.command.isNotEmpty())
     // A stop says how many tabs close, only when some do.
     @Composable fun Warning() {
-        if (stop != null) {
+        if (close != null) {
+            Text(stringResource(R.string.confirm_close_warning), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("chat_confirm_close_warning"))
+        } else if (stop != null) {
             if (stop.tabs > 0) Text(stringResource(R.string.confirm_stop_tabs, stop.tabs), style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.testTag("chat_confirm_stop_tabs"))
         } else Text(stringResource(if (typing != null) R.string.confirm_input_warning else R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
@@ -213,4 +222,23 @@ private fun FieldLine(label: String, value: String, tag: String) {
 private fun Hint(label: String, text: String, tag: String) {
     Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$label: ") }; append(text) },
         style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag(tag))
+}
+
+/**
+ * "Your input is needed": the assistant asked the owner to act in one of its own sessions (a password, a choice only he should make). The identity of the
+ * session (user and device, number), the reason as plain text (cleaned and capped, never markup), and Open, which shows the session as a tab.
+ * The model's reason is the model's text: shown as plain text after the identity, never alone.
+ */
+@Composable
+internal fun OwnerAskCard(ask: ru.adsrv.frpjump.assistant.OwnerAsk, onOpen: () -> Unit, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val identity = if (ask.name != null) stringResource(R.string.chat_detail_tab_name_named, ru.adsrv.frpjump.ssh.isolateName(ask.name), ask.profile, ask.user, ask.device, ask.number)
+        else stringResource(R.string.chat_detail_tab_named, ask.profile, ask.user, ask.device, ask.number)
+    OutlinedCard(modifier.fillMaxWidth().testTag("chat_ask_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.assistant_ask_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite }.testTag("chat_ask_title"))
+            Text(identity, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag("chat_ask_identity"))
+            if (ask.reason.isNotEmpty()) Text(ask.reason, modifier = Modifier.testTag("chat_ask_reason"))
+            Button(onClick = { onOpen(); onDismiss() }, modifier = Modifier.testTag("chat_ask_open")) { Text(stringResource(R.string.assistant_ask_open)) }
+        }
+    }
 }
