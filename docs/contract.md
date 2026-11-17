@@ -554,6 +554,36 @@ What reads the arrows:
 
 Swipes (scrolling, tmux copy mode) and long-press selection work as before.
 
+**Links in the output** (Р37). A tap on a link in the terminal's output opens the «Ссылка» / "Link" sheet: the address in a monospaced
+box, in full (it wraps at any character), and "Copy" / «Копировать» and "Open" / «Открыть». Nothing opens at the tap, and nothing
+else happens: no click for the program, no keyboard.
+- What is a link: `scheme://` with a Latin scheme and no space, quote, angle bracket or backtick after it (at most 4096 characters; a
+  longer run is not a link). Sentence punctuation and quotes at its end (`. , ; : ! ? ' "`, an ellipsis, the common full-width ones)
+  and a closing bracket (`) ] } >`, full-width ones) with no opening one before it in the link are not part of it; a bracket pair
+  inside stays (`…/Foo_(bar)`). A scheme without `//` (`intent:`, `javascript:`, `mailto:`) is not a link at all.
+- Only `http` and `https` open, in the system's external browser (`ACTION_VIEW`, `BROWSABLE`), never inside the app, and only from
+  the tap on "Open"; the one launch function refuses anything else again. Another scheme (`ftp`, `ssh`, `file`, `content`, a custom one)
+  gets the sheet with "Copy" only and the line «Открывается только http и https.». With no browser installed the sheet stays and a
+  notice says so.
+- What is shown is what opens. A host with non-Latin letters is shown and opened as punycode (`xn--…`); under the address a line
+  gives the text as it was in the terminal. Control, bidi, zero-width and other invisible characters are shown as visible marks, by the
+  rule of the assistant's confirmation card; such a link has no "Open", and a line says why. An address that is not a web address
+  (no host, a bad port, a malformed IP or host) has no "Open" either.
+- An address of the machine the output came from has no "Open" and a line saying it will not open on the phone: `localhost` and
+  `*.localhost`, 127.0.0.0/8, 0.0.0.0/8, `::1`, `::`, IPv4-mapped forms of those, and every spelling a browser reads as one
+  (`127.1`, `0x7f.0.0.1`, `2130706433`, percent-encoded or full-width letters), because on the phone `127.0.0.1` is the app's own
+  tunnel ports.
+- Wrapped lines: a link the emulator wrapped at the margin is one link. Under tmux (no wrap mark: it draws each row itself) rows are
+  joined only when the link reaches the last column and the next row begins with address characters; the sheet shows the whole address
+  before anything opens.
+- A tap on the cursor's line stays the cursor's, even when an address is typed there; a tap on a link in other output, or in a
+  full-screen program, opens the sheet. Long-press selection works as before; while a selection is on or TalkBack's touch exploration is
+  on, taps stay as they were.
+- TalkBack and small text: ⋮ → «Ссылки на экране…» / "Links on screen…" (only while the visible screen has a link) and a TalkBack action
+  of the same name on the terminal list the links once each; a pick opens the same sheet.
+- The assistant gets nothing from this: no tool, no text for the model. OSC 8 (a link whose text differs from its address) is not
+  parsed; only visible text is read, so the sheet always shows the real address.
+
 ### 8. Background, kill and reboot
 
 - While any tunnel is up: a foreground service keeps frpc alive and shows a

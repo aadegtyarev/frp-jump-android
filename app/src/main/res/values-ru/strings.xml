@@ -1451,6 +1451,16 @@
     <string name="assistant_notice_listening">Помощник ждёт событий: %d</string>
     <string name="assistant_notice_cancel_waits">Отменить все</string>
     <string name="terminal_ask_assistant">Спросить помощника</string>
+    <string name="link_title">Ссылка</string>
+    <string name="link_remote">Это адрес на удалённой машине: на телефоне он не откроется.</string>
+    <string name="link_other_scheme">Открывается только http и https.</string>
+    <string name="link_punycode">В браузере откроется этот адрес. В тексте было: %s — буквы не латинские.</string>
+    <string name="link_hidden">В адресе скрытые символы. Открыть нельзя, можно скопировать.</string>
+    <string name="link_invalid">Адрес не разобрать как веб-адрес. Открыть нельзя, можно скопировать.</string>
+    <string name="link_no_app">Нет приложения, чтобы открыть ссылку.</string>
+    <string name="terminal_links_menu">Ссылки на экране…</string>
+    <string name="terminal_links_title">Ссылки на экране</string>
+    <string name="terminal_links_action">Ссылки на экране</string>
     <string name="chat_quote_truncated">[начало обрезано]</string>
     <string name="chat_calls_expanded">Развёрнуто</string>
     <string name="chat_calls_collapsed">Свёрнуто</string>

@@ -1403,6 +1403,16 @@
     <string name="assistant_notice_listening">Assistant is waiting for events: %d</string>
     <string name="assistant_notice_cancel_waits">Cancel all</string>
     <string name="terminal_ask_assistant">Ask the assistant</string>
+    <string name="link_title">Link</string>
+    <string name="link_remote">This address is on the remote machine; it will not open on the phone.</string>
+    <string name="link_other_scheme">Only http and https links open.</string>
+    <string name="link_punycode">The browser opens this address. The text said: %s, with non-Latin letters.</string>
+    <string name="link_hidden">The address has hidden characters. It cannot be opened, only copied.</string>
+    <string name="link_invalid">The address cannot be read as a web address. It cannot be opened, only copied.</string>
+    <string name="link_no_app">No app can open this link.</string>
+    <string name="terminal_links_menu">Links on screen…</string>
+    <string name="terminal_links_title">Links on screen</string>
+    <string name="terminal_links_action">Links on screen</string>
     <string name="chat_quote_truncated">[start truncated]</string>
     <string name="chat_calls_expanded">Expanded</string>
     <string name="chat_calls_collapsed">Collapsed</string>
