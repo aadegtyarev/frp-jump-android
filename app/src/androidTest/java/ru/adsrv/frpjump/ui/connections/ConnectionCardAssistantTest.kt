@@ -52,21 +52,21 @@ class ConnectionCardAssistantTest {
                     assistantGrant = granted, onForgetAssistant = { forgotten++; granted = false })
             }
         }
-        compose.onNodeWithTag("connection_assistant_grant").assertIsDisplayed()
+        compose.onNodeWithTag("connection_assistant_grant", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("connection_assistant_forget", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
-        compose.onNodeWithText(text(R.string.connection_assistant_grant)).assertIsDisplayed()
-        compose.onNodeWithContentDescription(text(R.string.connection_assistant_forget_description, "Pi shell")).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.connection_assistant_grant), useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.connection_assistant_forget_description, "Pi shell"), useUnmergedTree = true).assertIsDisplayed()
         shot("connection-card-assistant-grant")
-        compose.onNodeWithTag("connection_assistant_forget").performClick()
+        compose.onNodeWithTag("connection_assistant_forget", useUnmergedTree = true).performClick()
         compose.waitForIdle()
         assertEquals(1, forgotten)
-        compose.onNodeWithTag("connection_assistant_grant").assertDoesNotExist()
+        compose.onNodeWithTag("connection_assistant_grant", useUnmergedTree = true).assertDoesNotExist()
         shot("connection-card-assistant-forgotten")
     }
 
     @Test fun noLineWithoutAGrant() {
         compose.setContent { FrpJumpTheme { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions) } }
-        compose.onNodeWithTag("connection_assistant_grant").assertDoesNotExist()
-        compose.onNodeWithTag("connection_assistant_forget").assertDoesNotExist()
+        compose.onNodeWithTag("connection_assistant_grant", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("connection_assistant_forget", useUnmergedTree = true).assertDoesNotExist()
     }
 }

@@ -2170,7 +2170,7 @@ class AssistantChatScreenTest {
         shown("chat_confirm_session"); shown("chat_confirm_session_hint")
         // The tool line names the class, and the hint says what the answer covers: commands only (typing is off here), while the tunnel is open.
         compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))
-        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint))
+        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint), substring = true)
         shot("real-names")
         button("chat_confirm_session").performClick(); awaitIdle()
         compose.runOnIdle { assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -172,7 +173,7 @@ fun ConnectionCard(
                 val forget = stringResource(R.string.connection_assistant_forget_description, rowName(row))
                 Row(Modifier.testTag("connection_assistant_grant"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onForgetAssistant, modifier = Modifier.semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
+                    TextButton(onClick = onForgetAssistant, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
                         Text(stringResource(R.string.connection_assistant_forget))
                     }
                 }
