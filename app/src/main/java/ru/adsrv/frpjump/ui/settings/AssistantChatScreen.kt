@@ -109,8 +109,15 @@ internal fun AssistantChatContent(
                 // Content that grows while we scroll leaves the same pair, which the flow does not emit again: look again here. Each pass
                 // ends at the real bottom, so a pass that does not is the last (the cap only guards a list that never settles).
                 var passes = 0
-                while (following && historyScroll.canScrollForward && passes++ < 20) historyScroll.scrollToBottom()
-                seen = position()
+                var expected = at
+                while (following && historyScroll.canScrollForward && passes++ < 20) {
+                    // The change that woke us can come from a measure pass, and a scroll forces its own measure: start at the next frame's
+                    // beginning. Anything that scrolled the list since the decision (an accessibility jump, say) is the owner's, not ours to undo.
+                    withFrameNanos { }
+                    if (position() != expected) break
+                    historyScroll.scrollToBottom()
+                    expected = position(); seen = expected
+                }
             } catch (e: CancellationException) {
                 // A touch took the list over mid-scroll: its position is the owner's, judged by the next emission. Our own cancel passes on.
                 currentCoroutineContext().ensureActive()
@@ -429,8 +436,6 @@ internal fun ru.adsrv.frpjump.agent.ToolResult?.isNoAnswer(): Boolean =
 
 /** Scrolls so that the bottom of the last item is at the bottom of the list (scrollToItem alone aligns that item's top). */
 private suspend fun LazyListState.scrollToBottom() {
-    // The change that woke us can come from a measure pass; a scroll forces its own measure, so start at the next frame's beginning.
-    withFrameNanos { }
     val last = layoutInfo.totalItemsCount - 1
     if (last < 0) return
     scrollToItem(last)
