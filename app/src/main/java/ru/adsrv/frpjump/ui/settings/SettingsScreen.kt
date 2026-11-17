@@ -160,7 +160,7 @@ fun SettingsScreen(
         return
     }
     if (limitsSetup) {
-        AssistantLimitsScreen(settings.assistantLimits, onChange = vm::setAssistantLimits, onBack = { limitsSetup = false })
+        AssistantLimitsScreen(settings.assistantLimits, onChange = vm::setAssistantLimits, onBack = { limitsSetup = false }, provider = assistantProvider.settings)
         return
     }
     if (ownerSetup) {

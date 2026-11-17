@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -89,6 +90,38 @@ class AssistantLimitsScreenTest {
         compose.onAllNodesWithTag("limit_reply_s_hint").assertCountEquals(0)
     }
 
+    @Test fun theSummaryRowsShareTheWindowSayWhyAPlusIsOffAndSayWhenTheAnswerLimitCapsTheSummary() {
+        val limits = mutableStateOf(AssistantLimits())
+        // A 262,144-token window and the default 2,048-token answer limit: 15 % of the window is more than the model may answer.
+        val provider = ru.adsrv.frpjump.assistant.AssistantProviderSettings()
+        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { limits.value = it }, onBack = {}, provider = provider) } }
+        scrolled("limit_summary_percent_value").assertTextEquals("80")
+        scrolled("limit_summary_size_percent_value").assertTextEquals("15")
+        scrolled("limit_fresh_tool_percent_value").assertTextEquals("20")
+        // 80 + 15 is the whole 95: both pluses are off and the pair is explained under each.
+        scrolled("limit_summary_percent_plus").assertIsNotEnabled()
+        scrolled("limit_summary_size_percent_plus").assertIsNotEnabled()
+        val pair = compose.activity.getString(R.string.limit_summary_pair, 95)
+        val tokens2048 = java.text.NumberFormat.getIntegerInstance(compose.activity.resources.configuration.locales[0]).format(2048)
+        scrolled("limit_summary_percent_hint").assertTextEquals(pair)
+        scrolled("limit_summary_size_percent_hint").assertTextContains(pair, substring = true)
+        scrolled("limit_summary_size_percent_hint").assertTextContains(compose.activity.getString(R.string.limit_summary_capped, tokens2048), substring = true)
+        capture("limits-summary-rows")
+        // Lowering the trigger gives the summary room, and the explanation under the trigger goes away.
+        scrolled("limit_summary_percent_minus").performClick()
+        compose.runOnIdle { assertEquals(75, limits.value.summaryPercent) }
+        scrolled("limit_summary_size_percent_plus").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(20, limits.value.summarySizePercent); assertEquals(75, limits.value.summaryPercent) }
+        scrolled("limit_summary_percent_plus").assertIsNotEnabled()
+        // The trigger at its lowest stops at 10, the size at its lowest at 5.
+        limits.value = AssistantLimits().withSummaryPercent(10).withSummarySize(5)
+        scrolled("limit_summary_percent_minus").assertIsNotEnabled(); scrolled("limit_summary_size_percent_minus").assertIsNotEnabled()
+        compose.onAllNodesWithTag("limit_summary_percent_hint").assertCountEquals(0)
+        scrolled("limit_summary_size_percent_plus").assertIsEnabled()
+        // The cap is still explained (5 % of this window is also more than 2,048 tokens), the pair no longer is.
+        scrolled("limit_summary_size_percent_hint").assertTextEquals(compose.activity.getString(R.string.limit_summary_capped, tokens2048))
+    }
+
     /** The node of [tag], scrolled into view (the screen is longer than the window). */
     private fun scrolled(tag: String) = compose.onNodeWithTag(tag).performScrollTo()
 
@@ -100,11 +133,13 @@ class AssistantLimitsScreenTest {
             val tag = "limit_${spec.key}"
             scrolled("${tag}_value").assertTextEquals(java.text.NumberFormat.getIntegerInstance(compose.activity.resources.configuration.locales[0]).format(spec.get(AssistantLimits())))
             scrolled("${tag}_plus").performClick()
-            compose.runOnIdle { assertEquals(spec.key, minOf(spec.get(AssistantLimits()) + spec.step, spec.range.last), spec.get(limits.value)) }
+            // The trigger shares the window with the summary size: at the defaults (80 + 15 = 95) its plus is off, so it stays and two minuses reach 70.
+            val pairFull = spec.key == "summary_percent"
+            compose.runOnIdle { assertEquals(spec.key, if (pairFull) spec.get(AssistantLimits()) else minOf(spec.get(AssistantLimits()) + spec.step, spec.range.last), spec.get(limits.value)) }
             scrolled("${tag}_minus").performClick(); scrolled("${tag}_minus").performClick()
-            compose.runOnIdle { assertEquals(spec.key, maxOf(spec.get(AssistantLimits()) - spec.step, spec.range.first), spec.get(limits.value)) }
+            compose.runOnIdle { assertEquals(spec.key, maxOf(spec.get(AssistantLimits()) - spec.step * (if (pairFull) 2 else 1), spec.range.first), spec.get(limits.value)) }
         }
-        compose.runOnIdle { assertEquals("all nineteen rows are covered", 19, LIMITS.size) }
+        compose.runOnIdle { assertEquals("all twenty-two rows are covered", 22, LIMITS.size) }
         // The last row, at the foot of the screen, and every limit at its largest.
         scrolled("limit_reconnect_minutes_value")
         capture("limits-defaults-scrolled")

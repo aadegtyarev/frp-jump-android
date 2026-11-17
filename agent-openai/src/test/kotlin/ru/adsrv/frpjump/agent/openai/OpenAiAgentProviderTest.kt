@@ -565,4 +565,31 @@ class OpenAiAgentProviderTest {
         }
     }
 
+
+    @Test fun `a failed call is marked context-too-long only by 413 or by a 400 or 422 that names the context or token limit`() {
+        fun overflow(status: Int, body: String): Boolean = Endpoint().use { e ->
+            e.replies.put(Reply(body, status))
+            failure(ProviderFailure.HTTP) { runBlocking { OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key).complete(request) } }.contextTooLong
+        }
+        assertTrue(overflow(413, "{}"))
+        assertTrue(overflow(400, """{"error":{"code":"context_length_exceeded","message":"This model's maximum context length is 8192 tokens"}}"""))
+        assertTrue(overflow(400, """{"error":{"message":"Prompt is too long: 300000 tokens"}}"""))
+        assertTrue(overflow(422, """{"detail":"input is too long for the context window"}"""))
+        assertFalse(overflow(400, """{"error":{"message":"Unsupported parameter: max_tokens"}}"""))
+        assertFalse(overflow(400, "{}"))
+        assertFalse(overflow(401, """{"error":"context length"}"""))
+        assertFalse(overflow(429, """{"error":"too many tokens per minute"}"""))
+        assertFalse(overflow(500, """{"error":"context window"}"""))
+    }
+
+    @Test fun `the local request size limit counts as context-too-long and the error never carries the response text`() {
+        val big = AgentRequest("skill", emptyList(), listOf(AgentTurn("x".repeat(4_000))), 512)
+        val error = failure(ProviderFailure.REQUEST_TOO_LARGE) { runBlocking { OpenAiAgentProvider(OpenAiConfig("http://127.0.0.1:1/v1", "m", maxRequestBytes = 1024), key).complete(big) } }
+        assertTrue(error.contextTooLong)
+        Endpoint().use { e ->
+            e.replies.put(Reply("""{"error":{"message":"context length SECRET-RESPONSE-TEXT"}}""", 400))
+            val failed = failure(ProviderFailure.HTTP) { runBlocking { OpenAiAgentProvider(OpenAiConfig(e.url, "m"), key).complete(request) } }
+            assertFalse(failed.toString().contains("SECRET-RESPONSE-TEXT")); assertFalse(failed.message!!.contains("SECRET-RESPONSE-TEXT"))
+        }
+    }
 }

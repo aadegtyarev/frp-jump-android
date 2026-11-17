@@ -41,6 +41,8 @@ internal fun progressOnCall(name: String): ChatToolProgress? =
 /** The progress line after a tool finished: nothing for success and for a decline (not a failure), the failed marker otherwise. */
 internal fun progressAfter(outcome: ToolOutcome): ChatToolProgress? =
     if (outcome == ToolOutcome.SUCCESS || outcome == ToolOutcome.DECLINED) null else ChatToolProgress.FAILED
+/** What the history was shortened by; the chat tells the owner with one calm line. */
+enum class Compaction { TOOL_OUTPUT, MODEL, NO_MODEL }
 enum class ChatProblem { SETUP, READ, KEY, TIMEOUT, CONTEXT_FULL, INVALID_REPLY, PROVIDER, TOO_LONG, SUMMARY, HISTORY_FULL }
 data class ChatState(
     val turns: List<ChatTurn> = emptyList(), val draft: String = "", val pendingText: String? = null,
@@ -54,7 +56,9 @@ data class ChatState(
     /** A Send waits for a pending clear to be committed (or the restore to end): its text shows as sent, nothing more can be edited. */
     val sending: Boolean = false,
     val historyProblem: ChatHistoryProblem? = null, val contextChanged: Boolean = false,
-    val summarized: Boolean = false, val problemStatus: Int? = null,
+    val summarized: Boolean = false,
+    /** How the model's view of the history was shortened: the saved summary's kind, else (this session only) old tool output left out. */
+    val compaction: Compaction? = null, val problemStatus: Int? = null,
     val receipts: List<ChatToolReceipt> = emptyList(), val currentSources: List<ChatSource> = emptyList(), val toolFailed: Boolean = false,
     val toolFailures: List<ChatToolFailure> = emptyList(), val information: List<ChatProfileInformation> = emptyList(),
     /** The owner's pending question for a changing call; never persisted. */

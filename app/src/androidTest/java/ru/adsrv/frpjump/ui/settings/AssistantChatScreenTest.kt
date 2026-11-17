@@ -365,7 +365,12 @@ class AssistantChatScreenTest {
             assertEquals(answer,owner!!.state.value.turns.last().answer)
             assertEquals(41,owner!!.state.value.turns.size); assertTrue(owner!!.state.value.summarized)
             assertEquals(records.first().user,owner!!.state.value.turns.first().user)
+            assertEquals(ru.adsrv.frpjump.assistant.chat.Compaction.MODEL,owner!!.state.value.compaction)
         }
+        // The calm line says how the history was shortened (muted, not the red error); nothing red is shown.
+        compose.onNodeWithTag("chat_compacted").assertExists().assertTextEquals(localizedText(ru.adsrv.frpjump.R.string.chat_compacted_model))
+        compose.onAllNodesWithTag("chat_error").assertCountEquals(0)
+        shot("history-compacted")
         button("chat_back").performClick()
         runBlocking(Dispatchers.IO) { assertNotNull(history!!.load()!!.summary) }
         val previous=owner; val previousCalls=calls

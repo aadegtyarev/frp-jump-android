@@ -48,7 +48,33 @@ data class AssistantLimits(
     @SerialName("tunnel_wait_s") val tunnelWaitSeconds: Int = DEFAULT_TUNNEL_WAIT_S,
     /** How long a dropped terminal keeps reconnecting, in minutes. */
     @SerialName("reconnect_minutes") val reconnectMinutes: Int = DEFAULT_RECONNECT_MINUTES,
+    /**
+     * The chat history is shortened when the request fills this share of the model's context window, in percent. Absent until the owner sets it
+     * or the value of the provider form that held it before is moved here ([summaryPercent] is what is in force).
+     */
+    @SerialName("summary_percent") val summaryPercentSet: Int? = null,
+    /** How big the working summary may be, in percent of the context window (never more than the model's answer limit). */
+    @SerialName("summary_size_percent") val summarySizePercent: Int = DEFAULT_SUMMARY_SIZE_PERCENT,
+    /** How much of the newest tool output stays whole when old output is replaced by a short note, in percent of the context window. */
+    @SerialName("fresh_tool_percent") val freshToolPercent: Int = DEFAULT_FRESH_TOOL_PERCENT,
 ) {
+    /** The share of the window at which the history is shortened, in percent. */
+    val summaryPercent: Int get() = summaryPercentSet ?: DEFAULT_SUMMARY_PERCENT
+
+    /** The highest trigger that leaves room for the summary: trigger + summary size stay within [SUMMARY_PAIR_MAX]. */
+    fun summaryPercentMax(): Int = minOf(SUMMARY_PERCENT_RANGE.last, SUMMARY_PAIR_MAX - summarySizePercent)
+
+    /** The biggest summary that leaves room after the trigger. */
+    fun summarySizeMax(): Int = minOf(SUMMARY_SIZE_RANGE.last, SUMMARY_PAIR_MAX - summaryPercent)
+
+    /** Sets the trigger; the summary size gives way when the pair would no longer fit. */
+    fun withSummaryPercent(value: Int): AssistantLimits =
+        copy(summaryPercentSet = value, summarySizePercent = minOf(summarySizePercent, SUMMARY_PAIR_MAX - value).coerceAtLeast(SUMMARY_SIZE_RANGE.first))
+
+    /** Sets the summary size; the trigger gives way when the pair would no longer fit. */
+    fun withSummarySize(value: Int): AssistantLimits =
+        copy(summarySizePercent = value, summaryPercentSet = minOf(summaryPercent, SUMMARY_PAIR_MAX - value).coerceAtLeast(SUMMARY_PERCENT_RANGE.first))
+
     /** The whole reply's limit in ms: the setting, but never less than one call plus one model answer. */
     fun replyLimitMs(): Long = maxOf(replySeconds, toolTimeoutSeconds + modelTimeoutSeconds) * 1000L
 
@@ -72,6 +98,11 @@ data class AssistantLimits(
         const val DEFAULT_READ_LINES_MAX = 1_000
         const val DEFAULT_TUNNEL_WAIT_S = 45
         const val DEFAULT_RECONNECT_MINUTES = 10
+        const val DEFAULT_SUMMARY_PERCENT = 80
+        const val DEFAULT_SUMMARY_SIZE_PERCENT = 15
+        const val DEFAULT_FRESH_TOOL_PERCENT = 20
+        /** The trigger and the summary size together may not pass this share of the window: the request must still fit after a summary. */
+        const val SUMMARY_PAIR_MAX = 95
         val WAITS_AT_ONCE_RANGE = 1..10
         val WAIT_MAX_MINUTES_RANGE = 1..120
         val EVENT_REPLIES_RANGE = 1..20
@@ -91,6 +122,9 @@ data class AssistantLimits(
         val READ_LINES_RANGE = 100..10_000
         val TUNNEL_WAIT_RANGE = 5..120
         val RECONNECT_RANGE = 1..60
+        val SUMMARY_PERCENT_RANGE = 10..90
+        val SUMMARY_SIZE_RANGE = 5..40
+        val FRESH_TOOL_RANGE = 5..50
     }
 }
 
@@ -114,6 +148,9 @@ val LIMITS: List<LimitSpec> = listOf(
     LimitSpec("skills_list_chars", LimitGroup.ASSISTANT, AssistantLimits.SKILLS_LIST_CHARS_RANGE, 500, { it.skillsListChars }, { l, v -> l.copy(skillsListChars = v) }),
     LimitSpec("tool_output_chars", LimitGroup.ASSISTANT, AssistantLimits.TOOL_OUTPUT_RANGE, 1_000, { it.toolOutputChars }, { l, v -> l.copy(toolOutputChars = v) }),
     LimitSpec("reply_chars", LimitGroup.ASSISTANT, AssistantLimits.REPLY_CHARS_RANGE, 4_000, { it.replyChars }, { l, v -> l.copy(replyChars = v) }),
+    LimitSpec("summary_percent", LimitGroup.ASSISTANT, AssistantLimits.SUMMARY_PERCENT_RANGE, 5, { it.summaryPercent }, { l, v -> l.withSummaryPercent(v) }),
+    LimitSpec("summary_size_percent", LimitGroup.ASSISTANT, AssistantLimits.SUMMARY_SIZE_RANGE, 5, { it.summarySizePercent }, { l, v -> l.withSummarySize(v) }),
+    LimitSpec("fresh_tool_percent", LimitGroup.ASSISTANT, AssistantLimits.FRESH_TOOL_RANGE, 5, { it.freshToolPercent }, { l, v -> l.copy(freshToolPercent = v) }),
     LimitSpec("waits_at_once", LimitGroup.WAITS, AssistantLimits.WAITS_AT_ONCE_RANGE, 1, { it.waitsAtOnce }, { l, v -> l.copy(waitsAtOnce = v) }),
     LimitSpec("wait_max_minutes", LimitGroup.WAITS, AssistantLimits.WAIT_MAX_MINUTES_RANGE, 1, { it.waitMaxMinutes }, { l, v -> l.copy(waitMaxMinutes = v) }),
     LimitSpec("event_replies", LimitGroup.WAITS, AssistantLimits.EVENT_REPLIES_RANGE, 1, { it.eventReplies }, { l, v -> l.copy(eventReplies = v) }),
@@ -125,4 +162,5 @@ val LIMITS: List<LimitSpec> = listOf(
     LimitSpec("reconnect_minutes", LimitGroup.TUNNELS, AssistantLimits.RECONNECT_RANGE, 1, { it.reconnectMinutes }, { l, v -> l.copy(reconnectMinutes = v) }),
 )
 
-fun validAssistantLimits(l: AssistantLimits): Boolean = LIMITS.all { it.get(l) in it.range }
+fun validAssistantLimits(l: AssistantLimits): Boolean =
+    LIMITS.all { it.get(l) in it.range } && l.summaryPercent + l.summarySizePercent <= AssistantLimits.SUMMARY_PAIR_MAX

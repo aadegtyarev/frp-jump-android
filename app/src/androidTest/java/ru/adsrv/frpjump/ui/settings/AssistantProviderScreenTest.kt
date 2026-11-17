@@ -42,7 +42,7 @@ class AssistantProviderScreenTest {
     private fun models() = compose.onNodeWithTag("assistant_models")
     private val configured = AssistantProviderSnapshot(AssistantProviderSettings("https://example.invalid/v1/", "existing"), "11111111-1111-1111-1111-111111111111")
 
-    @Test fun summaryFieldsSaveWithoutDiscoveryAndRejectInvalidThreshold() {
+    @Test fun summaryModelSavesWithoutDiscoveryAndTheTriggerIsNotOnThisForm() {
         var saved: AssistantProviderDraft? = null
         val args=InstrumentationRegistry.getArguments()
         val config=Configuration(compose.activity.resources.configuration).apply { setLocale(java.util.Locale.forLanguageTag(args.getString("chatLocale")?:"en")) }
@@ -56,14 +56,11 @@ class AssistantProviderScreenTest {
                 }
             }
         }
-        field("assistant_summary_percent").performScrollTo().assertTextContains("80")
-        field("assistant_summary_percent").performTextReplacement("0")
-        save().assertIsNotEnabled()
-        field("assistant_summary_percent").performTextReplacement("90")
+        compose.onAllNodesWithTag("assistant_summary_percent").assertCountEquals(0)
         field("assistant_summary_model").performScrollTo().performTextReplacement("summary-model")
         save().assertIsEnabled().performClick()
         compose.runOnIdle {
-            assertEquals(90,saved!!.settings.summaryPercent)
+            assertEquals(configured.settings!!.summaryPercent,saved!!.settings.summaryPercent)
             assertEquals("summary-model",saved!!.settings.summaryModel)
             assertEquals(configured.settings!!.baseUrl,saved!!.settings.baseUrl)
             assertEquals(configured.settings!!.model,saved!!.settings.model)

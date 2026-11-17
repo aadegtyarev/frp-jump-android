@@ -45,23 +45,19 @@ class AssistantSummaryTest {
     }
     private suspend fun AssistantConversation.ready() = withTimeout(8000) { state.first { !it.loading && !it.busy } }
 
-    @Test fun `invalid failed and nonreducing summaries retain last good data`() = runBlocking {
+    @Test fun `invalid or failed summaries never fail the request - the digest keeps the chat going and the records stay whole`() = runBlocking {
         val model=AgentProvider { error("No main request") }
         val initial=SavedChat(records=records()+SavedTurn("Continue"),summary=SavedSummary("target=work-root; done=diagnostic; unknown=upgrade",1,0))
-        val invalid=listOf<suspend (AgentRequest)->AgentReply>(
+        val failing=listOf<suspend (AgentRequest)->AgentReply>(
             { throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP,400) },
-            { AgentReply("x".repeat(4001)) }, { AgentReply(calls=listOf(ToolCall("bad","ssh_command",buildJsonObject{}))) })
-        for (response in invalid) {
+            { AgentReply("") }, { AgentReply(calls=listOf(ToolCall("bad","ssh_command",buildJsonObject{}))) })
+        for (response in failing) {
             var doc=initial
             val engine=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512),model,{doc},{doc=doc.copy(summary=it)},response,TestPrompts.real.summary)
-            try { engine.prepare(AgentRequest("base",emptyList(),listOf(AgentTurn("Continue")),512));fail("Expected rejection") } catch (_:Exception) { }
-            assertSame(initial,doc)
+            val result=engine.prepare(AgentRequest("base",emptyList(),listOf(AgentTurn("Continue")),512))
+            assertFalse(doc.summary!!.byModel); assertSame(initial.records,doc.records)
+            assertTrue(Utf8TokenEstimate.count(result)+512<=12_000)
         }
-        var small=initial.copy(records=initial.records.take(2)+SavedTurn("Continue"),summary=null)
-        val before=small
-        val noProgress=AssistantSummary(AssistantProviderSettings(contextTokens=12_000,outputTokens=512,summaryPercent=1),model,{small},{small=small.copy(summary=it)},{AgentReply("x".repeat(4000))},TestPrompts.real.summary)
-        try { noProgress.prepare(AgentRequest("base",emptyList(),listOf(AgentTurn("Continue")),512));fail("Expected no-progress rejection") } catch (_:IllegalStateException) { }
-        assertSame(before,small)
     }
 
     @Test fun `one long current turn summarizes older complete pairs but retains latest pair`() = runBlocking {
@@ -208,19 +204,20 @@ class AssistantSummaryTest {
         } finally { chat.close();scope.cancel() }
     }
 
-    @Test fun `summary provider failure reports the provider status on the summary problem`() = runBlocking {
+    @Test fun `summary provider failure no longer fails the Send - the digest is used and the chat says so calmly`() = runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         val history=AssistantChatHistory(Memory(),Box(),scope,Dispatchers.Unconfined)
         val snapshot=AssistantProviderSnapshot(AssistantProviderSettings(model="chat",contextTokens=12_000,outputTokens=512),"revision")
         history.save(SavedChat(records=records()).bind(snapshot.settings));history.load()
         val model=AgentProvider { request ->
             if(request.instructions==TestPrompts.real.summary) throw ru.adsrv.frpjump.agent.openai.OpenAiProviderException(ru.adsrv.frpjump.agent.openai.ProviderFailure.HTTP,400)
-            AgentReply("must not run")
+            AgentReply("answer")
         }
         val chat=AssistantConversation(scope,{AssistantAvailability(true)},{snapshot},{model},{},AgentModule(true),io=Dispatchers.Unconfined,historyStore=history,prompts=TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready();chat.edit("Continue");chat.send();chat.ready()
-            assertEquals(ChatProblem.SUMMARY,chat.state.value.problem);assertEquals(400,chat.state.value.problemStatus)
+            assertNull(chat.state.value.problem);assertEquals("answer",chat.state.value.turns.last().answer)
+            assertEquals(ru.adsrv.frpjump.assistant.chat.Compaction.NO_MODEL,chat.state.value.compaction)
         } finally { chat.close();scope.cancel() }
     }
 

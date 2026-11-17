@@ -101,7 +101,13 @@ import ru.adsrv.frpjump.assistant.tools.*
     }
 }
 
-@Serializable internal data class SavedSummary(val text: String, val turn: Int, val exchange: Int)
+/** The working summary and the position it covers up to. [byModel] false: the app's own digest, written without a model (not written while true, so older chats are unchanged). */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+@Serializable internal data class SavedSummary(val text: String, val turn: Int, val exchange: Int,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER) val byModel: Boolean = true)
+
+/** What the saved chat's summary is, for the chat's calm line. */
+internal fun SavedChat.compaction(): Compaction? = summary?.let { if (it.byModel) Compaction.MODEL else Compaction.NO_MODEL }
 
 /** The sole saved representation; UI and request windows are derived from these records. */
 @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
