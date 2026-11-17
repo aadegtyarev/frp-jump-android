@@ -106,7 +106,9 @@ internal fun AssistantChatContent(
         var seen = position()
         snapshotFlow { Triple(position(), historyScroll.canScrollForward, following) }.collect { (at, more, follow) ->
             var follows = follow
-            if (at != seen) { seen = at; following = !more; follows = following }
+            // No item is no scroll: an empty list is at its bottom, and the first item to arrive is growth, not a scroll away.
+            if (at == null) { seen = null; following = true; follows = true }
+            else if (at != seen) { val moved = seen != null; seen = at; if (moved) { following = !more; follows = following } }
             if (follows && more) try {
                 // Content that grows while we scroll leaves the same pair, which the flow does not emit again: look again here. Each pass
                 // ends at the real bottom, so a pass that does not is the last (the cap only guards a list that never settles).
