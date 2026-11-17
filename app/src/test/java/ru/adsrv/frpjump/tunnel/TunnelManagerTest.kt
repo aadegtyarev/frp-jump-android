@@ -999,15 +999,27 @@ class TunnelManagerTest {
     @Test
     fun `checks stop once the tunnel is gone`() = runBlocking {
         manager.sync()
-        onTouch = { frpc.refuse("g1"); Touch.CLOSED }
+        // The device's refusal is the tunnel's own state: a check still under way when the tunnel goes must not put that state back
+        // (the fake's refuse() writes it), or the probes start again and the count grows with no fault in the manager. The flag and
+        // the clearing share one lock, so a refusal lands either before the clearing or not at all.
+        val lock = Any()
+        var gone = false
+        onTouch = { synchronized(lock) { if (!gone) frpc.refuse("g1") }; Touch.CLOSED }
         frpc.refuse("g1")
         eventually("checking") { touched.isNotEmpty() }
-        frpc.states.value = emptyMap()
-        // A check under way when it went may still finish.
-        delay(200)
-        val after = touched.size
+        synchronized(lock) { gone = true; frpc.states.value = emptyMap() }
+        // A check under way, or one probe that fires before the manager sees the empty states, may still count. Wait for the condition,
+        // not a fixed time: no new check for ten probe periods (the manager sees the change as late as a loaded machine lets it).
+        var seen = touched.size
+        var quietSince = System.nanoTime()
+        withTimeout(10_000) {
+            while (System.nanoTime() - quietSince < 500_000_000L) {
+                delay(10)
+                if (touched.size != seen) { seen = touched.size; quietSince = System.nanoTime() }
+            }
+        }
         delay(300)
-        assertEquals(after, touched.size)
+        assertEquals("checks went on after the tunnel was gone", seen, touched.size)
     }
 
     @Test
