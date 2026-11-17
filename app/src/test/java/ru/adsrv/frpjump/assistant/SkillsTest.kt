@@ -179,7 +179,7 @@ class SkillsTest {
 
     private class Asker(val answer: ConfirmationDecision, val mode: ConfirmationMode = ConfirmationMode.ASK) {
         val asked = ArrayList<ChangeRequest>()
-        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true }, stamp = { "s" })
+        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true })
         suspend fun authorize(tool: AgentTool, arguments: JsonObject) = authorizeCall(support, mapOf(tool.spec.name to tool), ToolCall("id", tool.spec.name, arguments),
             wait = { request, _ -> asked += request; answer }, onNotSaved = {}, io = Dispatchers.Unconfined)
     }

@@ -491,7 +491,7 @@ class AssistantTerminalInputTest {
 
     private class Asker(val answer: ConfirmationDecision, var mode: ConfirmationMode = ConfirmationMode.ASK) {
         val asked = ArrayList<ChangeRequest>()
-        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true }, stamp = { "s" })
+        val support = ConfirmationSupport(policy = { ConfirmationPolicy(global = mode) }, persistOff = { true })
         suspend fun authorize(tool: AgentTool, name: String, arguments: JsonObject) = authorizeCall(support, mapOf(name to tool), ToolCall("id", name, arguments),
             wait = { request, _ -> asked += request; answer }, onNotSaved = {}, io = Dispatchers.Unconfined)
     }
@@ -535,8 +535,9 @@ class AssistantTerminalInputTest {
         val tab = TypeTab(1)
         val owner = tabs(tab)
         val tool = AssistantTerminalInputTool(owner)
-        val grants = ru.adsrv.frpjump.settings.GrantStore()
-        val support = ConfirmationSupport(policy = { ConfirmationPolicy() }, persistOff = { true }, stamp = { "s" }, grants = grants)
+        val world = ru.adsrv.frpjump.settings.FakeGrantWorld()
+        val grants = ru.adsrv.frpjump.settings.SessionGrants(world)
+        val support = ConfirmationSupport(policy = { ConfirmationPolicy() }, persistOff = { true }, grants = grants)
         val asked = ArrayList<ChangeRequest>()
         suspend fun authorize(arguments: JsonObject) = authorizeCall(support, mapOf("terminal_input" to tool), ToolCall("id", "terminal_input", arguments),
             wait = { request, _ -> asked += request; ConfirmationDecision.SESSION }, onNotSaved = {}, io = Dispatchers.Unconfined)
@@ -544,8 +545,10 @@ class AssistantTerminalInputTest {
             assertNull(authorize(typing(1, "a"))); assertNull(authorize(typing(1, "b")))
         }
         assertEquals("the second call is covered by the grant", 1, asked.size)
-        assertTrue(grants.has(ru.adsrv.frpjump.settings.GrantKey(AssistantToolId.TERMINAL_INPUT, GrantTarget("p1", "c1")), "s"))
-        assertFalse(grants.has(ru.adsrv.frpjump.settings.GrantKey(AssistantToolId.SSH_COMMAND, GrantTarget("p1", "c1")), "s"))
+        val key = ru.adsrv.frpjump.settings.GrantKey(ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE, GrantTarget("p1", "c1"))
+        assertTrue(grants.covers(AssistantToolId.TERMINAL_INPUT, key))
+        assertTrue("ssh_command shares the class grant while it is in effect", grants.covers(AssistantToolId.SSH_COMMAND, key))
+        assertFalse(grants.covers(AssistantToolId.TERMINAL_CLOSE, key))
         // A tab with no saved connection has no target: nothing to grant, so it asks every time.
         val bare = AssistantTerminalInputTool(tabs(tab, saved = false))
         val askedBare = ArrayList<ChangeRequest>()

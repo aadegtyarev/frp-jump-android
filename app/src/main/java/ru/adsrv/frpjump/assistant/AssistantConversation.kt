@@ -196,7 +196,7 @@ class AssistantConversation(
         val cancel = synchronized(gate) { closeLocked() }; cancel?.cancel()
     }
     /**
-     * Ends the conversation (draft saved, grants cleared, memory released) only when no attempt runs, a card wait included, no clear
+     * Ends the conversation (draft saved, memory released; the "For session" grants are the app's and stay) only when no attempt runs, a card wait included, no clear
      * waits for its Undo or is being done, and no Send waits for that clear: the typed draft and the waiting message are not lost.
      * True when it is closed (also when it already was); false while an attempt still owns it.
      */
@@ -209,7 +209,7 @@ class AssistantConversation(
         if (c.closed) return null
         endWaitsLocked(note = false)
         c.pending?.let(own::stopLocked); c.interrupt(); c.persist(); c.closed = true; c.provider = null; c.confirmation = null
-        confirmations?.grants?.clear(); c.mutable.value = ChatState(); return c.pending?.job
+        c.mutable.value = ChatState(); return c.pending?.job
     }
     /** Saves the draft as it is now (the screen was left); no-op while the history loads or cannot be read. */
     fun saveDraft() { synchronized(gate) { c.persist() } }
@@ -234,9 +234,8 @@ class AssistantConversation(
         }
         slot?.answer?.complete(ConfirmationDecision.NO_ANSWER)
     }
-    /** A tool that is switched off loses its session grants (the Tools screen can be opened without leaving Chat). */
+    /** The tools' switches changed (the Tools screen can be opened without leaving Chat). A tool that goes off leaves its session grants: that is the app's cleaner's. */
     fun toolsChanged(enabled: ru.adsrv.frpjump.settings.AssistantTools) {
-        confirmations?.grants?.let { grants -> for (id in AssistantToolId.entries) if (!enabled[id]) grants.clear(id) }
         // The wait switch off ends every wait and drops what was waiting to be delivered.
         if (!enabled.waits) synchronized(gate) { endWaitsLocked(note = true) }
         // A tool that is on is no longer declined: turning it on (in Tools) ends that "No thanks" (Р56).

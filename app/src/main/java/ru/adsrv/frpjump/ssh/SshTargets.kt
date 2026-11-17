@@ -2,7 +2,13 @@ package ru.adsrv.frpjump.ssh
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.connections.Connection
@@ -64,13 +70,45 @@ class SshTargets(
         return profile.name to connection
     }
 
-    /** Equal while the saved connection, its profile and the profile's enrollment are unchanged; null when it is gone. */
-    fun stamp(profileId: String, connectionId: String): Any? {
+    /**
+     * Equal while nothing the owner can edit about the saved connection changed: all its fields, its profile's id, key alias and activation, the
+     * profile's enrollment, and the non-secret SSH login (user and method) and pinned host key of its device and port. The profile's name and
+     * colour are NOT in it. Null when the connection or its profile is gone. Reads no secret and needs no Keystore unlock: the login memory and
+     * the pinned keys are plain stores.
+     */
+    fun fingerprint(profileId: String, connectionId: String): Any? {
         val state = profiles.value
         val profile = state.index.profiles.singleOrNull { it.id == profileId } ?: return null
-        val connection = state.runtimes[profileId]?.connections?.connections?.value?.singleOrNull { it.id == connectionId } ?: return null
-        return listOf(profile, connection, state.enrollments[profileId])
+        val runtime = state.runtimes[profileId] ?: return null
+        val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return null
+        return listOf(connection, profile.id, profile.keyAlias, profile.activationPending, state.enrollments[profileId],
+            runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port))
     }
+
+    /**
+     * The id of the open period of the tunnel of a saved connection ([ru.adsrv.frpjump.tunnel.TunnelManager.openPeriod]); null when its tunnel is
+     * not open: not planned, a Disconnect pending, hidden for Undo (also when Undo then cancels it), or the connection or profile unknown or hidden.
+     */
+    fun period(profileId: String, connectionId: String): Long? {
+        val state = profiles.value
+        if (state.index.profiles.none { it.id == profileId }) return null
+        val runtime = state.runtimes[profileId] ?: return null
+        val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return null
+        val gone = hidden.value
+        if (PendingUndo.connectionKey(profileId, connectionId) in gone || PendingUndo.tunnelKey(profileId, connection.device, connection.port) in gone) return null
+        return runtime.tunnels.openPeriod(connection.device, connection.port)
+    }
+
+    /** Emits whenever something [fingerprint] or [period] reads may have changed (any profile, connection, login, host key, tunnel period or hidden key). */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun changes(): Flow<Unit> = merge(
+        profiles.map { }, hidden.map { },
+        profiles.map { it.runtimes.values.toList() }.distinctUntilChanged().flatMapLatest { runtimes ->
+            merge(*runtimes.map { runtime ->
+                merge(runtime.connections.connections.map { }, runtime.tunnels.periodChanges.map { }, runtime.sshLogins.changes.map { }, runtime.hostKeys.changes.map { })
+            }.toTypedArray())
+        },
+    )
 
     /** Whether [target] is still the same ready, visible target on the current state. */
     fun isAvailable(target: SavedSshTarget): Boolean {

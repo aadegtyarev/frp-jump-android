@@ -1,6 +1,6 @@
 # Assistant action classes and "For session" for the tunnel's open period (stage E1)
 
-Status: draft for operator approval (2026-11-17); no implementation started. Base: `origin/main` = `cfaed07` (0.3.90).
+Status: approved under operator delegation (2026-11-15; open questions Q1-Q5 decided below); implementation in progress. Base: `origin/main` = `cfaed07` (0.3.90).
 
 ## Goal and approval basis
 
@@ -15,10 +15,10 @@ User-visible result:
 1. Every catalog tool has an action class. A changing tool's confirmation card says "class · tool".
 2. "For session" is recorded as (class, connection) and lives for the open period of that connection's tunnel. It
    survives leaving the chat (and closing the conversation), and ends when the tunnel closes, a connection edit or
-   re-enrollment changes the fingerprint, the assistant is turned off, or the tool's switch goes off.
+   re-enrollment changes the fingerprint, the assistant is turned off, the tool's switch goes off, or the app locks.
 3. The connection card shows "On for the tunnel's lifetime · Forget" while such a grant exists.
 
-Scope is the plan's E1 minus the `assistant_confirmations.tools` snapshot (see Open questions, Q2). Nothing is persisted.
+Scope is the plan's E1 minus the `assistant_confirmations.tools` snapshot (deferred, Q2). Nothing is persisted.
 
 ## Non-goals
 
@@ -45,8 +45,8 @@ grants nothing; unchanged). "Asks" = catalog `effect.changes && confirms` and `a
 "Target" = what a `GrantKey` is scoped to; "grantable" = a session grant may be recorded and honored (today: only if
 `ChangeRequest.target != null` and the card offers For session, `AssistantConfirmationCard.kt` `canSession`).
 
-Classes: the plan's `PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, plus two proposed here because tools added after
-the plan (2026-11-13) have no home in it: `APP_READ` and `APP_CHANGE` (Open question Q1).
+Classes: the plan's `PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, plus two added here (Q1, accepted) because tools added after
+the plan (2026-11-13) have no home in it: `APP_READ` and `APP_CHANGE`.
 
 | Tool | Class | Effect | Asks today | Grantable | Target of a grant | Switch (unchanged) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -126,7 +126,8 @@ Rules that make the class table safe:
 | Assistant turned off (or off/on), module disabled | all grants end | lazy `disableVersion` check + cleaner on `assistantDisables` and availability, independent of any conversation |
 | A tool's switch goes off, or it falls out of effect (Typing goes off with Terminal tabs) | that tool leaves `tools` of every grant of its class; an empty `tools` drops the grant; turning the switch on later does NOT bring it back | cleaner on settings; lazy `AssistantTools[id]` check |
 | Chat history cleared | all grants end (kept from today, B14a) | existing clear path |
-| Leaving the chat, closing the conversation, Back, another section, the app lock | nothing (D1) | `closeLocked` no longer clears; grants are not owned by the conversation |
+| The app locks | all grants end (retained, Q4): no turn, a wait- or event-triggered one included, runs changing calls under a session grant after the lock | cleaner on `AppLock.locked` becoming true; independent of any conversation |
+| Leaving the chat, closing the conversation, Back, another section | nothing (D1) | `closeLocked` no longer clears; grants are not owned by the conversation |
 | Process death | all end | memory only |
 | Allow once, Decline, no answer, Stop | nothing is recorded | unchanged |
 
@@ -161,34 +162,28 @@ no list in Tools, no receipt wording (E3).
 | 5 | Grant dropped when history is cleared (`:833`) | retained | B14a (R27) |
 | 6 | Grant dropped when the target or its profile is edited or removed; stamped with the saved definition (`:833-836`) | fingerprint: every connection field, profile id/key alias/activation, enrollment; plus SSH login method and host key (new). Profile rename and colour no longer drop | R27 B14b (explicit), B15 |
 | 7 | A tunnel disconnect that the owner Undoes drops nothing (grant lives with the screen) | the tunnel is closed for grants as soon as it is hidden, even if Undo cancels | R27 B14c (stricter) |
-| 8 | The app lock ends the conversation, hence the grants, when no attempt runs (`:460`) | the lock does not end grants; a covered call may run while locked, an asking call waits behind the lock as today | D1; R27 B10; confirm in Q4 |
+| 8 | The app lock ends the grants only indirectly: the chat screen goes, and an idle conversation closes and clears them (`:460`); a running attempt or a pending wait keeps the conversation, so its grants, through the lock | retained as the promise, made direct: the app lock ends every session grant at once (cleared when the app locks), so no turn, a wait- or event-triggered one included, runs changing calls under a session grant after the lock; an asking call waits behind the lock as today. Stricter than today only where an attempt or a wait kept the grants through the lock | retained (Q4: operator delegation 2026-11-15; D1 does not extend a grant across the lock) |
 | 9 | "In memory only" (`:836`) | retained; never persisted, not in history, backup or logs; lives until the process dies | retained |
 | 10 | No session grant for `stop_tunnel` (`:1200`), `terminal_close` (`:949,:1264`), `skill_save`/`skill_delete` (`:1287`) | retained; `grantable=false` per tool survives sharing a class | retained |
-| 11 | Always turns the app-wide switch off after a second confirmation; it covers every asking tool (`:837-840`) | unchanged: same switch, same file `{"version":1,"global":...}`, same scope | retained (Q2 is about the future) |
+| 11 | Always turns the app-wide switch off after a second confirmation; it covers every asking tool (`:837-840`) | unchanged: same switch, same file `{"version":1,"global":...}`, same scope; no `tools` snapshot, no migration | retained (Q2: deferred to E3 or the next asking tool) |
 | 12 | Fail closed: undescribed changing call or non-`AppTool` is refused, no support means refuse, policy and grants read at each call (`:711,:862-868`) | retained; adds: unknown class asks; a tool without class cannot be built | retained |
 | 13 | Effect pinned equal between tool and operation (`operations.md:123-125`) | extended: class pinned equal too | moved |
 | 14 | A grant is not recorded for a tool switched off during the wait; a SESSION racing Stop may record but the call never runs (`:853-854`) | retained; also not recorded if the period ended or the fingerprint changed during the wait | retained / stricter |
 | 15 | Allow once, Decline, "No answer" after 5 minutes of real time, Stop, disable, leaving does not cancel a waiting card (`:832-852`) | unchanged | retained |
 | 16 | Reads never ask; `confirms=false` tools never ask (`:805`) | unchanged | retained |
-| 17 | Stored data: `assistant_confirmations` is `{"version":1,"global"}`; no new keys (`:869-870`) | unchanged; no new file, key or version | retained |
+| 17 | Stored data: `assistant_confirmations` is `{"version":1,"global"}`; no new keys (`:869-870`) | unchanged; no new file, key or version | retained (Q2) |
 
-## Open questions (not decided here)
+## Decisions on the open questions (operator delegation 2026-11-15)
 
-- **Q1. Classes the plan does not have.** The plan defines four classes. The 8 tools added later (skills, assistant sessions,
-  tunnels, rename, waits, `read_skill`) need a class for the catalog test. Proposed: `APP_READ` (2) and `APP_CHANGE` (7), with no
-  new question, no grants, no switch (`confirms`/`grantable` stay per tool). `terminal_open/close` go to CONNECTION_CHANGE (they
-  act on a device). Alternative: a nullable class for these. Operator to confirm names and placement.
-- **Q2. `tools` snapshot on `global=off` (plan E1 and B13).** The plan writes `tools` next to `global=off` and reads an old
-  `off` as `["ssh_command"]`. Today `off` already silently covers `terminal_input`, `stop_tunnel`, `terminal_close`, `skill_save`,
-  `skill_delete`. Reading it as `["ssh_command"]` would re-ask the owners who chose Always for all of those: a behavior
-  change (stricter) not approved for E1. This contract leaves `assistant_confirmations` untouched. Decide: (a) defer to E3/next tool,
-  (b) snapshot the current asking set as the baseline at E1 (no re-ask now, resets when a new asking tool arrives).
-- **Q3. `terminal_open`/`start_tunnel` and friends are class members without a question.** The plan's test "`asks == effect.changes`
-  per catalog row" cannot hold for the 5 `confirms=false` tools. This contract tests `asks == effect.changes && confirms`. Confirm.
-- **Q4. App lock and grants (row 8).** Today the lock indirectly ends the session. D1 and B10 imply grants stay and a background
-  wait-triggered turn may run covered changing calls while locked. Confirm that this is the intended reading.
-- **Q5. Hint wording when only one grantable tool is in effect** and when Typing is turned on after the answer (the card asks again;
-  the new answer then includes it). Confirm the three hint texts below.
+- **Q1, accepted.** `APP_READ` (2 tools) and `APP_CHANGE` (7) as proposed; `terminal_open` and `terminal_close` are
+  CONNECTION_CHANGE (they act on a device). No new question, no new grant, no new switch: `confirms` and `grantable` stay per tool.
+- **Q2, deferred.** `assistant_confirmations` is untouched in E1: no `tools` snapshot, no migration, no new key. Reading an old `off`
+  as covering a narrower set is a stricter behavior change that no one approved; it belongs to E3 or to the next asking tool.
+- **Q3, accepted.** The catalog test is `asks == effect.changes && confirms` (the five `confirms=false` tools are class members that never ask).
+- **Q4, decided: retain today's promise.** The app lock ends all session grants: they are cleared when the app locks, so no turn
+  (a wait- or event-triggered one included) runs changing calls under a session grant after the lock. D1/B10 are not read as letting
+  a grant survive the lock. A call that asks still waits behind the lock as today.
+- **Q5, accepted.** The texts are the Texts table below (three hints, class names, the connection-card line, the TalkBack label).
 
 ## Texts (RU / EN), old -> new
 
@@ -214,8 +209,8 @@ effect, else the one in effect. Model-facing texts are unchanged.
 3. A For session answer on `ssh_command` makes a later `ssh_command` and (if in effect) `terminal_input` on the same connection skip the
    question; neither covers another connection, `terminal_close`, `stop_tunnel` or skills; with Typing off at the answer, a later
    `terminal_input` asks.
-4. The grant survives: leaving and re-entering the chat, closing the conversation, the app lock, a transient tunnel reconnect, a profile rename or
-   colour change. It ends on: Disconnect then Connect, hide behind Undo (also when Undo cancels), connection edit (one test per fingerprint field),
+4. The grant survives: leaving and re-entering the chat, closing the conversation, a transient tunnel reconnect, a profile rename or
+   colour change. It ends on: the app lock (a grant exists, the app locks, a later covered call asks; also a turn started by a wait), Disconnect then Connect, hide behind Undo (also when Undo cancels), connection edit (one test per fingerprint field),
    delete, Forget profile, re-enrollment, assistant off and off/on, the tool's switch off (and does not return when it is switched back on),
    history clear, SSH login method change.
 5. The grant is not recorded when the tool is switched off, the period ends or the fingerprint changes while the card waits; the call still obeys
@@ -232,7 +227,7 @@ Unit (JVM, `:app:testDebugUnitTest`):
   not in `tools`; unknown class asks; SESSION recorded with pre-wait period/fingerprint; no record for a switched-off tool or an ended
   period; ALWAYS/ONCE/DENY/NO_ANSWER unchanged.
 - `SessionGrantsTest`: `covers`, replacement, per-tool removal and empty-set drop, `forgetConnection`, `observe()`, thread safety.
-- `SessionGrantCleanerTest` with a fake `TunnelManager` and fake `PendingUndo`/profiles/settings flows: each row of "When a grant ends",
+- `SessionGrantCleanerTest` (including the app lock) with a fake `TunnelManager` and fake `PendingUndo`/profiles/settings flows: each row of "When a grant ends",
   including a conversation that does not exist, a transient reconnect (period kept), the app-wide counter never reusing a period for a recreated runtime.
 - Catalog test: the 19-row table, `asks == effect.changes && confirms`, operation class pin; `AssistantConversation`'s close no longer clears grants.
 - Fingerprint test: one assertion per field of `Connection`, per profile field, enrollment, login method; rename/colour equal.
@@ -244,7 +239,7 @@ changed screens before release (`ltest.sh`). Scoped to the changed classes, not 
 Mutation checks (each must turn at least one named test red; run on a scratch branch, one mutation at a time, revert):
 M1 `covers` ignores `period`; M2 ignores `fingerprint`; M3 ignores `tools` membership; M4 ignores the tool's current effect; M5 `grantable`
 true for `terminal_close`/`stop_tunnel`/`skill_save`; M6 SESSION recorded with a post-wait period or stamp; M7 `closeLocked` clears again or
-the cleaner ties to the conversation; M8 cleaner ignores `PendingUndo.hidden`; M9 disable/off-on does not clear; M10 an unknown class does not
+the cleaner ties to the conversation; M13 the app lock does not clear the grants; M8 cleaner ignores `PendingUndo.hidden`; M9 disable/off-on does not clear; M10 an unknown class does not
 ask / `confirms=false` tool asks; M11 history clear keeps grants; M12 rename changes the fingerprint (or a connection field is skipped).
 
 Gates: `AGENTS.md` full gate (unit, `assembleDebug`, `assembleDebugAndroidTest`, `lintDebug`, `git diff --check`), the repo-docs checker,

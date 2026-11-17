@@ -33,7 +33,6 @@ class AssistantConfirmationFlowTest {
         val executed = AtomicInteger()
         val commands = CopyOnWriteArrayList<String>()
         val requests = CopyOnWriteArrayList<AgentRequest>()
-        @Volatile var stamp: Any? = "stamp-1"
         @Volatile var persistFails = persistFails
         val file = ru.adsrv.frpjump.ssh.MemoryStorage()
         val settings = SettingsStore(file).apply {
@@ -47,16 +46,18 @@ class AssistantConfirmationFlowTest {
             override val exec = object : Operation<SshExecInput, SshExecOutput> {
                 override val name = "ssh_exec"
                 override val effect = Effect.CHANGE_REMOTE
+                override val actionClass = ActionClass.CONNECTION_CHANGE
                 override fun target(input: SshExecInput) = GrantTarget(input.profile, input.connection)
                 override suspend fun invoke(input: SshExecInput): OpResult<SshExecOutput> {
                     executed.incrementAndGet(); commands += input.command; return OpResult.Done(SshExecOutput("ran ${input.command}", "", 0, null))
                 }
             }
-            override fun stamp(target: GrantTarget): Any? = this@Harness.stamp
         }
-        /** The production wiring (policy, commit of "off", names, stamp, tool switch); only the persistence failure is simulated. */
-        val support = chatConfirmationSupport(settings, ssh).let { real ->
-            ConfirmationSupport(real.policy, { if (this.persistFails) false else real.persistOff() }, real.info, { ssh.stamp(it) }, real.grants, real.toolEnabled)
+        /** What the grants are bound to: the real settings (switches, off count); the tunnel period and the connection's fingerprint are set by the test. */
+        val world = SettingsGrantWorld(settings)
+        /** The production wiring (policy, commit of "off", names, the app's grants); only the persistence failure is simulated. */
+        val support = chatConfirmationSupport(settings, ssh, SessionGrants(world)).let { real ->
+            ConfirmationSupport(real.policy, { if (this.persistFails) false else real.persistOff() }, real.info, real.grants)
         }
         val scope = CoroutineScope(SupervisorJob() + (dispatcher ?: Dispatchers.Default))
         val chat: AssistantConversation
@@ -141,7 +142,7 @@ class AssistantConfirmationFlowTest {
     private fun granted(): Harness {
         val h = Harness(one("first"))
         h.send(); h.chat.answer(h.card().id, ConfirmationDecision.SESSION); h.idle()
-        assertTrue(h.support.grants.has(GrantKey(AssistantToolId.SSH_COMMAND, GrantTarget("p", "c")), "stamp-1"))
+        assertTrue(h.support.grants.covers(AssistantToolId.SSH_COMMAND, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c"))))
         return h
     }
     private fun Harness.asksAgain(): Boolean {
@@ -162,27 +163,27 @@ class AssistantConfirmationFlowTest {
 
     @Test fun `a session grant does not follow an edited or removed target`() {
         val edited = granted()
-        edited.stamp = "stamp-2"
+        edited.world.fingerprint = "stamp-2"
         assertTrue(edited.asksAgain())
         val removed = granted()
-        removed.stamp = null
+        removed.world.fingerprint = null
         assertTrue(removed.asksAgain())
     }
 
-    @Test fun `closing the conversation switching the tool off history clear and assistant disable end session grants`() {
+    @Test fun `a grant outlives the conversation, and the tool switched off, history clear and assistant disable end it`() {
         val closed = granted(); closed.chat.close()
-        assertFalse(closed.support.grants.has(GrantKey(AssistantToolId.SSH_COMMAND, GrantTarget("p", "c")), "stamp-1"))
+        assertTrue("the grant is the app's, not the conversation's", closed.support.grants.covers(AssistantToolId.SSH_COMMAND, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c"))))
         val off = granted()
         off.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, false)
-        off.chat.toolsChanged(off.settings.assistantAvailability.tools)
+        off.support.grants.sweep()
         off.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true)
-        assertTrue(off.asksAgain())
+        assertTrue("switching it on again does not bring the grant back", off.asksAgain())
         val cleared = granted()
         runBlocking { cleared.chat.deleteHistory() }
         assertTrue(cleared.asksAgain())
         val disabled = granted()
-        disabled.settings.update { it.copy(assistantEnabled = false) }; disabled.chat.refresh()
-        disabled.settings.update { it.copy(assistantEnabled = true) }; disabled.chat.refresh()
+        disabled.settings.update { it.copy(assistantEnabled = false) }
+        disabled.settings.update { it.copy(assistantEnabled = true) }
         assertTrue(disabled.asksAgain())
     }
 

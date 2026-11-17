@@ -1,6 +1,8 @@
 package ru.adsrv.frpjump.ssh
 
 import androidx.annotation.StringRes
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import ru.adsrv.frpjump.R
@@ -29,6 +31,11 @@ sealed interface HostKeyCheck {
 class HostKeyStore(private val storage: TextStorage) {
     private var keys: Map<String, Map<String, PinnedHostKey>> = read()
 
+    private val _changes = MutableStateFlow(0)
+
+    /** Counts the changes (pin, forget, wipe), so a watcher of what a decision was bound to follows it. */
+    val changes: StateFlow<Int> = _changes
+
     @Synchronized
     fun check(device: String, port: Int, presented: PinnedHostKey): HostKeyCheck {
         val pinned = keys[device]?.get(port.toString()) ?: return HostKeyCheck.Unknown
@@ -54,6 +61,7 @@ class HostKeyStore(private val storage: TextStorage) {
     fun wipe() {
         storage.delete()
         keys = emptyMap()
+        _changes.value++
     }
 
     private fun read(): Map<String, Map<String, PinnedHostKey>> =
@@ -63,6 +71,7 @@ class HostKeyStore(private val storage: TextStorage) {
     private fun save(value: Map<String, Map<String, PinnedHostKey>>) {
         storage.write(WireJson.encodeToString(value))
         keys = value
+        _changes.value++
     }
 }
 

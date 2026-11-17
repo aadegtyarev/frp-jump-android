@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import ru.adsrv.frpjump.settings.assistantTools
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -143,6 +144,19 @@ class FrpJumpApp : Application() {
 
     val assistantSshCommands by lazy { ru.adsrv.frpjump.assistant.AssistantSshCommands(sshTargets) }
 
+    /**
+     * The "For session" grants of the assistant: one per app, kept honest by a cleaner that needs no conversation (the tunnel's open period, the
+     * connection's fingerprint, the assistant's off switch, the tools' switches, the app lock). Built on first use (the first chat, or a connection card).
+     */
+    val sessionGrants: ru.adsrv.frpjump.settings.SessionGrants by lazy {
+        ru.adsrv.frpjump.settings.SessionGrants(ru.adsrv.frpjump.assistant.AppGrantWorld(sshTargets, settings)).also { grants ->
+            ru.adsrv.frpjump.settings.SessionGrantCleaner(grants, appScope,
+                changes = kotlinx.coroutines.flow.merge(sshTargets.changes(), settings.assistantDisables,
+                    settings.settings.map { it.assistantEnabled to it.assistantTools() }.distinctUntilChanged()),
+                locked = lock.locked)
+        }
+    }
+
     /** The owner's saved tunnels for the assistant's `start_tunnel` and `stop_tunnel`: the screens' own operations over the same tunnels and Undo queue. */
     val assistantTunnels by lazy {
         val up = ru.adsrv.frpjump.ops.tunnel.TunnelUp(waitMs = { settings.settings.value.assistantLimits.tunnelWaitSeconds * 1000L }, host = object : ru.adsrv.frpjump.ops.tunnel.TunnelUpHost {
@@ -260,7 +274,8 @@ class FrpJumpApp : Application() {
             assistantHistory, pendingUndo, assistantPrompts,
             prepare = { assistantProvider.provider(ru.adsrv.frpjump.assistant.AssistantProviderDraft(checkNotNull(it.settings), it.revision)) },
             realtime = android.os.SystemClock::elapsedRealtime, activityOut = assistantActivity, endOut = assistantEnd, stoppingOut = assistantStopping, removed = currentProfileRemoved,
-            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount)
+            terminalTabs = assistantTerminalTabs, tunnels = assistantTunnels, sessions = assistantSessions, skills = assistantSkills, waitCountOut = assistantWaitCount,
+            grants = sessionGrants)
     }
     /** True while the current profile's server has removed this phone; followed by the REMOVED screen and by the assistant's owner. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)

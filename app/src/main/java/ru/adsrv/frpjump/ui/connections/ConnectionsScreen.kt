@@ -57,6 +57,7 @@ import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.tunnel.Waiting
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.caption
+import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.ui.devices.DeviceTile
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.SearchBar
@@ -83,6 +84,7 @@ fun ConnectionsScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
+    val grants by vm.actions.assistantGrants.collectAsStateWithLifecycle()
     val ui = remember { ConnectionUi() }
     val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
     val colors = AppTheme.colors
@@ -204,6 +206,8 @@ fun ConnectionsScreen(
                             onMenu = { ui.menu = if (it) row.key else null },
                             actions = actions,
                             offline = group.offline,
+                            assistantGrant = row.saved && GrantTarget(row.profile, row.connection.id) in grants,
+                            onForgetAssistant = { vm.actions.forgetAssistant(row) },
                         )
                     }
                 }

@@ -43,7 +43,7 @@ class AssistantSkillCardsTest {
         val card = SkillCard(SkillCard.Kind.SAVE, "restart-nginx", "Use when nginx must restart.", listOf("ssh_command", "terminal_input"), body)
         compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.SKILL_SAVE, body, null, null, skill = card), onAnswer = { answers += it }) } }
         compose.onNodeWithTag("chat_confirm_card").assertIsDisplayed()
-        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(text(R.string.tool_skill_save_receipt))
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(text(R.string.chat_confirm_tool, text(R.string.action_class_app_change), text(R.string.tool_skill_save_receipt)))
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("\u2068restart-nginx\u2069") // isolated: a name never reorders its neighbours
         compose.onNodeWithTag("chat_confirm_skill_description", useUnmergedTree = true).assertTextContains("Use when nginx must restart.", substring = true)
         compose.onNodeWithTag("chat_confirm_skill_requires", useUnmergedTree = true).assertTextContains(text(R.string.tool_ssh_command) + ", " + text(R.string.tool_terminal_input), substring = true)

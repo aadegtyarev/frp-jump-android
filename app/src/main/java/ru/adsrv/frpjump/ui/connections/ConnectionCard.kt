@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -28,7 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,6 +69,9 @@ fun ConnectionCard(
     actions: RowActions,
     modifier: Modifier = Modifier,
     offline: Boolean = false,
+    /** The assistant has a "For session" grant on this connection ([ru.adsrv.frpjump.settings.SessionGrants]): a line says so, with Forget. */
+    assistantGrant: Boolean = false,
+    onForgetAssistant: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     val c = row.connection
@@ -158,6 +165,16 @@ fun ConnectionCard(
                     MainButton(mainActionLabel(row, sessions)) { actions.main(row) }
                 } else {
                     ConnectButton(row, enabled = !unreachable) { actions.connect(row) }
+                }
+            }
+            if (assistantGrant) {
+                // Muted, wraps at large font; Forget keeps its 48 dp target and is read with the connection's name.
+                val forget = stringResource(R.string.connection_assistant_forget_description, rowName(row))
+                Row(Modifier.testTag("connection_assistant_grant"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onForgetAssistant, modifier = Modifier.semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
+                        Text(stringResource(R.string.connection_assistant_forget))
+                    }
                 }
             }
             if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {

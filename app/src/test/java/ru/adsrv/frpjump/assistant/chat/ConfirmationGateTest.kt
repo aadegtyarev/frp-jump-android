@@ -7,12 +7,13 @@ import org.junit.Test
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.assistant.tools.*
+import ru.adsrv.frpjump.ops.ActionClass
 import ru.adsrv.frpjump.settings.*
 
 /** [authorizeCall] with synthetic tools: the fail-closed rules, without any chat state. */
 class ConfirmationGateTest {
     private class Described(val command: String?)
-    private class Changing(private val describe: (Described) -> ChangeRequest?) : AppTool<Described>(AssistantToolId.SSH_COMMAND, "Synthetic changing tool", JsonObject(emptyMap())) {
+    private class Changing(id: AssistantToolId = AssistantToolId.SSH_COMMAND, private val describe: (Described) -> ChangeRequest?) : AppTool<Described>(id, "Synthetic changing tool", JsonObject(emptyMap())) {
         override fun parse(args: StrictArgs) = args.run { onlyKeys("command"); Described(optionalString("command", 100)) }
         override val invalidArguments = ToolOutput("invalid", ToolOutcome.FAILED)
         override suspend fun run(args: Described) = ToolOutput("ran")
@@ -37,10 +38,10 @@ class ConfirmationGateTest {
         val asked = ArrayList<ChangeRequest>()
         var persisted = 0
         var notSaved = 0
-        var stamp: Any? = "s1"
+        val world = FakeGrantWorld().also { if (!enabled) it.off += AssistantToolId.SSH_COMMAND }
         var livePolicy = policy
         val support = ConfirmationSupport(policy = { livePolicy },
-            persistOff = { if (persistThrows) error("boom"); persisted++; !persistFails }, stamp = { stamp }, toolEnabled = { enabled })
+            persistOff = { if (persistThrows) error("boom"); persisted++; !persistFails }, grants = SessionGrants(world))
         suspend fun run(tool: AppTool<*>, call: ToolCall) = authorizeCall(support, mapOf(call.name to tool), call,
             wait = { request, _ -> asked += request; answer }, onNotSaved = { notSaved++ }, io = Dispatchers.Unconfined)
     }
@@ -102,17 +103,82 @@ class ConfirmationGateTest {
         assertNull(rig.run(tool, c)); assertEquals(1, rig.asked.size)
     }
 
-    @Test fun `a session grant waives the question only for the same target and definition`() = runBlocking {
+    private val key get() = GrantKey(ActionClass.CONNECTION_CHANGE, target)
+    private fun Rig.grant(tool: AssistantToolId = AssistantToolId.SSH_COMMAND) = support.grants.record(key, tool, support.grants.stamp(target)!!)
+
+    @Test fun `a session grant waives the question only for the same connection and while its period and fingerprint hold`() = runBlocking {
         val rig = Rig(ConfirmationDecision.ONCE); val tool = described(); val c = call("ssh_command", *withCommand)
-        rig.support.grants.grant(GrantKey(AssistantToolId.SSH_COMMAND, target), "s1")
+        assertTrue(rig.grant())
         assertNull(rig.run(tool, c)); assertTrue(rig.asked.isEmpty())
-        rig.stamp = "s2"
-        assertNull(rig.run(tool, c)); assertEquals("an edited target asks again", 1, rig.asked.size)
-        rig.stamp = "s1"
+        rig.world.fingerprint = "f2"
+        assertNull(rig.run(tool, c)); assertEquals("an edited connection asks again", 1, rig.asked.size)
+        rig.world.fingerprint = "f1"
         assertNull(rig.run(tool, c)); assertEquals("and the grant did not come back", 2, rig.asked.size)
+        assertTrue(rig.grant()); rig.world.period = 2
+        assertNull(rig.run(tool, c)); assertEquals("a new period of the tunnel asks again", 3, rig.asked.size)
+        rig.world.period = 1
+        assertNull(rig.run(tool, c)); assertEquals("and the old period does not come back", 4, rig.asked.size)
         val other = Changing { ChangeRequest(AssistantToolId.SSH_COMMAND, GrantTarget("p", "other"), "x") }
-        rig.support.grants.grant(GrantKey(AssistantToolId.SSH_COMMAND, target), "s1")
-        assertNull(rig.run(other, c)); assertEquals(3, rig.asked.size)
+        assertTrue(rig.grant())
+        assertNull(rig.run(other, c)); assertEquals("another connection asks", 5, rig.asked.size)
+        assertNull(rig.run(tool, c)); assertEquals("the granted one does not", 5, rig.asked.size)
+    }
+
+    @Test fun `a grant on ssh_command also covers terminal_input of the same connection if it was in effect then and is now and nothing else of the class`() = runBlocking {
+        fun typing(id: AssistantToolId) = Changing(id) { ChangeRequest(id, target, "x") }
+        val rig = Rig(ConfirmationDecision.ONCE)
+        assertTrue(rig.grant())
+        assertNull(rig.run(typing(AssistantToolId.TERMINAL_INPUT), call("terminal_input", *withCommand))); assertTrue("typing shares the grant", rig.asked.isEmpty())
+        for (other in listOf(AssistantToolId.TERMINAL_CLOSE, AssistantToolId.STOP_TUNNEL, AssistantToolId.SKILL_SAVE, AssistantToolId.SKILL_DELETE)) {
+            val before = rig.asked.size
+            assertNull(other.name, rig.run(typing(other), call(other.wire, *withCommand))); assertEquals("${other.name} is never covered", before + 1, rig.asked.size)
+        }
+        // Typing out of effect at the answer: a later terminal_input asks, ssh_command does not.
+        val narrow = Rig(ConfirmationDecision.ONCE).also { it.world.off += AssistantToolId.TERMINAL_INPUT }
+        assertTrue(narrow.grant()); narrow.world.off.clear()
+        assertNull(narrow.run(typing(AssistantToolId.TERMINAL_INPUT), call("terminal_input", *withCommand))); assertEquals(1, narrow.asked.size)
+        assertNull(narrow.run(described(), call("ssh_command", *withCommand))); assertEquals(1, narrow.asked.size)
+        // A tool switched off leaves the grant for good: switching it on again does not bring it back.
+        val gone = Rig(ConfirmationDecision.ONCE); assertTrue(gone.grant())
+        gone.world.off += AssistantToolId.SSH_COMMAND
+        assertNull(gone.run(described(), call("ssh_command", *withCommand))); assertEquals(1, gone.asked.size)
+        gone.world.off.clear()
+        assertNull(gone.run(described(), call("ssh_command", *withCommand))); assertEquals(2, gone.asked.size)
+        assertNull(gone.run(typing(AssistantToolId.TERMINAL_INPUT), call("terminal_input", *withCommand))); assertEquals("typing is still covered", 2, gone.asked.size)
+    }
+
+    @Test fun `a tool that is not grantable never records or honors a session grant whatever its class shares`() = runBlocking {
+        for (id in AssistantToolId.entries.filter { it.effect.changes && it.confirms && !it.grantable }) {
+            val rig = Rig(ConfirmationDecision.SESSION)
+            val tool = Changing(id) { ChangeRequest(id, target, "x") }
+            assertNull(id.name, rig.run(tool, call(id.wire, *withCommand)))
+            assertTrue("${id.name}: an answer For session records nothing", rig.support.grants.snapshot().isEmpty())
+            assertFalse(rig.support.grants.record(GrantKey(id.actionClass, target), id, rig.support.grants.stamp(target)!!))
+            // Even with a grant of the class held (by ssh_command), it still asks.
+            assertTrue(rig.grant())
+            assertNull(rig.run(tool, call(id.wire, *withCommand)))
+            assertEquals("${id.name} asks twice", 2, rig.asked.size)
+        }
+        // A key of another class than the tool's covers nothing.
+        val rig = Rig(ConfirmationDecision.ONCE); assertTrue(rig.grant())
+        assertFalse(rig.support.grants.covers(AssistantToolId.SSH_COMMAND, GrantKey(ActionClass.APP_CHANGE, target)))
+    }
+
+    @Test fun `no grant is recorded when the period ends or the connection changes while the owner is asked and the call still obeys the answer`() = runBlocking {
+        for (during in listOf<(FakeGrantWorld) -> Unit>({ it.period = 2 }, { it.period = null }, { it.fingerprint = "f2" }, { it.disableVersion = 1 }, { it.enabled = false })) {
+            val world = FakeGrantWorld(); val grants = SessionGrants(world)
+            val support = ConfirmationSupport(policy = { ConfirmationPolicy() }, persistOff = { true }, grants = grants)
+            var calls = 0
+            val result = authorizeCall(support, mapOf("ssh_command" to described()), call("ssh_command", *withCommand),
+                wait = { _, _ -> during(world); calls++; ConfirmationDecision.SESSION }, onNotSaved = {}, io = Dispatchers.Unconfined)
+            assertNull("the call runs: Allow once semantics", result); assertEquals(1, calls)
+            assertTrue("nothing recorded", grants.snapshot().isEmpty())
+        }
+        val rig = Rig(ConfirmationDecision.SESSION); rig.run(described(), call("ssh_command", *withCommand))
+        assertEquals("a grant is recorded when nothing changed", 1, rig.support.grants.snapshot().size)
+        // No open period at all (the tunnel is not open): the answer is Allow once.
+        val closed = Rig(ConfirmationDecision.SESSION).also { it.world.period = null }
+        assertNull(closed.run(described(), call("ssh_command", *withCommand))); assertTrue(closed.support.grants.snapshot().isEmpty())
     }
 
     @Test fun `Always commits off and an unsaved or failing commit is reported and still allows this call once`() = runBlocking {
@@ -171,7 +237,7 @@ class ConfirmationGateTest {
         assertEquals("the card names the registered tool", AssistantToolId.SSH_COMMAND, rig.asked.single().tool)
         val session = Rig(ConfirmationDecision.SESSION)
         session.run(lying, call("ssh_command", *withCommand))
-        assertTrue(session.support.grants.has(GrantKey(AssistantToolId.SSH_COMMAND, target), "s1"))
+        assertTrue(session.support.grants.covers(AssistantToolId.SSH_COMMAND, GrantKey(ActionClass.CONNECTION_CHANGE, target)))
     }
 
     @Test fun `a session answer is not recorded for a tool that was switched off while the owner was asked`() = runBlocking {

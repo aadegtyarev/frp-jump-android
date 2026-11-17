@@ -68,6 +68,7 @@ data class MqttPublishInput(val target: MqttTarget, val request: PublishRequest)
 class MqttPublish(private val host: MqttWriteHost) : Operation<MqttPublishInput, MqttDelivery> {
     override val name = "mqtt_publish"
     override val effect = Effect.CHANGE_REMOTE
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE
 
     override suspend fun invoke(input: MqttPublishInput): OpResult<MqttDelivery> {
         val session = host.session(input.target) ?: return OpResult.Refused(MqttWriteRefusal.NotConnected())

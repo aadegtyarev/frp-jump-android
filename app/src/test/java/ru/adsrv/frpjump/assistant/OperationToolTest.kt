@@ -37,9 +37,10 @@ class OperationToolTest {
     private val sshArgs = buildJsonObject { put("profile_id", "p"); put("connection_id", "c"); put("command", "secret-command") }
 
     /** A scripted operation behind the production tool. */
-    private class Scripted(val effectOf: Effect = Effect.CHANGE_REMOTE, val result: suspend () -> OpResult<SshExecOutput>) : Operation<SshExecInput, SshExecOutput> {
+    private class Scripted(val effectOf: Effect = Effect.CHANGE_REMOTE, val classOf: ru.adsrv.frpjump.ops.ActionClass = ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE, val result: suspend () -> OpResult<SshExecOutput>) : Operation<SshExecInput, SshExecOutput> {
         override val name = "scripted"
         override val effect = effectOf
+        override val actionClass = classOf
         override fun target(input: SshExecInput) = GrantTarget(input.profile, input.connection)
         override suspend fun invoke(input: SshExecInput) = result()
     }
@@ -67,6 +68,17 @@ class OperationToolTest {
                 fail("$effect behind ssh_command must be refused")
             } catch (_: IllegalArgumentException) { }
         }
+    }
+
+    @Test fun `an operation of another action class than the catalog's cannot become a tool`() {
+        for (other in ru.adsrv.frpjump.ops.ActionClass.entries.filter { it != AssistantToolId.SSH_COMMAND.actionClass }) {
+            try {
+                AssistantSshCommandTool(object : AssistantSshCommands(targets()) { override val exec = Scripted(Effect.CHANGE_REMOTE, other) { error("not run") } })
+                fail("$other behind ssh_command must be refused")
+            } catch (_: IllegalArgumentException) { }
+        }
+        assertEquals(AssistantToolId.SSH_COMMAND.actionClass, ru.adsrv.frpjump.ops.ssh.SshExec(targets()).actionClass)
+        assertEquals(AssistantToolId.PROFILE_INFORMATION.actionClass, ru.adsrv.frpjump.ops.profile.ProfileQuery({ }, { ProfileInformationState() }).actionClass)
     }
 
     /** A tool whose own effect says "read" under a changing catalog row: the call is still treated as changing. */

@@ -15,6 +15,13 @@ import ru.adsrv.frpjump.ui.SearchGlyph
 import ru.adsrv.frpjump.ui.TerminalGlyph
 
 /** The only mapping from an assistant tool to its texts; exhaustive, so a new tool cannot be forgotten. */
+/** The name of an action class on a confirmation card; null for a class that no asking tool has (reads). */
+internal fun ru.adsrv.frpjump.ops.ActionClass.cardName(): Int? = when (this) {
+    ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE -> R.string.action_class_connection_change
+    ru.adsrv.frpjump.ops.ActionClass.APP_CHANGE -> R.string.action_class_app_change
+    else -> null
+}
+
 internal fun AssistantToolId.title(): Int = when (this) {
     AssistantToolId.WEB_SEARCH -> R.string.tool_search
     AssistantToolId.READ_PAGE -> R.string.tool_read

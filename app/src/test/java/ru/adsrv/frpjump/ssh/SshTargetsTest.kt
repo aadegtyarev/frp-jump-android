@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** SshTargets: the readiness, loss and direct-login policy that the assistant and the Connections UI share. */
 class SshTargetsTest {
-    private class Fixture : AutoCloseable {
+    internal class Fixture : AutoCloseable {
         val profiles = SyntheticProfileInformation()
         val box = FakeKeystore().box("synthetic-ssh")
         val passwords = SshPasswords(MemoryStorage(), box)

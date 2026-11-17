@@ -69,13 +69,16 @@ class AssistantChatOwnerTest {
             override val exec = object : Operation<SshExecInput, SshExecOutput> {
                 override val name = "ssh_exec"
                 override val effect = Effect.CHANGE_REMOTE
+                override val actionClass = ActionClass.CONNECTION_CHANGE
                 override fun target(input: SshExecInput) = GrantTarget(input.profile, input.connection)
                 override suspend fun invoke(input: SshExecInput): OpResult<SshExecOutput> {
                     executed.incrementAndGet(); return OpResult.Done(SshExecOutput("ran ${input.command}", "", 0, null))
                 }
             }
-            override fun stamp(target: GrantTarget): Any? = "stamp-1"
         }
+        /** The app's grants: they belong to no conversation. */
+        val world = ru.adsrv.frpjump.settings.SettingsGrantWorld(settings)
+        val grants = ru.adsrv.frpjump.settings.SessionGrants(world)
         val module = bindAssistantLifecycle(settings, scope)
         val owner = AssistantChatOwner(scope, settings, store, module, if (withProfiles) synthetic.information else null, ssh, history, undo, TestPrompts.placeholder, {
             AgentProvider { request ->
@@ -88,7 +91,7 @@ class AssistantChatOwnerTest {
                     put("profile_id", "p"); put("connection_id", "c"); put("command", calls[done].command)
                 }))) else AgentReply("done")
             }
-        }, { now }, stoppingOut = stopping, removed = removed)
+        }, { now }, stoppingOut = stopping, removed = removed, grants = grants)
         init { live += this }
         override fun close() { owner.shutdown(); scope.cancel() }
         fun results() = requests.last().turns.last().exchanges.flatMap { it.results }
@@ -101,7 +104,8 @@ class AssistantChatOwnerTest {
     }
     private fun AssistantConversation.card() = eventually("card") { state.value.confirmation }
     private fun Harness.idle() { eventually("idle") { owner.activity.value.takeIf { it == ChatActivity.IDLE } } }
-    private fun Harness.grantKey() = GrantKey(AssistantToolId.SSH_COMMAND, GrantTarget("p", "c"))
+    private fun Harness.grantKey() = GrantKey(ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c"))
+    private fun Harness.granted() = grants.covers(AssistantToolId.SSH_COMMAND, grantKey())
     private fun Harness.send(chat: AssistantConversation, text: String = "go") {
         eventually("history loaded") { chat.state.value.takeIf { !it.loading } }
         chat.edit(text); chat.send()
@@ -218,32 +222,30 @@ class AssistantChatOwnerTest {
         eventually("interrupted turn restored") { restored.state.value.turns.singleOrNull()?.takeIf { it.interrupted } }
     }
 
-    @Test fun `the conversation closes only when no screen and no attempt remain, and then the grants go`() {
+    @Test fun `the conversation closes only when no screen and no attempt remain, and the grants stay because they are the app's`() {
         val h = Harness(listOf(Call("uptime")))
         val first = h.owner.attach(); h.send(first)
-        val support = h.owner.confirmations!!
         first.answer(first.card().id, ConfirmationDecision.SESSION); h.idle()
-        assertTrue("the attempt ended, the screen stays: the session lasts", support.grants.has(h.grantKey(), "stamp-1"))
+        assertTrue("the attempt ended, the screen stays: the session lasts", h.granted())
         assertSame(first, h.owner.attach())
         h.owner.detach()
-        assertTrue("one screen is still attached", support.grants.has(h.grantKey(), "stamp-1"))
+        assertTrue("one screen is still attached", h.granted())
         h.owner.detach()
-        assertFalse("screen gone and no attempt: the session ends", support.grants.has(h.grantKey(), "stamp-1"))
+        assertTrue("screen gone and no attempt: the conversation closes, the grant is the tunnel's, not the chat's", h.granted())
         assertNull(h.owner.confirmations)
         assertNotSame(first, h.owner.attach())
     }
 
-    @Test fun `a session grant survives leaving while the attempt runs and ends with it`() {
+    @Test fun `a session grant survives leaving while the attempt runs and after it ends`() {
         val h = Harness(listOf(Call("a"), Call("b")), holdAt = 2)
         val chat = h.owner.attach(); h.send(chat)
-        val support = h.owner.confirmations!!
         chat.answer(chat.card().id, ConfirmationDecision.SESSION)
         runBlocking { withTimeout(5000) { h.entered.await() } }
         h.owner.detach()
-        assertTrue("no screen, the attempt still runs: the grant stays", support.grants.has(h.grantKey(), "stamp-1"))
+        assertTrue("no screen, the attempt still runs: the grant stays", h.granted())
         h.release.complete(Unit); h.idle()
         assertEquals("the grant covered the second call: only one question", 2, h.executed.get())
-        assertFalse("both ended: the grant is cleared", support.grants.has(h.grantKey(), "stamp-1"))
+        assertTrue("both ended: the grant stays until the tunnel closes or a guard ends it", h.granted())
     }
 
     @Test fun `a card raised after leaving waits, is shown on return and can be answered`() {
@@ -407,16 +409,15 @@ class AssistantChatOwnerTest {
         assertEquals(0, h.executed.get())
     }
 
-    @Test fun `a tool switched off clears its grants with no screen`() {
+    @Test fun `a tool switched off ends its grant with no screen`() {
         val h = Harness(listOf(Call("a"), Call("b")), holdAt = 2)
         val chat = h.owner.attach(); h.send(chat)
-        val support = h.owner.confirmations!!
         chat.answer(chat.card().id, ConfirmationDecision.SESSION)
         runBlocking { withTimeout(5000) { h.entered.await() } }
         h.owner.detach()
-        assertTrue(support.grants.has(h.grantKey(), "stamp-1"))
+        assertTrue(h.granted())
         h.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, false)
-        eventually("grants cleared") { true.takeIf { !support.grants.has(h.grantKey(), "stamp-1") } }
+        assertFalse("the grant no longer covers it", h.granted())
         // The second call, which the grant would have covered, now asks.
         h.release.complete(Unit)
         assertEquals("b", chat.card().command)

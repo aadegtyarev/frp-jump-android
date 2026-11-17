@@ -104,7 +104,19 @@ private data class Core(
     val syncError: DomainError? = null,
     val mismatch: ProtocolMismatch? = null,
     val waiting: Waiting? = null,
+    /**
+     * The id of each planned tunnel's open period, by [localPortKey] (see [TunnelManager.openPeriod]): assigned from one process-wide counter
+     * when a key goes from not planned to planned, dropped when it leaves the plan or a Disconnect begins, never reused.
+     */
+    val periods: Map<String, Long> = emptyMap(),
 )
+
+/** The next id of an open period of a tunnel; one counter for the whole process, so an id is never given twice. */
+private val periodCounter = java.util.concurrent.atomic.AtomicLong()
+
+/** [old] kept for the keys still planned, a new id for each key planned now that had none. */
+private fun renewPeriods(old: Map<String, Long>, planned: List<PlannedTunnel>): Map<String, Long> =
+    planned.map { it.key }.distinct().associateWith { old[it] ?: periodCounter.incrementAndGet() }
 
 /**
  * One profile's agent loop, after the Linux agent's `poller.sync_once`:
@@ -236,6 +248,22 @@ class TunnelManager(
             it.key == target.key && it.grant.grantId == target.grantId && it.localPort == target.localPort
         }
     }
+
+    /**
+     * The id of the open period of the tunnel to [device]:[port], or null when it is not open: not planned, or a Disconnect is pending.
+     * A new id starts when the tunnel goes from not planned to planned (a Connect), after a Disconnect began, and after a reset; a transient
+     * change (frpc reconnect, via-server/direct switch, local-port rebind, a new grant id or local port on restore) keeps the id. When the
+     * cases cannot be told apart the period must end (fail closed). Hiding for Undo is the caller's: this does not see it.
+     */
+    internal fun openPeriod(device: String, port: Int): Long? = core.value.let { c ->
+        val key = localPortKey(device, port)
+        if (c.pending[key]?.kind == PendingOp.DISCONNECTING) null else c.periods[key]
+    }
+
+    /** Emits (distinct) whenever an open period starts or ends, for a cleaner that must not wait for a lookup. */
+    internal val periodChanges: kotlinx.coroutines.flow.Flow<Map<String, Long>> = core.map { c ->
+        c.periods.filterKeys { c.pending[it]?.kind != PendingOp.DISCONNECTING }
+    }.distinctUntilChanged()
 
     init {
         // The server removed this phone (seen by any call, the device list too):
@@ -548,7 +576,7 @@ class TunnelManager(
             if (forget) recordTunnels(0)
         }
         lastDesired = null
-        core.update { it.copy(planned = emptyList()) }
+        core.update { it.copy(planned = emptyList(), periods = emptyMap()) }
         stopService()
     }
 
@@ -704,7 +732,7 @@ class TunnelManager(
             recordTunnels(plan.size)
             plan to modes
         }
-        core.update { it.copy(planned = planned, modes = modes) }
+        core.update { it.copy(planned = planned, modes = modes, periods = renewPeriods(it.periods, planned)) }
         if (planned.isEmpty()) stopService() else if (!serviceUp) serviceUp = startService()
     }
 
@@ -748,7 +776,9 @@ class TunnelManager(
         while (true) {
             val before = core.value
             if (before.operationEpoch !== epoch || key in before.pending) return null
-            val after = before.copy(pending = before.pending + (key to operation), errors = before.errors - key)
+            // A Disconnect ends the open period for good, also when it then fails and the tunnel stays planned: the next apply starts a new one.
+            val periods = if (op == PendingOp.DISCONNECTING) before.periods - key else before.periods
+            val after = before.copy(pending = before.pending + (key to operation), errors = before.errors - key, periods = periods)
             if (core.compareAndSet(before, after)) return operation
         }
     }

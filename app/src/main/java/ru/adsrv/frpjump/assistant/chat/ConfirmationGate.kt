@@ -17,7 +17,8 @@ import kotlin.coroutines.CoroutineContext
 
 /**
  * The decision of the `authorize` hook, free of chat state so it is tested directly. Fail closed:
- * - a changing call asks unless the policy (read live NOW) is off or a session grant for this exact target and its current definition exists;
+ * - a changing call asks unless the policy (read live NOW) is off or a session grant of its class on this connection exists that still covers this tool
+ *   (same open tunnel period and connection fingerprint, the tool grantable and in effect);
  * - invalid arguments and read tools return null (the tool then runs nothing for invalid arguments, and reads are never asked about);
  * - a changing call that cannot be described (no description, or a catalog tool that is not an AppTool) is REFUSED, never shown with an empty
  *   command and never run: the owner must see what runs;
@@ -46,13 +47,15 @@ internal suspend fun authorizeCall(
     if (support == null || !found.described) return refused
     // The card names the registered tool, not whatever identity a description claims.
     val request = ChangeRequest(tool.id, found.target, found.command, typing = found.typing, stop = found.stop, close = found.close, skill = found.skill)
-    val key = request.target?.let { GrantKey(tool.id, it) }
-    val stamp = request.target?.let(support.stamp)
-    if (!mustAsk(tool.id, key, support.policy(), support.grants, stamp = stamp)) return null
+    val key = request.target?.let { GrantKey(tool.id.actionClass, it) }
+    // Bound to the tunnel's open period and the connection's fingerprint as they are BEFORE the question: an edit or a close during the wait makes the grant stale.
+    val stamp = request.target?.let(support.grants::stamp)
+    if (!mustAsk(tool.id, key, support.policy(), support.grants)) return null
     return when (wait(request, request.target?.let(support.info))) {
         ConfirmationDecision.ONCE -> null
-        // A grant is never recorded for a tool that was switched off while the owner was being asked.
-        ConfirmationDecision.SESSION -> { if (key != null && support.toolEnabled(tool.id)) support.grants.grant(key, stamp); null }
+        // A grant is not recorded (the answer acts as Allow once) for a tool that is not grantable or was switched off while the owner was being asked,
+        // nor when the tunnel's period ended or the connection changed during the wait.
+        ConfirmationDecision.SESSION -> { if (key != null && stamp != null) support.grants.record(key, tool.id, stamp); null }
         ConfirmationDecision.ALWAYS -> {
             // The owner's choice stands even if Stop races this call; the call itself is stopped by the kernel's owner check.
             val saved = withContext(NonCancellable + io) { try { support.persistOff() } catch (_: Exception) { false } }

@@ -48,7 +48,7 @@ class AssistantSessionCardsTest {
         val card = CloseCard(4, "Synthetic profile", "pi", "synthetic-device", 2, null)
         compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.TERMINAL_CLOSE, "", null, null, close = card), onAnswer = { answers += it }) } }
         compose.onNodeWithTag("chat_confirm_card").assertIsDisplayed()
-        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(text(R.string.tool_terminal_close_receipt))
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(text(R.string.chat_confirm_tool, text(R.string.action_class_connection_change), text(R.string.tool_terminal_close_receipt)))
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals(text(R.string.chat_detail_tab_named, "Synthetic profile", "pi", "synthetic-device", 2))
         compose.onNodeWithTag("chat_confirm_close_warning", useUnmergedTree = true).assertTextEquals(text(R.string.confirm_close_warning))
         // The four answers except "For session" (there is no target to grant), and no command box.

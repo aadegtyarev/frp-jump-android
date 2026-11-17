@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui.settings
 
+import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
@@ -84,12 +85,21 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         else stringResource(R.string.chat_detail_tab, typing.tabId)
     } else if (info == null) stringResource(R.string.confirm_unknown_target)
         else stringResource(R.string.confirm_target, info.profileName, info.connection.device, info.connection.label { kindWord(context, it) })
-    val tool = stringResource(if (typing != null || close != null || skill != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
+    val toolTitle = stringResource(if (typing != null || close != null || skill != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
+    // "Class · tool", e.g. "Changes in connections · SSH command".
+    val tool = confirmation.tool.actionClass.cardName()?.let { stringResource(R.string.chat_confirm_tool, stringResource(it), toolTitle) } ?: toolTitle
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
-    val sessionHint = stringResource(if (typing != null) R.string.confirm_input_session_hint else R.string.confirm_session_hint)
+    // What For session covers: the grantable tools of the class that were in effect when the card was raised (both: commands and typing).
+    val sessionHint = stringResource(when {
+        confirmation.sessionTools.size > 1 -> R.string.confirm_session_hint_both
+        confirmation.sessionTools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_input_session_hint
+        confirmation.sessionTools.singleOrNull() != null -> R.string.confirm_session_hint
+        typing != null -> R.string.confirm_input_session_hint
+        else -> R.string.confirm_session_hint
+    })
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
         val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)
@@ -106,7 +116,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val commandLabel = stringResource(if (skill != null) R.string.confirm_skill_text else if (typing != null) R.string.confirm_text else R.string.confirm_command)
     var askAlways by remember(confirmation.id) { mutableStateOf(false) }
     // No "For session" for a stop: its hint speaks of commands on a tunnel.
-    val canSession = info != null && confirmation.target != null && stop == null && close == null && skill == null
+    val canSession = info != null && confirmation.target != null && confirmation.tool.grantable && stop == null && close == null && skill == null
     // The command is always left to right: a line that starts with a right-to-left letter must not reverse the order of its commands.
     val ltr = MaterialTheme.typography.labelMedium.copy(textDirection = TextDirection.Ltr)
     // The command box shows four lines (three in the two-pane layout) at the user's font size, then scrolls.

@@ -1333,7 +1333,14 @@
     <string name="confirm_session">For session</string>
     <string name="confirm_always">Always</string>
     <string name="confirm_decline">Decline</string>
-    <string name="confirm_session_hint">Any command on this tunnel until you leave Chat and the assistant finishes.</string>
+    <string name="confirm_session_hint">Commands in this connection while its tunnel is open.</string>
+    <string name="confirm_session_hint_both">Commands and typing into tabs of this connection while its tunnel is open.</string>
+    <string name="chat_confirm_tool">%1$s · %2$s</string>
+    <string name="action_class_connection_change">Changes in connections</string>
+    <string name="action_class_app_change">Changes in the app</string>
+    <string name="connection_assistant_grant">Assistant: no questions, for the tunnel\'s lifetime</string>
+    <string name="connection_assistant_forget">Forget</string>
+    <string name="connection_assistant_forget_description">Forget the assistant\'s permissions for %1$s</string>
     <string name="always_dialog_title">Turn off confirmations?</string>
     <string name="always_dialog_text">Changing commands will run without asking, in the whole app, for all tools and tunnels. Turn them back on in %1$s › %2$s › %3$s.</string>
     <string name="always_dialog_confirm">Turn off</string>
@@ -1342,7 +1349,7 @@
     <string name="confirm_command">Command</string>
     <string name="confirm_input_title">Type into this tab?</string>
     <string name="confirm_input_warning">Like typing on your keyboard; it cannot be undone. The screen afterwards goes to your model.</string>
-    <string name="confirm_input_session_hint">Any typing into tabs of this tunnel until you leave Chat and the assistant finishes.</string>
+    <string name="confirm_input_session_hint">Typing into tabs of this connection while its tunnel is open.</string>
     <string name="confirm_tab">Tab</string>
     <string name="confirm_program">Program</string>
     <string name="confirm_text">Text</string>

@@ -81,6 +81,12 @@ import java.io.IOException
 class ConnectionActions(private val app: FrpJumpApp, private val scope: CoroutineScope) {
     private fun runtime(profile: String) = app.profiles.runtime(profile)
 
+    /** The connections the assistant has "For session" grants on now (the card's "Assistant: no questions" line). */
+    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Set<ru.adsrv.frpjump.settings.GrantTarget>> get() = app.sessionGrants.observe()
+
+    /** "Forget": every session grant of [row]'s connection at once. Narrows authority, so it asks nothing and cannot fail. */
+    fun forgetAssistant(row: ConnectionRow) = app.sessionGrants.forgetConnection(row.profile, row.connection.id)
+
     /** "Use key login": in the app's scope, so it finishes when the screen goes. */
     val keyLogin = KeyLoginFlow(KeyInstaller(app.sshEnv, app.ssh), app.appScope)
 

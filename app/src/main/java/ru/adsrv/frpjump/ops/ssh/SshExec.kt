@@ -31,6 +31,7 @@ class SshExecOutput(val stdout: String, val stderr: String, val status: Int?, va
 class SshExec(private val targets: SshTargets) : Operation<SshExecInput, SshExecOutput> {
     override val name = "ssh_exec"
     override val effect = Effect.CHANGE_REMOTE
+    override val actionClass = ru.adsrv.frpjump.ops.ActionClass.CONNECTION_CHANGE
     override fun target(input: SshExecInput) = GrantTarget(input.profile, input.connection)
 
     override suspend fun invoke(input: SshExecInput): OpResult<SshExecOutput> = coroutineScope {
