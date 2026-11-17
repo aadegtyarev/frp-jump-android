@@ -182,8 +182,12 @@ class AssistantChatScreenTest {
         /** The device's answer to a tmux read (the rows, the rows above the cursor, the numbers) or, for anything else, the foreground program. */
         override fun exec(command: String, maxBytes: Int, lease: ru.adsrv.frpjump.ssh.ExecLease): String? {
             if ("capture-pane" !in command) return "htop\n"
+            // As tmux answers for a pane without history: the screen is the whole pane, so a screen read's physical block (from three rows above
+            // the screen to its bottom) is the screen again, and a window read is the screen alone. The numbers: history, limit, cursor_y, height, in_mode.
             val rows = screen.split("\n")
-            return rows.joinToString("") { it + "\n" } + rows.subList(maxOf(0, rows.size - 1 - 3), rows.size - 1).joinToString("") { it + "\n" } + "0 2000 ${rows.size - 1} 24 0\n"
+            val block = rows.joinToString("") { it + "\n" }
+            val numbers = "0 2000 ${rows.size - 1} ${rows.size} 0\n"
+            return if (" -J " in command) block + block + numbers else block + numbers // only a screen read joins lines (-J)
         }
         override fun bufferSource(mode: ru.adsrv.frpjump.assistant.ReadMode) = sourceOf(screen, if (mode is ru.adsrv.frpjump.assistant.ReadMode.From) 0 else -1)
         /** The tab's own name, as the owner's Rename… or the assistant's terminal_rename sets it. */
@@ -1088,8 +1092,8 @@ class AssistantChatScreenTest {
         shown("chat_confirm_allow").performClick()
         awaitIdle()
         compose.runOnIdle {
-            assertEquals(listOf("ls -l\r\u0003\r"), tab.typed.toList())
             val result = requests.last().turns.last().exchanges.single().results.single()
+            assertEquals("typed; the tool said: ${result.outcome} ${result.text}", listOf("ls -l\r\u0003\r"), tab.typed.toList())
             assertEquals(ToolOutcome.SUCCESS, result.outcome)
             // At once, with the cursor taken before typing: no screen in the result.
             assertTrue(result.text, Regex("Typed into tab 2\\. cursor: \\d+\\.\\d+\\.[0-9a-f]{8}").matches(result.text))
