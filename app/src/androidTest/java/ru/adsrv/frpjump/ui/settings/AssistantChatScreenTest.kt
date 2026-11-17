@@ -227,6 +227,8 @@ class AssistantChatScreenTest {
         override fun enabled() = settings.assistantAvailability.enabled
         override fun disableVersion() = settings.assistantAvailability.disableVersion
         override fun inEffect(tool: AssistantToolId) = settings.assistantAvailability.tools[tool]
+        override fun toolOffs(tool: AssistantToolId) = settings.assistantAvailability.toolOffs[tool] ?: 0L
+        override fun locked() = false
     })
     private val grantCleaner = ru.adsrv.frpjump.settings.SessionGrantCleaner(sessionGrants, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         settings.settings.map { it.assistantEnabled to it.assistantTools() }, kotlinx.coroutines.flow.flowOf(false))
