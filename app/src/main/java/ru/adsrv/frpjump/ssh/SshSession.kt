@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ssh
 
+import ru.adsrv.frpjump.BuildConfig
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.locale.Texts
 import android.util.Log
@@ -530,21 +531,25 @@ class SshSession(
      * (exec refused, no answer in time) counts as no tmux: a plain shell, as
      * before. A connection gone fails the try as any other failure.
      */
-    private fun probeTmux(ssh: SSHClient, name: String, strict: Boolean = false): TmuxProbe =
+    private fun probeTmux(ssh: SSHClient, name: String, strict: Boolean = false): TmuxFound =
         try {
             ssh.startSession().use { s ->
                 val command = s.exec(tmuxProbeCommand(name))
                 command.join(TMUX_EXEC_TIMEOUT_S, TimeUnit.SECONDS)
                 // join() may come back with the channel still open: no answer is no answer.
                 if (command.isOpen) throw IOException("tmux probe did not finish")
-                parseTmuxProbe(readUpTo(command.inputStream, PROBE_MAX_BYTES))
+                val out = readUpTo(command.inputStream, PROBE_MAX_BYTES)
+                TmuxFound(parseTmuxProbe(out), tmuxHasNewSessionEnv(out))
             }
         } catch (e: IOException) {
             if (!ssh.isConnected) throw e
             Log.w(TAG, "tmux probe failed: ${e.javaClass.simpleName}")
             // An attach-only session must tell "no answer" from "the session is not there".
-            if (strict) TmuxProbe.UNKNOWN else TmuxProbe.ABSENT
+            TmuxFound(if (strict) TmuxProbe.UNKNOWN else TmuxProbe.ABSENT, false)
         }
+
+    /** The probe's answer plus whether this tmux takes `new-session -e` (3.2+). */
+    private class TmuxFound(val probe: TmuxProbe, val newSessionEnv: Boolean)
 
     /**
      * This install's tmux sessions on the device, by number ([ownTmuxListing]).
@@ -625,7 +630,8 @@ class SshSession(
             if (!current(attempt)) return
             // One short exec first: with tmux the tab's channel attaches to (or creates) its session.
             val name = tmux.name()
-            val probe = if (tmux.disabled) TmuxProbe.ABSENT else probeTmux(ssh, name, strict = attachOnly)
+            val found = if (tmux.disabled) TmuxFound(TmuxProbe.ABSENT, false) else probeTmux(ssh, name, strict = attachOnly)
+            val probe = found.probe
             val verdict = attachOnlyVerdict(probe)
             if (attachOnly && verdict != AttachVerdict.ATTACH) {
                 // Never creates. Only a real answer that says the session is not there (tmux runs, it does not) is "gone"; no answer, or no tmux
@@ -643,7 +649,10 @@ class SshSession(
             val rows = terminal.rows
             channel.allocatePTY(TERM, columns, rows, 0, 0, emptyMap())
             windowChange.sent(columns, rows)
-            if (probe == TmuxProbe.ABSENT) channel.startShell() else channel.exec(tmuxAttachCommand(name, openedBy))
+            // Who we are, for the machine's own login scripts; a refusal is ignored (see introduceTerminal).
+            introduceTerminal(channel, BuildConfig.VERSION_NAME)
+            if (probe == TmuxProbe.ABSENT) channel.startShell()
+            else channel.exec(tmuxAttachCommand(name, openedBy, BuildConfig.VERSION_NAME, found.newSessionEnv))
             val resumeKind = synchronized(lifecycle) {
                 if (!current(attempt)) return
                 resumed(dropped, probe)

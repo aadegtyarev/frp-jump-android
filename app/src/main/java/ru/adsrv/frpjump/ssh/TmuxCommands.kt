@@ -70,7 +70,8 @@ private const val MARK_ATTACH = "frpjump-attach"
  */
 fun tmuxProbeCommand(name: String): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
-    return "command -v tmux >/dev/null && echo $MARK_TMUX && tmux has-session -t ${shellQuote("=$name")} && echo $MARK_ATTACH"
+    // `tmux -V` does not touch the server: the version only decides whether the launch may pass `new-session -e` (3.2+).
+    return "command -v tmux >/dev/null && echo $MARK_TMUX && tmux -V && tmux has-session -t ${shellQuote("=$name")} && echo $MARK_ATTACH"
 }
 
 /** Reads the standard output of [tmuxProbeCommand]. */
@@ -93,14 +94,22 @@ fun parseTmuxProbe(output: String): TmuxProbe {
  * even when the non-login exec has no LANG. TERM is the PTY's
  * (`xterm-256color`), set by sshd from the pty request.
  */
-fun tmuxAttachCommand(name: String, openedBy: SessionOpener = SessionOpener.OWNER): String {
+fun tmuxAttachCommand(
+    name: String,
+    openedBy: SessionOpener = SessionOpener.OWNER,
+    version: String = "",
+    newSessionEnv: Boolean = false,
+): String {
     require(isTmuxName(name)) { "not a tmux session name of the app" }
     val target = shellQuote("=$name:")
     // A session the assistant opened says so in tmux itself, in the same invocation that creates it: the owner's restore then never takes it for a tab.
     val marker = if (openedBy == SessionOpener.ASSISTANT) " ';' set-option -t $target $OPENED_BY_OPTION ${shellQuote(OPENED_BY_ASSISTANT)}" else ""
-    return "exec tmux -u new-session -A -D -s ${shellQuote(name)}" +
+    // The terminal's identity ([introduceTerminal]) goes into the session environment: `-e` for a session created now (tmux 3.2+), `set-environment` for one that already runs.
+    val identity = if (version.isEmpty()) "" else tmuxSetEnvironmentCommands(shellQuote("=$name"), version)
+    val newEnv = if (version.isNotEmpty() && newSessionEnv) tmuxNewSessionEnvFlags(version) else ""
+    return "exec tmux -u new-session -A -D$newEnv -s ${shellQuote(name)}" +
         " ';' set-option -t $target status off" +
-        " ';' set-option -t $target mouse on" + marker
+        " ';' set-option -t $target mouse on" + marker + identity
 }
 
 /** Who opened a session: the owner (a tab) or the assistant (its own session, no tab until the owner opens one). */

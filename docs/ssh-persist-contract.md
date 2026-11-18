@@ -50,10 +50,15 @@ This reference does not certify runtime conformance to those requirements.
   timeout is 20 s; keep-alive interval is 20 s. Authenticate with the tab's
   user and key or password. Allocate an `xterm-256color` PTY at the terminal's
   size and send window changes on resize, once the size has settled (about 100 ms) and only if it changed.
+  Before the shell or exec, introduce the app with the `env` requests `LC_TERMINAL=frp-jump` and
+  `LC_TERMINAL_VERSION=<versionName>` (iTerm2's convention; stock sshd's `AcceptEnv LC_*` takes them). The values are constants of the build:
+  no profile, device or user data. A refused request is ignored silently and never fails or delays the login.
+  In tmux the same two go into the session environment: `new-session -e` when the probe's `tmux -V` says 3.2 or later,
+  and `set-environment -t '=<name>'` in the same invocation (also for a session that already runs).
 - With tmux enabled, probe on an exec channel at each connect/reconnect:
 
   ```sh
-  command -v tmux >/dev/null && echo frpjump-tmux && tmux has-session -t '=<name>' && echo frpjump-attach
+  command -v tmux >/dev/null && echo frpjump-tmux && tmux -V && tmux has-session -t '=<name>' && echo frpjump-attach
   ```
 
   Only the probe's marker lines distinguish absent, fresh and existing
@@ -68,6 +73,8 @@ This reference does not certify runtime conformance to those requirements.
 
   `-A` creates or attaches; `-D` detaches other clients, including a stale
   mobile connection or a laptop; `-u` requests UTF-8 without relying on LANG.
+  The launch also ends with `';' set-environment -t '=<name>' LC_TERMINAL frp-jump ';' set-environment -t '=<name>' LC_TERMINAL_VERSION <versionName>`
+  and, on tmux 3.2+, carries `-e LC_TERMINAL=frp-jump -e LC_TERMINAL_VERSION=<versionName>` after `-D`.
   Missing tmux or disabled persistence uses `startShell` instead.
 - Each app tab is one remote tmux session with one window. Within Terminal,
   the app's tab bar is the only session list.
