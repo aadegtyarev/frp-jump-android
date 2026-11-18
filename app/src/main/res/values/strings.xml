@@ -1343,6 +1343,7 @@
 
     <!-- Confirmation of changing assistant calls -->
     <string name="confirm_title">Run this command?</string>
+    <string name="confirm_title_in">Run in&#160;%1$s?</string>
     <string name="confirm_target">%1$s · %2$s · %3$s</string>
     <string name="confirm_unknown_target">Unknown tunnel</string>
     <string name="confirm_warning">Full access within the SSH account. The command and its output go to your model.</string>
@@ -1350,23 +1351,20 @@
     <string name="confirm_session">For session</string>
     <string name="confirm_always">Always</string>
     <string name="confirm_decline">Decline</string>
-    <string name="confirm_session_hint">Commands in this connection while its tunnel is open.</string>
-    <string name="confirm_session_hint_both">Commands and typing into tabs of this connection while its tunnel is open.</string>
     <string name="chat_confirm_tool">%1$s · %2$s</string>
     <string name="action_class_connection_change">Changes in connections</string>
     <string name="action_class_app_change">Changes in the app</string>
     <string name="connection_assistant_grant">Assistant: no questions, for the tunnel\'s lifetime</string>
     <string name="connection_assistant_remembered">Assistant: no questions, remembered %1$s</string>
     <string name="confirm_connection">For this connection</string>
-    <string name="confirm_remember">Allow and remember</string>
-    <string name="confirm_connection_hint">Commands in this connection, remembered until the connection is edited, even if text the assistant read asks for them. Forget it on the connection\'s card.</string>
-    <string name="confirm_connection_hint_input">Typing into tabs of this connection, remembered until the connection is edited, even if text the assistant read asks for it. Forget it on the connection\'s card.</string>
-    <string name="confirm_connection_hint_both">Commands and typing into tabs of this connection, remembered until the connection is edited, even if text the assistant read asks for them. Forget it on the connection\'s card.</string>
-    <string name="receipt_no_question_connection">no question: for this connection</string>
-    <string name="receipt_no_question_session">no question: for the tunnel\'s lifetime</string>
-    <string name="receipt_no_question_off">no question: confirmations are off</string>
+    <string name="confirm_remember">Allow without asking:</string>
+    <string name="receipt_no_question_connection">for this connection</string>
+    <string name="receipt_no_question_session">for session</string>
+    <string name="receipt_no_question_off">confirmations off</string>
     <string name="connection_assistant_forget_failed">Could not save. The assistant no longer uses this permission; deleting it will be retried.</string>
-    <string name="confirm_remember_hint">The next calls on this connection run without asking until it is edited. Forget on its card.</string>
+    <string name="confirm_remember_hint">For session: while the tunnel is on. For this connection: until it is edited, even for commands from text the assistant read. Undo: the mark on the tunnel card.</string>
+    <string name="confirm_remember_hint_input">For session: typing into tabs, while the tunnel is on. For this connection: until it is edited, even for typing from text the assistant read. Undo: the mark on the tunnel card.</string>
+    <string name="confirm_remember_hint_both">For session: commands and typing into tabs, while the tunnel is on. For this connection: until it is edited, even for commands and typing from text the assistant read. Undo: the mark on the tunnel card.</string>
     <string name="connection_assistant_forget">Forget</string>
     <string name="connection_assistant_forget_description">Forget the assistant\'s permissions for %1$s</string>
     <string name="always_dialog_title">Turn off confirmations?</string>
@@ -1377,7 +1375,6 @@
     <string name="confirm_command">Command</string>
     <string name="confirm_input_title">Type into this tab?</string>
     <string name="confirm_input_warning">Like typing on your keyboard; it cannot be undone. The screen afterwards goes to your model.</string>
-    <string name="confirm_input_session_hint">Typing into tabs of this connection while its tunnel is open.</string>
     <string name="confirm_tab">Tab</string>
     <string name="confirm_program">Program</string>
     <string name="confirm_text">Text</string>

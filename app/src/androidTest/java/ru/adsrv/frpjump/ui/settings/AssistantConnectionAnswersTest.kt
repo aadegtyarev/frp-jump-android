@@ -10,8 +10,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
@@ -107,13 +108,20 @@ class AssistantConnectionAnswersTest {
         try { node.assertIsDisplayed() } catch (_: AssertionError) { node.performScrollTo() }
         return node.assertIsDisplayed()
     }
+    /** A button draws 32 dp (more only when its label wraps) and keeps a touch target of at least 44 dp around it. */
+    private fun assertTouchTarget(tag: String, node: SemanticsNodeInteraction) {
+        val n = node.fetchSemanticsNode(); val d = compose.density.density
+        val touch = n.touchBoundsInRoot.height / d; val drawn = n.boundsInRoot.height / d
+        assertTrue("$tag: touch target $touch dp is at least 44", touch >= 44f - 0.5f)
+        assertTrue("$tag: drawn height $drawn dp is 32 (or more when the label wraps)", drawn >= 32f - 0.5f && (drawn <= 32f + 0.5f || drawn > 36f))
+    }
     private fun bounds(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
     private val buttons = listOf("chat_confirm_allow" to R.string.confirm_allow, "chat_confirm_decline" to R.string.confirm_decline, "chat_confirm_session" to R.string.confirm_session,
         "chat_confirm_connection" to R.string.confirm_connection, "chat_confirm_always" to R.string.confirm_always)
 
     @Test fun fiveAnswersInTheOrderOfTheContractUnderTheirCaption() {
         named()
-        for ((tag, _) in buttons) shown(tag).assertHeightIsAtLeast(48.dp)
+        for ((tag, _) in buttons) assertTouchTarget(tag, shown(tag))
         shown("chat_confirm_remember").assertTextContains(text(R.string.confirm_remember))
         val allow = bounds("chat_confirm_allow"); val decline = bounds("chat_confirm_decline"); val caption = bounds("chat_confirm_remember")
         val session = bounds("chat_confirm_session"); val connection = bounds("chat_confirm_connection"); val always = bounds("chat_confirm_always")
@@ -142,22 +150,29 @@ class AssistantConnectionAnswersTest {
         }
     }
 
-    @Test fun theHintsAreInTheScrollingSectionAndTheButtonsReadThemToo() {
+    @Test fun oneHintUnderTheRememberAnswersNamesBothTools() {
         named()
-        // The hints are descendants of the scrolling section (its content may be below the viewport, so bounds say nothing).
-        for (tag in listOf("chat_confirm_session_hint", "chat_confirm_connection_hint"))
-            compose.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag("chat_confirm_section")), useUnmergedTree = true).assertExists()
-        compose.onNodeWithTag("chat_confirm_connection_hint", useUnmergedTree = true).assertTextContains(text(R.string.confirm_connection_hint_both), substring = true)
-        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(text(R.string.confirm_session_hint_both), substring = true)
-        val described = compose.onNodeWithTag("chat_confirm_connection").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription]
-        assertEquals(listOf(text(R.string.confirm_connection) + ". " + text(R.string.confirm_connection_hint_both)), described)
-        assertEquals(listOf(text(R.string.confirm_session) + ". " + text(R.string.confirm_session_hint_both)),
-            compose.onNodeWithTag("chat_confirm_session").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription])
+        // One hint for the three remembered answers, no per-answer hints and no spoken description on the buttons (the hint is read in its place).
+        for (tag in listOf("chat_confirm_session_hint", "chat_confirm_connection_hint")) compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).assertCountEquals(0)
+        shown("chat_confirm_remember_hint").assertTextEquals(text(R.string.confirm_remember_hint_both))
+        for (tag in listOf("chat_confirm_session", "chat_confirm_connection", "chat_confirm_always"))
+            assertTrue("$tag has no description of its own", !compose.onNodeWithTag(tag).fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription))
     }
 
     @Test fun theHintOfTypingAloneAndOfCommandsAlone() {
         show(PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", GrantTarget("p", "c1"), info, sessionTools = setOf(AssistantToolId.SSH_COMMAND)))
-        compose.onNodeWithTag("chat_confirm_connection_hint", useUnmergedTree = true).assertTextContains(text(R.string.confirm_connection_hint), substring = true)
+        shown("chat_confirm_remember_hint").assertTextEquals(text(R.string.confirm_remember_hint))
+    }
+
+    @Test fun theTitleNamesTheConnectionAndKeepsItsNameInOnePiece() {
+        named()
+        val title = compose.onNodeWithTag("chat_confirm_title", useUnmergedTree = true)
+        title.assertTextEquals(text(R.string.confirm_title_in, "\u2068Pi shell\u2069"))
+        val out = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        val titleNode = title.fetchSemanticsNode()
+        compose.runOnIdle { titleNode.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action!!.invoke(out) }
+        val layout = out.first(); val full = layout.layoutInput.text.text
+        for (line in 0 until layout.lineCount) assertTrue("a line starts and ends at a word boundary", layout.getLineStart(line).let { it == 0 || full[it - 1].isWhitespace() || full[it - 1] == '\u2069' })
     }
 
     @Test fun theAnswersMapToTheDecisionsAndOnlyAlwaysAsksAgain() {
@@ -174,10 +189,10 @@ class AssistantConnectionAnswersTest {
     private fun threeAnswersOnly(what: String, card: PendingConfirmation) {
         show(card)
         compose.onNodeWithTag("chat_confirm_card").assertIsDisplayed()
-        for (tag in listOf("chat_confirm_connection", "chat_confirm_remember", "chat_confirm_session", "chat_confirm_connection_hint", "chat_confirm_session_hint")) {
+        for (tag in listOf("chat_confirm_connection", "chat_confirm_remember", "chat_confirm_session", "chat_confirm_remember_hint")) {
             assertTrue("$what: $tag is not offered", compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         }
-        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) shown(tag).assertHeightIsAtLeast(48.dp)
+        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) assertTouchTarget(tag, shown(tag))
         shot("card-three-answers-" + what)
     }
     @Test fun unknownConnectionHasThreeAnswers() = threeAnswersOnly("unknown", PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", null, null))
@@ -186,12 +201,12 @@ class AssistantConnectionAnswersTest {
     @Test fun stopHasThreeAnswers() = threeAnswersOnly("stop", PendingConfirmation(1, AssistantToolId.STOP_TUNNEL, "", GrantTarget("p", "c1"), info, stop = StopCard("Synthetic profile", "Pi shell", "synthetic-device", 22, 2)))
     @Test fun skillHasThreeAnswers() = threeAnswersOnly("skill", PendingConfirmation(1, AssistantToolId.SKILL_SAVE, "body", null, null, skill = SkillCard(SkillCard.Kind.SAVE, "synthetic-skill", "d", emptyList(), "body")))
 
-    @Test fun aShortLineUnderTheCaptionStaysWithTheAnswers() {
+    @Test fun theHintIsUnderTheRememberedAnswersAndStaysWithThem() {
         named()
-        val hint = shown("chat_confirm_remember_hint"); hint.assertTextContains(text(R.string.confirm_remember_hint)); shown("chat_confirm_session")
-        val caption = bounds("chat_confirm_remember"); val h = bounds("chat_confirm_remember_hint"); val session = bounds("chat_confirm_session")
-        assertTrue("the hint is under the caption: $caption $h", h.top >= caption.bottom - 1f)
-        assertTrue("and above the remembered answers: $h $session", session.top >= h.bottom - 1f)
+        val hint = shown("chat_confirm_remember_hint"); hint.assertTextContains(text(R.string.confirm_remember_hint_both)); shown("chat_confirm_session")
+        val caption = bounds("chat_confirm_remember"); val h = bounds("chat_confirm_remember_hint"); val session = bounds("chat_confirm_session"); val always = bounds("chat_confirm_always")
+        assertTrue("the caption is above the remembered answers: $caption $session", session.top >= caption.bottom - 1f)
+        assertTrue("the hint is under the remembered answers: $h $session $always", h.top >= maxOf(session.bottom, always.bottom) - 1f)
         // It is pinned with the buttons, not inside the scrolling section.
         // (In a window too short for it the whole card scrolls and the answers, hint included, are inside the scrolling section: nothing is pinned then.)
         if (!landscape()) assertTrue(compose.onAllNodes(hasTestTag("chat_confirm_remember_hint") and hasAnyAncestor(hasTestTag("chat_confirm_section")), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
@@ -201,7 +216,7 @@ class AssistantConnectionAnswersTest {
     /** In a window too short for the answers beside or under the section, the whole card scrolls: every answer can be brought on screen and none is cut. */
     private fun shortWindow(heightDp: Int) {
         show(PendingConfirmation(1, AssistantToolId.SSH_COMMAND, (1..40).joinToString("\n") { "echo synthetic-line-$it" }, GrantTarget("p", "c1"), info, sessionTools = both), heightDp)
-        for ((tag, _) in buttons) shown(tag).assertHeightIsAtLeast(48.dp)
+        for ((tag, _) in buttons) assertTouchTarget(tag, shown(tag))
         shot("card-short-$heightDp")
     }
     @Test fun aShortWindow260dpScrollsTheWholeCard() = shortWindow(260)

@@ -1391,6 +1391,7 @@
 
     <!-- Подтверждение изменяющих вызовов ассистента -->
     <string name="confirm_title">Выполнить команду?</string>
+    <string name="confirm_title_in">Выполнить в&#160;%1$s?</string>
     <string name="confirm_target">%1$s · %2$s · %3$s</string>
     <string name="confirm_unknown_target">Неизвестный туннель</string>
     <string name="confirm_warning">Полный доступ в пределах SSH-аккаунта. Команда и её вывод передаются модели.</string>
@@ -1398,23 +1399,20 @@
     <string name="confirm_session">Для сессии</string>
     <string name="confirm_always">Всегда</string>
     <string name="confirm_decline">Отклонить</string>
-    <string name="confirm_session_hint">Команды в этом подключении, пока открыт его туннель.</string>
-    <string name="confirm_session_hint_both">Команды и ввод во вкладки этого подключения, пока открыт его туннель.</string>
     <string name="chat_confirm_tool">%1$s · %2$s</string>
     <string name="action_class_connection_change">Изменения в подключениях</string>
     <string name="action_class_app_change">Изменения в приложении</string>
     <string name="connection_assistant_grant">Помощник: без вопросов, на время туннеля</string>
     <string name="connection_assistant_remembered">Помощник: без вопроса, запомнено %1$s</string>
-    <string name="confirm_connection">Для этого подключения</string>
-    <string name="confirm_remember">Разрешить и запомнить</string>
-    <string name="confirm_connection_hint">Команды в этом подключении: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.</string>
-    <string name="confirm_connection_hint_input">Ввод во вкладки этого подключения: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.</string>
-    <string name="confirm_connection_hint_both">Команды и ввод во вкладки этого подключения: запоминается, пока подключение не изменят, даже если об этом попросит прочитанный текст. Забыть: на карточке подключения.</string>
-    <string name="receipt_no_question_connection">без вопроса: для этого подключения</string>
-    <string name="receipt_no_question_session">без вопроса: на время туннеля</string>
-    <string name="receipt_no_question_off">без вопроса: подтверждения выключены</string>
+    <string name="confirm_connection">Для подключения</string>
+    <string name="confirm_remember">Разрешать без вопросов:</string>
+    <string name="receipt_no_question_connection">для подключения</string>
+    <string name="receipt_no_question_session">для сессии</string>
+    <string name="receipt_no_question_off">подтверждения выключены</string>
     <string name="connection_assistant_forget_failed">Не удалось сохранить. Помощник больше не использует это разрешение, удаление будет повторено.</string>
-    <string name="confirm_remember_hint">Следующие вызовы в этом подключении пойдут без вопроса, пока его не изменят. Забыть: на его карточке.</string>
+    <string name="confirm_remember_hint">Для сессии — пока туннель включён. Для подключения — пока его не изменят, и даже для команд из прочитанного текста. Отменить: метка на карточке туннеля.</string>
+    <string name="confirm_remember_hint_input">Для сессии — ввод во вкладки, пока туннель включён. Для подключения — пока его не изменят, и даже для ввода из прочитанного текста. Отменить: метка на карточке туннеля.</string>
+    <string name="confirm_remember_hint_both">Для сессии — команды и ввод во вкладки, пока туннель включён. Для подключения — пока его не изменят, и даже для команд и ввода из прочитанного текста. Отменить: метка на карточке туннеля.</string>
     <string name="connection_assistant_forget">Забыть</string>
     <string name="connection_assistant_forget_description">Забыть разрешения помощника для %1$s</string>
     <string name="always_dialog_title">Выключить подтверждения?</string>
@@ -1425,7 +1423,6 @@
     <string name="confirm_command">Команда</string>
     <string name="confirm_input_title">Ввести в эту вкладку?</string>
     <string name="confirm_input_warning">Как ввод с вашей клавиатуры, отменить нельзя. Экран после ввода передаётся модели.</string>
-    <string name="confirm_input_session_hint">Ввод во вкладки этого подключения, пока открыт его туннель.</string>
     <string name="confirm_tab">Вкладка</string>
     <string name="confirm_program">Программа</string>
     <string name="confirm_text">Текст</string>

@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -56,22 +57,16 @@ import ru.adsrv.frpjump.ui.connections.kindWord
  * the program in its foreground, when known), the text typed (every Enter shown as a mark, the whole text in the same scrolling box) and
  * the keys pressed after it.
  */
-/** The hint of For session: both grantable tools in the grant, typing only, or commands; with none known, by the card's own kind. */
-internal fun sessionHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean): Int = when {
-    sessionTools.size > 1 -> R.string.confirm_session_hint_both
-    sessionTools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_input_session_hint
-    sessionTools.singleOrNull() != null -> R.string.confirm_session_hint
-    typing -> R.string.confirm_input_session_hint
-    else -> R.string.confirm_session_hint
-}
-
-/** The hint of For this connection: the same tools as the session hint (both, typing only, commands), longer: what it keeps and where to forget it. */
-internal fun connectionHintRes(tools: Set<AssistantToolId>, typing: Boolean): Int = when {
-    tools.size > 1 -> R.string.confirm_connection_hint_both
-    tools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_connection_hint_input
-    tools.singleOrNull() != null -> R.string.confirm_connection_hint
-    typing -> R.string.confirm_connection_hint_input
-    else -> R.string.confirm_connection_hint
+/**
+ * The one hint under the remember answers: what For session and For this connection cover. It names the grantable tools in the grant (both, typing
+ * only, or commands); with none known, the card's own kind decides. It is the same grant the card said it covers when it was raised.
+ */
+internal fun rememberHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean): Int = when {
+    sessionTools.size > 1 -> R.string.confirm_remember_hint_both
+    sessionTools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_remember_hint_input
+    sessionTools.singleOrNull() != null -> R.string.confirm_remember_hint
+    typing -> R.string.confirm_remember_hint_input
+    else -> R.string.confirm_remember_hint
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -114,8 +109,7 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     // What For session covers: the grantable tools of the class that were in effect when the card was raised (both: commands and typing).
-    val sessionHint = stringResource(sessionHintRes(confirmation.sessionTools, typing != null))
-    val connectionHint = stringResource(connectionHintRes(confirmation.sessionTools, typing != null))
+    val rememberHint = stringResource(rememberHintRes(confirmation.sessionTools, typing != null))
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
         val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)
@@ -148,8 +142,14 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
 
     @Composable fun Header() {
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(if (skill != null) skillTitle(skill) else if (close != null) R.string.confirm_close_title else if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
+            // A command names the connection it runs in ("Run in <name>?"): the name bidi-isolated, tied to "in" by a no-break space; a card without a known
+            // connection keeps "Run this command?". The other cards keep their titles.
+            val title = if (skill != null) stringResource(skillTitle(skill)) else if (close != null) stringResource(R.string.confirm_close_title)
+                else if (stop != null) stringResource(R.string.confirm_stop_title) else if (typing != null) stringResource(R.string.confirm_input_title)
+                else if (info != null) stringResource(R.string.confirm_title_in, ru.adsrv.frpjump.ssh.isolateName(info.connection.label { kindWord(context, it) }))
+                else stringResource(R.string.confirm_title)
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite }.testTag("chat_confirm_title"))
             // Portrait: two lines, "class · tool" must not lose the tool at a large font. Two-pane: one line, "tool · class", the class is what gets cut.
             if (wide) Text(wideTool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { contentDescription = tool }.testTag("chat_confirm_tool"))
@@ -161,7 +161,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 typing.program?.let { FieldLine(stringResource(R.string.confirm_program), it, "chat_confirm_program") }
             } else {
                 // Two lines at most, ellipsis after that; TalkBack reads the whole name.
-                Text(target, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
+                Text(target, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { contentDescription = target }.testTag("chat_confirm_target"))
             }
             if (skill != null) {
                 // The whole skill as plain text: its description and what it requires here, its text in the box below.
@@ -207,32 +208,25 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             modifier = Modifier.testTag("chat_confirm_warning"))
     }
     @Composable fun Answers(onHeight: (Int) -> Unit = { answersPx = it }) {
-        // Every answer is at least 48 dp high (the button default is 40 dp).
-        val tall = Modifier.heightIn(min = 48.dp)
-        Column(Modifier.onSizeChanged { onHeight(it.height) }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Every button shows 32 dp and keeps a touch target of 48 dp (the Material minimum), so the rows below do not add space of their own.
+        Column(Modifier.onSizeChanged { onHeight(it.height) }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CardButton(allow, CardButtonKind.FILLED, { answer(CardTap.ALLOW) }, Modifier.testTag("chat_confirm_allow"))
+                CardButton(decline, CardButtonKind.OUTLINED, { answer(CardTap.DECLINE) }, Modifier.testTag("chat_confirm_decline"))
+                // A card that cannot be remembered keeps Always (it asks a second time), quietly, in the same row.
+                if (!canSession) CardButton(always, CardButtonKind.TEXT, { answer(CardTap.ALWAYS) }, Modifier.testTag("chat_confirm_always"), AppTheme.colors.error)
+            }
             if (canSession) {
-                // Row 1: the one-time answers; then what is remembered, under its own caption (the card's hints are in the scrolling section).
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { answer(CardTap.ALLOW) }, modifier = tall.testTag("chat_confirm_allow")) { Text(allow) }
-                    OutlinedButton(onClick = { answer(CardTap.DECLINE) }, modifier = tall.testTag("chat_confirm_decline")) { Text(decline) }
+                // What is remembered, under its own label: quiet text buttons that wrap as one row, Always last in the error colour; then one hint for all.
+                Text(stringResource(R.string.confirm_remember), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted,
+                    modifier = Modifier.padding(top = 4.dp).testTag("chat_confirm_remember"))
+                // The first text button's own padding is pulled back so its letters line up with the label above.
+                FlowRow(Modifier.offset(x = (-10).dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    CardButton(session, CardButtonKind.TEXT, { answer(CardTap.SESSION) }, Modifier.testTag("chat_confirm_session"))
+                    CardButton(connectionAnswer, CardButtonKind.TEXT, { answer(CardTap.CONNECTION) }, Modifier.testTag("chat_confirm_connection"))
+                    CardButton(always, CardButtonKind.TEXT, { answer(CardTap.ALWAYS) }, Modifier.testTag("chat_confirm_always"), AppTheme.colors.error)
                 }
-                Text(stringResource(R.string.confirm_remember), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_confirm_remember"))
-                // One short line that stays with the answers: what the remembered answers mean, before the tap (the long hints are in the scrolling section).
-                Text(stringResource(R.string.confirm_remember_hint), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_confirm_remember_hint"))
-                // Always last, further from the primary answer, keeps the error colour and its second confirmation.
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { answer(CardTap.SESSION) },
-                        modifier = tall.semantics { contentDescription = "$session. $sessionHint" }.testTag("chat_confirm_session")) { Text(session) }
-                    OutlinedButton(onClick = { answer(CardTap.CONNECTION) },
-                        modifier = tall.semantics { contentDescription = "$connectionAnswer. $connectionHint" }.testTag("chat_confirm_connection")) { Text(connectionAnswer) }
-                    OutlinedButton(onClick = { answer(CardTap.ALWAYS) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTheme.colors.error),
-                        modifier = tall.testTag("chat_confirm_always")) { Text(always) }
-                }
-            } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { answer(CardTap.ALLOW) }, modifier = tall.testTag("chat_confirm_allow")) { Text(allow) }
-                OutlinedButton(onClick = { answer(CardTap.ALWAYS) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTheme.colors.error),
-                    modifier = tall.testTag("chat_confirm_always")) { Text(always) }
-                OutlinedButton(onClick = { answer(CardTap.DECLINE) }, modifier = tall.testTag("chat_confirm_decline")) { Text(decline) }
+                Text(rememberHint, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_confirm_remember_hint"))
             }
         }
     }
@@ -244,8 +238,6 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 skill?.oldBody?.let { old -> OldSkillText(skillText(old, escapeStyle), confirmation.id) }
                 typing?.keys?.takeIf { it.isNotEmpty() }?.let { FieldLine(stringResource(R.string.confirm_keys), it.joinToString(", "), "chat_confirm_keys") }
                 Warning()
-                // What the remembered answers keep: in the scrolling section, so the pinned block is only the buttons.
-                if (canSession) { Hint(session, sessionHint, "chat_confirm_session_hint"); Hint(connectionAnswer, connectionHint, "chat_confirm_connection_hint") }
                 if (withAnswers) Answers()
             }
             if (sectionScroll.canScrollBackward) Text(stringResource(R.string.confirm_more_above), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_above"))
@@ -309,10 +301,23 @@ private fun FieldLine(label: String, value: AnnotatedString, tag: String) {
         modifier = Modifier.semantics { contentDescription = "$label: ${value.text}" }.testTag(tag))
 }
 
+private enum class CardButtonKind { FILLED, OUTLINED, TEXT }
+
+/**
+ * An answer: 32 dp tall as drawn (taller only when its text wraps at a large font), with the Material touch target (48 dp, at least 44) around it
+ * from minimumInteractiveComponentSize (the same as Button). Filled is the primary answer, outlined the other one-time answer, text the quiet ones that are remembered.
+ */
 @Composable
-private fun Hint(label: String, text: String, tag: String) {
-    Text(buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$label: ") }; append(text) },
-        style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag(tag))
+private fun CardButton(text: String, kind: CardButtonKind, onClick: () -> Unit, modifier: Modifier = Modifier, textColor: androidx.compose.ui.graphics.Color? = null) {
+    val filled = ButtonDefaults.buttonColors()
+    val content = textColor ?: when (kind) { CardButtonKind.FILLED -> filled.contentColor; else -> AppTheme.colors.accent }
+    Surface(onClick = onClick, modifier = modifier.minimumInteractiveComponentSize().semantics { role = androidx.compose.ui.semantics.Role.Button }, shape = ButtonDefaults.shape,
+        color = if (kind == CardButtonKind.FILLED) filled.containerColor else androidx.compose.ui.graphics.Color.Transparent, contentColor = content,
+        border = if (kind == CardButtonKind.OUTLINED) BorderStroke(1.dp, AppTheme.colors.outline) else null) {
+        Box(Modifier.heightIn(min = 32.dp).padding(horizontal = if (kind == CardButtonKind.TEXT) 10.dp else 16.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+            Text(text, style = MaterialTheme.typography.labelLarge, color = content)
+        }
+    }
 }
 
 /**

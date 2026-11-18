@@ -2107,7 +2107,7 @@ class AssistantChatScreenTest {
         compose.runOnIdle { assertEquals(1, requests.size) }
         for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) { shown(tag).assertHasClickAction() }
         // The target is unknown by name in this fixture: "For session" is not offered (nothing to show what it would cover).
-        compose.onNodeWithTag("chat_confirm_session").assertDoesNotExist(); compose.onNodeWithTag("chat_confirm_session_hint").assertDoesNotExist()
+        compose.onNodeWithTag("chat_confirm_session").assertDoesNotExist(); compose.onNodeWithTag("chat_confirm_remember_hint").assertDoesNotExist()
         // The long explanation of Always is not on the card (it is in the confirm dialog), so the card stays short.
         compose.onNodeWithTag("chat_confirm_always_hint").assertDoesNotExist()
         shot("card")
@@ -2365,7 +2365,7 @@ class AssistantChatScreenTest {
         sshCommands = sshOver(fixture.state, fixture.hidden); sshTarget = "work" to "work-root"
         startConfirmation()
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("Work · board1500 · Service root")
-        shown("chat_confirm_session"); shown("chat_confirm_session_hint")
+        shown("chat_confirm_session"); shown("chat_confirm_remember_hint")
         // The tool line names the class, and the hint says what the answer covers: commands only (typing is off here), while the tunnel is open.
         compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(toolLine(localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))
         if (landscape()) {
@@ -2374,9 +2374,9 @@ class AssistantChatScreenTest {
             compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription,
                 listOf(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))))
         }
-        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint), substring = true)
+        compose.onNodeWithTag("chat_confirm_remember_hint", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_remember_hint), substring = true)
         shot("real-names")
-        // The hint is in the scrolling section now: bring the button back before the tap.
+        // The hint is pinned under the answers: bring the button back before the tap.
         shown("chat_confirm_session").performClick(); awaitIdle()
         compose.runOnIdle { assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }
         // The same target no longer asks; another connection of the same profile does.
