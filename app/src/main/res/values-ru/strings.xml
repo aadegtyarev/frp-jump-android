@@ -280,6 +280,12 @@
     <string name="card_details_https">%1$s · порт %2$d · HTTPS</string>
     <string name="card_details_ssh_key">%1$s · порт %2$d · %3$s · ключ</string>
     <string name="card_details_ssh_password">%1$s · порт %2$d · %3$s · пароль</string>
+    <string name="card_port">порт %1$d</string>
+    <string name="card_port_https">порт %1$d · HTTPS</string>
+    <string name="card_port_ssh_key">порт %1$d · %2$s · ключ</string>
+    <string name="card_port_ssh_password">порт %1$d · %2$s · пароль</string>
+    <string name="card_copy_address">Копировать адрес</string>
+    <string name="tunnel_switch">Туннель %s</string>
     <string name="connect_named">Включить «%s»</string>
     <string name="retry_named">Повторить «%s»</string>
     <string name="main_action_named">%1$s «%2$s»</string>

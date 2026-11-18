@@ -83,7 +83,7 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   clear icon replaces a caption where the meaning is obvious. Rare actions
   (rename, delete, copy address, open in another app, forget profile) live in
   a "⋮" menu or a long press, not as extra buttons. Stop is not rare:
-  it sits on the row of an active connection, next to its main action.
+  it is the on/off switch on the connection's card.
 - Light and dark themes, each designed on its own rather than inverted: dark
   is a warm graphite, not black, with a toned-down accent and its own status
   and profile colours; text contrast at least WCAG AA in both. Follows the
@@ -268,15 +268,15 @@ profile without re-enrollment.
   not answer. Check that frp-jump-client runs on the device." It
   recovers by itself once the device takes connections (checked every 10 s).
 - A tap anywhere on a connection's card (device card and Tunnels tab)
-  does its main action, which the visible button names: connected, it
+  does its main action, which the visible link names: connected, it
   opens (Terminal, Explore, Open) or, for TCP and a tunnel no connection
   names, copies the address; not connected, it connects, then does the
   same (TCP: connects and copies the address). SSH with no login to use at
   once opens the login dialog first. Taps while it is coming up open it
   once. Leaving the screen before it is up cancels the open (the tunnel
   stays). On a device offline now, a connection that is down has no tap
-  action and its Start is off (scenario 5); "⋮" and a long press work. The Stop button, "⋮" and the other buttons keep their own
-  actions, and so does the state when it offers a choice ("Through the
+  action and its switch is off (scenario 5); "⋮" and a long press work. The switch, "⋮", the main-action link and the other
+  buttons keep their own actions, and so does the state when it offers a choice ("Through the
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
   when connected and "Start and open" when not.
@@ -342,15 +342,19 @@ Quick access to the saved connections of every device.
   open card (it puts it back instead of acting) or anywhere else closes it. The swipes are horizontal only, so the list's vertical scroll
   and pull to refresh work; a touch that starts in the system gesture zone at a screen edge belongs to the system's Back gesture. Both
   actions are also TalkBack custom actions on the card, with the same labels.
-- Each connection is the same compact card as on the device card: on the left its name (its own only when it has one other than the kind; a
-  default "SSH" is not repeated), the kind as text over the port (and the SSH user and login method), the state with the local address on one line,
-  and the assistant mark (§4) when it has a grant; on the right, vertically centred, up to three round buttons (32 dp visible, growing with the
-  font; a touch target of at least 44 dp; stacked vertically at a very large font): the main action while up (the glyph of its kind: terminal,
-  globe, arcs or copy; a tonal circle; SSH with two or more terminals shows their count), "⏻" (a red outline to stop, a green one to start) and "⋮".
-  A connection that is down shows only "⏻" to start and "⋮"; one being connected or disconnected only a busy "⏻" and "⋮". TalkBack reads each
-  button's action with the connection's name. A tap on the card does its main action (scenario 4).
+- Each connection is the same card as on the device card, built like a VPN app's tunnel list. Top row: on the left its name (its own only when it
+  has one other than the kind; with none, the title is the kind alone, "SSH", "Web", "MQTT" or "TCP", and the port, the SSH user and the login method
+  go muted on the next line; with an own name the muted line starts with the kind), under it one state line (the state, the local address and the
+  session count, wrapping between items), then a Material switch and "⋮" at the top-right, which stay there at a very large font. The switch is on
+  while the tunnel is up or being started: turning it on starts it (as the card's tap does without the open), turning it off stops it, with the
+  same Undo. It is off, and cannot be turned, while the tunnel is being started or stopped, and on a device offline while the tunnel is down.
+  TalkBack reads it as "Tunnel <name>" with its on/off state. Bottom row, only while the tunnel is up or the assistant has a grant (§4): on the
+  left the main action as an accent text link at least 48 dp tall ("▣ Terminal ›", "Terminal · 2 ›" with two or more terminals, "🌐 Open ›", "MQTT ›"
+  for the explorer, "⧉ Copy address" for TCP and a tunnel no connection names), on the right the assistant's mark; at a large font they wrap, the
+  link first. There are no round buttons on the card. TalkBack reads the link's action with the connection's name. A tap on the card does its main
+  action (scenario 4).
 - On a device offline as of a fresh answer of the server, a connection that
-  is down is dimmed: its Start and the tap on its card are off, and its
+  is down is dimmed: its switch and the tap on its card are off, and its
   state says "Device offline" instead of "Off". Its "⋮" and a long
   press still work. An active one stays as it is, so it can be disconnected.
   An old list (the server not answering, or not checked yet since the start)
