@@ -550,6 +550,12 @@ val GlobeGlyph: ImageVector = pathGlyph(
         "M2 12h20",
 )
 
+/** Lucide "rss" (ISC, see licenses/Lucide.txt): two arcs and a dot, the main action of an MQTT connection (its explorer). */
+val RssGlyph: ImageVector = pathGlyph(
+    "Rss",
+    "M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16M6 19a1 1 0 1 1-2 0a1 1 0 1 1 2 0",
+)
+
 /** Lucide "keyboard": typing into a terminal. */
 val KeyboardGlyph: ImageVector = pathGlyph(
     "Keyboard",

@@ -87,7 +87,7 @@ class SessionGrantsTest {
             g.record(key(a), SSH, g.stamp(a)!!, g.coverableBy(SSH))
             assertTrue(g.covers(SSH, key(a)))
             change(w)
-            assertFalse(g.covers(SSH, key(a))); assertTrue("and the entry is gone", g.snapshot().isEmpty()); assertTrue(g.observe().value.isEmpty())
+            assertFalse(g.covers(SSH, key(a))); assertTrue("and the entry is gone", g.snapshot().isEmpty()); assertTrue(g.observeTools().value.isEmpty())
         }
     }
 
@@ -101,22 +101,23 @@ class SessionGrantsTest {
 
     @Test fun `sweep drops stale grants and out of effect tools without a lookup and an emptied grant goes`() {
         give(a); give(b)
-        assertEquals(setOf(a, b), grants.observe().value)
+        assertEquals(setOf(a, b), grants.observeTools().value.keys); assertEquals("both tools", setOf(SSH, TYPE), grants.observeTools().value.getValue(a))
         world.off += TYPE; grants.sweep()
-        assertEquals("one tool left", setOf(a, b), grants.observe().value); assertTrue(grants.covers(SSH, key(a)))
+        assertEquals("one tool left", setOf(a, b), grants.observeTools().value.keys); assertTrue(grants.covers(SSH, key(a)))
+        assertEquals("and it names that tool only", setOf(SSH), grants.observeTools().value.getValue(a))
         world.off.clear(); assertFalse("it does not come back", grants.covers(TYPE, key(a)))
         world.fingerprints[b] = "x"; grants.sweep()
-        assertEquals(setOf(a), grants.observe().value)
+        assertEquals(setOf(a), grants.observeTools().value.keys)
         world.off += SSH; grants.sweep()
-        assertTrue("typing was already gone and ssh now: nothing left", grants.snapshot().isEmpty()); assertTrue(grants.observe().value.isEmpty())
+        assertTrue("typing was already gone and ssh now: nothing left", grants.snapshot().isEmpty()); assertTrue(grants.observeTools().value.isEmpty())
     }
 
     @Test fun `forget removes every grant of one connection at once and clear all`() {
         give(a); give(b)
         grants.forgetConnection("p", "c1")
-        assertEquals(setOf(b), grants.observe().value); assertFalse(grants.covers(SSH, key(a)))
+        assertEquals(setOf(b), grants.observeTools().value.keys); assertFalse(grants.covers(SSH, key(a)))
         grants.forgetConnection("nobody", "x"); assertEquals(1, grants.snapshot().size)
-        grants.clear(); assertTrue(grants.snapshot().isEmpty()); assertTrue(grants.observe().value.isEmpty())
+        grants.clear(); assertTrue(grants.snapshot().isEmpty()); assertTrue(grants.observeTools().value.isEmpty())
     }
 
     @Test fun `grants are safe under concurrent use`() {
@@ -139,15 +140,15 @@ class SessionGrantsTest {
             give(a); give(b)
             // A tunnel closed (its period gone): the sweep follows the change, with no lookup.
             world.periods[a] = 7; changes.value++
-            assertEquals(setOf(b), grants.observe().value)
+            assertEquals(setOf(b), grants.observeTools().value.keys)
             world.off += SSH; changes.value++
-            assertEquals("ssh_command left, typing still covers", setOf(b), grants.observe().value)
+            assertEquals("ssh_command left, typing still covers", setOf(b), grants.observeTools().value.keys)
             world.off += TYPE; changes.value++
             assertTrue("nothing left: the grant is dropped", grants.snapshot().isEmpty())
             // The app lock ends everything, a grant given just before it included.
             world.off.clear(); give(a); give(b)
             locked.value = true
-            assertTrue("the lock ends all grants", grants.snapshot().isEmpty()); assertTrue(grants.observe().value.isEmpty())
+            assertTrue("the lock ends all grants", grants.snapshot().isEmpty()); assertTrue(grants.observeTools().value.isEmpty())
             assertFalse("and a covered call then asks", grants.covers(SSH, key(a)))
             locked.value = false
             assertTrue("unlocking brings nothing back", grants.snapshot().isEmpty())

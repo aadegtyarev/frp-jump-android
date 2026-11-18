@@ -25,6 +25,9 @@ enum class RecordResult {
     SAVE_FAILED,
 }
 
+/** A remembered permission as the card shows it: when it was given (epoch millis) and which tools it covers. */
+data class RememberedGrant(val at: Long, val tools: Set<AssistantToolId>)
+
 /**
  * The persistent "For this connection" permission (stage E3). One record per (class, connection) in the committed [SettingsStore] policy
  * (`assistant_confirmations.overrides`): the in-memory state is not a second source, it reads the committed value live, as the policy is read.
@@ -135,13 +138,19 @@ class ConnectionGrants(private val settings: SettingsStore, private val world: G
 
     private fun shown(overrides: List<ConfirmationOverride>) = overrides.filter { r -> r.target?.let { !isRevoked(it) } == true }
 
-    /** The connections that have a record, with the time it was given (for the connection card's line); follows the committed settings, never shows a revoked one. */
-    fun observe(): Flow<Map<GrantTarget, Long>> = combine(settings.settings, revokedTargets, revokedProfiles) { current, _, _ ->
-        shown(current.assistantConfirmations.overrides).mapNotNull { r -> r.target?.let { it to r.at } }.toMap()
+    /**
+     * The connections that have a record, with the time it was given and the tools it covers (for the connection card's mark and sheet); follows the committed
+     * settings, never shows a revoked one.
+     */
+    fun observeRecords(): Flow<Map<GrantTarget, RememberedGrant>> = combine(settings.settings, revokedTargets, revokedProfiles) { current, _, _ ->
+        remembered(shown(current.assistantConfirmations.overrides))
     }.distinctUntilChanged()
 
-    /** The connections that have a record now (a revoked one is not shown). */
-    fun current(): Map<GrantTarget, Long> = shown(settings.assistantConfirmations.overrides).mapNotNull { r -> r.target?.let { it to r.at } }.toMap()
+    /** The records now (a revoked one is not shown). */
+    fun currentRecords(): Map<GrantTarget, RememberedGrant> = remembered(shown(settings.assistantConfirmations.overrides))
+
+    private fun remembered(records: List<ConfirmationOverride>) =
+        records.mapNotNull { r -> r.target?.let { it to RememberedGrant(r.at, r.tools.mapNotNullTo(HashSet()) { AssistantToolId.fromWire(it) }) } }.toMap()
 
     /**
      * Deletes the records that are revoked, Mismatch or Gone now, as soon as a change is seen (also with no conversation alive): off Main, never in a call.
