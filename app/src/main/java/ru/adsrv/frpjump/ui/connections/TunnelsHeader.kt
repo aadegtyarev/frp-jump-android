@@ -4,7 +4,22 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ripple
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,7 +65,6 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.ui.AppTheme
-import ru.adsrv.frpjump.ui.LinkGlyph
 import ru.adsrv.frpjump.ui.LocalAppLocked
 import ru.adsrv.frpjump.ui.PowerGlyph
 import ru.adsrv.frpjump.ui.SearchGlyph
@@ -63,6 +77,7 @@ const val TUNNELS_SEARCH_BACK_TAG = "tunnels_search_back"
 const val TUNNELS_SEARCH_CLEAR_TAG = "tunnels_search_clear"
 const val TUNNELS_FILTER_TAG = "tunnels_filter"
 const val TUNNELS_STOP_ALL_TAG = "tunnels_stop_all"
+const val TUNNELS_CAPSULE_TAG = "tunnels_capsule"
 
 /**
  * The room the collapsed search keeps in the header's one row: 130 dp at 100% font, growing with the size body text really has (system
@@ -73,11 +88,11 @@ private const val SEARCH_ROOM_DP = 130
 /**
  * The Tunnels tab's header, with no visible title (the bottom bar names the tab; TalkBack gets an invisible heading).
  *
- * Collapsed: one row, [search pill][filter][⏻ Stop all][gear]. When they do not fit (a large font in a narrow window; decided by measuring)
- * two rows: search and gear, then the filter and ⏻. Expanded ([searching]): the field takes the whole header, with ← (close) and ✕ (clear).
+ * Collapsed: one row, [search pill][capsule][gear], the capsule being "● N | ⏻" (see [OnCapsule]). When they do not fit (a large font in a
+ * narrow window; decided by measuring) two rows: search and gear, then the capsule. Expanded ([searching]): the field takes the whole header, with ← (close) and ✕ (clear).
  *
- * [filterOn] is what the filter does now (the choice, and something is on); [count] is the tunnels that are on. The filter is disabled and
- * Stop all is disabled at 0, in their places, so the header never moves.
+ * [filterOn] is what the filter does now (the choice, and something is on); [count] is the tunnels that are on. The whole capsule is disabled
+ * at 0, in its place, so the header never moves.
  */
 @Composable
 fun TunnelsHeader(
@@ -106,34 +121,32 @@ fun TunnelsHeader(
         } else {
             HeaderRows(
                 search = { SearchPill(onOpenSearch) },
-                filter = { FilterToggle(filterOn, count, onFilter) },
-                stop = { StopAll(count, stopBusy, onStopAll) },
+                capsule = { OnCapsule(filterOn, count, onFilter, stopBusy, onStopAll) },
                 gear = { SettingsGear(onSettings) },
             )
         }
     }
 }
 
-/** Lays the four items out by measuring: one row when the search keeps its room, otherwise two (see [TunnelsHeader]). */
+/** Lays the three items out by measuring: one row when the search keeps its room, otherwise two (see [TunnelsHeader]). */
 @Composable
-private fun HeaderRows(search: @Composable () -> Unit, filter: @Composable () -> Unit, stop: @Composable () -> Unit, gear: @Composable () -> Unit) {
-    Layout(content = { search(); filter(); stop(); gear() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+private fun HeaderRows(search: @Composable () -> Unit, capsule: @Composable () -> Unit, gear: @Composable () -> Unit) {
+    Layout(content = { search(); capsule(); gear() }, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
         val maxWidth = constraints.maxWidth
         val gap = 8.dp.roundToPx()
         val loose = Constraints(maxWidth = maxWidth)
-        val filterItem = measurables[1].measure(loose)
-        val stopItem = measurables[2].measure(loose)
-        val gearItem = measurables[3].measure(loose)
+        val capsuleItem = measurables[1].measure(loose)
+        val gearItem = measurables[2].measure(loose)
         val naturalSearch = measurables[0].maxIntrinsicWidth(Constraints.Infinity)
         val searchWants = maxOf(naturalSearch, (SEARCH_ROOM_DP.dp.toPx() * (16.sp.toPx() / 16.dp.toPx())).roundToInt())
-        val oneRow = searchWants + filterItem.width + stopItem.width + gearItem.width + 3 * gap <= maxWidth
+        val oneRow = searchWants + capsuleItem.width + gearItem.width + 2 * gap <= maxWidth
         if (oneRow) {
-            val searchWidth = maxWidth - filterItem.width - stopItem.width - gearItem.width - 3 * gap
+            val searchWidth = maxWidth - capsuleItem.width - gearItem.width - 2 * gap
             val searchItem = measurables[0].measure(Constraints.fixedWidth(searchWidth))
-            val height = maxOf(searchItem.height, filterItem.height, stopItem.height, gearItem.height)
+            val height = maxOf(searchItem.height, capsuleItem.height, gearItem.height)
             layout(maxWidth, height) {
                 var x = 0
-                for (item in listOf(searchItem, filterItem, stopItem, gearItem)) {
+                for (item in listOf(searchItem, capsuleItem, gearItem)) {
                     item.placeRelative(x, (height - item.height) / 2)
                     x += item.width + gap
                 }
@@ -142,12 +155,10 @@ private fun HeaderRows(search: @Composable () -> Unit, filter: @Composable () ->
             val searchWidth = (maxWidth - gearItem.width - gap).coerceAtLeast(0)
             val searchItem = measurables[0].measure(Constraints.fixedWidth(searchWidth))
             val first = maxOf(searchItem.height, gearItem.height)
-            val second = maxOf(filterItem.height, stopItem.height)
-            layout(maxWidth, first + second) {
+            layout(maxWidth, first + capsuleItem.height) {
                 searchItem.placeRelative(0, (first - searchItem.height) / 2)
                 gearItem.placeRelative(maxWidth - gearItem.width, (first - gearItem.height) / 2)
-                filterItem.placeRelative(0, first + (second - filterItem.height) / 2)
-                stopItem.placeRelative(filterItem.width + gap, first + (second - stopItem.height) / 2)
+                capsuleItem.placeRelative(0, first)
             }
         }
     }
@@ -242,57 +253,110 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
     }
 }
 
+private val CAPSULE_HEIGHT = 38.dp
+private val TOUCH_TARGET = 48.dp
+
 /**
- * The filter "only tunnels that are on": a 32 dp toggle pill (touch target 44 dp) with the link glyph and the count. Disabled at 0. TalkBack:
- * "Only tunnels that are on, N", as a switch with its state.
+ * The capsule "● N | ⏻": one rounded container, 38 dp tall (taller only when a large font needs it), with a thin outline and a thin divider
+ * between two halves; each half's touch target is at least 48 dp. All of it is disabled at 0 (a muted dot, number and ⏻), in its place.
+ *
+ * Left: a green dot and the count of the tunnels that are on; a tap toggles the filter "only tunnels that are on" (tonal accent fill while it
+ * is on). TalkBack: "Only tunnels that are on, N", a switch with its state. Right: ⏻ in red, Stop all (a spinner while the servers are told).
+ * TalkBack: "Turn off all tunnels, N".
  */
 @Composable
-private fun FilterToggle(on: Boolean, count: Int, onChange: (Boolean) -> Unit) {
+private fun OnCapsule(on: Boolean, count: Int, onFilter: (Boolean) -> Unit, busy: Boolean, onStopAll: () -> Unit) {
     val colors = AppTheme.colors
     val enabled = count > 0
-    val description = stringResource(R.string.connections_only_on, count)
+    val outline = colors.outline
+    val filterDescription = stringResource(R.string.connections_only_on, count)
+    val stopDescription = stringResource(R.string.disconnect_all_count, count)
+    val filterOn = on && enabled
     val ink = when {
         !enabled -> colors.muted
-        on -> colors.onAccentContainer
+        filterOn -> colors.onAccentContainer
         else -> colors.ink
     }
-    Box(
+    val leftShape = RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50, topEndPercent = 0, bottomEndPercent = 0)
+    val rightShape = RoundedCornerShape(topStartPercent = 0, bottomStartPercent = 0, topEndPercent = 50, bottomEndPercent = 50)
+    val leftSource = remember { MutableInteractionSource() }
+    val rightSource = remember { MutableInteractionSource() }
+    // The outline is drawn over the halves, around their visible part: the touch targets are 5 dp taller than it on each side.
+    val margin = (TOUCH_TARGET - CAPSULE_HEIGHT) / 2
+    Row(
         Modifier
-            .heightIn(min = 44.dp)
-            .testTag(TUNNELS_FILTER_TAG)
-            .clip(CircleShape)
-            .toggleable(value = on, enabled = enabled, role = Role.Switch, onValueChange = onChange)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
+            .height(IntrinsicSize.Min)
+            .testTag(TUNNELS_CAPSULE_TAG)
+            .drawWithContent {
+                drawContent()
+                val stroke = 1.dp.toPx()
+                val top = margin.toPx()
+                val height = size.height - 2 * top
+                drawRoundRect(
+                    outline,
+                    topLeft = Offset(stroke / 2, top + stroke / 2),
+                    size = Size(size.width - stroke, height - stroke),
+                    cornerRadius = CornerRadius(height / 2),
+                    style = Stroke(stroke),
+                )
+            },
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
+        // Left: the filter.
+        Box(
             Modifier
-                .heightIn(min = 32.dp)
-                .background(if (on && enabled) colors.accentContainer else androidx.compose.ui.graphics.Color.Transparent, CircleShape)
-                .border(1.dp, if (on && enabled) colors.accent else colors.outline, CircleShape)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                .fillMaxHeight()
+                .heightIn(min = TOUCH_TARGET)
+                .widthIn(min = TOUCH_TARGET)
+                .testTag(TUNNELS_FILTER_TAG)
+                .toggleable(value = filterOn, interactionSource = leftSource, indication = null, enabled = enabled, role = Role.Switch, onValueChange = onFilter)
+                .semantics { contentDescription = filterDescription },
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(LinkGlyph, contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
-            Text(count.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ink, maxLines = 1, modifier = Modifier.clearAndSetSemantics { })
+            Row(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth()
+                    .padding(vertical = margin)
+                    .heightIn(min = CAPSULE_HEIGHT)
+                    .clip(leftShape)
+                    .background(if (filterOn) colors.accentContainer else Color.Transparent)
+                    .indication(leftSource, ripple())
+                    .padding(start = 14.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            ) {
+                Box(Modifier.size(8.dp).background(if (enabled) colors.online else colors.muted, CircleShape))
+                Text(count.toString(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = ink, maxLines = 1, modifier = Modifier.clearAndSetSemantics { })
+            }
         }
-    }
-}
-
-/** ⏻ Stop all: always in its place, disabled when nothing is on; a spinner while the servers are told. */
-@Composable
-private fun StopAll(count: Int, busy: Boolean, onClick: () -> Unit) {
-    val colors = AppTheme.colors
-    val enabled = count > 0 && !busy
-    RoundButton(
-        description = stringResource(R.string.disconnect_all_count, count),
-        onClick = onClick,
-        enabled = enabled,
-        border = if (enabled || busy) colors.error else colors.outline,
-        modifier = Modifier.testTag(TUNNELS_STOP_ALL_TAG),
-    ) { size ->
-        if (busy) CircularProgressIndicator(Modifier.size(size * 0.56f), color = colors.error, strokeWidth = 2.dp)
-        else Icon(PowerGlyph, contentDescription = null, tint = if (enabled) colors.error else colors.muted, modifier = Modifier.size(size * 0.56f))
+        // The thin divider.
+        Box(Modifier.fillMaxHeight().padding(vertical = margin).width(1.dp).background(outline))
+        // Right: Stop all.
+        val stopEnabled = enabled && !busy
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .heightIn(min = TOUCH_TARGET)
+                .widthIn(min = TOUCH_TARGET)
+                .testTag(TUNNELS_STOP_ALL_TAG)
+                .clickable(interactionSource = rightSource, indication = null, enabled = stopEnabled, role = Role.Button, onClick = onStopAll)
+                .semantics { contentDescription = stopDescription },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .padding(vertical = margin)
+                    .heightIn(min = CAPSULE_HEIGHT)
+                    .fillMaxWidth()
+                    .clip(rightShape)
+                    .indication(rightSource, ripple()),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = colors.error, strokeWidth = 2.dp)
+                else Icon(PowerGlyph, contentDescription = null, tint = if (enabled) colors.error else colors.muted, modifier = Modifier.size(22.dp))
+            }
+        }
     }
 }

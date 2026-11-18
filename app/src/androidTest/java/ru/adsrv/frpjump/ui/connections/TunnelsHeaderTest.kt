@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -36,7 +37,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 import java.io.File
 
-/** The Tunnels tab's header: one row or two by measuring, the search's expand and collapse, the filter and Stop all; synthetic state only. */
+/** The Tunnels tab's header: one row or two by measuring, the search's expand and collapse, the capsule ("● N | ⏻": the filter half and the Stop all half); synthetic state only. */
 @RunWith(AndroidJUnit4::class)
 class TunnelsHeaderTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -95,20 +96,24 @@ class TunnelsHeaderTest {
     @Test fun oneRowAtNormalFontTwoRowsAtDouble() {
         host()
         val search = bounds(TUNNELS_SEARCH_TAG)
+        val capsule = bounds(TUNNELS_CAPSULE_TAG)
         val filter = bounds(TUNNELS_FILTER_TAG)
         val stop = bounds(TUNNELS_STOP_ALL_TAG)
         val gear = bounds(ru.adsrv.frpjump.ui.SETTINGS_GEAR_TAG)
         assertTrue("inside the 360 dp header: $search $gear", gear.right.value - search.left.value <= 360.5f)
         assertTrue("the pill is 36 dp or more: $search", search.height.value >= 35.5f)
+        // The capsule is one container; its halves are side by side, each a touch target of 48 dp or more, in order.
+        assertTrue("the halves are inside the capsule: $capsule $filter $stop", filter.left.value >= capsule.left.value - 0.5f && stop.right.value <= capsule.right.value + 0.5f && filter.right.value <= stop.left.value + 1.5f)
+        assertTrue("the halves are 48 dp or more: $filter $stop", filter.height.value >= 47.5f && filter.width.value >= 47.5f && stop.height.value >= 47.5f && stop.width.value >= 47.5f)
+        assertTrue("the halves share a row: $filter $stop", near(filter.cy(), stop.cy()))
         if (fontScale < 1.5f) {
             // One row, in this order.
-            assertTrue("search, filter, stop, gear on one row: $search $filter $stop $gear", near(search.cy(), filter.cy()) && near(filter.cy(), stop.cy()) && near(stop.cy(), gear.cy()))
-            assertTrue("in order", search.right.value <= filter.left.value + 0.5f && filter.right.value <= stop.left.value + 0.5f && stop.right.value <= gear.left.value + 0.5f)
+            assertTrue("search, capsule, gear on one row: $search $capsule $gear", near(search.cy(), capsule.cy()) && near(capsule.cy(), gear.cy()))
+            assertTrue("in order", search.right.value <= capsule.left.value + 0.5f && capsule.right.value <= gear.left.value + 0.5f)
         } else {
-            // Two rows: search and gear, then the filter and the power button.
+            // Two rows: search and gear, then the capsule.
             assertTrue("search and gear share the first row: $search $gear", near(search.cy(), gear.cy()))
-            assertTrue("filter and stop share the second row: $filter $stop", near(filter.cy(), stop.cy()))
-            assertTrue("the second row is below the first: $search $filter", filter.top.value >= search.bottom.value - 1f && filter.top.value >= gear.bottom.value - 1f)
+            assertTrue("the capsule is on the second row, below: $capsule $search", capsule.top.value >= search.bottom.value - 1f && capsule.top.value >= gear.bottom.value - 1f)
             assertTrue("the gear is at the end of the first row: $gear", gear.right.value - search.left.value >= 359f)
         }
         // The name of the search is whole on the pill.
@@ -152,7 +157,7 @@ class TunnelsHeaderTest {
         compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsDisplayed()
     }
 
-    @Test fun theFilterIsAToggleWithTheCountAndIsDisabledAtZero() {
+    @Test fun theLeftHalfIsTheFilterToggleWithTheCountAndIsDisabledAtZero() {
         host()
         val filter = compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsDisplayed().assertIsEnabled()
         assertEquals(text(R.string.connections_only_on, 2), filter.fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single())
@@ -163,14 +168,20 @@ class TunnelsHeaderTest {
         shot("tunnels-header-filter-off")
         filter.performClick()
         assertEquals(true, onlyOn)
+        // On, it is shown by the selected (toggled-on) state; the dot and the count are not separate nodes (one label).
+        filter.assertIsOn()
+        shot("tunnels-header-filter-on")
         count = 0
         compose.waitForIdle()
         val zero = compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsNotEnabled()
         assertEquals(text(R.string.connections_only_on, 0), zero.fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single())
         shot("tunnels-header-zero")
+        // The whole capsule is off at 0: the right half too, and the filter shows all (not on).
+        compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsNotEnabled()
+        compose.onNodeWithTag(TUNNELS_FILTER_TAG).assertIsOff()
     }
 
-    @Test fun stopAllIsInItsPlaceAndDisabledAtZero() {
+    @Test fun theRightHalfIsStopAllInItsPlaceAndDisabledAtZero() {
         host()
         val before = bounds(TUNNELS_STOP_ALL_TAG)
         val stop = compose.onNodeWithTag(TUNNELS_STOP_ALL_TAG).assertIsEnabled()
