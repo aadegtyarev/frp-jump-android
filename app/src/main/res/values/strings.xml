@@ -242,7 +242,12 @@
     <string name="state_off">Off</string>
     <string name="state_device_offline">Device offline</string>
     <string name="connections_search">Search tunnels</string>
-    <string name="connections_search_hint">Device or tunnel</string>
+    <string name="connections_search_pill">Search</string>
+    <string name="connections_search_scope_on">Search tunnels that are on</string>
+    <string name="connections_search_scope_all">Search all tunnels</string>
+    <string name="connections_in_all">In all: %1$d · Show</string>
+    <string name="connections_clear_query">Clear text</string>
+    <string name="connections_only_on">Only tunnels that are on, %1$d</string>
     <string name="connections_no_match">No tunnels match “%s”.</string>
     <string name="state_connecting">Starting…</string>
     <string name="state_disconnecting">Stopping…</string>
@@ -268,7 +273,7 @@
     <string name="connect_and_open">Start and open</string>
     <string name="disconnect_named">Stop “%s”</string>
     <string name="disconnect">Stop</string>
-    <string name="disconnect_all_tunnels">Stop all tunnels</string>
+    <string name="disconnect_all_count">Turn off all tunnels, %1$d</string>
     <string name="disconnect_device_tunnels">Stop tunnels of “%s”</string>
     <plurals name="notification_sessions">
         <item quantity="one">%d session</item>

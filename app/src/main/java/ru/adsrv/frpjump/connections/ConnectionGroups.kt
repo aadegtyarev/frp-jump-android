@@ -77,5 +77,23 @@ fun filterGroups(groups: List<DeviceGroup>, query: String, label: (ConnectionRow
     }
 }
 
-/** From how many connections the tab offers search: fewer fit on a screen. */
-const val CONNECTIONS_SEARCH_FROM = 6
+/** The tunnels that are on: those with a tunnel (up or coming up) and the ones still being restored (they have no row yet). */
+fun onTunnelCount(groups: List<DeviceGroup>, restoring: Int): Int = groups.sumOf { g -> g.rows.count { it.active } } + restoring.coerceAtLeast(0)
+
+/**
+ * What the Tunnels tab lists, for the filter "only on" ([onlyOn], the choice) and the search [query]: with the filter in effect only the
+ * rows with a tunnel, searched within them as everywhere ([filterGroups]). The filter is not in effect while no row is on (at 0, or only
+ * tunnels still being restored, which have no row to show): then all of them are listed. [inAll] is set when the scope found nothing for the
+ * query but all tunnels have matches: how many rows, for the line that offers to turn the filter off.
+ */
+data class TunnelsView(val groups: List<DeviceGroup>, val filtered: Boolean, val inAll: Int?)
+
+fun tunnelsView(groups: List<DeviceGroup>, onlyOn: Boolean, query: String, label: (ConnectionRow) -> String): TunnelsView {
+    val filtered = onlyOn && groups.any { g -> g.rows.any { it.active } }
+    val scope = if (filtered) groups.mapNotNull { g -> g.rows.filter { it.active }.takeIf { it.isNotEmpty() }?.let { g.copy(rows = it) } } else groups
+    val shown = filterGroups(scope, query, label)
+    val inAll = if (filtered && shown.isEmpty() && query.isNotBlank()) {
+        filterGroups(groups, query, label).sumOf { it.rows.size }.takeIf { it > 0 }
+    } else null
+    return TunnelsView(shown, filtered, inAll)
+}

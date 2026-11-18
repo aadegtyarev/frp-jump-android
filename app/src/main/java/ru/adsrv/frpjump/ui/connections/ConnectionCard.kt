@@ -272,7 +272,7 @@ private fun mainGlyph(row: ConnectionRow): ImageVector =
  * (the main action's tonal circle), [border] outlines it (the power button); neither: a bare glyph ("⋮"). The glyph is given the circle's size.
  */
 @Composable
-private fun RoundButton(
+internal fun RoundButton(
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
