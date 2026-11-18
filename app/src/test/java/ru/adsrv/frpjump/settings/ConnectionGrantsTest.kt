@@ -178,6 +178,11 @@ class ConnectionGrantsTest {
         val r2 = Rig(); assertEquals(RecordResult.RECORDED, r2.give()); val g2 = r2.grants
         g2.revokeProfile("p"); assertFalse(g2.covers(ssh, key)); assertFalse(g2.covers(ssh, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "any"))))
         g2.sweep(); assertTrue(r2.records.isEmpty())
+        // Forget profile whose write fails: still never used.
+        val storage = Flaky(); val r3 = Rig(storage); assertEquals(RecordResult.RECORDED, r3.give()); val g3 = r3.grants
+        storage.failWrites = true
+        assertThrows(java.io.IOException::class.java) { g3.forgetProfile("p") }
+        assertEquals(1, r3.records.size); assertFalse("a failed Forget profile never lets it allow", g3.covers(ssh, key))
     }
 
     @Test fun `the cleaner deletes a mismatch or a gone connection with no call and keeps an unknown one`() {
