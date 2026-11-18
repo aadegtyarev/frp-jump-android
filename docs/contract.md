@@ -418,7 +418,10 @@ the same login (long press: as another user). The selected tab carries a small
 Close session; for an ended session Reconnect and Change login; with password
 login Use key login; for a live one Log in as another user). The same actions
 are the tab's TalkBack custom actions, and "+" has the custom action Log in as
-another user. Rename… sets an owner-chosen tab name (up to 24 characters; empty
+another user. A tab of a key login carries a key mark after its label (blue: the
+phone's key, purple: the imported one; see the
+[key mark](ssh-persist-contract.md)); it is known from
+the live session only and stored nowhere. Rename… sets an owner-chosen tab name (up to 24 characters; empty
 is the automatic label); see
 [tab names](ssh-persist-contract.md#tab-names) for the rules and what is kept.
 

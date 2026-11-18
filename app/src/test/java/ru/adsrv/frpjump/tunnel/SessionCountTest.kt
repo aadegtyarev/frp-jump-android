@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.adsrv.frpjump.ssh.SshKeySlot
 
 class SessionCountTest {
     private val ssh = TunnelRef("p1", "dev-a", 22)
@@ -40,5 +41,22 @@ class SessionCountTest {
         assertTrue(SessionCount(1, 0).showsPill)
         assertFalse(SessionCount(2, 0).showsPill)
         assertTrue(SessionCount(3, 1).showsPill)
+    }
+
+    @Test
+    fun `a row names the keys of its open sessions, the phone's first, each once, and none for passwords or ended ones`() {
+        val open = listOf(
+            SessionOn(ssh, live = true, key = SshKeySlot.IMPORTED),
+            SessionOn(ssh, live = true, key = SshKeySlot.PHONE),
+            SessionOn(ssh, live = true, key = SshKeySlot.IMPORTED),
+            SessionOn(ssh, live = true),
+            SessionOn(ssh, live = false, key = SshKeySlot.PHONE),
+            SessionOn(otherPort, live = false, key = SshKeySlot.PHONE),
+            SessionOn(otherDevice, live = true, key = SshKeySlot.PHONE, kind = SessionKind.MQTT),
+        )
+        assertEquals(listOf(SshKeySlot.PHONE, SshKeySlot.IMPORTED), sessionsThrough(open, ssh).keys)
+        assertEquals(emptyList<SshKeySlot>(), sessionsThrough(open, otherPort).keys)
+        assertEquals(emptyList<SshKeySlot>(), sessionsThrough(open, otherDevice).keys)
+        assertEquals(emptyList<SshKeySlot>(), sessionsThrough(listOf(SessionOn(ssh, live = true)), ssh).keys)
     }
 }

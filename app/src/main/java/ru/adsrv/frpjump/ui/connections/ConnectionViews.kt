@@ -81,6 +81,9 @@ import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.SessionCount
+import ru.adsrv.frpjump.ssh.SshKeySlot
+import ru.adsrv.frpjump.ui.ssh.KeyMark
+import ru.adsrv.frpjump.ui.ssh.keyUsedText
 import ru.adsrv.frpjump.tunnel.SessionOn
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelStatus
@@ -242,6 +245,26 @@ fun SessionsPill(count: SessionCount) {
     ) {
         if (count.ended > 0) Box(Modifier.size(6.dp).background(c.error, CircleShape))
         Text(total, fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
+    }
+}
+
+/**
+ * The key the open sessions of an SSH row logged in with: its mark and name, one item per key (the phone's first), none for password logins
+ * and none once the sessions are gone. A session's own memory: it is stored nowhere. Items of an [InlineFlow].
+ */
+@Composable
+fun SessionKeys(count: SessionCount) {
+    val c = AppTheme.colors
+    count.keys.forEach { slot ->
+        val spoken = keyUsedText(slot)
+        Row(
+            Modifier.testTag("card_key_mark").clearAndSetSemantics { contentDescription = spoken },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            KeyMark(slot, onTerm = false, describe = false)
+            Text(stringResource(if (slot == SshKeySlot.IMPORTED) R.string.key_name_imported else R.string.key_name_phone), fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
+        }
     }
 }
 

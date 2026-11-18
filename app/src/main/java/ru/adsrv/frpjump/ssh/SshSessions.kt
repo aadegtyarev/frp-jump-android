@@ -107,15 +107,15 @@ class SshSessions(
             if (list.isEmpty()) {
                 flowOf(emptyList())
             } else {
-                combine(list.map { s -> s.state.map { s.on(it) } }) { it.toList() }
+                combine(list.map { s -> combine(s.state, s.keyUsed) { state, key -> s.on(state, key) } }) { it.toList() }
             }
         }
         .distinctUntilChanged()
 
     /** [through] as it is now. Main thread. */
-    fun throughNow(): List<SessionOn> = _sessions.value.map { it.on(it.state.value) }
+    fun throughNow(): List<SessionOn> = _sessions.value.map { it.on(it.state.value, it.keyUsed.value) }
 
-    private fun SshSession.on(state: SshState) = SessionOn(TunnelRef(profile, device, port), state !is SshState.Ended, SessionKind.TERMINAL, id)
+    private fun SshSession.on(state: SshState, key: SshKeySlot?) = SessionOn(TunnelRef(profile, device, port), state !is SshState.Ended, SessionKind.TERMINAL, id, key)
 
     /** Terminal text size in sp, shared by all sessions. */
     val fontSize = MutableStateFlow(DEFAULT_FONT_SP)

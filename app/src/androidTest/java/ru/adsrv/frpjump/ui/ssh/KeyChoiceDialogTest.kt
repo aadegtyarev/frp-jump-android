@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -119,6 +120,9 @@ class KeyChoiceDialogTest {
         compose.onNodeWithText(text(R.string.key_choose_hint)).performScrollTo().assertIsDisplayed()
         row(phone).performScrollTo().assertIsDisplayed().assertIsSelected()
         row(imported).performScrollTo().assertIsDisplayed().assertIsNotSelected()
+        // Each key has its mark before its name: blue for the phone's, purple for the imported one.
+        compose.onNodeWithTag("key_mark_phone", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("key_mark_imported", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.cancel)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.key_choose_confirm)).assertIsDisplayed()
         // One group of radio rows for TalkBack.

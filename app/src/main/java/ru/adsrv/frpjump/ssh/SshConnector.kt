@@ -61,9 +61,10 @@ class SshConnector(
      * Logs in on a connected [ssh] with [auth]: the app's key identities, or
      * the typed (else the remembered) password, which is then remembered or
      * forgotten as the owner ticked. Throws [UserAuthException] when refused.
+     * Returns which of the app's keys the login used (null for a password): known only here, from the live login, and kept nowhere.
      */
-    fun authenticate(ssh: SSHClient) {
-        try {
+    fun authenticate(ssh: SSHClient): SshKeySlot? {
+        val used = try {
             logIn(ssh)
         } catch (e: UserAuthException) {
             // Kept beyond this tab: Terminal and Files then do not offer a saved password just refused.
@@ -72,20 +73,25 @@ class SshConnector(
             throw e
         }
         env.refusals.clear(profile, device, port, user)
+        return used
     }
 
-    private fun logIn(ssh: SSHClient) {
-        when (auth) {
+    private fun logIn(ssh: SSHClient): SshKeySlot? {
+        return when (auth) {
             SshAuth.Key -> {
-                val providers = env.keys.identities(env.keyComment()).mapNotNull { identity ->
+                val attempts = KeyAttempts()
+                val methods = env.keys.identities(env.keyComment()).mapNotNull { identity ->
                     try {
-                        ssh.loadKeys(identity.privateKey, null, identity.passphrase?.let { PasswordUtils.createOneOff(it.toCharArray()) })
+                        val provider = ssh.loadKeys(identity.privateKey, null, identity.passphrase?.let { PasswordUtils.createOneOff(it.toCharArray()) })
+                        RecordingPublickey(provider, identity.slot, attempts)
                     } catch (e: IOException) {
                         Log.w(TAG, "cannot load an SSH key: ${e.message}")
                         null
                     }
                 }
-                ssh.authPublickey(user, providers)
+                // What authPublickey(user, providers) does, with each key noting when it is offered: the last one offered is the one that got in.
+                ssh.auth(user, methods)
+                attempts.offered
             }
             is SshAuth.Password -> {
                 val password = auth.typed ?: env.passwords.get(profile, device, port, user)
@@ -101,6 +107,7 @@ class SshConnector(
                 } else if (auth.typed != null) {
                     env.passwords.remember(profile, device, port, user, password)
                 }
+                null
             }
         }
     }

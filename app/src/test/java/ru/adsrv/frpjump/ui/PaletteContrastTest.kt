@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.adsrv.frpjump.profiles.PROFILE_COLORS
+import ru.adsrv.frpjump.ssh.SshKeySlot
+import ru.adsrv.frpjump.ssh.colorName
 import ru.adsrv.frpjump.ui.files.SYNTAX_RULES
 import java.io.File
 import kotlin.math.pow
@@ -70,6 +72,14 @@ class PaletteContrastTest {
         // A session tab's profile dot: the dark theme's shades, the terminal being dark in both.
         PROFILE_COLORS.forEach { put("$it on termKey", DarkPalette.profiles.getValue(it) to p.termKey) }
         PROFILE_COLORS.forEach { put("$it on termBar", DarkPalette.profiles.getValue(it) to p.termBar) }
+        // The key mark (blue: the phone's key, purple: the imported one) in a card's pill and row, a dialog and a tab menu: the same shades
+        // as the profiles', on the surfaces they sit on besides the card.
+        for (slot in SshKeySlot.entries) {
+            val key = p.profiles.getValue(slot.colorName)
+            put("${slot.name} key on raised", key to p.raised)
+            put("${slot.name} key on tile", key to p.tile)
+            put("${slot.name} key on ground", key to p.ground)
+        }
         // The viewer's other search matches: Sora fills under the text and keeps its syntax colour, so the
         // fill only needs to leave each colour readable as a mark; the match stepped to is recoloured (above).
         SYNTAX_RULES.forEach { put("${it.scopes.first()} on accentContainer (match)", it.colour(p) to p.accentContainer) }
@@ -91,6 +101,14 @@ class PaletteContrastTest {
     fun `every profile colour has a shade in both themes`() {
         assertTrue(LightPalette.profiles.keys == PROFILE_COLORS.toSet())
         assertTrue(DarkPalette.profiles.keys == PROFILE_COLORS.toSet())
+    }
+
+    @Test
+    fun `the two keys have two colours in PROFILE_COLORS, in both themes`() {
+        val names = SshKeySlot.entries.map { it.colorName }
+        assertTrue(names.all { it in PROFILE_COLORS })
+        assertTrue(names.distinct().size == names.size)
+        for (p in listOf(LightPalette, DarkPalette)) assertTrue(names.map { p.profiles.getValue(it) }.distinct().size == names.size)
     }
 
     @Test

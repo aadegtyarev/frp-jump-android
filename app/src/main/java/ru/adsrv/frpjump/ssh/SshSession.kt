@@ -343,6 +343,16 @@ class SshSession(
     var authRefused = false
         private set
 
+    private val _keyUsed = MutableStateFlow<SshKeySlot?>(null)
+
+    /** The key the last login of this session got in with; null for a password login or before a login. Held in memory for the session only. */
+    val keyUsed: StateFlow<SshKeySlot?> = _keyUsed
+
+    /** A screen test's stand-in for a login: the key a session "got in with". */
+    internal fun setKeyUsedForTest(slot: SshKeySlot?) {
+        _keyUsed.value = slot
+    }
+
     /** How it logs in; Reconnect uses it too. */
     @Volatile
     var auth: SshAuth = auth
@@ -618,7 +628,9 @@ class SshSession(
         try {
             if (!commit(attempt) { client = ssh }) return
             if (!connectTransport(attempt, connector, ssh, retrying) || !current(attempt)) return
-            connector.authenticate(ssh)
+            val used = connector.authenticate(ssh)
+            // Which of the keys got in, as this live session knows it; never written anywhere.
+            if (current(attempt)) _keyUsed.value = used
             val pick = synchronized(lifecycle) { if (current(attempt)) pickUp else null }
             if (pick != null) {
                 val found = if (!tmux.disabled && tmux.assigned == null) listOwnTmux(ssh) else null

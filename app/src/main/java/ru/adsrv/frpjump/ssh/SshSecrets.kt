@@ -9,7 +9,7 @@ import ru.adsrv.frpjump.store.SecretBox
 import ru.adsrv.frpjump.store.TextStorage
 
 /** A key the app can log in with: OpenSSH private key text, its passphrase if any. */
-class SshIdentity(val privateKey: String, val passphrase: String?, val publicLine: String) {
+class SshIdentity(val privateKey: String, val passphrase: String?, val publicLine: String, val slot: SshKeySlot = SshKeySlot.PHONE) {
     override fun toString() = "SshIdentity($publicLine)"
 }
 
@@ -62,16 +62,18 @@ class SshKeyStore(private val storage: TextStorage, private val box: SecretBox) 
     @Synchronized
     fun identities(comment: String): List<SshIdentity> {
         publicLine(comment)
-        return listOfNotNull(keys.imported, keys.generated).mapNotNull(::unseal)
+        return listOfNotNull(keys.imported?.let { it to SshKeySlot.IMPORTED }, keys.generated?.let { it to SshKeySlot.PHONE })
+            .mapNotNull { (stored, slot) -> unseal(stored, slot) }
     }
 
     /** The key whose public line is [publicLine], unsealed alone; null when there is none or it cannot be unsealed. */
     @Synchronized
     fun identity(publicLine: String): SshIdentity? =
-        listOfNotNull(keys.imported, keys.generated).firstOrNull { it.publicLine == publicLine }?.let(::unseal)
+        listOfNotNull(keys.imported?.let { it to SshKeySlot.IMPORTED }, keys.generated?.let { it to SshKeySlot.PHONE })
+            .firstOrNull { (stored, _) -> stored.publicLine == publicLine }?.let { (stored, slot) -> unseal(stored, slot) }
 
-    private fun unseal(stored: StoredKey): SshIdentity? = try {
-        SshIdentity(box.open(stored.privateSealed), stored.passphraseSealed?.let(box::open), stored.publicLine)
+    private fun unseal(stored: StoredKey, slot: SshKeySlot): SshIdentity? = try {
+        SshIdentity(box.open(stored.privateSealed), stored.passphraseSealed?.let(box::open), stored.publicLine, slot)
     } catch (e: Exception) {
         Log.w(TAG, "cannot unseal an SSH key: ${e.javaClass.simpleName}")
         null

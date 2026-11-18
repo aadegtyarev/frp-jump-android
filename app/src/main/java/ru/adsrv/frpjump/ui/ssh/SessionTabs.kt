@@ -271,6 +271,9 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
     val colors = AppTheme.colors
     val state by s.state.collectAsStateWithLifecycle()
     val custom by s.tabName.collectAsStateWithLifecycle()
+    // The key this session logged in with (null: a password, or not logged in): the mark after the label; never stored.
+    val keyUsed by s.keyUsed.collectAsStateWithLifecycle()
+    val keyText = keyUsed?.let { keyUsedText(it) }
     val label = chipLabel(automatic, custom)
     val byAssistant = custom?.setBy == NameSetter.ASSISTANT
     val byAssistantText = custom?.let { stringResource(R.string.terminal_tab_named_by_assistant, automatic, isolateName(it.text)) }
@@ -327,7 +330,7 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
                         custom == null -> label
                         byAssistant -> byAssistantText.orEmpty()
                         else -> "$label, $automatic"
-                    } + ", $stateWord"
+                    } + ", $stateWord" + (keyText?.let { ", ${it.replaceFirstChar(Char::lowercaseChar)}" } ?: "")
                     customActions = offered.map { a -> CustomAccessibilityAction(a.label) { a.run(); true } }
                 }
                 .padding(horizontal = 10.dp),
@@ -354,6 +357,8 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
                     .widthIn(max = 200.dp)
                     .clearAndSetSemantics {},
             )
+            // After the label, before the menu's ▾: the tab's description names the key.
+            keyUsed?.let { KeyMark(it, onTerm = true, describe = false) }
             // A hint that the selected tab has a menu; decorative, the tab itself says it.
             if (on) {
                 Icon(
@@ -365,6 +370,17 @@ private fun SessionTab(s: SshSession, automatic: String, on: Boolean, dot: Color
             }
         }
         AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            // Which key the login used, as a title row that does nothing.
+            keyUsed?.let { slot ->
+                Row(
+                    Modifier.widthIn(max = 240.dp).padding(horizontal = 12.dp, vertical = 6.dp).testTag("tab_menu_key"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    KeyMark(slot, onTerm = false, describe = false)
+                    Text(keyUsedText(slot), fontSize = 12.sp, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
             // With a name of its own the tab still says who and where it is.
             if (custom != null) {
                 Text(
