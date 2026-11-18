@@ -255,7 +255,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
             if (fits) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // The row is as tall as the answers anyway (five of them wrap at a large font): the section may use that height instead of stopping at 260 dp.
                 Section(Modifier.weight(1f).heightIn(max = maxOf(260.dp, with(LocalDensity.current) { rowAnswersPx.toDp() })))
-                Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers { rowAnswersPx = it } }
+                // Measured with no height limit: the row's own limit would hide that the answers do not fit (then the whole card scrolls instead).
+                Column(Modifier.weight(0.8f).wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers { rowAnswersPx = it } }
             } else Column(Modifier.padding(12.dp)) { Section(Modifier.weight(1f, fill = false), withAnswers = true) }
         } else BoxWithConstraints {
             // Pinned layout (answers fixed below a scrolling section) only while the room holds the answers, the header and at least the first

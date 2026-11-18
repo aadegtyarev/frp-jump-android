@@ -188,7 +188,7 @@ class AssistantConnectionAnswersTest {
 
     @Test fun aShortLineUnderTheCaptionStaysWithTheAnswers() {
         named()
-        val hint = shown("chat_confirm_remember_hint"); hint.assertTextContains(text(R.string.confirm_remember_hint))
+        val hint = shown("chat_confirm_remember_hint"); hint.assertTextContains(text(R.string.confirm_remember_hint)); shown("chat_confirm_session")
         val caption = bounds("chat_confirm_remember"); val h = bounds("chat_confirm_remember_hint"); val session = bounds("chat_confirm_session")
         assertTrue("the hint is under the caption: $caption $h", h.top >= caption.bottom - 1f)
         assertTrue("and above the remembered answers: $h $session", session.top >= h.bottom - 1f)

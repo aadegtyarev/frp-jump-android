@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -28,7 +29,7 @@ class AssistantSessionHintCardsTest {
 
     private fun hintFor(tools: Set<AssistantToolId>, expected: Int) {
         compose.setContent { FrpJumpTheme { ChatConfirmationCard(PendingConfirmation(1, AssistantToolId.SSH_COMMAND, "uptime", GrantTarget("p", "c1"), info, sessionTools = tools), onAnswer = {}) } }
-        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertIsDisplayed().assertTextContains(text(expected), substring = true)
+        compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).performScrollTo().assertIsDisplayed().assertTextContains(text(expected), substring = true)
     }
 
     @Test fun commandsOnly() = hintFor(setOf(AssistantToolId.SSH_COMMAND), R.string.confirm_session_hint)
