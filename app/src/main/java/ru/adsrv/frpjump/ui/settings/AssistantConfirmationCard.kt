@@ -106,6 +106,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val toolTitle = stringResource(if (typing != null || close != null || skill != null) confirmation.tool.receiptTitle() else confirmation.tool.title())
     // "Class · tool", e.g. "Changes in connections · SSH command".
     val tool = confirmation.tool.actionClass.cardName()?.let { stringResource(R.string.chat_confirm_tool, stringResource(it), toolTitle) } ?: toolTitle
+    // The two-pane layout keeps it on one line with the tool first, so the ellipsis cuts the class and never the tool; TalkBack reads "class · tool".
+    val wideTool = confirmation.tool.actionClass.cardName()?.let { stringResource(R.string.chat_confirm_tool, toolTitle, stringResource(it)) } ?: toolTitle
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
     val connectionAnswer = stringResource(R.string.confirm_connection)
@@ -148,8 +150,10 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(if (skill != null) skillTitle(skill) else if (close != null) R.string.confirm_close_title else if (stop != null) R.string.confirm_stop_title else if (typing != null) R.string.confirm_input_title else R.string.confirm_title), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite })
-            // Two lines: "class · tool" must not lose the tool at a large font.
-            Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            // Portrait: two lines, "class · tool" must not lose the tool at a large font. Two-pane: one line, "tool · class", the class is what gets cut.
+            if (wide) Text(wideTool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { contentDescription = tool }.testTag("chat_confirm_tool"))
+            else Text(tool, style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag("chat_confirm_tool"))
             if (typing != null) {
                 // The tab and the program as lines of their own, each with its label; the whole value stays readable (the section scrolls).
