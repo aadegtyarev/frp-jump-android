@@ -193,7 +193,8 @@ class AssistantConnectionAnswersTest {
         assertTrue("the hint is under the caption: $caption $h", h.top >= caption.bottom - 1f)
         assertTrue("and above the remembered answers: $h $session", session.top >= h.bottom - 1f)
         // It is pinned with the buttons, not inside the scrolling section.
-        assertTrue(compose.onAllNodes(hasTestTag("chat_confirm_remember_hint") and hasAnyAncestor(hasTestTag("chat_confirm_section")), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        // (In a window too short for it the whole card scrolls and the answers, hint included, are inside the scrolling section: nothing is pinned then.)
+        if (!landscape()) assertTrue(compose.onAllNodes(hasTestTag("chat_confirm_remember_hint") and hasAnyAncestor(hasTestTag("chat_confirm_section")), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         shot("card-remember-hint")
     }
 
