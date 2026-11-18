@@ -38,15 +38,18 @@ class AssistantCompactionTest {
 
     private fun manyAnswers(count: Int) = (1..count).map { record("Progress $it", said("received $it " + "y".repeat(400))) }
 
-    @Test fun `step 1 alone - old tool output becomes a note, the newest stays, no model request, nothing saved`() = runBlocking {
+    @Test fun `step 1 alone - old tool output becomes a note, oldest first and only down to the prune size, the newest stays, no model request, nothing saved`() = runBlocking {
         val current = record("now", tool(9, 1000))
         val h = harness(listOf(record("task", tool(1, 3000), tool(2, 3000), tool(3, 3000)), current)) { error("the model must not be asked") }
         val request = raw(current)
         val result = h.engine.prepare(request)
         assertTrue(h.seen.isEmpty()); assertNull(h.doc.summary); assertEquals(listOf(Compaction.TOOL_OUTPUT), h.told)
         assertTrue(cost(result) * 100 < window * 80L)
+        // The prune size at the defaults: (75 - 15 + 5) % of the window; the oldest outputs go first and the rest stay whole once it is reached.
+        assertTrue(cost(result) * 100 <= window * 65L)
         val old = result.turns.first().exchanges.flatMap { it.results }
-        assertTrue(old.all { it.text.startsWith("[Tool output removed") && it.outcome == ToolOutcome.SUCCESS })
+        assertTrue(old.take(2).all { it.text.startsWith("[Tool output removed") && it.outcome == ToolOutcome.SUCCESS })
+        assertTrue("stopped at the prune size", old.last().text.startsWith("out3 "))
         assertEquals(request.turns.last(), result.turns.last())
         // The saved chat is whole: the records hold every output.
         assertTrue(h.doc.records.first().exchanges.all { it.results.single().text.length > 3000 })
@@ -74,10 +77,13 @@ class AssistantCompactionTest {
         assertEquals(30, h.doc.records.size - 1)
     }
 
-    @Test fun `the summary budget is its share of the window, whatever the answer limit, and the trigger and fresh share follow the limits`() {
-        assertEquals(1_800, ContextBudget(12_000, AssistantLimits(summarySizePercent = 15)).summaryTokens)
-        assertEquals(9_600, ContextBudget(12_000, AssistantLimits()).triggerTokens); assertEquals(2_400, ContextBudget(12_000, AssistantLimits()).freshTokens)
-        assertEquals(40_000, ContextBudget(100_000, AssistantLimits(summarySizePercent = 40, summaryPercentSet = 50)).summaryTokens)
+    @Test fun `the window split drives the budget - trigger is history plus reply, summary is its own share, prune size is history less summary plus reply`() {
+        val d = ContextBudget(12_000, AssistantLimits())
+        assertEquals(1_800, d.summaryTokens); assertEquals(600, d.replyTokens)
+        assertEquals(9_600, d.triggerTokens); assertEquals(7_800, d.pruneTokens)
+        val custom = ContextBudget(100_000, AssistantLimits(summarySizePercent = 40, historyPercentSet = 50, replyPercentSet = 10))
+        assertEquals(40_000, custom.summaryTokens); assertEquals(10_000, custom.replyTokens)
+        assertEquals(60_000, custom.triggerTokens); assertEquals(20_000, custom.pruneTokens)
     }
 
     @Test fun `a blank reply is retried once with a stricter instruction and the retry's text is used`() = runBlocking {
@@ -141,18 +147,19 @@ class AssistantCompactionTest {
         var n = 0
         val h = harness(manyAnswers(30) + current) { request ->
             when {
-                request.maxOutputTokens > out -> throw OpenAiProviderException(ProviderFailure.HTTP, 400)
+                request.maxOutputTokens > 600 -> throw OpenAiProviderException(ProviderFailure.HTTP, 400)
                 n++ == 0 -> AgentReply("")
                 else -> AgentReply("Summary after the fallback and the retry.")
             }
         }
         h.engine.prepare(raw(current))
-        assertEquals(listOf(1_800, 512, 512), h.seen.map { it.maxOutputTokens })
+        // The answer limit is the reply share of the window: 5 % of 12,000.
+        assertEquals(listOf(1_800, 600, 600), h.seen.map { it.maxOutputTokens })
         assertEquals("Summary after the fallback and the retry.", h.doc.summary!!.text); assertTrue(h.doc.summary!!.byModel)
         // A refusal that is not a 400/422, or one when the output limit already is the answer limit, is no reason to resend.
         val server = harness(manyAnswers(30) + current) { throw OpenAiProviderException(ProviderFailure.HTTP, 500) }
         server.engine.prepare(raw(current)); assertEquals(listOf(1_800), server.seen.map { it.maxOutputTokens }); assertFalse(server.doc.summary!!.byModel)
-        val small = harness(manyAnswers(30) + current, AssistantLimits(summarySizePercent = 5, summaryPercentSet = 10), window = 8_000) { throw OpenAiProviderException(ProviderFailure.HTTP, 400) }
+        val small = harness(manyAnswers(30) + current, AssistantLimits(summarySizePercent = 5, historyPercentSet = 40, replyPercentSet = 10), window = 8_000) { throw OpenAiProviderException(ProviderFailure.HTTP, 400) }
         small.engine.prepare(raw(current)); assertEquals(1, small.seen.size); assertFalse(small.doc.summary!!.byModel)
     }
 
@@ -192,7 +199,7 @@ class AssistantCompactionTest {
     @Test fun `a summary that does not make the request smaller is not saved and the digest is used`() = runBlocking {
         val current = record("now", said("current"))
         // 8 tiny records are less than the 1,600 bytes a 40 % summary of a 4,000 window may be: a reply of that size would grow the request.
-        val h = Harness(SavedChat(records = (1..8).map { record("p$it", said("q")) } + current), 4_000, out, AssistantLimits(summarySizePercent = 40, summaryPercentSet = 10)) { AgentReply("q".repeat(5_000)) }
+        val h = Harness(SavedChat(records = (1..8).map { record("p$it", said("q")) } + current), 4_000, out, AssistantLimits(summarySizePercent = 40, historyPercentSet = 40, replyPercentSet = 1)) { AgentReply("q".repeat(5_000)) }
         val result = h.engine.prepare(raw(current))
         assertEquals(1, h.seen.size); assertFalse(h.doc.summary!!.byModel); assertTrue(h.doc.summary!!.text.startsWith("Mechanical digest"))
         assertTrue(cost(result) <= 4_000)
@@ -260,9 +267,9 @@ class AssistantCompactionTest {
 
     @Test fun `the summary request never carries the owner's own text, and the trigger follows the limit`() = runBlocking {
         val current = record("now", said("current"))
-        // 80 % trigger: this history is about 9.5k of 12k, under it; at 10 % the same history is over.
+        // 80 % trigger: this history is about 9.5k of 12k, under it; at 41 % the same history is over.
         val records = manyAnswers(14) + current
-        val low = harness(records, AssistantLimits().withSummarySize(5).withSummaryPercent(10)) { AgentReply("S") }
+        val low = harness(records, AssistantLimits(summarySizePercent = 5, historyPercentSet = 40, replyPercentSet = 1)) { AgentReply("S") }
         low.engine.prepare(raw(current, "OWNER-SECRET-STYLE"))
         assertTrue(low.seen.isNotEmpty()); assertTrue(low.seen.none { it.ownerInstructions.isNotEmpty() || texts(it).any { t -> t.contains("OWNER-SECRET") } })
         val high = harness(records) { AgentReply("S") }
@@ -347,7 +354,7 @@ class AssistantCompactionTest {
                 else AgentReply(calls = listOf(ToolCall("g$mains", "ghost", buildJsonObject { put("blob", "x".repeat(4_000)) })))
             }
         }
-        val chat = AssistantConversation(scope, { AssistantAvailability(true, limits = AssistantLimits(summarySizePercent = 40, summaryPercentSet = 50)) }, { snapshot }, { model }, {}, AgentModule(true), io = Dispatchers.Unconfined,
+        val chat = AssistantConversation(scope, { AssistantAvailability(true, limits = AssistantLimits(summarySizePercent = 40, historyPercentSet = 45, replyPercentSet = 5)) }, { snapshot }, { model }, {}, AgentModule(true), io = Dispatchers.Unconfined,
             historyStore = history, prompts = TestPrompts.lazy, confirmations = TestConfirmations.off)
         try {
             chat.ready(); chat.edit("Go"); chat.send(); chat.ready()

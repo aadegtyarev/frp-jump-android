@@ -273,14 +273,18 @@ class SettingsStore(private val storage: TextStorage) {
     fun setAssistantLimits(limits: AssistantLimits) = update { it.copy(assistantLimits = limits) }
 
     /**
-     * The summary trigger used to be a field of the provider form. When the owner has not set it here, the value that form held (1..100) becomes
-     * the setting (clamped into its range, and to 80 at most so the default summary size of 15 stays); once set, the provider form's copy is never read again.
+     * The window group of the provider form owns the history, reply and summary shares. Until they are set here, the old values become them, once:
+     * the provider's answer reserve [outputTokens] and the old trigger (the limit [AssistantLimits.summaryPercentSet] when set, else the provider
+     * form's [legacyTrigger]) over its [window]; see [WindowSplit.fromLegacy]. Nothing is read again once both shares are set.
      */
-    fun adoptSummaryPercent(legacy: Int) = update { s ->
-        if (s.assistantLimits.summaryPercentSet != null) s
-        // Over what the default summary size leaves (80) the trigger becomes 80 and the size stays 15: the size is not made smaller to keep a high trigger.
-        else s.copy(assistantLimits = s.assistantLimits.withSummaryPercent(legacy.coerceIn(AssistantLimits.SUMMARY_PERCENT_RANGE)
-            .coerceAtMost(AssistantLimits.SUMMARY_PAIR_MAX - AssistantLimits.DEFAULT_SUMMARY_SIZE_PERCENT)))
+    fun adoptWindowSplit(window: Int, outputTokens: Int, legacyTrigger: Int) = update { s ->
+        val l = s.assistantLimits
+        if (l.historyPercentSet != null && l.replyPercentSet != null) s
+        else {
+            val trigger = (l.summaryPercentSet ?: legacyTrigger).coerceIn(1, 100)
+            val converted = WindowSplit.fromLegacy(window, outputTokens, trigger, l.summarySizePercent, l.historyPercentSet, l.replyPercentSet)
+            s.copy(assistantLimits = l.withSplit(converted.split, converted.limitedFrom ?: l.replyLimitedFrom))
+        }
     }
 
     /** The "Offer to turn tools on" switch (same autosave path as the tool switches; applies from the next Send). */
@@ -395,10 +399,14 @@ class SettingsStore(private val storage: TextStorage) {
             (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(range) ?: fallback
         var limits = defaults
         for (spec in LIMITS) limits = spec.set(limits, number(spec.key, spec.range, spec.get(defaults)))
-        // The trigger stays unset (absent) until the owner or the provider form's old value sets it; the pair must fit, the summary size gives way.
-        val setTrigger = (group?.get("summary_percent") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(AssistantLimits.SUMMARY_PERCENT_RANGE)
-        limits = limits.copy(summaryPercentSet = setTrigger, summarySizePercent = number("summary_size_percent", AssistantLimits.SUMMARY_SIZE_RANGE, defaults.summarySizePercent))
-            .let { it.copy(summarySizePercent = minOf(it.summarySizePercent, AssistantLimits.SUMMARY_PAIR_MAX - it.summaryPercent).coerceAtLeast(AssistantLimits.SUMMARY_SIZE_RANGE.first)) }
+        // The old trigger is only the source of the conversion; the new shares stay unset (absent) until the owner or the conversion sets them.
+        fun optional(key: String, range: IntRange): Int? = (group?.get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.coerceIn(range)
+        val summary = number("summary_size_percent", WindowSplit.SUMMARY_RANGE, WindowSplit.DEFAULT_SUMMARY)
+        val reply = optional("reply_percent", WindowSplit.REPLY_RANGE)
+        val history = optional("history_percent", WindowSplit.HISTORY_RANGE)?.let { minOf(it, WindowSplit.SUM_MAX - (reply ?: WindowSplit.DEFAULT_REPLY), WindowSplit.SUM_MAX - summary) }
+        limits = limits.copy(summaryPercentSet = optional("summary_percent", AssistantLimits.SUMMARY_PERCENT_RANGE), summarySizePercent = summary,
+            historyPercentSet = history, replyPercentSet = reply,
+            replyLimitedFrom = (group?.get("reply_limited_from") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it > 0 })
         return WireJson.encodeToJsonElement(limits)
     }
 

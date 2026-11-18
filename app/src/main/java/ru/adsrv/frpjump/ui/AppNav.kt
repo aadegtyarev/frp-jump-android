@@ -451,7 +451,8 @@ internal fun NavGraphBuilder.assistantRoutes(nav: NavHostController, app: FrpJum
         // Recovery re-reads metadata, never unseals the credential or starts provider traffic.
         LaunchedEffect(Unit) { vm.reloadAssistantProvider().join() }
         val provider by vm.assistantProvider.collectAsStateWithLifecycle()
-        ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider,
+        val appSettings by vm.settings.collectAsStateWithLifecycle()
+        ru.adsrv.frpjump.ui.settings.AssistantProviderScreen(provider, appSettings.assistantLimits, vm::setAssistantLimits,
             onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
             onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() },
             onBack = { nav.popBackStack() })

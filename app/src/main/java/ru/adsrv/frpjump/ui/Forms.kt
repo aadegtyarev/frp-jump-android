@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump.ui
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -32,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 
+/** The vertical padding of a form's scrolling body. */
+val FORM_BODY_PADDING_V = 8.dp
+
 /**
  * A form as the mockups draw it: a title with an optional back arrow,
  * cards that scroll, and one main button at the bottom that shows progress
@@ -47,6 +51,8 @@ fun FormScreen(
     onBack: (() -> Unit)?,
     error: String? = null,
     actionEnabled: Boolean = true,
+    /** The scroll of the form's body, for a part that pins itself while the rest scrolls ([FORM_BODY_PADDING_V] is the body's own top inset). */
+    scroll: ScrollState = rememberScrollState(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -73,8 +79,8 @@ fun FormScreen(
             Column(
                 Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .verticalScroll(scroll)
+                    .padding(horizontal = 16.dp, vertical = FORM_BODY_PADDING_V),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 content = content,
             )

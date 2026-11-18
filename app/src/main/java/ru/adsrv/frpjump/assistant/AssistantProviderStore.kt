@@ -27,9 +27,10 @@ data class AssistantProviderSettings(
     val model: String = "",
     val effort: String? = null,
     val contextTokens: Int = DEFAULT_CONTEXT_TOKENS,
+    /** Mirror of the reply share (percent of the window, an owner's limit) in tokens, for older versions: the form writes it with each save; the request uses the share. */
     val outputTokens: Int = 2_048,
     val completionTokenField: Boolean = false,
-    /** Legacy: the summary trigger now lives with the owner's limits; this stored value is read once to set it there, and kept as it is. */
+    /** Legacy: the old trigger; it is read once to make the history share (a limit), and kept as it is. */
     val summaryPercent: Int = 80,
     val summaryModel: String? = null,
 ) {

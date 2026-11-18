@@ -240,8 +240,12 @@ internal class TurnRunner(private val env: TurnEnv, private val a: Admission) {
     private fun webSources(values: List<SavedSource>) = values.map { ChatSource(it.title, it.url) }
 }
 
-/** The agent's limits for one Send: the provider's token limits, with the owner's limits of steps, calls, characters and time. */
+/**
+ * The agent's limits for one Send: the provider's window, with the owner's limits of steps, calls, characters and time, and the reply share of the
+ * window as the request's output limit (the reply's character cap follows it, never below 32,000).
+ */
 internal fun AgentLimits.withOwnerLimits(owner: ru.adsrv.frpjump.settings.AssistantLimits) = copy(
-    maxSteps = owner.stepsPerReply, maxCallsPerStep = owner.callsPerStep, maxToolChars = owner.toolOutputChars, maxReplyChars = owner.replyChars,
+    outputReserveTokens = owner.split.replyTokens(contextTokens),
+    maxSteps = owner.stepsPerReply, maxCallsPerStep = owner.callsPerStep, maxToolChars = owner.toolOutputChars, maxReplyChars = owner.split.replyChars(contextTokens),
     modelTimeoutMs = owner.modelTimeoutSeconds * 1000L, toolTimeoutMs = owner.toolTimeoutSeconds * 1000L,
 )

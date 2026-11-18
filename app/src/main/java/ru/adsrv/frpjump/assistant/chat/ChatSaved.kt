@@ -110,7 +110,7 @@ import ru.adsrv.frpjump.assistant.tools.*
  * The longest summary text that can be saved: a summary is at most its share of the context window in UTF-8 bytes, so at most that many characters;
  * the bound is the biggest window the agent accepts times the biggest summary size the Limits screen allows.
  */
-internal const val MAX_SUMMARY_CHARS = AgentLimits.MAX_CONTEXT_TOKENS * ru.adsrv.frpjump.settings.AssistantLimits.SUMMARY_SIZE_MAX_PERCENT / 100
+internal const val MAX_SUMMARY_CHARS = AgentLimits.MAX_CONTEXT_TOKENS * ru.adsrv.frpjump.settings.WindowSplit.SUMMARY_MAX / 100
 
 /** What the saved chat's summary is, for the chat's calm line. */
 internal fun SavedChat.compaction(): Compaction? = summary?.let { if (it.byModel) Compaction.MODEL else Compaction.NO_MODEL }

@@ -89,32 +89,11 @@ class AssistantLimitsScreenTest {
         compose.onAllNodesWithTag("limit_reply_s_hint").assertCountEquals(0)
     }
 
-    @Test fun theSummaryRowsShareTheWindowAndSayWhyAPlusIsOff() {
-        val limits = mutableStateOf(AssistantLimits())
-        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(limits.value, onChange = { limits.value = it }, onBack = {}) } }
-        scrolled("limit_summary_percent_value").assertTextEquals("80")
-        scrolled("limit_summary_size_percent_value").assertTextEquals("15")
-        scrolled("limit_fresh_tool_percent_value").assertTextEquals("20")
-        // 80 + 15 is the whole 95: both pluses are off and the pair is explained under each.
-        scrolled("limit_summary_percent_plus").assertIsNotEnabled()
-        scrolled("limit_summary_size_percent_plus").assertIsNotEnabled()
-        val pair = compose.activity.getString(R.string.limit_summary_pair, 95)
-        scrolled("limit_summary_percent_hint").assertTextEquals(pair)
-        scrolled("limit_summary_size_percent_hint").assertTextEquals(pair)
-        capture("limits-summary-rows")
-        // Lowering the trigger gives the summary room, and the explanation under the trigger goes away.
-        scrolled("limit_summary_percent_minus").performClick()
-        compose.runOnIdle { assertEquals(75, limits.value.summaryPercent) }
-        scrolled("limit_summary_size_percent_plus").assertIsEnabled().performClick()
-        compose.runOnIdle { assertEquals(20, limits.value.summarySizePercent); assertEquals(75, limits.value.summaryPercent) }
-        scrolled("limit_summary_percent_plus").assertIsNotEnabled()
-        // The trigger at its lowest stops at 10, the size at its lowest at 5.
-        limits.value = AssistantLimits().withSummaryPercent(10).withSummarySize(5)
-        scrolled("limit_summary_percent_minus").assertIsNotEnabled(); scrolled("limit_summary_size_percent_minus").assertIsNotEnabled()
-        compose.onAllNodesWithTag("limit_summary_percent_hint").assertCountEquals(0)
-        scrolled("limit_summary_size_percent_plus").assertIsEnabled()
-        // The answer limit is no cap any more: nothing is explained under the size once the pair has room.
-        compose.onAllNodesWithTag("limit_summary_size_percent_hint").assertCountEquals(0)
+    @Test fun theWindowRowsAndTheReplyLengthAreNotOnThisScreenAnyMore() {
+        compose.setContent { FrpJumpTheme { AssistantLimitsScreen(AssistantLimits(), onChange = {}, onBack = {}) } }
+        scrolled("limit_tool_output_chars_value")
+        for (key in listOf("summary_percent", "summary_size_percent", "fresh_tool_percent", "reply_chars"))
+            compose.onAllNodesWithTag("limit_${key}_value").assertCountEquals(0)
     }
 
     /** The node of [tag], scrolled into view (the screen is longer than the window). */
@@ -128,13 +107,11 @@ class AssistantLimitsScreenTest {
             val tag = "limit_${spec.key}"
             scrolled("${tag}_value").assertTextEquals(java.text.NumberFormat.getIntegerInstance(compose.activity.resources.configuration.locales[0]).format(spec.get(AssistantLimits())))
             scrolled("${tag}_plus").performClick()
-            // The trigger shares the window with the summary size: at the defaults (80 + 15 = 95) its plus is off, so it stays and two minuses reach 70.
-            val pairFull = spec.key == "summary_percent"
-            compose.runOnIdle { assertEquals(spec.key, if (pairFull) spec.get(AssistantLimits()) else minOf(spec.get(AssistantLimits()) + spec.step, spec.range.last), spec.get(limits.value)) }
+            compose.runOnIdle { assertEquals(spec.key, minOf(spec.get(AssistantLimits()) + spec.step, spec.range.last), spec.get(limits.value)) }
             scrolled("${tag}_minus").performClick(); scrolled("${tag}_minus").performClick()
-            compose.runOnIdle { assertEquals(spec.key, maxOf(spec.get(AssistantLimits()) - spec.step * (if (pairFull) 2 else 1), spec.range.first), spec.get(limits.value)) }
+            compose.runOnIdle { assertEquals(spec.key, maxOf(spec.get(AssistantLimits()) - spec.step, spec.range.first), spec.get(limits.value)) }
         }
-        compose.runOnIdle { assertEquals("all twenty-two rows are covered", 22, LIMITS.size) }
+        compose.runOnIdle { assertEquals("all eighteen rows are covered", 18, LIMITS.size) }
         // The last row, at the foot of the screen, and every limit at its largest.
         scrolled("limit_reconnect_minutes_value")
         capture("limits-defaults-scrolled")
@@ -152,7 +129,7 @@ class AssistantLimitsScreenTest {
         android.os.SystemClock.sleep(300)
         compose.waitForIdle()
         val shot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
-        File(compose.activity.getExternalFilesDir(null), "$name.png").outputStream().use { shot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(compose.activity.getExternalFilesDir(null), "$name-${compose.activity.resources.configuration.orientation}-${compose.activity.resources.configuration.fontScale}-${compose.activity.resources.configuration.locales[0].language}.png").outputStream().use { shot.compress(Bitmap.CompressFormat.PNG, 100, it) }
         shot.recycle()
     }
 }

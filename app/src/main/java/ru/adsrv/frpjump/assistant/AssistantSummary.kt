@@ -8,26 +8,31 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import ru.adsrv.frpjump.agent.*
 import ru.adsrv.frpjump.settings.AssistantLimits
+import ru.adsrv.frpjump.settings.WindowSplit
 
 /**
- * The shares of the model's context window the history shortening works with, all from the owner's limits (Settings › Assistant › Limits):
- * the fill that starts it, the size of a working summary and the newest tool output kept whole. There is no number of its own here.
+ * The shares of the model's context window the history shortening works with, all from the owner's window split (Settings › LLM assistant › Assistant
+ * provider › «Окно модели»): the history that starts it, the model's reply (the request's output limit) and the size of a working summary.
+ * There is no number of its own here.
  */
 internal class ContextBudget(val window: Int, limits: AssistantLimits) {
-    /** The shortening starts when the request is this big (estimated tokens). */
-    val triggerTokens: Long = window.toLong() * limits.summaryPercent / 100
+    val split: WindowSplit = limits.split
+    /** The request's output limit, and the reserve in the estimated request: the reply share of the window. */
+    val replyTokens: Int = split.replyTokens(window)
+    /** The shortening starts when the request (history and the reply reserve) reaches this size (estimated tokens), i.e. when the history reaches its share. */
+    val triggerTokens: Long = window.toLong() * split.compactAt / 100
     /**
      * The most a summary may be: its share of the window, in the estimate's own units (a UTF-8 byte counts as a token, as in the trigger and the
-     * digest). It is also the summary request's own output limit; the provider's general answer limit is only the fallback when that is refused.
+     * digest). It is also the summary request's own output limit; the reply share is only the fallback when that is refused.
      */
-    val summaryTokens: Int = (window.toLong() * limits.summarySizePercent / 100).coerceAtLeast(1).toInt()
-    /** The newest tool output of this size stays whole; older output is replaced by a note. */
-    val freshTokens: Long = window.toLong() * limits.freshToolPercent / 100
+    val summaryTokens: Int = split.summaryTokens(window)
+    /** Old tool output is replaced by notes until the request is down to this size: the history at its share less a summary, and the reply reserve. */
+    val pruneTokens: Long = window.toLong() * (split.pruneTo + split.reply) / 100
 }
 
 /**
  * Keeps the request inside the model's window by shortening what the MODEL sees, in four steps, each only while the request is still over the
- * trigger: (1) old tool output is replaced by a short note; (2) a model summary of the oldest part; (3) with no model, a mechanical digest of it
+ * trigger: (1) old tool output is replaced by a short note, oldest first, down to the prune size; (2) a model summary of the oldest part; (3) with no model, a mechanical digest of it
  * in place of the oldest part (cannot fail, unless the current turn alone is too big); (4) after a provider says the request was too long, the
  * same steps right away ([shortenAfterOverflow]). The owner's saved chat is never cut: only the summary and its covered position are saved.
  */
@@ -99,11 +104,11 @@ internal class AssistantSummary(
         val window = settings.contextTokens.toLong()
         // Small enough: under the trigger; after an overflow, under the trigger and under half of what was refused.
         val target = minOf(budget.triggerTokens, before / 2)
-        fun small(cost: Long) = if (force) cost < target else cost * 100 < window * limits.summaryPercent
+        fun small(cost: Long) = if (force) cost < target else cost * 100 < window * budget.split.compactAt
         if (!force && small(before)) return request
         var best = request; var bestCost = before; var kind: Compaction? = null
         // 1. Without a model: old tool output becomes a note.
-        val pruned = prune(request)
+        val pruned = prune(request, if (force) minOf(budget.pruneTokens, before / 2) else budget.pruneTokens)
         if (pruned !== request) {
             best = pruned; bestCost = cost(pruned); kind = Compaction.TOOL_OUTPUT
             if (small(bestCost)) { onCompacted(Compaction.TOOL_OUTPUT); return best }
@@ -127,22 +132,32 @@ internal class AssistantSummary(
         throw ContextCannotFit()
     }
 
-    /** Old tool output, beyond the newest share of the window, becomes a note in what the model sees; the latest exchange is never touched. */
-    private fun prune(request: AgentRequest): AgentRequest {
-        var used = 0L; var spent = false; var changed = false
+    /**
+     * Old tool output becomes a note in what the model sees, oldest first, until the request's estimate is down to [target] (the notes' savings are
+     * counted in bytes, which is how the estimate counts a result's text); the latest exchange is never touched.
+     */
+    private fun prune(request: AgentRequest, target: Long = budget.pruneTokens): AgentRequest {
+        var excess = cost(request) - target
+        if (excess <= 0) return request
+        var changed = false
         val turns = request.turns.toMutableList()
-        for (t in turns.lastIndex downTo 0) {
+        for (t in turns.indices) {
             val exchanges = turns[t].exchanges.toMutableList()
-            for (e in exchanges.lastIndex downTo 0) {
+            for (e in exchanges.indices) {
+                if (excess <= 0) break
                 val block = exchanges[e]
-                if (block.results.isEmpty()) continue
-                val size = block.results.sumOf { bytes(it.text).toLong() }
-                if ((t == turns.lastIndex && e == exchanges.lastIndex) || (!spent && used + size <= budget.freshTokens)) { used += size; continue }
-                spent = true
-                val results = block.results.map { r -> removedNote(r).takeIf { it.length < r.text.length }?.let { r.copy(text = it, omittedChars = 0) } ?: r }
+                if (block.results.isEmpty() || (t == turns.lastIndex && e == exchanges.lastIndex)) continue
+                val results = block.results.map { r ->
+                    if (excess <= 0) r
+                    else removedNote(r).takeIf { it.length < r.text.length }?.let { note ->
+                        excess -= bytes(r.text) - bytes(note)
+                        r.copy(text = note, omittedChars = 0)
+                    } ?: r
+                }
                 if (results != block.results) { exchanges[e] = block.copy(results = results); changed = true }
             }
             if (exchanges != turns[t].exchanges) turns[t] = turns[t].copy(exchanges = exchanges)
+            if (excess <= 0) break
         }
         return if (changed) request.copy(turns = turns) else request
     }
@@ -188,8 +203,8 @@ internal class AssistantSummary(
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (setup: ProviderSetupException) { throw setup }
                 catch (refused: ProviderException) {
-                    if (outputFallbackUsed || summaryOutput <= settings.outputTokens || refused.status !in REFUSED_OUTPUT_STATUSES) return null
-                    outputFallbackUsed = true; summaryOutput = settings.outputTokens
+                    if (outputFallbackUsed || summaryOutput <= budget.replyTokens || refused.status !in REFUSED_OUTPUT_STATUSES) return null
+                    outputFallbackUsed = true; summaryOutput = budget.replyTokens
                 }
                 catch (_: Exception) { return null }
             }
