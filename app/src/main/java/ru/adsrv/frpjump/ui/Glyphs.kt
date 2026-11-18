@@ -487,22 +487,12 @@ val ImageGlyph: ImageVector = glyph("Image") {
     moveTo(3f, 17f); lineTo(8.5f, 12f); lineTo(13f, 16f); lineTo(16f, 13.5f); lineTo(21f, 18f)
 }
 
-/** A speech bubble: the assistant. Neutral, no brand mark. */
-val ChatGlyph: ImageVector = glyph("Chat") {
-    moveTo(5f, 5f)
-    horizontalLineTo(19f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 21f, y1 = 7f)
-    verticalLineTo(14f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 19f, y1 = 16f)
-    horizontalLineTo(11f)
-    lineTo(6.5f, 20f)
-    verticalLineTo(16f)
-    horizontalLineTo(5f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 3f, y1 = 14f)
-    verticalLineTo(7f)
-    arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5f, y1 = 5f)
-    close()
-}
+/** Sparkles: the assistant, the same mark wherever it appears (bottom bar, Settings, a tunnel's assistant mark). Neutral, no brand mark. */
+val AssistantGlyph: ImageVector = pathGlyph(
+    "Assistant",
+    "M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0Z" +
+        "M20 3v4M22 5h-4M4 17v2M5 18H3",
+)
 
 /** Lucide `shield-check` 1.72.0 (ISC, see licenses/Lucide.txt): the chat's "confirmations are on" mark. */
 val ShieldCheckGlyph: ImageVector = pathGlyph(
