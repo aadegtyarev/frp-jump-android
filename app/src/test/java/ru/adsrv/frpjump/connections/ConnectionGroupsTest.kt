@@ -27,14 +27,29 @@ class ConnectionGroupsTest {
         connectionRows(profile, connections, TunnelsState(tunnels = up))
 
     @Test
-    fun `active devices first, then online, then offline or unknown, each by name ignoring case`() {
+    fun `devices by name ignoring case, whatever their state`() {
         val rows = rows("p1", listOf(kitchenSsh, kitchenZ2m, boiler, attic, router), up = listOf(tunnel("router", 80)))
         val devices = mapOf("p1" to listOf(device("wb-kitchen", true), device("Boiler", false), device("attic", true), device("router", false)))
         val groups = groupByDevice(rows, devices)
-        assertEquals(listOf("router", "attic", "wb-kitchen", "Boiler"), groups.map { it.name })
-        assertTrue(groups[0].active)
-        // Active comes first even though the device went offline.
-        assertTrue(groups[0].offline)
+        assertEquals(listOf("attic", "Boiler", "router", "wb-kitchen"), groups.map { it.name })
+        // An active group on a device that went offline: still known offline, and not moved.
+        assertTrue(groups.single { it.name == "router" }.offline)
+    }
+
+    @Test
+    fun `a tunnel going up or down and a device going online or offline do not move groups`() {
+        val connections = listOf(kitchenSsh, kitchenZ2m, boiler, attic, router)
+        val expected = listOf("attic", "Boiler", "router", "wb-kitchen")
+        val states = listOf(
+            emptyList<Tunnel>() to emptyMap(),
+            listOf(tunnel("wb-kitchen", 22)) to mapOf("p1" to listOf(device("wb-kitchen", true), device("attic", false))),
+            listOf(tunnel("wb-kitchen", 22), tunnel("router", 80)) to mapOf("p1" to listOf(device("Boiler", true), device("router", true))),
+            listOf(tunnel("Boiler", 80)) to mapOf("p1" to listOf(device("wb-kitchen", false, stale = true), device("attic", true, checking = true))),
+            emptyList<Tunnel>() to mapOf("p1" to null),
+        )
+        for ((up, devices) in states) {
+            assertEquals(expected, groupByDevice(rows("p1", connections, up), devices).map { it.name })
+        }
     }
 
     @Test
@@ -53,7 +68,7 @@ class ConnectionGroupsTest {
         val boilerGroup = groups.single { it.name == "Boiler" }
         assertNull(boilerGroup.device)
         assertFalse(boilerGroup.offline)
-        assertEquals(listOf("wb-kitchen", "Boiler"), groups.map { it.name })
+        assertEquals(listOf("Boiler", "wb-kitchen"), groups.map { it.name })
         assertFalse(groupByDevice(rows, mapOf("p1" to null)).any { it.offline })
     }
 
@@ -62,8 +77,8 @@ class ConnectionGroupsTest {
         val rows = rows("p1", listOf(kitchenSsh)) + rows("p2", listOf(kitchenSsh.copy(id = "9")))
         val devices = mapOf("p1" to listOf(device("wb-kitchen", false)), "p2" to listOf(device("wb-kitchen", true)))
         val groups = groupByDevice(rows, devices)
-        assertEquals(listOf("p2/wb-kitchen", "p1/wb-kitchen"), groups.map { it.key })
-        // Same rank: profile order breaks the tie.
+        assertEquals(listOf("p1/wb-kitchen", "p2/wb-kitchen"), groups.map { it.key })
+        // Same name: profile order breaks the tie, whatever the state.
         val equal = groupByDevice(rows, emptyMap())
         assertEquals(listOf("p1", "p2"), equal.map { it.profile })
     }
@@ -131,17 +146,5 @@ class ConnectionGroupsTest {
         assertNull(connectionTitle(kitchenSsh.copy(customName = "ssh"), "SSH"))
         assertNull(connectionTitle(kitchenSsh.copy(customName = "  "), "SSH"))
         assertEquals("root", connectionTitle(kitchenSsh.copy(customName = " root "), "SSH"))
-    }
-
-    @Test
-    fun `the order of a visit holds while states change and new devices follow`() {
-        val before = groupByDevice(rows("p1", listOf(kitchenSsh, boiler)), emptyMap())
-        val order = before.map { it.key }
-        assertEquals(listOf("Boiler", "wb-kitchen"), before.map { it.name })
-        // The kitchen connects: by rank it would go first; attic is new.
-        val after = groupByDevice(rows("p1", listOf(kitchenSsh, boiler, attic), up = listOf(tunnel("wb-kitchen", 22))), emptyMap())
-        assertEquals(listOf("wb-kitchen", "attic", "Boiler"), after.map { it.name })
-        assertEquals(listOf("Boiler", "wb-kitchen", "attic"), keepOrder(after, order).map { it.name })
-        assertEquals(after, keepOrder(after, null))
     }
 }
