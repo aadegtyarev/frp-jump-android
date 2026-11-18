@@ -255,6 +255,22 @@ class SettingsViewModel(private val app: FrpJumpApp) : ViewModel() {
     }
 
     fun clearImportError() = _state.update { it.copy(importError = null) }
+
+    /** The app's screen lock, for the identity check of the phone key's export and restore (К4). */
+    val appLock get() = app.lock
+
+    /** The phone key's slot, for [KeyTransferFlow]; its calls run off the main thread. */
+    val phoneKey: PhoneKey = object : PhoneKey {
+        override fun publicLine(): String = app.sshKeys.publicLine(app.sshKeyComment())
+        override fun privateKeyText(): String? = app.sshKeys.phoneKeyForExport()
+        override fun comment(): String = app.sshKeyComment()
+        override fun replace(pair: ru.adsrv.frpjump.ssh.SshKeyPair) = app.sshKeys.replacePhoneKey(pair)
+    }
+
+    /** The phone key was replaced by a restore: Settings shows the new public key. */
+    fun phoneKeyReplaced(publicLine: String) {
+        _state.update { it.copy(sshPublicKey = publicLine, sshKeySummary = keySummary(publicLine), sshPublicKeyError = null) }
+    }
 }
 
 /** "ed25519 · SHA256:Fymb…7U8" of an OpenSSH public key line; null when it is not one. */

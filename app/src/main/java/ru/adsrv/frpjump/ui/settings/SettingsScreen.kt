@@ -776,10 +776,22 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
         if (uri != null) pickedKey = readSmallText(context, uri)
         if (uri != null && pickedKey == null) context.notice(context.getString(R.string.key_file_unreadable), NoticeKind.WARN)
     }
+    val transfer = rememberKeyTransferFlow(vm)
     AppSheet(title = stringResource(R.string.ssh_keys), subtitle = sshKeysSummary(state), onDismiss = onDismiss) {
         Text(stringResource(R.string.ssh_keys_hint), fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
         if (state.sshPublicKey != null) {
             KeyBlock(SshKeySlot.PHONE, state.sshPublicKey)
+            if (transfer != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = transfer::startExport, modifier = Modifier.weight(1f).testTag("key-export")) {
+                        Text(stringResource(R.string.key_export))
+                    }
+                    OutlinedButton(onClick = transfer::startRestore, modifier = Modifier.weight(1f).testTag("key-restore")) {
+                        Text(stringResource(R.string.key_restore))
+                    }
+                }
+                KeyTransferOutcomeLine(transfer)
+            }
         } else {
             Text(state.sshPublicKeyError ?: "…", fontSize = 13.sp, color = if (state.sshPublicKeyError != null) colors.error else colors.muted)
         }
@@ -805,6 +817,7 @@ private fun SshKeySheet(state: SettingsUiState, vm: SettingsViewModel, onDismiss
             }
         }
     }
+    if (transfer != null) KeyTransferHost(transfer)
     pickedKey?.let { key ->
         PassphraseDialog(
             onImport = { passphrase ->
