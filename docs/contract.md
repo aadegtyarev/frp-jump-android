@@ -285,12 +285,14 @@ profile without re-enrollment.
   assistant contract lists, see the [assistant contract](agent-contract.md#confirmation-of-changing-calls)), its card shows, as the last text line, a
   calm assistant mark: a small rounded pill with a thin grey outline and no fill, holding the small ✦ and, in the secondary text colour at the size of the details line, "For session" /
   «Для сессии» when only a session grant exists, or "For this connection" / «Для подключения» when a remembered permission exists (also when a session
-  grant exists too). The whole line (the pill's row, at least 48 dp tall) is a button; TalkBack reads "Assistant: <text>. Details" / «Помощник: <текст>. Подробнее».
+  grant exists too). The whole line (the pill's row, at least 48 dp tall) is a button; TalkBack reads "Assistant in <name>: <text>. Details" / «Помощник в <имя>: <текст>. Подробнее».
   A tap opens a modal sheet titled "Assistant in <name>" / «Помощник в <имя>» (the name bidi-isolated) with one line per lifetime that exists: "You chose
   “For session”. The assistant's commands run here at once while the tunnel is on." / «Вы выбрали «Для сессии». Команды помощника здесь выполняются
   сразу, пока туннель включён.» and "You chose “For this connection” on <date>. The assistant's commands run here at once until the connection is
-  edited." / «Вы выбрали «Для подключения» <дата>. Команды помощника здесь выполняются сразу, пока подключение не изменят.» (a grant that covers both
-  tools says "commands and typing into tabs" / «Команды и ввод во вкладки помощника»; the date shows its year when it is not the current one), then
+  edited." / «Вы выбрали «Для подключения» <дата>. Команды помощника здесь выполняются сразу, пока подключение не изменят.» (each line names exactly the tools that lifetime covers now: "The assistant's commands" / «Команды помощника», "The
+  assistant's typing into tabs" / «Ввод помощника во вкладки» ("…typing into tabs runs here at once…" / «…выполняется сразу…»), or "The assistant's
+  commands and typing into tabs" / «Команды и ввод во вкладки помощника»; a tool that leaves a grant leaves its line at once; the date shows its year
+  when it is not the current one), then
   "The assistant never types passwords." / «Пароли помощник не вводит никогда.» and the buttons "Ask again" / «Снова спрашивать» and "Close" /
   «Закрыть». The mark and the sheet are the same on the device card and the Tunnels tab, for any profile, also while the tunnel is down and while the
   global switch is off (they state what is remembered). "Ask again" does what Forget did: it removes both lifetimes of that connection at once, with

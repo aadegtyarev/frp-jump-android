@@ -1418,11 +1418,13 @@
     <string name="connection_assistant_forget_failed">Не удалось сохранить. Помощник уже спрашивает снова, сохранение повторится.</string>
     <string name="connection_assistant_chip_session">Для сессии</string>
     <string name="connection_assistant_chip_connection">Для подключения</string>
-    <string name="connection_assistant_chip_description">Помощник: %1$s. Подробнее</string>
+    <string name="connection_assistant_chip_description">Помощник в %1$s: %2$s. Подробнее</string>
     <string name="connection_assistant_sheet_title">Помощник в %1$s</string>
     <string name="connection_assistant_sheet_session">Вы выбрали «Для сессии». Команды помощника здесь выполняются сразу, пока туннель включён.</string>
+    <string name="connection_assistant_sheet_session_input">Вы выбрали «Для сессии». Ввод помощника во вкладки здесь выполняется сразу, пока туннель включён.</string>
     <string name="connection_assistant_sheet_session_both">Вы выбрали «Для сессии». Команды и ввод во вкладки помощника здесь выполняются сразу, пока туннель включён.</string>
     <string name="connection_assistant_sheet_connection">Вы выбрали «Для подключения» %1$s. Команды помощника здесь выполняются сразу, пока подключение не изменят.</string>
+    <string name="connection_assistant_sheet_connection_input">Вы выбрали «Для подключения» %1$s. Ввод помощника во вкладки здесь выполняется сразу, пока подключение не изменят.</string>
     <string name="connection_assistant_sheet_connection_both">Вы выбрали «Для подключения» %1$s. Команды и ввод во вкладки помощника здесь выполняются сразу, пока подключение не изменят.</string>
     <string name="connection_assistant_sheet_passwords">Пароли помощник не вводит никогда.</string>
     <string name="connection_assistant_ask_again">Снова спрашивать</string>

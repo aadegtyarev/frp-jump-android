@@ -68,6 +68,7 @@ import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.ssh.isolateName
 import ru.adsrv.frpjump.tunnel.DirectMode
+import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.AppTheme
@@ -84,7 +85,8 @@ import ru.adsrv.frpjump.ui.notice
  * the kind as text over the port and login, the state with the local address, and the assistant mark when it has a grant; on the right, vertically
  * centred, up to three round buttons: the main action (only while up), "⏻" and "⋮". A tap on the card does its main action, a long press opens the
  * same menu as "⋮". On a device known to be [offline] ([ru.adsrv.frpjump.connections.knownOffline]), a connection that is down is dimmed and cannot
- * be connected; its "⋮" and long press work. While it is being connected or disconnected the card offers only "⏻" (busy) and "⋮".
+ * be connected; its "⋮" and long press work. While it is being connected the card offers only a disabled "⏻" in the "on" style (a spinner) and "⋮"; while
+ * being disconnected, a busy "⏻" to stop and "⋮".
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -203,7 +205,9 @@ fun ConnectionCard(
                         if (c.kind == PortKind.SSH && sessions.total >= 2) CountBadge(sessions.total)
                     }
                 }
-                if (up || busy) {
+                // Being connected (no tunnel yet), the power button is the disabled "on" one, not a "Stop": there is nothing to stop yet.
+                val connecting = row.pending == PendingOp.CONNECTING && !up
+                if (up || (busy && !connecting)) {
                     RoundButton(
                         description = stringResource(R.string.disconnect_named, name),
                         onClick = { actions.disconnect(row) },
@@ -215,14 +219,18 @@ fun ConnectionCard(
                         else Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(size * GLYPH_SHARE))
                     }
                 } else {
-                    val on = if (unreachable) colors.outline else colors.accent
+                    val inactive = unreachable || connecting
+                    val on = if (inactive) colors.outline else colors.accent
                     RoundButton(
-                        description = stringResource(if (row.error != null) R.string.retry_named else R.string.connect_named, name),
+                        description = stringResource(if (row.error != null && !connecting) R.string.retry_named else R.string.connect_named, name),
                         onClick = { actions.connect(row) },
-                        enabled = !unreachable,
+                        enabled = !inactive,
                         border = on,
                         modifier = Modifier.testTag("card_on"),
-                    ) { size -> Icon(PowerGlyph, contentDescription = null, tint = on.takeIf { !unreachable } ?: colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
+                    ) { size ->
+                        if (connecting) CircularProgressIndicator(Modifier.size(size * GLYPH_SHARE), color = colors.accent, strokeWidth = 2.dp)
+                        else Icon(PowerGlyph, contentDescription = null, tint = if (inactive) colors.muted else colors.accent, modifier = Modifier.size(size * GLYPH_SHARE))
+                    }
                 }
                 if (hasMenu(row)) {
                     Box {
@@ -327,7 +335,7 @@ private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantM
     val colors = AppTheme.colors
     var sheet by remember { mutableStateOf(false) }
     val text = stringResource(if (mark.rememberedAt != null) R.string.connection_assistant_chip_connection else R.string.connection_assistant_chip_session)
-    val spoken = stringResource(R.string.connection_assistant_chip_description, text)
+    val spoken = stringResource(R.string.connection_assistant_chip_description, isolateName(name), text)
     // The whole line is the touch target (48 dp at least); the pill inside it only draws the mark.
     Box(
         Modifier

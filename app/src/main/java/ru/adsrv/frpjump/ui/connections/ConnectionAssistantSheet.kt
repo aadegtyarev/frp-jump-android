@@ -35,20 +35,17 @@ import ru.adsrv.frpjump.ui.shortDate
 fun ConnectionAssistantSheet(name: String, mark: AssistantMark, onAskAgain: () -> Unit, onClose: () -> Unit) {
     val colors = AppTheme.colors
     AppSheet(title = stringResource(R.string.connection_assistant_sheet_title, isolateName(name)), onDismiss = onClose) {
-        if (mark.session) {
+        mark.sessionTools?.let { tools ->
             Text(
-                stringResource(if (mark.sessionBoth) R.string.connection_assistant_sheet_session_both else R.string.connection_assistant_sheet_session),
+                stringResource(sessionLineRes(coverOf(tools))),
                 fontSize = 15.sp,
                 modifier = Modifier.testTag("connection_assistant_sheet_session"),
             )
         }
         mark.rememberedAt?.let { at ->
             Text(
-                stringResource(
-                    if (mark.rememberedBoth) R.string.connection_assistant_sheet_connection_both else R.string.connection_assistant_sheet_connection,
-                    // An abbreviated month ends in a dot, and the sentence goes on with its own.
-                    shortDate(java.time.Instant.ofEpochMilli(at)).trimEnd('.'),
-                ),
+                // An abbreviated month ends in a dot, and the sentence goes on with its own.
+                stringResource(connectionLineRes(coverOf(mark.rememberedTools)), shortDate(java.time.Instant.ofEpochMilli(at)).trimEnd('.')),
                 fontSize = 15.sp,
                 modifier = Modifier.testTag("connection_assistant_sheet_connection"),
             )
@@ -77,4 +74,18 @@ private fun SheetButton(text: String, primary: Boolean, onClick: () -> Unit, mod
             Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         }
     }
+}
+
+/** The sheet's line of a "For session" grant, by what it covers. */
+internal fun sessionLineRes(cover: GrantCover): Int = when (cover) {
+    GrantCover.COMMANDS -> R.string.connection_assistant_sheet_session
+    GrantCover.INPUT -> R.string.connection_assistant_sheet_session_input
+    GrantCover.BOTH -> R.string.connection_assistant_sheet_session_both
+}
+
+/** The sheet's line of a remembered "For this connection" permission, by what it covers. */
+internal fun connectionLineRes(cover: GrantCover): Int = when (cover) {
+    GrantCover.COMMANDS -> R.string.connection_assistant_sheet_connection
+    GrantCover.INPUT -> R.string.connection_assistant_sheet_connection_input
+    GrantCover.BOTH -> R.string.connection_assistant_sheet_connection_both
 }

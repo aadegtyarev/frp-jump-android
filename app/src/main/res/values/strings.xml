@@ -1367,11 +1367,13 @@
     <string name="connection_assistant_forget_failed">Could not save. The assistant already asks again; saving will be retried.</string>
     <string name="connection_assistant_chip_session">For session</string>
     <string name="connection_assistant_chip_connection">For this connection</string>
-    <string name="connection_assistant_chip_description">Assistant: %1$s. Details</string>
+    <string name="connection_assistant_chip_description">Assistant in %1$s: %2$s. Details</string>
     <string name="connection_assistant_sheet_title">Assistant in %1$s</string>
     <string name="connection_assistant_sheet_session">You chose “For session”. The assistant\'s commands run here at once while the tunnel is on.</string>
+    <string name="connection_assistant_sheet_session_input">You chose “For session”. The assistant\'s typing into tabs runs here at once while the tunnel is on.</string>
     <string name="connection_assistant_sheet_session_both">You chose “For session”. The assistant\'s commands and typing into tabs run here at once while the tunnel is on.</string>
     <string name="connection_assistant_sheet_connection">You chose “For this connection” on %1$s. The assistant\'s commands run here at once until the connection is edited.</string>
+    <string name="connection_assistant_sheet_connection_input">You chose “For this connection” on %1$s. The assistant\'s typing into tabs runs here at once until the connection is edited.</string>
     <string name="connection_assistant_sheet_connection_both">You chose “For this connection” on %1$s. The assistant\'s commands and typing into tabs run here at once until the connection is edited.</string>
     <string name="connection_assistant_sheet_passwords">The assistant never types passwords.</string>
     <string name="connection_assistant_ask_again">Ask again</string>

@@ -51,8 +51,8 @@ class SessionGrantLifecycleTest {
         val held: Boolean get() {
             // The cleaner runs on its own thread: give it a moment before saying the grant is still there.
             val until = System.nanoTime() + 500_000_000L
-            while (grants.observe().value.isNotEmpty() && System.nanoTime() < until) Thread.sleep(5)
-            return grants.observe().value.isNotEmpty()
+            while (grants.observeTools().value.isNotEmpty() && System.nanoTime() < until) Thread.sleep(5)
+            return grants.observeTools().value.isNotEmpty()
         }
         fun hideTunnel() = undo.enqueue(PendingUndo.tunnelKey("home", "same", 22), commit = {})
         /** The owner opens the app with the lock on and unlocks it. */

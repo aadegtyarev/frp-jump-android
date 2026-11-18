@@ -67,17 +67,20 @@ class ConnectionCardAssistantTest {
 
     private val up = row.copy(tunnel = Tunnel("synthetic-device", 22, "g1", 40022, VisitorState(TunnelStatus.RELAYED)))
     private val chip = "connection_assistant_chip"
+    private val CMD = setOf(ru.adsrv.frpjump.assistant.AssistantToolId.SSH_COMMAND)
+    private val INPUT = setOf(ru.adsrv.frpjump.assistant.AssistantToolId.TERMINAL_INPUT)
+    private val BOTH = CMD + INPUT
 
     // Inside the system bars, as a screen is (the test activity draws under them).
     private fun card(content: @androidx.compose.runtime.Composable () -> Unit) = compose.setContent { FrpJumpTheme { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.systemBarsPadding()) { content() } } }
 
     @Test fun theMarkIsACalmLineThatOpensTheSheetAndAskAgainEndsBothLifetimes() {
-        var mark by mutableStateOf<AssistantMark?>(AssistantMark(session = true, sessionBoth = false, rememberedAt = null, rememberedBoth = false))
+        var mark by mutableStateOf<AssistantMark?>(AssistantMark(sessionTools = CMD, rememberedAt = null))
         var forgotten = 0
         card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = mark, onForgetAssistant = { forgotten++; mark = null }) }
         compose.onNodeWithTag(chip, useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         compose.onNodeWithText(text(R.string.connection_assistant_chip_session), useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithContentDescription(text(R.string.connection_assistant_chip_description, text(R.string.connection_assistant_chip_session))).assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.connection_assistant_chip_description, "\u2068Pi shell\u2069", text(R.string.connection_assistant_chip_session))).assertIsDisplayed()
         shot("connection-card-assistant-mark")
         compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
         compose.onNodeWithText(text(R.string.connection_assistant_sheet_title, "\u2068Pi shell\u2069")).assertExists()
@@ -93,7 +96,7 @@ class ConnectionCardAssistantTest {
 
     @Test fun closeKeepsTheGrantAndNoMarkWithoutOne() {
         var forgotten = 0
-        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(true, false, null, false), onForgetAssistant = { forgotten++ }) }
+        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(CMD, null), onForgetAssistant = { forgotten++ }) }
         compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
         compose.onNodeWithTag("connection_assistant_close").performScrollTo().performClick(); compose.waitForIdle()
         assertEquals(0, forgotten)
@@ -112,7 +115,7 @@ class ConnectionCardAssistantTest {
     }
 
     @Test fun aRememberedPermissionSaysForThisConnectionWithTheDateAndBothToolsWhenCovered() {
-        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(session = true, sessionBoth = true, rememberedAt = dateMillis, rememberedBoth = true)) }
+        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(sessionTools = BOTH, rememberedAt = dateMillis, rememberedTools = BOTH)) }
         compose.onNodeWithText(text(R.string.connection_assistant_chip_connection), useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.connection_assistant_chip_session), useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
@@ -121,28 +124,37 @@ class ConnectionCardAssistantTest {
         shot("connection-card-assistant-sheet-both")
     }
 
+    @Test fun aTypingOnlyGrantSaysTypingIntoTabsNotCommands() {
+        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(sessionTools = INPUT, rememberedAt = dateMillis, rememberedTools = INPUT)) }
+        compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
+        compose.onNodeWithText(text(R.string.connection_assistant_sheet_session_input)).assertExists()
+        compose.onNodeWithText(text(R.string.connection_assistant_sheet_connection_input, date(dateMillis, "dMMM").trimEnd('.'))).assertExists()
+        compose.onNodeWithText(text(R.string.connection_assistant_sheet_session)).assertDoesNotExist()
+        shot("connection-card-assistant-sheet-typing")
+    }
+
     @Test fun aDateFromAnotherYearCarriesTheYear() {
         val old = java.time.LocalDate.of(java.time.LocalDate.now().year - 1, 11, 13).atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(false, false, old, false)) }
+        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(null, old, CMD)) }
         compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
         compose.onNodeWithText(text(R.string.connection_assistant_sheet_connection, date(old, "dMMMy").trimEnd('.'))).assertExists()
     }
 
     @Test fun theSheetAndTheMarkGoWhenTheGrantEndsWhileItIsOpen() {
-        var mark by mutableStateOf<AssistantMark?>(AssistantMark(true, false, dateMillis, false))
+        var mark by mutableStateOf<AssistantMark?>(AssistantMark(CMD, dateMillis, CMD))
         card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = mark) }
         compose.onNodeWithTag(chip, useUnmergedTree = true).performClick(); compose.waitForIdle()
         compose.onNodeWithText(text(R.string.connection_assistant_sheet_passwords)).assertExists()
         mark = null; compose.waitForIdle()
         compose.onNodeWithText(text(R.string.connection_assistant_sheet_passwords)).assertDoesNotExist()
         compose.onNodeWithTag(chip, useUnmergedTree = true).assertDoesNotExist()
-        mark = AssistantMark(true, false, null, false); compose.waitForIdle()
+        mark = AssistantMark(CMD, null); compose.waitForIdle()
         compose.onNodeWithText(text(R.string.connection_assistant_sheet_passwords)).assertDoesNotExist()
     }
 
     @Test fun aDownCardOffersOnlyPowerOnAndMenuAndAnUpCardAlsoItsMainAction() {
         card { androidx.compose.foundation.layout.Column {
-            ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(true, false, null, false))
+            ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(CMD, null))
         } }
         compose.onNodeWithTag("card_on", useUnmergedTree = true).assertIsDisplayed().assertWidthIsAtLeast(44.dp).assertHeightIsAtLeast(44.dp)
         compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed().assertWidthIsAtLeast(44.dp)
@@ -153,7 +165,7 @@ class ConnectionCardAssistantTest {
     }
 
     @Test fun anUpSshCardHasTerminalPowerOffAndMenuWithTheSessionCountAndNamedActions() {
-        card { ConnectionCard(up, sshMethod = null, sessions = SessionCount(2, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(false, false, dateMillis, true)) }
+        card { ConnectionCard(up, sshMethod = null, sessions = SessionCount(2, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(null, dateMillis, BOTH)) }
         compose.onNodeWithTag("card_main", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(44.dp)
         compose.onNodeWithTag("card_off", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed()
@@ -164,11 +176,12 @@ class ConnectionCardAssistantTest {
         shot("connection-card-up")
     }
 
-    @Test fun aCardBeingConnectedOffersOnlyABusyPowerOffAndMenu() {
+    @Test fun aCardBeingConnectedOffersOnlyADisabledPowerOnAndMenu() {
         card { ConnectionCard(row.copy(pending = PendingOp.CONNECTING), sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions) }
-        compose.onNodeWithTag("card_off", useUnmergedTree = true).assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithTag("card_on", useUnmergedTree = true).assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithContentDescription(text(R.string.connect_named, "Pi shell")).assertIsDisplayed()
         compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithTag("card_on", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("card_off", useUnmergedTree = true).assertDoesNotExist()
     }
 }
