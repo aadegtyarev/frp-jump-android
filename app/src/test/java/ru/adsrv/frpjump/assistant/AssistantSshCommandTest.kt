@@ -92,6 +92,13 @@ class AssistantSshCommandTest {
             authAttempts.incrementAndGet(); beforeAuth?.invoke(); if (refuse) throw UserAuthException("private key detail")
             user = username; keyAuth = true
         }
+        // The app's key login goes through auth(user, methods) with its own AuthPublickey per key (К3: which key got in).
+        override fun auth(username: String, methods: Iterable<net.schmizz.sshj.userauth.method.AuthMethod>) {
+            if (methods.any() && methods.all { it is net.schmizz.sshj.userauth.method.AuthPublickey }) {
+                authAttempts.incrementAndGet(); beforeAuth?.invoke(); if (refuse) throw UserAuthException("private key detail")
+                user = username; keyAuth = true
+            } else super.auth(username, methods)
+        }
         override fun startSession(): SessionChannel { sessions.incrementAndGet(); beforeStartSession?.invoke(); return channel }
         override fun disconnect() {
             disconnectThreads += Thread.currentThread().name; disconnects.incrementAndGet(); disconnected.countDown(); disconnectedTwice.countDown(); beforeDisconnect?.invoke()
