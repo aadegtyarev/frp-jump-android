@@ -68,10 +68,11 @@ internal class WindowPin {
     fun active(scrollY: Int): Boolean = scrollY >= slotY && scrollY < endY
 }
 
-/** The one line each rule that stops a «+» or «−» says, shown with the bar so the reason is in sight with the disabled button; null when no rule stops that row. */
-internal class WindowRules(val history: String?, val reply: String?, val summary: String?) {
-    val lines: List<String> get() = listOfNotNull(history, reply, summary).distinct()
-}
+/**
+ * The line each rule that stops a «+» or «−» says, per row (under the row, when the strip has no room for lines); null when no rule stops that row.
+ * [lines] are for the bar's card: each hit rule once, whatever rows it stops (both sum rules hit: the one combined line).
+ */
+internal class WindowRules(val history: String?, val reply: String?, val summary: String?, val lines: List<String> = listOfNotNull(history, reply, summary).distinct())
 
 @Composable
 internal fun windowRules(split: WindowSplit): WindowRules {
@@ -87,16 +88,20 @@ internal fun windowRules(split: WindowSplit): WindowRules {
     val historyAtMin = split.history <= split.historyMin() && split.historyMin() > WindowSplit.HISTORY_RANGE.first
     val replyAtMax = split.reply >= split.replyMax() && split.replyMax() < WindowSplit.REPLY_RANGE.last
     val summaryAtMax = split.summary >= split.summaryMax() && split.summaryMax() < WindowSplit.SUMMARY_RANGE.last
-    return WindowRules(
-        history = when {
-            historyAtMax -> if (replyFull && summaryFull) ruleBoth else if (replyFull) ruleReply else ruleSummary
-            historyAtMin -> ruleGap
-            else -> null
-        },
-        reply = ruleReply.takeIf { replyAtMax },
-        // The gap stops the summary when the history leaves less than the sum rule does.
-        summary = (if (split.history - WindowSplit.SUMMARY_GAP <= WindowSplit.SUM_MAX - split.history) ruleGap else ruleSummary).takeIf { summaryAtMax },
-    )
+    val history = when {
+        historyAtMax -> if (replyFull && summaryFull) ruleBoth else if (replyFull) ruleReply else ruleSummary
+        historyAtMin -> ruleGap
+        else -> null
+    }
+    val reply = ruleReply.takeIf { replyAtMax }
+    // The gap stops the summary when the history leaves less than the sum rule does.
+    val summary = (if (split.history - WindowSplit.SUMMARY_GAP <= WindowSplit.SUM_MAX - split.history) ruleGap else ruleSummary).takeIf { summaryAtMax }
+    // The strip says each rule hit once: the two sum rules (reply, summary) together are the combined line, the gap rule is its own.
+    val hit = listOfNotNull(history, reply, summary)
+    val sumRules = hit.flatMap { if (it == ruleBoth) listOf(ruleReply, ruleSummary) else listOf(it) }.toSet()
+    val lines = (if (ruleReply in sumRules && ruleSummary in sumRules) listOf(ruleBoth) else listOf(ruleReply, ruleSummary).filter { it in sumRules }) +
+        listOf(ruleGap).filter { it in sumRules }
+    return WindowRules(history, reply, summary, lines)
 }
 
 /**

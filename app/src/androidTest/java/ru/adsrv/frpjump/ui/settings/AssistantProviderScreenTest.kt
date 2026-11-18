@@ -233,6 +233,9 @@ class AssistantProviderScreenTest {
         }.flatMap { it.lines() }
         return (strip + rows).toSet()
     }
+    /** The lines of the bar's card (its strip): each hit rule once, none when the strip had to give the lines up. */
+    private fun stripLines(): List<String> =
+        compose.onAllNodesWithTag("window_rule_line", useUnmergedTree = true).fetchSemanticsNodes().map { it.config[SemanticsProperties.Text].joinToString("") }
     /** The reason for the button of [row] is on screen with it: a line of the strip, or the line under that row. */
     private fun assertReasonInSight(row: String, text: String) {
         val lines = compose.onAllNodesWithTag("window_rule_line", useUnmergedTree = true)
@@ -253,15 +256,29 @@ class AssistantProviderScreenTest {
         tagText("window_history_plus").assertIsNotEnabled(); tagText("window_summary_plus").assertIsNotEnabled()
         // History and summary give the same rule: one line, in sight with the disabled buttons.
         assertEquals(setOf(summaryRule), reasons()); assertReasonInSight("summary", summaryRule); assertReasonInSight("history", summaryRule)
+        assertTrue(stripLines().let { it == listOf(summaryRule) || it.isEmpty() })
         tagText("window_reply_plus").assertIsEnabled()
         // The reply up to 15: 80 + 15 = 95 as well, so the history names both rules, the reply its own and the summary its own.
         repeat(10) { tap("window_reply_plus") }
         tagText("window_reply_value").assertTextEquals("15")
         tagText("window_reply_plus").assertIsNotEnabled()
-        assertEquals(setOf(both, replyRule, summaryRule), reasons())
-        assertReasonInSight("reply", replyRule); assertReasonInSight("history", both); assertReasonInSight("summary", summaryRule)
+        // In the strip both rules are ONE combined line (no repeats); only when the lines go under their rows each row has its own.
+        val strip = stripLines()
+        if (strip.isNotEmpty()) {
+            assertEquals(listOf(both), strip); assertEquals(setOf(both), reasons())
+            assertReasonInSight("reply", both); assertReasonInSight("history", both); assertReasonInSight("summary", both)
+        } else {
+            assertEquals(setOf(both, replyRule, summaryRule), reasons())
+            assertReasonInSight("reply", replyRule); assertReasonInSight("history", both); assertReasonInSight("summary", summaryRule)
+        }
         compose.onNode(hasText("95", substring = true) and hasAnyAncestor(hasTestTag("window_label_compact")), useUnmergedTree = true).assertExists()
         glance("window_reply_value", "window-glance-rules")
+        // One rule hit (the summary down a step: only history + reply is at the whole): one line, its own.
+        tap("window_summary_minus")
+        tagText("window_summary_plus").assertIsEnabled(); tagText("window_history_plus").assertIsNotEnabled()
+        assertEquals(setOf(replyRule), reasons()); assertTrue(stripLines().let { it == listOf(replyRule) || it.isEmpty() })
+        tap("window_summary_plus")
+        tagText("window_summary_value").assertTextEquals("15")
         // Lowering the history gives both room back and the lines go; nothing is said under the rows any more.
         tap("window_history_minus")
         tagText("window_history_value").assertTextEquals("75")
