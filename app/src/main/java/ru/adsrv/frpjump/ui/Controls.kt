@@ -145,6 +145,8 @@ fun Field(
     placeholder: String? = null,
     /** At the end of the line under the field (a character count), beside the problem or note. */
     counter: (@Composable () -> Unit)? = null,
+    /** Applied to the text box itself (not the label above), for what must find the box: bring it into view. */
+    inputModifier: Modifier = Modifier,
 ) {
     val colors = AppTheme.colors
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -180,6 +182,7 @@ fun Field(
             colors = fieldColors(),
             modifier = Modifier
                 .fillMaxWidth()
+                .then(inputModifier)
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
         )
     }
