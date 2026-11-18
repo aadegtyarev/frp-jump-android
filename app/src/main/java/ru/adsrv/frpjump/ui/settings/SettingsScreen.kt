@@ -95,7 +95,7 @@ import ru.adsrv.frpjump.ui.HistoryGlyph
 import ru.adsrv.frpjump.ui.TerminalGlyph
 import ru.adsrv.frpjump.ui.KeyboardGlyph
 import ru.adsrv.frpjump.ui.ServerGlyph
-import ru.adsrv.frpjump.ui.ChatGlyph
+import ru.adsrv.frpjump.ui.AssistantGlyph
 import ru.adsrv.frpjump.ui.InfoGlyph
 import ru.adsrv.frpjump.ui.WarnGlyph
 import ru.adsrv.frpjump.ui.FileGlyph
@@ -513,7 +513,7 @@ fun SettingsScreen(
 /** Shared entry used by Settings and the isolated navigation component check. */
 @Composable
 internal fun AssistantChatEntry(onChat: () -> Unit) {
-    SettingRow(tile = { IconTile(ChatGlyph) }, label = stringResource(R.string.chat_title),
+    SettingRow(tile = { IconTile(AssistantGlyph) }, label = stringResource(R.string.chat_title),
         modifier = Modifier.testTag("assistant_chat_entry"), onClick = onChat) { Chevron() }
 }
 
