@@ -367,7 +367,8 @@ class AssistantConversationTest {
             assertEquals(2, seen.size)
             val first = Json.parseToJsonElement(seen.remove()).jsonObject
             val second = Json.parseToJsonElement(seen.remove()).jsonObject
-            assertEquals(512, second["max_completion_tokens"]!!.jsonPrimitive.int)
+            // The output limit is the reply share of the window (5 % of 4,096), not the provider's stored token mirror (512).
+            assertEquals(204, second["max_completion_tokens"]!!.jsonPrimitive.int)
             assertEquals("high", second["reasoning_effort"]!!.jsonPrimitive.content)
             assertEquals(listOf("request_tool"), second["tools"]!!.jsonArray.map { it.jsonObject["function"]!!.jsonObject["name"]!!.jsonPrimitive.content }); assertFalse(second.toString().contains("synthetic-key"))
             assertEquals(2, first["messages"]!!.jsonArray.size)

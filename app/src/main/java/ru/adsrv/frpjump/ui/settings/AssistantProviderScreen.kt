@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.settings
 import ru.adsrv.frpjump.ui.AppAlertDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.assistant.*
 import ru.adsrv.frpjump.agent.openai.validOpenAiApiKey
+import ru.adsrv.frpjump.settings.AssistantLimits
+import ru.adsrv.frpjump.settings.WindowSplit
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.Field
 import ru.adsrv.frpjump.ui.FormScreen
@@ -25,6 +28,8 @@ import ru.adsrv.frpjump.ui.FormScreen
 @Composable
 internal fun AssistantProviderScreen(
     snapshot: AssistantProviderSnapshot,
+    limits: AssistantLimits,
+    onLimits: (AssistantLimits) -> Unit,
     onSave: (AssistantProviderDraft, (String?) -> Unit) -> Unit,
     onModels: (AssistantProviderDraft, (List<String>?, String?) -> Unit) -> (() -> Unit),
     onReload: () -> Unit,
@@ -36,12 +41,15 @@ internal fun AssistantProviderScreen(
             error = assistantProviderError(ProviderSetupException(snapshot.problem))) { }
         return
     }
-    AssistantProviderForm(snapshot, onSave, onModels, onBack)
+    AssistantProviderForm(snapshot, limits, onLimits, onSave, onModels, onBack)
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AssistantProviderForm(
     snapshot: AssistantProviderSnapshot,
+    limits: AssistantLimits,
+    onLimits: (AssistantLimits) -> Unit,
     onSave: (AssistantProviderDraft, (String?) -> Unit) -> Unit,
     onModels: (AssistantProviderDraft, (List<String>?, String?) -> Unit) -> (() -> Unit),
     onBack: () -> Unit,
@@ -54,7 +62,21 @@ private fun AssistantProviderForm(
     var model by rememberSaveable { mutableStateOf(initial.model) }
     var effort by rememberSaveable { mutableStateOf(initial.effort.orEmpty()) }
     var context by rememberSaveable { mutableStateOf(initial.contextTokens.toString()) }
-    var output by rememberSaveable { mutableStateOf(initial.outputTokens.toString()) }
+    // The window group: the shares are the owner's limits (saved with this form's Save), the answer reserve in tokens is derived from the reply share.
+    val firstSplit = remember { limits.split }
+    val firstLimitedFrom = remember { limits.replyLimitedFrom }
+    var history by rememberSaveable { mutableIntStateOf(firstSplit.history) }
+    var reply by rememberSaveable { mutableIntStateOf(firstSplit.reply) }
+    var summary by rememberSaveable { mutableIntStateOf(firstSplit.summary) }
+    val split = WindowSplit(history, reply, summary)
+    val scroll = rememberScrollState()
+    val pin = remember { WindowPin() }
+    // While the steppers are in use (scrolled to the bar's place and not past the end of the steppers' card) and no keyboard is up, the bar is shown in its
+    // strip above the scroll (its place stays empty), so nothing is ever under it; the keyboard and the fields below the steppers get all the room.
+    val keyboard by rememberUpdatedState(WindowInsets.isImeVisible)
+    val pinned by remember { derivedStateOf { !keyboard && pin.active(scroll.value) } }
+    val rules = windowRules(split)
+    val latestLimits by rememberUpdatedState(limits)
     var completion by rememberSaveable { mutableStateOf(initial.completionTokenField) }
     var summaryModel by rememberSaveable { mutableStateOf(initial.summaryModel.orEmpty()) }
     // Never save plaintext input in a Bundle/SavedState. Saved key is never rendered or prefilled.
@@ -70,17 +92,16 @@ private fun AssistantProviderForm(
     DisposableEffect(Unit) { onDispose { active = false; pending = null; cancelDiscovery?.invoke(); cancelDiscovery = null } }
     val busy = pending != null
     val stale = snapshot.revision != boundRevision
-    val candidate = context.toIntOrNull()?.let { c -> output.toIntOrNull()?.let { o ->
-        AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, o, completion,
+    val candidate = context.toIntOrNull()?.let { c ->
+        AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, split.replyTokens(c), completion,
             initial.summaryPercent, summaryModel.takeIf { it.isNotBlank() })
-    } }
+    }
     val normalized = candidate?.let { runCatching { it.normalized() }.getOrNull() }
     val reuse = bound.settings != null && normalized?.baseUrl == bound.settings.baseUrl
     val valid = normalized != null && (if (key.isEmpty()) reuse && !replacementRequired else validOpenAiApiKey(key)) && !stale
     fun draft(): AssistantProviderDraft? {
         val c = context.toIntOrNull() ?: return null
-        val o = output.toIntOrNull() ?: return null
-        val now = runCatching { AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, o, completion,
+        val now = runCatching { AssistantProviderSettings(root, model, effort.takeIf { it.isNotEmpty() }, c, split.replyTokens(c), completion,
             initial.summaryPercent, summaryModel.takeIf { it.isNotBlank() }).normalized() }.getOrNull() ?: return null
         val canReuse = bound.settings != null && now.baseUrl == bound.settings.baseUrl
         if (snapshot.revision != boundRevision || (if (key.isEmpty()) !canReuse || replacementRequired else !validOpenAiApiKey(key))) return null
@@ -92,7 +113,8 @@ private fun AssistantProviderForm(
     FormScreen(
         title = stringResource(R.string.assistant_provider_title), action = stringResource(R.string.save), busy = busy,
         actionEnabled = valid, error = failure ?: if (stale && !saving) stringResource(R.string.assistant_provider_stale) else null,
-        onBack = leave,
+        onBack = leave, scroll = scroll,
+        pinned = if (pinned) { { max, width -> WindowStrip(context.toIntOrNull(), split, rules.lines, pin, max, width) } } else null,
         onAction = {
             val captured = draft()
             if (captured != null && !busy) {
@@ -100,7 +122,11 @@ private fun AssistantProviderForm(
                 val complete: (String?) -> Unit = { error ->
                     if (active && pending === owner) {
                         pending = null; saving = false; failure = error
-                        if (error == null) { key = ""; onBack() }
+                        if (error == null) {
+                            // The shares are saved after the provider, so a refused save leaves them as they were.
+                            onLimits(latestLimits.withSplit(split, WindowSplit.stillLimited(firstLimitedFrom.takeIf { reply == firstSplit.reply }, captured.settings.contextTokens)))
+                            key = ""; onBack()
+                        }
                     }
                 }
                 try { onSave(captured, complete) } catch (error: Exception) { complete(assistantProviderError(error)) }
@@ -140,13 +166,18 @@ private fun AssistantProviderForm(
         Field(stringResource(R.string.assistant_provider_effort), effort, { effort = it.take(33); edited() },
             Modifier.testTag("assistant_effort"), enabled = !busy, note = stringResource(R.string.assistant_provider_effort_hint))
         TextButton(enabled = !busy, onClick = { chooseEffort = true }) { Text(stringResource(R.string.assistant_provider_effort_presets)) }
-        Field(stringResource(R.string.assistant_provider_context), context, { context = it.filter(Char::isDigit).take(8); edited() },
-            Modifier.testTag("assistant_context"), enabled = !busy, keyboard = KeyboardType.Number)
-        Field(stringResource(R.string.assistant_summary_model), summaryModel, { summaryModel = it.take(257); edited() },
-            Modifier.testTag("assistant_summary_model"), enabled = !busy, note = stringResource(R.string.assistant_summary_model_hint))
-        Field(stringResource(R.string.assistant_provider_output), output, { output = it.filter(Char::isDigit).take(8); edited() },
-            Modifier.testTag("assistant_output"), enabled = !busy, keyboard = KeyboardType.Number,
-            note = stringResource(R.string.assistant_provider_window_hint))
+        AssistantWindowGroup(window = context.toIntOrNull(), split = split, rules = rules,
+            limitedFrom = WindowSplit.stillLimited(firstLimitedFrom.takeIf { reply == firstSplit.reply }, context.toIntOrNull()), enabled = !busy,
+            pin = pin, pinned = pinned, onSplit = { history = it.history; reply = it.reply; summary = it.summary; edited() },
+            top = {
+                Field(stringResource(R.string.assistant_provider_context), context, { context = it.filter(Char::isDigit).take(8); edited() },
+                    Modifier.testTag("assistant_context"), enabled = !busy, keyboard = KeyboardType.Number,
+                    note = stringResource(R.string.assistant_provider_window_hint))
+            },
+            bottom = {
+                Field(stringResource(R.string.assistant_summary_model), summaryModel, { summaryModel = it.take(257); edited() },
+                    Modifier.testTag("assistant_summary_model"), enabled = !busy, note = stringResource(R.string.assistant_summary_model_hint))
+            })
         Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { completion = !completion; edited() }) {
             Checkbox(checked = completion, enabled = !busy, onCheckedChange = { completion = it; edited() })
             Text(stringResource(R.string.assistant_provider_completion_field))

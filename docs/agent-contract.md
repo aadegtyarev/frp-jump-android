@@ -172,11 +172,19 @@ tunnel limits are read at use. The kernel's own parameters stay validated (`Agen
 | Assistant | Steps per reply (12; 1-50; 1) and Calls per step (4; 1-10; 1) |
 | Assistant | Skills, at most (50; 1-200; 1), Skill size, characters (4,000; 500-20,000; 500), Skills list per request, characters (2,000; 500-8,000; 500) |
 | Assistant | Tool output, characters (8,000; 2,000-32,000; 1,000) = the tool-result cap (`ssh_command`, the terminal reads and the `profile_information` pages keep that less 200) |
-| Assistant | Reply length, characters (32,000; 4,000-128,000; 4,000) |
-| Assistant | Summarize at window fill, % (80; 10-90; 5), Summary size, % of window (15; 5-40; 5), Fresh tool output, % of window (20; 5-50; 5): see [Automatic working summaries](#automatic-working-summaries). The first two together may not pass 95: the screen stops each one's plus where the pair would pass it and says so in one line; a file that breaks it is read with the summary size giving way. The trigger is absent in the file until the owner or the provider form's old value sets it (default 80 meanwhile). A trigger moved from the provider form that the default summary size leaves no room for (over 80) becomes 80 and the size stays 15 |
+| Assistant | The history, reply and summary shares of the model's window are not on this screen: they are the «Окно модели» group of the provider form ([Provider settings](#provider-settings-and-credentials)); the reply length cap is derived from the reply share (below) |
 | Waits | Waits at once (3; 1-10), Longest wait, min (30; 1-120), Event replies in a row (5; 1-20), Assistant sessions (3; 1-10) |
 | Terminal | Input at once, characters (2,000; 100-10,000; 100), Keys at once (32; 1-100; 1), Lines per read, at most (1,000; 100-10,000; 100) |
 | Tunnels | Start wait, s (45; 5-120; 5) = how long a tunnel brought up by the owner's Start, "Use key login" or `start_tunnel` is waited for (`start_tunnel` still ends at three quarters of One call); Terminal auto-reconnect, min (10; 1-60; 1) |
+
+The window split is stored in the same `assistant_limits` group, beside the old keys, which an older version still reads: `history_percent`, `reply_percent`,
+`summary_size_percent` (kept from the earlier version: the summary share, same meaning) and `reply_limited_from` (tokens; present only while the old answer
+reserve is shown as cut). The shares are absent until the owner saves the provider form or the old values are converted, once, at app start when a provider is
+saved: reply share = the provider's old answer reserve over its window, rounded up and held in 1-20 (an owner who kept both old defaults, 2,048 tokens and trigger 80, gets the new defaults 75 / 5 / 15 instead, the reply share raised to keep at least those 2,048 tokens on a small window, up to 20 %; when held, `reply_limited_from` keeps the old tokens and the form
+says so under «Ответ модели» until the owner changes it); history share = the old trigger (the `summary_percent` limit when set, else the provider form's old value) less the
+reply share, held in 40-90; the summary share is the old `summary_size_percent`; then the rules hold, the history lowered first, then the summary gives way to the gap. Each save of the form also writes the old `summary_percent` as history + reply (held in 10-90) and the provider's `outputTokens` as the reply share in tokens, so a
+downgrade (and a later conversion) reads the same shares; the provider's `summaryPercent` stays as it was. Neither is read again once the shares are set. `reply_chars` and `fresh_tool_percent` are no longer
+written. The reply length cap is derived: max(32,000, reply-share tokens × 8); an owner value above that is no longer kept.
 
 The model's texts that state these numbers (the input, key, line and output limits, the `wait_for` limits) are built from the settings when the tools are described:
 at the defaults the words are exactly the ones this contract quotes with the default numbers. The numbers below are the defaults.
@@ -194,8 +202,8 @@ left out, never half of a tool-call/result pair. Current user/instructions and
 the latest complete exchange are not silently discarded. If those cannot fit,
 the run returns context-full without another model call.
 
-Defaults: a 262,144-token (256K) estimated total budget with 2,048 tokens reserved for
-output. The default counter uses UTF-8 byte lengths plus framing allowances:
+Defaults: a 262,144-token (256K) estimated total budget with 13,107 tokens (the reply
+share, 5 % of the window) reserved for output. The default counter uses UTF-8 byte lengths plus framing allowances:
 **it is an estimate, not a provider tokenizer or a guarantee that every API
 accepts the request**. A provider-specific counter can replace it. Window
 omissions are observable kernel events, not fabricated summaries. Callers may
@@ -208,7 +216,8 @@ ordinary sliding window. Chat still indicates any pre-existing omissions.
 Tool result text is capped at 8,000 UTF-16 characters by default, preserving
 head/tail with a visible omission marker and an omitted-character count.
 Cuts never split a valid surrogate pair. Model reply text/call arguments are
-limited to 32,000 aggregate characters per response. A returned String is
+limited per response to the larger of 32,000 aggregate characters and eight characters for each token of the
+reply share (the app derives the cap from the window split; the kernel default stays 32,000). A returned String is
 already allocated: these are kernel-result bounds, not a total-heap or
 transport-buffer guarantee. Stream-reading adapters must cap capture as data
 arrives. The kernel does not own full UI history/storage or an unbounded
@@ -229,10 +238,23 @@ model discovery is not required to enter a manual model ID.
 
 The form accepts API root, model ID (manual or explicitly fetched), optional
 effort (provider default, presets or a manually entered value), model context
-window, output reserve and the output-token parameter spelling. It also accepts
-an optional summary model ID; blank uses the chat model. The summary trigger is
-not on this form: it is a limit ([Limits](#limits)); a value an older version
-stored here is read once and becomes that limit. The form explains the additional model
+window and the output-token parameter spelling. It also accepts
+an optional summary model ID; blank uses the chat model. The form's one group
+«Окно модели» / "Model window" holds the window, then a bar of the whole window and three
+steppers, then the summary model. Each stepper is one piece of the bar, in percent of the window:
+«История до сжатия» (default 75; 40-90; step 5), «Ответ модели» (5; 1-20; step 1) and «Сводка» (15; 5-40; step 5).
+The margin (100 − history − reply) is derived and shown on the bar, not a setting. The model's
+reply share is the request's output limit (share × window, at least 1 token); it replaces the old
+token field. Three rules: history + reply ≤ 95 and history + summary ≤ 95 (a 5 % margin; the summary
+request reads the whole history), and summary ≤ history − 10 (a shortening frees at least 10 % of the window); at a limit the «+» (for the
+history's lowest, the «−») is off and one line under that row names the rule.
+The bar is the whole window in three calm pieces (history, reply, margin) with a line where the shortening
+starts (history + reply) and a dashed mark at the summary's size inside the history («after shortening»),
+labels with the shares and short token counts (197K, 13K; the TalkBack description of the same has the whole numbers), and, once the form is scrolled past its
+place and until the steppers end (and not while the keyboard is up), it moves to a strip of its own above the scrolling part (the place stays empty), so the rows
+scroll below it and never under it; the line that names the rule stopping a button is in the bar's card, so it is in sight with the button. The shares are the owner's limits, saved with Save after the
+provider (a refused save leaves them as they were); the old trigger and answer reserve stored by an older
+version are converted once ([Limits](#limits)). The form explains the additional model
 request and shared provider/key/window requirements. Saving makes no request. The API key
 field is masked, never prefilled, and deliberately excluded from saved instance
 state. A restored form that lost a replacement key requires re-entry rather
@@ -396,8 +418,8 @@ makes no request.
 - Budget: the text, its separator and its header count toward the estimated
   request size, with a fixed framing allowance, in the sliding window and in
   the summary trigger. 2,000 Cyrillic characters estimate to about 4,000 tokens,
-  about 1.5% of the default 260,096-token input budget (the 262,144-token
-  window minus the 2,048-token output reserve), so summaries and omissions
+  about 1.6% of the default 249,037-token input budget (the 262,144-token
+  window minus the 13,107-token reply share), so summaries and omissions
   start earlier. Without text nothing is added.
 - Capture: the text is captured at Send admission together with the tool set and
   sent unchanged in every request of that Send; a change during a run affects
@@ -589,7 +611,8 @@ that work's actual exit, as described above. The lock order is in KDoc (see
 
 Before kernel window selection, Chat compares the estimated request size,
 including instructions, the owner's own instructions when set, tool schemas and
-output reserve, with the configured window and trigger percentage. The percentage defaults to 80 and accepts 1–100.
+output reserve, with the configured window and the history and reply shares: it starts when the request reaches their sum
+(default 75 + 5 = 80 % of the window), that is when the history reaches its share.
 When eligible older data exists, an ordinary non-streaming provider request
 summarizes it before eviction. This also handles older complete exchanges inside
 one long current turn; the latest complete exchange and current user stay verbatim.
@@ -614,14 +637,15 @@ API root or chat model clears this working summary and starts the ordinary new
 active context without deleting old messages. Restoring or clearing makes no
 provider/tool request and never resumes or repeats an action.
 
-Shortening never fails the request when it can be avoided. Every share is of the model's context window and an owner's limit
-([Limits](#limits)): the trigger (default 80 %), the summary size (default 15 %; it is the summary request's own output limit, in the
-estimate's units, and its text limit: UTF-8 bytes count as tokens here as in the trigger, so a Russian text of the same size has half the characters;
-the provider form's answer limit is not a cap but the fallback when a provider refuses that output limit with HTTP 400 or 422, then the same
-request is sent once with the answer limit, and that does not use up the blank-reply retry) and the fresh tool output (default 20 %). While the estimated request is over the trigger, in this order:
+Shortening never fails the request when it can be avoided. Every share is of the model's context window and the owner's window split
+(provider form, «Окно модели»): the history share (default 75 %) with the reply share (5 %) is the trigger, the summary share (default 15 %) is the summary
+request's own output limit, in the estimate's units, and its text limit (UTF-8 bytes count as tokens here as in the trigger, so a Russian text of the same size
+has half the characters); the reply share is not a cap on a summary but the fallback when a provider refuses that output limit with HTTP 400 or 422, then
+the same request is sent once with the reply share, and that does not use up the blank-reply retry. While the estimated request is over the trigger, in this order:
 
 1. Old tool output is replaced, in what the model sees only, by a short note (length, outcome, "do not assume what it said; never repeat a
-   changing command to read it again"); the newest tool output up to the fresh share and the latest exchange stay whole. Nothing is saved or removed.
+   changing command to read it again"); the oldest outputs go first and only until the request is down to the history share less the summary share (plus the reply reserve; default 60 % + 5 %
+   of the window); the latest exchange stays whole. Nothing is saved or removed.
 2. One model summary of the oldest part that fits its own request (at most two such rounds per Send; never after an overflow, see 4). A blank
    reply or one with tool calls is retried once with a stricter instruction; a text over the size is cut to it (by bytes, at a character boundary,
    with a note); a reply that does not make the request smaller is not saved and counts as a failure. The request states the same size limit.

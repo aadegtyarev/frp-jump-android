@@ -78,16 +78,8 @@ internal fun AssistantLimitsScreen(limits: AssistantLimits, onChange: (Assistant
                     val effective = if (spec.key == "reply_s") (limits.replyLimitMs() / 1000).toInt() else spec.get(limits)
                     val raised = if (spec.key == "reply_s" && effective > spec.get(limits)) stringResource(R.string.limit_reply_raised, effective) else null
                     // The whole reply cannot go below one call plus one model answer (live): its minus is off there, so it never looks dead above it.
-                    // The fill that starts a summary and the summary's size share the window: each one's plus stops where the pair would pass the whole, and says so.
-                    val range = when (spec.key) {
-                        "reply_s" -> maxOf(spec.range.first, limits.toolTimeoutSeconds + limits.modelTimeoutSeconds)..spec.range.last
-                        "summary_percent" -> spec.range.first..limits.summaryPercentMax()
-                        "summary_size_percent" -> spec.range.first..limits.summarySizeMax()
-                        else -> spec.range
-                    }
-                    val pair = if (range.last < spec.range.last) stringResource(R.string.limit_summary_pair, AssistantLimits.SUMMARY_PAIR_MAX) else null
-                    val hint = listOfNotNull(raised, pair).joinToString("\n").ifEmpty { null }
-                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), effective, range, spec.step, hint) { onChange(spec.set(limits, it)) }
+                    val range = if (spec.key == "reply_s") maxOf(spec.range.first, limits.toolTimeoutSeconds + limits.modelTimeoutSeconds)..spec.range.last else spec.range
+                    LimitRow("limit_${spec.key}", stringResource(limitLabel(spec.key)), effective, range, spec.step, raised) { onChange(spec.set(limits, it)) }
                 }
             }
         }
@@ -111,10 +103,6 @@ private fun limitLabel(key: String) = when (key) {
     "skill_chars" -> R.string.limit_skill_chars
     "skills_list_chars" -> R.string.limit_skills_list
     "tool_output_chars" -> R.string.limit_tool_output
-    "reply_chars" -> R.string.limit_reply_chars
-    "summary_percent" -> R.string.limit_summary_percent
-    "summary_size_percent" -> R.string.limit_summary_size
-    "fresh_tool_percent" -> R.string.limit_fresh_tool
     "waits_at_once" -> R.string.limit_waits_at_once
     "wait_max_minutes" -> R.string.limit_wait_max_minutes
     "event_replies" -> R.string.limit_event_replies
@@ -126,10 +114,10 @@ private fun limitLabel(key: String) = when (key) {
     else -> R.string.limit_reconnect
 }
 
-/** The label (the row reads it with its value), then "−" and "+" around the value, in the row's own text size. */
+/** The label (the row reads it with its value), then "−" and "+" around the value, in the row's own text size; [hint] is one line (or two) under it. */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun LimitRow(tag: String, label: String, value: Int, range: IntRange, step: Int, hint: String?, onChange: (Int) -> Unit) {
+internal fun LimitRow(tag: String, label: String, value: Int, range: IntRange, step: Int, hint: String?, onChange: (Int) -> Unit) {
     val style = MaterialTheme.typography.bodyLarge
     val shown = limitNumber(value)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {

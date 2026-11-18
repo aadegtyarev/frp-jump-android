@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump
 
+import ru.adsrv.frpjump.assistant.adoptWindowSplitFrom
 import android.app.Application
 import android.app.NotificationManager
 import android.os.Handler
@@ -399,8 +400,9 @@ class FrpJumpApp : Application() {
         settings = SettingsStore(AtomicTextFile(File(filesDir, "settings.json")))
         assistantProvider = ru.adsrv.frpjump.assistant.AssistantProviderStore(
             AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"), settings.assistantChat)
-        // The summary trigger used to be a field of the provider form: its stored value becomes the limit once, unless the owner set one already.
-        assistantProvider.currentSnapshot.settings?.let { settings.adoptSummaryPercent(it.summaryPercent) }
+        // The history, reply and summary shares of the window group are made once from the old values (the answer reserve and the trigger),
+        // when a provider is saved and the shares are not set yet; the old fields stay as they are, for older versions.
+        settings.adoptWindowSplitFrom(assistantProvider.currentSnapshot.settings)
         assistant = ru.adsrv.frpjump.assistant.bindAssistantLifecycle(settings, appScope)
         restoreAppLanguage(settings.settings.value.language)
         applyTheme(settings.settings.value.theme)

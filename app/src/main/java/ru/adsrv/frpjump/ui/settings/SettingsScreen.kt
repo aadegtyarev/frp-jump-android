@@ -168,7 +168,7 @@ fun SettingsScreen(
         return
     }
     if (providerSetup) {
-        AssistantProviderScreen(assistantProvider, onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
+        AssistantProviderScreen(assistantProvider, settings.assistantLimits, vm::setAssistantLimits, onSave = { draft, done -> vm.saveAssistantProvider(draft, done); Unit },
             onModels = vm::assistantModels, onReload = { vm.reloadAssistantProvider() }, onBack = { providerSetup = false })
         return
     }
