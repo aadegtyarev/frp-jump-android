@@ -283,13 +283,6 @@ fun ConnectionCard(
                 if (stacked) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { buttons() }
                 else Row(verticalAlignment = Alignment.CenterVertically) { buttons() }
             }
-            // SSH diagnostics: at the card's full width under the text and the buttons, one row that wraps only between its items.
-            if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {
-                LiveTerminalDiagnostics(
-                    TunnelRef(row.profile, c.device, c.port),
-                    Modifier.alpha(if (unreachable) DIMMED else 1f).padding(start = 14.dp, end = 14.dp, bottom = 2.dp),
-                )
-            }
         }
     }
 }

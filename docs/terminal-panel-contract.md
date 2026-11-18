@@ -3,7 +3,7 @@
 ## Scope
 
 This surface owns the terminal panel's Keys/Text controls, additional-key
-layout, gestures and accessibility. It serves the owner using an SSH tab and
+layout, gestures and accessibility, and the terminal history setting. It serves the owner using an SSH tab and
 maintainers changing terminal UI. It inherits the shared
 [UI rules](contract.md#ui-rules): keep common actions direct, copy concise,
 and waiting/error feedback and accessibility intact.
@@ -149,6 +149,28 @@ Component tests do not establish physical-phone, keyboard-vendor,
 TalkBack-by-ear or end-to-end SSH performance/delivery guarantees. Report
 those limits rather than treating layout checks as device validation.
 
+## Terminal history setting
+
+- Settings → Terminal → History rows offers 500, 1000, 3000 and 10000.
+  Default: 1000, including older settings without this value.
+- Preserve a valid stored choice. Invalid/unknown values or types fall back to
+  1000 without discarding unrelated settings.
+- Capture the choice when a new SSH session/terminal emulator is constructed.
+  Existing terminals are not recreated, trimmed or disconnected by changing it.
+  Auto-reconnect of the same session retains that terminal's original limit;
+  opening a new tab or explicitly replacing a session uses the new setting.
+- Pass the same configured buffer-row value to `TerminalSession` and
+  `TerminalEmulator`. This is the total main-buffer limit, including visible
+  rows, not a promise of that many off-screen rows. Preserve existing text;
+  recheck buffer semantics when changing the pinned Termux library.
+- Local history is not tmux's remote history. The alternate-screen and tmux
+  scroll/copy behavior belongs to the [SSH contract](ssh-persist-contract.md).
+
+Checks: history defaults and persistence, invalid-value fallback without
+unrelated-setting loss, constructor limits, new-session capture, and
+preservation of existing text and sessions across preference changes and
+reconnect (`SettingsStoreTest`, `TerminalHistoryTest`).
+
 ## Non-goals and related surfaces
 
 No automatic remote-program detection, replacement direct-input preference,
@@ -157,4 +179,3 @@ persistent drafts or new transport/paste path is introduced by this panel.
 - [App and shared UI rules](contract.md#ui-rules)
 - [Terminal text input](terminal-text-input-contract.md)
 - [SSH persistence](ssh-persist-contract.md)
-- [Terminal history and diagnostics](terminal-diagnostics-contract.md)

@@ -2,8 +2,6 @@ package com.termux.terminal
 
 import java.io.IOException
 import ru.adsrv.frpjump.settings.DEFAULT_TERMINAL_HISTORY_ROWS
-import ru.adsrv.frpjump.ssh.diagnostics.TerminalMetrics
-import ru.adsrv.frpjump.ssh.diagnostics.ObservationToken
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.LinkedBlockingQueue
@@ -24,7 +22,6 @@ import kotlin.concurrent.thread
  * Construct on the main thread: the session's handler binds to its looper.
  */
 class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int = 24, val historyRows: Int = DEFAULT_TERMINAL_HISTORY_ROWS) {
-    val metrics = TerminalMetrics(historyRows)
     val session = TerminalSession("/system/bin/false", "/", arrayOf(), arrayOf(), historyRows, client)
     /**
      * Writes local notes in order. Its one thread is a daemon and ends after
@@ -87,8 +84,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                 val count: Int
                 val out: OutputStream?
                 val owner: Long
-                val epoch: Long
-                val token: ObservationToken?
                 val queue = session.mTerminalToProcessIOQueue
                 synchronized(queue) {
                     // Read and bind to an output under the same monitor as pump's
@@ -104,23 +99,15 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                     count = read
                     out = output
                     owner = inputGeneration
-                    epoch = metrics.currentGeneration()
-                    token = metrics.token()
                 }
                 if (count < 0) break
                 if (out == null || inputGeneration != owner || output !== out) continue
-                val started = if (token != null) System.nanoTime() else 0L
                 // May hold the bytes for a round trip to the device (tmux copy mode); keys typed meanwhile wait in the queue.
-                try {
-                    beforeWrite?.invoke(buffer, count)
-                } finally {
-                    if (token != null) metrics.beforeWriteFinished(token, System.nanoTime() - started)
-                }
+                beforeWrite?.invoke(buffer, count)
                 if (inputGeneration != owner || output !== out) continue
                 try {
                     out.write(buffer, 0, count)
                     out.flush()
-                    metrics.written(epoch, count)
                 } catch (_: IOException) {
                     // The reader sees the same failure and reports it.
                 }
@@ -135,7 +122,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
      * with a new connection's streams.
      */
     fun pump(input: InputStream, output: OutputStream, onEnd: (IOException?) -> Unit) {
-        val epoch: Long
         synchronized(inputHandover) {
             if (closed) return
             synchronized(session.mTerminalToProcessIOQueue) {
@@ -143,7 +129,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                 val discarded = ByteArray(BUFFER)
                 while (session.mTerminalToProcessIOQueue.read(discarded, false) > 0) { }
                 inputGeneration++
-                epoch = metrics.connectionOpened()
                 this.output = output
             }
             synchronized(session) { session.mShellPid = Int.MAX_VALUE }
@@ -158,8 +143,7 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
                     if (read < 0) break
                     if (read > 0) {
                         lastOutputNanos = System.nanoTime()
-                        metrics.received(epoch, read)
-                        show(buffer, read, epoch)
+                        show(buffer, read)
                     }
                 }
             } catch (e: IOException) {
@@ -177,7 +161,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         synchronized(session.mTerminalToProcessIOQueue) {
             output = null
             inputGeneration++
-            metrics.connectionClosed()
         }
         synchronized(session) { session.mShellPid = -1 }
     }
@@ -205,7 +188,6 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
         synchronized(session.mTerminalToProcessIOQueue) {
             output = null
             inputGeneration++
-            metrics.connectionClosed()
         }
         synchronized(session) {
             closed = true
@@ -274,16 +256,12 @@ class RemoteTerminal(client: TerminalSessionClient, columns: Int = 80, rows: Int
     val bracketedPaste: Boolean get() = bracketedPasteOn(session.mEmulator)
 
     // The queue is never closed: once closed it drops what is still in it.
-    private fun show(bytes: ByteArray, count: Int, epoch: Long? = null) {
+    private fun show(bytes: ByteArray, count: Int) {
         var offset = 0
         while (offset < count) {
             val chunk = minOf(QUEUE_CHUNK, count - offset)
-            // Local notes have no epoch: never traffic or a remote-input timing sample.
-            // At most one rate-limited marker includes queue backpressure and emulator handling.
-            val marker = epoch?.let(metrics::inputMarker)
             session.mProcessToTerminalIOQueue.write(bytes, offset, chunk)
             session.mMainThreadHandler.sendEmptyMessage(MSG_NEW_INPUT)
-            if (marker != null) session.mMainThreadHandler.post { metrics.inputProcessed(marker) }
             offset += chunk
         }
     }

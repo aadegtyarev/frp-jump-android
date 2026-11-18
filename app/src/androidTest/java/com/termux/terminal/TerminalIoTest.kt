@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 
 /** Real queues/handlers, synthetic bytes, no SSH or enrolled profile. */
 @RunWith(AndroidJUnit4::class)
-class TerminalMetricsIoTest {
+class TerminalIoTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private lateinit var terminal: RemoteTerminal
     private fun main(block: () -> Unit) = instrumentation.runOnMainSync { block() }
@@ -233,7 +233,7 @@ class TerminalMetricsIoTest {
         }
     }
 
-    @Test fun recordsTrafficAndWriterWaitWithoutChangingBytesOrCountingLocalNotes() {
+    @Test fun beforeWriteHoldsTypedBytesUntilItReturnsAndTheStreamGetsThemUnchanged() {
         val incoming = PipedInputStream()
         val peer = PipedOutputStream(incoming)
         val output = ByteArrayOutputStream()
@@ -242,40 +242,16 @@ class TerminalMetricsIoTest {
         try {
             main {
                 terminal = RemoteTerminal(client())
-                terminal.metrics.setObserving(true)
                 terminal.beforeWrite = { _, _ -> entered.countDown(); check(release.await(5, TimeUnit.SECONDS)) }
                 terminal.pump(incoming, output) { }
-            }
-            val text = "remote test\r\n".toByteArray()
-            peer.write(text); peer.flush()
-            await { terminal.metrics.snapshot().incomingProcessing.count > 0 }
-            assertEquals(text.size.toLong(), terminal.metrics.snapshot().receivedBytes)
-            main {
-                terminal.metrics.ownerInput()
                 terminal.session.write("hello".toByteArray(), 0, 5)
             }
             assertTrue(entered.await(5, TimeUnit.SECONDS))
             Thread.sleep(25)
+            assertEquals("", output.toString("UTF-8"))
             release.countDown()
-            await { terminal.metrics.snapshot().sentBytes == 5L }
-            val sent = terminal.metrics.snapshot()
-            assertTrue(sent.beforeWrite.lastMs!! >= 20)
-            assertTrue(sent.inputToSend.lastMs!! >= sent.beforeWrite.lastMs!!)
+            await { output.size() == 5 }
             assertEquals("hello", output.toString("UTF-8"))
-            val incomingSamples = sent.incomingProcessing.count
-            terminal.note("local note")
-            await {
-                var rendered = false
-                main { rendered = terminal.session.emulator.screen.transcriptText.contains("local note") }
-                rendered
-            }
-            assertEquals(text.size.toLong(), terminal.metrics.snapshot().receivedBytes)
-            assertEquals(incomingSamples, terminal.metrics.snapshot().incomingProcessing.count)
-            terminal.metrics.setObserving(false)
-            peer.write(text); peer.flush()
-            await { terminal.metrics.snapshot().receivedBytes == 2L * text.size }
-            instrumentation.waitForIdleSync()
-            assertEquals(incomingSamples, terminal.metrics.snapshot().incomingProcessing.count)
         } finally {
             release.countDown()
             peer.close(); incoming.close()

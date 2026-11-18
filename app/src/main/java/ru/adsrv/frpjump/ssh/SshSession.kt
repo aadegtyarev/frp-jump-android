@@ -10,13 +10,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.flow.collectLatest
-import ru.adsrv.frpjump.ssh.diagnostics.probeVisibilityWhileCurrent
-import ru.adsrv.frpjump.ssh.diagnostics.SshResponseProbe
-import ru.adsrv.frpjump.ssh.diagnostics.SshjResponseProbe
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -238,8 +231,7 @@ class SshSession(
      * "new shell" bar has said its part. Not called for the terminal's own
      * replies to the remote side. Main thread.
      */
-    fun typed(measureInput: Boolean = true) {
-        if (measureInput) terminal.metrics.ownerInput()
+    fun typed() {
         _newShell.value = false
         copyMode.ownerTyped()
     }
@@ -272,7 +264,7 @@ class SshSession(
 
     /**
      * The assistant's typing into this tab ([capturePasteTarget] is the destination): [bytes] queued in one transaction on exactly that
-     * connection. Not the owner's input: no [typed], so no metrics, no "new shell" bar change and no copy-mode guard.
+     * connection. Not the owner's input: no [typed], so no "new shell" bar change and no copy-mode guard.
      */
     fun typeBytes(bytes: ByteArray, destination: PasteTarget): RemoteTerminal.TypeOutcome {
         if (openClient() !== destination.client) return RemoteTerminal.TypeOutcome.REJECTED
@@ -314,26 +306,6 @@ class SshSession(
 
     @Volatile
     private var shell: SessionChannel? = null
-
-    @Volatile private var diagnosticJob: Job? = null
-
-    private fun observeResponse(ssh: SSHClient) {
-        diagnosticJob?.cancel()
-        diagnosticJob = scope.launch(Dispatchers.IO) {
-            val probe = SshResponseProbe(terminal.metrics)
-            val sender = SshjResponseProbe(ssh)
-            // State also drives completion: an EOF before this job starts must
-            // not leave an ended/removed session collecting visibility forever.
-            probeVisibilityWhileCurrent(env.visible, state) { openClient() === ssh }
-                .collectLatest { shown ->
-                    if (!shown) return@collectLatest
-                    while (isActive && openClient() === ssh) {
-                        probe.sampleBlocking(sender) { env.visible.value && openClient() === ssh }
-                        delay(1000)
-                    }
-                }
-        }
-    }
 
     @Volatile
     private var closedByUser = false
@@ -694,7 +666,6 @@ class SshSession(
                 if (terminal.columns != columns || terminal.rows != rows) resize(terminal.columns, terminal.rows)
                 terminal.pump(channel.inputStream, channel.outputStream) { error -> onShellEnded(attempt, ssh, channel, error) }
                 _state.value = SshState.Open
-                observeResponse(ssh)
             }
             if (attached) rememberTabName()
         } catch (e: CancellationException) {
@@ -788,7 +759,6 @@ class SshSession(
             copyMode.active = false
             shell = null
             client = null
-            diagnosticJob?.cancel()
             terminal.pause()
             next
         }
@@ -810,7 +780,6 @@ class SshSession(
             _newShell.value = false
             dropReason = reason
             dropped = true
-            diagnosticJob?.cancel()
             terminal.pause()
             terminal.note("\r\n[$reason]\r\n")
         }
@@ -840,7 +809,6 @@ class SshSession(
         if (_state.value is SshState.Ended) return
         _newShell.value = false
         shell = null
-        diagnosticJob?.cancel()
         terminal.finish()
         _state.value = SshState.Ended(message)
         terminal.note("\r\n[$message]\r\n")
