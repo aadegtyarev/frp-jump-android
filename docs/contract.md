@@ -364,8 +364,8 @@ Quick access to the saved connections of every device.
   the others are asked again every 10 s; pull to refresh asks them all.
   Dots and buttons follow at once; the order of the devices does not move.
 - The header has no visible title (the bottom bar names the tab; TalkBack gets an invisible "Tunnels" heading). At 100% font it is one row:
-  the search, the filter, "⏻ Stop all" and the gear. When they do not fit (a large font in a narrow window; decided by measuring, not by the
-  font scale) it is two rows: the search and the gear, then the filter and "⏻". Nothing is cut or broken inside a word. The Sessions header is
+  the search, the capsule "● N | ⏻" and the gear. When they do not fit (a large font in a narrow window; decided by measuring, not by the
+  font scale) it is two rows: the search and the gear, then the capsule. Nothing is cut or broken inside a word. The Sessions header is
   its title and the gear.
 - Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it over the whole header (the other
   items hide) with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its placeholder names the
@@ -373,13 +373,15 @@ Quick access to the saved connections of every device.
   It matches the device name or its label (all its connections in the scope) or a connection's name, compared as in Devices search, within the
   shown scope; nothing found says so. When the scope shows nothing but tunnels that are off match, one line "In all: N · Show" / «Во всех: N ·
   Показать» turns the filter off.
-- The filter "only tunnels that are on": a 32 dp toggle with the link glyph and the count of the tunnels that are on (up, connecting or being
-  restored, across all profiles). On, the list shows only the tunnels that are on; off, all. It is remembered (a UI choice in the settings
-  file, with the other display choices) and on the first time. At 0 it is disabled and the list shows all. TalkBack: "Only tunnels that are
-  on, N" / «Только включённые, N», a switch with its state.
-- "⏻ Stop all" is always in its place and disabled when nothing is on or being restored, so the header does not move. It disconnects every
-  profile's tunnels, with Undo; a spinner while the servers are told. TalkBack: "Turn off all tunnels, N" / «Выключить все туннели, N».
-  The gear opens Settings.
+- The capsule "● N | ⏻" is one rounded container, 38 dp tall (taller only when a large font needs it), with a thin outline and a thin divider
+  between two halves, each with a touch target of at least 48 dp. At 0 the whole capsule is disabled (a muted dot, number and "⏻", no
+  actions) and stays in its place, so the header does not move.
+- Left half: a green dot (the "online" colour) and N, the count of the tunnels that are on (up, connecting or being restored, across all
+  profiles). A tap toggles the filter "only tunnels that are on": on, the list shows only the tunnels that are on, and the half has the
+  tonal accent fill; off, the list shows all. It is remembered (a UI choice in the settings file, with the other display choices) and on the
+  first time. At 0 the list shows all. TalkBack: "Only tunnels that are on, N" / «Только включённые, N», a switch with its state.
+- Right half: "⏻" in red, Stop all. It disconnects every profile's tunnels, with Undo; a spinner while the servers are told. TalkBack:
+  "Turn off all tunnels, N" / «Выключить все туннели, N». The gear opens Settings.
 - Nothing saved: "No saved tunnels yet. Open a device on Devices and tap
   “Tunnel”."
 
