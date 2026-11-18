@@ -310,10 +310,11 @@ Quick access to the saved connections of every device, active ones first.
   last device list. No label, or a list not read yet, means no line. With
   more than one profile on the tab, the header also shows the
   profile's colour; devices of the same name in two profiles are two groups.
-- Order: devices with an active connection first, then online ones, then the
-  rest (offline, or not in the list); within each part by device name.
-  Within a group the connections keep their stored order; a tunnel up that
-  no saved connection names is listed after them, under its device.
+- Order: devices by name, ignoring case, then profile order. Neither a
+  tunnel's state nor a device's online state changes it, and nothing
+  re-sorts on a visit, a pull or a state change. Within a group the
+  connections keep their stored order; a tunnel up that no saved
+  connection names is listed after them, under its device.
 - Each connection is the same card as on the device card: kind tile, its own
   name only when it has one other than the kind (a default "SSH" is not
   repeated), port (and the SSH user and login method), state, the main
@@ -329,10 +330,7 @@ Quick access to the saved connections of every device, active ones first.
 - While the tab shows, every profile's device list is kept fresh: each is
   asked when the tab shows, the shown profile's is polled as on Devices,
   the others are asked again every 10 s; pull to refresh asks them all.
-  Dots and buttons follow at once. The order of the devices is fixed for
-  the visit once the lists were asked (answered or not), so a device that
-  connects or comes online does not jump under the finger; it is sorted
-  again on the next visit or after a pull.
+  Dots and buttons follow at once; the order of the devices does not move.
 - From 6 connections, a magnifier in the title opens search, as on Devices:
   it matches the device name or its label (all its connections) or a
   connection's name, compared as in Devices search; nothing found says so.

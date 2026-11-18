@@ -17,8 +17,6 @@ data class DeviceGroup(
     /** Unique across profiles. */
     val key: String get() = "$profile/$name"
 
-    val active: Boolean get() = rows.any { it.active }
-
     /** Known to be offline now ([knownOffline]): its connections that are down cannot be connected. */
     val offline: Boolean get() = knownOffline(device)
 }
@@ -42,23 +40,11 @@ fun connectionTitle(connection: Connection, kindWord: String): String? =
     connection.customName?.trim()?.takeIf { it.isNotEmpty() && !it.equals(kindWord, ignoreCase = true) }
 
 /**
- * [groups] in the [order] of their keys given at the start of a visit, so
- * that a device does not jump under the finger when it connects or comes
- * online; groups not in it (new ones) follow in their own order. Null
- * [order]: as they are.
- */
-fun keepOrder(groups: List<DeviceGroup>, order: List<String>?): List<DeviceGroup> {
-    if (order == null) return groups
-    val place = order.withIndex().associate { (i, key) -> key to i }
-    return groups.sortedBy { place[it.key] ?: Int.MAX_VALUE }
-}
-
-/**
- * [rows] grouped by (profile, device): devices with an active connection
- * first, then online ones, then the rest (offline or not known), each part
- * by device name, ignoring case (profiles in [rows]' order for one name).
- * Within a group the rows keep their order. [devices] is each profile's
- * device list, null while not read.
+ * [rows] grouped by (profile, device), a stable order: devices by name,
+ * ignoring case, then profiles in [rows]' order for one name. Neither a
+ * tunnel's state nor a device's online state moves a group. Within a group
+ * the rows keep their order. [devices] is each profile's device list, null
+ * while not read.
  */
 fun groupByDevice(rows: List<ConnectionRow>, devices: Map<String, List<DeviceRow>?>): List<DeviceGroup> {
     val profileOrder = rows.map { it.profile }.distinct()
@@ -67,17 +53,11 @@ fun groupByDevice(rows: List<ConnectionRow>, devices: Map<String, List<DeviceRow
             val (profile, name) = key
             DeviceGroup(profile, name, devices[profile]?.firstOrNull { it.name == name }, list)
         }
+        // A favourites-first key goes before the name.
         .sortedWith(
-            compareBy<DeviceGroup> { rank(it) }
-                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.name }
+            compareBy<DeviceGroup, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
                 .thenBy { profileOrder.indexOf(it.profile) },
         )
-}
-
-private fun rank(group: DeviceGroup): Int = when {
-    group.active -> 0
-    group.device?.online == true -> 1
-    else -> 2
 }
 
 /**

@@ -2,16 +2,12 @@ package ru.adsrv.frpjump.ui.connections
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -20,15 +16,13 @@ import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.DeviceGroup
 import ru.adsrv.frpjump.connections.groupByDevice
-import ru.adsrv.frpjump.connections.keepOrder
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.ssh.SshAuthMethod
 import ru.adsrv.frpjump.tunnel.Waiting
 
 data class ConnectionsUiState(
     /**
-     * By device: active ones first, then online, then the rest ([groupByDevice]),
-     * in the order fixed for the visit ([keepOrder]).
+     * By device, in the stable order of [groupByDevice].
      */
     val groups: List<DeviceGroup> = emptyList(),
     /** Profile colour names by profile id. */
@@ -52,33 +46,17 @@ data class ConnectionsUiState(
 }
 
 /** Every profile's connections, grouped by device. */
-@OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
     val actions = ConnectionActions(app, viewModelScope)
 
     private val refreshing = MutableStateFlow(false)
 
-    /** The lists were asked once since the tab showed (answered or not): the order can be fixed. */
-    private val asked = MutableStateFlow(false)
-
-    /**
-     * The devices' order, fixed for a visit once the lists were asked (and
-     * after a pull): a device that connects or comes online does not jump
-     * under the finger; its dot and buttons follow at once. Null: as sorted.
-     */
-    private val order = MutableStateFlow<List<String>?>(null)
-
     /** The tab is on screen. */
     private val visible = MutableStateFlow(false)
 
-    /** As [groupByDevice] sorts them now. */
-    private val sorted: StateFlow<ConnectionsUiState> = app.profileInformation.observe().map { information ->
-        connectionsUiState(information)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
-
     val state: StateFlow<ConnectionsUiState> =
-        combine(sorted, app.profiles.restorePending, app.profiles.restoreWaiting, app.profiles.disconnectAllFailed, combine(refreshing, order, ::Pair)) { s, pending, waiting, failed, (busy, fixed) ->
-            s.copy(groups = keepOrder(s.groups, fixed), restoring = pending, restoreWaiting = waiting, disconnectAllFailed = failed, refreshing = busy)
+        combine(app.profileInformation.observe().map(::connectionsUiState), app.profiles.restorePending, app.profiles.restoreWaiting, app.profiles.disconnectAllFailed, refreshing) { s, pending, waiting, failed, busy ->
+            s.copy(restoring = pending, restoreWaiting = waiting, disconnectAllFailed = failed, refreshing = busy)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
 
     /** The device lists this tab has asked the pollers to keep fresh. */
@@ -90,13 +68,6 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
     init {
         // A profile added or forgotten while the tab shows (or read at a cold start): its list is wanted, or let go.
         viewModelScope.launch { app.profiles.state.collect { if (visible.value) wantLists() } }
-        // Fixes the order once the lists were asked and no pull is under way, while the tab shows.
-        viewModelScope.launch {
-            visible.flatMapLatest { on -> if (on) combine(sorted, asked, refreshing, ::Triple) else emptyFlow() }
-                .collect { (s, done, busy) ->
-                    if (done && !busy && order.value == null && s.groups.isNotEmpty()) order.value = s.groups.map { it.key }
-                }
-        }
     }
 
     /**
@@ -111,15 +82,8 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
             visible.value = false
             return letGo()
         }
-        // A new visit: sorted again once its lists were asked.
-        order.value = null
-        asked.value = false
         visible.value = true
-        val first = wantLists()
-        viewModelScope.launch {
-            first.joinAll()
-            asked.value = true
-        }
+        wantLists()
         slowLoop = viewModelScope.launch {
             while (true) {
                 delay(OTHER_PROFILES_MS)
@@ -130,7 +94,6 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
 
     /** Pull to refresh: every profile's list, waiting for a fetch already in flight. */
     fun pull() {
-        order.value = null
         refreshing.value = true
         viewModelScope.launch {
             app.profileInformation.refreshAll()
@@ -141,13 +104,13 @@ class ConnectionsViewModel(private val app: FrpJumpApp) : ViewModel() {
     private fun runtimes() = app.profiles.state.value.runtimes.values.toList()
 
     /** Marks every profile's list wanted; the ones not wanted before are asked now (their fetches). */
-    private fun wantLists(): List<Job> {
+    private fun wantLists() {
         val now = runtimes().map { it.devices }.toSet()
         (wanted - now).forEach { it.want(this, false) }
         now.forEach { it.want(this, true) }
         val fresh = now - wanted
         wanted = now
-        return fresh.map { devices -> viewModelScope.launch { devices.refresh() } }
+        fresh.forEach { devices -> viewModelScope.launch { devices.refresh() } }
     }
 
     private fun letGo() {
