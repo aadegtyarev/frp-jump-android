@@ -54,8 +54,7 @@
   `docs/contract.md` (shared UI rules and app behavior),
   `docs/agent-contract.md`, `docs/files-contract.md`, `docs/mqtt-contract.md`,
   `docs/ssh-persist-contract.md`, `docs/terminal-panel-contract.md`,
-  `docs/terminal-text-input-contract.md`, and
-  `docs/terminal-diagnostics-contract.md`. Link the affected legacy paths from
+  and `docs/terminal-text-input-contract.md`. Link the affected legacy paths from
   feature contracts; do not silently move, replace or duplicate these documents.
   Empty `docs/contracts/surfaces/` does not mean surface contracts are absent.
 - Surface contracts record promises about security, the assistant's

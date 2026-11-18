@@ -196,7 +196,7 @@ terminal input, `PastePlan` / `PasteSheet` for safety decisions, and
 
 Existing regression checks include `TerminalDraftsTest`, `PastePlanTest`,
 `PasteAttemptTest`, `BracketedPasteTest`, `TerminalTextComposerTest`,
-`TerminalMetricsIoTest`, `SshSessionLifecycleTest`,
+`TerminalIoTest`, `SshSessionLifecycleTest`,
 `RemoteClipboardRoutingTest` and `SshClipboardAuthorityTest`. Check per-tab
 routing, revision/stale-callback rejection, short/long gestures, local IME
 composition, compact/fullscreen selection and Back, queue handover and

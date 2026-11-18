@@ -20,8 +20,7 @@ clipboard and paste behavior remain governed by [SSH console](contract.md#7-ssh-
 [text input](terminal-text-input-contract.md) and the
 [terminal panel](terminal-panel-contract.md). [Files](files-contract.md) uses
 the shared connector/login/host-key rules but owns a separate SFTP connection
-and lifetime. [Diagnostics](terminal-diagnostics-contract.md) owns measurements,
-not reconnect policy or proof that a tunnel listener recovered. The optional
+and lifetime. The optional
 [assistant SSH command](agent-contract.md#optional-ssh-command) uses the same
 connector, stored login/refusal and host-key policy on its own per-operation
 client. It allocates no PTY/tmux session, does not reconnect/replay commands or
@@ -237,7 +236,7 @@ older settings without a value. It is the total main-buffer limit including
 visible rows, not that many off-screen rows. A new terminal captures the
 setting; changes do not trim/recreate existing terminals. Automatic reconnect
 keeps its emulator and original limit; manual replacement/new tabs capture the
-current choice. See [history setting](terminal-diagnostics-contract.md#history-setting).
+current choice. See [history setting](terminal-panel-contract.md#terminal-history-setting).
 
 While tmux uses the alternate screen, that local main-buffer history does not
 fill; remote history follows tmux's `history-limit` (normally 2000 lines unless
@@ -259,8 +258,7 @@ that round trip; copy mode entered by another route is not detected. The
 original requirement that stalled keys proceed after at most 10 s remains
 unverified as a total-wait bound: implementation joins the command for 10 s
 **plus channel-opening time**, then proceeds even on failure. Do not present
-that join timeout as a proven end-to-end maximum or remove the protection;
-[diagnostics](terminal-diagnostics-contract.md#local-measurements) measures it.
+that join timeout as a proven end-to-end maximum or remove the protection.
 
 ## Compatibility and remote ownership
 

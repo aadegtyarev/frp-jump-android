@@ -29,9 +29,8 @@ Related surfaces own their specific behavior and inherit [UI rules](#ui-rules):
 | Surface | Owner contract |
 | --- | --- |
 | SSH authentication, reconnect, tmux and session lifetime | [SSH persistence](ssh-persist-contract.md) |
-| Terminal keys, panel geometry and accessibility | [Terminal panel](terminal-panel-contract.md) |
+| Terminal keys, panel geometry, accessibility and history limit | [Terminal panel](terminal-panel-contract.md) |
 | Text drafts, insertion, execution gestures and paste safety | [Terminal text input](terminal-text-input-contract.md) |
-| Terminal history and numerical measurements | [Terminal diagnostics](terminal-diagnostics-contract.md) |
 | SFTP browsing, transfers and file viewing | [Files](files-contract.md) |
 | MQTT sessions, tree, publishing and plugin behavior | [MQTT](mqtt-contract.md) |
 | Optional kernel, provider setup, text chat and external adapter | [Assistant](agent-contract.md) |
@@ -402,10 +401,10 @@ Quick access to the saved connections of every device.
 ### 7. SSH console
 
 The [SSH persistence](ssh-persist-contract.md),
-[terminal panel](terminal-panel-contract.md),
-[terminal text input](terminal-text-input-contract.md) and
-[diagnostics](terminal-diagnostics-contract.md) contracts own the detailed
-session, input and measurement guarantees. The entry points and common
+[terminal panel](terminal-panel-contract.md) (which also owns the history
+setting) and
+[terminal text input](terminal-text-input-contract.md) contracts own the
+detailed session and input guarantees. The entry points and common
 terminal behavior are summarized here.
 
 User + key or password, the phone's own ed25519 key (generated on first use, or restored from an export file; shared by
@@ -520,20 +519,6 @@ resetting unrelated settings. New terminal sessions capture the setting;
 changing it never trims or recreates an open terminal. Automatic reconnect
 keeps the same emulator and limit; a new or explicitly replaced session uses
 the current preference.
-
-**Terminal diagnostics.** The SSH card's short response/down/up line opens
-per-tab numerical measurements. Traffic is terminal payload only, aggregated
-by profile/device/port; files, MQTT, web and SSH encryption overhead are not
-counted. Missing/stale measurements are unavailable, not a successful zero;
-a genuinely idle observed channel may show zero. Reports include recent
-response mean/max/last/age, probe failures, input-to-stream-write, the tmux
-before-write guard, incoming queue/emulator processing, draw CPU and buffer
-state. CPU time is not physical display latency; accepted writes are not
-remote acknowledgements. Numbers stay in memory, no text or credentials are
-recorded, and keepalive/reconnect policy is unchanged. See the
-[terminal diagnostics contract](terminal-diagnostics-contract.md) for probe,
-freshness, visibility and measurement boundaries. SSH metrics must not hide
-an independent tunnel/listener error.
 
 **Keys and Text.** Keys is the initial input surface. Short ⌨ shows/hides
 the system keyboard; hold ⌨ or use ⋮ → Text input to open the visible

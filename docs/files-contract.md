@@ -290,8 +290,7 @@ promise that another app deletes a copy it has received.
 
 Typed passwords stay in memory rather than navigation routes; remembered
 passwords and keys remain governed by the SSH security rules. Cached names,
-paths and downloaded content may be sensitive; they are not terminal traffic
-for [terminal diagnostics](terminal-diagnostics-contract.md).
+paths and downloaded content may be sensitive.
 
 ## Unavailable operations and retained constraints
 
