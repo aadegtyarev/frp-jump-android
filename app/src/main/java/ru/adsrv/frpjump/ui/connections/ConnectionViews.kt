@@ -35,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -169,46 +170,24 @@ fun toneColors(tone: Tone): Pair<Color, Color> {
 }
 
 /**
- * The state as a pill, as the device card shows it; [onClick] makes it a
- * button, with a "›" when [chevron] (an offer to act, not just details);
- * [onClickLabel] says what the tap does, for screen readers.
- */
-@Composable
-fun StatePill(text: String, tone: Tone, onClick: (() -> Unit)? = null, chevron: Boolean = true, onClickLabel: String? = null) {
-    val (ink, container) = toneColors(tone)
-    Text(
-        if (onClick != null && chevron) "$text  ›" else text,
-        color = ink,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(container, CircleShape)
-            .then(if (onClick != null) Modifier.clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-    )
-}
-
-/**
- * `127.0.0.1:<local port>` in the mockups' monospace; where that does not
+ * `127.0.0.1:<local port>` in monospace, or in the body font with tabular digits ([mono] false); where that does not
  * fit, `:<local port>` (a cut address is no use). A small pin before it
  * when the port is [pinned] to the connection.
  */
 @Composable
-fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier, pinned: Boolean = false) {
+fun LocalAddress(port: Int, size: Int = 13, modifier: Modifier = Modifier, pinned: Boolean = false, mono: Boolean = true) {
     var short by remember(port) { mutableStateOf(false) }
     if (pinned) {
         Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Icon(PinGlyph, contentDescription = stringResource(R.string.local_port_pinned_mark), tint = AppTheme.colors.muted, modifier = Modifier.size(size.dp + 1.dp))
-            LocalAddress(port, size, Modifier.weight(1f, fill = false))
+            LocalAddress(port, size, Modifier.weight(1f, fill = false), mono = mono)
         }
         return
     }
     Text(
         if (short) ":$port" else localAddress(port),
-        fontFamily = FontFamily.Monospace,
+        // Not monospace: the body font with tabular digits, so a port keeps its width.
+        style = if (mono) LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace) else LocalTextStyle.current.copy(fontFeatureSettings = "tnum"),
         fontSize = size.sp,
         color = AppTheme.colors.muted,
         maxLines = 1,
@@ -261,73 +240,6 @@ fun SessionsPill(count: SessionCount) {
     ) {
         if (count.ended > 0) Box(Modifier.size(6.dp).background(c.error, CircleShape))
         Text(total, fontSize = 12.sp, color = c.muted, maxLines = 1, softWrap = false)
-    }
-}
-
-/** A filled accent button of the mockups' rows (40 dp high). */
-@Composable
-fun MainButton(text: String, onClick: () -> Unit) {
-    val c = AppTheme.colors
-    Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = c.accent),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        modifier = Modifier.height(40.dp),
-    ) { Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-}
-
-/**
- * The outlined "Connect" of an inactive row; a spinner in its place while
- * connecting, "Retry" after a failure; greyed out when not [enabled].
- */
-@Composable
-fun ConnectButton(row: ConnectionRow, enabled: Boolean = true, onClick: () -> Unit) {
-    val c = AppTheme.colors
-    val busy = row.pending != null
-    OutlinedButton(
-        onClick = onClick,
-        enabled = enabled && !busy,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, if (busy || !enabled) c.outline else c.accent),
-        colors = ButtonDefaults.outlinedButtonColors(containerColor = c.card, contentColor = c.accent),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        modifier = Modifier.height(40.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            // The label keeps the button's width while the spinner shows.
-            val label = stringResource(if (row.error != null) R.string.retry else R.string.connect)
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (busy) Color.Transparent else if (enabled) c.accent else c.muted)
-            if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = c.accent, strokeWidth = 2.dp)
-        }
-    }
-}
-
-/**
- * "Disconnect" of an active row, next to its main action: done with a
- * connection, the owner drops it where they were. A spinner while it goes.
- */
-@Composable
-fun DisconnectIcon(row: ConnectionRow, size: Dp, onClick: () -> Unit) {
-    val c = AppTheme.colors
-    val busy = row.pending != null
-    val label = stringResource(R.string.disconnect_named, rowName(row))
-    Surface(
-        onClick = onClick,
-        enabled = !busy,
-        shape = RoundedCornerShape(12.dp),
-        color = c.card,
-        border = BorderStroke(1.dp, c.outline),
-        // On the button, so the spinner keeps the name too.
-        modifier = Modifier.size(size).semantics { contentDescription = label },
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            if (busy) {
-                CircularProgressIndicator(Modifier.size(18.dp), color = c.error, strokeWidth = 2.dp)
-            } else {
-                Icon(PowerGlyph, contentDescription = null, tint = c.error, modifier = Modifier.size(20.dp))
-            }
-        }
     }
 }
 

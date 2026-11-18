@@ -2,65 +2,91 @@ package ru.adsrv.frpjump.ui.connections
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.ripple
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.connectBlocked
 import ru.adsrv.frpjump.connections.connectionTitle
+import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.ports.PortKind
 import ru.adsrv.frpjump.ssh.SshAuthMethod
+import ru.adsrv.frpjump.ssh.isolateName
 import ru.adsrv.frpjump.tunnel.DirectMode
 import ru.adsrv.frpjump.tunnel.SessionCount
 import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.ui.AppTheme
-import ru.adsrv.frpjump.ui.shortDate
+import ru.adsrv.frpjump.ui.AssistantGlyph
+import ru.adsrv.frpjump.ui.CopyGlyph
+import ru.adsrv.frpjump.ui.GlobeGlyph
+import ru.adsrv.frpjump.ui.PowerGlyph
+import ru.adsrv.frpjump.ui.RssGlyph
+import ru.adsrv.frpjump.ui.TerminalGlyph
+import ru.adsrv.frpjump.ui.notice
 
 /**
- * One connection, the same on the device card and the Connections tab:
- * kind tile, its own name (when it has one) over the port and login, "⋮";
- * below, the state, Disconnect and the main action when up, or "Not
- * connected" and Connect. A tap on the card does its main action, a long
- * press opens the same menu as "⋮". On a device known to be [offline]
- * ([ru.adsrv.frpjump.connections.knownOffline]), a connection that is down
- * is dimmed and cannot be connected; its "⋮" and long press work.
+ * One connection, the same on the device card and the Tunnels tab, compact: on the left its name (with the device where the view has no device header),
+ * the kind as text over the port and login, the state with the local address, and the assistant mark when it has a grant; on the right, vertically
+ * centred, up to three round buttons: the main action (only while up), "⏻" and "⋮". A tap on the card does its main action, a long press opens the
+ * same menu as "⋮". On a device known to be [offline] ([ru.adsrv.frpjump.connections.knownOffline]), a connection that is down is dimmed and cannot
+ * be connected; its "⋮" and long press work. While it is being connected or disconnected the card offers only "⏻" (busy) and "⋮".
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConnectionCard(
     row: ConnectionRow,
@@ -71,22 +97,28 @@ fun ConnectionCard(
     actions: RowActions,
     modifier: Modifier = Modifier,
     offline: Boolean = false,
-    /** The assistant has a "For session" grant on this connection ([ru.adsrv.frpjump.settings.SessionGrants]): a line says so, with Forget. */
-    assistantGrant: Boolean = false,
-    /** When the owner remembered the permission ("For this connection", epoch millis); null: a session grant alone. */
-    assistantRemembered: Long? = null,
+    /** The device's name, for a view that has no device header over its cards; null where the header says it. */
+    deviceName: String? = null,
+    /** What the assistant may do here without a question (a session grant and/or a remembered permission); null: nothing, no mark. */
+    assistant: AssistantMark? = null,
+    /** "Ask again": ends both lifetimes at once, with no confirmation (it narrows authority). */
     onForgetAssistant: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     val c = row.connection
     val up = row.tunnel != null
-    // Up, it stays usable: Disconnect is what the owner needs then.
+    val busy = row.pending != null
+    // Up, it stays usable: "⏻ off" is what the owner needs then.
     val unreachable = connectBlocked(row, offline)
     val tapEnabled = cardTap(row) != CardTap.NONE && !unreachable
     val openMenu by rememberUpdatedState { onMenu(true) }
     val details = details(row, sshMethod)
-    // Its own name only when it says more than the tile: "z2m", not "SSH".
+    // Its own name only when it says more than the kind: "z2m", not "SSH".
     val title = if (row.saved) connectionTitle(c, kindLabel(c.kind)) else rowName(row)
+    val name = rowName(row)
+    val stacked = LocalDensity.current.fontScale >= STACK_FROM
+    val context = LocalContext.current
+    val state = stateOf(row)
     Surface(
         color = colors.card,
         shape = RoundedCornerShape(18.dp),
@@ -111,81 +143,100 @@ fun ConnectionCard(
                 },
             ),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.weight(1f)) {
-                    Row(
-                        Modifier.alpha(if (unreachable) DIMMED else 1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        KindTile(c.kind, up, row.saved)
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            // The name is what tells connections apart: on lines of its own, never cut.
-                            if (title != null) {
-                                Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                details?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
-                            } else if (details != null) {
-                                Text(details, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                            // On a line of its own: next to a long state and the main action it would be cut.
-                            if (row.tunnel != null || sessions.total > 0) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    row.tunnel?.let { LocalAddress(it.localPort, modifier = Modifier.weight(1f, fill = false), pinned = it.pinned) }
-                                    SessionsPill(sessions)
-                                }
-                            }
-                            if (assistantGrant) {
-                                // Muted, wraps at large font; Forget keeps its 48 dp target and is read with the connection's name.
-                                val forget = stringResource(R.string.connection_assistant_forget_description, rowName(row))
-                                Row(Modifier.testTag("connection_assistant_grant"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(if (assistantRemembered != null) stringResource(R.string.connection_assistant_remembered, shortDate(java.time.Instant.ofEpochMilli(assistantRemembered)))
-                                        else stringResource(R.string.connection_assistant_grant), fontSize = 13.sp, color = colors.muted, modifier = Modifier.weight(1f))
-                                    TextButton(onClick = onForgetAssistant, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = forget }.testTag("connection_assistant_forget")) {
-                                        Text(stringResource(R.string.connection_assistant_forget))
-                                    }
-                                }
-                            }
-                        }
+        Row(
+            Modifier.padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(Modifier.weight(1f).alpha(if (unreachable) DIMMED else 1f).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                // The name is what tells connections apart: on lines of its own, never cut.
+                val where = deviceName?.let { " · $it" }.orEmpty()
+                if (title != null) {
+                    Text(title + where, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(details, fontSize = 13.sp, color = colors.muted)
+                } else {
+                    Text(details + where, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+                // State and address on one line (wrapping only when the font is too large for both), in the body font with tabular digits.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                    if (state != null) {
+                        val (ink, _) = toneColors(state.second)
+                        val choice = offersDirectChoice(row)
+                        Text(
+                            if (choice && row.tunnel?.direct != DirectMode.KEPT) "${state.first}  ›" else state.first,
+                            color = ink,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = if (choice) {
+                                val label = stringResource(R.string.direct_or_server)
+                                Modifier.clickable(onClickLabel = label, role = Role.Button) { actions.directChoice(row) }.padding(vertical = 4.dp)
+                            } else Modifier,
+                        )
+                    } else {
+                        // Why it cannot be started, where it is.
+                        Text(stringResource(if (unreachable) R.string.state_device_offline else R.string.state_off), fontSize = 13.sp, color = colors.muted)
                     }
+                    row.tunnel?.let {
+                        Text("·", fontSize = 13.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics { })
+                        LocalAddress(it.localPort, modifier = Modifier, pinned = it.pinned, mono = false)
+                    }
+                    SessionsPill(sessions)
+                }
+                if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {
+                    LiveTerminalDiagnostics(TunnelRef(row.profile, c.device, c.port))
+                }
+                problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
+                if (assistant != null) {
+                    AssistantMarkLine(row, name, assistant, onForgetAssistant) { text -> context.notice(text, NoticeKind.DONE) }
+                }
+            }
+            val buttons: @Composable () -> Unit = {
+                if (up && !busy) {
+                    val label = mainActionLabel(row, sessions)
+                    RoundButton(
+                        description = stringResource(R.string.main_action_named, label, name),
+                        onClick = { actions.main(row) },
+                        container = colors.accentContainer,
+                        modifier = Modifier.testTag("card_main"),
+                    ) { size ->
+                        Icon(mainGlyph(row), contentDescription = null, tint = colors.onAccentContainer, modifier = Modifier.size(size * GLYPH_SHARE))
+                        if (c.kind == PortKind.SSH && sessions.total >= 2) CountBadge(sessions.total)
+                    }
+                }
+                if (up || busy) {
+                    RoundButton(
+                        description = stringResource(R.string.disconnect_named, name),
+                        onClick = { actions.disconnect(row) },
+                        enabled = !busy,
+                        border = colors.error,
+                        modifier = Modifier.testTag("card_off"),
+                    ) { size ->
+                        if (busy) CircularProgressIndicator(Modifier.size(size * GLYPH_SHARE), color = colors.error, strokeWidth = 2.dp)
+                        else Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(size * GLYPH_SHARE))
+                    }
+                } else {
+                    val on = if (unreachable) colors.outline else colors.accent
+                    RoundButton(
+                        description = stringResource(if (row.error != null) R.string.retry_named else R.string.connect_named, name),
+                        onClick = { actions.connect(row) },
+                        enabled = !unreachable,
+                        border = on,
+                        modifier = Modifier.testTag("card_on"),
+                    ) { size -> Icon(PowerGlyph, contentDescription = null, tint = on.takeIf { !unreachable } ?: colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
                 }
                 if (hasMenu(row)) {
                     Box {
-                        IconButton(onClick = { onMenu(true) }, modifier = Modifier.width(36.dp)) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions, rowName(row)), tint = colors.muted)
-                        }
+                        RoundButton(
+                            description = stringResource(R.string.connection_actions, name),
+                            onClick = { onMenu(true) },
+                            modifier = Modifier.testTag("card_menu"),
+                        ) { size -> Icon(Icons.Filled.MoreVert, contentDescription = null, tint = colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
                         ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val state = stateOf(row)
-                // The state gives way (ellipsis) before the buttons do.
-                Box(Modifier.weight(1f)) {
-                    when {
-                        state != null -> StatePill(
-                            state.first,
-                            state.second,
-                            onClick = { actions.directChoice(row) }.takeIf { offersDirectChoice(row) },
-                            chevron = row.tunnel?.direct != DirectMode.KEPT,
-                            onClickLabel = stringResource(R.string.direct_or_server),
-                        )
-                        // Why Connect is off, where it is.
-                        unreachable -> Text(stringResource(R.string.state_device_offline), fontSize = 13.sp, color = colors.muted)
-                        else -> Text(stringResource(R.string.state_off), fontSize = 13.sp, color = colors.muted)
-                    }
-                }
-                if (up) {
-                    DisconnectIcon(row, 40.dp) { actions.disconnect(row) }
-                    MainButton(mainActionLabel(row, sessions)) { actions.main(row) }
-                } else {
-                    ConnectButton(row, enabled = !unreachable) { actions.connect(row) }
-                }
-            }
-            if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {
-                LiveTerminalDiagnostics(TunnelRef(row.profile, c.device, c.port))
-            }
-            problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
+            if (stacked) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { buttons() }
+            else Row(verticalAlignment = Alignment.CenterVertically) { buttons() }
         }
     }
 }
@@ -193,51 +244,133 @@ fun ConnectionCard(
 /** How much a connection that cannot be connected now is faded. */
 private const val DIMMED = 0.5f
 
+/** From this font scale the buttons stack vertically. */
+private const val STACK_FROM = 1.5f
+
+/** The glyph's share of the circle. */
+private const val GLYPH_SHARE = 0.56f
+
+/** The connection's own glyph for its main action. */
+private fun mainGlyph(row: ConnectionRow): ImageVector =
+    if (!row.saved) CopyGlyph else when (row.connection.kind) {
+        PortKind.SSH -> TerminalGlyph
+        PortKind.WEB -> GlobeGlyph
+        PortKind.MQTT -> RssGlyph
+        PortKind.TCP -> CopyGlyph
+    }
+
 /**
- * "Port 80", "Port 22 · root · key", …: what the kind tile does not
- * say already; null for a tunnel no connection names (its name says the port).
+ * A round button of the card: the circle is 32 dp and grows with the font (to 1.5 times), the touch target is at least 44 dp (the circle plus a margin, which the count badge needs). [container] fills it
+ * (the main action's tonal circle), [border] outlines it (the power button); neither: a bare glyph ("⋮"). The glyph is given the circle's size.
  */
 @Composable
-private fun details(row: ConnectionRow, sshMethod: SshAuthMethod?): String? {
-    val c = row.connection
-    if (!row.saved) return null
-    return when {
-        c.kind == PortKind.WEB && c.https -> stringResource(R.string.connection_details_https, c.port)
-        c.kind == PortKind.SSH && sshMethod == SshAuthMethod.PASSWORD -> stringResource(R.string.connection_details_ssh_password, c.port, c.sshUser)
-        c.kind == PortKind.SSH -> stringResource(R.string.connection_details_ssh_key, c.port, c.sshUser)
-        else -> stringResource(R.string.connection_details, c.port)
+private fun RoundButton(
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    container: Color = Color.Transparent,
+    border: Color? = null,
+    content: @Composable BoxScope.(Dp) -> Unit,
+) {
+    val circle = 32.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+    val target = maxOf(44.dp, circle + 8.dp)
+    Box(
+        modifier
+            .size(target)
+            // Not clipped (the count badge sits over the circle's edge): a round ripple of its own.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = target / 2), enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(circle)
+                .background(container, CircleShape)
+                .then(if (border != null) Modifier.border(1.5.dp, border, CircleShape) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) { content(circle) }
     }
 }
 
-/** WEB / SSH / TCP / MQTT on a tile, in the accent while connected. */
+/** The open sessions of an SSH connection, on its terminal button: the digits only, the button's description names the action. */
 @Composable
-private fun KindTile(kind: PortKind, up: Boolean, saved: Boolean) {
+private fun BoxScope.CountBadge(total: Int) {
     val colors = AppTheme.colors
+    Text(
+        total.toString(),
+        // In dp, not sp: a badge that grew with the font would cover its button.
+        fontSize = with(LocalDensity.current) { 11.dp.toSp() },
+        fontWeight = FontWeight.Bold,
+        color = colors.onAccent,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 3.dp, y = (-3).dp)
+            .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+            .background(colors.accent, CircleShape)
+            .padding(horizontal = 3.dp)
+            .wrapContentHeight(Alignment.CenterVertically)
+            .clearAndSetSemantics { },
+    )
+}
+
+/**
+ * The assistant's mark: a calm muted pill (a thin outline, no fill), the small ✦ and "For session" or "For this connection". The whole line, 48 dp tall
+ * at least, is a button that opens the sheet; TalkBack reads "Assistant: <text>. Details". The sheet goes with the grant: this is composed only while
+ * [mark] exists. "Ask again" does what Forget did, closes the sheet and says so.
+ */
+@Composable
+private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantMark, onForget: () -> Unit, say: (String) -> Unit) {
+    val colors = AppTheme.colors
+    var sheet by remember { mutableStateOf(false) }
+    val text = stringResource(if (mark.rememberedAt != null) R.string.connection_assistant_chip_connection else R.string.connection_assistant_chip_session)
+    val spoken = stringResource(R.string.connection_assistant_chip_description, text)
+    // The whole line is the touch target (48 dp at least); the pill inside it only draws the mark.
     Box(
         Modifier
-            .size(40.dp)
-            .background(if (up) colors.accentContainer else colors.tile, RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .testTag("connection_assistant_chip")
+            .clickable(role = Role.Button) { sheet = true }
+            .clearAndSetSemantics { contentDescription = spoken; role = Role.Button; onClick(null) { sheet = true; true } },
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
-            stringResource(
-                if (!saved) {
-                    R.string.kind_tcp_tile
-                } else {
-                    when (kind) {
-                        PortKind.WEB -> R.string.kind_web_tile
-                        PortKind.SSH -> R.string.kind_ssh_tile
-                        PortKind.TCP -> R.string.kind_tcp_tile
-                        PortKind.MQTT -> R.string.kind_mqtt_tile
-                    }
-                },
-            ),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (up) colors.onAccentContainer else colors.muted,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
+        Row(
+            Modifier.border(1.dp, colors.outline, CircleShape).padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(AssistantGlyph, contentDescription = null, tint = colors.muted, modifier = Modifier.size(14.dp))
+            Text(text, fontSize = 13.sp, color = colors.muted)
+        }
+    }
+    if (sheet) {
+        val asksAgain = stringResource(R.string.connection_assistant_asks_again, isolateName(name))
+        ConnectionAssistantSheet(
+            name = name,
+            mark = mark,
+            onAskAgain = { sheet = false; onForget(); say(asksAgain) },
+            onClose = { sheet = false },
         )
+    }
+}
+
+/**
+ * "SSH · port 22 · root · key", "Web · port 443 · HTTPS", "TCP · port 5432": the kind as text, then what the connection is. For a tunnel no connection
+ * names, the kind alone (its name says the port).
+ */
+@Composable
+private fun details(row: ConnectionRow, sshMethod: SshAuthMethod?): String {
+    val c = row.connection
+    if (!row.saved) return kindLabel(PortKind.TCP)
+    val kind = kindLabel(c.kind)
+    return when {
+        c.kind == PortKind.WEB && c.https -> stringResource(R.string.card_details_https, kind, c.port)
+        c.kind == PortKind.SSH && sshMethod == SshAuthMethod.PASSWORD -> stringResource(R.string.card_details_ssh_password, kind, c.port, c.sshUser)
+        c.kind == PortKind.SSH -> stringResource(R.string.card_details_ssh_key, kind, c.port, c.sshUser)
+        else -> stringResource(R.string.card_details, kind, c.port)
     }
 }

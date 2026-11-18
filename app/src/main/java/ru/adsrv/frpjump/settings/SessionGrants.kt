@@ -82,9 +82,13 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
 
     private val entries = HashMap<GrantKey, Entry>()
     private val live = MutableStateFlow<Set<GrantTarget>>(emptySet())
+    private val liveCounts = MutableStateFlow<Map<GrantTarget, Int>>(emptyMap())
 
     /** The connections that have a grant now (after the last change); for the connection card. */
     fun observe(): StateFlow<Set<GrantTarget>> = live
+
+    /** The same connections with how many tools their grant covers (the card's sheet says "commands" or "commands and typing into tabs"). */
+    fun observeToolCounts(): StateFlow<Map<GrantTarget, Int>> = liveCounts
 
     /** The stamp to bind a grant for [target] to, or null when none can be given now (no open period, the connection is gone, the assistant is off). */
     fun stamp(target: GrantTarget): GrantStamp? {
@@ -164,7 +168,10 @@ class SessionGrants(private val world: GrantWorld = GrantWorld.None) {
     private fun current(target: GrantTarget, stamp: GrantStamp): Boolean =
         world.enabled() && !world.locked() && world.disableVersion() == stamp.disableVersion && world.period(target) == stamp.period && world.fingerprint(target) == stamp.fingerprint
 
-    private fun publish() { live.value = entries.keys.mapTo(HashSet()) { it.target } }
+    private fun publish() {
+        live.value = entries.keys.mapTo(HashSet()) { it.target }
+        liveCounts.value = entries.entries.groupBy({ it.key.target }, { it.value.tools.size }).mapValues { (_, counts) -> counts.max() }
+    }
 }
 
 /**

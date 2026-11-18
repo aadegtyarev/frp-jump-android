@@ -942,12 +942,11 @@ profile. It ends, each at once, when
 - the connection's delete commits (Undo expired, or the app locked or closed; with Undo cancelled the record lives on, and hidden for Undo it does
   not act), "Forget profile" in both modes, the last profile's wipe, the server removing this phone's profile, or the profile is enrolled again in
   place: the record is removed first, before the rest, so a failure leaves none behind;
-- the owner taps Forget on the connection's card: the session and the remembered permission of that connection go together, with no confirmation.
+- the owner taps "Ask again" in the sheet of the connection's assistant mark (on its card; it was Forget): the session and the remembered permission of that connection go together, with no confirmation.
   The use stops synchronously on the tap, in memory, before the record is deleted: from that moment no call, wait- or event-triggered ones
   included, is covered, and an answer that was in flight cannot write the record back. The record is then deleted in the app's scope; if that write
-  fails the permission stays revoked (it never allows a call again), the card line is gone, the owner is told ("Could not save. The assistant no
-  longer uses this permission; deleting it will be retried." / «Не удалось сохранить. Помощник больше не использует это разрешение, удаление
-  будет повторено.») and the cleaner retries the delete; the revocation ends only once the committed record is gone. A mismatch or gone connection
+  fails the permission stays revoked (it never allows a call again), the card's mark is gone, the owner is told ("Could not save. The assistant
+  already asks again; saving will be retried." / «Не удалось сохранить. Помощник уже спрашивает снова, сохранение повторится.») and the cleaner retries the delete; the revocation ends only once the committed record is gone. A mismatch or gone connection
   is revoked in the same way and deleted by the cleaner, never in a call and never on the main thread (the fingerprint reads the enrollment file, so
   the gate reads it off Main);
 - the assistant is turned off (off and on again included): every record is removed in the same write that turns it off, and switching it on brings
@@ -969,8 +968,8 @@ if `scope.kind` is `target` with two non-empty ids, `class` is a known class tha
 starting `v1:`, `tools` holds at least one known grantable tool of that class (other names are dropped) and `at` is a number; duplicates of
 (class, connection) keep the last, at most 500 are read, a broken array reads as empty, a non-1 version or the assistant off in the file reads as no
 records, and an invalid record never resets `global` or any other setting and never allows. Records are never read through
-`ConfirmationPolicy.resolve` (it returns `global` only). Where it is seen: the line on the connection's card (below) is the only place; there is
-no sheet, "⋮" item or list in Tools. A call that ran without a question shows, on its line in "Tool calls and results", a muted reason ("no
+`ConfirmationPolicy.resolve` (it returns `global` only). Where it is seen: the assistant mark on the connection's card (a chip line) and its sheet are the only place; there is
+no "⋮" item and no list in Tools. A call that ran without a question shows, on its line in "Tool calls and results", a muted reason ("no
 question: for this connection" / "no question: for the tunnel's lifetime" / "no question: confirmations are off"; «без вопроса: для этого
 подключения» / «на время туннеля» / «подтверждения выключены»), kept in memory only: a conversation restored from the saved history shows none, the
 saved format is unchanged, and the model is never told about grants. An edit that resets a record gives no notice. Always turns the app-wide switch off after a second confirmation (a dialog

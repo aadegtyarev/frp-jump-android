@@ -83,13 +83,12 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     private fun runtime(profile: String) = app.profiles.runtime(profile)
 
     /**
-     * The connections the assistant may act on without a question now (the card's "Assistant: no questions" line): the value is the time of the persistent
-     * "For this connection" permission (the line says "remembered <date>"), null for a "For session" grant alone.
+     * The connections the assistant may act on without a question now (the card's assistant mark and its sheet): per connection, whether a "For session" grant
+     * exists and the persistent "For this connection" permission, if any, each with whether it covers both tools.
      */
-    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Map<ru.adsrv.frpjump.settings.GrantTarget, Long?>> by lazy {
-        kotlinx.coroutines.flow.combine(app.sessionGrants.observe(), app.connectionGrants.observe()) { session, remembered ->
-            session.associateWith<ru.adsrv.frpjump.settings.GrantTarget, Long?> { null } + remembered
-        }.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, app.sessionGrants.observe().value.associateWith<ru.adsrv.frpjump.settings.GrantTarget, Long?> { null } + app.connectionGrants.current())
+    val assistantGrants: kotlinx.coroutines.flow.StateFlow<Map<ru.adsrv.frpjump.settings.GrantTarget, AssistantMark>> by lazy {
+        kotlinx.coroutines.flow.combine(app.sessionGrants.observeToolCounts(), app.connectionGrants.observeRecords()) { session, remembered -> assistantMarks(session, remembered) }
+            .stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, assistantMarks(app.sessionGrants.observeToolCounts().value, app.connectionGrants.currentRecords()))
     }
 
     /**
@@ -509,3 +508,15 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
         return app.fileTargets.put(FilesTarget(row.profile, c.device, c.port, login.user, auth))
     }
 }
+
+/** What the card's assistant mark says of one connection: a session grant (and whether it covers commands and typing both) and the remembered permission, if any. */
+data class AssistantMark(val session: Boolean, val sessionBoth: Boolean, val rememberedAt: Long?, val rememberedBoth: Boolean)
+
+internal fun assistantMarks(
+    session: Map<ru.adsrv.frpjump.settings.GrantTarget, Int>,
+    remembered: Map<ru.adsrv.frpjump.settings.GrantTarget, ru.adsrv.frpjump.settings.RememberedGrant>,
+): Map<ru.adsrv.frpjump.settings.GrantTarget, AssistantMark> =
+    (session.keys + remembered.keys).associateWith { target ->
+        val record = remembered[target]
+        AssistantMark(target in session, (session[target] ?: 0) > 1, record?.at, (record?.tools ?: 0) > 1)
+    }
