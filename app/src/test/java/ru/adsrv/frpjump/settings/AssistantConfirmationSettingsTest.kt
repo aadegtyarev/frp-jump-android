@@ -32,7 +32,7 @@ class AssistantConfirmationSettingsTest {
         }
     }
 
-    @Test fun `unknown extra keys and not yet supported overrides are ignored`() {
+    @Test fun `unknown extra keys and records of an unknown kind are ignored`() {
         val s = store("""{"assistant_confirmations":{"version":1,"global":"off","extra":1,"overrides":[{"scope":{"kind":"device","id":"d"},"mode":"ask"}]}}""")
         assertEquals(ConfirmationPolicy(global = ConfirmationMode.OFF), s.assistantConfirmations)
     }

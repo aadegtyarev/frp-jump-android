@@ -29,7 +29,11 @@ sealed interface HostKeyCheck {
  * every tunnel lands on 127.0.0.1, so the address says nothing about the host.
  */
 class HostKeyStore(private val storage: TextStorage) {
+    private var unreadable = false
     private var keys: Map<String, Map<String, PinnedHostKey>> = read()
+
+    /** False while the stored pins could not be read (they then show as none): what a decision bound to them must not trust. A write or a wipe makes it true again. */
+    val readable: Boolean @Synchronized get() = !unreadable
 
     private val _changes = MutableStateFlow(0)
 
@@ -61,16 +65,18 @@ class HostKeyStore(private val storage: TextStorage) {
     fun wipe() {
         storage.delete()
         keys = emptyMap()
+        unreadable = false
         _changes.value++
     }
 
     private fun read(): Map<String, Map<String, PinnedHostKey>> =
         runCatching { storage.read()?.let { WireJson.decodeFromString<Map<String, Map<String, PinnedHostKey>>>(it) } }
-            .getOrNull().orEmpty()
+            .onFailure { unreadable = true }.getOrNull().orEmpty()
 
     private fun save(value: Map<String, Map<String, PinnedHostKey>>) {
         storage.write(WireJson.encodeToString(value))
         keys = value
+        unreadable = false
         _changes.value++
     }
 }

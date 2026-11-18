@@ -4,11 +4,12 @@ import kotlinx.coroutines.CompletableDeferred
 import ru.adsrv.frpjump.assistant.AssistantToolId
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.settings.ConfirmationPolicy
+import ru.adsrv.frpjump.settings.ConnectionGrants
 import ru.adsrv.frpjump.settings.SessionGrants
 import ru.adsrv.frpjump.settings.GrantTarget
 
 /** The owner's answer to a confirmation card; [NO_ANSWER] is the 5-minute wait running out. */
-enum class ConfirmationDecision { ONCE, SESSION, ALWAYS, DENY, NO_ANSWER }
+enum class ConfirmationDecision { ONCE, SESSION, CONNECTION, ALWAYS, DENY, NO_ANSWER }
 
 /** What the card shows, besides the tool and the command: names, never IDs. Null connection: "Unknown connection". */
 class ConfirmationTargetInfo(val profileName: String, val connection: Connection)
@@ -32,7 +33,7 @@ class TypingCard(val tabId: Int, val profile: String?, val user: String?, val de
 class PendingConfirmation(val id: Long, val tool: AssistantToolId, val command: String, val target: GrantTarget?,
     val info: ConfirmationTargetInfo?, val typing: TypingCard? = null, val stop: ru.adsrv.frpjump.assistant.StopCard? = null,
     val close: ru.adsrv.frpjump.assistant.CloseCard? = null, val skill: ru.adsrv.frpjump.assistant.SkillCard? = null,
-    /** The grantable tools a For session answer on this card would cover (in effect when the card was raised): what its hint says. Empty: none. */
+    /** The grantable tools a For session or For this connection answer on this card would cover (in effect when the card was raised): what its hints say. Empty: none. */
     val sessionTools: Set<AssistantToolId> = emptySet()) {
     override fun equals(other: Any?) = other is PendingConfirmation && other.id == id
     override fun hashCode() = id.hashCode()
@@ -56,4 +57,6 @@ class ConfirmationSupport(
     val persistOff: suspend () -> Boolean,
     val info: (GrantTarget) -> ConfirmationTargetInfo? = { null },
     val grants: SessionGrants = SessionGrants(),
+    /** The persistent "For this connection" permissions; null: none can be given or used (kernel-only tests). */
+    val connection: ConnectionGrants? = null,
 )

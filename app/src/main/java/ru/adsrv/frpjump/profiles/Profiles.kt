@@ -73,6 +73,11 @@ class Profiles(
      * they still run, so only the counts the owner sees leave them out.
      */
     private val dark: StateFlow<Set<String>> = MutableStateFlow(emptySet()),
+    /**
+     * Told when a profile's enrollment is filled in place or wiped for enrolling again, before the new state is published: the assistant's persistent
+     * permissions of that profile end (a new enrollment also changes their fingerprint, so a failure here cannot let one survive).
+     */
+    private val enrollmentReplaced: (profileId: String) -> Unit = {},
     private val open: (profile: Profile, store: ProfileStore, currentId: StateFlow<String?>) -> ProfileRuntime,
 ) {
     private val _state = MutableStateFlow(ProfilesState())
@@ -340,6 +345,7 @@ class Profiles(
 
     /** [changedEnrollment]: a profile whose credentials were just filled in or wiped in place. */
     private fun publish(index: ProfileIndex, runtimes: Map<String, ProfileRuntime>, changedEnrollment: String? = null) {
+        changedEnrollment?.let { id -> try { enrollmentReplaced(id) } catch (e: CancellationException) { throw e } catch (_: Exception) { /* the fingerprint ends it anyway */ } }
         currentId.value = index.current
         val listed = index.profiles.mapTo(HashSet()) { it.id }
         val enrollments = _state.value.enrollments.filterKeys { it in listed }.toMutableMap()

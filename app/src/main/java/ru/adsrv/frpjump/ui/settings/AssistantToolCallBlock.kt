@@ -257,8 +257,17 @@ private fun ChatToolReceiptBody(receipt: ChatToolReceipt, rename: TabRename? = n
         return
     }
     val body = receiptBody(receipt.call, outcome, result?.text.orEmpty(), keysLine = { keys -> resources.getString(R.string.chat_receipt_keys, keys.joinToString(", ")) }, renameLine = renameLine ?: lead)
-    if (body.isEmpty()) return
-    SelectionContainer {
+    // Why the call ran without a question (memory only: a conversation restored from the saved history has none).
+    val reason = receipt.noQuestion?.let {
+        stringResource(when (it) {
+            ru.adsrv.frpjump.settings.NoQuestion.CONNECTION -> R.string.receipt_no_question_connection
+            ru.adsrv.frpjump.settings.NoQuestion.SESSION -> R.string.receipt_no_question_session
+            ru.adsrv.frpjump.settings.NoQuestion.OFF -> R.string.receipt_no_question_off
+        })
+    }
+    if (body.isEmpty() && reason == null) return
+    if (body.isNotEmpty()) SelectionContainer {
         Text(body, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted)
     }
+    if (reason != null) Text(reason, style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.faint, modifier = Modifier.testTag("chat_receipt_no_question"))
 }

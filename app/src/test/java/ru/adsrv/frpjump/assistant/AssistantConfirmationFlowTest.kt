@@ -28,7 +28,8 @@ class AssistantConfirmationFlowTest {
 
     private inner class Harness(private val calls: List<Call>, dispatcher: CoroutineDispatcher? = null, clock: (() -> Long)? = null,
         persistFails: Boolean = false, realtime: (() -> Long)? = null, enabledAtStart: Boolean = true, private val providerDelayMs: Long = 0, modelTimeoutMs: Long = 60_000,
-        private val custom: ((AgentRequest) -> AgentReply?)? = null, withSupport: Boolean = true) : AutoCloseable {
+        private val custom: ((AgentRequest) -> AgentReply?)? = null, withSupport: Boolean = true,
+        /** The card knows the connection by name (as for a saved connection): only then does it offer to remember. */ private val named: Boolean = false) : AutoCloseable {
         @Volatile var snapshot = saved
         val executed = AtomicInteger()
         val commands = CopyOnWriteArrayList<String>()
@@ -36,7 +37,7 @@ class AssistantConfirmationFlowTest {
         @Volatile var persistFails = persistFails
         val file = ru.adsrv.frpjump.ssh.MemoryStorage()
         val settings = SettingsStore(file).apply {
-            update { it.copy(assistantEnabled = enabledAtStart, assistantSshCommand = true) }
+            update { it.copy(assistantEnabled = enabledAtStart, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true) }
         }
         private val synthetic = SyntheticProfileInformation()
         private val box = FakeKeystore().box("synthetic-ssh")
@@ -56,8 +57,9 @@ class AssistantConfirmationFlowTest {
         /** What the grants are bound to: the real settings (switches, off count); the tunnel period and the connection's fingerprint are set by the test. */
         val world = SettingsGrantWorld(settings)
         /** The production wiring (policy, commit of "off", names, the app's grants); only the persistence failure is simulated. */
-        val support = chatConfirmationSupport(settings, ssh, SessionGrants(world)).let { real ->
-            ConfirmationSupport(real.policy, { if (this.persistFails) false else real.persistOff() }, real.info, real.grants)
+        val support = chatConfirmationSupport(settings, ssh, SessionGrants(world), ConnectionGrants(settings, world)).let { real ->
+            ConfirmationSupport(real.policy, { if (this.persistFails) false else real.persistOff() },
+                if (named) ({ t: GrantTarget -> ConfirmationTargetInfo("Home", ru.adsrv.frpjump.connections.Connection(t.connectionId, "board", 22, ru.adsrv.frpjump.ports.PortKind.SSH)) }) else real.info, real.grants, real.connection)
         }
         val scope = CoroutineScope(SupervisorJob() + (dispatcher ?: Dispatchers.Default))
         val chat: AssistantConversation
@@ -383,5 +385,51 @@ class AssistantConfirmationFlowTest {
         // Stop
         val stopped = Harness(one()); stopped.send(); stopped.card(); assertTrue(stopped.asks())
         stopped.chat.stop(); stopped.idle(); assertFalse(stopped.asks()); assertNull(stopped.state.confirmation)
+    }
+
+    // ---- "For this connection" through the production conversation ----
+
+    @Test fun `For this connection asks once, later calls of the connection run without a question and say why on their receipts, in memory only`() {
+        val h = Harness(listOf(Call("p", "c", "a"), Call("p", "c", "b"), Call("p", "other", "c")), named = true)
+        h.send(); h.chat.answer(h.card().id, ConfirmationDecision.CONNECTION)
+        val other = eventually("another connection asks") { h.state.confirmation?.takeIf { it.command == "c" } }
+        assertEquals("the same connection did not ask again", listOf("a", "b"), h.commands)
+        h.chat.answer(other.id, ConfirmationDecision.DENY); h.idle()
+        val reasons = h.state.turns.single().receipts.map { it.noQuestion }
+        assertEquals("the answered call, the covered one and the one that asked", listOf(null, NoQuestion.CONNECTION, null), reasons)
+        assertEquals(listOf("ssh_command", "terminal_input"), h.settings.assistantConfirmations.overrides.single().tools)
+        // Nothing about it is in the saved turn: the receipt's reason is not part of the history format.
+        val saved = Json.encodeToString(SavedResult.serializer(), SavedResult("c1", "ssh_command", "ok", "SUCCESS").copy(noQuestion = NoQuestion.CONNECTION))
+        assertEquals(Json.encodeToString(SavedResult.serializer(), SavedResult("c1", "ssh_command", "ok", "SUCCESS")), saved)
+    }
+
+    @Test fun `with the question turned off every call says so on its receipt`() {
+        val h = Harness(listOf(Call("p", "c", "a")))
+        h.settings.setAssistantConfirmations(ConfirmationMode.OFF)
+        h.send(); h.idle()
+        assertEquals(listOf(NoQuestion.OFF), h.state.turns.single().receipts.map { it.noQuestion }); assertEquals(1, h.executed.get())
+    }
+
+    @Test fun `a record is not used while locked and the call asks, the record stays`() {
+        val h = Harness(listOf(Call("p", "c", "a")), named = true)
+        h.send(); h.chat.answer(h.card().id, ConfirmationDecision.CONNECTION); h.idle()
+        h.world.locked = true
+        h.chat.edit("again"); h.chat.send()
+        val card = eventually("a locked app asks") { h.state.confirmation }
+        assertEquals(1, h.settings.assistantConfirmations.overrides.size)
+        h.chat.answer(card.id, ConfirmationDecision.DENY); h.idle()
+        h.world.locked = false; h.chat.edit("third"); h.chat.send(); h.idle()
+        assertEquals("unlocked: the record covers again, no card", listOf("a", "a"), h.commands)
+    }
+
+    @Test fun `a history clear a closed conversation and a new one leave the remembered permission`() {
+        val h = Harness(one(), named = true)
+        h.send(); h.chat.answer(h.card().id, ConfirmationDecision.CONNECTION); h.idle()
+        val key = GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "c"))
+        runBlocking { h.chat.deleteHistory() }
+        assertEquals("a history clear is not tied to it", 1, h.settings.assistantConfirmations.overrides.size)
+        h.chat.close()
+        assertTrue("nor is a closed conversation", ConnectionGrants(h.settings, h.world).covers(AssistantToolId.SSH_COMMAND, key))
+        assertTrue("nor a restart", ConnectionGrants(SettingsStore(h.file), h.world).covers(AssistantToolId.SSH_COMMAND, key))
     }
 }

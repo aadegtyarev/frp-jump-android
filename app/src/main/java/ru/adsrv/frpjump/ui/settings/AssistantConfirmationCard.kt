@@ -45,7 +45,7 @@ import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.connections.kindWord
 
 /**
- * The owner's question before a changing call. The four answers are pinned at the bottom of the card and are always visible. Above them
+ * The owner's question before a changing call. The answers are pinned at the bottom of the card and are always visible (a card that can remember has five: Allow and Decline, then under "Allow and remember" For session, For this connection and Always). Above them
  * is one section that scrolls (it opens at its top): title, tool, target names, the command in its own capped scroll box with its line
  * count, and the warning. Marks say when more of the section is above or below. The command is shown with every non-printing or disguising
  * character as a highlighted visible escape ([displayCommandSpans]), always laid out left to right, with a note when it has right-to-left
@@ -63,6 +63,15 @@ internal fun sessionHintRes(sessionTools: Set<AssistantToolId>, typing: Boolean)
     sessionTools.singleOrNull() != null -> R.string.confirm_session_hint
     typing -> R.string.confirm_input_session_hint
     else -> R.string.confirm_session_hint
+}
+
+/** The hint of For this connection: the same tools as the session hint (both, typing only, commands), longer: what it keeps and where to forget it. */
+internal fun connectionHintRes(tools: Set<AssistantToolId>, typing: Boolean): Int = when {
+    tools.size > 1 -> R.string.confirm_connection_hint_both
+    tools.singleOrNull() == AssistantToolId.TERMINAL_INPUT -> R.string.confirm_connection_hint_input
+    tools.singleOrNull() != null -> R.string.confirm_connection_hint
+    typing -> R.string.confirm_connection_hint_input
+    else -> R.string.confirm_connection_hint
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -99,10 +108,12 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     val tool = confirmation.tool.actionClass.cardName()?.let { stringResource(R.string.chat_confirm_tool, stringResource(it), toolTitle) } ?: toolTitle
     val allow = stringResource(R.string.confirm_allow)
     val session = stringResource(R.string.confirm_session)
+    val connectionAnswer = stringResource(R.string.confirm_connection)
     val always = stringResource(R.string.confirm_always)
     val decline = stringResource(R.string.confirm_decline)
     // What For session covers: the grantable tools of the class that were in effect when the card was raised (both: commands and typing).
     val sessionHint = stringResource(sessionHintRes(confirmation.sessionTools, typing != null))
+    val connectionHint = stringResource(connectionHintRes(confirmation.sessionTools, typing != null))
     val escapeStyle = SpanStyle(background = AppTheme.colors.accentContainer, color = AppTheme.colors.onAccentContainer, fontWeight = FontWeight.Bold)
     val shownCommand = remember(confirmation.id, escapeStyle) {
         val spans = if (typing != null) displayTypedSpans(confirmation.command, forRender = true) else displayCommandSpans(confirmation.command, forRender = true)
@@ -130,6 +141,8 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
     // The sizes of the two blocks the decision below needs; measured the same way in both layouts, so the decision cannot flip-flop.
     var headerPx by remember { mutableIntStateOf(0) }
     var answersPx by remember { mutableIntStateOf(0) }
+    // The wide layout's own measure of the answers beside the section (taken only there, so the choice below cannot flip-flop between layouts).
+    var rowAnswersPx by remember { mutableIntStateOf(0) }
 
     @Composable fun Header() {
         Column(Modifier.onSizeChanged { headerPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -189,17 +202,34 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
         } else Text(stringResource(if (typing != null) R.string.confirm_input_warning else R.string.confirm_warning), color = AppTheme.colors.error, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag("chat_confirm_warning"))
     }
-    @Composable fun Answers() {
-        Column(Modifier.onSizeChanged { answersPx = it.height }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { answer(CardTap.ALLOW) }, modifier = Modifier.testTag("chat_confirm_allow")) { Text(allow) }
-                if (canSession) OutlinedButton(onClick = { answer(CardTap.SESSION) },
-                    modifier = Modifier.semantics { contentDescription = "$session. $sessionHint" }.testTag("chat_confirm_session")) { Text(session) }
+    @Composable fun Answers(onHeight: (Int) -> Unit = { answersPx = it }) {
+        // Every answer is at least 48 dp high (the button default is 40 dp).
+        val tall = Modifier.heightIn(min = 48.dp)
+        Column(Modifier.onSizeChanged { onHeight(it.height) }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (canSession) {
+                // Row 1: the one-time answers; then what is remembered, under its own caption (the card's hints are in the scrolling section).
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { answer(CardTap.ALLOW) }, modifier = tall.testTag("chat_confirm_allow")) { Text(allow) }
+                    OutlinedButton(onClick = { answer(CardTap.DECLINE) }, modifier = tall.testTag("chat_confirm_decline")) { Text(decline) }
+                }
+                Text(stringResource(R.string.confirm_remember), style = MaterialTheme.typography.labelMedium, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_confirm_remember"))
+                // One short line that stays with the answers: what the remembered answers mean, before the tap (the long hints are in the scrolling section).
+                Text(stringResource(R.string.confirm_remember_hint), style = MaterialTheme.typography.bodySmall, color = AppTheme.colors.muted, modifier = Modifier.testTag("chat_confirm_remember_hint"))
+                // Always last, further from the primary answer, keeps the error colour and its second confirmation.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { answer(CardTap.SESSION) },
+                        modifier = tall.semantics { contentDescription = "$session. $sessionHint" }.testTag("chat_confirm_session")) { Text(session) }
+                    OutlinedButton(onClick = { answer(CardTap.CONNECTION) },
+                        modifier = tall.semantics { contentDescription = "$connectionAnswer. $connectionHint" }.testTag("chat_confirm_connection")) { Text(connectionAnswer) }
+                    OutlinedButton(onClick = { answer(CardTap.ALWAYS) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTheme.colors.error),
+                        modifier = tall.testTag("chat_confirm_always")) { Text(always) }
+                }
+            } else FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { answer(CardTap.ALLOW) }, modifier = tall.testTag("chat_confirm_allow")) { Text(allow) }
                 OutlinedButton(onClick = { answer(CardTap.ALWAYS) }, colors = ButtonDefaults.outlinedButtonColors(contentColor = AppTheme.colors.error),
-                    modifier = Modifier.testTag("chat_confirm_always")) { Text(always) }
-                OutlinedButton(onClick = { answer(CardTap.DECLINE) }, modifier = Modifier.testTag("chat_confirm_decline")) { Text(decline) }
+                    modifier = tall.testTag("chat_confirm_always")) { Text(always) }
+                OutlinedButton(onClick = { answer(CardTap.DECLINE) }, modifier = tall.testTag("chat_confirm_decline")) { Text(decline) }
             }
-            if (canSession) Hint(session, sessionHint, "chat_confirm_session_hint")
         }
     }
     /** The scrolling section: title, tool, target, command, warning; with [withAnswers] the answers follow (the short-window layout). */
@@ -209,16 +239,25 @@ internal fun ChatConfirmationCard(confirmation: PendingConfirmation, onAnswer: (
                 Header(); if (showCommand) CommandBlock()
                 skill?.oldBody?.let { old -> OldSkillText(skillText(old, escapeStyle), confirmation.id) }
                 typing?.keys?.takeIf { it.isNotEmpty() }?.let { FieldLine(stringResource(R.string.confirm_keys), it.joinToString(", "), "chat_confirm_keys") }
-                Warning(); if (withAnswers) Answers()
+                Warning()
+                // What the remembered answers keep: in the scrolling section, so the pinned block is only the buttons.
+                if (canSession) { Hint(session, sessionHint, "chat_confirm_session_hint"); Hint(connectionAnswer, connectionHint, "chat_confirm_connection_hint") }
+                if (withAnswers) Answers()
             }
             if (sectionScroll.canScrollBackward) Text(stringResource(R.string.confirm_more_above), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_above"))
             if (sectionScroll.canScrollForward) Text(stringResource(R.string.confirm_more), style = ltr, color = AppTheme.colors.accent, modifier = Modifier.testTag("chat_confirm_section_more"))
         }
     }
     OutlinedCard(modifier.fillMaxWidth().testTag("chat_confirm_card"), border = BorderStroke(1.dp, AppTheme.colors.accent)) {
-        if (wide) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Section(Modifier.weight(1f).heightIn(max = 260.dp))
-            Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers() }
+        if (wide) BoxWithConstraints {
+            // Beside the section while the room holds the answers; in a shorter window the whole card scrolls instead (as the portrait layout does), so no answer is cut.
+            val fits = !constraints.hasBoundedHeight || with(LocalDensity.current) { rowAnswersPx + 24.dp.toPx() <= constraints.maxHeight }
+            if (fits) Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // The row is as tall as the answers anyway (five of them wrap at a large font): the section may use that height instead of stopping at 260 dp.
+                Section(Modifier.weight(1f).heightIn(max = maxOf(260.dp, with(LocalDensity.current) { rowAnswersPx.toDp() })))
+                // Measured with no height limit: the row's own limit would hide that the answers do not fit (then the whole card scrolls instead).
+                Column(Modifier.weight(0.8f).wrapContentHeight(Alignment.Top, unbounded = true), verticalArrangement = Arrangement.spacedBy(8.dp)) { Answers { rowAnswersPx = it } }
+            } else Column(Modifier.padding(12.dp)) { Section(Modifier.weight(1f, fill = false), withAnswers = true) }
         } else BoxWithConstraints {
             // Pinned layout (answers fixed below a scrolling section) only while the room holds the answers, the header and at least the first
             // command line. In a shorter window the whole card scrolls instead, opening at its top: title, target, command, warning, answers,

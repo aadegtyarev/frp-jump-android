@@ -19,7 +19,7 @@ Consumers: the assistant tools `ssh_command`, `profile_information` and `start_t
   `CHANGE_*`. For an assistant tool the effect equals `AssistantToolId.effect`; a test pins this for every operation tool.
 - `ActionClass` (`ops/ActionClass.kt`): `PUBLIC_READ`, `CONNECTION_READ`, `CONNECTION_CHANGE`, `APP_READ`, `APP_CHANGE`; every operation declares one (it cannot
   be built without) and an assistant tool cannot be built when its operation's class differs from `AssistantToolId.actionClass`, like the effect pin. The class
-  never decides by itself whether a call asks and never extends a For session grant to a tool that is not `grantable`.
+  never decides by itself whether a call asks and never extends a For session or For this connection grant to a tool that is not `grantable`.
 - `OpResult<O>`:
   - `Done(value)`: the operation ran to its end. A command that exited nonzero is `Done`: it ran.
   - `Refused(reason: OpRefusal)`: nothing was started.

@@ -286,9 +286,25 @@ class SettingsStore(private val storage: TextStorage) {
     /** The "Offer to turn tools on" switch (same autosave path as the tool switches; applies from the next Send). */
     fun setAssistantOfferTools(on: Boolean) = update { it.copy(assistantOfferTools = on) }
 
+    /**
+     * Adds the persistent record [decide] returns (or nothing, for null) in ONE write, decided against the committed state under the store's lock: the
+     * assistant's off count and each tool's switch-off count are read there, so a switch-off between the question and the write cannot be missed.
+     * Returns whether a record was written; a failed write throws (nothing is recorded) and the committed value stays.
+     */
+    fun recordConnectionGrant(decide: (AppSettings, AssistantAvailability) -> ConfirmationOverride?): Boolean {
+        var recorded = false
+        update { settings ->
+            val record = decide(settings, assistantAvailability)
+            if (record == null) settings else { recorded = true; settings.copy(assistantConfirmations = settings.assistantConfirmations.withRecord(record)) }
+        }
+        return recorded
+    }
+
     fun update(change: (AppSettings) -> AppSettings) {
         val version = synchronized(this) {
-            val next = change(committedSettings)
+            // The records follow the switches in the SAME write: no other path can observe a switched-off tool still granted (the assistant off removes them all).
+            val changed = change(committedSettings)
+            val next = changed.copy(assistantConfirmations = changed.assistantConfirmations.narrowed(changed))
             require(portRangeProblem(next.localPortFirst, next.localPortLast) == null) { "invalid local port range" }
             require(validTerminalHistoryRows(next.terminalHistoryRows)) { "invalid terminal history limit" }
             require(validMqttIngressLimits(next.mqttIngress)) { "invalid MQTT ingress limits" }
@@ -345,7 +361,9 @@ class SettingsStore(private val storage: TextStorage) {
             ("assistant_owner_instructions" to JsonPrimitive(
                 (json["assistant_owner_instructions"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(AssistantOwnerInstructions::normalize).orEmpty())) +
             ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))
-        val settings = WireJson.decodeFromJsonElement<AppSettings>(normalized)
+        val parsed = WireJson.decodeFromJsonElement<AppSettings>(normalized)
+        // A record of a tool that is not in effect (or with the assistant off) is not read: the switches rule, as at every write.
+        val settings = parsed.copy(assistantConfirmations = parsed.assistantConfirmations.narrowed(parsed))
         // Up to 0.2.0-beta1 the switch was the other way round, "Relay only"; written again on the next change.
         val relayOnly = (json[LEGACY_RELAY_ONLY] as? JsonPrimitive)?.booleanOrNull
         return if ("direct" !in json && relayOnly != null) settings.copy(direct = !relayOnly) else settings
@@ -358,12 +376,13 @@ class SettingsStore(private val storage: TextStorage) {
         return known ?: WireJson.encodeToJsonElement(AppLockAfter.SECONDS_30)
     }
 
-    /** Fail closed: only a version-1 object with global exactly "off" turns requests off; anything else is ask. Overrides are not read yet. */
+    /** Fail closed: only a version-1 object with global exactly "off" turns requests off; anything else is ask. The records are read strictly ([readConnectionRecords]), only from a version-1 object. */
     private fun normalizeConfirmations(raw: JsonElement?): JsonElement {
         val group = raw as? JsonObject
         val version = (group?.get("version") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull
         val off = version == ConfirmationPolicy.VERSION && (group?.get("global") as? JsonPrimitive)?.takeIf { it.isString }?.content == "off"
-        return WireJson.encodeToJsonElement(ConfirmationPolicy(global = if (off) ConfirmationMode.OFF else ConfirmationMode.ASK))
+        val records = if (version == ConfirmationPolicy.VERSION) readConnectionRecords(group?.get("overrides")) else emptyList()
+        return WireJson.encodeToJsonElement(ConfirmationPolicy(global = if (off) ConfirmationMode.OFF else ConfirmationMode.ASK, overrides = records))
     }
 
     /** Bad new fields never reset unrelated preferences; only an inconsistent byte pair resets together. */

@@ -19,6 +19,16 @@ sealed interface StoredEnrollment {
     data class Unavailable(val reason: String) : StoredEnrollment
 }
 
+/** What the PUBLIC part of an enrollment file says, read with no unsealing: for the persistent assistant permission's fingerprint. */
+sealed interface EnrollmentIdentity {
+    /** A hash of the control URL, device id and certificate (public fields only). */
+    data class Present(val hash: String) : EnrollmentIdentity
+    /** No enrollment file. */
+    data object None : EnrollmentIdentity
+    /** Could not be read just now, or is malformed: nothing is wiped by this read. */
+    data object Unreadable : EnrollmentIdentity
+}
+
 /**
  * True for failures that will not go away by retrying: the key is gone or
  * invalidated, the ciphertext does not match it, or the file is malformed.
@@ -104,6 +114,22 @@ class CredentialStore(private val storage: TextStorage, private val box: SecretB
             }
         }
     }
+
+    /**
+     * The enrollment's identity from its PUBLIC fields only: no sealed field is opened (no Keystore unlock) and nothing is ever wiped on a read failure
+     * (unlike [state], which wipes on a permanent loss). Read from the file at each call, so a replaced enrollment shows at once.
+     */
+    @Synchronized
+    fun identity(): EnrollmentIdentity = try {
+        val text = storage.read()
+        if (text == null) EnrollmentIdentity.None else {
+            val json = WireJson.parseToJsonElement(text) as? kotlinx.serialization.json.JsonObject
+            fun field(key: String) = (json?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+            val url = field("control_url"); val device = field("device_id"); val cert = field("cert_pem")
+            if (url == null || device == null || cert == null) EnrollmentIdentity.Unreadable
+            else EnrollmentIdentity.Present(ru.adsrv.frpjump.settings.GrantFingerprint.enrollmentHash(url, device, cert))
+        }
+    } catch (e: Exception) { EnrollmentIdentity.Unreadable }
 
     @Synchronized
     fun save(c: Credentials) {

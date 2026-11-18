@@ -226,6 +226,8 @@ class AssistantChatScreenTest {
     private val sessionGrants = ru.adsrv.frpjump.settings.SessionGrants(object : ru.adsrv.frpjump.settings.GrantWorld {
         override fun period(target: ru.adsrv.frpjump.settings.GrantTarget): Long? = 1L
         override fun fingerprint(target: ru.adsrv.frpjump.settings.GrantTarget): Any? = target
+        override fun persistentFingerprint(target: ru.adsrv.frpjump.settings.GrantTarget): ru.adsrv.frpjump.settings.PersistentFp = ru.adsrv.frpjump.settings.PersistentFp.Known("v1:synthetic")
+        override fun hidden(target: ru.adsrv.frpjump.settings.GrantTarget) = false
         override fun enabled() = settings.assistantAvailability.enabled
         override fun disableVersion() = settings.assistantAvailability.disableVersion
         override fun inEffect(tool: AssistantToolId) = settings.assistantAvailability.tools[tool]
@@ -2052,7 +2054,10 @@ class AssistantChatScreenTest {
         val top = maxOf(box.top, section.top); val bottom = minOf(box.bottom, section.bottom)
         assertTrue("command box starts inside the section: box=$box section=$section", box.top >= section.top - 1f)
         assertTrue("first $lines command lines visible: visible=${bottom - top}px need=${need}px box=$box section=$section", bottom - top >= need - 1f)
-        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) {
+        // The remembered answers too, when the card has them (a named connection): the caption's hint is on screen with them.
+        val answerTags = listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline") +
+            listOf("chat_confirm_session", "chat_confirm_connection", "chat_confirm_remember_hint").filter { compose.onAllNodes(hasTestTag(it), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        for (tag in answerTags) {
             val b = bounds(tag)
             assertTrue("$tag inside the screen: $b root=$root", b.top >= root.top - 1f && b.bottom <= root.bottom + 1f && b.left >= root.left - 1f && b.right <= root.right + 1f)
         }
@@ -2342,7 +2347,8 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))
         compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint), substring = true)
         shot("real-names")
-        button("chat_confirm_session").performClick(); awaitIdle()
+        // The hint is in the scrolling section now: bring the button back before the tap.
+        shown("chat_confirm_session").performClick(); awaitIdle()
         compose.runOnIdle { assertEquals(ToolOutcome.FAILED, requests.last().turns.last().exchanges.single().results.single().outcome) }
         // The same target no longer asks; another connection of the same profile does.
         input().performTextInput("Again"); sendAndAwait()

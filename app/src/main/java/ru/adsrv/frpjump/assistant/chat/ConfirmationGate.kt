@@ -12,13 +12,17 @@ import ru.adsrv.frpjump.assistant.tools.ChangeCheck
 import ru.adsrv.frpjump.assistant.tools.ChangeRequest
 import ru.adsrv.frpjump.settings.ConfirmationTexts
 import ru.adsrv.frpjump.settings.GrantKey
-import ru.adsrv.frpjump.settings.mustAsk
+import ru.adsrv.frpjump.settings.NoQuestion
+import ru.adsrv.frpjump.settings.RecordResult
+import ru.adsrv.frpjump.settings.asksAtAll
+import ru.adsrv.frpjump.settings.noQuestion
 import kotlin.coroutines.CoroutineContext
 
 /**
  * The decision of the `authorize` hook, free of chat state so it is tested directly. Fail closed:
- * - a changing call asks unless the policy (read live NOW) is off or a session grant of its class on this connection exists that still covers this tool
- *   (same open tunnel period and connection fingerprint, the tool grantable and in effect);
+ * - a changing call asks unless the policy (read live NOW) is off, a session grant of its class on this connection exists that still covers this tool
+ *   (same open tunnel period and connection fingerprint, the tool grantable and in effect), or a persistent "For this connection" record covers it (same
+ *   fingerprint, the tool in its tools and in effect, the app not locked); the order is that, and the reason is reported through [onNoQuestion];
  * - invalid arguments and read tools return null (the tool then runs nothing for invalid arguments, and reads are never asked about);
  * - a changing call that cannot be described (no description, or a catalog tool that is not an AppTool) is REFUSED, never shown with an empty
  *   command and never run: the owner must see what runs;
@@ -35,6 +39,8 @@ internal suspend fun authorizeCall(
     wait: suspend (ChangeRequest, ConfirmationTargetInfo?) -> ConfirmationDecision,
     onNotSaved: () -> Unit,
     io: CoroutineContext,
+    /** Told why a call that asks in general did not ask; the run keeps it in memory on that call's receipt only. */
+    onNoQuestion: (ToolCall, NoQuestion) -> Unit = { _, _ -> },
 ): ToolOutput? {
     val registered = tools[call.name] ?: return null
     val refused = ToolOutput(NOT_AUTHORIZED, ToolOutcome.FAILED)
@@ -52,12 +58,34 @@ internal suspend fun authorizeCall(
     val key = request.target?.let { GrantKey(tool.id.actionClass, it) }
     // Bound to the tunnel's open period and the connection's fingerprint as they are BEFORE the question: an edit or a close during the wait makes the grant stale.
     val stamp = request.target?.let(support.grants::stamp)
-    if (!mustAsk(tool.id, key, support.policy(), support.grants)) return null
-    return when (wait(request, request.target?.let(support.info))) {
+    if (!asksAtAll(tool.id)) return null
+    // The persistent permission reads the enrollment file (its fingerprint): never on the caller's thread, which is Main.
+    val connectionStamp = request.target?.let { target -> withContext(io) { support.connection?.stamp(target) } }
+    val reason = withContext(io) { noQuestion(tool.id, key, support.policy(), support.grants, support.connection) }
+    if (reason != null) { onNoQuestion(call, reason); return null }
+    // The card is offered a connection answer only with a connection known by name: no name, no record.
+    val info = request.target?.let(support.info)
+    return when (wait(request, info)) {
         ConfirmationDecision.ONCE -> null
         // A grant is not recorded (the answer acts as Allow once) for a tool that is not grantable or was switched off while the owner was being asked,
         // nor when the tunnel's period ended or the connection changed during the wait.
         ConfirmationDecision.SESSION -> { if (key != null && stamp != null) support.grants.record(key, tool.id, stamp, request.sessionTools); null }
+        // The owner's choice stands even if Stop races this call (as Always); the call itself is stopped by the kernel's owner check. Recorded against the stamp taken
+        // BEFORE the question and the card's tools; a failed save or a record that was refused is Allow once plus the existing note, and nothing is kept in memory instead.
+        ConfirmationDecision.CONNECTION -> {
+            val connection = support.connection
+            if (key != null && connection != null && info != null && tool.id.grantable) {
+                // Nothing recorded, whatever the reason (a card raised while locked, a change during the wait, a failed save): the call is allowed once and the owner is told.
+                val result = if (connectionStamp == null) RecordResult.NOT_RECORDED
+                    else withContext(NonCancellable + io) { try { connection.record(key, tool.id, connectionStamp, request.sessionTools) } catch (_: Exception) { RecordResult.SAVE_FAILED } }
+                when (result) {
+                    // One line speaks for the wider permission: the connection's session entry goes.
+                    RecordResult.RECORDED -> support.grants.forgetConnection(key.target.profileId, key.target.connectionId)
+                    RecordResult.SAVE_FAILED, RecordResult.NOT_RECORDED -> onNotSaved()
+                }
+            }
+            null
+        }
         ConfirmationDecision.ALWAYS -> {
             // The owner's choice stands even if Stop races this call; the call itself is stopped by the kernel's owner check.
             val saved = withContext(NonCancellable + io) { try { support.persistOff() } catch (_: Exception) { false } }

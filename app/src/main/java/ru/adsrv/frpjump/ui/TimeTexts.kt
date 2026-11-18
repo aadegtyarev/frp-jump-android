@@ -49,6 +49,15 @@ fun shortTime(at: Instant): String {
     return DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale).format(local)
 }
 
+/** "Nov 13" ("13 нояб."), with the year ("Nov 13, 2025") when it is not the current one: the day [at] falls on, in the phone's zone and the app's language. */
+@Composable
+fun shortDate(at: Instant): String {
+    val locale = LocalConfiguration.current.locales[0]
+    val local = at.atZone(ZoneId.systemDefault())
+    val skeleton = if (local.year == LocalDate.now(local.zone).year) "dMMM" else "dMMMy"
+    return DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale).format(local)
+}
+
 /**
  * A device online as of a list the server gave earlier: "Was online 2 min
  * ago", counting from when it was last seen, so the words say how old

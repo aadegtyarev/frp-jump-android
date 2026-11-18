@@ -258,4 +258,139 @@ class ConfirmationGateTest {
         val on = Rig(ConfirmationDecision.SESSION)
         on.run(described(), call("ssh_command", *withCommand)); assertEquals(1, on.support.grants.snapshot().size)
     }
+
+    // ---- "For this connection" (E3): the persistent record, decided by the gate ----
+
+    private class Flaky(var failWrites: Boolean = false) : ru.adsrv.frpjump.store.TextStorage {
+        var data: String? = null
+        override fun read() = data
+        override fun write(text: String) { if (failWrites) throw java.io.IOException("Synthetic"); data = text }
+        override fun delete() { data = null }
+    }
+
+    /** The gate with persistent grants: a real store, a world the test steers, and a card that knows the connection by name. */
+    private inner class ConnRig(var answer: ConfirmationDecision = ConfirmationDecision.CONNECTION, val storage: Flaky = Flaky(), val named: Boolean = true, real: Boolean = false, wrap: (GrantWorld) -> GrantWorld = { it }, val io: kotlin.coroutines.CoroutineContext = Dispatchers.Unconfined) {
+        val settings = SettingsStore(storage).apply { update { it.copy(assistantEnabled = true, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true, assistantSessions = true) } }
+        val fake = FakeGrantWorld()
+        val world: GrantWorld = wrap(if (real) SettingsGrantWorld(settings) else fake)
+        val session = SessionGrants(world)
+        val connection = ConnectionGrants(settings, world, now = { 5L })
+        val asked = ArrayList<ChangeRequest>()
+        var duringWait: () -> Unit = {}
+        var notSaved = 0
+        val reasons = ArrayList<NoQuestion>()
+        val support = ConfirmationSupport(policy = { settings.assistantConfirmations }, persistOff = { true },
+            info = { if (named) ConfirmationTargetInfo("Home", ru.adsrv.frpjump.connections.Connection("c", "board", 22, ru.adsrv.frpjump.ports.PortKind.SSH)) else null },
+            grants = session, connection = connection)
+        suspend fun run(tool: AppTool<*>, call: ToolCall) = authorizeCall(support, mapOf(call.name to tool), call,
+            wait = { request, _ -> asked += request; duringWait(); answer }, onNotSaved = { notSaved++ }, io = io, onNoQuestion = { _, reason -> reasons += reason })
+        val records get() = settings.assistantConfirmations.overrides
+    }
+
+    @Test fun `a connection answer records the connection and the tools the card offered, and later calls of them run without a question`() = runBlocking {
+        val rig = ConnRig(); val tool = described(); val c = call("ssh_command", *withCommand)
+        assertNull(rig.run(tool, c)); assertEquals(1, rig.asked.size)
+        assertEquals(setOf(AssistantToolId.SSH_COMMAND, AssistantToolId.TERMINAL_INPUT), rig.asked.single().sessionTools)
+        assertEquals(listOf("ssh_command", "terminal_input"), rig.records.single().tools); assertEquals(5L, rig.records.single().at)
+        assertNull(rig.run(tool, c)); assertEquals("no second question", 1, rig.asked.size); assertEquals(listOf(NoQuestion.CONNECTION), rig.reasons)
+        // Another connection asks.
+        val other = Changing { ChangeRequest(AssistantToolId.SSH_COMMAND, GrantTarget("p", "other"), it.command.orEmpty()) }
+        assertNull(rig.run(other, c)); assertEquals(2, rig.asked.size)
+    }
+
+    @Test fun `recording drops the connection's session entry so one line speaks for the wider permission`() = runBlocking {
+        val rig = ConnRig(); val key = GrantKey(ActionClass.CONNECTION_CHANGE, target)
+        // A session entry that appears while the card waits (a card of another conversation answered) goes when this answer records.
+        rig.duringWait = { assertTrue(rig.session.record(key, AssistantToolId.SSH_COMMAND, rig.session.stamp(target)!!, rig.session.coverableBy(AssistantToolId.SSH_COMMAND))) }
+        assertNull(rig.run(described(), call("ssh_command", *withCommand)))
+        assertTrue("the session entry is gone", rig.session.snapshot().isEmpty()); assertEquals(1, rig.records.size)
+        // A session answer alone keeps its entry and records nothing persistent.
+        val session = ConnRig(ConfirmationDecision.SESSION); session.run(described(), call("ssh_command", *withCommand))
+        assertEquals(1, session.session.snapshot().size); assertTrue(session.records.isEmpty())
+    }
+
+    @Test fun `a connection answer on a card that did not offer it acts as Allow once and records nothing`() = runBlocking {
+        // No saved connection (no target), a tool that cannot be remembered, a connection with no name: each is Allow once, never a record.
+        val noTarget = Changing { ChangeRequest(AssistantToolId.SSH_COMMAND, null, it.command.orEmpty()) }
+        val closing = Changing(AssistantToolId.TERMINAL_CLOSE) { ChangeRequest(AssistantToolId.TERMINAL_CLOSE, target, "", close = ru.adsrv.frpjump.assistant.CloseCard(1, null, null, null, null, null)) }
+        val stopping = Changing(AssistantToolId.STOP_TUNNEL) { ChangeRequest(AssistantToolId.STOP_TUNNEL, target, "") }
+        val skill = Changing(AssistantToolId.SKILL_SAVE) { ChangeRequest(AssistantToolId.SKILL_SAVE, null, "x") }
+        for ((what, pair) in mapOf("no target" to (noTarget to "ssh_command"), "close" to (closing to "terminal_close"), "stop" to (stopping to "stop_tunnel"), "skill" to (skill to "skill_save"))) {
+            val rig = ConnRig(); val result = rig.run(pair.first, call(pair.second, *withCommand))
+            assertNull("$what runs once", result); assertEquals(what, 1, rig.asked.size); assertTrue(what, rig.records.isEmpty()); assertEquals(what, 0, rig.notSaved)
+        }
+        val unnamed = ConnRig(named = false); assertNull(unnamed.run(described(), call("ssh_command", *withCommand))); assertTrue("no name: no record", unnamed.records.isEmpty())
+    }
+
+    @Test fun `a change during the wait makes the answer Allow once with no record`() = runBlocking {
+        val c = call("ssh_command", *withCommand)
+        // An edit of the connection.
+        ConnRig().let { rig -> rig.duringWait = { rig.fake.persistentFp = PersistentFp.Known("v1:edited") }; assertNull(rig.run(described(), c)); assertTrue("edit", rig.records.isEmpty()) }
+        // The tunnel's period ended.
+        ConnRig().let { rig -> rig.duringWait = { rig.fake.period = 99L }; assertNull(rig.run(described(), c)); assertTrue("period", rig.records.isEmpty()) }
+        // The assistant was switched off during the wait (and on again).
+        ConnRig(real = true).let { rig -> rig.duringWait = { rig.settings.update { it.copy(assistantEnabled = false) }; rig.settings.update { it.copy(assistantEnabled = true) } }; assertNull(rig.run(described(), c)); assertTrue("assistant off", rig.records.isEmpty()) }
+        // The answered tool was switched off (and on).
+        ConnRig(real = true).let { rig -> rig.duringWait = { rig.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, false); rig.settings.setAssistantTool(AssistantToolId.SSH_COMMAND, true) }
+            assertNull(rig.run(described(), c)); assertTrue("switch-off", rig.records.isEmpty()) }
+        // Another tool of the card was switched off: recorded without it.
+        ConnRig(real = true).let { rig -> rig.duringWait = { rig.settings.setAssistantTool(AssistantToolId.TERMINAL_INPUT, false); rig.settings.setAssistantTool(AssistantToolId.TERMINAL_INPUT, true) }
+            assertNull(rig.run(described(), c)); assertEquals(listOf("ssh_command"), rig.records.single().tools) }
+        // The app locked during the wait.
+        ConnRig().let { rig -> rig.duringWait = { rig.fake.locked = true }; assertNull(rig.run(described(), c)); assertTrue("lock", rig.records.isEmpty()) }
+        // A lock before the question: no stamp, no record.
+        ConnRig().let { rig -> rig.fake.locked = true; assertNull(rig.run(described(), c)); assertTrue(rig.records.isEmpty()) }
+    }
+
+    @Test fun `a failed save is Allow once plus the existing note and nothing is kept in memory`() = runBlocking {
+        val rig = ConnRig(); rig.duringWait = { rig.storage.failWrites = true }
+        assertNull("the call is allowed once", rig.run(described(), call("ssh_command", *withCommand))); assertEquals(1, rig.notSaved)
+        assertTrue(rig.records.isEmpty()); rig.storage.failWrites = false
+        assertNull(rig.run(described(), call("ssh_command", *withCommand))); assertEquals("it asks again: nothing was kept", 2, rig.asked.size)
+    }
+
+    @Test fun `other answers record nothing and a connection answer needs no Always style note`() = runBlocking {
+        for (answer in listOf(ConfirmationDecision.ONCE, ConfirmationDecision.SESSION, ConfirmationDecision.DENY, ConfirmationDecision.NO_ANSWER)) {
+            val rig = ConnRig(answer); rig.run(described(), call("ssh_command", *withCommand)); assertTrue(answer.name, rig.records.isEmpty()); assertEquals(answer.name, 0, rig.notSaved)
+        }
+        val rig = ConnRig(); rig.run(described(), call("ssh_command", *withCommand)); assertEquals("a connection answer never turns the global switch off", ConfirmationMode.ASK, rig.settings.assistantConfirmations.global)
+    }
+
+    @Test fun `the order and the reason are the switch then the session grant then the persistent one`() = runBlocking {
+        val c = call("ssh_command", *withCommand); val key = GrantKey(ActionClass.CONNECTION_CHANGE, target)
+        val rig = ConnRig(); rig.run(described(), c)
+        rig.reasons.clear(); rig.settings.setAssistantConfirmations(ConfirmationMode.OFF); assertNull(rig.run(described(), c)); assertEquals(listOf(NoQuestion.OFF), rig.reasons)
+        rig.reasons.clear(); rig.settings.setAssistantConfirmations(ConfirmationMode.ASK)
+        assertTrue(rig.session.record(key, AssistantToolId.SSH_COMMAND, rig.session.stamp(target)!!, rig.session.coverableBy(AssistantToolId.SSH_COMMAND)))
+        assertNull(rig.run(described(), c)); assertEquals("the session grant is read first", listOf(NoQuestion.SESSION), rig.reasons)
+        assertEquals("nothing was asked after the first card", 1, rig.asked.size)
+    }
+
+    @Test fun `a connection answer that records nothing shows the same note as a failed save`() = runBlocking {
+        val c = call("ssh_command", *withCommand)
+        // A change during the wait.
+        ConnRig().let { rig -> rig.duringWait = { rig.fake.persistentFp = PersistentFp.Known("v1:edited") }; assertNull(rig.run(described(), c)); assertEquals("edit", 1, rig.notSaved) }
+        // The card was raised while the app was locked (no stamp): the owner still answered For this connection.
+        ConnRig().let { rig -> rig.fake.locked = true; assertNull(rig.run(described(), c)); assertTrue(rig.records.isEmpty()); assertEquals("locked at the question", 1, rig.notSaved) }
+        // The owner forgot (anything) while the card waited: the answer must not write the record back.
+        ConnRig().let { rig -> rig.duringWait = { rig.connection.revoke("p", "c") }; assertNull(rig.run(described(), c)); assertTrue("forgotten during the wait", rig.records.isEmpty()); assertEquals(1, rig.notSaved) }
+        // A card that did not offer the answer says nothing (the owner could not have tapped it).
+        ConnRig().let { rig -> assertNull(rig.run(Changing(AssistantToolId.STOP_TUNNEL) { ChangeRequest(AssistantToolId.STOP_TUNNEL, target, "") }, call("stop_tunnel", *withCommand))); assertEquals(0, rig.notSaved) }
+        // A recorded answer says nothing.
+        ConnRig().let { rig -> assertNull(rig.run(described(), c)); assertEquals(0, rig.notSaved); assertEquals(1, rig.records.size) }
+    }
+
+    @Test fun `the persistent permission reads the enrollment and the file only on the io dispatcher, never on the caller's thread`() {
+        val threads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "gate-io") }
+        try {
+            val rig = ConnRig(io = executor.asCoroutineDispatcher(), wrap = { inner ->
+                object : GrantWorld by inner { override fun persistentFingerprint(target: GrantTarget): PersistentFp { threads += Thread.currentThread().name.substringBefore(" @"); return inner.persistentFingerprint(target) } }
+            })
+            val caller = Thread.currentThread().name
+            runBlocking { rig.run(described(), call("ssh_command", *withCommand)); rig.run(described(), call("ssh_command", *withCommand)) }
+            assertEquals("answered once, then covered", 1, rig.asked.size)
+            assertEquals("every read of the fingerprint (stamp, record, covers) ran on the io thread", setOf("gate-io"), threads); assertFalse(threads.contains(caller))
+        } finally { executor.shutdown() }
+    }
 }

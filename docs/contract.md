@@ -69,7 +69,7 @@ accessibility, truthful waiting/error feedback or required safety warnings.
   deleting files; deleting retained MQTT
   topics. Two confirms are left: "Forget profile" (it wipes the phone's
   keys and only a new enroll brings them back) and the assistant's question before a changing tool call (a remote change cannot be
-  undone, so Undo cannot apply; the owner can turn the question off app-wide).
+  undone, so Undo cannot apply; the owner can turn the question off app-wide, or for one connection with "For this connection").
 - Consistency: controls that do the same action look the same everywhere —
   same glyph, same kind of control, same placement relative to what they act
   on (Stop is the same button on a connection row, a device card and
@@ -280,13 +280,18 @@ profile without re-enrollment.
   server ›"). While a connection is being disconnected the card has no
   action. TalkBack reads the card's action as the main action's label
   when connected and "Start and open" when not.
-- While the assistant has a "For session" grant on a saved connection (the owner answered For session in Chat; it lives for the open period of
-  the connection's tunnel, see the [assistant contract](agent-contract.md#confirmation-of-changing-calls)), its card shows, under the address, a
-  muted line "Assistant: no questions, for the tunnel's lifetime" / «Помощник: без вопросов, на время туннеля» with a text button "Forget" /
-  «Забыть» (a 48 dp target; TalkBack reads "Forget the assistant's permissions for <connection name>" / «Забыть разрешения помощника для
-  <имя подключения>»). The line wraps at a large font and is the same on the device card and the Connections tab. Forget removes every
-  session grant of that connection at once, with no confirmation (it narrows authority) and cannot fail. The line is gone the moment the
-  grant ends for any reason. No sheet and no list of grants anywhere else.
+- While the assistant has a "For session" grant or a remembered "For this connection" permission on a saved connection (the owner answered in Chat;
+  a session grant lives for the open period of the connection's tunnel, a remembered one until the connection is edited and the other ends the
+  assistant contract lists, see the [assistant contract](agent-contract.md#confirmation-of-changing-calls)), its card shows, under the address, a
+  muted line: "Assistant: no questions, remembered <date>" / «Помощник: без вопроса, запомнено <дата>» (also when a session grant exists too), or
+  with only a session grant "Assistant: no questions, for the tunnel's lifetime" / «Помощник: без вопросов, на время туннеля», with a text button
+  "Forget" / «Забыть» (a 48 dp target; TalkBack reads "Forget the assistant's permissions for <connection name>" / «Забыть разрешения помощника для
+  <имя подключения>»). The line wraps at a large font and is the same on the device card and the Connections tab, for any profile, also while the
+  tunnel is down and while the global switch is off (it states what is remembered). Forget removes both lifetimes of that connection at once,
+  with no confirmation (it narrows authority); they stop being used at once, on the tap, and if deleting the record fails the permission stays unused,
+  the owner is told and the delete is retried. The date shows its year when it is not the current one. The line is gone the moment the grant or record ends for any reason and is never shown for a
+  record that was deleted. This line is the ONE place where remembered permissions are seen and forgotten: no sheet, no "⋮" item and no list
+  in Tools (to be added when a second class becomes rememberable).
 - Bringing a connection's tunnel up for these actions (and for "Use key login" and "Change login") is the `tunnel_up` operation of the
   [operations surface](contracts/surfaces/operations.md): same order, same 45 s wait for the tunnel, same notices as before it was
   an operation. The assistant does not use it.
@@ -1013,7 +1018,8 @@ consume settings and write v2 immediately:
   settings, not newer edits. Upgrading again does not re-migrate while v2
   exists, so changes made in the older APK are not imported again.
 - Deleting a connection removes its own settings in both files, not app
-  rules. Forgetting a profile removes its connections in both files.
+  rules, and the assistant's remembered "For this connection" permission for it (first, so a failure leaves none behind). Forgetting a profile
+  removes its connections in both files and the remembered permissions of its connections (also when it is enrolled again in place).
   Forgetting the last profile wipes both files and app-level rules because
   those rules contain the owner's topics. Closing the app during a rule's
   Undo interval still commits the delete under the shared UI rules.
@@ -1034,8 +1040,8 @@ search, Read page, Inspect image, Profile information and SSH command switches, 
 public/private-data disclosure and model token-charge notices. SSH command carries
 an explicit FULL SSH ACCESS warning: commands can read/change remote systems and
 files within account rights; commands and output may contain secrets and go to
-the configured model. Before such a changing call runs, the owner is asked (Allow, For session, Always, Decline) unless the app-wide
-"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (for the open period of its tunnel; it ends with the tunnel, an edit of the connection, the app lock and the other ends the assistant contract lists); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
+the configured model. Before such a changing call runs, the owner is asked (Allow, Decline, and under "Allow and remember" For session, For this connection, Always) unless the app-wide
+"Ask before changing commands" switch on Tools is off or the owner already answered For session for that connection (for the open period of its tunnel; it ends with the tunnel, an edit of the connection, the app lock and the other ends the assistant contract lists) or For this connection (remembered until the connection or its profile is edited, forgotten or deleted; it survives a restart and a tunnel close, and is not used while the app lock's interval has run out); see the [assistant contract](agent-contract.md#confirmation-of-changing-calls). These operate only during explicit Send; opening
 or saving makes no request. Switches autosave through the same Tools binding in
 Settings and Chat. Actual committed values, pending progress and inline failures
 come from one snapshot; no Save button or pre-commit checked value. Storage runs
@@ -1143,6 +1149,7 @@ cancellation and current execution boundaries belong to the
 | The owner's limits (Settings → Assistant → Limits): the one `assistant_limits` group of the settings file with nineteen integer keys, each with its own default and range (assistant: `tool_timeout_s`, `model_timeout_s`, `reply_s`, `steps_per_reply`, `calls_per_step`, `tool_output_chars`, `reply_chars`, `skills_max`, `skill_chars`, `skills_list_chars`; waits: `waits_at_once`, `wait_max_minutes`, `event_replies`, `sessions_at_once`; terminal: `input_chars`, `keys_at_once`, `read_lines_max`; tunnels: `tunnel_wait_s`, `reconnect_minutes`); each key is read on its own and a file without it keeps the default | app-private storage; the settings file |
 | The owner's skills (written only by the assistant's `skill_save` / `skill_delete` after the owner's confirmation, with «Скиллы» on): name, description, required tool names and a Markdown text of each; not secret by rule (the model is told never to put secrets in a skill) | app-private no-backup storage (`assistant_skills.json`); removed with the app's data; no file until a skill is saved |
 | The «Скиллы» / "Skills" switch (`assistant_skills`, default off) | app-private storage; the settings file |
+| The assistant's remembered "For this connection" permissions: the optional `overrides` array of the `assistant_confirmations` object of the settings file (version stays 1; at most 500; absent with no record). One record each: profile and connection UUIDs, the action class and the tool wire names, a fingerprint hash of the connection (and its profile, enrollment's public part, SSH login and pinned host key) and the time given; no name, address, user, command or secret. Removed when the connection is edited, deleted or forgotten, its profile is forgotten or enrolled again, the assistant or the tool is turned off, or the owner taps Forget. A "For session" grant is in memory only and is not stored | app-private storage; the settings file |
 
 None of the above leaves the phone by cloud backup or by Android 12+ device-to-device transfer: the manifest sets `allowBackup="false"`, `fullBackupContent="false"` and `dataExtractionRules` (`res/xml/data_extraction_rules.xml`), which excludes every domain from both `cloud-backup` and `device-transfer`. A unit test guards it.
 
