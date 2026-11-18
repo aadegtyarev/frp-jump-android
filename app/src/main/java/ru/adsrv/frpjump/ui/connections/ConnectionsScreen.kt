@@ -36,6 +36,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.snapshotFlow
 import ru.adsrv.frpjump.tunnel.SessionOn
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import ru.adsrv.frpjump.ui.AssistantGlyph
 import ru.adsrv.frpjump.ui.devices.OpenRow
 import ru.adsrv.frpjump.ui.devices.SwipeReveal
@@ -334,8 +337,17 @@ internal fun LazyListScope.tunnelRows(
 /** The heading of the favourites group: the same place and weight as a device's name. */
 @Composable
 private fun SectionHeading(text: String, spoken: String, first: Boolean) {
+    val muted = AppTheme.colors.muted
     Text(
-        text,
+        // The star keeps the muted colour it has on the cards; the words stay in ink.
+        androidx.compose.ui.text.buildAnnotatedString {
+            val star = text.indexOf('\u2605')
+            if (star < 0) append(text) else {
+                append(text.substring(0, star))
+                withStyle(androidx.compose.ui.text.SpanStyle(color = muted)) { append('\u2605') }
+                append(text.substring(star + 1))
+            }
+        },
         fontSize = 16.sp,
         fontWeight = FontWeight.SemiBold,
         color = AppTheme.colors.ink,
@@ -350,7 +362,7 @@ private fun SectionHeading(text: String, spoken: String, first: Boolean) {
 }
 
 /** How far a card slides aside for a button. */
-private val REVEAL_WIDTH = 76.dp
+private val REVEAL_WIDTH = 92.dp
 
 /**
  * One connection's card with its swipes ([SwipeReveal]): to the left it reveals "Ask the assistant" (absent while the assistant is off), to the right
@@ -377,7 +389,7 @@ private fun TunnelCard(
         open = revealed,
         enabled = ask != null,
         onOpenChange = { now -> openRow.reported(row.key, now) },
-        actionWidth = REVEAL_WIDTH,
+        actionWidth = revealWidth(),
         action = {
             RevealButton(
                 stringResource(R.string.terminal_ask_assistant),
@@ -400,7 +412,7 @@ private fun TunnelCard(
                 actions.favorite(row)
             }
         },
-        startActionWidth = REVEAL_WIDTH,
+        startActionWidth = revealWidth(),
         startEnabled = row.saved,
     ) {
         ConnectionCard(
@@ -428,10 +440,18 @@ private fun RevealButton(label: String, glyph: @Composable () -> Unit, modifier:
         color = AppTheme.colors.accentContainer,
         shape = RoundedCornerShape(18.dp),
         modifier = modifier
-            .width(REVEAL_WIDTH - 6.dp)
+            .width(revealWidth() - 6.dp)
             .fillMaxHeight()
             .semantics { contentDescription = label },
     ) {
-        Box(contentAlignment = Alignment.Center) { glyph() }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
+            glyph()
+            Text(label, fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+                color = AppTheme.colors.onAccentContainer, modifier = Modifier.padding(top = 4.dp).clearAndSetSemantics { })
+        }
     }
 }
+
+/** The swipe button's width: [REVEAL_WIDTH] at the normal font, wider with a larger one so its label wraps between words only. */
+@Composable
+private fun revealWidth(): androidx.compose.ui.unit.Dp = REVEAL_WIDTH * LocalDensity.current.fontScale.coerceIn(1f, 1.8f)
