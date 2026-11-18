@@ -41,13 +41,16 @@ import ru.adsrv.frpjump.ui.AppSheet
 import ru.adsrv.frpjump.ui.AppTheme
 
 @Composable
-fun LiveTerminalDiagnostics(ref: TunnelRef) {
+fun LiveTerminalDiagnostics(ref: TunnelRef, modifier: Modifier = Modifier) {
     val app = LocalContext.current.applicationContext as FrpJumpApp
     val snapshots by app.ssh.diagnostics.collectAsStateWithLifecycle()
-    key(ref) { TerminalDiagnostics(snapshots[ref].orEmpty()) }
+    key(ref) { TerminalDiagnostics(snapshots[ref].orEmpty(), modifier) }
 }
 
-/** Only this small component observes telemetry; the terminal screen never collects the snapshots. */
+/**
+ * Only this small component observes telemetry; the terminal screen never collects the snapshots. One row at the width it is given: its items
+ * ("SSH 16 ms", "↓ …", "↑ …") wrap only between items, and the "›" stays at the row's end.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TerminalDiagnostics(reports: List<TerminalSessionReport>, modifier: Modifier = Modifier) {
@@ -64,11 +67,11 @@ fun TerminalDiagnostics(reports: List<TerminalSessionReport>, modifier: Modifier
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("SSH ${duration(summary.responseMeanMs)}", color = colors.muted, fontSize = 12.sp)
-            Text("↓ ${bytes(summary.receiveBytesPerSecond, rate = true)}", color = colors.muted, fontSize = 12.sp)
-            Text("↑ ${bytes(summary.sendBytesPerSecond, rate = true)}", color = colors.muted, fontSize = 12.sp)
+            Text("SSH ${duration(summary.responseMeanMs)}", color = colors.muted, fontSize = 12.sp, maxLines = 1, softWrap = false)
+            Text("↓ ${bytes(summary.receiveBytesPerSecond, rate = true)}", color = colors.muted, fontSize = 12.sp, maxLines = 1, softWrap = false)
+            Text("↑ ${bytes(summary.sendBytesPerSecond, rate = true)}", color = colors.muted, fontSize = 12.sp, maxLines = 1, softWrap = false)
         }
-        Text("›", color = colors.muted, modifier = Modifier.clearAndSetSemantics { })
+        Text("›", color = colors.muted, maxLines = 1, softWrap = false, modifier = Modifier.clearAndSetSemantics { })
     }
     if (open) TerminalDiagnosticsSheet(reports) { open = false }
 }
