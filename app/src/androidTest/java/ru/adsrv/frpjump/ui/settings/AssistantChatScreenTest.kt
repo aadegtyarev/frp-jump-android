@@ -494,11 +494,12 @@ class AssistantChatScreenTest {
      * not wait for: a click injected at the node's bounds mid-slide lands where the button was and does nothing (seen in RU portrait at
      * 100% font: a Send or Stop that never happened). Positive wait: three equal readings 100 ms apart, at most 5 s.
      */
-    private fun settle(tag: String) {
+    private fun settle(tag: String) = settleBounds { bounds(tag) }
+    private fun settleBounds(read: () -> androidx.compose.ui.geometry.Rect) {
         var last: androidx.compose.ui.geometry.Rect? = null; var stable = 0
         val until = SystemClock.uptimeMillis() + 5000
         while (stable < 3 && SystemClock.uptimeMillis() < until) {
-            val now = runCatching { bounds(tag) }.getOrNull()
+            val now = runCatching(read).getOrNull()
             if (now != null && now == last) stable++ else { stable = 0; last = now }
             compose.waitForIdle(); SystemClock.sleep(100)
         }
@@ -832,13 +833,13 @@ class AssistantChatScreenTest {
     @Test fun theChatMenuCancelsAllWaitsWhileAnyRun() {
         armWaits()
         val more = androidx.compose.ui.test.hasContentDescription(localizedText(ru.adsrv.frpjump.R.string.chat_history_actions))
-        compose.onNode(more).performClick()
+        openMoreMenu(more)
         compose.onNodeWithTag("chat_waits_cancel_all").assertTextContains(localizedFormat(ru.adsrv.frpjump.R.string.chat_waits_cancel_all, 2), substring = true)
         shot("waits-menu")
         compose.onNodeWithTag("chat_waits_cancel_all").performClick()
         compose.waitUntil(WAIT_MS) { owner!!.state.value.waits.isEmpty() }
         compose.waitForIdle()
-        compose.onNode(more).performClick()
+        openMoreMenu(more)
         compose.onNodeWithTag("chat_waits_cancel_all").assertDoesNotExist()
     }
 
@@ -994,6 +995,22 @@ class AssistantChatScreenTest {
         compose.waitForIdle()
         awaitAtBottom("after the keyboard closed")
         assertLongAnswerEndInView("after the keyboard closed")
+    }
+
+    /**
+     * Opens the chat's overflow menu. The keyboard left up by the typed message slides the content with a system animation that Compose's
+     * idling does not wait for (the same cause as in [settle]): a click injected mid-slide lands where the icon was and opens nothing, and the
+     * button is disabled until the screen has drawn the state with its waits. So: wait for the icon to be enabled and still, click it, then
+     * wait for the menu's own first item (always there) instead of asserting on a node that is not composed yet.
+     */
+    private fun openMoreMenu(more: SemanticsMatcher) {
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(more and isEnabled()).fetchSemanticsNodes().size == 1 }
+        // Landscape may scroll the header off; portrait has no scroll parent (the action then refuses), which is fine.
+        runCatching { compose.onNode(more).performScrollTo() }
+        settleBounds { compose.onNode(more).fetchSemanticsNode().boundsInRoot }
+        compose.onNode(more).performClick()
+        try { compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(localizedText(ru.adsrv.frpjump.R.string.chat_history_clear)).fetchSemanticsNodes().isNotEmpty() } }
+        catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("the chat menu did not open: " + diagnose("no-menu"), e) }
     }
 
     /** An event starts a turn by itself: its muted line, then the answer; no message of the owner's is drawn for it. */
