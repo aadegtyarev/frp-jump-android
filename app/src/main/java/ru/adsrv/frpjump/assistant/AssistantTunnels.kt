@@ -60,7 +60,7 @@ class AppSavedTunnels(
             tunnelsOf(tunnel.profileId)?.tunnels?.singleOrNull { it.key == localPortKey(tunnel.device, tunnel.port) }?.let { listOf(it.grantId, it.localPort) }
         } else null
         val connection = state.runtimes[ids.profileId]?.connections?.connections?.value?.singleOrNull { it.id == ids.connectionId }
-        return listOf(state.index.profiles.singleOrNull { it.id == ids.profileId }, connection, state.enrollments[ids.profileId], running)
+        return listOf(state.index.profiles.singleOrNull { it.id == ids.profileId }, connection?.withoutFavorite, state.enrollments[ids.profileId], running)
     }
 
     override fun tabs(tunnel: SavedTunnel): Int = sessionsNow().count { it.tunnel == tunnel.ref }

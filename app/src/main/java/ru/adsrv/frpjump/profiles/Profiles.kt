@@ -19,6 +19,7 @@ import ru.adsrv.frpjump.ports.profilePortKey
 import ru.adsrv.frpjump.restore.pendingRestore
 import ru.adsrv.frpjump.store.Credentials
 import ru.adsrv.frpjump.store.StoredEnrollment
+import ru.adsrv.frpjump.tunnel.TunnelRef
 import ru.adsrv.frpjump.tunnel.TunnelsState
 import ru.adsrv.frpjump.tunnel.Waiting
 import kotlinx.coroutines.async
@@ -57,6 +58,10 @@ data class ProfilesState(
  */
 fun shownTunnelCounts(states: Map<String, TunnelsState>, dark: Set<String>): Map<String, Int> =
     states.mapValues { (id, s) -> s.tunnels.count { profilePortKey(id, it.device, it.port) !in dark } }.filterValues { it > 0 }
+
+/** The tunnels up as [TunnelRef]s in [states], without those [dark]: what the Devices chip counts (with the ones being restored, see [ru.adsrv.frpjump.connections.onTunnelsCount]). */
+fun shownTunnelRefs(states: Map<String, TunnelsState>, dark: Set<String>): Set<TunnelRef> =
+    states.flatMap { (id, s) -> s.tunnels.filter { profilePortKey(id, it.device, it.port) !in dark }.map { TunnelRef(id, it.device, it.port) } }.toSet()
 
 /**
  * The app's profiles and one [ProfileRuntime] for each: every profile polls
@@ -110,6 +115,10 @@ class Profiles(
      */
     val shownTunnelsByProfile: Flow<Map<String, Int>> =
         combine(allTunnels { it }, dark) { states, gone -> shownTunnelCounts(states, gone) }.distinctUntilChanged()
+
+    /** [shownTunnelRefs] of all profiles, followed live. */
+    val shownTunnelRefsAll: Flow<Set<TunnelRef>> =
+        combine(allTunnels { it }, dark) { states, gone -> shownTunnelRefs(states, gone) }.distinctUntilChanged()
 
     /** [shownTunnelsByProfile] as it is now. */
     fun shownTunnelsByProfileNow(): Map<String, Int> =

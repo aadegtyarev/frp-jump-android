@@ -27,7 +27,7 @@ sealed interface PersistentFp {
 
 /**
  * The persisted fingerprint of a saved connection: one stable value, `"v1:" + base64url(SHA-256(JSON))`, over a JSON object with a fixed key
- * order, nulls written, no whitespace. In it: every field of the connection; the profile's id, key alias and activation; the enrollment (a hash of the
+ * order, nulls written, no whitespace. In it: every field of the connection except the favourite flag; the profile's id, key alias and activation; the enrollment (a hash of the
  * PUBLIC fields control URL, device id and certificate); the SSH login (user and method) and the pinned host key of the connection's device and port;
  * the MQTT user. Not in it: the profile's name and colour, the connection's enabled state, and every secret. No secret is ever read for it.
  */

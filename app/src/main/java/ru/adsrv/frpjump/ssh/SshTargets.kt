@@ -78,7 +78,7 @@ class SshTargets(
     }
 
     /**
-     * Equal while nothing the owner can edit about the saved connection changed: all its fields, its profile's id, key alias and activation, the
+     * Equal while nothing the owner can edit about the saved connection changed: all its fields except the favourite flag, its profile's id, key alias and activation, the
      * profile's enrollment, and the non-secret SSH login (user and method) and pinned host key of its device and port. The profile's name and
      * colour are NOT in it. Null when the connection or its profile is gone. Reads no secret and needs no Keystore unlock: the login memory and
      * the pinned keys are plain stores.
@@ -88,7 +88,7 @@ class SshTargets(
         val profile = state.index.profiles.singleOrNull { it.id == profileId } ?: return null
         val runtime = state.runtimes[profileId] ?: return null
         val connection = runtime.connections.connections.value.singleOrNull { it.id == connectionId } ?: return null
-        return listOf(connection, profile.id, profile.keyAlias, profile.activationPending, state.enrollments[profileId],
+        return listOf(connection.withoutFavorite, profile.id, profile.keyAlias, profile.activationPending, state.enrollments[profileId],
             runtime.sshLogins.stored(connection.device, connection.port), runtime.hostKeys.pinned(connection.device, connection.port))
     }
 
@@ -162,7 +162,7 @@ class SshTargets(
         return now.loaded && now.index.profiles.singleOrNull { it.id == profile }?.activationPending == false &&
             now.runtimes[profile] === runtime && now.enrollments[profile] == target.enrollment &&
             !runtime.session.removed.value && runtime.connections.connections.value.count { it.id == connection } == 1 &&
-            runtime.connections.connections.value.singleOrNull { it.id == connection } == saved &&
+            runtime.connections.connections.value.singleOrNull { it.id == connection }?.withoutFavorite == saved.withoutFavorite &&
             PendingUndo.connectionKey(profile, connection) !in hidden.value &&
             PendingUndo.tunnelKey(profile, saved.device, saved.port) !in hidden.value &&
             t.pending[tunnel.key] == null && t.tunnels.any { sameTunnel(it, tunnel) && tunnelReady(it) }

@@ -30,15 +30,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 
-private enum class Reveal { CLOSED, OPEN }
+private enum class Reveal { START, CLOSED, END }
 
 /**
  * [content] that a swipe to the left slides aside by [actionWidth],
- * showing [action] behind its end; only while [enabled]. [open] is whether
- * it should stay open: it slides back once that turns false (another row
+ * showing [action] behind its end; only while [enabled]. With [startAction] a swipe to the right does the same the other way, by
+ * [startActionWidth] and only while [startEnabled]: two sides, each its own button, never both at once. [open] is whether
+ * it should stay open (on either side): it slides back once that turns false (another row
  * opened, the list scrolled, a tap elsewhere). [onOpenChange] says where
  * the finger left it. Horizontal only: the list's scroll and pull to
- * refresh pass by.
+ * refresh pass by. Nothing runs by the swipe itself: the revealed button's tap does.
  */
 @Composable
 fun SwipeReveal(
@@ -48,16 +49,23 @@ fun SwipeReveal(
     actionWidth: Dp,
     action: @Composable BoxScope.() -> Unit,
     modifier: Modifier = Modifier,
+    startAction: (@Composable BoxScope.() -> Unit)? = null,
+    startActionWidth: Dp = actionWidth,
+    startEnabled: Boolean = startAction != null,
     content: @Composable () -> Unit,
 ) {
-    val widthPx = with(LocalDensity.current) { actionWidth.toPx() }
+    val density = LocalDensity.current
+    val widthPx = with(density) { actionWidth.toPx() }
+    val startPx = with(density) { startActionWidth.toPx() }
+    val startOn = startAction != null && startEnabled
     val state = remember { AnchoredDraggableState(Reveal.CLOSED) }
     // Without tunnels there is nothing to reveal: only the closed place is left, and it snaps there.
-    LaunchedEffect(widthPx, enabled) {
+    LaunchedEffect(widthPx, startPx, enabled, startOn) {
         state.updateAnchors(
             DraggableAnchors {
                 Reveal.CLOSED at 0f
-                if (enabled) Reveal.OPEN at -widthPx
+                if (enabled) Reveal.END at -widthPx
+                if (startOn) Reveal.START at startPx
             },
         )
     }
@@ -66,12 +74,13 @@ fun SwipeReveal(
     }
     val report by rememberUpdatedState(onOpenChange)
     LaunchedEffect(state) {
-        snapshotFlow { state.settledValue }.collect { report(it == Reveal.OPEN) }
+        snapshotFlow { state.settledValue }.collect { report(it != Reveal.CLOSED) }
     }
     // Drawn only while the row is aside, fading in as it goes: nothing shows through the card's rounded corners.
-    val aside by remember { derivedStateOf { state.offset.let { !it.isNaN() && it < 0f } } }
+    val asideEnd by remember { derivedStateOf { state.offset.let { !it.isNaN() && it < 0f } } }
+    val asideStart by remember { derivedStateOf { state.offset.let { !it.isNaN() && it > 0f } } }
     Box(modifier) {
-        if (aside) {
+        if (asideEnd) {
             Box(
                 Modifier
                     .matchParentSize()
@@ -80,10 +89,19 @@ fun SwipeReveal(
                 content = action,
             )
         }
+        if (asideStart && startAction != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = (state.offset / startPx).coerceIn(0f, 1f) },
+                contentAlignment = Alignment.CenterStart,
+                content = startAction,
+            )
+        }
         Box(
             Modifier
                 .absoluteOffset { IntOffset(state.offset.takeIf { !it.isNaN() }?.roundToInt() ?: 0, 0) }
-                .anchoredDraggable(state, Orientation.Horizontal, enabled = enabled),
+                .anchoredDraggable(state, Orientation.Horizontal, enabled = enabled || startOn),
         ) { content() }
     }
 }

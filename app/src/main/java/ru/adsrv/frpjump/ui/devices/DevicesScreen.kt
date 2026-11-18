@@ -107,6 +107,7 @@ fun DevicesScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
+    val tunnelsOn by vm.tunnelsOn.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
     // The app's poller fetches the list only while this screen is visible.
@@ -161,7 +162,7 @@ fun DevicesScreen(
                     hint = stringResource(R.string.devices_search_hint),
                 )
             } else {
-                DevicesHeader(current, onProfiles, onTunnels, onSettings, onSearch = {
+                DevicesHeader(current, onProfiles, onTunnels, onSettings, tunnels = tunnelsOn, onSearch = {
                     searching = true
                     focusOnOpen = true
                 }.takeIf { !state.devices.isNullOrEmpty() })
@@ -189,7 +190,7 @@ fun DevicesScreen(
 }
 
 /**
- * The switcher, this profile's tunnel count (a tap: [onTunnels]), search ([onSearch], null while there is nothing to search)
+ * The switcher, the tunnel count of all profiles (a tap: [onTunnels]), search ([onSearch], null while there is nothing to search)
  * and the gear ([onSettings]); the icon buttons sit next to each other, the gap is only after the switcher.
  */
 @Composable
@@ -198,6 +199,8 @@ internal fun DevicesHeader(
     onProfiles: () -> Unit,
     onTunnels: () -> Unit,
     onSettings: () -> Unit,
+    /** The tunnels that are on, of ALL profiles (the chip leads to the Tunnels tab, which lists them all), not only [current]'s. */
+    tunnels: Int = current?.tunnels ?: 0,
     onSearch: (() -> Unit)?,
 ) {
     val colors = AppTheme.colors
@@ -209,7 +212,7 @@ internal fun DevicesHeader(
     ) {
         Box(Modifier.weight(1f).testTag(PROFILE_SWITCHER_TAG)) { ProfileSwitcher(current, onProfiles) }
         Spacer(Modifier.width(8.dp))
-        current?.tunnels?.takeIf { it > 0 }?.let { TunnelsChip(it, onTunnels) }
+        tunnels.takeIf { it > 0 }?.let { TunnelsChip(it, onTunnels) }
         onSearch?.let {
             IconButton(onClick = it, modifier = Modifier.size(44.dp)) {
                 Icon(SearchGlyph, contentDescription = stringResource(R.string.devices_search), tint = colors.ink, modifier = Modifier.size(22.dp))
@@ -223,7 +226,7 @@ const val PROFILE_SWITCHER_TAG = "profile_switcher"
 const val TUNNELS_CHIP_TAG = "tunnels_chip"
 
 /**
- * The tunnel count as the Connections glyph and the number; a tap leads to Connections, open ones on top. TalkBack reads the plural
+ * The tunnel count as the Connections glyph and the number; a tap leads to the Tunnels tab. TalkBack reads the plural
  * text ("1 tunnel"). Tall as the bar for the finger, the ripple on the chip.
  */
 @Composable

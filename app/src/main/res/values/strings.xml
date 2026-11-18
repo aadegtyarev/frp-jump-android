@@ -246,6 +246,13 @@
     <string name="connections_search_scope_on">Search tunnels that are on</string>
     <string name="connections_search_scope_all">Search all tunnels</string>
     <string name="connections_in_all">In all: %1$d · Show</string>
+    <string name="connections_favorites">★ Favourites</string>
+    <string name="connections_favorites_spoken">Favourites</string>
+    <string name="favorite_add">Add to favourites</string>
+    <string name="favorite_remove">Remove from favourites</string>
+    <string name="favorite_spoken">favourite</string>
+    <string name="favorite_save_failed">Could not save the favourite (%s). Try again.</string>
+    <string name="ask_assistant_about_tunnel">About tunnel %1$s (%2$s):</string>
     <string name="connections_clear_query">Clear text</string>
     <string name="connections_only_on">Only tunnels that are on, %1$d</string>
     <string name="connections_no_match">No tunnels match “%s”.</string>

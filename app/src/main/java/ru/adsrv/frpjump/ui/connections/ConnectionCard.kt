@@ -48,7 +48,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -105,6 +110,9 @@ fun ConnectionCard(
     assistant: AssistantMark? = null,
     /** "Ask again": ends both lifetimes at once, with no confirmation (it narrows authority). */
     onForgetAssistant: () -> Unit = {},
+    /** The card is swiped aside ([ru.adsrv.frpjump.ui.devices.SwipeReveal]): a tap on it puts it back instead of acting. */
+    revealed: Boolean = false,
+    onCloseReveal: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     val c = row.connection
@@ -113,6 +121,11 @@ fun ConnectionCard(
     // Up, it stays usable: "⏻ off" is what the owner needs then.
     val unreachable = connectBlocked(row, offline)
     val tapEnabled = cardTap(row) != CardTap.NONE && !unreachable
+    val favorite = row.saved && c.favorite
+    // Swiped aside: every tap on the card, its buttons and its marks only puts it back.
+    val whenOpen: (() -> Unit) -> (() -> Unit) = { act -> { if (revealed) onCloseReveal() else act() } }
+    val favoriteLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
+    val askLabel = stringResource(R.string.terminal_ask_assistant)
     val openMenu by rememberUpdatedState { onMenu(true) }
     val details = details(row, sshMethod)
     // Its own name only when it says more than the kind: "z2m", not "SSH".
@@ -128,15 +141,26 @@ fun ConnectionCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
+            // The swipes' actions, for TalkBack, which has no swipe of this kind: the same two, on the card.
+            .then(
+                if (row.saved) {
+                    Modifier.semantics {
+                        customActions = listOfNotNull(
+                            actions.ask?.let { ask -> CustomAccessibilityAction(askLabel) { ask(row); true } },
+                            CustomAccessibilityAction(favoriteLabel) { actions.favorite(row); true },
+                        )
+                    }
+                } else Modifier,
+            )
             // Anywhere but its buttons: its main action, as the button labels it (connecting first when down);
             // being disconnected, or its device offline, no action of its own, for touch or TalkBack,
             // while a long press still opens its menu (TalkBack has "⋮" for it).
             .then(
-                if (tapEnabled) {
+                if (tapEnabled || revealed) {
                     Modifier.combinedClickable(
-                        onClickLabel = cardTapLabel(row, sessions),
-                        onClick = { actions.tap(row) },
-                        onLongClick = { if (hasMenu(row)) onMenu(true) },
+                        onClickLabel = if (revealed) null else cardTapLabel(row, sessions),
+                        onClick = { if (revealed) onCloseReveal() else actions.tap(row) },
+                        onLongClick = whenOpen { if (hasMenu(row)) onMenu(true) },
                     )
                 } else if (hasMenu(row)) {
                     Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { openMenu() }) }
@@ -153,11 +177,25 @@ fun ConnectionCard(
             Column(Modifier.weight(1f).alpha(if (unreachable) DIMMED else 1f).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // The name is what tells connections apart: on lines of its own, never cut.
                 val where = deviceName?.let { " · $it" }.orEmpty()
+                val favoriteSpoken = stringResource(R.string.favorite_spoken)
+                // A favourite has a small muted star after its name; TalkBack says "favourite", not the glyph.
+                val nameLine: @Composable (String) -> Unit = { text ->
+                    Text(
+                        buildAnnotatedString {
+                            append(text)
+                            if (favorite) withStyle(SpanStyle(color = colors.muted, fontSize = 13.sp, fontWeight = FontWeight.Normal)) { append(" \u2605") }
+                            append(where)
+                        },
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = if (favorite) Modifier.clearAndSetSemantics { contentDescription = "$text, $favoriteSpoken$where" } else Modifier,
+                    )
+                }
                 if (title != null) {
-                    Text(title + where, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    nameLine(title)
                     Text(details, fontSize = 13.sp, color = colors.muted)
                 } else {
-                    Text(details + where, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    nameLine(details)
                 }
                 // State and address on one line (wrapping only when the font is too large for both), in the body font with tabular digits.
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
@@ -171,7 +209,7 @@ fun ConnectionCard(
                             fontWeight = FontWeight.SemiBold,
                             modifier = if (choice) {
                                 val label = stringResource(R.string.direct_or_server)
-                                Modifier.clickable(onClickLabel = label, role = Role.Button) { actions.directChoice(row) }.padding(vertical = 4.dp)
+                                Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = whenOpen { actions.directChoice(row) }).padding(vertical = 4.dp)
                             } else Modifier,
                         )
                     } else {
@@ -189,7 +227,7 @@ fun ConnectionCard(
                 }
                 problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
                 if (assistant != null) {
-                    AssistantMarkLine(row, name, assistant, onForgetAssistant) { text -> context.notice(text, NoticeKind.DONE) }
+                    AssistantMarkLine(row, name, assistant, onForgetAssistant, revealed, onCloseReveal) { text -> context.notice(text, NoticeKind.DONE) }
                 }
             }
             val buttons: @Composable () -> Unit = {
@@ -197,7 +235,7 @@ fun ConnectionCard(
                     val label = mainActionLabel(row, sessions)
                     RoundButton(
                         description = stringResource(R.string.main_action_named, label, name),
-                        onClick = { actions.main(row) },
+                        onClick = whenOpen { actions.main(row) },
                         container = colors.accentContainer,
                         modifier = Modifier.testTag("card_main"),
                     ) { size ->
@@ -210,7 +248,7 @@ fun ConnectionCard(
                 if (up || (busy && !connecting)) {
                     RoundButton(
                         description = stringResource(R.string.disconnect_named, name),
-                        onClick = { actions.disconnect(row) },
+                        onClick = whenOpen { actions.disconnect(row) },
                         enabled = !busy,
                         border = colors.error,
                         modifier = Modifier.testTag("card_off"),
@@ -223,7 +261,7 @@ fun ConnectionCard(
                     val on = if (inactive) colors.outline else colors.accent
                     RoundButton(
                         description = stringResource(if (row.error != null && !connecting) R.string.retry_named else R.string.connect_named, name),
-                        onClick = { actions.connect(row) },
+                        onClick = whenOpen { actions.connect(row) },
                         enabled = !inactive,
                         border = on,
                         modifier = Modifier.testTag("card_on"),
@@ -236,7 +274,7 @@ fun ConnectionCard(
                     Box {
                         RoundButton(
                             description = stringResource(R.string.connection_actions, name),
-                            onClick = { onMenu(true) },
+                            onClick = whenOpen { onMenu(true) },
                             modifier = Modifier.testTag("card_menu"),
                         ) { size -> Icon(Icons.Filled.MoreVert, contentDescription = null, tint = colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
                         ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
@@ -331,7 +369,7 @@ private fun BoxScope.CountBadge(total: Int) {
  * [mark] exists. "Ask again" does what Forget did, closes the sheet and says so.
  */
 @Composable
-private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantMark, onForget: () -> Unit, say: (String) -> Unit) {
+private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantMark, onForget: () -> Unit, revealed: Boolean, onCloseReveal: () -> Unit, say: (String) -> Unit) {
     val colors = AppTheme.colors
     var sheet by remember { mutableStateOf(false) }
     val text = stringResource(if (mark.rememberedAt != null) R.string.connection_assistant_chip_connection else R.string.connection_assistant_chip_session)
@@ -342,8 +380,8 @@ private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantM
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .testTag("connection_assistant_chip")
-            .clickable(role = Role.Button) { sheet = true }
-            .clearAndSetSemantics { contentDescription = spoken; role = Role.Button; onClick(null) { sheet = true; true } },
+            .clickable(role = Role.Button) { if (revealed) onCloseReveal() else sheet = true }
+            .clearAndSetSemantics { contentDescription = spoken; role = Role.Button; onClick(null) { if (revealed) onCloseReveal() else sheet = true; true } },
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(

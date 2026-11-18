@@ -67,6 +67,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
+import ru.adsrv.frpjump.ui.AssistantGlyph
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.adsrv.frpjump.R
@@ -354,6 +356,10 @@ class RowActions(
     val changeLogin: (ConnectionRow) -> Unit,
     /** "Open as MQTT" of a saved TCP connection: it becomes MQTT and its explorer opens. */
     val openAsMqtt: (ConnectionRow) -> Unit,
+    /** Puts a saved connection in the favourites, or takes it out (as it is now). */
+    val favorite: (ConnectionRow) -> Unit = {},
+    /** "Ask the assistant" about a saved connection: the chat opens with a draft, nothing is sent. Null while the assistant is off. */
+    val ask: ((ConnectionRow) -> Unit)? = null,
 )
 
 @Composable
@@ -364,6 +370,8 @@ fun rememberRowActions(
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
+    /** Opens the assistant chat with this text as the draft; null while the assistant is off. */
+    onAskAssistant: ((draft: String) -> Unit)? = null,
 ): RowActions {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -456,8 +464,16 @@ fun rememberRowActions(
             val open = { actions.openAsMqtt(row, onOpenMqtt) }
             if (row.tunnel == null && row.pending == null) notificationsFirst(open) else open()
         },
+        favorite = { row -> actions.setFavorite(row, !row.connection.favorite) },
+        ask = onAskAssistant?.let { openChat ->
+            { row -> openChat(askDraft(context, row.connection)) }
+        },
     )
 }
+
+/** The chat draft of "Ask the assistant" on a connection: where the owner goes on typing. Not sent. */
+fun askDraft(context: Context, connection: Connection): String =
+    context.getString(R.string.ask_assistant_about_tunnel, connectionLabel(context, connection), connection.device) + " "
 
 /** [ConnectionActions.localPortContext] kept up to date while the sheet is open. */
 @Composable
@@ -479,6 +495,22 @@ fun ConnectionMenu(expanded: Boolean, row: ConnectionRow, actions: RowActions, o
                 onDismiss()
                 action(row)
             })
+        }
+        if (row.saved) {
+            actions.ask?.let { ask ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.terminal_ask_assistant)) },
+                    leadingIcon = { Icon(AssistantGlyph, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    onClick = { onDismiss(); ask(row) },
+                    modifier = Modifier.testTag("menu_ask_assistant"),
+                )
+            }
+            DropdownMenuItem(
+                text = { Text(stringResource(if (row.connection.favorite) R.string.favorite_remove else R.string.favorite_add)) },
+                leadingIcon = { Text(if (row.connection.favorite) "\u2606" else "\u2605", fontSize = 18.sp) },
+                onClick = { onDismiss(); actions.favorite(row) },
+                modifier = Modifier.testTag("menu_favorite"),
+            )
         }
         if (row.tunnel != null) {
             // TCP's main action is Copy already.
