@@ -119,14 +119,16 @@ class AssistantConversation(
                         val tools = availability().tools
                         val declined = value.declinedTools.filter { wire -> AssistantToolId.fromWire(wire)?.let { !tools[it] } == true }
                         c.document = value.bind(snapshot().settings).copy(draft = draft, declinedTools = declined); c.provider = null
-                        c.clearing = false
+                        // The flag that drops saves ends in the same step that publishes the loaded state: a Send or draft saved right after the state turns
+                        // loaded must reach the file (#302), so the flag goes first, before anything can observe the state.
+                        c.clearing = false; c.loading = false
                         c.mutable.value = c.overlay(c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = historyStore.problem.value,
                             busy = runtime.occupied(), stopping = runtime.occupied()))
                         c.render(c.document, projected)
                     }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { synchronized(gate) { if (!c.closed) c.mutable.value = c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = ChatHistoryProblem.READ) } }
+            catch (_: Exception) { synchronized(gate) { c.loading = false; if (!c.closed) c.mutable.value = c.mutable.value.copy(loading = false, restoring = false, clearing = false, historyProblem = ChatHistoryProblem.READ) } }
             finally { synchronized(gate) { c.loading = false; c.clearing = false }; onSettled(); drainEvents() }
         }
     }
