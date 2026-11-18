@@ -1348,6 +1348,8 @@
     <string name="receipt_no_question_connection">no question: for this connection</string>
     <string name="receipt_no_question_session">no question: for the tunnel\'s lifetime</string>
     <string name="receipt_no_question_off">no question: confirmations are off</string>
+    <string name="connection_assistant_forget_failed">Could not save. The assistant no longer uses this permission; deleting it will be retried.</string>
+    <string name="confirm_remember_hint">The next calls on this connection run without asking until it is edited. Forget on its card.</string>
     <string name="connection_assistant_forget">Forget</string>
     <string name="connection_assistant_forget_description">Forget the assistant\'s permissions for %1$s</string>
     <string name="always_dialog_title">Turn off confirmations?</string>

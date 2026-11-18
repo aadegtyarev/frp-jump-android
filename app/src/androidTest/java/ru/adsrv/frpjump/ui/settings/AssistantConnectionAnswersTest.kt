@@ -24,6 +24,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -76,12 +79,16 @@ class AssistantConnectionAnswersTest {
     private fun text(id: Int, vararg format: Any): String = localized().getString(id, *format)
     private fun landscape() = compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    private fun show(confirmation: PendingConfirmation) {
+    private fun show(confirmation: PendingConfirmation, heightDp: Int? = null) {
         @Suppress("DEPRECATION") compose.activity.resources.updateConfiguration(Configuration(compose.activity.resources.configuration).apply { setLocale(locale()) }, compose.activity.resources.displayMetrics)
         compose.setContent {
             val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale()) }
             CompositionLocalProvider(LocalContext provides LocalContext.current.createConfigurationContext(configuration), LocalConfiguration provides configuration) {
-                FrpJumpTheme { ChatConfirmationCard(confirmation, onAnswer = { answers += it }, wide = landscape()) }
+                FrpJumpTheme {
+                    androidx.compose.foundation.layout.Box(heightDp?.let { androidx.compose.ui.Modifier.fillMaxWidth().height(it.dp) } ?: androidx.compose.ui.Modifier.fillMaxSize()) {
+                        ChatConfirmationCard(confirmation, onAnswer = { answers += it }, wide = landscape())
+                    }
+                }
             }
         }
         compose.waitForIdle()
@@ -178,4 +185,24 @@ class AssistantConnectionAnswersTest {
     @Test fun closeHasThreeAnswers() = threeAnswersOnly("close", PendingConfirmation(1, AssistantToolId.TERMINAL_CLOSE, "", null, null, close = CloseCard(4, "Synthetic profile", "pi", "synthetic-device", 2, null)))
     @Test fun stopHasThreeAnswers() = threeAnswersOnly("stop", PendingConfirmation(1, AssistantToolId.STOP_TUNNEL, "", GrantTarget("p", "c1"), info, stop = StopCard("Synthetic profile", "Pi shell", "synthetic-device", 22, 2)))
     @Test fun skillHasThreeAnswers() = threeAnswersOnly("skill", PendingConfirmation(1, AssistantToolId.SKILL_SAVE, "body", null, null, skill = SkillCard(SkillCard.Kind.SAVE, "synthetic-skill", "d", emptyList(), "body")))
+
+    @Test fun aShortLineUnderTheCaptionStaysWithTheAnswers() {
+        named()
+        val hint = shown("chat_confirm_remember_hint"); hint.assertTextContains(text(R.string.confirm_remember_hint))
+        val caption = bounds("chat_confirm_remember"); val h = bounds("chat_confirm_remember_hint"); val session = bounds("chat_confirm_session")
+        assertTrue("the hint is under the caption: $caption $h", h.top >= caption.bottom - 1f)
+        assertTrue("and above the remembered answers: $h $session", session.top >= h.bottom - 1f)
+        // It is pinned with the buttons, not inside the scrolling section.
+        assertTrue(compose.onAllNodes(hasTestTag("chat_confirm_remember_hint") and hasAnyAncestor(hasTestTag("chat_confirm_section")), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
+        shot("card-remember-hint")
+    }
+
+    /** In a window too short for the answers beside or under the section, the whole card scrolls: every answer can be brought on screen and none is cut. */
+    private fun shortWindow(heightDp: Int) {
+        show(PendingConfirmation(1, AssistantToolId.SSH_COMMAND, (1..40).joinToString("\n") { "echo synthetic-line-$it" }, GrantTarget("p", "c1"), info, sessionTools = both), heightDp)
+        for ((tag, _) in buttons) shown(tag).assertHeightIsAtLeast(48.dp)
+        shot("card-short-$heightDp")
+    }
+    @Test fun aShortWindow260dpScrollsTheWholeCard() = shortWindow(260)
+    @Test fun aShortWindow360dpScrollsTheWholeCard() = shortWindow(360)
 }

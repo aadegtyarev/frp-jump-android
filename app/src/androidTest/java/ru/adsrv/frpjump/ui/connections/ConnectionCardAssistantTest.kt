@@ -113,4 +113,12 @@ class ConnectionCardAssistantTest {
         compose.onNodeWithTag("connection_assistant_forget", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         shot("connection-card-assistant-session")
     }
+
+    @Test fun aDateFromAnotherYearCarriesTheYear() {
+        val old = java.time.LocalDate.of(java.time.LocalDate.now().year - 1, 11, 13).atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        compose.setContent { FrpJumpTheme { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistantGrant = true, assistantRemembered = old) } }
+        val locale = compose.activity.resources.configuration.locales[0]
+        val expected = java.time.format.DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, "dMMMy"), locale).format(java.time.Instant.ofEpochMilli(old).atZone(java.time.ZoneId.systemDefault()))
+        compose.onNodeWithText(text(R.string.connection_assistant_remembered, expected), useUnmergedTree = true).assertIsDisplayed()
+    }
 }

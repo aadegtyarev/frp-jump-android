@@ -288,7 +288,8 @@ profile without re-enrollment.
   "Forget" / «Забыть» (a 48 dp target; TalkBack reads "Forget the assistant's permissions for <connection name>" / «Забыть разрешения помощника для
   <имя подключения>»). The line wraps at a large font and is the same on the device card and the Connections tab, for any profile, also while the
   tunnel is down and while the global switch is off (it states what is remembered). Forget removes both lifetimes of that connection at once,
-  with no confirmation (it narrows authority). The line is gone the moment the grant or record ends for any reason and is never shown for a
+  with no confirmation (it narrows authority); they stop being used at once, on the tap, and if deleting the record fails the permission stays unused,
+  the owner is told and the delete is retried. The date shows its year when it is not the current one. The line is gone the moment the grant or record ends for any reason and is never shown for a
   record that was deleted. This line is the ONE place where remembered permissions are seen and forgotten: no sheet, no "⋮" item and no list
   in Tools (to be added when a second class becomes rememberable).
 - Bringing a connection's tunnel up for these actions (and for "Use key login" and "Change login") is the `tunnel_up` operation of the

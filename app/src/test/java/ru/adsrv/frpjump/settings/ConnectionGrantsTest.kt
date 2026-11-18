@@ -138,11 +138,46 @@ class ConnectionGrantsTest {
         assertFalse("unknown asks", r.grants.covers(ssh, key)); assertEquals("and keeps it", 1, r.records.size)
         r.grants.sweep(); assertEquals("the cleaner keeps it too", 1, r.records.size)
         r.fake.persistentFp = PersistentFp.Known("v1:pf1"); assertTrue("known again: it covers again", r.grants.covers(ssh, key))
-        r.fake.persistentFp = PersistentFp.Known("v1:pf2")
-        assertFalse("mismatch", r.grants.covers(ssh, key)); assertTrue("deleted at use", r.records.isEmpty())
-        r.fake.persistentFp = PersistentFp.Known("v1:pf1"); assertFalse("and it does not come back", r.grants.covers(ssh, key))
+        val g = r.grants; r.fake.persistentFp = PersistentFp.Known("v1:pf2")
+        assertFalse("mismatch", g.covers(ssh, key)); assertEquals("nothing is written in a call: the cleaner deletes it", 1, r.records.size); assertTrue("but it is not shown any more", g.current().isEmpty())
+        r.fake.persistentFp = PersistentFp.Known("v1:pf1"); assertFalse("and it does not come back", g.covers(ssh, key))
+        g.sweep(); assertTrue("the cleaner deleted it", r.records.isEmpty())
         assertEquals(RecordResult.RECORDED, r.give()); r.fake.persistentFp = PersistentFp.Gone
-        assertFalse("gone", r.grants.covers(ssh, key)); assertTrue(r.records.isEmpty())
+        val gone = r.grants; assertFalse("gone", gone.covers(ssh, key)); assertEquals(1, r.records.size); gone.sweep(); assertTrue(r.records.isEmpty())
+    }
+
+    @Test fun `Forget stops the use at once, before and without the write, and a failed write keeps it revoked until the delete is retried`() {
+        val storage = Flaky(); val r = Rig(storage); assertEquals(RecordResult.RECORDED, r.give())
+        val g = r.grants
+        assertTrue(g.covers(ssh, key))
+        // The tap: in memory only. No write has happened and the record is still committed.
+        g.revoke("p", "c")
+        assertFalse("revoked before any write", g.covers(ssh, key)); assertFalse(g.covers(typing, key)); assertEquals("the record is still committed", 1, r.records.size)
+        assertTrue("and its line is gone", g.current().isEmpty()); assertTrue(runBlocking { g.observe().first() }.isEmpty())
+        // The write fails: it throws, the record stays committed, the use stays revoked.
+        storage.failWrites = true
+        assertThrows(java.io.IOException::class.java) { g.forget("p", "c") }
+        assertEquals(1, r.records.size); assertFalse("a failed write never lets it allow calls again", g.covers(ssh, key))
+        g.sweep(); assertFalse("a failed retry neither", g.covers(ssh, key)); assertEquals(1, r.records.size)
+        // The write works again: the cleaner's sweep deletes it and only then is the revocation cleared.
+        storage.failWrites = false; g.sweep()
+        assertTrue(r.records.isEmpty()); assertFalse(g.covers(ssh, key))
+        // A later answer is a new decision.
+        assertEquals(RecordResult.RECORDED, runBlocking { g.record(key, ssh, g.stamp(target)!!, both) }); assertTrue(g.covers(ssh, key))
+    }
+
+    @Test fun `an answer that was in flight when the owner forgot cannot write the record back, and Forget profile revokes every connection of the profile`() {
+        val r = Rig(); val g = r.grants
+        val stamp = g.stamp(target)!!
+        g.revoke("p", "c")
+        assertEquals(RecordResult.NOT_RECORDED, runBlocking { g.record(key, ssh, stamp, both) }); assertTrue(r.records.isEmpty())
+        // Forget of another connection during the wait also refuses the answer (conservative: forgets are rare).
+        val fresh = g.stamp(target)!!; g.revoke("p", "other")
+        assertEquals(RecordResult.NOT_RECORDED, runBlocking { g.record(key, ssh, fresh, both) })
+        // Forget profile.
+        val r2 = Rig(); assertEquals(RecordResult.RECORDED, r2.give()); val g2 = r2.grants
+        g2.revokeProfile("p"); assertFalse(g2.covers(ssh, key)); assertFalse(g2.covers(ssh, GrantKey(ActionClass.CONNECTION_CHANGE, GrantTarget("p", "any"))))
+        g2.sweep(); assertTrue(r2.records.isEmpty())
     }
 
     @Test fun `the cleaner deletes a mismatch or a gone connection with no call and keeps an unknown one`() {

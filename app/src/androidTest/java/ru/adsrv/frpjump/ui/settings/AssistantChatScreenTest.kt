@@ -2054,7 +2054,10 @@ class AssistantChatScreenTest {
         val top = maxOf(box.top, section.top); val bottom = minOf(box.bottom, section.bottom)
         assertTrue("command box starts inside the section: box=$box section=$section", box.top >= section.top - 1f)
         assertTrue("first $lines command lines visible: visible=${bottom - top}px need=${need}px box=$box section=$section", bottom - top >= need - 1f)
-        for (tag in listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline")) {
+        // The remembered answers too, when the card has them (a named connection): the caption's hint is on screen with them.
+        val answerTags = listOf("chat_confirm_allow", "chat_confirm_always", "chat_confirm_decline") +
+            listOf("chat_confirm_session", "chat_confirm_connection", "chat_confirm_remember_hint").filter { compose.onAllNodes(hasTestTag(it), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        for (tag in answerTags) {
             val b = bounds(tag)
             assertTrue("$tag inside the screen: $b root=$root", b.top >= root.top - 1f && b.bottom <= root.bottom + 1f && b.left >= root.left - 1f && b.right <= root.right + 1f)
         }

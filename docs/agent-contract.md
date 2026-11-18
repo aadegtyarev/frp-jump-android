@@ -856,9 +856,12 @@ the program in the tab's foreground when a `terminal_tabs` probe of that tab is 
 name, with its own title, warning and For session and For this connection hints. Nothing is cut: the whole text is in the scrolling box. A string argument with an
 unpaired surrogate is invalid for every tool (no card, nothing runs).
 
-Answers: **Allow** (this call), **Decline**, and under the caption "Allow and remember" («Разрешить и запомнить») **For session**,
+Answers: **Allow** (this call), **Decline**, and under the caption "Allow and remember" («Разрешить и запомнить»), with one short pinned line that
+stays with the answers ("The next calls on this connection run without asking until it is edited. Forget on its card." / «Следующие вызовы в
+этом подключении пойдут без вопроса, пока его не изменят. Забыть: на его карточке.»), **For session**,
 **For this connection** («Для этого подключения») and **Always**, in this order and in these two rows (a flow layout: at 200 % font one
-answer per line, no label cut, every button at least 48 dp high; in landscape the answers stay in the right column). A card that cannot be
+answer per line, no label cut, every button at least 48 dp high; in landscape the answers stay in the right column). In a window too short for the
+answers (portrait or landscape) the whole card scrolls from its top, so no answer is cut. A card that cannot be
 remembered (the tool is not grantable, the connection is not known by name, a stop, a close or a skill card) has three answers, Allow,
 Always and Decline, and no caption; an answer a card did not offer acts as Allow once and records nothing. The hints of For session and
 For this connection are in the scrolling section after the warning (the pinned block is only the buttons; if the pinned answers, the header
@@ -901,8 +904,8 @@ bound before the question (the fingerprint, the tunnel's open period, the assist
 switch-off or an assistant off during the wait makes the answer act as Allow once (no record, no line); recording also needs the app not to be
 locked. A CONNECTION answer racing Stop may record (the owner's choice stands, as Always); the call itself never runs. Recording replaces any record
 of the same (class, connection) and drops the connection's session entry, so one line speaks for the wider permission. If the record cannot be
-written the call is allowed once and the note "Could not save the setting. This call was allowed once." shows (as for Always); nothing is kept
-in memory instead. Unlike a session grant it is not tied to a tunnel or a chat: it survives closing the tunnel, an Undo-hide of the tunnel,
+written, or was refused (the card was raised while locked, or something changed or was forgotten during the wait), the call is allowed once and the
+note "Could not save the setting. This call was allowed once." shows (as for Always); nothing is kept in memory instead. Unlike a session grant it is not tied to a tunnel or a chat: it survives closing the tunnel, an Undo-hide of the tunnel,
 leaving the chat, closing the conversation, a history clear, a restart, the global switch off and on, and a rename or colour change of the
 profile. It ends, each at once, when
 - the connection or its profile is edited: its fingerprint (`"v1:" + base64url(SHA-256(JSON))`, one stable value, persisted) is every field of the
@@ -915,7 +918,14 @@ profile. It ends, each at once, when
 - the connection's delete commits (Undo expired, or the app locked or closed; with Undo cancelled the record lives on, and hidden for Undo it does
   not act), "Forget profile" in both modes, the last profile's wipe, the server removing this phone's profile, or the profile is enrolled again in
   place: the record is removed first, before the rest, so a failure leaves none behind;
-- the owner taps Forget on the connection's card: the session and the remembered permission of that connection go together, with no confirmation;
+- the owner taps Forget on the connection's card: the session and the remembered permission of that connection go together, with no confirmation.
+  The use stops synchronously on the tap, in memory, before the record is deleted: from that moment no call, wait- or event-triggered ones
+  included, is covered, and an answer that was in flight cannot write the record back. The record is then deleted in the app's scope; if that write
+  fails the permission stays revoked (it never allows a call again), the card line is gone, the owner is told ("Could not save. The assistant no
+  longer uses this permission; deleting it will be retried." / «Не удалось сохранить. Помощник больше не использует это разрешение, удаление
+  будет повторено.») and the cleaner retries the delete; the revocation ends only once the committed record is gone. A mismatch or gone connection
+  is revoked in the same way and deleted by the cleaner, never in a call and never on the main thread (the fingerprint reads the enrollment file, so
+  the gate reads it off Main);
 - the assistant is turned off (off and on again included): every record is removed in the same write that turns it off, and switching it on brings
   nothing back (stricter than "sleeping", the same as a session grant);
 - a tool's switch goes off, or it falls out of effect (Typing goes off with Terminal tabs): that tool leaves every record for good in the same

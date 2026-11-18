@@ -1396,6 +1396,8 @@
     <string name="receipt_no_question_connection">без вопроса: для этого подключения</string>
     <string name="receipt_no_question_session">без вопроса: на время туннеля</string>
     <string name="receipt_no_question_off">без вопроса: подтверждения выключены</string>
+    <string name="connection_assistant_forget_failed">Не удалось сохранить. Помощник больше не использует это разрешение, удаление будет повторено.</string>
+    <string name="confirm_remember_hint">Следующие вызовы в этом подключении пойдут без вопроса, пока его не изменят. Забыть: на его карточке.</string>
     <string name="connection_assistant_forget">Забыть</string>
     <string name="connection_assistant_forget_description">Забыть разрешения помощника для %1$s</string>
     <string name="always_dialog_title">Выключить подтверждения?</string>

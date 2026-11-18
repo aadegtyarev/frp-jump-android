@@ -93,12 +93,18 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /**
-     * "Forget": every permission of [row]'s connection at once, the session one and the remembered one. Narrows authority, so it asks nothing; the session
-     * entry goes in memory at once, the remembered record in the app's scope (the line stays until it is really gone).
+     * "Forget": every permission of [row]'s connection at once, the session one and the remembered one. Narrows authority, so it asks nothing. Both stop being
+     * USED synchronously on the tap, in memory (the assistant cannot run a call under them even while the record is still being deleted); the remembered record
+     * is deleted in the app's scope. If that write fails the permission stays revoked, the delete is retried, and the owner is told.
      */
     fun forgetAssistant(row: ConnectionRow) {
         app.sessionGrants.forgetConnection(row.profile, row.connection.id)
-        app.appScope.launch(Dispatchers.IO) { try { app.connectionGrants.forget(row.profile, row.connection.id) } catch (e: CancellationException) { throw e } catch (_: Exception) { } }
+        app.connectionGrants.revoke(row.profile, row.connection.id)
+        app.appScope.launch(Dispatchers.IO) {
+            try { app.connectionGrants.forget(row.profile, row.connection.id) }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) { app.notices.show(Texts.get(R.string.connection_assistant_forget_failed), NoticeKind.WARN, long = true) }
+        }
     }
 
     /** "Use key login": in the app's scope, so it finishes when the screen goes. */

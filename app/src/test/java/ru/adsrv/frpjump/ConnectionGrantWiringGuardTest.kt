@@ -36,6 +36,9 @@ class ConnectionGrantWiringGuardTest {
         val actions = source("ui/connections/ConnectionActions.kt")
         val forget = actions.substring(actions.indexOf("fun forgetAssistant"))
         assertTrue(forget.indexOf("app.sessionGrants.forgetConnection(") in 1 until forget.indexOf("app.connectionGrants.forget("))
+        // The use stops synchronously on the tap, before the write is even started in the background.
+        assertTrue("revoked on the tap", forget.indexOf("app.connectionGrants.revoke(row.profile, row.connection.id)") in 1 until forget.indexOf("app.appScope.launch"))
+        assertTrue("a failed write is told", forget.contains("connection_assistant_forget_failed"))
         assertTrue(source("FrpJumpApp.kt").contains("grants = sessionGrants, connectionGrants = connectionGrants"))
     }
 }

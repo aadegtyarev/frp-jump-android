@@ -269,10 +269,10 @@ class ConfirmationGateTest {
     }
 
     /** The gate with persistent grants: a real store, a world the test steers, and a card that knows the connection by name. */
-    private inner class ConnRig(var answer: ConfirmationDecision = ConfirmationDecision.CONNECTION, val storage: Flaky = Flaky(), val named: Boolean = true, real: Boolean = false) {
+    private inner class ConnRig(var answer: ConfirmationDecision = ConfirmationDecision.CONNECTION, val storage: Flaky = Flaky(), val named: Boolean = true, real: Boolean = false, wrap: (GrantWorld) -> GrantWorld = { it }, val io: kotlin.coroutines.CoroutineContext = Dispatchers.Unconfined) {
         val settings = SettingsStore(storage).apply { update { it.copy(assistantEnabled = true, assistantSshCommand = true, assistantTerminalTabs = true, assistantTerminalInput = true, assistantSessions = true) } }
         val fake = FakeGrantWorld()
-        val world: GrantWorld = if (real) SettingsGrantWorld(settings) else fake
+        val world: GrantWorld = wrap(if (real) SettingsGrantWorld(settings) else fake)
         val session = SessionGrants(world)
         val connection = ConnectionGrants(settings, world, now = { 5L })
         val asked = ArrayList<ChangeRequest>()
@@ -283,7 +283,7 @@ class ConfirmationGateTest {
             info = { if (named) ConfirmationTargetInfo("Home", ru.adsrv.frpjump.connections.Connection("c", "board", 22, ru.adsrv.frpjump.ports.PortKind.SSH)) else null },
             grants = session, connection = connection)
         suspend fun run(tool: AppTool<*>, call: ToolCall) = authorizeCall(support, mapOf(call.name to tool), call,
-            wait = { request, _ -> asked += request; duringWait(); answer }, onNotSaved = { notSaved++ }, io = Dispatchers.Unconfined, onNoQuestion = { _, reason -> reasons += reason })
+            wait = { request, _ -> asked += request; duringWait(); answer }, onNotSaved = { notSaved++ }, io = io, onNoQuestion = { _, reason -> reasons += reason })
         val records get() = settings.assistantConfirmations.overrides
     }
 
@@ -364,5 +364,33 @@ class ConfirmationGateTest {
         assertTrue(rig.session.record(key, AssistantToolId.SSH_COMMAND, rig.session.stamp(target)!!, rig.session.coverableBy(AssistantToolId.SSH_COMMAND)))
         assertNull(rig.run(described(), c)); assertEquals("the session grant is read first", listOf(NoQuestion.SESSION), rig.reasons)
         assertEquals("nothing was asked after the first card", 1, rig.asked.size)
+    }
+
+    @Test fun `a connection answer that records nothing shows the same note as a failed save`() = runBlocking {
+        val c = call("ssh_command", *withCommand)
+        // A change during the wait.
+        ConnRig().let { rig -> rig.duringWait = { rig.fake.persistentFp = PersistentFp.Known("v1:edited") }; assertNull(rig.run(described(), c)); assertEquals("edit", 1, rig.notSaved) }
+        // The card was raised while the app was locked (no stamp): the owner still answered For this connection.
+        ConnRig().let { rig -> rig.fake.locked = true; assertNull(rig.run(described(), c)); assertTrue(rig.records.isEmpty()); assertEquals("locked at the question", 1, rig.notSaved) }
+        // The owner forgot (anything) while the card waited: the answer must not write the record back.
+        ConnRig().let { rig -> rig.duringWait = { rig.connection.revoke("p", "c") }; assertNull(rig.run(described(), c)); assertTrue("forgotten during the wait", rig.records.isEmpty()); assertEquals(1, rig.notSaved) }
+        // A card that did not offer the answer says nothing (the owner could not have tapped it).
+        ConnRig().let { rig -> assertNull(rig.run(Changing(AssistantToolId.STOP_TUNNEL) { ChangeRequest(AssistantToolId.STOP_TUNNEL, target, "") }, call("stop_tunnel", *withCommand))); assertEquals(0, rig.notSaved) }
+        // A recorded answer says nothing.
+        ConnRig().let { rig -> assertNull(rig.run(described(), c)); assertEquals(0, rig.notSaved); assertEquals(1, rig.records.size) }
+    }
+
+    @Test fun `the persistent permission reads the enrollment and the file only on the io dispatcher, never on the caller's thread`() {
+        val threads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "gate-io") }
+        try {
+            val rig = ConnRig(io = executor.asCoroutineDispatcher(), wrap = { inner ->
+                object : GrantWorld by inner { override fun persistentFingerprint(target: GrantTarget): PersistentFp { threads += Thread.currentThread().name.substringBefore(" @"); return inner.persistentFingerprint(target) } }
+            })
+            val caller = Thread.currentThread().name
+            runBlocking { rig.run(described(), call("ssh_command", *withCommand)); rig.run(described(), call("ssh_command", *withCommand)) }
+            assertEquals("answered once, then covered", 1, rig.asked.size)
+            assertEquals("every read of the fingerprint (stamp, record, covers) ran on the io thread", setOf("gate-io"), threads); assertFalse(threads.contains(caller))
+        } finally { executor.shutdown() }
     }
 }

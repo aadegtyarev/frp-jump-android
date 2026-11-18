@@ -58,9 +58,10 @@ internal suspend fun authorizeCall(
     val key = request.target?.let { GrantKey(tool.id.actionClass, it) }
     // Bound to the tunnel's open period and the connection's fingerprint as they are BEFORE the question: an edit or a close during the wait makes the grant stale.
     val stamp = request.target?.let(support.grants::stamp)
-    val connectionStamp = request.target?.let { target -> support.connection?.stamp(target) }
     if (!asksAtAll(tool.id)) return null
-    val reason = noQuestion(tool.id, key, support.policy(), support.grants, support.connection)
+    // The persistent permission reads the enrollment file (its fingerprint): never on the caller's thread, which is Main.
+    val connectionStamp = request.target?.let { target -> withContext(io) { support.connection?.stamp(target) } }
+    val reason = withContext(io) { noQuestion(tool.id, key, support.policy(), support.grants, support.connection) }
     if (reason != null) { onNoQuestion(call, reason); return null }
     // The card is offered a connection answer only with a connection known by name: no name, no record.
     val info = request.target?.let(support.info)
@@ -70,15 +71,17 @@ internal suspend fun authorizeCall(
         // nor when the tunnel's period ended or the connection changed during the wait.
         ConfirmationDecision.SESSION -> { if (key != null && stamp != null) support.grants.record(key, tool.id, stamp, request.sessionTools); null }
         // The owner's choice stands even if Stop races this call (as Always); the call itself is stopped by the kernel's owner check. Recorded against the stamp taken
-        // BEFORE the question and the card's tools; a failed save is Allow once plus the existing note, and nothing is kept in memory instead.
+        // BEFORE the question and the card's tools; a failed save or a record that was refused is Allow once plus the existing note, and nothing is kept in memory instead.
         ConfirmationDecision.CONNECTION -> {
             val connection = support.connection
-            if (key != null && connectionStamp != null && connection != null && info != null) {
-                when (withContext(NonCancellable + io) { try { connection.record(key, tool.id, connectionStamp, request.sessionTools) } catch (_: Exception) { RecordResult.SAVE_FAILED } }) {
+            if (key != null && connection != null && info != null && tool.id.grantable) {
+                // Nothing recorded, whatever the reason (a card raised while locked, a change during the wait, a failed save): the call is allowed once and the owner is told.
+                val result = if (connectionStamp == null) RecordResult.NOT_RECORDED
+                    else withContext(NonCancellable + io) { try { connection.record(key, tool.id, connectionStamp, request.sessionTools) } catch (_: Exception) { RecordResult.SAVE_FAILED } }
+                when (result) {
                     // One line speaks for the wider permission: the connection's session entry goes.
                     RecordResult.RECORDED -> support.grants.forgetConnection(key.target.profileId, key.target.connectionId)
-                    RecordResult.SAVE_FAILED -> onNotSaved()
-                    RecordResult.NOT_RECORDED -> Unit
+                    RecordResult.SAVE_FAILED, RecordResult.NOT_RECORDED -> onNotSaved()
                 }
             }
             null
