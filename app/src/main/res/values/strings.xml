@@ -271,6 +271,12 @@
     <string name="card_details_https">%1$s · port %2$d · HTTPS</string>
     <string name="card_details_ssh_key">%1$s · port %2$d · %3$s · key</string>
     <string name="card_details_ssh_password">%1$s · port %2$d · %3$s · password</string>
+    <string name="card_port">port %1$d</string>
+    <string name="card_port_https">port %1$d · HTTPS</string>
+    <string name="card_port_ssh_key">port %1$d · %2$s · key</string>
+    <string name="card_port_ssh_password">port %1$d · %2$s · password</string>
+    <string name="card_copy_address">Copy address</string>
+    <string name="tunnel_switch">Tunnel %s</string>
     <string name="connect_named">Start “%s”</string>
     <string name="retry_named">Retry “%s”</string>
     <string name="main_action_named">%1$s “%2$s”</string>

@@ -230,10 +230,10 @@ class TunnelsFavoritesTest {
         compose.onNodeWithTag("swipe_favorite").assertDoesNotExist()
         assertEquals(0, tapCalls)
         assertEquals(0, favoriteCalls)
-        // On an open card its buttons only put it back too.
+        // On an open card its switch only puts it back too.
         swipeCard(z2m, toRight = true)
         compose.waitForIdle()
-        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasTestTag("card_on"), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasTestTag("card_switch"), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
         assertEquals(0, connectCalls)
         compose.onNodeWithTag("swipe_favorite").assertDoesNotExist()

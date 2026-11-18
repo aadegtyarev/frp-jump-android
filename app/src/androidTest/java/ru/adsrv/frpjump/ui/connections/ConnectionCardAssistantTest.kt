@@ -7,7 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -38,7 +41,7 @@ import ru.adsrv.frpjump.tunnel.PendingOp
 import ru.adsrv.frpjump.ui.FrpJumpTheme
 import java.io.File
 
-/** The connection card's assistant mark (a calm line) and its sheet with "Ask again", and the card's round buttons: shown only while the grant exists; synthetic data only. */
+/** The connection card's assistant mark (a calm line) and its sheet with "Ask again", and the card's switch and main-action link; the mark is shown only while the grant exists; synthetic data only. */
 @RunWith(AndroidJUnit4::class)
 class ConnectionCardAssistantTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -155,49 +158,84 @@ class ConnectionCardAssistantTest {
         compose.onNodeWithText(text(R.string.connection_assistant_sheet_passwords)).assertDoesNotExist()
     }
 
-    @Test fun aDownCardOffersOnlyPowerOnAndMenuAndAnUpCardAlsoItsMainAction() {
+    @Test fun aDownCardHasAnOffSwitchAndMenuAndNoMainAction() {
         card { androidx.compose.foundation.layout.Column {
             ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(CMD, null))
         } }
-        compose.onNodeWithTag("card_on", useUnmergedTree = true).assertIsDisplayed().assertWidthIsAtLeast(44.dp).assertHeightIsAtLeast(44.dp)
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOff().assertIsEnabled().assertHeightIsAtLeast(48.dp)
         compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed().assertWidthIsAtLeast(44.dp)
         compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("card_on", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("card_off", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithContentDescription(text(R.string.connect_named, "Pi shell")).assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.tunnel_switch, "Pi shell")).assertIsDisplayed()
+        // The assistant's mark alone makes the bottom row.
+        compose.onNodeWithTag(chip, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.state_off), useUnmergedTree = true).assertIsDisplayed()
         shot("connection-card-down")
     }
 
-    @Test fun anUpSshCardHasTerminalPowerOffAndMenuWithTheSessionCountAndNamedActions() {
+    @Test fun anUpSshCardHasAnOnSwitchTheTerminalLinkWithTheSessionCountAndMenu() {
         card { ConnectionCard(up, sshMethod = null, sessions = SessionCount(2, 0), menuOpen = false, onMenu = {}, actions = actions, assistant = AssistantMark(null, dateMillis, BOTH)) }
-        compose.onNodeWithTag("card_main", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(44.dp)
-        compose.onNodeWithTag("card_off", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOn().assertIsEnabled()
+        compose.onNodeWithTag("card_main", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithTag("card_on", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag(chip, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.terminal_count, 2) + "\u00A0\u203A", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.main_action_named, text(R.string.terminal_count, 2), "Pi shell")).assertIsDisplayed()
-        compose.onNodeWithContentDescription(text(R.string.disconnect_named, "Pi shell")).assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.tunnel_switch, "Pi shell")).assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.connection_actions, "Pi shell")).assertIsDisplayed()
         shot("connection-card-up")
     }
 
-    @Test fun aCardBeingConnectedOffersOnlyADisabledPowerOnAndMenu() {
-        card { ConnectionCard(row.copy(pending = PendingOp.CONNECTING), sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions) }
-        compose.onNodeWithTag("card_on", useUnmergedTree = true).assertIsDisplayed().assertIsNotEnabled()
-        compose.onNodeWithContentDescription(text(R.string.connect_named, "Pi shell")).assertIsDisplayed()
-        compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithTag("card_off", useUnmergedTree = true).assertDoesNotExist()
+    @Test fun theSwitchConnectsAndDisconnectsAndTheLinkDoesTheMainAction() {
+        var connects = 0; var disconnects = 0; var mains = 0
+        val counting = RowActions({ connects++ }, { mains++ }, {}, { disconnects++ }, {}, {}, {}, {}, {}, {}, {}, {}, { false }, {}, {})
+        var shown by mutableStateOf(row)
+        card { ConnectionCard(shown, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = counting) }
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).performClick(); compose.waitForIdle()
+        assertEquals(1, connects); assertEquals(0, disconnects)
+        shown = up; compose.waitForIdle()
+        compose.onNodeWithTag("card_main", useUnmergedTree = true).performClick(); compose.waitForIdle()
+        assertEquals(1, mains)
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).performClick(); compose.waitForIdle()
+        assertEquals(1, disconnects); assertEquals(1, connects)
     }
 
-    /**
-     * An up SSH card through the server with one session: the main action is an outlined circle like the power button, the state and the address do not
-     * leave a dot at a line end.
-     */
+    @Test fun aCardBeingConnectedShowsAnOnSwitchThatIsDisabledAndTheStartingState() {
+        card { ConnectionCard(row.copy(pending = PendingOp.CONNECTING), sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions) }
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOn().assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.state_connecting), useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun aCardBeingDisconnectedShowsAnOffSwitchThatIsDisabled() {
+        card { ConnectionCard(up.copy(pending = PendingOp.DISCONNECTING), sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions) }
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOff().assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.state_disconnecting), useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun aDownCardOnAnOfflineDeviceHasADisabledSwitchAndSaysSo() {
+        card { ConnectionCard(row, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions, offline = true) }
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOff().assertIsNotEnabled()
+        compose.onNodeWithText(text(R.string.state_device_offline), useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithTag("card_menu", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test fun aCardWithNoOwnNameTitlesItselfWithTheKindAndMutesTheDetails() {
+        val unnamed = row.copy(connection = row.connection.copy(customName = null, user = "pi"))
+        card { ConnectionCard(unnamed, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions) }
+        compose.onNodeWithText("SSH", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.card_port_ssh_key, 22, "pi"), useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    /** An up SSH card through the server with one session: the link and the switch, the state and the address do not leave a dot at a line end. */
     private fun upSshCardWithASession(mode: ru.adsrv.frpjump.settings.ThemeMode, name: String) {
         val relayed = up.copy(tunnel = Tunnel("synthetic-device", 22, "g1", 40001, VisitorState(TunnelStatus.RELAYED, directFailed = true), pinned = true))
         card(mode) { ConnectionCard(relayed, sshMethod = null, sessions = SessionCount(1, 0), menuOpen = false, onMenu = {}, actions = actions) }
-        val main = compose.onNodeWithTag("card_main", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(44.dp).fetchSemanticsNode().boundsInRoot
-        val off = compose.onNodeWithTag("card_off", useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        org.junit.Assert.assertEquals("the buttons are the same size", main.height, off.height, 1f)
+        compose.onNodeWithTag("card_main", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithTag("card_switch", useUnmergedTree = true).assertIsDisplayed().assertIsOn()
         shot(name)
     }
 
