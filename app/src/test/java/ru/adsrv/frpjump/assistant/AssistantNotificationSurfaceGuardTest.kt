@@ -74,7 +74,7 @@ class AssistantNotificationSurfaceGuardTest {
     @Test fun `no screen or the activity reads an incoming intent`() {
         val files = File("src/main/java/ru/adsrv/frpjump/ui").walkTopDown().filter { it.extension == "kt" }.toList() +
             File("src/main/java/ru/adsrv/frpjump/MainActivity.kt")
-        val reads = Regex("""\bget\w*Extra\(|hasExtra|\.extras\b|getIntent|\.intent\b|onNewIntent|addOnNewIntentListener|(?<![=\w])\.clipData(?!\s*=)|\bdata\??\.clipData|\.categories|\.flags\b|\bintent\.action|\bintent\.data""")
+        val reads = Regex("""\bget\w*Extra\(|hasExtra|\.extras\b|getIntent|\.intent\b|onNewIntent|addOnNewIntentListener|(?<![=\w])\.clipData(?!\s*=)|\bdata\??\.clipData|\.categories|(?<!attributes)\.flags\b|\bintent\.action|\bintent\.data""")
         // Narrow allowances: the activity-result `data` of a file chooser (a result the app asked for), the sensitive flag the viewer sets on its own outgoing clip, and the lock's outgoing launches.
         val allowed = listOf("val clip = data?.clipData", "clip.description.extras = PersistableBundle()", "holdLaunch(this, intent.action,")
         val found = files.flatMap { f -> f.readLines().mapIndexedNotNull { i, line ->
