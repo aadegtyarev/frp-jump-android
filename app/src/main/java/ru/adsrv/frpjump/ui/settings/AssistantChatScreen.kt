@@ -318,7 +318,9 @@ internal fun AssistantChatContent(
                 val live = conversation.state.value.draft
                 field = if (value.text == live) value else TextFieldValue(live, TextRange(live.length))
             }, state = state, asking = asking, canSend = state.sendEnabled(setup == null), onSend = { following = true; conversation.send() }, onStop = conversation::stop,
-                maxLines = if (density.fontScale > 1.3f) 3 else 5)
+                // In the compact (short, whole-screen scrolling) layout a tall field would reach beyond the visible part with the keyboard up and take
+                // Send, which sits in the middle of it, out of view: two lines there, the rest scrolls inside the field.
+                maxLines = if (compact) 2 else if (density.fontScale > 1.3f) 3 else 5)
         }
     }
 }

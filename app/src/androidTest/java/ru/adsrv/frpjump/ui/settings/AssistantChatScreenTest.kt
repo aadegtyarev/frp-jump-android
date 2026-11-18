@@ -1953,6 +1953,9 @@ class AssistantChatScreenTest {
         compose.runOnIdle { mode = "long-context" }
         input().performTextInput("First old turn"); sendAndAwait()
         compose.runOnIdle { assertFalse(owner!!.state.value.omitted); owner!!.edit("y".repeat(7000)) }
+        // A very long draft (a paste) must leave Send in view and on, also in a short landscape window (#298).
+        button("chat_send").assertIsDisplayed().assertIsEnabled()
+        shot("long-draft")
         sendAndAwait()
         compose.runOnIdle { assertTrue(owner!!.state.value.omitted); assertEquals(2, owner!!.state.value.turns.size) }
         compose.onNodeWithText(localizedText(ru.adsrv.frpjump.R.string.chat_omitted)).assertExists()
