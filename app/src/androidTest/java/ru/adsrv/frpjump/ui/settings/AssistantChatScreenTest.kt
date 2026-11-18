@@ -1259,7 +1259,7 @@ class AssistantChatScreenTest {
         val tab = startTypingConfirmation()
         shown("chat_confirm_card")
         compose.runOnIdle { assertEquals(1, calls); assertTrue("nothing is typed while the question is open", tab.typed.isEmpty()) }
-        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt)))
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(toolLine(localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_terminal_input_receipt)))
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_tab), substring = true)
             .assertTextContains("Synthetic profile · pi@synthetic-device", substring = true)
         compose.onNodeWithTag("chat_confirm_program", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_program), substring = true)
@@ -2022,6 +2022,9 @@ class AssistantChatScreenTest {
         return "busy=${s?.busy} stopping=${s?.stopping} draft='${s?.draft}' pending=${s?.pendingText} problem=${s?.problem} requests=${requests.size} " +
             "root=${runCatching { rootBounds() }.getOrNull()} send=${b("chat_send")} stop=${b("chat_stop")} input=${b("chat_input")} title=${b("chat_title")} tools=${b("chat_tools")}"
     }
+    /** The card's tool line: "class · tool" in portrait; one line "tool · class" in the compact landscape layout (the class is what gets cut). */
+    private fun toolLine(actionClass: String, tool: String) = if (landscape()) localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, tool, actionClass)
+        else localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, actionClass, tool)
     private fun landscape() = compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     /** The node is displayed; in the compact landscape layout the screen column is scrolled to it first. */
     private fun shown(tag: String): SemanticsNodeInteraction {
@@ -2344,7 +2347,13 @@ class AssistantChatScreenTest {
         compose.onNodeWithTag("chat_confirm_target", useUnmergedTree = true).assertTextEquals("Work · board1500 · Service root")
         shown("chat_confirm_session"); shown("chat_confirm_session_hint")
         // The tool line names the class, and the hint says what the answer covers: commands only (typing is off here), while the tunnel is open.
-        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))
+        compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assertTextEquals(toolLine(localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))
+        if (landscape()) {
+            // One line; if it is cut, the class goes, not the tool; TalkBack still reads "class · tool".
+            assertEquals(1, layoutOf("chat_confirm_tool").lineCount)
+            compose.onNodeWithTag("chat_confirm_tool", useUnmergedTree = true).assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription,
+                listOf(localizedFormat(ru.adsrv.frpjump.R.string.chat_confirm_tool, localizedText(ru.adsrv.frpjump.R.string.action_class_connection_change), localizedText(ru.adsrv.frpjump.R.string.tool_ssh_command)))))
+        }
         compose.onNodeWithTag("chat_confirm_session_hint", useUnmergedTree = true).assertTextContains(localizedText(ru.adsrv.frpjump.R.string.confirm_session_hint), substring = true)
         shot("real-names")
         // The hint is in the scrolling section now: bring the button back before the tap.
