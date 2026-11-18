@@ -877,22 +877,27 @@ mark follows each of them, so the order shown is the order that runs) and the
 full-access warning. For `terminal_input` the card names the tab (`profile · user@device №number`, or `tab <id>` when it is not known),
 the program in the tab's foreground when a `terminal_tabs` probe of that tab is at most 60 seconds old (else no program line), the text
 (the same scrolling box and escapes; every line break is shown as a highlighted ⏎ mark, because it is typed as Enter) and the keys by
-name, with its own title, warning and For session and For this connection hints. Nothing is cut: the whole text is in the scrolling box. A string argument with an
+name, with its own title, warning and remember hint. Nothing is cut: the whole text is in the scrolling box. A string argument with an
 unpaired surrogate is invalid for every tool (no card, nothing runs).
 
-Answers: **Allow** (this call), **Decline**, and under the caption "Allow and remember" («Разрешить и запомнить»), with one short pinned line that
-stays with the answers ("The next calls on this connection run without asking until it is edited. Forget on its card." / «Следующие вызовы в
-этом подключении пойдут без вопроса, пока его не изменят. Забыть: на его карточке.»), **For session**,
-**For this connection** («Для этого подключения») and **Always**, in this order and in these two rows (a flow layout: at 200 % font one
-answer per line, no label cut, every button at least 48 dp high; in landscape the answers stay in the right column). In a window too short for the
-answers (portrait or landscape) the whole card scrolls from its top, so no answer is cut. A card that cannot be
-remembered (the tool is not grantable, the connection is not known by name, a stop, a close or a skill card) has three answers, Allow,
-Always and Decline, and no caption; an answer a card did not offer acts as Allow once and records nothing. The hints of For session and
-For this connection are in the scrolling section after the warning (the pinned block is only the buttons; if the pinned answers, the header
-and the first content line do not fit, the whole card scrolls from its top), and each button is read as "<answer>. <hint>". For
+Answers: **Allow** (filled) and **Decline** (outlined) in one row, and, on a card that can remember, under the label "Allow without asking:"
+(«Разрешать без вопросов:») quiet text buttons in one row that may wrap: **For session** («Для сессии»), **For this connection** («Для
+подключения») and **Always** (in the error colour), in this order, then one hint line for all three (below). Every button shows 32 dp and keeps a touch
+target of at least 44 dp (48 dp from the Material surface); at 200 % font a button may wrap to the next row, and none is cut. In landscape the answers
+stay in the right column. In a window too short for the answers (portrait or landscape) the whole card scrolls from its top, so no answer is cut. A
+card that cannot be remembered (the tool is not grantable, the connection is not known by name, a stop, a close or a skill card) has three answers,
+Allow, Decline and a quiet Always, and no label or hint; an answer a card did not offer acts as Allow once and records nothing. The command
+card's title is "Run in <name>?" («Выполнить в <name>?»; the name is the connection's, bidi-isolated and tied to "in" by a no-break space; a card with no
+known connection keeps "Run this command?"); the other cards keep their titles. The one hint is pinned with the buttons and reads, for commands, "For session:
+while the tunnel is on. For this connection: until it is edited, even for commands from text the assistant read. Undo: the mark on the tunnel card." /
+«Для сессии — пока туннель включён. Для подключения — пока его не изменят, и даже для команд из прочитанного текста. Отменить: метка на карточке туннеля.»;
+when the grant covers typing into tabs the hint says so (for typing alone: "For session: typing into tabs, while the tunnel is on. For this connection:
+until it is edited, even for typing from text the assistant read." / «Для сессии — ввод во вкладки, пока туннель включён. Для подключения — пока его не
+изменят, и даже для ввода из прочитанного текста.»; for both: "commands and typing into tabs" / «команды и ввод во вкладки», "for commands and typing" /
+«для команд и ввода»), so it never claims more or less than the grant. The buttons carry no spoken description of their own: the hint is read in its place. For
 session is a grant of the action class on one connection: `ssh_command` and `terminal_input` share the `CONNECTION_CHANGE` grant of a saved
-connection, and a grant covers only the grantable tools that the card said it covers (the hint on the card names them: "Commands in this
-connection while its tunnel is open." / "Typing into tabs of this connection while its tunnel is open." / both) and that are still in effect;
+connection, and a grant covers only the grantable tools that the card said it covers (the hint on the card names them: commands (the default hint),
+typing into tabs, or both) and that are still in effect;
 a tool that was not in effect when the card was raised is never added by switching it on later. `grantable` is a property of the tool, not of
 its class: `terminal_close`, `stop_tunnel`, `skill_save` and `skill_delete` are not covered by any grant whatever class they share, and a
 card of theirs has no For session answer. The grant lives for the open period of the connection's tunnel: it survives leaving the chat,
@@ -969,9 +974,8 @@ starting `v1:`, `tools` holds at least one known grantable tool of that class (o
 (class, connection) keep the last, at most 500 are read, a broken array reads as empty, a non-1 version or the assistant off in the file reads as no
 records, and an invalid record never resets `global` or any other setting and never allows. Records are never read through
 `ConfirmationPolicy.resolve` (it returns `global` only). Where it is seen: the assistant mark on the connection's card (a chip line) and its sheet are the only place; there is
-no "⋮" item and no list in Tools. A call that ran without a question shows, on its line in "Tool calls and results", a muted reason ("no
-question: for this connection" / "no question: for the tunnel's lifetime" / "no question: confirmations are off"; «без вопроса: для этого
-подключения» / «на время туннеля» / «подтверждения выключены»), kept in memory only: a conversation restored from the saved history shows none, the
+no "⋮" item and no list in Tools. A call that ran without a question shows, on its line in "Tool calls and results", a muted reason ("for
+this connection" / "for session" / "confirmations off"; «для подключения» / «для сессии» / «подтверждения выключены»), kept in memory only: a conversation restored from the saved history shows none, the
 saved format is unchanged, and the model is never told about grants. An edit that resets a record gives no notice. Always turns the app-wide switch off after a second confirmation (a dialog
 says what is turned off and where to turn it back on; Cancel returns to the
 question, still waiting); if that cannot be saved, the call is allowed once, an
