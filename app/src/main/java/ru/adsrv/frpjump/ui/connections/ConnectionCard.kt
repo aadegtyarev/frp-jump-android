@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -93,7 +91,7 @@ import ru.adsrv.frpjump.ui.notice
  * be connected; its "⋮" and long press work. While it is being connected the card offers only a disabled "⏻" in the "on" style (a spinner) and "⋮"; while
  * being disconnected, a busy "⏻" to stop and "⋮".
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConnectionCard(
     row: ConnectionRow,
@@ -169,120 +167,128 @@ fun ConnectionCard(
                 },
             ),
     ) {
-        Row(
-            Modifier.padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Column(Modifier.weight(1f).alpha(if (unreachable) DIMMED else 1f).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                // The name is what tells connections apart: on lines of its own, never cut.
-                val where = deviceName?.let { " · $it" }.orEmpty()
-                val favoriteSpoken = stringResource(R.string.favorite_spoken)
-                // A favourite has a small muted star after its name; TalkBack says "favourite", not the glyph.
-                val nameLine: @Composable (String) -> Unit = { text ->
-                    Text(
-                        buildAnnotatedString {
-                            append(text)
-                            if (favorite) withStyle(SpanStyle(color = colors.muted, fontSize = 13.sp, fontWeight = FontWeight.Normal)) { append(" \u2605") }
-                            append(where)
-                        },
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = if (favorite) Modifier.clearAndSetSemantics { contentDescription = "$text, $favoriteSpoken$where" } else Modifier,
-                    )
-                }
-                if (title != null) {
-                    nameLine(title)
-                    Text(details, fontSize = 13.sp, color = colors.muted)
-                } else {
-                    nameLine(details)
-                }
-                // State and address on one line (wrapping only when the font is too large for both), in the body font with tabular digits.
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-                    if (state != null) {
-                        val (ink, _) = toneColors(state.second)
-                        val choice = offersDirectChoice(row)
+        Column {
+            Row(
+                Modifier.padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f).alpha(if (unreachable) DIMMED else 1f).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // The name is what tells connections apart: on lines of its own, never cut.
+                    val where = deviceName?.let { " · $it" }.orEmpty()
+                    val favoriteSpoken = stringResource(R.string.favorite_spoken)
+                    // A favourite has a small muted star after its name; TalkBack says "favourite", not the glyph.
+                    val nameLine: @Composable (String) -> Unit = { text ->
                         Text(
-                            if (choice && row.tunnel?.direct != DirectMode.KEPT) "${state.first}  ›" else state.first,
-                            color = ink,
-                            fontSize = 13.sp,
+                            buildAnnotatedString {
+                                append(text)
+                                if (favorite) withStyle(SpanStyle(color = colors.muted, fontSize = 13.sp, fontWeight = FontWeight.Normal)) { append(" \u2605") }
+                                append(where)
+                            },
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = if (choice) {
-                                val label = stringResource(R.string.direct_or_server)
-                                Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = whenOpen { actions.directChoice(row) }).padding(vertical = 4.dp)
-                            } else Modifier,
+                            modifier = if (favorite) Modifier.clearAndSetSemantics { contentDescription = "$text, $favoriteSpoken$where" } else Modifier,
                         )
+                    }
+                    if (title != null) {
+                        nameLine(title)
+                        Text(details, fontSize = 13.sp, color = colors.muted)
                     } else {
-                        // Why it cannot be started, where it is.
-                        Text(stringResource(if (unreachable) R.string.state_device_offline else R.string.state_off), fontSize = 13.sp, color = colors.muted)
+                        nameLine(details)
                     }
-                    row.tunnel?.let {
-                        Text("·", fontSize = 13.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics { })
-                        LocalAddress(it.localPort, modifier = Modifier, pinned = it.pinned, mono = false)
+                    // State and address on one line, in the body font with tabular digits; where both do not fit, the address goes to its own line
+                    // with no dot (the dot belongs to the address, [InlineFlow] never leaves it at a line end), and the sessions pill after them.
+                    InlineFlow {
+                        if (state != null) {
+                            val (ink, _) = toneColors(state.second)
+                            val choice = offersDirectChoice(row)
+                            Text(
+                                // No-break spaces: the arrow stays with its word.
+                                if (choice && row.tunnel?.direct != DirectMode.KEPT) "${state.first}\u00A0\u00A0›" else state.first,
+                                color = ink,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = if (choice) {
+                                    val label = stringResource(R.string.direct_or_server)
+                                    Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = whenOpen { actions.directChoice(row) }).padding(vertical = 4.dp)
+                                } else Modifier,
+                            )
+                        } else {
+                            // Why it cannot be started, where it is.
+                            Text(stringResource(if (unreachable) R.string.state_device_offline else R.string.state_off), fontSize = 13.sp, color = colors.muted)
+                        }
+                        row.tunnel?.let {
+                            FlowSeparator { Text("·", fontSize = 13.sp, color = colors.muted, modifier = Modifier.clearAndSetSemantics { }) }
+                            LocalAddress(it.localPort, modifier = Modifier, pinned = it.pinned, mono = false)
+                        }
+                        SessionsPill(sessions)
                     }
-                    SessionsPill(sessions)
-                }
-                if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {
-                    LiveTerminalDiagnostics(TunnelRef(row.profile, c.device, c.port))
-                }
-                problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
-                if (assistant != null) {
-                    AssistantMarkLine(row, name, assistant, onForgetAssistant, revealed, onCloseReveal) { text -> context.notice(text, NoticeKind.DONE) }
-                }
-            }
-            val buttons: @Composable () -> Unit = {
-                if (up && !busy) {
-                    val label = mainActionLabel(row, sessions)
-                    RoundButton(
-                        description = stringResource(R.string.main_action_named, label, name),
-                        onClick = whenOpen { actions.main(row) },
-                        container = colors.accentContainer,
-                        modifier = Modifier.testTag("card_main"),
-                    ) { size ->
-                        Icon(mainGlyph(row), contentDescription = null, tint = colors.onAccentContainer, modifier = Modifier.size(size * GLYPH_SHARE))
-                        if (c.kind == PortKind.SSH && sessions.total >= 2) CountBadge(sessions.total)
-                    }
-                }
-                // Being connected (no tunnel yet), the power button is the disabled "on" one, not a "Stop": there is nothing to stop yet.
-                val connecting = row.pending == PendingOp.CONNECTING && !up
-                if (up || (busy && !connecting)) {
-                    RoundButton(
-                        description = stringResource(R.string.disconnect_named, name),
-                        onClick = whenOpen { actions.disconnect(row) },
-                        enabled = !busy,
-                        border = colors.error,
-                        modifier = Modifier.testTag("card_off"),
-                    ) { size ->
-                        if (busy) CircularProgressIndicator(Modifier.size(size * GLYPH_SHARE), color = colors.error, strokeWidth = 2.dp)
-                        else Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(size * GLYPH_SHARE))
-                    }
-                } else {
-                    val inactive = unreachable || connecting
-                    val on = if (inactive) colors.outline else colors.accent
-                    RoundButton(
-                        description = stringResource(if (row.error != null && !connecting) R.string.retry_named else R.string.connect_named, name),
-                        onClick = whenOpen { actions.connect(row) },
-                        enabled = !inactive,
-                        border = on,
-                        modifier = Modifier.testTag("card_on"),
-                    ) { size ->
-                        if (connecting) CircularProgressIndicator(Modifier.size(size * GLYPH_SHARE), color = colors.accent, strokeWidth = 2.dp)
-                        else Icon(PowerGlyph, contentDescription = null, tint = if (inactive) colors.muted else colors.accent, modifier = Modifier.size(size * GLYPH_SHARE))
+                    problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
+                    if (assistant != null) {
+                        AssistantMarkLine(row, name, assistant, onForgetAssistant, revealed, onCloseReveal) { text -> context.notice(text, NoticeKind.DONE) }
                     }
                 }
-                if (hasMenu(row)) {
-                    Box {
+                val buttons: @Composable () -> Unit = {
+                    if (up && !busy) {
+                        val label = mainActionLabel(row, sessions)
                         RoundButton(
-                            description = stringResource(R.string.connection_actions, name),
-                            onClick = whenOpen { onMenu(true) },
-                            modifier = Modifier.testTag("card_menu"),
-                        ) { size -> Icon(Icons.Filled.MoreVert, contentDescription = null, tint = colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
-                        ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
+                            description = stringResource(R.string.main_action_named, label, name),
+                            onClick = whenOpen { actions.main(row) },
+                            border = colors.accent,
+                            modifier = Modifier.testTag("card_main"),
+                        ) { size ->
+                            Icon(mainGlyph(row), contentDescription = null, tint = colors.accent, modifier = Modifier.size(size * GLYPH_SHARE))
+                            if (c.kind == PortKind.SSH && sessions.total >= 2) CountBadge(sessions.total)
+                        }
+                    }
+                    // Being connected (no tunnel yet), the power button is the disabled "on" one, not a "Stop": there is nothing to stop yet.
+                    val connecting = row.pending == PendingOp.CONNECTING && !up
+                    if (up || (busy && !connecting)) {
+                        RoundButton(
+                            description = stringResource(R.string.disconnect_named, name),
+                            onClick = whenOpen { actions.disconnect(row) },
+                            enabled = !busy,
+                            border = colors.error,
+                            modifier = Modifier.testTag("card_off"),
+                        ) { size ->
+                            if (busy) CircularProgressIndicator(Modifier.size(size * GLYPH_SHARE), color = colors.error, strokeWidth = 2.dp)
+                            else Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(size * GLYPH_SHARE))
+                        }
+                    } else {
+                        val inactive = unreachable || connecting
+                        val on = if (inactive) colors.outline else colors.accent
+                        RoundButton(
+                            description = stringResource(if (row.error != null && !connecting) R.string.retry_named else R.string.connect_named, name),
+                            onClick = whenOpen { actions.connect(row) },
+                            enabled = !inactive,
+                            border = on,
+                            modifier = Modifier.testTag("card_on"),
+                        ) { size ->
+                            if (connecting) CircularProgressIndicator(Modifier.size(size * GLYPH_SHARE), color = colors.accent, strokeWidth = 2.dp)
+                            else Icon(PowerGlyph, contentDescription = null, tint = if (inactive) colors.muted else colors.accent, modifier = Modifier.size(size * GLYPH_SHARE))
+                        }
+                    }
+                    if (hasMenu(row)) {
+                        Box {
+                            RoundButton(
+                                description = stringResource(R.string.connection_actions, name),
+                                onClick = whenOpen { onMenu(true) },
+                                modifier = Modifier.testTag("card_menu"),
+                            ) { size -> Icon(Icons.Filled.MoreVert, contentDescription = null, tint = colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
+                            ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
+                        }
                     }
                 }
+                if (stacked) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { buttons() }
+                else Row(verticalAlignment = Alignment.CenterVertically) { buttons() }
             }
-            if (stacked) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { buttons() }
-            else Row(verticalAlignment = Alignment.CenterVertically) { buttons() }
+            // SSH diagnostics: at the card's full width under the text and the buttons, one row that wraps only between its items.
+            if ((c.kind == PortKind.SSH && up) || sessions.total > 0) {
+                LiveTerminalDiagnostics(
+                    TunnelRef(row.profile, c.device, c.port),
+                    Modifier.alpha(if (unreachable) DIMMED else 1f).padding(start = 14.dp, end = 14.dp, bottom = 2.dp),
+                )
+            }
         }
     }
 }
@@ -292,6 +298,12 @@ private const val DIMMED = 0.5f
 
 /** From this font scale the buttons stack vertically. */
 private const val STACK_FROM = 1.5f
+
+/** The visible diameter of a round button, before the font scale. */
+private val CIRCLE = 36.dp
+
+/** The outline of every outlined round button. */
+private val OUTLINE = 1.5.dp
 
 /** The glyph's share of the circle. */
 private const val GLYPH_SHARE = 0.56f
@@ -306,8 +318,8 @@ private fun mainGlyph(row: ConnectionRow): ImageVector =
     }
 
 /**
- * A round button of the card: the circle is 32 dp and grows with the font (to 1.5 times), the touch target is at least 44 dp (the circle plus a margin, which the count badge needs). [container] fills it
- * (the main action's tonal circle), [border] outlines it (the power button); neither: a bare glyph ("⋮"). The glyph is given the circle's size.
+ * A round button of the card: the circle is 36 dp and grows with the font (to 1.5 times), the touch target is at least 44 dp (the circle plus a margin, which the count badge needs). [border] outlines it
+ * (the main action in the accent, the power button in its colour), the same line for every outlined button, no fill; no border: a bare glyph ("⋮"). [container] is only for a button that wants a fill. The glyph is given the circle's size.
  */
 @Composable
 internal fun RoundButton(
@@ -319,7 +331,7 @@ internal fun RoundButton(
     border: Color? = null,
     content: @Composable BoxScope.(Dp) -> Unit,
 ) {
-    val circle = 32.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+    val circle = CIRCLE * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
     val target = maxOf(44.dp, circle + 8.dp)
     Box(
         modifier
@@ -333,7 +345,7 @@ internal fun RoundButton(
             Modifier
                 .size(circle)
                 .background(container, CircleShape)
-                .then(if (border != null) Modifier.border(1.5.dp, border, CircleShape) else Modifier),
+                .then(if (border != null) Modifier.border(OUTLINE, border, CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) { content(circle) }
     }
@@ -355,8 +367,10 @@ private fun BoxScope.CountBadge(total: Int) {
         modifier = Modifier
             .align(Alignment.TopEnd)
             .offset(x = 3.dp, y = (-3).dp)
-            .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+            .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
             .background(colors.accent, CircleShape)
+            // A ring in the card's colour parts the filled badge from the circle's outline of the same accent.
+            .border(1.5.dp, colors.card, CircleShape)
             .padding(horizontal = 3.dp)
             .wrapContentHeight(Alignment.CenterVertically)
             .clearAndSetSemantics { },

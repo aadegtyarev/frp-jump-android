@@ -72,7 +72,7 @@ class ConnectionCardAssistantTest {
     private val BOTH = CMD + INPUT
 
     // Inside the system bars, as a screen is (the test activity draws under them).
-    private fun card(content: @androidx.compose.runtime.Composable () -> Unit) = compose.setContent { FrpJumpTheme { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.systemBarsPadding()) { content() } } }
+    private fun card(mode: ru.adsrv.frpjump.settings.ThemeMode = ru.adsrv.frpjump.settings.ThemeMode.SYSTEM, content: @androidx.compose.runtime.Composable () -> Unit) = compose.setContent { FrpJumpTheme(mode) { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.systemBarsPadding()) { content() } } }
 
     @Test fun theMarkIsACalmLineThatOpensTheSheetAndAskAgainEndsBothLifetimes() {
         var mark by mutableStateOf<AssistantMark?>(AssistantMark(sessionTools = CMD, rememberedAt = null))
@@ -184,4 +184,25 @@ class ConnectionCardAssistantTest {
         compose.onNodeWithTag("card_main", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("card_off", useUnmergedTree = true).assertDoesNotExist()
     }
+
+    /**
+     * An up SSH card through the server with one session: the main action is an outlined circle like the power button, the state and the address do not
+     * leave a dot at a line end, and the diagnostics line sits under the text and the buttons at the card's width, its "›" at the end.
+     */
+    private fun upSshCardWithASession(mode: ru.adsrv.frpjump.settings.ThemeMode, name: String) {
+        val relayed = up.copy(tunnel = Tunnel("synthetic-device", 22, "g1", 40001, VisitorState(TunnelStatus.RELAYED, directFailed = true), pinned = true))
+        card(mode) { ConnectionCard(relayed, sshMethod = null, sessions = SessionCount(1, 0), menuOpen = false, onMenu = {}, actions = actions) }
+        val main = compose.onNodeWithTag("card_main", useUnmergedTree = true).assertIsDisplayed().assertHeightIsAtLeast(44.dp).fetchSemanticsNode().boundsInRoot
+        val off = compose.onNodeWithTag("card_off", useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val d = compose.density.density
+        org.junit.Assert.assertEquals("the buttons are the same size", main.height, off.height, 1f)
+        val line = compose.onNodeWithTag("terminal-diagnostics-line", useUnmergedTree = true).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        org.junit.Assert.assertTrue("the diagnostics line is under the buttons: $line $main", line.top >= main.bottom - 1f)
+        org.junit.Assert.assertTrue("the diagnostics line is the card's width, wider than the text column: ${line.width / d} dp", line.width / d > 200f)
+        shot(name)
+    }
+
+    @Test fun anUpSshCardWithASessionLightTheme() = upSshCardWithASession(ru.adsrv.frpjump.settings.ThemeMode.LIGHT, "connection-card-up-session-light")
+
+    @Test fun anUpSshCardWithASessionDarkTheme() = upSshCardWithASession(ru.adsrv.frpjump.settings.ThemeMode.DARK, "connection-card-up-session-dark")
 }
