@@ -684,23 +684,28 @@ version and update, MQTT plugins (scenario 12), components and licenses).
   Keystore ([Stored on the phone](#stored-on-the-phone)). It leaves by one path only: «Выгрузить ключ…» / "Export key…", a strict,
   explicit action. No clipboard, share sheet, other app, log line or assistant tool ever gets it.
   - Export: an explanation first (what the file is; whoever has it and its passphrase can log in wherever the key is installed). Then
-    a fresh identity check, at once and even if the app was just unlocked: the system's biometrics or screen lock (BiometricPrompt,
-    a strong biometric or the device credential); cancel or failure: nothing happens. With no screen lock set, a warning, and the
+    a fresh identity check, at once and even if the app was just unlocked: the system's biometrics or screen lock (BiometricPrompt:
+    a biometric, strong where the device supports it (Android 10 uses the platform's weak class), or the device credential);
+    cancel or failure: nothing happens. Leaving the app (it stops) ends an open export or restore dialog, so the next export asks
+    for a fresh check again. With no screen lock set, a warning, and the
     export continues only after an explicit «Всё равно выгрузить» / "Export anyway". Then a passphrase typed twice: not empty, at
     least 8 characters, both the same. The field is a password input with no suggestions and `IME_FLAG_NO_PERSONALIZED_LEARNING`;
-    the activity's window and the dialog's are `FLAG_SECURE` while a passphrase dialog is shown, and only then.
+    the activity's window and the dialog's are `FLAG_SECURE` while a passphrase dialog is shown. The field has no "show" eye, so the
+    passphrase is never on screen as selectable text.
   - The file is an OpenSSH private key (`openssh-key-v1`) encrypted the way `ssh-keygen -p` writes it: bcrypt KDF (16-byte salt, 16
     rounds) and aes256-ctr, so `ssh-keygen -y` reads it. There is no unencrypted export. It is written only through the system «Save
     as» (`ACTION_CREATE_DOCUMENT`, default name `frp-jump-phone-key`); cancel writes nothing, and a failed write says the key was not
     exported. The passphrase and the plaintext key exist in memory only for the operation: the char and byte arrays are zeroed after
     it (an immutable `String`, made by the text field or by the store, cannot be).
   - «Восстановить из файла…» / "Restore from file…": the owner picks a file (`ACTION_OPEN_DOCUMENT`) and, for an encrypted one, enters
-    its passphrase (the same `FLAG_SECURE` and keyboard rules). Only an OpenSSH ed25519 key is accepted: another type (refused at once,
+    its passphrase (the same `FLAG_SECURE` and keyboard rules). A file with no passphrase (an unencrypted OpenSSH ed25519 key) is
+    accepted too and skips the passphrase dialog; the fingerprints and the identity check below still apply. Only an OpenSSH ed25519 key is accepted: another type (refused at once,
     before any passphrase), a wrong passphrase, a damaged file and a cipher other than `ssh-keygen`'s default each get a short message
     of their own and change nothing; the key the phone already has: "nothing changed". Otherwise a confirmation shows two fingerprints,
     the phone key's and the file's, with Replace / Cancel. After «Заменить» a fresh identity check runs at once (with no screen lock:
     the same warning), and only its success replaces the key; cancel or failure changes nothing. The restored key takes the phone key's
-    slot with the same at-rest protection as a generated key; the imported key is not touched; the result line tells the owner that
+    slot with the same at-rest protection as a generated key and is still "the phone key" (the key marks of the tabs and the dialogs
+    follow the slot, see [ssh-persist-contract.md](ssh-persist-contract.md)); the imported key is not touched; the result line tells the owner that
     devices that have the old public key need the new one. Sessions already open are not touched.
   - Not part of it: export of the imported key, of settings or of frp access keys; any cloud or backup path. The assistant can neither
     export nor restore ([assistant contract](agent-contract.md#boundary-and-availability)).

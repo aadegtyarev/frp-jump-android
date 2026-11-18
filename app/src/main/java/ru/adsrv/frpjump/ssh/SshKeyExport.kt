@@ -7,7 +7,9 @@ import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
 import org.bouncycastle.crypto.util.OpenSSHPrivateKeyUtil
+import java.nio.ByteBuffer
 import java.nio.CharBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -19,9 +21,11 @@ import java.util.Base64
  *
  * Nothing here logs, copies to a clipboard or shares anything; every byte array that holds a secret (the passphrase
  * as bytes, the derived key, the plaintext section, the seed) comes from a [Scratch] and is zeroed when the call
- * ends, success or not. The passphrase array the caller passes is zeroed too. What cannot be zeroed: the immutable
- * `String` of the unencrypted key text the store hands over and takes (the same as for a generated key), and the
- * copies a cipher keeps inside itself.
+ * ends, success or not. The passphrase array the caller passes is zeroed too. What cannot be zeroed, and is left to the
+ * garbage collector: the immutable `String` of the unencrypted key text the store hands over and takes (the same as for a
+ * generated key); the base64 `String` made of the key blob when it is read from or written as text; the parameter objects
+ * BouncyCastle builds from the seed (`Ed25519PrivateKeyParameters`, the cipher's `KeyParameter`); sshj's bcrypt state and
+ * the cipher's own key schedule; and, in the screens, the `String`s of the passphrase text fields.
  */
 object SshKeyExport {
     const val CIPHER = "aes256-ctr"
@@ -30,7 +34,7 @@ object SshKeyExport {
     const val ROUNDS = 16
 
     /** A file asking for more is refused rather than computed: it would hang the phone. */
-    private const val MAX_ROUNDS = 1024
+    private const val MAX_ROUNDS = 256
     private const val MAX_SALT = 64
     private const val MAGIC = "openssh-key-v1"
     private const val BLOCK = 16
@@ -207,10 +211,15 @@ object SshKeyExport {
 
     /** The passphrase through bcrypt_pbkdf into the cipher's key and counter start. */
     private fun derive(passphrase: CharArray, salt: ByteArray, rounds: Int, scratch: Scratch): Pair<ByteArray, ByteArray> {
-        val encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(passphrase))
-        val password = scratch.bytes(encoded.remaining())
-        encoded.get(password)
-        if (encoded.hasArray()) scratch.keep(encoded.array())
+        // One array for the encoder, sized for the worst case, so nothing is left behind by a growing buffer; both it and the
+        // exact-length copy bcrypt needs are zeroed with the scratch.
+        val encoder = StandardCharsets.UTF_8.newEncoder()
+            .onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE)
+        val room = scratch.bytes(maxOf(1, Math.ceil(encoder.maxBytesPerChar().toDouble() * passphrase.size).toInt()))
+        val target = ByteBuffer.wrap(room)
+        encoder.encode(CharBuffer.wrap(passphrase), target, true)
+        encoder.flush(target)
+        val password = scratch.keep(room.copyOf(target.position()))
         val out = scratch.bytes(KEY_BYTES + IV_BYTES)
         BCrypt().pbkdf(password, salt, rounds, out)
         return scratch.keep(out.copyOfRange(0, KEY_BYTES)) to scratch.keep(out.copyOfRange(KEY_BYTES, out.size))
@@ -228,7 +237,7 @@ object SshKeyExport {
     /** The bytes between the armor lines of an OpenSSH private key text; null when there are no such lines. */
     private fun armorBody(text: String): ByteArray? {
         val start = text.indexOf(BEGIN)
-        val end = text.indexOf(END)
+        val end = if (start < 0) -1 else text.indexOf(END, start + BEGIN.length)
         if (start < 0 || end < start) return null
         return try {
             Base64.getMimeDecoder().decode(text.substring(start + BEGIN.length, end).trim())
@@ -297,7 +306,14 @@ object SshKeyExport {
 enum class KeyFileProblem { WRONG_PASSPHRASE, NOT_ED25519, DAMAGED, UNSUPPORTED }
 
 /** A refused key file. No key material or passphrase is ever in it: [keyType] is the public type name the file shows (`ssh-rsa`). */
-class KeyFileException(val problem: KeyFileProblem, val keyType: String? = null) : Exception(problem.name)
+class KeyFileException(val problem: KeyFileProblem, keyType: String? = null) : Exception(problem.name) {
+    /** The type name, only when it looks like one (`ssh-rsa`, `ecdsa-sha2-nistp256`); a file cannot put other text on the screen. */
+    val keyType: String? = keyType?.takeIf { SAFE_TYPE.matches(it) }
+
+    private companion object {
+        val SAFE_TYPE = Regex("[a-z0-9@.-]{1,40}")
+    }
+}
 
 /**
  * Byte arrays that hold secrets, zeroed together when the call that made them ends. A seam: a test keeps the

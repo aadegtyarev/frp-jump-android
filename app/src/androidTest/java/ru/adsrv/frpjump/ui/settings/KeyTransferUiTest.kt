@@ -201,13 +201,11 @@ class KeyTransferUiTest {
         assertTrue(compose.onNodeWithTag("key-export-phrase-problem").isDisplayed())
         assertTrue(activitySecure())
         shot("k4-export-passphrase-problem")
-        compose.onAllNodes(hasSetTextAction())[0].performTextClearance()
-        compose.onAllNodes(hasSetTextAction())[1].performTextClearance()
+        // The fields are emptied on submit: after a refusal both are typed again.
         type(pass, "$pass.")
         tap(R.string.key_export_save)
         assertTrue("mismatch is refused", compose.onNodeWithTag("key-export-phrase-problem").isDisplayed())
-        compose.onAllNodes(hasSetTextAction())[1].performTextClearance()
-        compose.onAllNodes(hasSetTextAction())[1].performTextInput(pass)
+        type(pass, pass)
         tap(R.string.key_export_save)
         compose.waitUntil(10_000) { files.written.isNotEmpty() }
         compose.waitUntil(5_000) { !activitySecure() }

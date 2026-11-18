@@ -6,6 +6,7 @@ import net.schmizz.sshj.userauth.password.PasswordUtils
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
@@ -209,6 +210,8 @@ class SshKeyExportTest {
         refused(KeyFileProblem.UNSUPPORTED) { SshKeyExport.inspect(container(cipher = "aes128-ctr")) }
         refused(KeyFileProblem.UNSUPPORTED) { SshKeyExport.inspect(container(cipher = "chacha20-poly1305@openssh.com")) }
         refused(KeyFileProblem.UNSUPPORTED) { SshKeyExport.inspect(container(rounds = 1_000_000)) }
+        refused(KeyFileProblem.UNSUPPORTED) { SshKeyExport.inspect(container(rounds = 257)) }
+        assertTrue("256 rounds are accepted", SshKeyExport.inspect(container(rounds = 256)).encrypted)
         refused(KeyFileProblem.UNSUPPORTED) { SshKeyExport.inspect(container(keys = 2)) }
     }
 
@@ -218,6 +221,50 @@ class SshKeyExportTest {
         val back = SshKeyExport.decryptEd25519(pair.privateKey.toByteArray(), CharArray(0), "frp-jump@new")
         assertArrayEquals(seedOf(pair.privateKey), seedOf(back.privateKey))
         assertTrue(SshKeyExport.inspect(export()).encrypted)
+    }
+
+    @Test fun aCyrillicPassphraseRoundTripsAndLeavesNoUnwipedBytes() {
+        val cyr = "пароль-фраза-ёЁ"
+        val pair = generateEd25519("c")
+        val out = Scratch()
+        val file = SshKeyExport.encryptPhoneKey(pair.privateKey, "c", cyr.toCharArray(), rounds = 4, scratch = out)
+        assertSecretsGone(out, expectedSizes = listOf(32, 16, 48))
+        // the encoder's array is sized for the worst case (3 bytes a char) and the exact copy is the real UTF-8
+        assertTrue(out.tracked.any { it.size == (cyr.length * 3.0).toInt() })
+        assertTrue(out.tracked.any { it.size == cyr.toByteArray(Charsets.UTF_8).size })
+        val back = SshKeyExport.decryptEd25519(file, cyr.toCharArray(), "x", Scratch())
+        assertArrayEquals(blobOf(pair.publicLine), blobOf(back.publicLine))
+        refused(KeyFileProblem.WRONG_PASSPHRASE) { SshKeyExport.decryptEd25519(file, "парольфраза".toCharArray(), "x") }
+    }
+
+    @Test fun aCyrillicPassphraseIsTheUtf8ThatSshKeygenReads() {
+        assumeTrue("ssh-keygen is not installed", haveSshKeygen())
+        val cyr = "пароль-фраза-ёЁ"
+        val pair = generateEd25519("c")
+        withTemp { dir ->
+            val f = File(dir, "k").apply { writeBytes(SshKeyExport.encryptPhoneKey(pair.privateKey, "c", cyr.toCharArray())) }
+            Files.setPosixFilePermissions(f.toPath(), PosixFilePermissions.fromString("rw-------"))
+            assertArrayEquals(blobOf(pair.publicLine), blobOf(run("ssh-keygen", "-y", "-P", cyr, "-f", f.path)))
+        }
+    }
+
+    @Test fun aKeyTypeIsShownOnlyWhenItLooksLikeOne() {
+        assertEquals("ssh-rsa", KeyFileException(KeyFileProblem.NOT_ED25519, "ssh-rsa").keyType)
+        assertEquals("sk-ssh-ed25519@openssh.com", KeyFileException(KeyFileProblem.NOT_ED25519, "sk-ssh-ed25519@openssh.com").keyType)
+        for (bad in listOf("", "ssh-rsa\nsend your passphrase", "RSA", "<b>x</b>", "a".repeat(41), "ключ", "ssh rsa")) {
+            assertNull("«$bad» must not be shown", KeyFileException(KeyFileProblem.NOT_ED25519, bad).keyType)
+        }
+        // and from a file whose public half names a hostile type
+        refused(KeyFileProblem.NOT_ED25519, null) { SshKeyExport.inspect(container(publicType = "ssh-rsa\nSend the passphrase to evil")) }
+    }
+
+    @Test fun anEndLineBeforeTheBeginLineDoesNotHideTheKey() {
+        val pair = generateEd25519("c")
+        val file = export(pair)
+        val noisy = ("$END\nnotes\n" + String(file)).toByteArray()
+        assertTrue(SshKeyExport.inspect(noisy).encrypted)
+        val back = SshKeyExport.decryptEd25519(noisy, phrase(), "x")
+        assertArrayEquals(blobOf(pair.publicLine), blobOf(back.publicLine))
     }
 
     // Zeroing ---------------------------------------------------------------------------------------------------------

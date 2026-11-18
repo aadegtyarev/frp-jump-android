@@ -40,6 +40,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import ru.adsrv.frpjump.R
 import ru.adsrv.frpjump.lock.AppLock
@@ -174,7 +177,16 @@ internal fun rememberKeyTransferFlow(vm: SettingsViewModel): KeyTransferFlow? {
             )
         }
     }
-    DisposableEffect(flow) { onDispose { flow?.close() } }
+    // The app out of sight ends the owner's dialog: back again, the next export asks for a fresh identity check.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(flow, lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) flow?.onStopped() }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            flow?.close()
+        }
+    }
     return flow
 }
 
@@ -245,7 +257,7 @@ internal fun KeyTransferHost(flow: KeyTransferFlow) {
         KeyTransferStep.RestoreNoLock -> NoLockDialog(
             body = R.string.key_no_lock_restore, go = R.string.key_no_lock_restore_go, onGo = flow::replaceWithoutLock, onCancel = flow::cancel,
         )
-        is KeyTransferStep.Working -> WorkingDialog()
+        is KeyTransferStep.Working -> WorkingDialog(if (s.cancellable) flow::cancel else null)
         else -> Unit
     }
 }
@@ -330,8 +342,10 @@ private fun ExportPassphraseDialog(problem: PassphraseProblem?, onSave: (CharArr
         },
         confirmButton = {
             TextButton(onClick = {
-                // The fields keep their text for a retry after a refusal; the dialog leaves the composition once the work starts.
                 onSave(first.toCharArray(), second.toCharArray())
+                // The text is not kept: after a refusal both fields are typed again.
+                first = ""
+                second = ""
             }) { Text(stringResource(R.string.key_export_save)) }
         },
         dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
@@ -362,6 +376,7 @@ private fun RestorePassphraseDialog(wrong: Boolean, onOpen: (CharArray) -> Unit,
         confirmButton = {
             TextButton(onClick = {
                 onOpen(phrase.toCharArray())
+                phrase = ""
             }) { Text(stringResource(R.string.key_restore_open)) }
         },
         dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
@@ -388,10 +403,10 @@ private fun ConfirmReplaceDialog(step: KeyTransferStep.RestoreConfirm, onReplace
 }
 
 @Composable
-private fun WorkingDialog() {
+private fun WorkingDialog(onCancel: (() -> Unit)?) {
     AppAlertDialog(
-        onDismissRequest = {},
-        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+        onDismissRequest = { onCancel?.invoke() },
+        properties = DialogProperties(dismissOnBackPress = onCancel != null, dismissOnClickOutside = false),
         text = {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 CircularProgressIndicator()
@@ -399,5 +414,6 @@ private fun WorkingDialog() {
             }
         },
         confirmButton = {},
+        dismissButton = onCancel?.let { cancel -> { TextButton(onClick = cancel) { Text(stringResource(R.string.cancel)) } } },
     )
 }

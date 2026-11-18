@@ -51,7 +51,8 @@ fun SecretField(
     contentType: ContentType? = null,
     /**
      * The keyboard learns nothing from this field (`IME_FLAG_NO_PERSONALIZED_LEARNING`), on top of the password input
-     * type with no suggestions: for a key file's passphrase (К4).
+     * type with no suggestions: for a key file's passphrase (К4). Such a field has no eye: its text is never shown, so it
+     * cannot be selected and copied to the clipboard.
      */
     noPersonalizedLearning: Boolean = false,
 ) {
@@ -59,10 +60,10 @@ fun SecretField(
         @OptIn(ExperimentalComposeUiApi::class)
         InterceptPlatformTextInput(
             interceptor = { request, session -> session.startInputMethod(NoPersonalizedLearning(request)) },
-            content = { SecretFieldBody(value, onValueChange, label, saved, savedSpoken, contentType) },
+            content = { SecretFieldBody(value, onValueChange, label, saved, savedSpoken, contentType, canShow = false) },
         )
     } else {
-        SecretFieldBody(value, onValueChange, label, saved, savedSpoken, contentType)
+        SecretFieldBody(value, onValueChange, label, saved, savedSpoken, contentType, canShow = true)
     }
 }
 
@@ -83,6 +84,8 @@ private fun SecretFieldBody(
     saved: String?,
     savedSpoken: String?,
     contentType: ContentType?,
+    /** False for a field that must never put its text on the screen as text, where it could be selected and copied. */
+    canShow: Boolean,
 ) {
     var shown by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -102,10 +105,14 @@ private fun SecretFieldBody(
         singleLine = true,
         visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
-        trailingIcon = {
-            IconButton(onClick = { shown = !shown }) {
-                Icon(if (shown) EyeOff else Eye, contentDescription = stringResource(if (shown) R.string.secret_hide else R.string.secret_show))
+        trailingIcon = if (canShow) {
+            {
+                IconButton(onClick = { shown = !shown }) {
+                    Icon(if (shown) EyeOff else Eye, contentDescription = stringResource(if (shown) R.string.secret_hide else R.string.secret_show))
+                }
             }
+        } else {
+            null
         },
     )
 }

@@ -25,7 +25,7 @@ class KeyTransferFlowTest {
     private val pass = "correct horse battery"
     private fun phrase() = pass.toCharArray()
 
-    private class FakeKey(var pair: SshKeyPair = generateEd25519("frp-jump@test")) : PhoneKey {
+    private open class FakeKey(var pair: SshKeyPair = generateEd25519("frp-jump@test")) : PhoneKey {
         var replaced = 0
         var readPrivate = 0
         var failReplace = false
@@ -490,6 +490,81 @@ class KeyTransferFlowTest {
         r.flow.startRestore(); r.flow.fileChosen("content://in")
         assertTrue(r.step is KeyTransferStep.RestoreConfirm)
         assertFalse(r.window.log.contains(true))
+    }
+
+    // The app out of sight ------------------------------------------------------------------------------------------------
+
+    @Test fun theAppLeavingTheScreenEndsADialogAndTheNextExportAsksAgain() {
+        val steps = listOf<(Rig) -> Unit>(
+            { it.flow.startExport() },
+            { it.flow.startExport(); it.flow.explainContinue(); it.identity.answer!!(AuthResult.Success) },
+        )
+        for (go in steps) {
+            val r = Rig()
+            go(r)
+            r.flow.onStopped()
+            assertEquals(KeyTransferStep.Idle, r.step)
+            assertFalse("FLAG_SECURE is off", r.window.on)
+        }
+        // after a passphrase dialog: a new export needs a new check
+        val r = Rig()
+        r.toExportPassphrase()
+        assertEquals(1, r.identity.asked.size)
+        r.flow.onStopped()
+        r.flow.startExport(); r.flow.explainContinue()
+        assertEquals("a fresh check", 2, r.identity.asked.size)
+        assertEquals(KeyTransferStep.ExportAsking, r.step)
+    }
+
+    @Test fun theAppLeavingEndsTheRestoreDialogsToo() {
+        val (_, file) = otherKeyFile()
+        val r = Rig()
+        r.files.files["content://in"] = file
+        r.flow.startRestore(); r.flow.fileChosen("content://in")
+        r.flow.onStopped()
+        assertEquals(KeyTransferStep.Idle, r.step)
+        assertFalse(r.window.on)
+        val r2 = Rig()
+        r2.toRestoreConfirm(file)
+        r2.flow.onStopped()
+        assertEquals(KeyTransferStep.Idle, r2.step)
+        r2.flow.confirmReplace()
+        assertEquals(0, r2.key.replaced)
+        assertTrue(r2.identity.asked.isEmpty())
+    }
+
+    @Test fun theSystemWindowsOfAStepAreNotEndedByTheStopTheyCause() {
+        val r = Rig()
+        r.toExportPassphrase()
+        r.flow.submitExportPassphrase(phrase(), phrase())
+        assertTrue(r.step is KeyTransferStep.ExportSave)
+        r.flow.onStopped()
+        assertTrue("«Save as» is a window of its own", r.step is KeyTransferStep.ExportSave)
+        val r2 = Rig()
+        r2.flow.startExport(); r2.flow.explainContinue()
+        r2.flow.onStopped()
+        assertEquals("the identity prompt is up", KeyTransferStep.ExportAsking, r2.step)
+        val r3 = Rig()
+        r3.flow.startRestore()
+        r3.flow.onStopped()
+        assertEquals(KeyTransferStep.RestorePick, r3.step)
+    }
+
+    @Test fun theNewPublicKeyIsReportedEvenIfTheSheetClosesDuringTheWrite() {
+        val (_, file) = otherKeyFile()
+        lateinit var rig: Rig
+        val key = object : FakeKey() {
+            override fun replace(pair: SshKeyPair) {
+                rig.flow.close() // the sheet leaves while the key is being written
+                super.replace(pair)
+            }
+        }
+        rig = Rig(key = key)
+        rig.toRestoreConfirm(file)
+        rig.flow.confirmReplace()
+        rig.identity.answer!!(AuthResult.Success)
+        assertEquals(1, rig.replacedLines.size)
+        assertEquals(rig.replacedLines.single(), key.pair.publicLine)
     }
 
     // Both ways -----------------------------------------------------------------------------------------------------

@@ -3,6 +3,7 @@ package ru.adsrv.frpjump.ui.settings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -104,8 +105,11 @@ sealed interface KeyTransferStep {
     data object RestoreAsking : KeyTransferStep
     data object RestoreNoLock : KeyTransferStep
 
-    /** Work off the main thread (key derivation takes a moment); a dialog says so. */
-    class Working : KeyTransferStep
+    /**
+     * Work off the main thread (key derivation takes a moment); a dialog says so. [cancellable]: the owner may stop it
+     * (key derivation, reading a file); a write to a document or to the key slot is not stopped half way.
+     */
+    class Working(val cancellable: Boolean = false) : KeyTransferStep
 }
 
 /** The one-line result shown at the bottom of the sheet. */
@@ -180,6 +184,21 @@ class KeyTransferFlow(
         set(KeyTransferStep.Idle)
     }
 
+    /**
+     * The app left the screen (ON_STOP): a dialog the owner was in is ended, so coming back means starting again, and the
+     * next export asks for a fresh identity check. Steps that are in a system window of their own (the identity prompt,
+     * «Save as», the file picker) and work that must finish (a write) are left alone.
+     */
+    fun onStopped() {
+        when (_step.value) {
+            is KeyTransferStep.ExportExplain, is KeyTransferStep.ExportNoLock, is KeyTransferStep.ExportPassphrase,
+            is KeyTransferStep.RestorePassphrase, is KeyTransferStep.RestoreConfirm, is KeyTransferStep.RestoreNoLock,
+            -> cancel()
+            is KeyTransferStep.Working -> if ((_step.value as KeyTransferStep.Working).cancellable) cancel()
+            else -> Unit
+        }
+    }
+
     fun close() {
         closed = true
         wipe()
@@ -239,7 +258,7 @@ class KeyTransferFlow(
             set(KeyTransferStep.ExportPassphrase(problem))
             return
         }
-        val working = KeyTransferStep.Working()
+        val working = KeyTransferStep.Working(cancellable = true)
         set(working)
         scope.launch {
             val file = withContext(work) {
@@ -275,7 +294,7 @@ class KeyTransferFlow(
             cancel()
             return
         }
-        val working = KeyTransferStep.Working()
+        val working = KeyTransferStep.Working(cancellable = false)
         set(working)
         scope.launch {
             val written = withContext(work) { runCatching { files.write(target, file) }.getOrDefault(false) }
@@ -301,7 +320,7 @@ class KeyTransferFlow(
             cancel()
             return
         }
-        val working = KeyTransferStep.Working()
+        val working = KeyTransferStep.Working(cancellable = true)
         set(working)
         scope.launch {
             val read = withContext(work) {
@@ -364,7 +383,7 @@ class KeyTransferFlow(
             cancel()
             return
         }
-        val working = KeyTransferStep.Working()
+        val working = KeyTransferStep.Working(cancellable = true)
         set(working)
         scope.launch {
             val result = withContext(work) {
@@ -439,15 +458,19 @@ class KeyTransferFlow(
             cancel()
             return
         }
-        val working = KeyTransferStep.Working()
+        val working = KeyTransferStep.Working(cancellable = false)
         set(working)
         scope.launch {
-            val done = withContext(work) { runCatching { key.replace(pair) }.isSuccess }
+            // Not cancellable: once the write is on its way the key is replaced, and Settings must show the new public key
+            // even if the sheet closed meanwhile.
+            val done = withContext(NonCancellable + work) {
+                val written = runCatching { key.replace(pair) }.isSuccess
+                if (written) onReplaced(pair.publicLine)
+                written
+            }
             if (closed || _step.value !== working) return@launch
             if (done) {
-                val print = fingerprintOf(pair.publicLine)
-                finish(KeyTransferOutcome.Restored(print))
-                onReplaced(pair.publicLine)
+                finish(KeyTransferOutcome.Restored(fingerprintOf(pair.publicLine)))
             } else {
                 finish(KeyTransferOutcome.ReplaceFailed)
             }
