@@ -78,7 +78,7 @@ class SshTargets(
     }
 
     /**
-     * Equal while nothing the owner can edit about the saved connection changed: all its fields, its profile's id, key alias and activation, the
+     * Equal while nothing the owner can edit about the saved connection changed: all its fields except the favourite flag, its profile's id, key alias and activation, the
      * profile's enrollment, and the non-secret SSH login (user and method) and pinned host key of its device and port. The profile's name and
      * colour are NOT in it. Null when the connection or its profile is gone. Reads no secret and needs no Keystore unlock: the login memory and
      * the pinned keys are plain stores.

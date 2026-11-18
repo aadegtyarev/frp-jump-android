@@ -247,6 +247,7 @@
     <string name="connections_search_scope_all">Search all tunnels</string>
     <string name="connections_in_all">In all: %1$d · Show</string>
     <string name="connections_favorites">★ Favourites</string>
+    <string name="connections_favorites_spoken">Favourites</string>
     <string name="favorite_add">Add to favourites</string>
     <string name="favorite_remove">Remove from favourites</string>
     <string name="favorite_spoken">favourite</string>

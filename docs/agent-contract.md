@@ -906,7 +906,7 @@ closing the conversation and the end of an attempt, and ends, each at once, when
   this phone's profile) and connected again, or a Disconnect is pending, or the tunnel is hidden for Undo, also when Undo then cancels it, or a
   different grant id takes its place (a case that cannot be told apart ends the period); a transient change (frpc reconnect, via-server/direct,
   a local-port rebind) does not end it;
-- the connection or its profile is edited, deleted or forgotten, or its enrollment is replaced: the fingerprint is every field of the
+- the connection or its profile is edited, deleted or forgotten, or its enrollment is replaced: the fingerprint is every field except the favourite flag of the
   connection, the profile's id, key alias and activation, the enrollment, and the non-secret SSH login (user and method) and the pinned host
   key of its device and port (no secret is read and no Keystore unlock is needed); the profile's name and colour are not in it;
 - the assistant is turned off (off and on again included);
@@ -937,7 +937,7 @@ written, or was refused (the card was raised while locked, or something changed 
 note "Could not save the setting. This call was allowed once." shows (as for Always); nothing is kept in memory instead. Unlike a session grant it is not tied to a tunnel or a chat: it survives closing the tunnel, an Undo-hide of the tunnel,
 leaving the chat, closing the conversation, a history clear, a restart, the global switch off and on, and a rename or colour change of the
 profile. It ends, each at once, when
-- the connection or its profile is edited: its fingerprint (`"v1:" + base64url(SHA-256(JSON))`, one stable value, persisted) is every field of the
+- the connection or its profile is edited: its fingerprint (`"v1:" + base64url(SHA-256(JSON))`, one stable value, persisted) is every field except the favourite flag of the
   connection, the profile's id, key alias and activation, the enrollment (a hash of the public control URL, device id and certificate: no sealed
   field is opened, no Keystore unlock is needed, nothing is wiped on a read failure), the non-secret SSH login (user and method) and the pinned host
   key of its device and port, and the MQTT user; not the profile's name and colour, the connection's enabled state or any secret. A mismatch deletes

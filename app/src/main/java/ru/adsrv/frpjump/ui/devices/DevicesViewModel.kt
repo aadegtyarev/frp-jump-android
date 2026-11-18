@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.connections.onTunnelsCount
 import ru.adsrv.frpjump.devices.DeviceDirectory
 import ru.adsrv.frpjump.devices.DeviceList
 import ru.adsrv.frpjump.devices.DeviceRow
@@ -45,6 +46,11 @@ class DevicesViewModel(private val app: FrpJumpApp) : ViewModel() {
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, app.profiles.current?.devices)
     private val refreshing = MutableStateFlow(false)
+
+    /** The Devices chip: the tunnels that are on in all profiles, counted as the Tunnels tab's filter counts them ([onTunnelsCount]). */
+    val tunnelsOn: StateFlow<Int> =
+        combine(app.profiles.shownTunnelRefsAll, app.profiles.restorePending) { refs, pending -> onTunnelsCount(refs, pending ?: 0) }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     /** The bar's "disconnect all" for the current profile. */
     val actions = ConnectionActions(app, viewModelScope)

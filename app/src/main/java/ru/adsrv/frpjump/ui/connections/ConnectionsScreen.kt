@@ -316,7 +316,7 @@ internal fun LazyListScope.tunnelRows(
     openRow: OpenRow,
 ) {
     if (view.favorites.isNotEmpty()) {
-        item(key = "favorites") { SectionHeading(stringResource(R.string.connections_favorites), first = true) }
+        item(key = "favorites") { SectionHeading(stringResource(R.string.connections_favorites), stringResource(R.string.connections_favorites_spoken), first = true) }
         items(view.favorites, key = { it.row.key }) { favorite ->
             TunnelCard(favorite.row, favorite.group.offline, favorite.group.name, state, sessions, grants, ui, actions, onForgetAssistant, openRow)
         }
@@ -333,7 +333,7 @@ internal fun LazyListScope.tunnelRows(
 
 /** The heading of the favourites group: the same place and weight as a device's name. */
 @Composable
-private fun SectionHeading(text: String, first: Boolean) {
+private fun SectionHeading(text: String, spoken: String, first: Boolean) {
     Text(
         text,
         fontSize = 16.sp,
@@ -342,7 +342,10 @@ private fun SectionHeading(text: String, first: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 4.dp, end = 4.dp, top = if (first) 4.dp else 16.dp)
-            .semantics { heading() },
+            .clearAndSetSemantics {
+                heading()
+                contentDescription = spoken
+            },
     )
 }
 

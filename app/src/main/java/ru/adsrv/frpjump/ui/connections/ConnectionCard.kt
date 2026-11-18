@@ -122,6 +122,8 @@ fun ConnectionCard(
     val unreachable = connectBlocked(row, offline)
     val tapEnabled = cardTap(row) != CardTap.NONE && !unreachable
     val favorite = row.saved && c.favorite
+    // Swiped aside: every tap on the card, its buttons and its marks only puts it back.
+    val whenOpen: (() -> Unit) -> (() -> Unit) = { act -> { if (revealed) onCloseReveal() else act() } }
     val favoriteLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
     val askLabel = stringResource(R.string.terminal_ask_assistant)
     val openMenu by rememberUpdatedState { onMenu(true) }
@@ -158,7 +160,7 @@ fun ConnectionCard(
                     Modifier.combinedClickable(
                         onClickLabel = if (revealed) null else cardTapLabel(row, sessions),
                         onClick = { if (revealed) onCloseReveal() else actions.tap(row) },
-                        onLongClick = { if (hasMenu(row)) onMenu(true) },
+                        onLongClick = whenOpen { if (hasMenu(row)) onMenu(true) },
                     )
                 } else if (hasMenu(row)) {
                     Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { openMenu() }) }
@@ -207,7 +209,7 @@ fun ConnectionCard(
                             fontWeight = FontWeight.SemiBold,
                             modifier = if (choice) {
                                 val label = stringResource(R.string.direct_or_server)
-                                Modifier.clickable(onClickLabel = label, role = Role.Button) { actions.directChoice(row) }.padding(vertical = 4.dp)
+                                Modifier.clickable(onClickLabel = label, role = Role.Button, onClick = whenOpen { actions.directChoice(row) }).padding(vertical = 4.dp)
                             } else Modifier,
                         )
                     } else {
@@ -225,7 +227,7 @@ fun ConnectionCard(
                 }
                 problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
                 if (assistant != null) {
-                    AssistantMarkLine(row, name, assistant, onForgetAssistant) { text -> context.notice(text, NoticeKind.DONE) }
+                    AssistantMarkLine(row, name, assistant, onForgetAssistant, revealed, onCloseReveal) { text -> context.notice(text, NoticeKind.DONE) }
                 }
             }
             val buttons: @Composable () -> Unit = {
@@ -233,7 +235,7 @@ fun ConnectionCard(
                     val label = mainActionLabel(row, sessions)
                     RoundButton(
                         description = stringResource(R.string.main_action_named, label, name),
-                        onClick = { actions.main(row) },
+                        onClick = whenOpen { actions.main(row) },
                         container = colors.accentContainer,
                         modifier = Modifier.testTag("card_main"),
                     ) { size ->
@@ -246,7 +248,7 @@ fun ConnectionCard(
                 if (up || (busy && !connecting)) {
                     RoundButton(
                         description = stringResource(R.string.disconnect_named, name),
-                        onClick = { actions.disconnect(row) },
+                        onClick = whenOpen { actions.disconnect(row) },
                         enabled = !busy,
                         border = colors.error,
                         modifier = Modifier.testTag("card_off"),
@@ -259,7 +261,7 @@ fun ConnectionCard(
                     val on = if (inactive) colors.outline else colors.accent
                     RoundButton(
                         description = stringResource(if (row.error != null && !connecting) R.string.retry_named else R.string.connect_named, name),
-                        onClick = { actions.connect(row) },
+                        onClick = whenOpen { actions.connect(row) },
                         enabled = !inactive,
                         border = on,
                         modifier = Modifier.testTag("card_on"),
@@ -272,7 +274,7 @@ fun ConnectionCard(
                     Box {
                         RoundButton(
                             description = stringResource(R.string.connection_actions, name),
-                            onClick = { onMenu(true) },
+                            onClick = whenOpen { onMenu(true) },
                             modifier = Modifier.testTag("card_menu"),
                         ) { size -> Icon(Icons.Filled.MoreVert, contentDescription = null, tint = colors.muted, modifier = Modifier.size(size * GLYPH_SHARE)) }
                         ConnectionMenu(menuOpen, row, actions, onDismiss = { onMenu(false) })
@@ -367,7 +369,7 @@ private fun BoxScope.CountBadge(total: Int) {
  * [mark] exists. "Ask again" does what Forget did, closes the sheet and says so.
  */
 @Composable
-private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantMark, onForget: () -> Unit, say: (String) -> Unit) {
+private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantMark, onForget: () -> Unit, revealed: Boolean, onCloseReveal: () -> Unit, say: (String) -> Unit) {
     val colors = AppTheme.colors
     var sheet by remember { mutableStateOf(false) }
     val text = stringResource(if (mark.rememberedAt != null) R.string.connection_assistant_chip_connection else R.string.connection_assistant_chip_session)
@@ -378,8 +380,8 @@ private fun AssistantMarkLine(row: ConnectionRow, name: String, mark: AssistantM
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .testTag("connection_assistant_chip")
-            .clickable(role = Role.Button) { sheet = true }
-            .clearAndSetSemantics { contentDescription = spoken; role = Role.Button; onClick(null) { sheet = true; true } },
+            .clickable(role = Role.Button) { if (revealed) onCloseReveal() else sheet = true }
+            .clearAndSetSemantics { contentDescription = spoken; role = Role.Button; onClick(null) { if (revealed) onCloseReveal() else sheet = true; true } },
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(

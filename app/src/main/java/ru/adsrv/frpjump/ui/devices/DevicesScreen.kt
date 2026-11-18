@@ -85,7 +85,6 @@ import ru.adsrv.frpjump.ui.caption
 import ru.adsrv.frpjump.ui.shortTime
 import ru.adsrv.frpjump.ui.profiles.Chip
 import ru.adsrv.frpjump.ui.profiles.ProfileItem
-import ru.adsrv.frpjump.ui.profiles.tunnelsOnAll
 import ru.adsrv.frpjump.ui.profiles.ProfileSwitcher
 import ru.adsrv.frpjump.ui.profiles.removedElsewhere
 import java.time.Instant
@@ -108,6 +107,7 @@ fun DevicesScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
+    val tunnelsOn by vm.tunnelsOn.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val lifecycleOwner = LocalLifecycleOwner.current
     // The app's poller fetches the list only while this screen is visible.
@@ -162,7 +162,7 @@ fun DevicesScreen(
                     hint = stringResource(R.string.devices_search_hint),
                 )
             } else {
-                DevicesHeader(current, onProfiles, onTunnels, onSettings, tunnels = tunnelsOnAll(profiles), onSearch = {
+                DevicesHeader(current, onProfiles, onTunnels, onSettings, tunnels = tunnelsOn, onSearch = {
                     searching = true
                     focusOnOpen = true
                 }.takeIf { !state.devices.isNullOrEmpty() })

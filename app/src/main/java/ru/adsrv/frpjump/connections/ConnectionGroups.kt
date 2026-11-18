@@ -2,6 +2,7 @@ package ru.adsrv.frpjump.connections
 
 import ru.adsrv.frpjump.devices.DeviceRow
 import ru.adsrv.frpjump.devices.searchMatches
+import ru.adsrv.frpjump.tunnel.TunnelRef
 
 /**
  * One device's connections on the Connections tab, with the device as its
@@ -78,7 +79,14 @@ fun filterGroups(groups: List<DeviceGroup>, query: String, label: (ConnectionRow
 }
 
 /** The tunnels that are on: those with a tunnel (up or coming up) and the ones still being restored (they have no row yet). */
-fun onTunnelCount(groups: List<DeviceGroup>, restoring: Int): Int = groups.sumOf { g -> g.rows.count { it.active } } + restoring.coerceAtLeast(0)
+fun onTunnelCount(groups: List<DeviceGroup>, restoring: Int): Int =
+    onTunnelsCount(groups.flatMap { g -> g.rows.filter { it.active }.map { TunnelRef(it.profile, it.connection.device, it.connection.port) } }, restoring)
+
+/**
+ * THE count of tunnels that are on, for the Tunnels tab's filter and the Devices chip alike: the distinct tunnels (profile, device, port) that are up
+ * or coming up ([up]; connections sharing a port are one tunnel) plus those still being restored ([restoring], which have no row yet).
+ */
+fun onTunnelsCount(up: Collection<TunnelRef>, restoring: Int): Int = up.toSet().size + restoring.coerceAtLeast(0)
 
 /** A favourite row of the first group, with the device group it comes from (its name for "· device", its online state). */
 data class FavoriteRow(val group: DeviceGroup, val row: ConnectionRow)

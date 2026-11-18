@@ -256,6 +256,7 @@
     <string name="connections_search_scope_all">Поиск по всем туннелям</string>
     <string name="connections_in_all">Во всех: %1$d · Показать</string>
     <string name="connections_favorites">★ Избранные</string>
+    <string name="connections_favorites_spoken">Избранные</string>
     <string name="favorite_add">В избранное</string>
     <string name="favorite_remove">Убрать из избранного</string>
     <string name="favorite_spoken">в избранном</string>

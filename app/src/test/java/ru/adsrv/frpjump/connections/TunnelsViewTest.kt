@@ -156,4 +156,22 @@ class TunnelsViewTest {
         assertEquals(listOf("1"), favs(view))
         assertEquals(1, view.groups.sumOf { it.rows.size })
     }
+
+    @Test fun `one count of tunnels on serves the filter and the chip, distinct tunnels across profiles plus those being restored`() {
+        val ref = { p: String, d: String, port: Int -> ru.adsrv.frpjump.tunnel.TunnelRef(p, d, port) }
+        assertEquals(0, onTunnelsCount(emptyList(), 0))
+        // The same tunnel listed twice (two connections on one port) is one; the same port in another profile is another.
+        assertEquals(2, onTunnelsCount(listOf(ref("a", "d", 22), ref("a", "d", 22), ref("b", "d", 22)), 0))
+        assertEquals(5, onTunnelsCount(listOf(ref("a", "d", 22), ref("b", "d", 22)), 3))
+        assertEquals(0, onTunnelsCount(emptyList(), -2))
+        // The tab's count is that function over its rows: two connections sharing the up tunnel count once.
+        val shared = kitchenSsh.copy(id = "5", customName = "shell 2")
+        val rows = connectionRows("p1", listOf(kitchenSsh, shared, boiler), TunnelsState(tunnels = listOf(tunnel("wb-kitchen", 22), tunnel("Boiler", 80))))
+        assertEquals(3, onTunnelCount(groupByDevice(rows, emptyMap()), 1))
+        // And the chip's: the profiles' tunnels as refs, as the app lists them.
+        val states = mapOf("p1" to TunnelsState(tunnels = listOf(tunnel("wb-kitchen", 22), tunnel("Boiler", 80))), "p2" to TunnelsState(tunnels = listOf(tunnel("wb-kitchen", 22))))
+        val shown = ru.adsrv.frpjump.profiles.shownTunnelRefs(states, setOf(ru.adsrv.frpjump.ports.profilePortKey("p1", "Boiler", 80)))
+        assertEquals(2, shown.size)
+        assertEquals(3, onTunnelsCount(shown, 1))
+    }
 }

@@ -79,6 +79,25 @@ class SshTargetsTest {
         assertTrue(f.targets.isAvailable(t))
     }
 
+    @Test fun `starring a connection changes neither fingerprint nor persistent fingerprint nor availability`() = fixture { f ->
+        val target = f.target()
+        val before = f.targets.fingerprint("home", "ssh")
+        val persistent = f.targets.persistentFingerprint("home", "ssh")
+        assertTrue(persistent is ru.adsrv.frpjump.settings.PersistentFp.Known)
+        f.runtime.connections.setFavorite("ssh", true)
+        assertTrue(f.runtime.connections.connections.value.single().favorite)
+        assertEquals(before, f.targets.fingerprint("home", "ssh"))
+        assertEquals(persistent, f.targets.persistentFingerprint("home", "ssh"))
+        assertTrue(f.targets.isAvailable(target))
+        f.runtime.connections.setFavorite("ssh", false)
+        assertEquals(before, f.targets.fingerprint("home", "ssh"))
+        assertTrue(f.targets.isAvailable(target))
+        // A real edit still changes them.
+        f.runtime.connections.save(Connection("ssh", "same", 22, PortKind.SSH, user = "other-user"))
+        assertNotEquals(before, f.targets.fingerprint("home", "ssh"))
+        assertFalse(f.targets.isAvailable(target))
+    }
+
     @Test fun `resolveSaved refuses profile removed or unknown or not loaded or ambiguous`() {
         val changes = listOf<(Fixture) -> Unit>(
             { it.profiles.state.value = it.profiles.state.value.copy(runtimes = emptyMap()) },

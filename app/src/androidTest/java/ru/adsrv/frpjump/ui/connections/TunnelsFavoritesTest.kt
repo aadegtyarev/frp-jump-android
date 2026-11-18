@@ -33,6 +33,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -95,6 +96,7 @@ class TunnelsFavoritesTest {
     private var assistantOn by mutableStateOf(true)
     private var favoriteCalls = 0
     private var tapCalls = 0
+    private var connectCalls = 0
     private var asked: String? = null
     private val scroll = androidx.compose.foundation.ScrollState(0)
 
@@ -107,7 +109,7 @@ class TunnelsFavoritesTest {
                 val ui = remember { ConnectionUi() }
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val actions = RowActions(
-                    {}, {}, { tapCalls++ }, {}, {}, {}, {}, {}, {}, {}, {}, {}, { false }, {}, {},
+                    { connectCalls++ }, {}, { tapCalls++ }, {}, {}, {}, {}, {}, {}, {}, {}, {}, { false }, {}, {},
                     favorite = { row -> favoriteCalls++; toggle(row.connection.id) },
                     ask = if (assistantOn) ({ row -> asked = askDraft(context, row.connection) }) else null,
                 )
@@ -148,12 +150,12 @@ class TunnelsFavoritesTest {
         if (toRight) swipe(Offset(width * 0.3f, y), Offset(width * 0.8f, y), 300) else swipe(Offset(width * 0.8f, y), Offset(width * 0.3f, y), 300)
     }
 
-    private val favoritesTitle get() = text(R.string.connections_favorites)
+    private val favoritesTitle get() = text(R.string.connections_favorites_spoken)
 
     @Test fun theFavouritesGroupIsFirstWithTheDeviceAfterTheNameAndMutedStar() {
         host()
-        compose.onNodeWithText(favoritesTitle).assertIsDisplayed()
-        assertTrue(compose.onNodeWithText(favoritesTitle).fetchSemanticsNode().positionInRoot.y < top(pi))
+        compose.onNodeWithContentDescription(favoritesTitle).assertIsDisplayed()
+        assertTrue(compose.onNodeWithContentDescription(favoritesTitle).fetchSemanticsNode().positionInRoot.y < top(pi))
         // The favourite is above the device groups and says its device; the others stay under their devices.
         assertTrue(top(pi) < top(panel))
         assertTrue(top(pi) < top(z2m))
@@ -228,12 +230,19 @@ class TunnelsFavoritesTest {
         compose.onNodeWithTag("swipe_favorite").assertDoesNotExist()
         assertEquals(0, tapCalls)
         assertEquals(0, favoriteCalls)
+        // On an open card its buttons only put it back too.
+        swipeCard(z2m, toRight = true)
+        compose.waitForIdle()
+        compose.onNode(hasAnyAncestor(hasTestTag(cardTag(z2m))) and hasTestTag("card_on"), useUnmergedTree = true).performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        assertEquals(0, connectCalls)
+        compose.onNodeWithTag("swipe_favorite").assertDoesNotExist()
         // Another row opening closes it; so does a tap elsewhere (the list's heading).
         swipeCard(z2m, toRight = true)
         compose.waitForIdle()
         compose.runOnUiThread { scroll.dispatchRawDelta(-1e6f) }
         compose.waitForIdle()
-        compose.onNodeWithText(favoritesTitle).performClick()
+        compose.onNodeWithContentDescription(favoritesTitle).performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("swipe_favorite").assertDoesNotExist()
         assertEquals(0, favoriteCalls)
