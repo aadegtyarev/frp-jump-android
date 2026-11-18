@@ -45,7 +45,7 @@ class TmuxCommandsTest {
         )
         assertEquals("tmux kill-session -t '=frpjump-0a1b2c-7'", tmuxKillCommand(name))
         assertEquals(
-            "command -v tmux >/dev/null && echo frpjump-tmux && tmux has-session -t '=frpjump-0a1b2c-7' && echo frpjump-attach",
+            "command -v tmux >/dev/null && echo frpjump-tmux && tmux -V && tmux has-session -t '=frpjump-0a1b2c-7' && echo frpjump-attach",
             tmuxProbeCommand(name),
         )
         assertEquals(
@@ -110,8 +110,37 @@ class TmuxCommandsTest {
     @Test
     fun `the probe tells absent, fresh and existing apart through sh`() {
         assertEquals(TmuxProbe.ABSENT, parseTmuxProbe(run(tmuxProbeCommand(name), tmux = null)))
-        assertEquals(TmuxProbe.FRESH, parseTmuxProbe(run(tmuxProbeCommand(name), tmux = "exit 1")))
-        assertEquals(TmuxProbe.EXISTING, parseTmuxProbe(run(tmuxProbeCommand(name), tmux = "exit 0")))
+        assertEquals(TmuxProbe.FRESH, parseTmuxProbe(run(tmuxProbeCommand(name), tmux = FAKE_TMUX_3_4 + "exit 1")))
+        assertEquals(TmuxProbe.EXISTING, parseTmuxProbe(run(tmuxProbeCommand(name), tmux = FAKE_TMUX_3_4 + "exit 0")))
+    }
+
+    @Test
+    fun `the probe's version line says whether new-session takes -e`() {
+        val out = run(tmuxProbeCommand(name), tmux = FAKE_TMUX_3_4 + "exit 1")
+        assertEquals(TmuxProbe.FRESH, parseTmuxProbe(out))
+        assertTrue(tmuxHasNewSessionEnv(out))
+        assertFalse(tmuxHasNewSessionEnv(run(tmuxProbeCommand(name), tmux = "[ \"\$1\" = -V ] && echo 'tmux 3.1c' && exit 0\nexit 1")))
+        for ((line, expected) in listOf(
+            "tmux 3.2" to true, "tmux 3.2a" to true, "tmux 3.10" to true, "tmux 4.0" to true, "tmux next-3.5" to true,
+            "tmux 3.1c" to false, "tmux 3.0" to false, "tmux 2.9a" to false, "tmux master" to false, "tmux openbsd-7.4" to false, "" to false,
+        )) assertEquals(line, expected, tmuxHasNewSessionEnv("frpjump-tmux\r\n$line\r\n"))
+    }
+
+    @Test
+    fun `the terminal's identity goes into the tmux session environment`() {
+        val set = listOf(";", "set-environment", "-t", "=$name", "LC_TERMINAL", "frp-jump", ";", "set-environment", "-t", "=$name", "LC_TERMINAL_VERSION", "0.3.98")
+        val base = listOf("-u", "new-session", "-A", "-D")
+        val tail = listOf("-s", name, ";", "set-option", "-t", "=$name:", "status", "off", ";", "set-option", "-t", "=$name:", "mouse", "on")
+        // A session that runs or an old tmux: set-environment only. A tmux of 3.2+ creating it: -e as well, so the first shell has them.
+        assertEquals(base + tail + set, argsVia(tmuxAttachCommand(name, version = "0.3.98")))
+        assertEquals(base + listOf("-e", "LC_TERMINAL=frp-jump", "-e", "LC_TERMINAL_VERSION=0.3.98") + tail + set, argsVia(tmuxAttachCommand(name, version = "0.3.98", newSessionEnv = true)))
+        // The assistant's marker stays before the identity, all in one invocation.
+        assertEquals(
+            base + tail + listOf(";", "set-option", "-t", "=$name:", "@frpjump_by", "assistant") + set,
+            argsVia(tmuxAttachCommand(name, SessionOpener.ASSISTANT, "0.3.98")),
+        )
+        // Constants only: a version with a quote is still one argument.
+        assertTrue("LC_TERMINAL_VERSION=it's" in argsVia(tmuxAttachCommand(name, version = "it's", newSessionEnv = true)))
     }
 
     @Test
@@ -164,6 +193,11 @@ class TmuxCommandsTest {
         assertEquals("frpjump-tmux\n", readUpTo("frpjump-tmux\n".byteInputStream(), 4096))
         assertEquals("abcd", readUpTo("abcdefgh".byteInputStream(), 4))
         assertEquals("", readUpTo(ByteArray(0).inputStream(), 4096))
+    }
+
+    private companion object {
+        /** A fake `tmux` body that answers `-V` as tmux 3.4 and otherwise falls through to what follows. */
+        const val FAKE_TMUX_3_4 = "[ \"\$1\" = -V ] && echo 'tmux 3.4' && exit 0\n"
     }
 
     /** The arguments a fake `tmux` gets when [command] runs under `sh -c`. */
