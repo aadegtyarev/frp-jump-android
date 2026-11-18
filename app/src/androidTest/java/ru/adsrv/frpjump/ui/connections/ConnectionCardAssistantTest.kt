@@ -24,6 +24,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import ru.adsrv.frpjump.R
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import ru.adsrv.frpjump.connections.Connection
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.ports.PortKind
@@ -200,6 +203,39 @@ class ConnectionCardAssistantTest {
         org.junit.Assert.assertTrue("the diagnostics line is under the buttons: $line $main", line.top >= main.bottom - 1f)
         org.junit.Assert.assertTrue("the diagnostics line is the card's width, wider than the text column: ${line.width / d} dp", line.width / d > 200f)
         shot(name)
+    }
+
+    /** The key the open session logged in with: its mark and name next to the sessions pill, on the card only while the session is open. */
+    private fun cardWithAKey(mode: ru.adsrv.frpjump.settings.ThemeMode, name: String) {
+        card(mode) {
+            androidx.compose.foundation.layout.Column {
+                ConnectionCard(up, sshMethod = null, sessions = SessionCount(1, 0, listOf(ru.adsrv.frpjump.ssh.SshKeySlot.PHONE)), menuOpen = false, onMenu = {}, actions = actions)
+                ConnectionCard(up, sshMethod = null, sessions = SessionCount(2, 0, listOf(ru.adsrv.frpjump.ssh.SshKeySlot.PHONE, ru.adsrv.frpjump.ssh.SshKeySlot.IMPORTED)), menuOpen = false, onMenu = {}, actions = actions)
+                ConnectionCard(up, sshMethod = null, sessions = SessionCount(1, 0), menuOpen = false, onMenu = {}, actions = actions)
+            }
+        }
+        compose.onAllNodesWithTag("card_key_mark", useUnmergedTree = true).assertCountEquals(3)
+        compose.onAllNodesWithTag("key_mark_phone", useUnmergedTree = true).assertCountEquals(2)
+        compose.onAllNodesWithTag("key_mark_imported", useUnmergedTree = true).assertCountEquals(1)
+        compose.onAllNodesWithContentDescription(text(R.string.key_used_phone), useUnmergedTree = true).assertCountEquals(2)
+        compose.onAllNodesWithContentDescription(text(R.string.key_used_imported), useUnmergedTree = true).assertCountEquals(1)
+        shot(name)
+    }
+
+    @Test fun aCardWithOpenKeySessionsShowsTheKeyMarksLightTheme() = cardWithAKey(ru.adsrv.frpjump.settings.ThemeMode.LIGHT, "connection-card-key-light")
+
+    @Test fun aCardWithOpenKeySessionsShowsTheKeyMarksDarkTheme() = cardWithAKey(ru.adsrv.frpjump.settings.ThemeMode.DARK, "connection-card-key-dark")
+
+    @Test fun aCardWithoutAKeySessionShowsNoKeyMark() {
+        // A password session, a session whose login is not known yet, and no session at all.
+        card {
+            androidx.compose.foundation.layout.Column {
+                ConnectionCard(up, sshMethod = null, sessions = SessionCount(1, 0), menuOpen = false, onMenu = {}, actions = actions)
+                ConnectionCard(up, sshMethod = null, sessions = SessionCount(0, 0), menuOpen = false, onMenu = {}, actions = actions)
+                ConnectionCard(row, sshMethod = null, sessions = SessionCount.NONE, menuOpen = false, onMenu = {}, actions = actions)
+            }
+        }
+        compose.onAllNodesWithTag("card_key_mark", useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test fun anUpSshCardWithASessionLightTheme() = upSshCardWithASession(ru.adsrv.frpjump.settings.ThemeMode.LIGHT, "connection-card-up-session-light")

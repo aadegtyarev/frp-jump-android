@@ -479,6 +479,9 @@
     <string name="key_choose_confirm">Install</string>
     <string name="key_name_phone">the phone key</string>
     <string name="key_name_imported">the imported key</string>
+    <!-- Which key the login of an open session used (the key mark's words); not stored. -->
+    <string name="key_used_phone">Logged in with the phone key</string>
+    <string name="key_used_imported">Logged in with the imported key</string>
     <string name="terminal_text_smaller">Smaller text</string>
     <string name="terminal_text_larger">Larger text</string>
     <string name="terminal_text_size">Text size</string>

@@ -114,7 +114,7 @@ class TabMenuAndNamesTest {
 
     private fun text(id: Int, vararg args: Any) = compose.activity.getString(id, *args)
 
-    private fun start(devices: List<String> = listOf("A", "B"), initialId: Int = 1) {
+    private fun start(devices: List<String> = listOf("A", "B"), initialId: Int = 1, mode: ru.adsrv.frpjump.settings.ThemeMode = ru.adsrv.frpjump.settings.ThemeMode.SYSTEM) {
         val app = compose.activity.application as FrpJumpApp
         val env = SshEnvironment(SshKeyStore(Memory(), unusedBox), SshPasswords(Memory(), unusedBox), { "synthetic" }, TmuxNames(Memory()))
         lateinit var registry: SshSessions
@@ -128,7 +128,7 @@ class TabMenuAndNamesTest {
         val keyLogin = KeyLoginFlow(KeyInstaller(env, registry), scope)
         val snippets = SnippetStore(Memory(), Memory())
         compose.setContent {
-            FrpJumpTheme {
+            FrpJumpTheme(mode) {
                 TerminalScreen(registry, all, snippets, app.pendingUndo, closer, emptyMap(), initialId = initialId,
                     onBack = {}, onOpenFiles = {}, rememberLogin = { _, _ -> }, keyLogin = keyLogin, keyLoginTarget = { null })
             }
@@ -174,6 +174,55 @@ class TabMenuAndNamesTest {
         File(compose.activity.getExternalFilesDir(null), "tabs-$name-$orientation-${config.fontScale}.png")
             .outputStream().use { shot.compress(Bitmap.CompressFormat.PNG, 100, it) }
         shot.recycle()
+    }
+
+    /** A tab as TalkBack names it once its login used a key: the state, then the key. */
+    private fun keyedTab(device: String, key: Int) =
+        compose.onNodeWithContentDescription(
+            automatic(device) + ", " + text(R.string.terminal_state_connecting) + ", " + text(key).replaceFirstChar(Char::lowercaseChar),
+        )
+
+    /** Tabs A (phone key), B (imported key) and C (a password login, no key) of one live "login"; the key is known from the session only. */
+    private fun startWithKeys(mode: ru.adsrv.frpjump.settings.ThemeMode) {
+        start(listOf("A", "B", "C"), mode = mode)
+        compose.runOnUiThread {
+            val all = sessions!!.allNow()
+            all[0].setKeyUsedForTest(ru.adsrv.frpjump.ssh.SshKeySlot.PHONE)
+            all[1].setKeyUsedForTest(ru.adsrv.frpjump.ssh.SshKeySlot.IMPORTED)
+        }
+        compose.waitForIdle()
+    }
+
+    private fun keyMarkedTabs(mode: ru.adsrv.frpjump.settings.ThemeMode) {
+        startWithKeys(mode)
+        // The mark sits in the tab of its key only; a password tab has none, and the dot is another thing.
+        compose.onNode(hasTestTag("key_mark_phone") and hasAnyAncestor(hasContentDescription(automatic("A"), substring = true)), useUnmergedTree = true).assertExists()
+        compose.onNode(hasTestTag("key_mark_imported") and hasAnyAncestor(hasContentDescription(automatic("B"), substring = true)), useUnmergedTree = true).assertExists()
+        compose.onAllNodesWithTag("key_mark_phone", useUnmergedTree = true).assertCountEquals(1)
+        compose.onAllNodesWithTag("key_mark_imported", useUnmergedTree = true).assertCountEquals(1)
+        // TalkBack names the key in the tab's description; the password tab says nothing of a key.
+        keyedTab("A", R.string.key_used_phone).assertExists()
+        keyedTab("B", R.string.key_used_imported).performScrollTo().assertExists()
+        tab("C").performScrollTo().assertExists()
+        keyedTab("B", R.string.key_used_imported).performScrollTo()
+        capture("key-marks-${if (mode == ru.adsrv.frpjump.settings.ThemeMode.DARK) "dark" else "light"}")
+        // The menu names the key too, in a row that does nothing.
+        keyedTab("A", R.string.key_used_phone).performScrollTo().performClick()
+        compose.onNodeWithTag("tab_menu_key").assertExists()
+        compose.onNode(hasText(text(R.string.key_used_phone)) and hasAnyAncestor(hasTestTag("tab_menu_key")), useUnmergedTree = true).assertExists()
+        capture("key-menu-${if (mode == ru.adsrv.frpjump.settings.ThemeMode.DARK) "dark" else "light"}")
+    }
+
+    @Test fun aTabOpenedWithAKeyShowsItsMarkAndNamesItLightTheme() = keyMarkedTabs(ru.adsrv.frpjump.settings.ThemeMode.LIGHT)
+
+    @Test fun aTabOpenedWithAKeyShowsItsMarkAndNamesItDarkTheme() = keyMarkedTabs(ru.adsrv.frpjump.settings.ThemeMode.DARK)
+
+    @Test fun aTabWithoutAKeyLoginHasNoMarkAndNoKeyRowInItsMenu() {
+        start()
+        compose.onAllNodesWithTag("key_mark_phone", useUnmergedTree = true).assertCountEquals(0)
+        compose.onAllNodesWithTag("key_mark_imported", useUnmergedTree = true).assertCountEquals(0)
+        tab("A").performClick()
+        compose.onNodeWithTag("tab_menu_key").assertDoesNotExist()
     }
 
     @Test fun theArrowIsOnTheSelectedTabOnly() {

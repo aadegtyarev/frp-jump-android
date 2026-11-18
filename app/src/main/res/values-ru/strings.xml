@@ -504,6 +504,9 @@
     <string name="key_choose_confirm">Установить</string>
     <string name="key_name_phone">ключ телефона</string>
     <string name="key_name_imported">импортированный ключ</string>
+    <!-- Which key the login of an open session used (the key mark's words); not stored. -->
+    <string name="key_used_phone">Вход ключом телефона</string>
+    <string name="key_used_imported">Вход импортированным ключом</string>
     <string name="terminal_text_smaller">Мельче</string>
     <string name="terminal_text_larger">Крупнее</string>
     <string name="terminal_text_size">Размер текста</string>

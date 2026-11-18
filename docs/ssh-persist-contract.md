@@ -362,6 +362,14 @@ that join timeout as a proven end-to-end maximum or remove the protection;
   Copy and Share for each; the imported one also has Replace and Remove. The
   login memory keeps only the user and the method (Key or Password), never
   which key.
+- Key mark. A session that logged in by key shows which key got in as a key
+  glyph after its label: blue with a solid head for the phone's key, purple with
+  a ring head for the imported one (the shades of the profile colours "blue" and
+  "purple", not the profile dot); TalkBack says "phone key" / "imported key". It
+  shows on the session's tab and tab menu, on the connection card only while a
+  session is open, and beside each key in the "Use key login" choice; a password
+  login shows none. It is known from the live session only: not stored in the
+  login memory or on disk, and gone with the session.
 - "Use key login" (the "⋮" menu of a saved SSH connection and a session tab's
   menu, offered while that login is by password) moves a login to a key, as
   `ssh-copy-id` does, only by the owner's action and only for the chosen user:

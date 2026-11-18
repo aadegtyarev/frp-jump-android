@@ -286,7 +286,11 @@ private fun KeyChoiceDialog(title: String, user: String, keys: List<SshKeyChoice
                         ) {
                             RadioButton(selected = key == chosen, onClick = null)
                             Column(Modifier.weight(1f)) {
-                                Text(keyTitle(key.slot), fontSize = 16.sp)
+                                // The key's mark before its name (the mockup): blue for the phone's, purple for the imported one.
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    KeyMark(key.slot, onTerm = false, describe = false)
+                                    Text(keyTitle(key.slot), fontSize = 16.sp)
+                                }
                                 Text(keySummary(key.publicLine).orEmpty(), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.muted)
                             }
                         }

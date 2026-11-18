@@ -222,6 +222,7 @@ fun ConnectionCard(
                             LocalAddress(it.localPort, modifier = Modifier, pinned = it.pinned, mono = false)
                         }
                         SessionsPill(sessions)
+                        SessionKeys(sessions)
                     }
                     problemOf(row)?.let { Text(it, color = colors.error, fontSize = 13.sp) }
                     if (assistant != null) {
