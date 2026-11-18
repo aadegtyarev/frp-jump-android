@@ -95,4 +95,11 @@ class ConnectionGrantFormatTest {
         assertEquals(ConfirmationMode.ASK, old.global)
         assertEquals(1, old.version)
     }
+
+    @Test fun `the reader itself, before any switch narrows it, drops non-grantable names and refuses an empty record`() {
+        fun read(tools: String) = readConnectionRecords(kotlinx.serialization.json.Json.parseToJsonElement("[${valid(tools = tools)}]"))
+        assertTrue(read("\"tools\":[]").isEmpty()); assertTrue(read("\"tools\":[\"nonsense\"]").isEmpty())
+        for (name in listOf("terminal_close", "stop_tunnel", "skill_save", "skill_delete", "web_search", "terminal_open", "start_tunnel")) assertTrue(name, read("\"tools\":[\"$name\"]").isEmpty())
+        assertEquals(listOf("ssh_command"), read("\"tools\":[\"terminal_close\",\"ssh_command\",\"web_search\"]").single().tools)
+    }
 }
