@@ -44,6 +44,7 @@ internal fun AssistantProviderScreen(
     AssistantProviderForm(snapshot, limits, onLimits, onSave, onModels, onBack)
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AssistantProviderForm(
     snapshot: AssistantProviderSnapshot,
@@ -70,8 +71,11 @@ private fun AssistantProviderForm(
     val split = WindowSplit(history, reply, summary)
     val scroll = rememberScrollState()
     val pin = remember { WindowPin() }
-    // Once the form is scrolled to the bar's place the bar moves to its strip above the scroll (the place stays empty), so nothing is ever under it.
-    val pinned by remember { derivedStateOf { scroll.value >= pin.slotY } }
+    // While the steppers are in use (scrolled to the bar's place and not past the end of the steppers' card) and no keyboard is up, the bar is shown in its
+    // strip above the scroll (its place stays empty), so nothing is ever under it; the keyboard and the fields below the steppers get all the room.
+    val keyboard by rememberUpdatedState(WindowInsets.isImeVisible)
+    val pinned by remember { derivedStateOf { !keyboard && pin.active(scroll.value) } }
+    val rules = windowRules(split)
     val latestLimits by rememberUpdatedState(limits)
     var completion by rememberSaveable { mutableStateOf(initial.completionTokenField) }
     var summaryModel by rememberSaveable { mutableStateOf(initial.summaryModel.orEmpty()) }
@@ -110,7 +114,7 @@ private fun AssistantProviderForm(
         title = stringResource(R.string.assistant_provider_title), action = stringResource(R.string.save), busy = busy,
         actionEnabled = valid, error = failure ?: if (stale && !saving) stringResource(R.string.assistant_provider_stale) else null,
         onBack = leave, scroll = scroll,
-        pinned = if (pinned) { { WindowBar(context.toIntOrNull(), split) } } else null,
+        pinned = if (pinned) { { max, width -> WindowStrip(context.toIntOrNull(), split, rules.lines, pin, max, width) } } else null,
         onAction = {
             val captured = draft()
             if (captured != null && !busy) {
@@ -120,7 +124,7 @@ private fun AssistantProviderForm(
                         pending = null; saving = false; failure = error
                         if (error == null) {
                             // The shares are saved after the provider, so a refused save leaves them as they were.
-                            onLimits(latestLimits.withSplit(split, firstLimitedFrom.takeIf { reply == firstSplit.reply }))
+                            onLimits(latestLimits.withSplit(split, WindowSplit.stillLimited(firstLimitedFrom.takeIf { reply == firstSplit.reply }, captured.settings.contextTokens)))
                             key = ""; onBack()
                         }
                     }
@@ -162,7 +166,8 @@ private fun AssistantProviderForm(
         Field(stringResource(R.string.assistant_provider_effort), effort, { effort = it.take(33); edited() },
             Modifier.testTag("assistant_effort"), enabled = !busy, note = stringResource(R.string.assistant_provider_effort_hint))
         TextButton(enabled = !busy, onClick = { chooseEffort = true }) { Text(stringResource(R.string.assistant_provider_effort_presets)) }
-        AssistantWindowGroup(window = context.toIntOrNull(), split = split, limitedFrom = firstLimitedFrom.takeIf { reply == firstSplit.reply }, enabled = !busy,
+        AssistantWindowGroup(window = context.toIntOrNull(), split = split, rules = rules,
+            limitedFrom = WindowSplit.stillLimited(firstLimitedFrom.takeIf { reply == firstSplit.reply }, context.toIntOrNull()), enabled = !busy,
             pin = pin, pinned = pinned, onSplit = { history = it.history; reply = it.reply; summary = it.summary; edited() },
             top = {
                 Field(stringResource(R.string.assistant_provider_context), context, { context = it.filter(Char::isDigit).take(8); edited() },

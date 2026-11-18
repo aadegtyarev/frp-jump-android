@@ -171,7 +171,11 @@ class AssistantProviderScreenTest {
     }
     private fun tagText(tag: String) = compose.onNodeWithTag(tag).performScrollTo()
     /** A stepper button pressed by a real touch, after it is scrolled into view (the pinned bar has its own strip, so nothing lies over the button). */
-    private fun tap(tag: String) { compose.onNodeWithTag(tag).performScrollTo().performClick() }
+    private fun tap(tag: String) {
+        // The first scroll can bring the bar into its strip, which moves the rows: a second one (as TalkBack asks again) puts the button in view.
+        compose.onNodeWithTag(tag).performScrollTo(); compose.waitForIdle()
+        compose.onNodeWithTag(tag).performScrollTo().performClick()
+    }
     /** The screen in the run's locale (the activity's own when none is given), as the first test of this class shows it. */
     private fun show(snapshot: AssistantProviderSnapshot, limits: AssistantLimits, onLimits: (AssistantLimits) -> Unit = {},
         onSave: (AssistantProviderDraft, (String?) -> Unit) -> Unit = { _, _ -> }) {
@@ -218,28 +222,51 @@ class AssistantProviderScreenTest {
         glance("window_history_value", "window-glance-history"); glance("window_reply_value", "window-glance-reply"); glance("window_summary_value", "window-glance-summary")
     }
 
-    @Test fun theRulesStopEachPlusAndOneLineNamesThem() {
+    /**
+     * The reasons said now: the rule lines of the bar's card (in its strip while the steppers are in use) and, when the strip had to give them up for lack of
+     * room, the lines under the rows; each once.
+     */
+    private fun reasons(): Set<String> {
+        val strip = compose.onAllNodesWithTag("window_rule_line", useUnmergedTree = true).fetchSemanticsNodes().map { it.config[SemanticsProperties.Text].joinToString("") }
+        val rows = listOf("history", "reply", "summary").flatMap { row ->
+            compose.onAllNodesWithTag("window_${row}_hint", useUnmergedTree = true).fetchSemanticsNodes().map { it.config[SemanticsProperties.Text].joinToString("") }
+        }.flatMap { it.lines() }
+        return (strip + rows).toSet()
+    }
+    /** The reason for the button of [row] is on screen with it: a line of the strip, or the line under that row. */
+    private fun assertReasonInSight(row: String, text: String) {
+        val lines = compose.onAllNodesWithTag("window_rule_line", useUnmergedTree = true)
+        val at = lines.fetchSemanticsNodes().indexOfFirst { it.config[SemanticsProperties.Text].joinToString("") == text }
+        try {
+            if (at >= 0) lines[at].assertIsDisplayed()
+            else { tagText("window_${row}_hint").assertIsDisplayed().assertTextContains(text, substring = true) }
+        } catch (e: AssertionError) { capture("reason-missing-$row"); throw e }
+    }
+
+    @Test fun theRulesStopEachPlusAndTheBarNamesThemInOneLineEach() {
         show(configured, AssistantLimits())
         val summaryRule = localeContext.getString(R.string.window_rule_summary, 95); val replyRule = localeContext.getString(R.string.window_rule_reply, 95); val both = localeContext.getString(R.string.window_rule_both, 95)
+        assertEquals(emptySet<String>(), reasons())
         // 75 + 15 = 90 and 75 + 5 = 80: all pluses work; one step of history makes 80 + 15 = 95.
         tagText("window_history_plus").assertIsEnabled(); tap("window_history_plus")
         tagText("window_history_value").assertTextEquals("80")
-        tagText("window_history_plus").assertIsNotEnabled(); tagText("window_history_hint").assertTextEquals(summaryRule)
-        tagText("window_summary_plus").assertIsNotEnabled(); tagText("window_summary_hint").assertTextEquals(summaryRule)
-        compose.onAllNodesWithTag("window_reply_hint").assertCountEquals(0)
+        tagText("window_history_plus").assertIsNotEnabled(); tagText("window_summary_plus").assertIsNotEnabled()
+        // History and summary give the same rule: one line, in sight with the disabled buttons.
+        assertEquals(setOf(summaryRule), reasons()); assertReasonInSight("summary", summaryRule); assertReasonInSight("history", summaryRule)
         tagText("window_reply_plus").assertIsEnabled()
-        // The reply up to 15: 80 + 15 = 95 as well, so the history names both rules and the reply its own.
+        // The reply up to 15: 80 + 15 = 95 as well, so the history names both rules, the reply its own and the summary its own.
         repeat(10) { tap("window_reply_plus") }
         tagText("window_reply_value").assertTextEquals("15")
-        tagText("window_reply_plus").assertIsNotEnabled(); tagText("window_reply_hint").assertTextEquals(replyRule)
-        tagText("window_history_hint").assertTextEquals(both)
+        tagText("window_reply_plus").assertIsNotEnabled()
+        assertEquals(setOf(both, replyRule, summaryRule), reasons())
+        assertReasonInSight("reply", replyRule); assertReasonInSight("history", both); assertReasonInSight("summary", summaryRule)
         compose.onNode(hasText("95", substring = true) and hasAnyAncestor(hasTestTag("window_label_compact")), useUnmergedTree = true).assertExists()
         glance("window_reply_value", "window-glance-rules")
-        // Lowering the history gives both room back and the lines go.
+        // Lowering the history gives both room back and the lines go; nothing is said under the rows any more.
         tap("window_history_minus")
+        tagText("window_history_value").assertTextEquals("75")
         tagText("window_history_plus").assertIsEnabled(); tagText("window_summary_plus").assertIsEnabled(); tagText("window_reply_plus").assertIsEnabled()
-        compose.onAllNodesWithTag("window_history_hint").assertCountEquals(0)
-        compose.onAllNodesWithTag("window_summary_hint").assertCountEquals(0); compose.onAllNodesWithTag("window_reply_hint").assertCountEquals(0)
+        assertEquals(emptySet<String>(), reasons())
         // The ranges: history 40-90, reply 1-20, summary 5-40 (with the history at 40 the summary stops at 30).
         repeat(12) { tap("window_history_minus") }
         tagText("window_history_value").assertTextEquals("40"); tagText("window_history_minus").assertIsNotEnabled()
@@ -247,7 +274,7 @@ class AssistantProviderScreenTest {
         tagText("window_reply_value").assertTextEquals("1"); tagText("window_reply_minus").assertIsNotEnabled()
         repeat(9) { tap("window_summary_plus") }
         tagText("window_summary_value").assertTextEquals("30"); tagText("window_summary_plus").assertIsNotEnabled()
-        tagText("window_summary_hint").assertTextEquals(localeContext.getString(R.string.window_rule_gap, 10))
+        assertEquals(setOf(localeContext.getString(R.string.window_rule_gap, 10)), reasons()); assertReasonInSight("summary", localeContext.getString(R.string.window_rule_gap, 10))
     }
 
     @Test fun theSummaryStaysTenPercentUnderTheHistoryAndTheHistoryStopsAtTheSummary() {
@@ -256,16 +283,15 @@ class AssistantProviderScreenTest {
         // History 75 -> 45 (six steps), then the summary up to 35: 45 - 35 = 10.
         repeat(6) { tap("window_history_minus") }
         tagText("window_history_value").assertTextEquals("45")
-        compose.onAllNodesWithTag("window_history_hint").assertCountEquals(0)
+        assertEquals(emptySet<String>(), reasons())
         repeat(4) { tap("window_summary_plus") }
         tagText("window_summary_value").assertTextEquals("35")
-        tagText("window_summary_plus").assertIsNotEnabled(); tagText("window_summary_hint").assertTextEquals(gap)
-        // The history cannot go under summary + 10: its minus is off, with the same line.
-        tagText("window_history_minus").assertIsNotEnabled(); tagText("window_history_hint").assertTextEquals(gap)
-        // The summary down by one step gives the history one more step, and the lines go.
+        // The summary's plus and the history's minus are both off by the same rule: one line, in sight.
+        tagText("window_summary_plus").assertIsNotEnabled(); tagText("window_history_minus").assertIsNotEnabled()
+        assertEquals(setOf(gap), reasons()); assertReasonInSight("summary", gap); assertReasonInSight("history", gap)
+        // The summary down by one step gives the history one more step, and the line goes.
         tap("window_summary_minus")
-        tagText("window_history_minus").assertIsEnabled(); compose.onAllNodesWithTag("window_history_hint").assertCountEquals(0)
-        compose.onAllNodesWithTag("window_summary_hint").assertCountEquals(0)
+        tagText("window_history_minus").assertIsEnabled(); assertEquals(emptySet<String>(), reasons())
         capture("window-group-gap")
     }
 
@@ -274,9 +300,9 @@ class AssistantProviderScreenTest {
         // TalkBack focus and bring-into-view scroll the row into the scrolling part: its whole box must lie below the bar's strip and above the Save button.
         val title = localeContext.getString(R.string.assistant_provider_title)
         val saveText = localeContext.getString(R.string.save)
-        // History at its top gives the two lines (a hint under a row is a row too).
+        // History at its top gives the rule line, which is in the bar's card.
         tap("window_history_plus")
-        for (tag in listOf("window_history", "window_history_hint", "window_reply", "window_summary", "window_summary_hint", "window_reply_plus", "window_summary_minus")) {
+        for (tag in listOf("window_history", "window_reply", "window_summary", "window_reply_plus", "window_summary_minus")) {
             compose.onNodeWithTag(tag).performScrollTo(); compose.waitForIdle()
             compose.onNodeWithTag(tag).assertIsDisplayed()
             val node = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
@@ -285,7 +311,8 @@ class AssistantProviderScreenTest {
             val saveBox = compose.onNodeWithText(saveText).fetchSemanticsNode().boundsInRoot
             assertTrue("$tag top ${node.top} is under the bar's bottom ${bar.bottom}", node.top >= bar.bottom - 1f || node.bottom <= bar.top + 1f)
             assertTrue("$tag is under the title: ${node.top} < ${titleBox.bottom}", node.top >= titleBox.bottom - 1f)
-            assertTrue("the bar is under the title: ${bar.top} < ${titleBox.bottom}", bar.top >= titleBox.bottom - 1f)
+            if (runCatching { compose.onNodeWithTag("window_bar").assertIsDisplayed() }.isSuccess)
+                assertTrue("the bar is under the title: ${bar.top} < ${titleBox.bottom}", bar.top >= titleBox.bottom - 1f)
             assertTrue("$tag is under the Save button", node.bottom <= saveBox.top + 1f)
         }
     }
@@ -331,5 +358,42 @@ class AssistantProviderScreenTest {
         compose.onAllNodesWithTag("window_reply_hint").assertCountEquals(0)
         compose.onNodeWithText(localeContext.getString(R.string.save)).performClick()
         compose.runOnIdle { assertNull(stored.last().replyLimitedFrom); assertEquals(19, stored.last().replyPercent) }
+    }
+    /** The bar is off screen (in its place above, or dropped with the keyboard) or lies wholly above the summary model field: never over it. */
+    private fun assertNothingPinnedOverTheField() {
+        val field = compose.onNodeWithTag("assistant_summary_model").fetchSemanticsNode().boundsInRoot
+        val bar = compose.onNodeWithTag("window_bar").fetchSemanticsNode()
+        val onScreen = runCatching { compose.onNodeWithTag("window_bar").assertIsDisplayed() }.isSuccess
+        if (onScreen) assertTrue("the bar ends at ${bar.boundsInRoot.bottom}, over the field that starts at ${field.top}", bar.boundsInRoot.bottom <= field.top + 1f)
+    }
+
+    @Test fun theBarIsNotPinnedOverTheFieldsBelowTheSteppersOrWhileTheKeyboardIsUp() {
+        show(configured, AssistantLimits())
+        val hint = localeContext.getString(R.string.assistant_summary_model_hint)
+        // Scrolled past the steppers: the field and its note are in view and the bar is not on screen (it stays in its place, above).
+        compose.onNodeWithTag("assistant_summary_model").performScrollTo(); compose.waitForIdle()
+        compose.onNodeWithTag("assistant_summary_model").assertIsDisplayed()
+        assertNothingPinnedOverTheField()
+        capture("window-below-steppers")
+        // Focused (the keyboard up): the field is in view, and nothing is pinned over it.
+        field("assistant_summary_model").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag("assistant_summary_model").assertIsDisplayed()
+        assertNothingPinnedOverTheField()
+        capture("window-keyboard")
+        androidx.test.espresso.Espresso.closeSoftKeyboard(); compose.waitForIdle()
+        compose.onNodeWithText(hint).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun theCutReserveLineGoesWhenTheWindowIsRaisedUntilTheOldTokensFit() {
+        // 100,000 tokens were asked for; 20 % of the 262,144 window is 52,428: cut. A window of 600,000 (20 % = 120,000) holds it.
+        val limited = AssistantLimits(historyPercentSet = 60, replyPercentSet = 20, replyLimitedFrom = 100_000)
+        val stored = ArrayList<AssistantLimits>()
+        show(configured, limited, { stored += it }) { _, done -> done(null) }
+        tagText("window_reply_hint").assertTextContains("100", substring = true)
+        field("assistant_context").performScrollTo().performTextReplacement("600000")
+        androidx.test.espresso.Espresso.closeSoftKeyboard(); compose.waitForIdle()
+        compose.onAllNodesWithTag("window_reply_hint").assertCountEquals(0)
+        compose.onNodeWithText(localeContext.getString(R.string.save)).performClick()
+        compose.runOnIdle { assertNull(stored.last().replyLimitedFrom); assertEquals(20, stored.last().replyPercent) }
     }
 }

@@ -1,5 +1,6 @@
 package ru.adsrv.frpjump
 
+import ru.adsrv.frpjump.assistant.adoptWindowSplitFrom
 import android.app.Application
 import android.app.NotificationManager
 import android.os.Handler
@@ -393,7 +394,7 @@ class FrpJumpApp : Application() {
             AtomicTextFile(File(filesDir, "assistant_provider.json")), KeystoreSecretBox("frpjump-assistant-provider-v1"), settings.assistantChat)
         // The history, reply and summary shares of the window group are made once from the old values (the answer reserve and the trigger),
         // when a provider is saved and the shares are not set yet; the old fields stay as they are, for older versions.
-        assistantProvider.currentSnapshot.settings?.let { settings.adoptWindowSplit(it.contextTokens, it.outputTokens, it.summaryPercent) }
+        settings.adoptWindowSplitFrom(assistantProvider.currentSnapshot.settings)
         assistant = ru.adsrv.frpjump.assistant.bindAssistantLifecycle(settings, appScope)
         restoreAppLanguage(settings.settings.value.language)
         applyTheme(settings.settings.value.theme)

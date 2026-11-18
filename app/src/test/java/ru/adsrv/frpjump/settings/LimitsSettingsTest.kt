@@ -74,18 +74,18 @@ class LimitsSettingsTest {
         assertEquals(listOf(20L, 6L, 12_000L, 100_000L, 45_000L), listOf(agent.maxSteps.toLong(), agent.maxCallsPerStep.toLong(), agent.maxToolChars.toLong(), agent.modelTimeoutMs, agent.toolTimeoutMs))
         assertEquals(100_000, agent.contextTokens)
         // The request's output limit is the reply share (5 %) of the window, whatever the provider's mirror holds; the reply cap never goes below 32,000.
-        assertEquals(5_000, agent.outputReserveTokens); assertEquals(32_000, agent.maxReplyChars)
+        assertEquals(5_000, agent.outputReserveTokens); assertEquals(40_000, agent.maxReplyChars)
         // The same limits as the kernel's defaults, except for what the split derives.
         val defaults = AgentLimits().withOwnerLimits(AssistantLimits())
-        assertEquals(AgentLimits().copy(outputReserveTokens = 13_107, maxReplyChars = 52_428), defaults)
+        assertEquals(AgentLimits().copy(outputReserveTokens = 13_107, maxReplyChars = 104_856), defaults)
         // Every key of the agent's range is accepted by the kernel.
         for (spec in LIMITS) for (v in listOf(spec.range.first, spec.range.last)) AgentLimits().withOwnerLimits(spec.set(AssistantLimits(), v))
     }
 
-    @Test fun `the request's output limit is the reply share of the window, and the reply cap is derived and never below 32,000`() {
+    @Test fun `the request's output limit is the reply share of the window, and the reply cap is derived (eight characters a token) and never below 32,000`() {
         for ((window, reply, tokens, chars) in listOf(
-            listOf(512_000, 5, 25_600, 102_400), listOf(512, 1, 5, 32_000), listOf(262_144, 1, 2_621, 32_000), listOf(100_000, 20, 20_000, 80_000),
-            listOf(1_000_000, 20, 200_000, 800_000), listOf(200_000, 5, 10_000, 40_000), listOf(32_000, 5, 1_600, 32_000))) {
+            listOf(512_000, 5, 25_600, 204_800), listOf(512, 1, 5, 32_000), listOf(262_144, 1, 2_621, 32_000), listOf(100_000, 20, 20_000, 160_000),
+            listOf(1_000_000, 20, 200_000, 1_000_000), listOf(200_000, 5, 10_000, 80_000), listOf(32_000, 5, 1_600, 32_000), listOf(262_144, 20, 52_428, 419_424))) {
             val agent = AgentLimits(contextTokens = window, outputReserveTokens = 1).withOwnerLimits(AssistantLimits(replyPercentSet = reply))
             assertEquals("$window/$reply", tokens, agent.outputReserveTokens); assertEquals("$window/$reply", chars, agent.maxReplyChars)
             assertTrue(agent.maxReplyChars >= 32_000)

@@ -180,12 +180,11 @@ tunnel limits are read at use. The kernel's own parameters stay validated (`Agen
 The window split is stored in the same `assistant_limits` group, beside the old keys, which an older version still reads: `history_percent`, `reply_percent`,
 `summary_size_percent` (kept from the earlier version: the summary share, same meaning) and `reply_limited_from` (tokens; present only while the old answer
 reserve is shown as cut). The shares are absent until the owner saves the provider form or the old values are converted, once, at app start when a provider is
-saved: reply share = the provider's old answer reserve over its window, rounded up and held in 1-20 (an owner who kept both old defaults, 2,048 tokens and trigger 80, gets the new defaults 75 / 5 / 15 instead; when held, `reply_limited_from` keeps the old tokens and the form
+saved: reply share = the provider's old answer reserve over its window, rounded up and held in 1-20 (an owner who kept both old defaults, 2,048 tokens and trigger 80, gets the new defaults 75 / 5 / 15 instead, the reply share raised to keep at least those 2,048 tokens on a small window, up to 20 %; when held, `reply_limited_from` keeps the old tokens and the form
 says so under «Ответ модели» until the owner changes it); history share = the old trigger (the `summary_percent` limit when set, else the provider form's old value) less the
-reply share, held in 40-90; the summary share is the old `summary_size_percent`; then the rules hold, the history lowered first, then the summary gives way to the gap. The old trigger key and the
-provider's `summaryPercent` and `outputTokens` stay in their files as they were, never read again once the shares are set (an older version still uses them; the
-form writes `outputTokens` as the reply share in tokens with each save, so it stays a sensible reserve there). `reply_chars` and `fresh_tool_percent` are no longer
-written. The reply length cap is derived: max(32,000, reply-share tokens × 4); an owner value above that is no longer kept.
+reply share, held in 40-90; the summary share is the old `summary_size_percent`; then the rules hold, the history lowered first, then the summary gives way to the gap. Each save of the form also writes the old `summary_percent` as history + reply (held in 10-90) and the provider's `outputTokens` as the reply share in tokens, so a
+downgrade (and a later conversion) reads the same shares; the provider's `summaryPercent` stays as it was. Neither is read again once the shares are set. `reply_chars` and `fresh_tool_percent` are no longer
+written. The reply length cap is derived: max(32,000, reply-share tokens × 8); an owner value above that is no longer kept.
 
 The model's texts that state these numbers (the input, key, line and output limits, the `wait_for` limits) are built from the settings when the tools are described:
 at the defaults the words are exactly the ones this contract quotes with the default numbers. The numbers below are the defaults.
@@ -217,7 +216,7 @@ ordinary sliding window. Chat still indicates any pre-existing omissions.
 Tool result text is capped at 8,000 UTF-16 characters by default, preserving
 head/tail with a visible omission marker and an omitted-character count.
 Cuts never split a valid surrogate pair. Model reply text/call arguments are
-limited per response to the larger of 32,000 aggregate characters and four characters for each token of the
+limited per response to the larger of 32,000 aggregate characters and eight characters for each token of the
 reply share (the app derives the cap from the window split; the kernel default stays 32,000). A returned String is
 already allocated: these are kernel-result bounds, not a total-heap or
 transport-buffer guarantee. Stream-reading adapters must cap capture as data
@@ -252,7 +251,8 @@ history's lowest, the «−») is off and one line under that row names the rule
 The bar is the whole window in three calm pieces (history, reply, margin) with a line where the shortening
 starts (history + reply) and a dashed mark at the summary's size inside the history («after shortening»),
 labels with the shares and short token counts (197K, 13K; the TalkBack description of the same has the whole numbers), and, once the form is scrolled past its
-place, it moves to a strip of its own above the scrolling part (the place stays empty), so the rows scroll below it and never under it. The shares are the owner's limits, saved with Save after the
+place and until the steppers end (and not while the keyboard is up), it moves to a strip of its own above the scrolling part (the place stays empty), so the rows
+scroll below it and never under it; the line that names the rule stopping a button is in the bar's card, so it is in sight with the button. The shares are the owner's limits, saved with Save after the
 provider (a refused save leaves them as they were); the old trigger and answer reserve stored by an older
 version are converted once ([Limits](#limits)). The form explains the additional model
 request and shared provider/key/window requirements. Saving makes no request. The API key

@@ -48,7 +48,8 @@ data class AssistantLimits(
     @SerialName("reconnect_minutes") val reconnectMinutes: Int = DEFAULT_RECONNECT_MINUTES,
     /**
      * LEGACY, never read for a decision: the fill share that started the shortening before the window group of the provider form. It is the
-     * source of [historyPercent] when that is absent ([WindowSplit.fromLegacy]); the file keeps it as it is, so an older app version still reads it.
+     * source of [historyPercent] when that is absent ([WindowSplit.fromLegacy]). Each save of the window group writes history + reply here (held in
+     * 10..90), so an older app version still reads a sensible trigger and a later conversion reads the same shares back.
      */
     @SerialName("summary_percent") val summaryPercentSet: Int? = null,
     /** The working summary's own size, in percent of the context window (the summary request's output limit): the window group's «Сводка, %». */
@@ -69,9 +70,11 @@ data class AssistantLimits(
      */
     val split: WindowSplit get() = WindowSplit(historyPercent, replyPercent, summarySizePercent).fitted()
 
-    /** Stores [split] (its three shares); [limitedFrom] is the old answer reserve that was cut to fit, or null. */
+    /** Stores [split] (its three shares) and, for an older version, the old trigger beside them; [limitedFrom] is the old answer reserve that was cut to fit, or null. */
     fun withSplit(split: WindowSplit, limitedFrom: Int? = null): AssistantLimits = copy(historyPercentSet = split.history, replyPercentSet = split.reply,
-        summarySizePercent = split.summary, replyLimitedFrom = limitedFrom)
+        summarySizePercent = split.summary, replyLimitedFrom = limitedFrom,
+        // The old trigger key is written too, for a downgrade: history + reply, so the conversion reads the same shares back (held in its 10..90 range).
+        summaryPercentSet = split.compactAt.coerceIn(SUMMARY_PERCENT_RANGE))
 
     /** The whole reply's limit in ms: the setting, but never less than one call plus one model answer. */
     fun replyLimitMs(): Long = maxOf(replySeconds, toolTimeoutSeconds + modelTimeoutSeconds) * 1000L

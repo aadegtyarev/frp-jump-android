@@ -2,6 +2,16 @@ package ru.adsrv.frpjump.ui
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -25,9 +35,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,33 +66,35 @@ fun FormScreen(
     actionEnabled: Boolean = true,
     /** The scroll of the form's body ([FORM_BODY_PADDING_V] is the body's own top inset). */
     scroll: ScrollState = rememberScrollState(),
-    /** A strip above the scrolling body, with its own space: the body scrolls below it and never under it. */
-    pinned: (@Composable () -> Unit)? = null,
+    /** A strip above the scrolling body, with its own space: the body scrolls below it and never under it. It is told the most height it should take (about 45 % of the form). */
+    pinned: (@Composable (maxHeight: androidx.compose.ui.unit.Dp, width: androidx.compose.ui.unit.Dp) -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
+    var formSize by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val stripMax = with(androidx.compose.ui.platform.LocalDensity.current) { if (formSize.height == 0) androidx.compose.ui.unit.Dp.Infinity else (formSize.height * 0.45f).toDp() }
+    val stripWidth = with(androidx.compose.ui.platform.LocalDensity.current) { formSize.width.toDp() - 32.dp }
     Scaffold(
         topBar = {
-            TopAppBar(
-                // One line, cut with an ellipsis: the bar has a fixed height, a second line would be clipped half-way at a large font.
-                title = { Text(title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
-                navigationIcon = {
-                    onBack?.let {
-                        IconButton(onClick = it) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                        }
-                    }
-                },
-            )
+            // The bar grows with the title (up to three lines, never an ellipsis at a large font); 64 dp at the least, as the stock bar is.
+            Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.statusBarsPadding().heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
+                    else Spacer(Modifier.width(12.dp))
+                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 8.dp).semantics { heading() })
+                }
+            }
         },
     ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .imePadding(),
+                .imePadding()
+                .onSizeChanged { formSize = it },
         ) {
-            pinned?.let { Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) { it() } }
+            pinned?.let { Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp)) { it(stripMax, stripWidth) } }
             Column(
                 Modifier
                     .weight(1f)

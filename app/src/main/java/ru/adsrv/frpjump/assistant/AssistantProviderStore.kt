@@ -46,6 +46,11 @@ data class AssistantProviderSettings(
     }
 }
 
+/** The window split from a saved provider's old values, once (see [SettingsStore.adoptWindowSplit]); nothing when no provider is saved. */
+internal fun ru.adsrv.frpjump.settings.SettingsStore.adoptWindowSplitFrom(provider: AssistantProviderSettings?) {
+    if (provider != null) adoptWindowSplit(window = provider.contextTokens, outputTokens = provider.outputTokens, legacyTrigger = provider.summaryPercent)
+}
+
 enum class ProviderSetupProblem { INVALID_SETTINGS, KEY_REQUIRED, INVALID_KEY, ADDRESS_CHANGED, STALE, READ_FAILED, WRITE_FAILED, CRYPTO_FAILED }
 class ProviderSetupException(val problem: ProviderSetupProblem) : Exception("Provider setup: $problem")
 /** Public observable metadata never includes either plaintext or sealed credentials. */

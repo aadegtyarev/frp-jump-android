@@ -44,7 +44,7 @@ data class WindowSplit(val history: Int, val reply: Int, val summary: Int) {
     /** The working summary's own output limit: its share of [window] (at least 1). */
     fun summaryTokens(window: Int): Int = tokens(window, summary).coerceAtLeast(1)
 
-    /** The agent kernel's reply cap in characters: never below what it was fixed at, and four characters for each token of the reply share. */
+    /** The agent kernel's reply cap in characters: never below what it was fixed at, and eight characters for each token of the reply share. */
     fun replyChars(window: Int): Int = maxOf(MIN_REPLY_CHARS.toLong(), replyTokens(window).toLong() * CHARS_PER_TOKEN).coerceAtMost(MAX_REPLY_CHARS.toLong()).toInt()
 
     /** The result of converting the old values: the split, and the old reply reserve (tokens) when the reply share had to be cut below it. */
@@ -66,12 +66,15 @@ data class WindowSplit(val history: Int, val reply: Int, val summary: Int) {
         const val SUMMARY_MAX = 40
         val SUMMARY_RANGE = 5..SUMMARY_MAX
         const val MIN_REPLY_CHARS = 32_000
-        const val CHARS_PER_TOKEN = 4
+        const val CHARS_PER_TOKEN = 8
         /** The agent kernel's own upper bound of a reply (AgentLimits). */
         const val MAX_REPLY_CHARS = 1_000_000
         val DEFAULT = WindowSplit(DEFAULT_HISTORY, DEFAULT_REPLY, DEFAULT_SUMMARY)
 
         fun tokens(window: Int, percent: Int): Int = (window.toLong() * percent / 100).toInt()
+
+        /** The old reserve [limitedFrom] still says something: it is more than the biggest reply share (20 %) of [window] (null window: the size field holds no number). */
+        fun stillLimited(limitedFrom: Int?, window: Int?): Int? = limitedFrom?.takeIf { window == null || it > tokens(window, REPLY_RANGE.last) }
 
         /** A token count short for a label: 197K, 2.6K, 1M (the [decimal] separator of the locale); under a thousand as it is. */
         fun compactTokens(value: Int, decimal: Char = '.'): String {
@@ -95,9 +98,10 @@ data class WindowSplit(val history: Int, val reply: Int, val summary: Int) {
          * size. Then the rules hold, the history lowered first. A share that is already set ([history], [reply]) is kept as it is.
          */
         fun fromLegacy(window: Int, outputTokens: Int, trigger: Int, summarySize: Int, history: Int? = null, reply: Int? = null): Converted {
-            if (history == null && reply == null && outputTokens == OLD_DEFAULT_OUTPUT_TOKENS && trigger == OLD_DEFAULT_TRIGGER)
-                return Converted(WindowSplit(DEFAULT_HISTORY, DEFAULT_REPLY, summarySize).fitted(), null)
             val wanted = ((outputTokens.toLong() * 100 + window - 1) / window).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+            // Both old defaults: the new defaults, but never fewer output tokens than before (a small window needs more than 5 %), within 20 %.
+            if (history == null && reply == null && outputTokens == OLD_DEFAULT_OUTPUT_TOKENS && trigger == OLD_DEFAULT_TRIGGER)
+                return Converted(WindowSplit(DEFAULT_HISTORY, wanted.coerceIn(DEFAULT_REPLY, REPLY_RANGE.last), summarySize).fitted(), if (wanted > REPLY_RANGE.last) outputTokens else null)
             val replyShare = reply ?: wanted.coerceIn(REPLY_RANGE)
             val limited = if (reply == null && wanted > REPLY_RANGE.last) outputTokens else null
             val historyShare = history ?: (trigger - replyShare).coerceIn(HISTORY_RANGE)

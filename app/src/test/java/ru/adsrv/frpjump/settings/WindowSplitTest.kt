@@ -6,6 +6,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.adsrv.frpjump.assistant.AssistantProviderSettings
+import ru.adsrv.frpjump.assistant.adoptWindowSplitFrom
 import ru.adsrv.frpjump.ssh.MemoryStorage
 
 /** The window split: history, reply and summary shares of the model's window; the two rules; the conversion of the old values; how they are stored and read. */
@@ -53,11 +55,17 @@ class WindowSplitTest {
         }
     }
 
-    @Test fun `an owner who kept both old defaults gets the new defaults, any other case is converted`() {
-        // Reserve 2,048 and trigger 80 are the old defaults: 75 / 5 / 15 at any window, not 79 / 1 / 15.
-        for (window in listOf(4_096, 16_384, 262_144, 512_000, 1_000_000)) {
+    @Test fun `an owner who kept both old defaults gets the new defaults, never fewer output tokens than before`() {
+        // Reserve 2,048 and trigger 80 are the old defaults: 75 / 5 / 15 on a big window; a small window keeps at least the old tokens (to 20 %).
+        for ((window, reply) in listOf(512_000 to 5, 262_144 to 5, 65_536 to 5, 32_768 to 7, 16_384 to 13, 10_240 to 20)) {
             val r = WindowSplit.fromLegacy(window, 2_048, 80, 15)
-            assertEquals("$window", WindowSplit(75, 5, 15), r.split); assertNull(r.limitedFrom)
+            assertEquals("$window", WindowSplit(75, reply, 15), r.split); assertNull("$window", r.limitedFrom)
+            assertTrue("$window: ${r.split.replyTokens(window)} tokens", r.split.replyTokens(window) >= 2_048)
+        }
+        // Over 20 % of the window the old reserve cannot be kept: 20 %, and the form says what it was.
+        for (window in listOf(4_096, 8_192)) {
+            val r = WindowSplit.fromLegacy(window, 2_048, 80, 15)
+            assertEquals("$window", WindowSplit(75, 20, 15), r.split); assertEquals("$window", 2_048, r.limitedFrom)
         }
         // The summary size is always the old one, the rules made to hold.
         assertEquals(WindowSplit(75, 5, 20), WindowSplit.fromLegacy(262_144, 2_048, 80, 20).split)
@@ -69,6 +77,41 @@ class WindowSplitTest {
         assertEquals(WindowSplit(50, 10, 25), WindowSplit.fromLegacy(100_000, 10_000, 60, 25).split)
         // A set share is kept: no default shortcut.
         assertEquals(WindowSplit(60, 1, 15), WindowSplit.fromLegacy(262_144, 2_048, 80, 15, history = 60).split)
+    }
+
+    @Test fun `the cut-reserve line goes when a window edit makes the old tokens fit`() {
+        assertEquals(256_000, WindowSplit.stillLimited(256_000, 512_000)); assertEquals(256_000, WindowSplit.stillLimited(256_000, null))
+        // Even at the biggest window (1,000,000, 20 % = 200,000) 256,000 is still cut; 20 % of 1,280,000 would be 256,000.
+        assertEquals(256_000, WindowSplit.stillLimited(256_000, 1_000_000)); assertNull(WindowSplit.stillLimited(256_000, 1_280_000)); assertNull(WindowSplit.stillLimited(null, 512_000))
+        assertEquals(2_048, WindowSplit.stillLimited(2_048, 4_096)); assertNull(WindowSplit.stillLimited(2_048, 10_240)); assertNull(WindowSplit.stillLimited(2_048, 100_000))
+    }
+
+    @Test fun `a save also writes the old trigger so a downgrade and a later conversion read the same shares`() {
+        for (h in listOf(40, 55, 60, 75)) for (r in listOf(1, 5, 15, 20)) for (m in listOf(5, 15, 30)) {
+            val split = WindowSplit(h, r, m)
+            if (!split.valid || h + r > 90) continue
+            val l = AssistantLimits().withSplit(split)
+            assertEquals("$split", h + r, l.summaryPercentSet)
+            // The provider form writes the reserve in tokens beside it; the conversion reads the same shares back.
+            val back = WindowSplit.fromLegacy(262_144, split.replyTokens(262_144), l.summaryPercentSet!!, l.summarySizePercent)
+            assertEquals("$split", split, back.split); assertNull(back.limitedFrom)
+        }
+        // Over 90 the old key holds 90 (its range).
+        assertEquals(90, AssistantLimits().withSplit(WindowSplit(80, 15, 15)).summaryPercentSet)
+        val storage = MemoryStorage(); SettingsStore(storage).setAssistantLimits(AssistantLimits().withSplit(WindowSplit(70, 10, 15)))
+        assertTrue(storage.read()!!, storage.read()!!.contains("\"summary_percent\":80") && storage.read()!!.contains("\"history_percent\":70"))
+    }
+
+    @Test fun `the app start converts the saved provider's old values by name, and nothing without a provider`() {
+        val storage = MemoryStorage(); val store = SettingsStore(storage)
+        store.adoptWindowSplitFrom(null)
+        assertNull(SettingsStore(storage).settings.value.assistantLimits.historyPercentSet)
+        // Window 512,000, reserve 25,600 (5 %), trigger 60: not the old defaults, so the formula: reply 5, history 55.
+        store.adoptWindowSplitFrom(AssistantProviderSettings(contextTokens = 512_000, outputTokens = 25_600, summaryPercent = 60))
+        assertEquals(WindowSplit(55, 5, 15), SettingsStore(storage).settings.value.assistantLimits.split)
+        val cut = MemoryStorage(); SettingsStore(cut).adoptWindowSplitFrom(AssistantProviderSettings(contextTokens = 512_000, outputTokens = 256_000, summaryPercent = 80))
+        val l = SettingsStore(cut).settings.value.assistantLimits
+        assertEquals(WindowSplit(60, 20, 15), l.split); assertEquals(256_000, l.replyLimitedFrom)
     }
 
     @Test fun `the summary stays at least 10 percent of the window under the history, and the history's lowest follows the summary`() {
