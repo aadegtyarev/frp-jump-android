@@ -2,10 +2,17 @@ package ru.adsrv.frpjump.ui.ssh
 
 import ru.adsrv.frpjump.ui.AppDropdownMenu
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -72,7 +79,7 @@ import ru.adsrv.frpjump.ssh.TAB_NAME_MAX
 import ru.adsrv.frpjump.ssh.TabNameCheck
 import ru.adsrv.frpjump.ssh.TabNameProblem
 import ru.adsrv.frpjump.ssh.checkTabName
-import ru.adsrv.frpjump.ui.AppAlertDialog
+import ru.adsrv.frpjump.ui.AppDialog
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.Field
 
@@ -203,37 +210,59 @@ private fun TabNameDialog(current: String?, automatic: String, onSave: (String?)
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     val spokenCount = stringResource(R.string.device_label_counter_spoken, length, TAB_NAME_MAX)
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        // The title is the first line of the scrolling content, not a fixed slot: with the keyboard up in landscape at a large font the
-        // room is a few lines, and only the buttons keep their place (they are what must stay reachable).
-        text = {
-            ResizeWithKeyboard()
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(R.string.terminal_tab_name_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AlertDialogDefaults.titleContentColor)
-                Field(
-                    label = stringResource(R.string.terminal_tab_name_field),
-                    value = field,
-                    onValueChange = { field = it },
-                    problem = (check as? TabNameCheck.Invalid)?.let {
-                        stringResource(if (it.problem == TabNameProblem.TOO_LONG) R.string.terminal_tab_name_too_long else R.string.terminal_tab_name_bad_character)
-                    },
-                    note = stringResource(R.string.terminal_tab_name_automatic, automatic),
-                    focusRequester = focus,
-                    onDone = { save() },
-                    counter = {
-                        Text(
-                            stringResource(R.string.device_label_counter, length, TAB_NAME_MAX),
-                            color = if (check is TabNameCheck.Invalid) AppTheme.colors.error else androidx.compose.ui.graphics.Color.Unspecified,
-                            modifier = Modifier.clearAndSetSemantics { contentDescription = spokenCount },
+    // Not the stock alert layout: its fixed 24 dp paddings leave a few dp for the content in landscape at 200 % font with the keyboard
+    // up. The title is the first line of the scrolling content, not a fixed slot; only the buttons keep their place (they are what must
+    // stay reachable), and the room that is left goes to the field, which is brought into view whole.
+    AppDialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        ResizeWithKeyboard()
+        BoxWithConstraints {
+            val tight = maxHeight < 360.dp
+            Surface(
+                modifier = Modifier.widthIn(min = 280.dp, max = 560.dp),
+                shape = AlertDialogDefaults.shape,
+                color = AlertDialogDefaults.containerColor,
+                tonalElevation = AlertDialogDefaults.TonalElevation,
+            ) {
+                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = if (tight) 8.dp else 24.dp, bottom = if (tight) 4.dp else 16.dp)) {
+                    val scroll = rememberScrollState()
+                    val fieldInView = remember { BringIntoViewRequester() }
+                    // The window shrinks above the keyboard (the scroll's room changes) and the name changes: the field itself stays whole
+                    // in view. It is the minimal scroll, so the title stays too whenever both fit.
+                    LaunchedEffect(scroll.maxValue, field.text) { runCatching { fieldInView.bringIntoView() } }
+                    Column(
+                        Modifier.weight(1f, fill = false).verticalScroll(scroll),
+                        verticalArrangement = Arrangement.spacedBy(if (tight) 8.dp else 16.dp),
+                    ) {
+                        Text(stringResource(R.string.terminal_tab_name_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AlertDialogDefaults.titleContentColor)
+                        Field(
+                            label = stringResource(R.string.terminal_tab_name_field),
+                            value = field,
+                            onValueChange = { field = it },
+                            problem = (check as? TabNameCheck.Invalid)?.let {
+                                stringResource(if (it.problem == TabNameProblem.TOO_LONG) R.string.terminal_tab_name_too_long else R.string.terminal_tab_name_bad_character)
+                            },
+                            note = stringResource(R.string.terminal_tab_name_automatic, automatic),
+                            focusRequester = focus,
+                            inputModifier = Modifier.bringIntoViewRequester(fieldInView),
+                            onDone = { save() },
+                            counter = {
+                                Text(
+                                    stringResource(R.string.device_label_counter, length, TAB_NAME_MAX),
+                                    color = if (check is TabNameCheck.Invalid) AppTheme.colors.error else androidx.compose.ui.graphics.Color.Unspecified,
+                                    modifier = Modifier.clearAndSetSemantics { contentDescription = spokenCount },
+                                )
+                            },
                         )
-                    },
-                )
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = if (tight) 0.dp else 8.dp), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(enabled = valid != null, onClick = { save() }) { Text(stringResource(R.string.save)) }
+                    }
+                }
             }
-        },
-        confirmButton = { TextButton(enabled = valid != null, onClick = { save() }) { Text(stringResource(R.string.save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

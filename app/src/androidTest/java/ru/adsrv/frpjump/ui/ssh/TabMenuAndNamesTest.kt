@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -274,6 +275,20 @@ class TabMenuAndNamesTest {
         dialogSave().assertIsDisplayed()
         // The title is the first line of the scrolling content: with the field focused it may be scrolled out, but it is still there.
         compose.onNodeWithText(text(R.string.terminal_tab_name_title)).assertExists()
+        // The name field is whole: inside the scrolling column's visible part and above the keyboard (#292: it was half clipped).
+        val at = IntArray(2); view().getLocationOnScreen(at)
+        // Unclipped frames (position and size): boundsInRoot is already cut by the scroll's clip and would hide the defect.
+        val frameOf = { n: androidx.compose.ui.semantics.SemanticsNode -> listOf(at[1] + n.positionInRoot.y.toInt(), at[1] + n.positionInRoot.y.toInt() + n.size.height) }
+        val (fieldTop, fieldBottom) = frameOf(dialogField().fetchSemanticsNode())
+        val (columnTop, columnBottom) = frameOf(compose.onNode(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) and hasAnyAncestor(isDialog())).fetchSemanticsNode())
+        // The field's node also holds the note under the box, which may be the part that scrolls out when the room is a few lines: the box
+        // is whole when the note starts inside the column (the box ends above it).
+        val (noteTop, _) = frameOf(compose.onNodeWithText(text(R.string.terminal_tab_name_automatic, automatic("A"))).fetchSemanticsNode())
+        assertTrue("The name field starts at $fieldTop above its column [$columnTop, $columnBottom]", fieldTop >= columnTop - 1)
+        assertTrue("The name field's box is clipped: the note below it starts at $noteTop, the column ends at $columnBottom", noteTop <= columnBottom)
+        assertTrue("The name field [$fieldTop, $fieldBottom] is under the keyboard (top $keyboardTop)", fieldTop >= 0 && noteTop <= keyboardTop)
+        dialogField().assertIsDisplayed()
+        dialogField().assertTextContains("build")
     }
 
     @Test fun theTwentyFifthCharacterAndABarAreRefusedAndImeDoneSaves() {
