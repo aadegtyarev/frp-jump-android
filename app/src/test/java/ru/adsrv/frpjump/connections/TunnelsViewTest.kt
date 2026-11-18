@@ -78,4 +78,82 @@ class TunnelsViewTest {
         // A blank query: no line.
         assertNull(tunnelsView(g, true, "  ", ::label).inAll)
     }
+
+    // Favourites: the flag is on the connection; rows of two profiles for the order across them.
+    private fun favGroups(favorites: Set<String>, vararg up: Tunnel): List<DeviceGroup> {
+        val all = listOf(kitchenSsh, kitchenWeb, boiler, attic).map { it.copy(favorite = it.id in favorites) }
+        return groupByDevice(connectionRows("p1", all, TunnelsState(tunnels = up.toList())), emptyMap())
+    }
+
+    private fun favs(view: TunnelsView) = view.favorites.map { it.row.connection.id }
+
+    @Test fun `favourites come first by device name then stored order, and are not listed again below`() {
+        val view = tunnelsView(favGroups(setOf("2", "3", "1")), onlyOn = false, query = "", label = ::label)
+        // Boiler, then wb-kitchen's rows in stored order (1 before 2); each with its device group.
+        assertEquals(listOf("3", "1", "2"), favs(view))
+        assertEquals(listOf("Boiler", "wb-kitchen", "wb-kitchen"), view.favorites.map { it.group.name })
+        // Only attic is left below: a device whose rows are all favourites has no group of its own.
+        assertEquals(listOf("4"), names(view.groups))
+        val all = favs(view) + names(view.groups)
+        assertEquals(all.distinct(), all)
+        assertEquals(setOf("1", "2", "3", "4"), all.toSet())
+    }
+
+    @Test fun `a device with one favourite keeps its other rows in its group`() {
+        val view = tunnelsView(favGroups(setOf("2")), false, "", ::label)
+        assertEquals(listOf("2"), favs(view))
+        assertEquals(listOf("4", "3", "1"), names(view.groups))
+        assertEquals(listOf("wb-kitchen"), view.groups.filter { it.name == "wb-kitchen" }.map { it.name })
+    }
+
+    @Test fun `without favourites there is no first group and the groups are as before`() {
+        val g = favGroups(emptySet())
+        val view = tunnelsView(g, false, "", ::label)
+        assertTrue(view.favorites.isEmpty())
+        assertEquals(g, view.groups)
+    }
+
+    @Test fun `the order of the favourites does not follow the tunnels' state`() {
+        val before = favs(tunnelsView(favGroups(setOf("1", "3")), false, "", ::label))
+        val up = favs(tunnelsView(favGroups(setOf("1", "3"), tunnel("wb-kitchen", 22)), false, "", ::label))
+        assertEquals(before, up)
+        assertEquals(listOf("3", "1"), up)
+    }
+
+    @Test fun `with the filter on only the favourites that are on appear in the first group`() {
+        val g = favGroups(setOf("1", "3"), tunnel("wb-kitchen", 22), tunnel("wb-kitchen", 8080))
+        val view = tunnelsView(g, onlyOn = true, query = "", label = ::label)
+        assertTrue(view.filtered)
+        // 3 (Boiler) is a favourite but off: not there; 2 is on and not a favourite: in its device group.
+        assertEquals(listOf("1"), favs(view))
+        assertEquals(listOf("2"), names(view.groups))
+        // With the filter off the off favourite is back.
+        assertEquals(listOf("3", "1"), favs(tunnelsView(g, false, "", ::label)))
+    }
+
+    @Test fun `search applies to the favourites too, and nothing shows twice`() {
+        val g = favGroups(setOf("1", "3"))
+        // A device name keeps its rows: the favourite among them goes to the first group, the rest stay below.
+        val kitchen = tunnelsView(g, false, "kitch", ::label)
+        assertEquals(listOf("1"), favs(kitchen))
+        assertEquals(listOf("2"), names(kitchen.groups))
+        assertEquals(listOf("3"), favs(tunnelsView(g, false, "panel", ::label)))
+        assertTrue(tunnelsView(g, false, "panel", ::label).groups.isEmpty())
+        assertTrue(tunnelsView(g, false, "printer", ::label).isEmpty)
+    }
+
+    @Test fun `the In all line counts favourites too and a view with only favourites is not empty`() {
+        val g = favGroups(setOf("4"), tunnel("wb-kitchen", 22))
+        val view = tunnelsView(g, true, "attic", ::label)
+        assertTrue(view.isEmpty)
+        assertEquals(1, view.inAll)
+        assertFalse(tunnelsView(g, false, "attic", ::label).isEmpty)
+    }
+
+    @Test fun `an unsaved tunnel is never a favourite`() {
+        val rows = connectionRows("p1", listOf(kitchenSsh.copy(favorite = true)), TunnelsState(tunnels = listOf(tunnel("router", 9000))))
+        val view = tunnelsView(groupByDevice(rows, emptyMap()), false, "", ::label)
+        assertEquals(listOf("1"), favs(view))
+        assertEquals(1, view.groups.sumOf { it.rows.size })
+    }
 }

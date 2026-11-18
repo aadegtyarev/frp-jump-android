@@ -46,7 +46,7 @@ and safety warnings; visual minimalism must not remove them.
 One chat screen, one conversation, reached three ways; the entry changes nothing about what the chat does.
 
 - Settings → LLM assistant → Chat.
-- The bottom navigation's item after the sections (Devices, Tunnels, Sessions), "Assistant" / «Помощник» (a neutral chat-bubble icon). It is shown only while the module is on,
+- The bottom navigation's item after the sections (Devices, Tunnels, Sessions), "Assistant" / «Помощник» (the ✦ sparkles icon, also on the Settings «Чат» row). It is shown only while the module is on,
   appears and disappears with the setting without a restart, and opens the chat over the current section; Back returns to that
   section. All the labels stay whole in both languages, in landscape, at 200% font and in a 320 dp wide window (the label size steps
   down to a floor, tracking is tight, nothing is cut). The item opens a screen and is never selected, so it is announced as a button,

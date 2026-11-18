@@ -13,6 +13,7 @@ import ru.adsrv.frpjump.FrpJumpApp
 import ru.adsrv.frpjump.locale.Texts
 import ru.adsrv.frpjump.notices.NoticeKind
 import ru.adsrv.frpjump.connections.onTunnelCount
+import ru.adsrv.frpjump.connections.TunnelsView
 import ru.adsrv.frpjump.connections.tunnelsView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,7 +28,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.snapshotFlow
+import ru.adsrv.frpjump.tunnel.SessionOn
+import ru.adsrv.frpjump.ui.AssistantGlyph
+import ru.adsrv.frpjump.ui.devices.OpenRow
+import ru.adsrv.frpjump.ui.devices.SwipeReveal
+import ru.adsrv.frpjump.ui.devices.closesOpenRow
+import ru.adsrv.frpjump.ui.devices.touchesRow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -84,12 +97,14 @@ fun ConnectionsScreen(
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
     onSettings: () -> Unit,
+    /** Opens the assistant chat with this draft (nothing is sent); null while the assistant is off: no such menu item and no such swipe. */
+    onAskAssistant: ((draft: String) -> Unit)? = null,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val grants by vm.actions.assistantGrants.collectAsStateWithLifecycle()
     val ui = remember { ConnectionUi() }
-    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt, onAskAssistant)
     val colors = AppTheme.colors
     val context = LocalContext.current
     // While the tab shows, the device lists are kept fresh, as on Devices.
@@ -126,8 +141,15 @@ fun ConnectionsScreen(
     val all = state.rows
     val count = onTunnelCount(state.groups, restoring ?: 0)
     val view = tunnelsView(state.groups, onlyOn, query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
-    val shown = view.groups
-    Column(Modifier.fillMaxSize()) {
+    // The row swiped open, one at a time; Back closes it first. A finger landing anywhere else, a scroll or a pull closes it too.
+    val openRow = remember { OpenRow() }
+    BackHandler(enabled = openRow.name != null) { openRow.close() }
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState, openRow) {
+        snapshotFlow { listState.isScrollInProgress }.collect { if (it) openRow.close() }
+    }
+    LaunchedEffect(state.refreshing) { if (state.refreshing) openRow.close() }
+    Column(Modifier.fillMaxSize().closesOpenRow(openRow)) {
         TunnelsHeader(
             searching = searching,
             query = query,
@@ -155,6 +177,7 @@ fun ConnectionsScreen(
         ) {
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -179,7 +202,7 @@ fun ConnectionsScreen(
                     item(key = "empty") { Text(stringResource(R.string.connections_empty), fontSize = 14.sp, color = colors.muted, modifier = Modifier.padding(4.dp)) }
                 }
                 // A search that finds nothing says so, rather than leave an empty screen.
-                if (all.isNotEmpty() && shown.isEmpty()) {
+                if (all.isNotEmpty() && view.isEmpty) {
                     item(key = "no-match") {
                         Text(
                             stringResource(R.string.connections_no_match, query.trim()),
@@ -206,24 +229,7 @@ fun ConnectionsScreen(
                         )
                     }
                 }
-                shown.forEachIndexed { index, group ->
-                    item(key = "device/${group.key}") {
-                        GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0)
-                    }
-                    items(group.rows, key = { it.key }) { row ->
-                        ConnectionCard(
-                            row = row,
-                            sshMethod = state.sshMethods[row.key],
-                            sessions = row.sessionsIn(sessions),
-                            menuOpen = ui.menu == row.key,
-                            onMenu = { ui.menu = if (it) row.key else null },
-                            actions = actions,
-                            offline = group.offline,
-                            assistant = if (row.saved) grants[GrantTarget(row.profile, row.connection.id)] else null,
-                            onForgetAssistant = { vm.actions.forgetAssistant(row) },
-                        )
-                    }
-                }
+                tunnelRows(view, state, sessions, grants, ui, actions, { vm.actions.forgetAssistant(it) }, openRow)
             }
         }
     }
@@ -292,5 +298,137 @@ private fun GroupHeader(group: DeviceGroup, profileColor: String?, first: Boolea
             Text(group.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
             device?.label?.let { Text(it, fontSize = 13.sp, color = colors.muted) }
         }
+    }
+}
+
+/**
+ * The rows of the Tunnels list: the favourites, a group of their own on top (each card with its device, in a fixed order), then the devices with
+ * their other connections. Each card is swipeable ([TunnelCard]).
+ */
+internal fun LazyListScope.tunnelRows(
+    view: TunnelsView,
+    state: ConnectionsUiState,
+    sessions: List<SessionOn>,
+    grants: Map<GrantTarget, AssistantMark>,
+    ui: ConnectionUi,
+    actions: RowActions,
+    onForgetAssistant: (ConnectionRow) -> Unit,
+    openRow: OpenRow,
+) {
+    if (view.favorites.isNotEmpty()) {
+        item(key = "favorites") { SectionHeading(stringResource(R.string.connections_favorites), first = true) }
+        items(view.favorites, key = { it.row.key }) { favorite ->
+            TunnelCard(favorite.row, favorite.group.offline, favorite.group.name, state, sessions, grants, ui, actions, onForgetAssistant, openRow)
+        }
+    }
+    view.groups.forEachIndexed { index, group ->
+        item(key = "device/${group.key}") {
+            GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0 && view.favorites.isEmpty())
+        }
+        items(group.rows, key = { it.key }) { row ->
+            TunnelCard(row, group.offline, null, state, sessions, grants, ui, actions, onForgetAssistant, openRow)
+        }
+    }
+}
+
+/** The heading of the favourites group: the same place and weight as a device's name. */
+@Composable
+private fun SectionHeading(text: String, first: Boolean) {
+    Text(
+        text,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = AppTheme.colors.ink,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 4.dp, top = if (first) 4.dp else 16.dp)
+            .semantics { heading() },
+    )
+}
+
+/** How far a card slides aside for a button. */
+private val REVEAL_WIDTH = 76.dp
+
+/**
+ * One connection's card with its swipes ([SwipeReveal]): to the left it reveals "Ask the assistant" (absent while the assistant is off), to the right
+ * the favourites star. Nothing runs by the swipe: the revealed button's tap does, then the card slides back. [deviceName] is set where the card has
+ * no device header over it (the favourites).
+ */
+@Composable
+private fun TunnelCard(
+    row: ConnectionRow,
+    offline: Boolean,
+    deviceName: String?,
+    state: ConnectionsUiState,
+    sessions: List<SessionOn>,
+    grants: Map<GrantTarget, AssistantMark>,
+    ui: ConnectionUi,
+    actions: RowActions,
+    onForgetAssistant: (ConnectionRow) -> Unit,
+    openRow: OpenRow,
+) {
+    val colors = AppTheme.colors
+    val ask = actions.ask?.takeIf { row.saved }
+    val revealed = openRow.name == row.key
+    SwipeReveal(
+        open = revealed,
+        enabled = ask != null,
+        onOpenChange = { now -> openRow.reported(row.key, now) },
+        actionWidth = REVEAL_WIDTH,
+        action = {
+            RevealButton(
+                stringResource(R.string.terminal_ask_assistant),
+                glyph = { Icon(AssistantGlyph, contentDescription = null, tint = colors.onAccentContainer, modifier = Modifier.size(22.dp)) },
+                modifier = Modifier.testTag("swipe_ask_assistant"),
+            ) {
+                openRow.close()
+                ask?.invoke(row)
+            }
+        },
+        modifier = Modifier.touchesRow(openRow, row.key).testTag("tunnel_card_${row.connection.id}"),
+        startAction = {
+            val remove = row.connection.favorite
+            RevealButton(
+                stringResource(if (remove) R.string.favorite_remove else R.string.favorite_add),
+                glyph = { Text(if (remove) "\u2606" else "\u2605", fontSize = 24.sp, color = colors.onAccentContainer) },
+                modifier = Modifier.testTag("swipe_favorite"),
+            ) {
+                openRow.close()
+                actions.favorite(row)
+            }
+        },
+        startActionWidth = REVEAL_WIDTH,
+        startEnabled = row.saved,
+    ) {
+        ConnectionCard(
+            row = row,
+            sshMethod = state.sshMethods[row.key],
+            sessions = row.sessionsIn(sessions),
+            menuOpen = ui.menu == row.key,
+            onMenu = { ui.menu = if (it) row.key else null },
+            actions = actions,
+            offline = offline,
+            deviceName = deviceName,
+            assistant = if (row.saved) grants[GrantTarget(row.profile, row.connection.id)] else null,
+            onForgetAssistant = { onForgetAssistant(row) },
+            revealed = revealed,
+            onCloseReveal = openRow::close,
+        )
+    }
+}
+
+/** The button behind a card swiped aside; its description names the action (the glyph is drawn, not read). */
+@Composable
+private fun RevealButton(label: String, glyph: @Composable () -> Unit, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = AppTheme.colors.accentContainer,
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier
+            .width(REVEAL_WIDTH - 6.dp)
+            .fillMaxHeight()
+            .semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) { glyph() }
     }
 }

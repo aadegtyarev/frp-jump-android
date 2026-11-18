@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
@@ -58,20 +61,28 @@ fun ConnectionAssistantSheet(name: String, mark: AssistantMark, onAskAgain: () -
     }
 }
 
-/** A button 32 dp tall (more as the font grows); Material's surface gives it the 48 dp touch target. */
+/**
+ * A button 32 dp tall as drawn (more as the font grows), with a touch target of 44 dp at least around it: the click is on the outer box, so the
+ * surface inside keeps its own size (Material's own minimum size would draw the button 48 dp tall).
+ */
 @Composable
 private fun SheetButton(text: String, primary: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = AppTheme.colors
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = if (primary) colors.accent else Color.Transparent,
-        contentColor = if (primary) colors.onAccent else colors.accent,
-        border = if (primary) null else BorderStroke(1.dp, colors.outline),
-        modifier = modifier,
+    Box(
+        modifier
+            .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.heightIn(min = 32.dp).padding(horizontal = 16.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-            Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Surface(
+            shape = CircleShape,
+            color = if (primary) colors.accent else Color.Transparent,
+            contentColor = if (primary) colors.onAccent else colors.accent,
+            border = if (primary) null else BorderStroke(1.dp, colors.outline),
+        ) {
+            Box(Modifier.heightIn(min = 32.dp).padding(horizontal = 16.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+            }
         }
     }
 }

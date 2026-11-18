@@ -135,10 +135,11 @@ profile without re-enrollment.
 ### 2. Switching profiles
 
 - The device list shows one profile at a time; a switcher at the top changes it. The Devices header, left to right: the switcher,
-  the tunnel chip (only while this profile has tunnels up), the search magnifier (while there is a list to search) and the gear. The
+  the tunnel chip (only while some profile has tunnels up), the search magnifier (while there is a list to search) and the gear. The
   icon buttons sit next to each other, each with its own 44 dp field; the 8 dp gap is only between the switcher and the rest. The
-  chip is the Tunnels section's link glyph and the number of this profile's tunnels up (tunnels whose disconnect waits for Undo
-  are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural forms kept), as a button that opens Tunnels. There
+  chip is the Tunnels section's link glyph and the number of the tunnels up in ALL profiles together, not only the shown one's (the Tunnels
+  tab lists them all; tunnels whose disconnect waits for Undo are not counted); TalkBack reads it as "N tunnels" («N туннелей», plural
+  forms kept), as a button that opens Tunnels. There
   is no power button in this header: one profile's tunnels go down from a device row (swipe), the device card or Tunnels'
   "Stop all". The switcher is never narrower than 126 dp at 100% font and 66 dp at 200% at 360 dp with one tunnel up.
 - The visible profile polls every 2 s while the app is open. Other profiles
@@ -320,11 +321,28 @@ Quick access to the saved connections of every device.
   last device list. No label, or a list not read yet, means no line. With
   more than one profile on the tab, the header also shows the
   profile's colour; devices of the same name in two profiles are two groups.
-- Order: devices by name, ignoring case, then profile order. Neither a
-  tunnel's state nor a device's online state changes it, and nothing
-  re-sorts on a visit, a pull or a state change. Within a group the
-  connections keep their stored order; a tunnel up that no saved
-  connection names is listed after them, under its device.
+- Order: first the group «★ Избранные» / "★ Favourites" (when a connection is a favourite and shown), then the devices by name, ignoring
+  case, then profile order. Neither a tunnel's state nor a device's online state changes it, and nothing re-sorts on a visit, a pull or a
+  state change. Within a group the connections keep their stored order; a tunnel up that no saved connection names is listed after them,
+  under its device.
+- Favourites: any saved connection can be marked (the flag is stored with it, see "Stored on the phone"; a tunnel no connection names
+  cannot be). The first group lists the favourites of every profile, each card with «· device» after its name (it has no device header
+  over it), in a fixed order: device name (ignoring case), then profile order, then the stored order. A favourite is listed there and
+  not again under its device, so nothing shows twice, and a device whose connections are all favourites has no group of its own. The
+  filter and the search apply to both alike: with the filter on only the favourites that are on appear in the first group. On every
+  favourite card (here and on the device card) a small muted ★ follows the name; TalkBack says "favourite" / «в избранном», not the glyph.
+  The flag is the owner's list order only: the assistant never sees it, it is not part of what the assistant's permissions are bound to,
+  and changing it does not end a grant. It goes with its connection (delete, forgetting or removing its profile).
+- The card's "⋮" menu (and a long press) has, besides the actions of the device card, "Add to favourites" / «В избранное» or "Remove from
+  favourites" / «Убрать из избранного», and, while the assistant is on, ✦ "Ask the assistant" / «Спросить помощника» (the device card has the
+  same items).
+- Swipes on a saved connection's card, as on a Devices row (a swipe reveals a button; nothing runs by the swipe, only the button's tap does,
+  and then the card slides back): to the left ✦ "Ask the assistant" opens the assistant's chat with the draft «Про туннель <name> (<device>): » /
+  "About tunnel <name> (<device>): " after what is already typed; nothing is sent. This side is absent while the assistant is off. To the
+  right ★ "Add to favourites" / "Remove from favourites". One card is open at a time; another opening, a scroll or a pull, Back, a tap on the
+  open card (it puts it back instead of acting) or anywhere else closes it. The swipes are horizontal only, so the list's vertical scroll
+  and pull to refresh work; a touch that starts in the system gesture zone at a screen edge belongs to the system's Back gesture. Both
+  actions are also TalkBack custom actions on the card, with the same labels.
 - Each connection is the same compact card as on the device card: on the left its name (its own only when it has one other than the kind; a
   default "SSH" is not repeated), the kind as text over the port (and the SSH user and login method), the state with the local address on one line,
   and the assistant mark (§4) when it has a grant; on the right, vertically centred, up to three round buttons (32 dp visible, growing with the
@@ -1164,6 +1182,7 @@ cancellation and current execution boundaries belong to the
 | The owner's limits (Settings → Assistant → Limits): the one `assistant_limits` group of the settings file with eighteen integer keys, each with its own default and range (assistant: `tool_timeout_s`, `model_timeout_s`, `reply_s`, `steps_per_reply`, `calls_per_step`, `tool_output_chars`, `skills_max`, `skill_chars`, `skills_list_chars`; waits: `waits_at_once`, `wait_max_minutes`, `event_replies`, `sessions_at_once`; terminal: `input_chars`, `keys_at_once`, `read_lines_max`; tunnels: `tunnel_wait_s`, `reconnect_minutes`); each key is read on its own and a file without it keeps the default; the same group also holds the window split of the provider form (`history_percent`, `reply_percent`, `summary_size_percent`, `reply_limited_from`, read once from the older trigger, answer reserve and summary size: see [Limits](agent-contract.md#limits)), and the older `summary_percent` stays as it was; `reply_chars` and `fresh_tool_percent` are no longer written | app-private storage; the settings file |
 | The owner's skills (written only by the assistant's `skill_save` / `skill_delete` after the owner's confirmation, with «Скиллы» on): name, description, required tool names and a Markdown text of each; not secret by rule (the model is told never to put secrets in a skill) | app-private no-backup storage (`assistant_skills.json`); removed with the app's data; no file until a skill is saved |
 | The «Скиллы» / "Skills" switch (`assistant_skills`, default off) | app-private storage; the settings file |
+| The favourite flag of a saved connection: the optional `favorite` key of its record in the profile's `connections.json`, written only while true (`"favorite": true`), so a file without any favourite is what older versions wrote; files without the key read as not favourite. An older version ignores the key and reads the file, and drops the flag when it next saves the list. It is not an assistant permission and is not part of the permission fingerprint. Removed with its connection (delete, forgetting or removing the profile) | app-private storage; the profile's `connections.json` |
 | The Tunnels tab's filter "only tunnels that are on" (`connections_only_on`, default on): a new key in the settings file; files without it, or with a malformed value, read as on | app-private storage; the settings file |
 | The assistant's remembered "For this connection" permissions: the optional `overrides` array of the `assistant_confirmations` object of the settings file (version stays 1; at most 500; absent with no record). One record each: profile and connection UUIDs, the action class and the tool wire names, a fingerprint hash of the connection (and its profile, enrollment's public part, SSH login and pinned host key) and the time given; no name, address, user, command or secret. Removed when the connection is edited, deleted or forgotten, its profile is forgotten or enrolled again, the assistant or the tool is turned off, or the owner taps Forget. A "For session" grant is in memory only and is not stored | app-private storage; the settings file |
 

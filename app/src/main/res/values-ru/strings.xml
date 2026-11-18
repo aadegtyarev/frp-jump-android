@@ -255,6 +255,12 @@
     <string name="connections_search_scope_on">Поиск среди включённых</string>
     <string name="connections_search_scope_all">Поиск по всем туннелям</string>
     <string name="connections_in_all">Во всех: %1$d · Показать</string>
+    <string name="connections_favorites">★ Избранные</string>
+    <string name="favorite_add">В избранное</string>
+    <string name="favorite_remove">Убрать из избранного</string>
+    <string name="favorite_spoken">в избранном</string>
+    <string name="favorite_save_failed">Не удалось сохранить избранное (%s). Попробуйте ещё раз.</string>
+    <string name="ask_assistant_about_tunnel">Про туннель %1$s (%2$s):</string>
     <string name="connections_clear_query">Очистить текст</string>
     <string name="connections_only_on">Только включённые, %1$d</string>
     <string name="connections_no_match">Нет туннелей по запросу «%s».</string>

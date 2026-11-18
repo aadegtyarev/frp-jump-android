@@ -292,6 +292,26 @@ class ConnectionActions(private val app: FrpJumpApp, private val scope: Coroutin
     }
 
     /**
+     * Puts [row]'s connection in the favourites, or takes it out ([favorite]): the flag is stored with the connection. In the app's scope, so the
+     * screen going away does not cancel it; a write that fails says so. Main thread.
+     */
+    fun setFavorite(row: ConnectionRow, favorite: Boolean) {
+        if (!row.saved) return
+        val runtime = runtime(row.profile) ?: return
+        app.appScope.launch {
+            val failure = try {
+                withContext(Dispatchers.IO) { runtime.connections.setFavorite(row.connection.id, favorite) }
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.userMessage()
+            }
+            if (failure != null) app.notices.show(Texts.get(R.string.favorite_save_failed, failure), NoticeKind.WARN, long = true)
+        }
+    }
+
+    /**
      * Deletes [row]'s connection, with Undo: it leaves the screens at once
      * and is removed when the notice goes ([ru.adsrv.frpjump.undo.PendingUndo]).
      * Main thread.

@@ -77,12 +77,14 @@ fun DeviceCardScreen(
     onOpenTerminal: (sessionId: Int) -> Unit,
     onOpenFiles: (targetId: Int) -> Unit,
     onOpenMqtt: (sessionId: Int) -> Unit,
+    /** Opens the assistant chat with this draft; null while the assistant is off. */
+    onAskAssistant: ((draft: String) -> Unit)? = null,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions by vm.actions.sessions.collectAsStateWithLifecycle(emptyList())
     val grants by vm.actions.assistantGrants.collectAsStateWithLifecycle()
     val ui = remember { ConnectionUi() }
-    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt)
+    val actions = rememberRowActions(ui, vm.actions, onOpenWeb, onOpenTerminal, onOpenFiles, onOpenMqtt, onAskAssistant)
     val notificationsFirst = rememberNotificationsFirst()
     var adding by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }

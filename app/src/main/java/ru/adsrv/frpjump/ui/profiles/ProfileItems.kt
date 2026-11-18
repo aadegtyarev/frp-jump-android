@@ -46,6 +46,9 @@ fun profileItems(
     )
 }
 
+/** The tunnels that are on in ALL profiles together: what the Devices tab's chip counts (it leads to the Tunnels tab, which lists them all). */
+fun tunnelsOnAll(items: List<ProfileItem>): Int = items.sumOf { it.tunnels }
+
 /**
  * Profiles deleted on their server that the device list does not show:
  * their polls stopped quietly, so the list says so in one line. (The

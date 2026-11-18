@@ -293,6 +293,7 @@ fun AppNav() {
                     onOpenFiles = { nav.navigate(Routes.files(it)) },
                     onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
                     onSettings = { nav.openSettings() },
+                    onAskAssistant = if (assistantEnabledNow(app)) ({ draft -> nav.askAssistant(app, draft) }) else null,
                 )
             }
         }
@@ -322,6 +323,7 @@ fun AppNav() {
                 onOpenTerminal = { nav.navigate(Routes.terminal(it)) },
                 onOpenFiles = { nav.navigate(Routes.files(it)) },
                 onOpenMqtt = { nav.navigate(Routes.mqtt(it)) },
+                onAskAssistant = if (assistantEnabledNow(app)) ({ draft -> nav.askAssistant(app, draft) }) else null,
             )
         }
         composable(Routes.TERMINAL) { entry ->

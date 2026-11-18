@@ -48,7 +48,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -105,6 +110,9 @@ fun ConnectionCard(
     assistant: AssistantMark? = null,
     /** "Ask again": ends both lifetimes at once, with no confirmation (it narrows authority). */
     onForgetAssistant: () -> Unit = {},
+    /** The card is swiped aside ([ru.adsrv.frpjump.ui.devices.SwipeReveal]): a tap on it puts it back instead of acting. */
+    revealed: Boolean = false,
+    onCloseReveal: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     val c = row.connection
@@ -113,6 +121,9 @@ fun ConnectionCard(
     // Up, it stays usable: "⏻ off" is what the owner needs then.
     val unreachable = connectBlocked(row, offline)
     val tapEnabled = cardTap(row) != CardTap.NONE && !unreachable
+    val favorite = row.saved && c.favorite
+    val favoriteLabel = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add)
+    val askLabel = stringResource(R.string.terminal_ask_assistant)
     val openMenu by rememberUpdatedState { onMenu(true) }
     val details = details(row, sshMethod)
     // Its own name only when it says more than the kind: "z2m", not "SSH".
@@ -128,14 +139,25 @@ fun ConnectionCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
+            // The swipes' actions, for TalkBack, which has no swipe of this kind: the same two, on the card.
+            .then(
+                if (row.saved) {
+                    Modifier.semantics {
+                        customActions = listOfNotNull(
+                            actions.ask?.let { ask -> CustomAccessibilityAction(askLabel) { ask(row); true } },
+                            CustomAccessibilityAction(favoriteLabel) { actions.favorite(row); true },
+                        )
+                    }
+                } else Modifier,
+            )
             // Anywhere but its buttons: its main action, as the button labels it (connecting first when down);
             // being disconnected, or its device offline, no action of its own, for touch or TalkBack,
             // while a long press still opens its menu (TalkBack has "⋮" for it).
             .then(
-                if (tapEnabled) {
+                if (tapEnabled || revealed) {
                     Modifier.combinedClickable(
-                        onClickLabel = cardTapLabel(row, sessions),
-                        onClick = { actions.tap(row) },
+                        onClickLabel = if (revealed) null else cardTapLabel(row, sessions),
+                        onClick = { if (revealed) onCloseReveal() else actions.tap(row) },
                         onLongClick = { if (hasMenu(row)) onMenu(true) },
                     )
                 } else if (hasMenu(row)) {
@@ -153,11 +175,25 @@ fun ConnectionCard(
             Column(Modifier.weight(1f).alpha(if (unreachable) DIMMED else 1f).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 // The name is what tells connections apart: on lines of its own, never cut.
                 val where = deviceName?.let { " · $it" }.orEmpty()
+                val favoriteSpoken = stringResource(R.string.favorite_spoken)
+                // A favourite has a small muted star after its name; TalkBack says "favourite", not the glyph.
+                val nameLine: @Composable (String) -> Unit = { text ->
+                    Text(
+                        buildAnnotatedString {
+                            append(text)
+                            if (favorite) withStyle(SpanStyle(color = colors.muted, fontSize = 13.sp, fontWeight = FontWeight.Normal)) { append(" \u2605") }
+                            append(where)
+                        },
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = if (favorite) Modifier.clearAndSetSemantics { contentDescription = "$text, $favoriteSpoken$where" } else Modifier,
+                    )
+                }
                 if (title != null) {
-                    Text(title + where, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    nameLine(title)
                     Text(details, fontSize = 13.sp, color = colors.muted)
                 } else {
-                    Text(details + where, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    nameLine(details)
                 }
                 // State and address on one line (wrapping only when the font is too large for both), in the body font with tabular digits.
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp), itemVerticalAlignment = Alignment.CenterVertically) {

@@ -53,7 +53,7 @@ fun groupByDevice(rows: List<ConnectionRow>, devices: Map<String, List<DeviceRow
             val (profile, name) = key
             DeviceGroup(profile, name, devices[profile]?.firstOrNull { it.name == name }, list)
         }
-        // A favourites-first key goes before the name.
+        // Favourites come first on the Tunnels tab, but as a group of their own over these ([tunnelsView]): a device's group never holds one.
         .sortedWith(
             compareBy<DeviceGroup, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
                 .thenBy { profileOrder.indexOf(it.profile) },
@@ -80,13 +80,23 @@ fun filterGroups(groups: List<DeviceGroup>, query: String, label: (ConnectionRow
 /** The tunnels that are on: those with a tunnel (up or coming up) and the ones still being restored (they have no row yet). */
 fun onTunnelCount(groups: List<DeviceGroup>, restoring: Int): Int = groups.sumOf { g -> g.rows.count { it.active } } + restoring.coerceAtLeast(0)
 
+/** A favourite row of the first group, with the device group it comes from (its name for "· device", its online state). */
+data class FavoriteRow(val group: DeviceGroup, val row: ConnectionRow)
+
 /**
  * What the Tunnels tab lists, for the filter "only on" ([onlyOn], the choice) and the search [query]: with the filter in effect only the
  * rows with a tunnel, searched within them as everywhere ([filterGroups]). The filter is not in effect while no row is on (at 0, or only
  * tunnels still being restored, which have no row to show): then all of them are listed. [inAll] is set when the scope found nothing for the
  * query but all tunnels have matches: how many rows, for the line that offers to turn the filter off.
+ *
+ * What is listed is split once: [favorites] are the saved connections with the flag, in the order of their device groups (device name, then
+ * profile order) and the stored order within one; [groups] are the other rows by device as [groupByDevice] orders them, a device left out when
+ * all its rows are favourites. A row is in one place only, and the filter and the search apply to both alike.
  */
-data class TunnelsView(val groups: List<DeviceGroup>, val filtered: Boolean, val inAll: Int?)
+data class TunnelsView(val favorites: List<FavoriteRow>, val groups: List<DeviceGroup>, val filtered: Boolean, val inAll: Int?) {
+    /** Nothing is listed. */
+    val isEmpty: Boolean get() = favorites.isEmpty() && groups.isEmpty()
+}
 
 fun tunnelsView(groups: List<DeviceGroup>, onlyOn: Boolean, query: String, label: (ConnectionRow) -> String): TunnelsView {
     val filtered = onlyOn && groups.any { g -> g.rows.any { it.active } }
@@ -95,5 +105,7 @@ fun tunnelsView(groups: List<DeviceGroup>, onlyOn: Boolean, query: String, label
     val inAll = if (filtered && shown.isEmpty() && query.isNotBlank()) {
         filterGroups(groups, query, label).sumOf { it.rows.size }.takeIf { it > 0 }
     } else null
-    return TunnelsView(shown, filtered, inAll)
+    val favorites = shown.flatMap { g -> g.rows.filter { it.saved && it.connection.favorite }.map { FavoriteRow(g, it) } }
+    val rest = shown.mapNotNull { g -> g.rows.filterNot { it.saved && it.connection.favorite }.takeIf { it.isNotEmpty() }?.let { g.copy(rows = it) } }
+    return TunnelsView(favorites, rest, filtered, inAll)
 }

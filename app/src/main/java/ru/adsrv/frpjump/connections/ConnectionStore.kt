@@ -21,12 +21,26 @@ class ConnectionStore(
     private val _connections = MutableStateFlow(load())
     val connections: StateFlow<List<Connection>> = _connections
 
-    /** Adds [connection], or replaces the one with its id in place. */
+    /**
+     * Adds [connection], or replaces the one with its id in place; a replaced one keeps its favourite flag ([setFavorite] is the only
+     * way to change it), so an edit never loses it.
+     */
     @Synchronized
     fun save(saved: Connection) {
         val connection = saved.withStandardScheme()
         val now = _connections.value
-        write(if (now.any { it.id == connection.id }) now.map { if (it.id == connection.id) connection else it } else now + connection)
+        write(
+            if (now.any { it.id == connection.id }) now.map { if (it.id == connection.id) connection.copy(favorite = it.favorite) else it }
+            else now + connection,
+        )
+    }
+
+    /** Sets or clears the favourite flag of the connection with [id]; nothing is written when it is missing or already so. */
+    @Synchronized
+    fun setFavorite(id: String, favorite: Boolean) {
+        val now = _connections.value
+        if (now.none { it.id == id && it.favorite != favorite }) return
+        write(now.map { if (it.id == id) it.copy(favorite = favorite) else it })
     }
 
     @Synchronized

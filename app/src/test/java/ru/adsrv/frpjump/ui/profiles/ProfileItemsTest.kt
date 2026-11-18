@@ -38,6 +38,16 @@ class ProfileItemsTest {
     }
 
     @Test
+    fun `the Devices chip counts the tunnels of all profiles, not the shown one's`() {
+        val items = profileItems(index, mapOf("w" to 2, "c" to 3), emptySet(), emptyMap())
+        // "h" is the shown profile and has none: the chip still shows the others'.
+        assertEquals(0, items.first { it.current }.tunnels)
+        assertEquals(5, tunnelsOnAll(items))
+        assertEquals(0, tunnelsOnAll(profileItems(index, emptyMap(), emptySet(), emptyMap())))
+        assertEquals(0, tunnelsOnAll(emptyList()))
+    }
+
+    @Test
     fun `only removed profiles that are not shown get the line on the device list`() {
         val items = profileItems(index, emptyMap(), setOf("h", "c"), emptyMap())
         assertEquals(listOf("c"), removedElsewhere(items).map { it.id })

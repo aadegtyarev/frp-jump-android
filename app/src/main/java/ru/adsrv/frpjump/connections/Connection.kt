@@ -35,7 +35,17 @@ data class Connection(
      * range in Settings. Connections to the same device and port share it.
      */
     @SerialName("local_port") val localPort: Int? = null,
+    /**
+     * Listed first on the Tunnels tab, under "Favourites". Written only while true (`"favorite": true`), so a file without
+     * any favourite is byte for byte what older versions wrote, and an older version reads a file with one (it ignores
+     * unknown keys) and keeps working; it drops the flag when it next saves the list. Not part of what the assistant's
+     * permissions are bound to ([withoutFavorite]), and never shown to the assistant.
+     */
+    val favorite: Boolean = false,
 ) {
+    /** This connection as the assistant's permissions see it: the favourite flag is the owner's list order, not a change of the connection. */
+    val withoutFavorite: Connection get() = if (favorite) copy(favorite = false) else this
+
     /** The SSH user, `root` when none is set. */
     val sshUser: String get() = user?.trim()?.takeIf { it.isNotEmpty() } ?: SshLogin.DEFAULT_USER
 
