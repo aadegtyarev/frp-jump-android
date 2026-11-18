@@ -308,7 +308,7 @@ profile without re-enrollment.
 
 ### 5. Tunnels tab
 
-Quick access to the saved connections of every device, active ones first.
+Quick access to the saved connections of every device.
 
 - Grouped by device. A group's header starts with the device tile from the
   Devices list, the same component in a smaller size: the device's icon,
@@ -342,16 +342,23 @@ Quick access to the saved connections of every device, active ones first.
   asked when the tab shows, the shown profile's is polled as on Devices,
   the others are asked again every 10 s; pull to refresh asks them all.
   Dots and buttons follow at once; the order of the devices does not move.
-- From 6 connections, a magnifier in the title opens search, as on Devices:
-  it matches the device name or its label (all its connections) or a
-  connection's name, compared as in Devices search; nothing found says so.
-- While any tunnel is up (or being restored), the title has a power button,
-  "Stop all": it disconnects every profile's tunnels, with Undo. The
-  header's icons (that button, the magnifier, the gear) are at the right end of
-  the title's row; when the title and the icons do not fit one row (200% font
-  in portrait at 360 dp, for example) the icons take a row of their own and
-  the title is below them, whole, never cut or broken inside a word. The
-  Sessions header is its title and the gear.
+- The header has no visible title (the bottom bar names the tab; TalkBack gets an invisible "Tunnels" heading). At 100% font it is one row:
+  the search, the filter, "⏻ Stop all" and the gear. When they do not fit (a large font in a narrow window; decided by measuring, not by the
+  font scale) it is two rows: the search and the gear, then the filter and "⏻". Nothing is cut or broken inside a word. The Sessions header is
+  its title and the gear.
+- Search is always there, at any number of connections: a 36 dp pill "Search" / «Поиск». A tap expands it over the whole header (the other
+  items hide) with "←" (closes: clears the query and collapses) and "✕" (clears the text); system Back closes it first. Its placeholder names the
+  scope: "Search tunnels that are on" / «Поиск среди включённых» with the filter on, otherwise "Search all tunnels" / «Поиск по всем туннелям».
+  It matches the device name or its label (all its connections in the scope) or a connection's name, compared as in Devices search, within the
+  shown scope; nothing found says so. When the scope shows nothing but tunnels that are off match, one line "In all: N · Show" / «Во всех: N ·
+  Показать» turns the filter off.
+- The filter "only tunnels that are on": a 32 dp toggle with the link glyph and the count of the tunnels that are on (up, connecting or being
+  restored, across all profiles). On, the list shows only the tunnels that are on; off, all. It is remembered (a UI choice in the settings
+  file, with the other display choices) and on the first time. At 0 it is disabled and the list shows all. TalkBack: "Only tunnels that are
+  on, N" / «Только включённые, N», a switch with its state.
+- "⏻ Stop all" is always in its place and disabled when nothing is on or being restored, so the header does not move. It disconnects every
+  profile's tunnels, with Undo; a spinner while the servers are told. TalkBack: "Turn off all tunnels, N" / «Выключить все туннели, N».
+  The gear opens Settings.
 - Nothing saved: "No saved tunnels yet. Open a device on Devices and tap
   “Tunnel”."
 
@@ -1157,6 +1164,7 @@ cancellation and current execution boundaries belong to the
 | The owner's limits (Settings → Assistant → Limits): the one `assistant_limits` group of the settings file with eighteen integer keys, each with its own default and range (assistant: `tool_timeout_s`, `model_timeout_s`, `reply_s`, `steps_per_reply`, `calls_per_step`, `tool_output_chars`, `skills_max`, `skill_chars`, `skills_list_chars`; waits: `waits_at_once`, `wait_max_minutes`, `event_replies`, `sessions_at_once`; terminal: `input_chars`, `keys_at_once`, `read_lines_max`; tunnels: `tunnel_wait_s`, `reconnect_minutes`); each key is read on its own and a file without it keeps the default; the same group also holds the window split of the provider form (`history_percent`, `reply_percent`, `summary_size_percent`, `reply_limited_from`, read once from the older trigger, answer reserve and summary size: see [Limits](agent-contract.md#limits)), and the older `summary_percent` stays as it was; `reply_chars` and `fresh_tool_percent` are no longer written | app-private storage; the settings file |
 | The owner's skills (written only by the assistant's `skill_save` / `skill_delete` after the owner's confirmation, with «Скиллы» on): name, description, required tool names and a Markdown text of each; not secret by rule (the model is told never to put secrets in a skill) | app-private no-backup storage (`assistant_skills.json`); removed with the app's data; no file until a skill is saved |
 | The «Скиллы» / "Skills" switch (`assistant_skills`, default off) | app-private storage; the settings file |
+| The Tunnels tab's filter "only tunnels that are on" (`connections_only_on`, default on): a new key in the settings file; files without it, or with a malformed value, read as on | app-private storage; the settings file |
 | The assistant's remembered "For this connection" permissions: the optional `overrides` array of the `assistant_confirmations` object of the settings file (version stays 1; at most 500; absent with no record). One record each: profile and connection UUIDs, the action class and the tool wire names, a fingerprint hash of the connection (and its profile, enrollment's public part, SSH login and pinned host key) and the time given; no name, address, user, command or secret. Removed when the connection is edited, deleted or forgotten, its profile is forgotten or enrolled again, the assistant or the tool is turned off, or the owner taps Forget. A "For session" grant is in memory only and is not stored | app-private storage; the settings file |
 
 None of the above leaves the phone by cloud backup or by Android 12+ device-to-device transfer: the manifest sets `allowBackup="false"`, `fullBackupContent="false"` and `dataExtractionRules` (`res/xml/data_extraction_rules.xml`), which excludes every domain from both `cloud-backup` and `device-transfer`. A unit test guards it.

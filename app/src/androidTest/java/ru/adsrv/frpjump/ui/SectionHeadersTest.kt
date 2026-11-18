@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -16,7 +14,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
@@ -25,7 +22,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -96,7 +92,7 @@ class SectionHeadersTest {
         assertTrue("the gear is 44 dp: $g", near(g.width, 44.dp) && near(g.height, 44.dp))
         assertTrue("the gear ends at the 16 dp gutter: $g", near(g.right, 344.dp))
         // No power button on Devices.
-        compose.onNodeWithContentDescription(string(R.string.disconnect_all_tunnels)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(localized.getString(R.string.disconnect_all_count, 1)).assertDoesNotExist()
         // The switcher keeps its width.
         val switcher = compose.onNodeWithTag(PROFILE_SWITCHER_TAG).getBoundsInRoot().width
         assertTrue("the switcher is $switcher, needs at least $minSwitcherDp dp", switcher >= minSwitcherDp.dp)
@@ -116,41 +112,6 @@ class SectionHeadersTest {
         compose.onNodeWithTag(TUNNELS_CHIP_TAG).assertDoesNotExist()
         compose.onNodeWithTag(SETTINGS_GEAR_TAG).assertIsDisplayed()
     }
-
-    @Composable private fun connectionsTitle(text: String = string(R.string.tab_connections)) {
-        SectionTitleRow(text, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            IconButton(onClick = {}, modifier = Modifier.size(44.dp)) {
-                Icon(PowerGlyph, contentDescription = string(R.string.disconnect_all_tunnels), modifier = Modifier.size(20.dp))
-            }
-            IconButton(onClick = {}, modifier = Modifier.size(44.dp)) {
-                Icon(SearchGlyph, contentDescription = string(R.string.connections_search), modifier = Modifier.size(22.dp))
-            }
-            SettingsGear {}
-        }
-    }
-
-    private fun connectionsChecks(lang: String, fontScale: Float, stacked: Boolean, text: String? = null) {
-        host(360, lang, fontScale) { if (text == null) connectionsTitle() else connectionsTitle(text) }
-        val title = compose.onNodeWithTag(SECTION_TITLE_TAG).assertIsDisplayed()
-        val results = mutableListOf<TextLayoutResult>()
-        title.fetchSemanticsNode().config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results)
-        val r = results.first()
-        assertEquals("the title is on one line", 1, r.lineCount)
-        assertTrue("the title is cut: width ${r.size.width}, text ${r.getLineRight(0) - r.getLineLeft(0)}, overflow w=${r.didOverflowWidth} h=${r.didOverflowHeight}",
-            r.getLineRight(0) <= r.size.width + 0.5f && r.getLineLeft(0) >= -0.5f && !r.didOverflowHeight && !r.isLineEllipsized(0))
-        val t = title.getBoundsInRoot()
-        val gear = compose.onNodeWithTag(SETTINGS_GEAR_TAG).assertIsDisplayed().getBoundsInRoot()
-        assertTrue("the gear ends at the title's gutter: $gear", near(gear.right, 340.dp))
-        if (stacked) assertTrue("the title $t is under the icons $gear", t.top.value >= gear.bottom.value - 1f)
-        else assertTrue("the title $t is on the icons' row $gear", t.top < gear.bottom && t.right <= gear.left)
-    }
-
-    @Test fun connectionsTitleIsOnOneRowAtNormalFont() = connectionsChecks("en", 1f, stacked = false)
-    @Test fun connectionsTitleIsOnOneRowAtNormalFontRu() = connectionsChecks("ru", 1f, stacked = false)
-    @Test fun connectionsTitleIsOnOneRowAtDoubleFont() = connectionsChecks("en", 2f, stacked = false)
-    @Test fun connectionsTitleIsOnOneRowAtDoubleFontRu() = connectionsChecks("ru", 2f, stacked = false)
-    /** A title too long for the icons' row still goes under the icons, whole, on one line. */
-    @Test fun longTitleIsUnderTheIconsAtDoubleFont() = connectionsChecks("en", 2f, stacked = true, text = "Connections")
 
     @Test fun sessionsHeaderHasTheGear() {
         var opened = 0

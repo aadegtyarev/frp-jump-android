@@ -143,6 +143,8 @@ data class AppSettings(
     @SerialName("assistant_owner_instructions") val assistantOwnerInstructions: String = "",
     /** The chat's text size in percent on top of the system size, one of [ChatTextSize.STEPS]; a display preference only. */
     @SerialName("assistant_chat_text_size") val assistantChatTextSize: Int = ChatTextSize.DEFAULT,
+    /** The Tunnels tab's filter "only tunnels that are on", as last chosen; on the first time. A display preference only. */
+    @SerialName("connections_only_on") val connectionsOnlyOn: Boolean = true,
 ) {
     val localPorts: IntRange get() = localPortFirst..localPortLast
 
@@ -362,6 +364,7 @@ class SettingsStore(private val storage: TextStorage) {
             ("assistant_limits" to normalizeAssistantLimits(json["assistant_limits"])) +
             ("assistant_confirmations" to normalizeConfirmations(json["assistant_confirmations"])) +
             ("assistant_chat_text_size" to JsonPrimitive(ChatTextSize.normalize(json["assistant_chat_text_size"]))) +
+            ("connections_only_on" to JsonPrimitive((json["connections_only_on"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: true)) +
             ("assistant_owner_instructions" to JsonPrimitive(
                 (json["assistant_owner_instructions"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let(AssistantOwnerInstructions::normalize).orEmpty())) +
             ("assistant_enabled" to JsonPrimitive((json["assistant_enabled"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false)))

@@ -2,6 +2,18 @@ package ru.adsrv.frpjump.ui.connections
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import ru.adsrv.frpjump.FrpJumpApp
+import ru.adsrv.frpjump.locale.Texts
+import ru.adsrv.frpjump.notices.NoticeKind
+import ru.adsrv.frpjump.connections.onTunnelCount
+import ru.adsrv.frpjump.connections.tunnelsView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,11 +29,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,21 +58,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import ru.adsrv.frpjump.R
-import ru.adsrv.frpjump.connections.CONNECTIONS_SEARCH_FROM
 import ru.adsrv.frpjump.connections.ConnectionRow
 import ru.adsrv.frpjump.connections.DeviceGroup
-import ru.adsrv.frpjump.connections.filterGroups
 import kotlinx.coroutines.awaitCancellation
 import ru.adsrv.frpjump.tunnel.Waiting
 import ru.adsrv.frpjump.ui.AppTheme
 import ru.adsrv.frpjump.ui.caption
 import ru.adsrv.frpjump.settings.GrantTarget
 import ru.adsrv.frpjump.ui.devices.DeviceTile
-import ru.adsrv.frpjump.ui.PowerGlyph
-import ru.adsrv.frpjump.ui.SearchBar
-import ru.adsrv.frpjump.ui.SectionTitleRow
-import ru.adsrv.frpjump.ui.SettingsGear
-import ru.adsrv.frpjump.ui.SearchGlyph
+import ru.adsrv.frpjump.ui.userMessage
 import ru.adsrv.frpjump.ui.wasOnline
 
 /**
@@ -109,7 +112,7 @@ fun ConnectionsScreen(
         vm.actions.disconnectAll { disconnecting = false }
     }
     val restoring = state.restoring?.takeIf { it > 0 }
-    // Search, as on Devices: the title turns into a field; ✕ or Back closes it and shows them all again.
+    // Search: the header's pill expands to the whole header; ← closes it and clears the query, so does Back.
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var focusOnOpen by rememberSaveable { mutableStateOf(false) }
@@ -119,50 +122,44 @@ fun ConnectionsScreen(
         focusOnOpen = false
     }
     BackHandler(enabled = searching) { closeSearch() }
+    val (onlyOn, setOnlyOn) = rememberOnlyOnFilter()
     val all = state.rows
-    val shown = filterGroups(state.groups, query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
+    val count = onTunnelCount(state.groups, restoring ?: 0)
+    val view = tunnelsView(state.groups, onlyOn, query) { row -> if (row.saved) connectionLabel(context, row.connection) else context.getString(R.string.connection_unsaved, row.connection.port) }
+    val shown = view.groups
     Column(Modifier.fillMaxSize()) {
-        if (searching) {
-            SearchBar(
-                query,
-                onQuery = { query = it },
-                onClose = closeSearch,
-                focus = focusOnOpen,
-                onFocused = { focusOnOpen = false },
-                label = stringResource(R.string.connections_search),
-                hint = stringResource(R.string.connections_search_hint),
-            )
-        }
+        TunnelsHeader(
+            searching = searching,
+            query = query,
+            onQuery = { query = it },
+            onOpenSearch = {
+                searching = true
+                focusOnOpen = true
+            },
+            onCloseSearch = closeSearch,
+            focusOnOpen = focusOnOpen,
+            onFocused = { focusOnOpen = false },
+            scopeOn = view.filtered,
+            filterOn = onlyOn && count > 0,
+            count = count,
+            onFilter = setOnlyOn,
+            stopBusy = disconnecting,
+            onStopAll = disconnectAll,
+            onSettings = onSettings,
+            modifier = Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+        )
         PullToRefreshBox(
             isRefreshing = state.refreshing,
             onRefresh = vm::pull,
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (searching) Modifier else Modifier.statusBarsPadding()),
+            modifier = Modifier.fillMaxSize(),
         ) {
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                item(key = "title") {
-                    Column(Modifier.padding(start = 4.dp, top = if (searching) 0.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (!searching) {
-                            SectionTitleRow(stringResource(R.string.tab_connections), Modifier.fillMaxWidth()) {
-                                if (all.any { it.active } || restoring != null || disconnecting) {
-                                    DisconnectAllButton(busy = disconnecting, onClick = disconnectAll)
-                                }
-                                if (all.size >= CONNECTIONS_SEARCH_FROM) {
-                                    IconButton(onClick = {
-                                        searching = true
-                                        focusOnOpen = true
-                                    }, modifier = Modifier.size(44.dp)) {
-                                        Icon(SearchGlyph, contentDescription = stringResource(R.string.connections_search), tint = colors.ink, modifier = Modifier.size(22.dp))
-                                    }
-                                }
-                                SettingsGear(onSettings)
-                            }
-                        }
+                item(key = "status") {
+                    Column(Modifier.padding(start = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         // Where "Disconnect all" was tapped: why tunnels may come back, until they are back.
                         if (state.disconnectAllFailed && !disconnecting && restoring != null) {
                             Text(stringResource(R.string.disconnect_all_failed), fontSize = 14.sp, color = colors.error)
@@ -193,6 +190,22 @@ fun ConnectionsScreen(
                         )
                     }
                 }
+                // Nothing on among the shown, but the tunnels that are off match: one line that turns the filter off.
+                view.inAll?.let { found ->
+                    item(key = "in-all") {
+                        Text(
+                            stringResource(R.string.connections_in_all, found),
+                            color = colors.accent,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clickable(role = Role.Button) { setOnlyOn(false) }
+                                .padding(horizontal = 4.dp, vertical = 12.dp)
+                                .testTag(TUNNELS_IN_ALL_TAG),
+                        )
+                    }
+                }
                 shown.forEachIndexed { index, group ->
                     item(key = "device/${group.key}") {
                         GroupHeader(group, state.colors[group.profile]?.takeIf { state.manyProfiles }, first = index == 0)
@@ -217,19 +230,24 @@ fun ConnectionsScreen(
     ConnectionDialogs(ui, vm.actions, existing = vm::connections, rows = all, onOpenTerminal = onOpenTerminal, onOpenFiles = onOpenFiles)
 }
 
-/** The power button of the Connections header, for every profile's tunnels; a spinner while servers are told. */
+/**
+ * The filter "only tunnels that are on" as last chosen (on the first time), and a setter that keeps the choice in the settings, in the app's
+ * scope so that leaving the tab does not cancel the write; a write that fails says so.
+ */
 @Composable
-private fun DisconnectAllButton(busy: Boolean, onClick: () -> Unit) {
-    val colors = AppTheme.colors
-    val label = stringResource(R.string.disconnect_all_tunnels)
-    IconButton(onClick = onClick, enabled = !busy, modifier = Modifier.size(44.dp).semantics { contentDescription = label }) {
-        if (busy) {
-            CircularProgressIndicator(Modifier.size(18.dp), color = colors.error, strokeWidth = 2.dp)
-        } else {
-            Icon(PowerGlyph, contentDescription = null, tint = colors.error, modifier = Modifier.size(20.dp))
+private fun rememberOnlyOnFilter(): Pair<Boolean, (Boolean) -> Unit> {
+    val app = LocalContext.current.applicationContext as FrpJumpApp
+    val settings by app.settings.settings.collectAsStateWithLifecycle()
+    return settings.connectionsOnlyOn to { value: Boolean ->
+        app.appScope.launch {
+            val failure = withContext(Dispatchers.IO) { runCatching { app.settings.update { it.copy(connectionsOnlyOn = value) } }.exceptionOrNull() }
+            if (failure != null) app.notices.show(Texts.get(R.string.settings_save_failed, failure.userMessage()), NoticeKind.WARN, long = true)
         }
+        Unit
     }
 }
+
+const val TUNNELS_IN_ALL_TAG = "tunnels_in_all"
 
 /**
  * A device over its connections: its tile as on Devices, smaller (the
